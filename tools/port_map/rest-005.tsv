@@ -73,11 +73,11 @@ SoundEngine.updateSource	port	crates/sunrise-client-render/src/audio.rs::Audio::
 SoundEngineExecutor.createThread	skip:other		sound thread creation; Sunrise's audio runs on the cpal callback
 SoundEngineExecutor.run	skip:other		sound thread loop; Sunrise's audio runs on the cpal callback
 SoundEngineExecutor.shutDown	skip:other		sound thread shutdown; Sunrise's audio runs on the cpal callback
-SoundManager.prepare	port	crates/sunrise-client-render/src/sound_events.rs::SoundRegistry::load	reads sounds.json per namespace
+SoundManager.prepare	port	crates/sunrise-level/src/sound_events.rs::SoundRegistry::load	reads sounds.json per namespace
 SoundManager.apply	port	crates/sunrise-client-render/src/audio.rs::Audio::reload	applies the registry and reloads the engine
-SoundManager.validateSoundResource	inline	crates/sunrise-client-render/src/sound_events.rs::SoundRegistry::add_file	file existence check through the exists closure
-SoundManager.Preparations.handleRegistration	port	crates/sunrise-client-render/src/sound_events.rs::SoundRegistry::add_file	replace flag and sound entries
-SoundManager.Preparations.apply	inline	crates/sunrise-client-render/src/sound_events.rs::SoundRegistry::load	registry replaced with the prepared one
+SoundManager.validateSoundResource	inline	crates/sunrise-level/src/sound_events.rs::SoundRegistry::add_file	file existence check through the exists closure
+SoundManager.Preparations.handleRegistration	port	crates/sunrise-level/src/sound_events.rs::SoundRegistry::add_file	replace flag and sound entries
+SoundManager.Preparations.apply	inline	crates/sunrise-level/src/sound_events.rs::SoundRegistry::load	registry replaced with the prepared one
 SoundPreviewHandler.preview	port	crates/sunrise-client-render/src/audio.rs::preview	the pack screen's sound preview
 SoundPreviewHandler.stopOtherCategoryPreview	port	crates/sunrise-client-render/src/sound_preview.rs::SoundPreview::stop_other_category_preview
 WeighedSoundEvents.preloadIfRequired	skip:java		preload is a cache; Sunrise decodes on demand

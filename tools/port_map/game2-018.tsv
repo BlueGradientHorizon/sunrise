@@ -7,10 +7,10 @@ SpawnerBlockEntity.triggerEvent	port	crates/sunrise-client/src/mobs/spawner.rs::
 SpawnerBlockEntity.setEntityData	port	crates/sunrise-client/src/mobs/spawner.rs::Spawner::set_entity_data	use_spawn_egg_on_spawner passes the egg's entity data, which is merged into the spawner's next data; the BlockUpdated event sets it changed
 StructureBlockEntity.updateBlockState	port	crates/sunrise-client/src/game/administration/structure_blocks.rs::Game::set_structure_mode	the mode is written to the block's mode property too
 StructureBlockEntity.usedBy	port	crates/sunrise-client/src/game/interface/block_editor.rs::Game::open_block_editor_if_editable	a game master's right click opens the structure block screen
-StructureBlockEntity.setStructureName	port	crates/sunrise-client-render/src/structure_block.rs::StructureBlock::set_structure_name	the SET_STRUCTURE_BLOCK packet's name reaches the entity
+StructureBlockEntity.setStructureName	port	crates/sunrise-level/src/structure_block.rs::StructureBlock::set_structure_name	the SET_STRUCTURE_BLOCK packet's name reaches the entity
 StructureBlockEntity.setMode	port	crates/sunrise-client/src/game/administration/structure_blocks.rs::Game::set_structure_mode	the screen's mode buttons write both the entity and the block state's mode
 StructureBlockEntity.detectSize	port	crates/sunrise-client/src/game/administration/structure_blocks.rs::Game::detect_structure_size	Detect Size finds the box between the corner blocks
-StructureBlockEntity.getEnclosingBoundingBox	port	crates/sunrise-client-render/src/structure_block.rs::StructureBlock::enclosing_box	the box between the corner blocks
+StructureBlockEntity.getEnclosingBoundingBox	port	crates/sunrise-level/src/structure_block.rs::StructureBlock::enclosing_box	the box between the corner blocks
 StructureBlockEntity.saveStructure	port	crates/sunrise-client/src/game/administration/structure_blocks.rs::Game::save_structure	the Save button and a redstone rising edge write the template from the detected box
 StructureBlockEntity.placeStructureIfSameSize	port	crates/sunrise-client/src/game/administration/structure_blocks.rs::Game::place_structure_if_same_size	the Load button only places a template that matches the box
 StructureBlockEntity.loadStructureInfo	port	crates/sunrise-client/src/game/administration/structure_blocks.rs::Game::load_structure_info	the template's size and author are read back
@@ -18,8 +18,8 @@ StructureBlockEntity.placeStructure	port	crates/sunrise-client/src/game/administ
 StructureBlockEntity.getStructureTemplate	port	crates/sunrise-world/src/worldgen/structure.rs::StructureResources::template	name lookup only; nothing calls it for a structure block
 StructureBlockEntity.unloadStructure	inline	crates/sunrise-client/src/game/administration/structure_blocks.rs::Game::trigger_structure_block	the Corner arm drops the saved template (`structure_templates.remove`), so the next use reads the file
 StructureBlockEntity.isStructureLoadable	port	crates/sunrise-client/src/game/administration/structure_blocks.rs::Game::structure_loadable	the Load button reports whether the template exists
-StructureBlockEntity.renderMode	port	crates/sunrise-client-render/src/structure_block.rs::StructureBlock::render_mode	a creative structure block shows its mode's outline
-StructureBlockEntity.getRenderableBox	port	crates/sunrise-client-render/src/structure_block.rs::StructureBlock::renderable_box	the outline box of SAVE and LOAD modes
+StructureBlockEntity.renderMode	port	crates/sunrise-level/src/structure_block.rs::StructureBlock::render_mode	a creative structure block shows its mode's outline
+StructureBlockEntity.getRenderableBox	port	crates/sunrise-level/src/structure_block.rs::StructureBlock::renderable_box	the outline box of SAVE and LOAD modes
 TestInstanceBlockEntity.Data.withSize	skip:java		record copy-with builder; no behaviour of its own
 TestInstanceBlockEntity.Data.withStatus	port	crates/sunrise-client/src/game/administration/game_tests.rs::Game::set_test_status	setRunning and setSuccess write the status through it and mark the block entity updated; a new status clears the error message
 TestInstanceBlockEntity.Data.withError	port	crates/sunrise-client/src/game/administration/game_tests.rs::Game::set_test_status	setErrorMessage carries the text as the block entity's error_message, which the next status change clears

@@ -85,7 +85,7 @@ pub fn contain<T>(f: impl FnOnce() -> T) -> Result<T, String> {
 
 /// For the hook: a contained panic is logged with its stack and kept for its boundary to
 /// return. False for any other panic.
-pub(crate) fn contained_panic(info: &std::panic::PanicHookInfo) -> bool {
+pub fn contained_panic(info: &std::panic::PanicHookInfo) -> bool {
     record_contained_panic(&|| {
         let message = panic_message(info);
         let stack = stack_lines(
@@ -224,7 +224,7 @@ fn arch_label(build: &str, machine: &str) -> String {
 }
 
 /// `PRETTY_NAME` of /etc/os-release and the kernel, or the system's own version string.
-pub(crate) fn operating_system() -> String {
+pub fn operating_system() -> String {
     let arch = arch_label(std::env::consts::ARCH, machine_arch());
     let version = if cfg!(target_os = "linux") {
         let name = read("/etc/os-release").and_then(|t| {
@@ -1364,7 +1364,7 @@ pub(crate) mod tests {
         );
         assert_eq!(
             stack_lines(&bt, true),
-            "sunrise_client::crash::debug_crash_tick (crates/sunrise-client-render/src/crash.rs:359:9)\nwinit::dispatch (winit-0.30.13/src/event_loop.rs:642:56)\nmain\n"
+            "sunrise_client::crash::debug_crash_tick (crates/sunrise-level/src/crash.rs:359:9)\nwinit::dispatch (winit-0.30.13/src/event_loop.rs:642:56)\nmain\n"
         );
     }
 

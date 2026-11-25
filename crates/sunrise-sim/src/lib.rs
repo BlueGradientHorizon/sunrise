@@ -33,6 +33,26 @@ pub use sunrise_world::json_folder;
 pub use sunrise_world::moving_colliders;
 
 // --- lowered level re-exports ---
+pub use sunrise_level::api_context;
+pub use sunrise_level::bidi;
+pub use sunrise_level::carrier_fences;
+pub use sunrise_level::columns;
+pub use sunrise_level::crash;
+pub use sunrise_level::fast_hash;
+pub use sunrise_level::jigsaw_block;
+pub use sunrise_level::logging;
+pub use sunrise_level::mod_chunk_tickets;
+pub use sunrise_level::pack_tags;
+pub use sunrise_level::par;
+pub use sunrise_level::providers;
+pub use sunrise_level::random_source;
+pub use sunrise_level::section_mask;
+pub use sunrise_level::sound_events;
+pub use sunrise_level::spans;
+pub use sunrise_level::structure_block;
+pub use sunrise_level::test_block;
+pub use sunrise_level::test_instance_block;
+pub use sunrise_level::worldborder;
 // --- end lowered level re-exports ---
 
 // --- lowered modules ---

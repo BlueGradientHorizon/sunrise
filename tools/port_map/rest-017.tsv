@@ -50,7 +50,7 @@ DedicatedServerProperties.getDatapackConfig	inline	crates/sunrise-server-files/s
 DedicatedServerProperties.deserializePermission	port	crates/sunrise-server-files/src/properties.rs::Reader::permission	gap: minor: numbers clamp to 0 to 4; PermissionLevel.byId is not compared
 DedicatedServerProperties.WorldDimensionData.create	port	crates/sunrise-client/src/game/interface/dedicated/mod.rs::Game::write_world_gen	gap: minor: only the preset pick by level-type is mapped; the flat-settings replacement is not compared
 ServerWatchdog.run	port	crates/sunrise-client/src/game/interface/dedicated/mod.rs::Watchdog::run	the thread DedicatedServer starts from max-tick-time; a tick max-tick-time past its due time logs, writes the report and exits
-ServerWatchdog.createWatchdogCrashReport	port	crates/sunrise-client-render/src/crash.rs::report_watchdog	the report of a hung tick, written by that thread; gap: minor: no thread dump, since the stuck thread's stack is not available to Rust
+ServerWatchdog.createWatchdogCrashReport	port	crates/sunrise-level/src/crash.rs::report_watchdog	the report of a hung tick, written by that thread; gap: minor: no thread dump, since the stuck thread's stack is not available to Rust
 ServerWatchdog.exit	inline	crates/sunrise-client/src/game/interface/dedicated/mod.rs::Watchdog::run	the process exits with 1 straight after the report; gap: minor: vanilla sleeps 10 s and dumps the stuck thread first
 Settings.dispatchNumberOrString	inline	crates/sunrise-server-files/src/properties.rs::ServerProperties::new	the difficulty parse in ServerProperties::new does this job inline
 Settings.getLegacy	port	crates/sunrise-server-files/src/properties.rs::Reader::legacy	returns the raw value and removes the key; the caller parses it

@@ -8,7 +8,7 @@ use sunrise_assets::resource_source::ResourceSource;
 use sunrise_world::tag_layers::TagLayers;
 
 /// Bind tags read from a resource source (directory, archive or indexed pack).
-pub(super) fn bind(
+pub fn bind(
     root: &ResourceSource,
     registry: &str,
     contains: impl Fn(&str) -> bool,

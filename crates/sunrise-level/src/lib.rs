@@ -28,4 +28,24 @@ pub use sunrise_world::json_folder;
 pub use sunrise_world::moving_colliders;
 
 // --- lowered modules ---
+pub mod api_context;
+pub mod bidi;
+pub mod carrier_fences;
+pub mod columns;
+pub mod crash;
+pub mod fast_hash;
+pub mod jigsaw_block;
+pub mod logging;
+pub mod mod_chunk_tickets;
+pub mod pack_tags;
+pub mod par;
+pub mod providers;
+pub mod random_source;
+pub mod section_mask;
+pub mod sound_events;
+pub mod spans;
+pub mod structure_block;
+pub mod test_block;
+pub mod test_instance_block;
+pub mod worldborder;
 // --- end lowered modules ---

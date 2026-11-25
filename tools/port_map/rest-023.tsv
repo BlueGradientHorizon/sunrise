@@ -17,7 +17,7 @@ Util.makeExecutor	skip:java		background ForkJoin pool with thread names
 Util.getMaxThreads	skip:java		max.bg.threads pool size; Sunrise sizes its own pools
 Util.makeIoExecutor	skip:java		cached IO thread pool
 Util.throwAsRuntime	skip:java		Java checked-exception rethrow
-Util.onThreadException	port	crates/sunrise-client-render/src/crash.rs::install	gap: player: vanilla then relays a crash report to the main thread and the game ends; Sunrise only logs an error from a worker thread
+Util.onThreadException	port	crates/sunrise-level/src/crash.rs::install	gap: player: vanilla then relays a crash report to the main thread and the game ends; Sunrise only logs an error from a worker thread
 Util.doFetchChoiceType	skip:data		DataFixer choice-type lookup; Sunrise migrates saves in sunrise-world datafix
 Util.runNamed	skip:debug		renames the thread and opens a Tracy zone
 Util.getRegisteredName	skip:debug		registry key text for logs and debug output (Ticket.toString)

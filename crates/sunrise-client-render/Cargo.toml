@@ -122,6 +122,8 @@ sunrise-perf = { path = "../sunrise-perf" }
 sunrise-theme = { path = "../sunrise-theme" }
 sunrise-items = { path = "../sunrise-items", features = ["test-support"] }
 naga = { version = "30.0.1", features = ["wgsl-in", "hlsl-out", "glsl-out", "msl-out", "spv-out"] }
+sunrise-level = { path = "../sunrise-level", features = ["test-support"] }
+
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 # Independently calibrate CPU timer delivery for live sampling assertions.

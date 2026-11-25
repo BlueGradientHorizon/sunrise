@@ -6,8 +6,7 @@ pub use evaluation::{ConditionContext, Evaluation};
 use serde_json::Value;
 use std::{collections::HashMap, fs, path::Path, sync::Arc};
 
-pub(crate) const NUMBER_PROVIDER_KINDS: [&str; 2] =
-    ["context_int_provider", "context_float_provider"];
+pub const NUMBER_PROVIDER_KINDS: [&str; 2] = ["context_int_provider", "context_float_provider"];
 
 /// Evaluator for `context_int_provider` / `context_float_provider` values.
 #[derive(Clone)]
@@ -178,7 +177,7 @@ impl Providers {
             Self::eval(v, false, &self.0.floats, 0) as f32
         }
     }
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn empty() -> Self {
         Self(Arc::new(Definitions::default()))
     }

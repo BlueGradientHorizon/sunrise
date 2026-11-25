@@ -11,7 +11,7 @@ ActiveTextCollector.Parameters.withOpacity	skip:java		record copy-with helper; o
 ActiveTextCollector.Parameters.withScissor	missing		minor: a nested scissor is not intersected with the enclosing rectangle; Draw::Scissor replaces it
 ComponentPath.path	skip:other		focus path builder for nested containers; Sunrise focus is a flat per-screen state
 ComponentPath.Path.applyFocus	skip:other		focus path propagation; Sunrise focus is a flat per-screen state
-Font.bidirectionalShaping	port	crates/sunrise-client-render/src/bidi.rs::visual_str	Arabic shaping and bidi reorder
+Font.bidirectionalShaping	port	crates/sunrise-level/src/bidi.rs::visual_str	Arabic shaping and bidi reorder
 Font.prepare8xTextOutline	skip:other		no vanilla 26.3 caller passes a non-zero outline colour; text displays, name tags and map labels pass 0 or a background
 Font.prepareBackground	port	crates/sunrise-client-render/src/hud_overlays.rs::text_with_backdrop	background box behind text; callers pass their own bounds
 Font.getGlyph	port	crates/sunrise-client-render/src/font.rs::Font::glyph_styled	obfuscated glyph is picked in HudBatch::text_styled via random_glyph

@@ -216,8 +216,8 @@ if __name__ == '__main__':
         'cook times, fuel stack and LIT state, RecipesUsed experience, full output and '
         'timer decay, and input changed mid-cook. --no-change leaves out the change family.',
         sources=[lab.ROOT / 'crates/sunrise-client-render/src/chunk/block_entity.rs',
-                 lab.ROOT / 'crates/sunrise-client-render/src/providers.rs',
-                 lab.ROOT / 'crates/sunrise-client-render/src/providers/evaluation.rs',
+                 lab.ROOT / 'crates/sunrise-level/src/providers.rs',
+                 lab.ROOT / 'crates/sunrise-level/src/providers/evaluation.rs',
                  lab.ROOT / 'crates/sunrise-client/src/game/blocks/machines/furnace_hopper.tsv',
                  lab.ROOT / 'crates/sunrise-items/src/item_data/cooking_fuel.rs',
                  lab.ROOT / 'crates/sunrise-items/src/properties/resolvable.rs',
