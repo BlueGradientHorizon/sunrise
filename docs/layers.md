@@ -579,13 +579,15 @@ Reads of vanilla's own item catalogs, which any crate may use (an inventory tool
 fills them from the data it loaded, and nothing in them is per feature.
 
 ```rust
-fn creative_order(stack: &containers::Stack) -> Option<u32>;  // its place in the creative inventory's search tab
+fn creative_order(stack: &containers::Stack) -> Option<usize>;  // its place in vanilla's creative order
 ```
 
-- The place of the same stack (same item and components, by `Stack::kind`), else its item's first place; `None`
-  for an item the creative tabs don't show, or before the game has loaded them.
-- The window's creative inventory publishes the table each time its tabs are built (loading, permissions, the
-  mods' and packs' additions), so a read is two hash lookups, never a scan.
+- This is the stock order, the one the built-in sorter ranks by (the search tab's stacks, then the ungrouped items),
+  not the search tab as mods and permissions change it. The place of the same stack (same item and components,
+  by `Stack::kind`), else its item's first place; `None` for an item the creative tabs don't show, or before the
+  game has built them.
+- The window's game publishes the table each time it builds the creative tabs' contents, so a read is two hash
+  lookups, never a scan.
 
 ### Lang files (`sunrise_platform::lang`)
 

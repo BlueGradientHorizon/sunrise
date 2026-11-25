@@ -9,6 +9,7 @@ use mod_api::{
     CreativeTabVisibility, ItemStackView,
 };
 use std::cell::OnceCell;
+use sunrise_hooks::items::engine::{CreativeOrder, set_creative_order};
 use sunrise_items::creative_catalog::{
     Catalog, Holders, Kind, Parameters, TabContents, normalize_components,
 };
@@ -159,6 +160,10 @@ impl Game<'_> {
             },
         );
         self.creative_contents.active = None;
+        // The platform reads the same stock order the sorter ranks by, refreshed with each build.
+        if self.options.execution_role.is_client() {
+            set_creative_order(self.creative_screen.stock_order(&lists));
+        }
         self.creative_contents.published = Some(Published {
             key,
             lists: lists.clone(),
@@ -281,7 +286,7 @@ impl Game<'_> {
 
     /// The built-in sorter is only a reader. A cold sort previews stock order
     /// without publishing anything or giving mods a creative callback.
-    pub(in crate::game) fn stock_sort_order(&self) -> Vec<ItemStack> {
+    pub(in crate::game) fn stock_sort_order(&self) -> CreativeOrder {
         let preview;
         let lists = if let Some(published) = &self.creative_contents.published {
             &published.lists
@@ -298,7 +303,7 @@ impl Game<'_> {
             );
             &preview
         };
-        self.creative_screen.search_order_from(lists)
+        self.creative_screen.stock_order(lists)
     }
 
     pub(in crate::game) fn creative_stack_key(&self, stack: &ItemStack) -> Option<ItemStack> {

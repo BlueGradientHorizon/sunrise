@@ -2096,6 +2096,31 @@ mod tests {
     }
 
     #[test]
+    fn the_stock_order_is_the_search_tabs_places_without_publishing_anything() {
+        let c = with_operator_tab();
+        let build = |operator| {
+            c.catalog.build(
+                Parameters {
+                    operator,
+                    features: &[],
+                    holders: &Default::default(),
+                    items: &crate::items::Items::empty(),
+                },
+                None,
+                |_, _, _| {},
+            )
+        };
+        let place =
+            |order: &CreativeOrder, id: &str| order.of(id, ItemStack::new(id, 1).merge_kind());
+        let normal = c.stock_order(&build(false));
+        assert_eq!(place(&normal, "minecraft:stone"), Some(0));
+        assert_eq!(place(&normal, "minecraft:barrier"), None);
+        let operator = c.stock_order(&build(true));
+        assert_eq!(place(&operator, "minecraft:command_block"), Some(1));
+        assert_eq!(place(&operator, "minecraft:barrier"), Some(2));
+    }
+
+    #[test]
     fn operator_stacks_stay_out_without_permissions() {
         let c = with_operator_tab();
         let names = Names::default();
