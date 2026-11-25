@@ -2282,7 +2282,7 @@ impl Game<'_> {
                 .capture_code_switches(&self.settings.mods.disabled);
         }
         // A mod with a native version built in says so instead, and isn't news.
-        self.list_native_mods();
+        self.side_list_native_mods();
         self.sync_native_switches();
         let built = self.mods.native.built();
         let built_mods = native_mods_detail(built);

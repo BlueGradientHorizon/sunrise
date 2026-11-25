@@ -183,6 +183,8 @@ pub(in crate::game) mod hand;
 pub(in crate::game) mod hand_part_tests;
 #[path = "runtime/headless.rs"]
 pub(in crate::game) mod headless;
+#[path = "items/held_items_client.rs"]
+pub(in crate::game) mod held_items_client;
 #[cfg(test)]
 #[path = "interface/highlight_tip_tests.rs"]
 pub(in crate::game) mod highlight_tip_tests;

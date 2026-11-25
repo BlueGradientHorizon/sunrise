@@ -225,6 +225,12 @@ impl Game<'_> {
         }
     }
 
+    pub(in crate::game) fn side_list_native_mods(&mut self) {
+        if !self.is_logical_server() {
+            self.list_native_mods();
+        }
+    }
+
     pub(in crate::game) fn side_living_absorption(&self, living: LivingRef) -> Option<f32> {
         if self.is_logical_server() {
             self.server_living_absorption(living)
