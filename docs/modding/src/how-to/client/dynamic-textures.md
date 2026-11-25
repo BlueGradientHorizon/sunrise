@@ -80,9 +80,10 @@ span's colour, or white if the span has none; the sign's dye does not tint it. S
 the original text. Name tags and the chat input field do not use this hook.
 
 Give the hook the id of a pack sprite or a live dynamic texture: one lookup rule, the dynamic texture first. A dynamic
-texture draws in chat, the HUD's text and screens as its own texture in the glyph's 8×8 box, and a texture released
-after its text was laid out shows vanilla's missing texture. Signs show atlas sprites only: a dynamic id there leaves
-the text alone. Keep the listener a cheap match: it may run again when text, resources, sprite geometry or the
+texture draws in chat, the HUD's text, screens and both sign faces as its own texture in the glyph's 8×8 box (on a
+sign, a quad of its own with the texture bound, lit as the sign's text is, white-tinted unless the span has a colour),
+and a texture released after its text was laid out shows vanilla's missing texture until the text is laid out again.
+Keep the listener a cheap match: it may run again when text, resources, sprite geometry or the
 enabled mods change. For an animation, keep one texture id and update its pixels as frames change; there is no
 need to rebuild the text layout.
 

@@ -1749,7 +1749,7 @@ impl Game<'_> {
             // Layout borrows a read-only Host while asking listeners.
             let mut chat = std::mem::take(&mut self.ui.chat);
             chat.refresh_inline_images(&self.gui.atlas, revision, |text| {
-                self.substitute_inline_images(text, true)
+                self.substitute_inline_images(text)
             });
             self.ui.chat = chat;
         }

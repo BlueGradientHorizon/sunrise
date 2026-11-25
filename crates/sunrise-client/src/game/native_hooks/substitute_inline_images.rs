@@ -19,20 +19,18 @@ impl Game<'_> {
         })
     }
 
-    /// `dynamic`: whether a dynamic texture may be named. A sign's text draws through the world
-    /// text pipeline, which samples the GUI atlas only, so signs pass `false`.
-    pub(in crate::game) fn substitute_inline_images(
-        &self,
-        text: &Text,
-        dynamic: bool,
-    ) -> Option<Text> {
-        let dynamic = dynamic.then_some(&self.dynamic_textures);
-        substitute(&self.gui.atlas, dynamic, text, |run, images| {
-            self.native_substitute_inline_images(mod_api::__private::SubstituteInlineImagesCall {
-                run,
-                images,
-            });
-        })
+    /// Chat, screens and signs all name a dynamic texture or an atlas sprite by the same rule.
+    pub(in crate::game) fn substitute_inline_images(&self, text: &Text) -> Option<Text> {
+        substitute(
+            &self.gui.atlas,
+            &self.dynamic_textures,
+            text,
+            |run, images| {
+                self.native_substitute_inline_images(
+                    mod_api::__private::SubstituteInlineImagesCall { run, images },
+                );
+            },
+        )
     }
 
     /// Ask client mods for replacement atlas images before laying out this text run.
@@ -52,7 +50,7 @@ enum Found {
 
 fn substitute(
     atlas: &HudAtlas,
-    dynamic: Option<&DynamicTextures>,
+    dynamic: &DynamicTextures,
     text: &Text,
     ask: impl Fn(&str, &mut Vec<Answered<InlineImageReplacement>>),
 ) -> Option<Text> {
@@ -77,7 +75,7 @@ fn substitute(
                 continue;
             }
             // One lookup rule for an id: a live dynamic texture, then the GUI atlas.
-            let found = match dynamic.and_then(|dynamic| dynamic.get(&answer.sprite)) {
+            let found = match dynamic.get(&answer.sprite) {
                 Some((handle, size)) => Some(Found::Dynamic { handle, size }),
                 None => atlas
                     .find_inline_sprite("minecraft:gui", &answer.sprite.to_string())
@@ -195,12 +193,17 @@ mod tests {
         ];
         with_mods(mods.into(), || {
             let host = mod_api::testing::FakeHost::default();
-            let result = substitute(&atlas, None, &source, |run, images| {
-                mod_api::dispatch_substitute_inline_images(
-                    &host,
-                    mod_api::__private::SubstituteInlineImagesCall { run, images },
-                );
-            })
+            let result = substitute(
+                &atlas,
+                &DynamicTextures::default(),
+                &source,
+                |run, images| {
+                    mod_api::dispatch_substitute_inline_images(
+                        &host,
+                        mod_api::__private::SubstituteInlineImagesCall { run, images },
+                    );
+                },
+            )
             .unwrap();
             assert_eq!(result.plain(), "é:ok: !");
             assert_eq!(result.spans.len(), 3);
@@ -225,7 +228,7 @@ mod tests {
     }
 
     #[test]
-    fn a_live_dynamic_texture_is_an_inline_dynamic_object_and_only_where_dynamic_is_allowed() {
+    fn a_live_dynamic_texture_is_an_inline_dynamic_object_until_it_is_released() {
         let atlas = HudAtlas::fonts(&ResourceSource::default()).unwrap();
         let mut dynamic = DynamicTextures::default();
         dynamic.bind(1, 128);
@@ -245,7 +248,7 @@ mod tests {
                     mod_api::__private::SubstituteInlineImagesCall { run, images },
                 );
             };
-            let result = substitute(&atlas, Some(&dynamic), &source, ask).unwrap();
+            let result = substitute(&atlas, &dynamic, &source, ask).unwrap();
             assert_eq!(
                 result.spans[1].style.inline_object,
                 Some(InlineObject::Dynamic {
@@ -255,9 +258,8 @@ mod tests {
                     fallback: ":ok:".into(),
                 })
             );
-            assert_eq!(substitute(&atlas, None, &source, ask), None, "a sign");
             dynamic.release("demo", &id).unwrap();
-            assert_eq!(substitute(&atlas, Some(&dynamic), &source, ask), None);
+            assert_eq!(substitute(&atlas, &dynamic, &source, ask), None);
         });
     }
 }

@@ -14,8 +14,10 @@ pub trait Hooks {
     /// Chat hover and click use the span's style at the glyph's displayed position.
     /// The source component, chat history and signatures, and sign editing are not changed.
     /// Cached layout can reuse answers while the text, resources, sprite geometry and enabled mods
-    /// are unchanged. To animate a glyph, update the pixels of the same dynamic texture id. Signs
-    /// show atlas sprites only.
+    /// are unchanged. To animate a glyph, update the pixels of the same dynamic texture id. A
+    /// sign draws a dynamic texture as a quad of its own, under the same one lookup rule as chat
+    /// (a live dynamic texture of that id, then the atlas); one released after the sign's text was
+    /// laid out draws the missing texture until the text is laid out again.
     #[hook(
         receiver = "read",
         dispatch = "api_carrier",
