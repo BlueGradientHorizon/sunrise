@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# The linker of aarch64-apple-darwin programs on a Linux runner: zig cc, with the build version the hosted macOS builds
+# carry (minimum macOS 11.0, linked against SDK 15.5). zig's linker has no -sectcreate, which packaging/macos/exe.rs
+# passes to embed the game's Info.plist: the file goes in as an object holding that section instead.
+args=()
+plist=""
+while (($#)); do
+  case "$1" in
+    -arch) shift ;;
+    -mmacosx-version-min=* | --target=*) ;;
+    -Xlinker)
+      if [[ "$2" == -sectcreate ]]; then
+        plist="$8"
+        shift 7
+      else
+        args+=("$1")
+      fi
+      ;;
+    *) args+=("$1") ;;
+  esac
+  shift
+done
+if [[ -n "$plist" ]]; then
+  scratch=$(mktemp -d)
+  printf '.section __TEXT,__info_plist,regular,no_dead_strip\n.incbin "%s"\n' "$plist" > "$scratch/info-plist.S"
+  zig cc -target aarch64-macos.11.0 -c "$scratch/info-plist.S" -o "$scratch/info-plist.o"
+  args+=("$scratch/info-plist.o")
+fi
+exec zig cc -target aarch64-macos.11.0 -Wl,-platform_version,macos,11.0,15.5 -F"$SDKROOT/System/Library/Frameworks" -L"$SDKROOT/usr/lib" "${args[@]}"
