@@ -60,15 +60,6 @@ impl Game<'_> {
         let pending = self.world.entities_pending.clone();
         move |x, z| block_ticking_at(&levels, &pending, x, z)
     }
-    /// The published loop `block_entities.tick` (`published_loops.rs`): with no
-    /// `[[native.loop]]` mod its slot is `()`, and a mod build installs its own copy of this
-    /// function, with the mods' slots, through its replacement cell. A sleeping hopper is
-    /// still visited for its transfer state (cooldown and `tickedGameTime`) but is not handed
-    /// to the slot: mod loop listeners see it again once something wakes it.
-    #[sunrise_mod_api_macros::sunrise_loop(name = "block_entities.tick", side = "server")]
-    pub(in crate::game) fn tick_block_entities(&mut self) -> Result<()> {
-        self.tick_block_entities_with(&mut ())
-    }
     /// `AbstractFurnaceBlockEntity.serverTick` of the furnace at `pos`, and
     /// its block's `lit` following it.
     pub(in crate::game) fn tick_furnace(&mut self, pos: Pos) -> Result<()> {

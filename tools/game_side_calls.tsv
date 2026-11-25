@@ -2249,6 +2249,7 @@ server	block_entity_part_state_tests::fixture	impl BlockEntityPartState for Coun
 server	block_entity_part_state_tests::fixture	impl BlockPart for Counter	-	#[cfg(test)]	trait_impl	-	trait-impl
 server	block_entity_ticks	impl BlockEntityTick<'_, '_>	block_entity	-	method	game	called
 server	block_entity_ticks	impl Game<'_>	block_ticking_at	-	method	game	called
+server	block_entity_ticks	impl Game<'_>	tick_block_entities	-	method	test	rehomed
 server	block_entity_ticks	impl Game<'_>	tick_block_entities_with	-	method	game	called
 server	block_entity_ticks	impl Game<'_>	tick_daylight_detector	-	method	game	called
 server	block_entity_ticks	impl Game<'_>	tick_shulkers	-	method	game	called
@@ -2271,7 +2272,6 @@ server	block_entity_ticks::slot_guard_tests	impl BlockEntityTickSlot for Both	-	
 server	block_entity_ticks::slot_guard_tests	impl LoopMod for Row	-	#[cfg(test)]	trait_impl	-	trait-impl
 server	block_entity_ticks::slot_mutation_tests	impl BlockEntityTickSlot for Mutate	-	#[cfg(test)]	trait_impl	-	trait-impl
 server	block_entity_ticks_server	impl Game<'_>	block_ticking_area	-	method	game,test	rehomed
-server	block_entity_ticks_server	impl Game<'_>	tick_block_entities	-	method	test	rehomed
 server	block_entity_ticks_server	impl Game<'_>	tick_furnace	-	method	game,test	rehomed
 server	block_entity_ticks_server	impl Game<'_>	ticking_states	-	method	game,test	rehomed
 server	block_entity_ticks_server	impl Drop for Enclosing<'_, '_>	-	-	trait_impl	-	rehomed

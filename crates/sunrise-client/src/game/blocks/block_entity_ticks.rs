@@ -280,6 +280,15 @@ pub(in crate::game) struct Enclosing<'g, 'a> {
 }
 
 impl Game<'_> {
+    /// The published loop `block_entities.tick` (`published_loops.rs`): with no
+    /// `[[native.loop]]` mod its slot is `()`, and a mod build installs its own copy of this
+    /// function, with the mods' slots, through its replacement cell. A sleeping hopper is
+    /// still visited for its transfer state (cooldown and `tickedGameTime`) but is not handed
+    /// to the slot: mod loop listeners see it again once something wakes it.
+    #[sunrise_mod_api_macros::sunrise_loop(name = "block_entities.tick", side = "server")]
+    pub(in crate::game) fn tick_block_entities(&mut self) -> Result<()> {
+        self.tick_block_entities_with(&mut ())
+    }
     /// `tick_block_entities` with `slot` asked before and after each block entity's tick. Generic
     /// over the slot only, so it has no replacement cell of its own: a mod build compiles it.
     ///

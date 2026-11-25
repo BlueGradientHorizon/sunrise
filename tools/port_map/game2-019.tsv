@@ -81,7 +81,7 @@ LevelChunk.clearAllBlockEntities	port	crates/sunrise-client-render/src/block_ent
 LevelChunk.registerAllBlockEntitiesAfterLevelLoad	skip:java	-	ticker registration after load; Sunrise ticks the block entities it holds
 LevelChunk.addGameEventListener	skip:java	-	listener registry; game events dispatch by position
 LevelChunk.updateBlockEntityTicker	skip:java	-	ticker bookkeeping; tickers are rebuilt from block state (block_entities.rs tickers)
-LevelChunk.BoundTickingBlockEntity.tick	port	crates/sunrise-client/src/game/blocks/block_entity_ticks_server.rs::Game::tick_block_entities	ticks every loaded block entity in one pass
+LevelChunk.BoundTickingBlockEntity.tick	port	crates/sunrise-client/src/game/blocks/block_entity_ticks.rs::Game::tick_block_entities	ticks every loaded block entity in one pass
 LevelChunkSection.recalcBlockCounts	missing	-	minor: unsure: no recount of block counts found; non-air counts are kept while writing
 LevelChunkSection.read	port	crates/sunrise-protocol/src/chunk.rs::Section::read	reads block states and biomes together
 LevelChunkSection.readBiomes	inline	crates/sunrise-protocol/src/chunk.rs::Section::read	-
