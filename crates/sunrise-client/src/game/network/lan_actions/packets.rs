@@ -282,7 +282,12 @@ impl Game<'_> {
                     if spectator {
                         return;
                     }
-                    if !host.hub.guests.update(gi, |g| g.may_reach_block(a.pos)) {
+                    let context = &host.hub.loop_context;
+                    if !host
+                        .hub
+                        .guests
+                        .update(gi, |g| g.reaches_block(context, a.pos))
+                    {
                         return;
                     }
                     // ServerPlayerGameMode.handleBlockBreakAction: no dig starts
@@ -397,7 +402,12 @@ impl Game<'_> {
                         return;
                     };
                     host.hub.ack(conn, a.sequence);
-                    if !host.hub.guests.update(gi, |g| g.may_reach_block(a.pos)) {
+                    let context = &host.hub.loop_context;
+                    if !host
+                        .hub
+                        .guests
+                        .update(gi, |g| g.reaches_block(context, a.pos))
+                    {
                         // Too far (handleBlockBreakAction's "too far"): the ack has the client
                         // undo its prediction, and only the dig drops — `destroy_pos` and the
                         // ticks since its START stay, so a STOP for the same block after the

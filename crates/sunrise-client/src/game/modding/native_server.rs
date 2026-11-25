@@ -7114,6 +7114,71 @@ pub(super) mod fake_action_tests {
         });
     }
 
+    /// A mod's `block_interaction_range` (#5824) decides a block's reach: a use 10 blocks away is
+    /// out of reach for vanilla, and goes through once a mod answers for that block, as a
+    /// remote-access block lets a player act on the blocks around it. A menu's still-valid
+    /// reach asks the same.
+    #[test]
+    #[ignore = "daily"]
+    fn a_mods_interaction_range_lets_a_player_act_on_a_far_block() {
+        use super::super::native_entity_refs::tests::with_game;
+        use mod_api::{BlockInteractionRangeEvent, Hooks, ModEntry};
+
+        const FAR: [i32; 3] = [10, 63, 0];
+        struct Enderface;
+        #[mod_api::__subscriptions]
+        impl Hooks for Enderface {
+            fn block_interaction_range(
+                &self,
+                _: &dyn mod_api::LoopContext,
+                event: &mut BlockInteractionRangeEvent,
+            ) {
+                let [x, y, z] = FAR;
+                if event.pos == mod_api::BlockPos::new(x, y, z) {
+                    event.within = true;
+                }
+            }
+        }
+
+        // The client library reaches the hook through the game's installed callbacks.
+        crate::entry::install_client_hooks();
+        with_game(|game| {
+            let (player, ..) = fake(game, Some("minecraft:oak_log"), 0);
+            let stone = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:stone")
+                .unwrap();
+            game.world.set(FAR[0], FAR[1], FAR[2], stone).unwrap();
+            let far = |game: &Game<'_>, pos: [i32; 3]| {
+                let host = game.lan.as_ref().unwrap();
+                let g = host.hub.guests.iter().find(|g| g.uuid == 2).unwrap();
+                g.within_interaction_range(&game.loop_context, pos, 4.0)
+            };
+            assert_eq!(
+                game.player_perform_action(player, on_top(FAR)),
+                Err(ActionRefused::OutOfReach)
+            );
+            assert!(!far(game, FAR));
+            let mods = vec![ModEntry::new("enderface", Box::new(Enderface))].into();
+            mod_platform::testing::with_mods(mods, || {
+                assert!(far(game, FAR));
+                assert!(
+                    !far(game, [10, 63, 3]),
+                    "only the block the mod answers for"
+                );
+                assert_eq!(
+                    game.player_perform_action(player, on_top(FAR)),
+                    Ok(ActionOutcome::Consumed)
+                );
+            });
+            let level = game.level(game.dim.id()).unwrap();
+            let log = game.level_block_property(level, [10, 64, 0], "axis");
+            assert_eq!(log, Some("y"), "the far use placed the log");
+        });
+    }
+
     #[test]
     #[ignore = "daily"]
     fn a_fake_uses_items_through_the_players_own_path() {

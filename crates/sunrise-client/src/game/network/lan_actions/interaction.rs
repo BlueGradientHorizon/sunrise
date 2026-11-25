@@ -289,7 +289,12 @@ impl Game<'_> {
         };
         // handleUseItemOn: within reach, then the hit point within
         // a block of the block's centre (logged when it isn't).
-        if !host.hub.guests.update(gi, |g| g.may_reach_block(hit.pos)) {
+        let context = &host.hub.loop_context;
+        if !host
+            .hub
+            .guests
+            .update(gi, |g| g.reaches_block(context, hit.pos))
+        {
             return Err(ActionRefused::OutOfReach);
         }
         let inside = (0..3).all(|k| (hit.point[k] - f64::from(hit.pos[k]) - 0.5).abs() < 1.0000001);

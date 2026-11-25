@@ -321,7 +321,10 @@ can set `event.valid = item.stack_matches` to close on a mismatch. With no suppl
 is `None`; in either case the game leaves the decision with the part.
 
 For a block menu, `event.pos` is the backing block and `valid` starts as the reach check: the player's
-eyes must be within their block interaction range plus 4 of each backing block. A large machine with a
+eyes must be within their block interaction range plus 4 of each backing block, as the
+`block_interaction_range` hook may answer per block. That hook also decides the reach of use and break
+requests and of vanilla's menus, for any player: a remote-access block (Ender IO's Enderface) answers
+it for the blocks around it. A large machine with a
 core block deep inside it can override that answer:
 
 ```rust,ignore
