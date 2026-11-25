@@ -72,7 +72,7 @@ pub(super) fn decode_mod_block_entity(
     tag: &Tag,
     mod_item_slots: usize,
 ) -> Option<crate::containers::ModBlockEntity> {
-    use crate::block_entity_nbt::{mod_item_slot_tag, saved_mod_item_slot};
+    use crate::block_entity_nbt::{item_slot_tag, saved_item_slot};
     let Tag::Compound(map) = tag else {
         return None;
     };
@@ -89,17 +89,17 @@ pub(super) fn decode_mod_block_entity(
         let key = "Items".into();
         if let Some(Tag::List(entries)) = nbt.get_mut(&key) {
             let mut occurrences: HashMap<usize, u8> = HashMap::new();
-            for slot in entries.iter().filter_map(saved_mod_item_slot) {
+            for slot in entries.iter().filter_map(saved_item_slot) {
                 let count = occurrences.entry(slot).or_insert(0);
                 *count = count.saturating_add(1);
             }
             entries.retain(|raw| {
-                let Some(slot) = saved_mod_item_slot(raw) else {
+                let Some(slot) = saved_item_slot(raw) else {
                     return true;
                 };
                 if slot < mod_item_slots
                     && occurrences.get(&slot) == Some(&1)
-                    && let Some(slot_tag) = mod_item_slot_tag(slot)
+                    && let Some(slot_tag) = item_slot_tag(slot)
                     && let Some(stack) = item_from_nbt(raw)
                     && let Tag::Compound(mut canonical) = Tag::from(&stack)
                 {
