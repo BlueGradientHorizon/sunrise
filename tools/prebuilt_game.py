@@ -500,8 +500,10 @@ def api_route(out: Path, host: str) -> list[str]:
     if PLATFORM == "win32":
         # Match packaging/windows/exe.rs at this executable's link, not in SDK metadata.
         link_args = ["/STACK:8388608" if host.endswith("-msvc") else "-Wl,--stack,8388608"]
+    # A cross build names the target and the linker Cargo would use, which a bare rustc does not read.
     linker = os.environ.get("CARGO_TARGET_" + host.upper().replace("-", "_") + "_LINKER")
-    run(["rustc", *common, "--target", host, *(["-C", f"linker={linker}"] if CROSS_TARGET and linker else []), "--crate-type", "bin", "--crate-name", "sunrise_native_game",
+    cross_args = ["--target", host, *(["-C", f"linker={linker}"] if linker else [])] if CROSS_TARGET else []
+    run(["rustc", *common, *cross_args, "--crate-type", "bin", "--crate-name", "sunrise_native_game",
          *(flag for arg in link_args for flag in ("-C", f"link-arg={arg}")),
          *extern_args(deps, "sunrise_client"), *extern_args(deps, "mod_api"), *extern_args(deps, "sunrise_mod_package"),
          *extern_args(deps, "sunrise_mod_host"), *official_externs(deps),
@@ -658,17 +660,16 @@ def _build_locked(out: Path, server: bool, target_dir: Path) -> None:
     layout = package_format(ROOT)
     staged = stage(target_dir, sdk_dylibs=True)
     host = CROSS_TARGET or rustc_host()
-    platform = PLATFORM
 
     # One std for the game, every mod and the executable: the game links std dynamically, as mods will.
     rustflags = "-C prefer-dynamic --emit=metadata"
     # On macOS this also gives both dylibs an @rpath install name instead of an absolute build path.
-    if platform == "darwin":
+    if PLATFORM == "darwin":
         rustflags += " -C rpath"
-    features = cargo_features(server, platform)
+    features = cargo_features(server, PLATFORM)
     # Linux's executable RUNPATH doesn't cover transitive dependencies, so the dylibs must find
     # their dependencies beside themselves. macOS's @rpath install names use the executable's rpath.
-    if platform == "linux":
+    if PLATFORM == "linux":
         rustflags += " -C link-arg=-Wl,-rpath,$ORIGIN"
     # No official layer in a dedicated server.
     official = not server
