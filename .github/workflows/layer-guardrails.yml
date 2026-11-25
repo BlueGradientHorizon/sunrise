@@ -1,0 +1,36 @@
+name: layer-guardrails
+# Static source guards for the layer model (docs/layers.md): server-side gameplay may not reach the engine's
+# rendering, audio or window modules, and a change to a crate the launcher copies announces itself. Neither check
+# builds Rust, so they run on GitHub's runner for every pull request in seconds.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: layer-guardrails-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  guardrails:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # A pull request compares its tools/layers.json and launcher mirror table with origin/main's.
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Engine boundary
+        if: github.event_name == 'pull_request'
+        run: python3 tools/ci/check_engine_boundary.py --base origin/main
+      - name: Engine boundary (main)
+        if: github.event_name != 'pull_request'
+        run: python3 tools/ci/check_engine_boundary.py
+      - name: Launcher mirrors
+        if: github.event_name == 'pull_request'
+        run: python3 tools/ci/check_launcher_mirrors.py --base origin/main --event "$GITHUB_EVENT_PATH"
+      - name: Launcher mirrors (main)
+        if: github.event_name != 'pull_request'
+        run: python3 tools/ci/check_launcher_mirrors.py
