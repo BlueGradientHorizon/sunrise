@@ -308,6 +308,20 @@ event.register(
   solid geometry with `depth_write(true)`).
 - `PolygonMode::Line` requires the device's wireframe feature (`POLYGON_MODE_LINE`); if the GPU
   lacks it, the pipeline (or modifier variant) is refused.
+- Depth is a `DepthState` (`compare`, `write`, `depth_bias_constant`, `depth_bias_slope_scale`) in
+  `PipelineState::depth_stencil`. `.depth(WorldDepth)` is the coarse form (`Tested` is
+  `DepthCompare::GreaterEqual` over Sunrise's reversed depth, `ThroughWalls` is `Always`);
+  `.depth_compare`, `.depth_bias(constant, slope_scale)` and `.depth_stencil(Option<DepthState>)`
+  set it exactly. `.depth_stencil(None)` declares a depthless pipeline.
+- `PipelineBlend::Custom(BlendFunction)` takes separate colour and alpha equations (factors and
+  `BlendOp`), with vanilla's presets as `BlendFunction` constants. `ConstantColor`,
+  `ConstantAlpha` and their one-minus forms are refused when the pipeline is registered, because
+  Sunrise sets no blend constant and a shader pack's blend table has no such factor.
+- `.color_target(index, Some(ColorTargetState))` configures one of up to 8 colour targets, and
+  `None` leaves it unused. Every blended target must use the same blend function.
+- `.topology(PrimitiveTopology)` picks how vertices form primitives. `pipeline_quads` only draws
+  `PrimitiveTopology::Quads` and refuses any other pipeline with
+  `PipelineDrawError::TopologyMismatch`.
 
 ## Pipeline modifiers (`register_pipeline_modifiers`)
 
