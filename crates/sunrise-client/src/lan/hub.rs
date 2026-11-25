@@ -2514,11 +2514,15 @@ impl Hub {
                     g.sender.close();
                 }
             }
+            // `keepConnectionAlive` never times out the singleplayer owner (`!isSingleplayerOwner()`).
             let silent: Vec<u32> = self
                 .guests
                 .iter()
                 .filter(|g| {
-                    g.participates_online() && g.left_reason.is_empty() && g.sender.timed_out()
+                    g.participates_online()
+                        && g.left_reason.is_empty()
+                        && g.sender.timed_out()
+                        && !self.lan.shared.is_singleplayer_owner(&g.name)
                 })
                 .map(|g| g.conn)
                 .collect();
@@ -5579,6 +5583,7 @@ mod tests {
     mod effect_meta_tests;
     mod entity_move_check_tests;
     mod first_tick_recipe_tests;
+    mod keep_alive_owner_tests;
     mod live_player_limit_tests;
     mod main_hand_tests;
     mod ordered_inbox_tests;
@@ -6411,11 +6416,21 @@ mod tests {
 
     /// [`hub_with_a_guest`] over a sync the test built.
     fn hub_with_sync(sync: SyncData) -> (Hub, std::sync::mpsc::Receiver<crate::lan::Out>) {
-        let config = crate::lan::NetConfig {
-            announce: false,
-            listen: false,
-            ..crate::lan::NetConfig::loopback(0, "EffectSyncTest".into(), 2)
-        };
+        hub_with_net(
+            sync,
+            crate::lan::NetConfig {
+                announce: false,
+                listen: false,
+                ..crate::lan::NetConfig::loopback(0, "EffectSyncTest".into(), 2)
+            },
+        )
+    }
+
+    /// [`hub_with_sync`] on a network started from `config`.
+    fn hub_with_net(
+        sync: SyncData,
+        config: crate::lan::NetConfig,
+    ) -> (Hub, std::sync::mpsc::Receiver<crate::lan::Out>) {
         let sync = std::sync::Arc::new(sync);
         let lan = Lan::start_with(sync.clone(), config).unwrap();
         let encoder = ChunkEncoder::new(
