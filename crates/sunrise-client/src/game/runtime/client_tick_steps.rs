@@ -31,16 +31,18 @@ impl Game<'_> {
                     self.tick_script_step(event_loop);
                 }
                 sunrise_client::spans::time("tick", || self.tick())?;
-                // Cave mood (a shader pack's playerMood) samples on a random
-                // seeded from the clock: under `SUNRISE_STILL` it waits for the
-                // world and draws from its tick.
-                if !self.clock.still() {
-                    self.tick_ambience();
-                } else if self.clock.runs_normally() {
-                    self.client.ambience.reseed(self.visual_ticks() as i64);
-                    self.tick_ambience();
+                if self.remote.is_some() {
+                    // Cave mood (a shader pack's playerMood) samples on a random
+                    // seeded from the clock: under `SUNRISE_STILL` it waits for the
+                    // world and draws from its tick.
+                    if !self.clock.still() {
+                        self.tick_ambience();
+                    } else if self.clock.runs_normally() {
+                        self.client.ambience.reseed(self.visual_ticks() as i64);
+                        self.tick_ambience();
+                    }
+                    self.tick_fov();
                 }
-                self.tick_fov();
             } else if self.pause {
                 // Minecraft.tick still picks while the game mode and level are paused.
                 self.refresh_client_pick(1.0);

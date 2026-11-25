@@ -3611,6 +3611,12 @@ mod request_save_tests {
 impl Game<'_> {
     /// `Game::tick` as a server runs it for its first level: no window lead, which only the window's `Game` has.
     pub(in crate::game::server_side) fn tick_server_first(&mut self) -> Result<()> {
+        if !self.is_logical_server() {
+            return Err("client-role game cannot tick a server level".into());
+        }
+        if self.remote.is_some() {
+            return Err("server-role game cannot tick a remote connection".into());
+        }
         self.expire_client_cracks();
         if self.agent.hold_server {
             return Ok(());
@@ -3622,6 +3628,9 @@ impl Game<'_> {
 
     /// A server's tick of its first level: the clock, functions, autosave and weather it owns, then the level.
     pub(in crate::game) fn tick_first_level(&mut self) -> Result<()> {
+        if !self.is_logical_server() {
+            return Err("client-role game cannot tick a server level".into());
+        }
         // Only a server ticks its own world from here: its players are guests, swapped in for
         // their turns (`as_guest`), and the window's player is a client of it.
         self.ticks += 1;

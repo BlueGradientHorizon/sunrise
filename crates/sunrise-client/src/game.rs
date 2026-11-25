@@ -4943,13 +4943,12 @@ impl Game<'_> {
         cancel
     }
     fn tick(&mut self) -> Result<()> {
+        let client_level = !self.is_logical_server() && self.remote.is_some();
         // Held through the carry too: a carried body's move asks the parts as its own does.
-        let _parts = (!self.is_logical_server())
-            .then(|| self.collision_parts())
-            .flatten();
+        let _parts = client_level.then(|| self.collision_parts()).flatten();
         // A client's tick of the level it shows holds the colliders as it began, then carries
         // its own player with the one it stands on; a server's level tick holds its own scope.
-        let _scope = (!self.is_logical_server()).then(|| {
+        let _scope = client_level.then(|| {
             sunrise_client_render::moving_colliders::Scope::enter_level(
                 self.collider_level(),
                 self.placed_moving_colliders(),
@@ -4958,17 +4957,30 @@ impl Game<'_> {
         self.tick_body()
     }
     fn tick_body(&mut self) -> Result<()> {
-        self.expire_client_cracks();
-        if self.agent.hold_server {
-            return Ok(());
+        match (self.is_logical_server(), self.remote.is_some()) {
+            (false, true) => {
+                self.expire_client_cracks();
+                if self.agent.hold_server {
+                    return Ok(());
+                }
+                self.abort_open_transactions();
+                self.update_interaction_ranges();
+                self.tick_client_lead()?;
+                self.with_residency_tick(Self::tick_remote)
+            }
+            (false, false) => {
+                // A client with no remote runs only client-side work and never ticks a level.
+                self.expire_client_cracks();
+                if self.agent.hold_server {
+                    return Ok(());
+                }
+                self.abort_open_transactions();
+                self.update_interaction_ranges();
+                self.tick_client_lead()
+            }
+            (true, false) => self.tick_server_first(),
+            (true, true) => Err("server-role game cannot tick a remote connection".into()),
         }
-        self.abort_open_transactions();
-        self.update_interaction_ranges();
-        self.tick_client_lead()?;
-        if self.remote.is_some() {
-            return self.with_residency_tick(Self::tick_remote);
-        }
-        self.tick_first_level()
     }
     #[cfg(test)]
     fn hud(&mut self, size: [u32; 2]) -> HudBatch {
