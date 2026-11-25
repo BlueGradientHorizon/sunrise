@@ -8393,8 +8393,13 @@ fn declared_offsets_resolve_modes_and_publish_only_declared_shape_channels() {
 #[test]
 fn plain_block_properties_replace_template_facts_and_face_rule() {
     for value in [true, false] {
+        let skip = if value {
+            r#"[{"neighbor":"self"}]"#
+        } else {
+            "[]"
+        };
         let declaration = format!(
-            r#"{{"template":"minecraft:test","item":false,"properties":{{"instrument":"CUSTOM_HEAD","ignited_by_lava":{value},"replaceable":{value},"skip_same_block_faces":{value}}}}}"#
+            r#"{{"template":"minecraft:test","item":false,"properties":{{"instrument":"CUSTOM_HEAD","ignited_by_lava":{value},"replaceable":{value},"skip_rendering":{skip}}}}}"#
         );
         let (base, mods) = block_base(&format!("plain-properties-{value}"), &[&declaration]);
         let plan = Plan::new(&base, &mods).unwrap();
@@ -8429,11 +8434,17 @@ fn plain_block_properties_replace_template_facts_and_face_rule() {
             serde_json::from_str(r#"{"minecraft:test":{"rule":"bars"}}"#).unwrap();
         plan.json("render-definitions.json", &mut definitions)
             .unwrap();
+        let expected_rules = if value {
+            J::Arr(vec![J::Obj(vec![(
+                "neighbor".into(),
+                J::Str("self".into()),
+            )])])
+        } else {
+            J::Arr(Vec::new())
+        };
         assert_eq!(
-            definitions.at("testmod:test/rule"),
-            Some(&mut J::Str(
-                if value { "same_block" } else { "never" }.into()
-            ))
+            definitions.at("testmod:test/skip_rendering"),
+            Some(&mut expected_rules.clone())
         );
         let mut behaviour: J = serde_json::from_str(
             r#"{"states":[[0,0,0,0,0,0,0,0,"HARP"],[0,0,0,0,0,0,0,0,"HARP"]],"blocks":[],"items":{}}"#,
@@ -8708,4 +8719,108 @@ fn accept_declared_refuses_host_duplicates_of_served_content_and_keeps_served_re
             "{label}: batch must be refused atomically"
         );
     }
+}
+
+#[test]
+#[ignore = "daily"]
+fn content_block_face_rules_bake_expected_face_counts() {
+    use crate::{
+        biome::Biomes,
+        chunk::{Chunk, MIN_Y},
+        mesher::{BiomeZoom, LeafCullingMode, MeshScratch, MeshTables, Mesher, SectionMesh},
+    };
+    let Some(base) = prepared() else {
+        return;
+    };
+    let scratch = temp("face-rules-bake");
+    let m = smod(
+        &scratch,
+        "face_rules",
+        &[
+            (
+                "data/testmod/sunrise/block/self_skip.json",
+                r#"{"template":"minecraft:glass","item":false,"properties":{"occludes":false,"skip_rendering":[{"neighbor":"self"}]}}"#,
+            ),
+            (
+                "data/testmod/sunrise/block/no_skip.json",
+                r#"{"template":"minecraft:glass","item":false,"properties":{"occludes":false,"skip_rendering":[]}}"#,
+            ),
+            (
+                "data/testmod/sunrise/block/hider.json",
+                r#"{"template":"minecraft:glass","item":false,"properties":{"occludes":false,"skip_rendering":[],"hides_neighbor_face":[{"neighbor":"testmod:no_skip"},{"neighbor":"testmod:opt_out"}]}}"#,
+            ),
+            (
+                "data/testmod/sunrise/block/opt_out.json",
+                r#"{"template":"minecraft:glass","item":false,"properties":{"occludes":false,"skip_rendering":[],"supports_external_face_hiding":false}}"#,
+            ),
+        ],
+    );
+    let root = resource_root_fixture(&base, Path::new(""), &[m], &scratch.join("cache")).unwrap();
+    let source = sunrise_assets::resource_source::ResourceRoot::directory(root.clone());
+    let assets = Assets::load(&root).unwrap();
+    let registry = assets.registry;
+    let facts = BlockFacts::load(&root, registry).unwrap();
+    let biomes = Biomes::load(&source).unwrap();
+    let render = assets.reload(&source).unwrap();
+    let visibility = crate::models::load_visibility(&root, registry).unwrap();
+    let tables = MeshTables::new(&assets, &render, &facts, visibility.clone(), None).unwrap();
+
+    let self_skip = registry.default_state("testmod:self_skip").unwrap().0;
+    let no_skip = registry.default_state("testmod:no_skip").unwrap().0;
+    let hider = registry.default_state("testmod:hider").unwrap().0;
+    let opt_out = registry.default_state("testmod:opt_out").unwrap().0;
+
+    let count_pair_faces = |a: u32, b: u32| -> usize {
+        let mut chunk = Chunk::empty(0, 0);
+        chunk.set(4, 4, 4, a);
+        chunk.set(5, 4, 4, b);
+        let mut region = [[None; 3]; 3];
+        region[1][1] = Some(&chunk);
+        let mut mesher = Mesher {
+            nether_shading: false,
+            shader_pack_lighting: false,
+            separate_ao: false,
+            shader_pack: false,
+            assets: &assets,
+            render: &render,
+            tables: &tables,
+            biomes: &biomes,
+            visibility: visibility.clone(),
+            zoom: BiomeZoom::new(0),
+            blend_radius: 0,
+            smooth_lighting: false,
+            cutout_leaves: false,
+            opaque_ice: false,
+            translucent_layers: &[],
+            leaf_culling: LeafCullingMode::Off,
+            hidden_states: &[],
+            part_tables: Default::default(),
+        };
+        let mut mesh_scratch = MeshScratch::default();
+        let sy = (4 - MIN_Y) >> 4;
+        let mesh = mesher.mesh_reusing(&region, sy, SectionMesh::default(), &mut mesh_scratch);
+        (mesh.solid.len() + mesh.translucent.len()) / 4
+    };
+
+    assert_eq!(
+        count_pair_faces(self_skip, self_skip),
+        10,
+        "skip_rendering self hides the 2 shared faces"
+    );
+    assert_eq!(
+        count_pair_faces(no_skip, no_skip),
+        12,
+        "skip_rendering: [] disables glass template's same_block skip"
+    );
+    assert_eq!(
+        count_pair_faces(no_skip, hider),
+        11,
+        "hides_neighbor_face hides no_skip's face toward hider"
+    );
+    assert_eq!(
+        count_pair_faces(opt_out, hider),
+        12,
+        "supports_external_face_hiding: false blocks hider's hides_neighbor_face"
+    );
+    let _ = fs::remove_dir_all(&scratch);
 }
