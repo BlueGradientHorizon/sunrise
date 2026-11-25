@@ -19,6 +19,9 @@ struct Probe {
     replace_armor: bool,
     /// The layer after armour raises the right column to 60, as a mod that draws a row there.
     set_right: bool,
+    /// A wrapper on the food row sets both columns (left 70, right 50) before `draw_previous`,
+    /// so the food row it wraps draws from 50.
+    wrap_food: bool,
 }
 
 #[mod_api::__subscriptions]
@@ -52,6 +55,19 @@ impl Hooks for Probe {
                 }),
             ));
         }
+        if self.wrap_food {
+            assert!(event.layers.wrap_layer(
+                "minecraft:food_level",
+                Box::new(|ctx| {
+                    let host = ctx.host();
+                    SEEN.lock()
+                        .unwrap()
+                        .push(("heights:wrap_food", host.gui_status_heights()));
+                    assert!(host.set_gui_status_heights([70, 50]));
+                    ctx.draw_previous();
+                }),
+            ));
+        }
         if self.replace_armor {
             assert!(
                 event
@@ -69,13 +85,14 @@ fn a_layer_reads_the_status_heights_the_vanilla_rows_before_it_left() {
     if run_fresh_cases(
         "game::gui_layer_tests::status_heights::a_layer_reads_the_status_heights_the_vanilla_rows_before_it_left",
         CASE,
-        &["vanilla", "replace_armor", "set_right"],
+        &["vanilla", "replace_armor", "set_right", "wrap_food"],
     ) {
         return;
     }
     let case = std::env::var(CASE).unwrap();
     let replace_armor = case == "replace_armor";
     let set_right = case == "set_right";
+    let wrap_food = case == "wrap_food";
     with_client_game(|game| {
         mod_platform::__private::install(
             vec![ModEntry::new(
@@ -83,6 +100,7 @@ fn a_layer_reads_the_status_heights_the_vanilla_rows_before_it_left() {
                 Box::new(Probe {
                     replace_armor,
                     set_right,
+                    wrap_food,
                 }),
             )]
             .into(),
@@ -105,19 +123,25 @@ fn a_layer_reads_the_status_heights_the_vanilla_rows_before_it_left() {
         assert!(!game.set_gui_status_heights([1, 1]));
         game.hud_layers([640, 480]);
         let after_armor = if replace_armor { [49, 39] } else { [59, 39] };
-        let [left, _] = after_armor;
-        // Food and air push 10 each from wherever the right column stands.
-        let right = if set_right { 60 } else { 39 };
-        assert_eq!(
-            *SEEN.lock().unwrap(),
-            [
-                ("heights:before_health", Some([39, 39])),
-                ("heights:after_health", Some([49, 39])),
-                ("heights:after_armor", Some(after_armor)),
-                ("heights:after_food", Some([left, right + 10])),
-                ("heights:after_air", Some([left, right + 20])),
-            ]
-        );
+        let mut expected = vec![
+            ("heights:before_health", Some([39, 39])),
+            ("heights:after_health", Some([49, 39])),
+            ("heights:after_armor", Some(after_armor)),
+        ];
+        if wrap_food {
+            // The wrapper reads the heights the food row would start from, then sets both
+            // columns: the food row it wraps draws from 50, and the left column stays at 70.
+            expected.push(("heights:wrap_food", Some([59, 39])));
+            expected.push(("heights:after_food", Some([70, 60])));
+            expected.push(("heights:after_air", Some([70, 70])));
+        } else {
+            let [left, _] = after_armor;
+            // Food and air push 10 each from wherever the right column stands.
+            let right = if set_right { 60 } else { 39 };
+            expected.push(("heights:after_food", Some([left, right + 10])));
+            expected.push(("heights:after_air", Some([left, right + 20])));
+        }
+        assert_eq!(*SEEN.lock().unwrap(), expected);
         assert_eq!(game.gui_status_heights(), None);
     });
 }
