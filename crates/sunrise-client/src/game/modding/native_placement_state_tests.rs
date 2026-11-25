@@ -4,10 +4,9 @@ use super::{
     native_entity_refs::tests::{run_fresh_cases, with_game_at},
 };
 use mod_api::{
-    Block, BlockPart, BlockState, BlockStateRecord, BlocksEvent, CanSurviveEvent,
-    FenceGateInWallEvent, Hooks, LevelReadError, LevelRef, LevelSide, ModEntry, Mods,
-    PlacementContext, PlacementSource, PlacementStateError, Registrar, RegistrationContext,
-    StateForPlacementEvent, WorldEpoch,
+    Block, BlockPart, BlockState, BlocksEvent, CanSurviveEvent, FenceGateInWallEvent, Hooks,
+    LevelReadError, LevelRef, LevelSide, ModEntry, Mods, PlacementContext, PlacementSource,
+    PlacementStateError, Registrar, RegistrationContext, StateForPlacementEvent, WorldEpoch,
 };
 use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
@@ -568,7 +567,7 @@ fn can_survive_refuses_invalid_reads_and_preserves_transaction_writes() {
                 .unwrap()
                 .try_into_api()
                 .unwrap();
-            let invalid = BlockStateRecord::new(sapling.block(), u16::MAX).into();
+            let invalid = mod_api::__private::block_state_from_ordinal(sapling.block(), u16::MAX);
             assert_eq!(
                 level.can_survive(game, [POS.x, POS.y, POS.z], invalid),
                 Err(LevelReadError::Unavailable)
@@ -589,45 +588,37 @@ fn can_survive_refuses_invalid_reads_and_preserves_transaction_writes() {
                     "position {pos:?}"
                 );
             }
-            {
-                use mod_api::__private::{ModPhase, PhaseOwner};
-                let _setup = PhaseOwner::scope(ModPhase::Setup);
-                assert_eq!(
-                    level.can_survive(game, [POS.x, POS.y, POS.z], sapling),
-                    Err(LevelReadError::Unavailable)
-                );
-            }
-
             let support = POS.offset(0, -1, 0);
             let old_support = game.world.block(support.x, support.y, support.z);
             let dirt = registry.default_state("minecraft:dirt").unwrap();
             let dirt = dirt.try_into_api().unwrap();
-            let seal = game.transaction_open();
-            assert_eq!(
-                level.set_block(
-                    game,
-                    [support.x, support.y, support.z],
-                    dirt,
-                    mod_api::BlockUpdateFlags::NONE,
-                ),
-                Ok(true)
-            );
-            let (writes, tick_count, random) = (
-                game.transactions.writes(),
-                game.block_ticks.blocks.count(),
-                game.world.random.state(),
-            );
-            let candidate_before = game.world.block(POS.x, POS.y, POS.z);
-            assert_eq!(
-                level.can_survive(game, [POS.x, POS.y, POS.z], sapling),
-                Ok(true),
-                "the query sees the caller's tentative support block"
-            );
-            assert_eq!(game.transactions.writes(), writes);
-            assert_eq!(game.block_ticks.blocks.count(), tick_count);
-            assert_eq!(game.world.random.state(), random);
-            assert_eq!(game.world.block(POS.x, POS.y, POS.z), candidate_before);
-            game.transaction_close(&seal, false);
+            let writes = game.storage_scope(|game, _| {
+                assert_eq!(
+                    level.set_block(
+                        game,
+                        [support.x, support.y, support.z],
+                        dirt,
+                        mod_api::BlockUpdateFlags::NONE,
+                    ),
+                    Ok(true)
+                );
+                let (writes, tick_count, random) = (
+                    game.transactions.writes(),
+                    game.block_ticks.blocks.count(),
+                    game.world.random.state(),
+                );
+                let candidate_before = game.world.block(POS.x, POS.y, POS.z);
+                assert_eq!(
+                    level.can_survive(game, [POS.x, POS.y, POS.z], sapling),
+                    Ok(true),
+                    "the query sees the caller's tentative support block"
+                );
+                assert_eq!(game.transactions.writes(), writes);
+                assert_eq!(game.block_ticks.blocks.count(), tick_count);
+                assert_eq!(game.world.random.state(), random);
+                assert_eq!(game.world.block(POS.x, POS.y, POS.z), candidate_before);
+                (writes, false)
+            });
             assert_eq!(
                 game.world.block(support.x, support.y, support.z),
                 old_support

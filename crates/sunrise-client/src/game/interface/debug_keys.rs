@@ -492,7 +492,7 @@ impl Game<'_> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 for (id, text) in self.0.iter() {
                     if mod_api::__private::mod_index(id)
-                        .is_some_and(|index| mod_api::__private::mod_index_on(index))
+                        .is_some_and(mod_api::__private::mod_index_on)
                     {
                         write!(f, " {text}")?;
                     }
