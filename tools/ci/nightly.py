@@ -1139,9 +1139,10 @@ DEV = re.compile(r"^dev-(\d{4}-\d{2}-\d{2})-[0-9a-f]{7,40}$")
 
 
 def stale_dev_builds(tags: list[dict], today: dt.date, days: int) -> list[str]:
-    """The Dev pre-releases older than `days`, never the newest one, never anything not named
-    dev-<date>-<short> (an sdk-<sha> SDK above all)."""
-    dev_builds = [r["tagName"] for r in tags if r["isPrerelease"] and DEV.match(r["tagName"])]
+    """The Dev pre-releases older than `days`, never the newest one, never a draft (one not yet tested and promoted),
+    never anything not named dev-<date>-<short> (an sdk-<sha> SDK above all)."""
+    dev_builds = [r["tagName"] for r in tags
+                  if r["isPrerelease"] and not r.get("isDraft") and DEV.match(r["tagName"])]
     if not dev_builds:
         return []
     newest = max(dev_builds, key=lambda tag: DEV.match(tag).group(1))
@@ -1151,7 +1152,7 @@ def stale_dev_builds(tags: list[dict], today: dt.date, days: int) -> list[str]:
 
 
 def prune_dev(days: int) -> None:
-    tags = json.loads(gh("release", "list", "--limit", "200", "--json", "tagName,isPrerelease"))
+    tags = json.loads(gh("release", "list", "--limit", "200", "--json", "tagName,isPrerelease,isDraft"))
     for tag in stale_dev_builds(tags, dt.datetime.now(dt.timezone.utc).date(), days):
         gh("release", "delete", tag, "--cleanup-tag", "--yes")
         print(f"deleted {tag}")

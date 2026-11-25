@@ -160,6 +160,9 @@ class NightlyBuildDevTests(unittest.TestCase):
         upload = jobs["sdk-index"]["steps"][-1]
         self.assertEqual(upload["with"]["name"], "sunrise-sdk-index")
         self.assertIn("nightly.py sdk-index", jobs["sdk-index"]["steps"][-2]["run"])
+        # The index of the release sdk-publish left, never a write token to read a draft.
+        self.assertNotIn("permissions", jobs["sdk-index"])
+        self.assertIn("sdk-released-index", jobs["sdk-index"]["steps"][1]["with"]["name"])
 
     def test_dev_builds_never_replace_a_waiting_nightly(self):
         group = self.workflow["concurrency"]["group"]
@@ -182,6 +185,10 @@ class DevToolsTests(unittest.TestCase):
                          ["dev-2026-11-01-aaaaaaa", "dev-2026-11-02-bbbbbbb"])
         # A long quiet spell: the newest stays however old.
         self.assertEqual(nightly.stale_dev_builds(tags[:2], dt.date(2027, 1, 1), 7), ["dev-2026-11-01-aaaaaaa"])
+        # Drafts are neither pruned nor the newest: the newest public build stays beside a newer pending draft.
+        drafts = [{"tagName": "dev-2026-10-01-fffffff", "isPrerelease": True, "isDraft": True},
+                  {"tagName": "dev-2027-01-01-0000000", "isPrerelease": True, "isDraft": True}]
+        self.assertEqual(nightly.stale_dev_builds(tags[:2] + drafts, dt.date(2027, 1, 2), 7), ["dev-2026-11-01-aaaaaaa"])
 
     def test_pick_checks_the_gate_and_names_the_dev_build(self):
         sha = "0c02067" + "a" * 33

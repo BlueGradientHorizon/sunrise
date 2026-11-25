@@ -383,31 +383,30 @@ jobs:
       draft: true
     secrets: inherit
 
-  # The SDK index a Dev build carries in its signed sums (as `pick` fetches a Nightly's): sdk-<sha>'s sdk.json, its
-  # draft's or its public release's, checked against its SHA256SUMS. A dry run that built its own SDK publishes none:
-  # it carries that SDK's index.
+  # The SDK index a Dev build carries in its signed sums: the sdk.json of the release sdk-publish left (its draft,
+  # or the public sdk-<sha> it found), or, when sdk-<sha> was public before this run, its sdk.json checked against its
+  # SHA256SUMS, as `pick` fetches a Nightly's. A dry run that built its own SDK publishes none: it carries that SDK's
+  # index.
   sdk-index:
     needs: [pick, sdk, sdk-publish]
     if: >-
       !cancelled() && inputs.kind == 'dev' && needs.sdk.result == 'success' &&
       (needs.sdk-publish.result == 'success' || needs.sdk-publish.result == 'skipped')
     runs-on: ${{ vars.DYNA_CI_SELF_HOSTED == 'true' && 'dyna-small' || 'ubuntu-latest' }}
-    permissions:
-      contents: write  # only to see sdk-<sha>'s draft: a draft is hidden from a read-only token. Writes nothing.
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: actions/download-artifact@v8
-        if: needs.pick.outputs.publish != 'true' && needs.sdk.outputs.needed == 'true'
+        if: needs.sdk.outputs.needed == 'true'
         with:
-          name: sdk-release
+          name: ${{ needs.pick.outputs.publish == 'true' && 'sdk-released-index' || 'sdk-release' }}
           path: ${{ runner.temp }}/sdk-release
       - env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ needs.pick.outputs.sha }}
-          OWN: ${{ needs.pick.outputs.publish != 'true' && needs.sdk.outputs.needed == 'true' && 'yes' || '' }}
+          OWN: ${{ needs.sdk.outputs.needed == 'true' && 'yes' || '' }}
         run: |
           if [[ -n "$OWN" ]]; then
             cp "$RUNNER_TEMP/sdk-release/sdk.json" sdk.json

@@ -251,24 +251,42 @@ jobs:
           DRAFT: ${{ inputs.draft && 'yes' || '' }}
         run: |
           set -euo pipefail
+          # The sdk.json of the release this leaves, for a Dev build's signing (nightly-build.yml `sdk-index`).
+          released="$RUNNER_TEMP/released"
+          rm -rf "$released"
           if draft=$(gh release view "$TAG" --json isDraft --jq .isDraft 2> /dev/null); then
             if [[ "$draft" != true ]]; then
               echo "### $TAG is already published" >> "$GITHUB_STEP_SUMMARY"
+              gh release download "$TAG" --pattern sdk.json --dir "$released"
               exit 0
             fi
-            if [[ -z "$DRAFT" ]]; then
-              # A Dev build's draft of this commit, complete and signed for $TAG: made public as it is, so the Dev
-              # game draft's sdk.json still names its files.
+            # A Dev build's draft of this commit, publishing at once: made public as it is when it is complete and
+            # signed for $TAG, so the Dev game draft's sdk.json still names its files. Otherwise (an earlier Dev
+            # attempt's, perhaps half uploaded) it is replaced, as a Dev build replaces it: nobody sees a draft.
+            check="$RUNNER_TEMP/draft"
+            rm -rf "$check"
+            if [[ -z "$DRAFT" ]] && gh release download "$TAG" --dir "$check" \
+              && [[ "$(ls "$check" | sort)" == "$(python3 tools/ci/nightly.py sdk-assets | sort)" ]] \
+              && python3 tools/ci/nightly.py verify-sums --tag "$TAG" --publishing "$check"; then
               gh release edit "$TAG" --draft=false --prerelease --latest=false
               echo "### Made the draft $TAG public" >> "$GITHUB_STEP_SUMMARY"
+              mkdir -p "$released" && cp "$check/sdk.json" "$released/"
               exit 0
             fi
-            # An earlier Dev attempt's draft, perhaps half uploaded, is replaced: nobody sees it.
             gh release delete "$TAG" --yes
           fi
           gh release create "$TAG" dist/* --target "$COMMIT" --prerelease --latest=false ${DRAFT:+--draft} \
             --title "Mod SDK ${COMMIT::10}" \
             --notes "The mod SDK of game build $COMMIT: sdk.json lists every asset; SHA256SUMS is signed for $TAG."
+          mkdir -p "$released" && cp dist/sdk.json "$released/"
+      - uses: actions/upload-artifact@v4
+        if: env.PUBLISH == 'true'
+        with:
+          name: sdk-released-index
+          path: ${{ runner.temp }}/released/sdk.json
+          if-no-files-found: error
+          retention-days: 3
+          overwrite: true
       - name: Dry run, the SDK that would be published
         if: env.PUBLISH != 'true'
         run: |
