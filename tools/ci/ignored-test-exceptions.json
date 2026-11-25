@@ -154,7 +154,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::client_side::native_recipes::tests::craft_cost",
+    "test": "game::server_side::native_recipes_server::tests::craft_cost",
     "path": "crates/sunrise-client/src/game/modding/native_recipes.rs",
     "reason": "a benchmark: run it in release with SUNRISE_TEST_RESOURCES",
     "rationale": "Opt-in measurement, not an ordinary daily correctness check: a benchmark: run it in release with SUNRISE_TEST_RESOURCES. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
@@ -178,7 +178,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::client_side::potions::arrow_contents::actual_arrow_contents_match_pinned_methods",
+    "test": "game::server_side::potions_server::arrow_contents::actual_arrow_contents_match_pinned_methods",
     "path": "crates/sunrise-client/src/game/items/potions.rs",
     "reason": "explicit SUNRISE_TEST_RESOURCES and isolated potion oracle input/output",
     "rationale": "Existing separately supplied input SUNRISE_POTION_INPUT in tools/ci/ignored-tests/harness-inputs.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. explicit SUNRISE_TEST_RESOURCES and isolated potion oracle input/output"

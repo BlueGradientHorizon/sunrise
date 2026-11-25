@@ -6,4 +6,4 @@ sunrise-client game::server_side::creatures_server::pending_birth_tests::a_panic
 sunrise-client game::server_side::creatures_server::pending_birth_tests::a_panicking_listener_spawns_nothing_and_leaves_the_arena_usable lib daily child-process
 sunrise-client game::server_side::creatures_server::pending_birth_tests::a_parent_changed_during_dispatch_refuses_the_baby_and_nothing_is_rebuilt lib daily child-process
 sunrise-client game::creatures::pending_birth_tests::discarding_a_parent_in_the_birth_listener_refuses_the_baby lib daily child-process
-sunrise-client game::server_side::load_conditions::tests::load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes lib daily child-process
+sunrise-client game::load_conditions::tests::load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes lib daily child-process

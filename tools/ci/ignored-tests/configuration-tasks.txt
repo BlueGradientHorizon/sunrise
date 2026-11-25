@@ -1,1 +1,1 @@
-sunrise-client game::client_side::payload_transport::task_tests::serving_game_drives_configuration_tasks lib daily resources
+sunrise-client game::payload_transport::task_tests::serving_game_drives_configuration_tasks lib daily resources
