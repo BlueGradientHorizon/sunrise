@@ -362,6 +362,7 @@ impl Game<'_> {
         &self,
         items: &Items,
     ) -> Result<Arc<cauldron_interactions::Table>> {
+        use mod_api::__private::game::RegistrationContextNew;
         let mut registrar = cauldron_interactions::Registrar::new(items, self.pack.assets.registry);
         crate::game::native_hooks::native_register_cauldron_interaction(
             &mod_api::RegistrationContext::new(),
@@ -573,7 +574,7 @@ impl Game<'_> {
             .is_some_and(|t| t.contains(item))
     }
 
-    pub(in crate::game) fn biome_name_at(&self, p: glam::Vec3) -> Option<String> {
+    pub(in crate::game) fn biome_name_at(&self, p: sunrise_core::geometry::Vec3) -> Option<String> {
         let (x, y, z) = (p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
         let c = self.world.chunks.get(&(x >> 4, z >> 4))?;
         Some(world_biomes!(self).name(c.biome(x, y, z)).to_owned())

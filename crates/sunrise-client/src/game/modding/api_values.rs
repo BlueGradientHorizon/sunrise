@@ -330,7 +330,9 @@ impl TryIntoApi for sunrise_client::boss_overlay::ModBar {
     }
 }
 
-pub(in crate::game) use crate::game::item_snapshot::{ItemBoundary, ItemSnapshot};
+pub(in crate::game) use crate::game::item_snapshot::ItemBoundary;
+#[cfg(test)]
+pub(in crate::game) use crate::game::item_snapshot::ItemSnapshot;
 
 impl TryIntoApi for sunrise_world::chunk::BlockState {
     type Api = mod_api::BlockState;

@@ -7,7 +7,6 @@ use mod_api::{
     BoolGameRuleKey, FeatureFlags, LevelDimensionShape, LevelDimensionType, LevelReadError,
     LevelRef,
 };
-use std::sync::Arc;
 use sunrise_client::command::vanilla::DIFFICULTIES;
 use sunrise_client::world::World;
 use sunrise_client_core::gamerules::Value as GameRuleValue;
