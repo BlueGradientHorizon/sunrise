@@ -1282,6 +1282,7 @@ impl LootData {
             local_bindings: None,
             random: random.clone(),
             biome: None,
+            location: None,
             visited: Vec::new(),
             luck: 0.0,
             open_water: None,
