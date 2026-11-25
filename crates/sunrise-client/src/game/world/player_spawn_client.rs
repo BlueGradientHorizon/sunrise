@@ -5,6 +5,7 @@ pub(in crate::game::client_side) use crate::game::server_side::player_spawn::*;
 
 impl Game<'_> {
     #[inline(always)]
+    #[allow(dead_code)]
     pub(in crate::game) fn spawn_player_client(
         &mut self,
         player: PlayerMotion,

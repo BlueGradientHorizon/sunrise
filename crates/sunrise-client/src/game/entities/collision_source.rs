@@ -1,9 +1,7 @@
 //! The game's inputs to `EntityGetter.getEntityCollisions`: the entity lists, the spatial
 //! queries and the stand's root-vehicle grid, offered to the one rule in
 //! `sunrise_client::entity_solids` (which a mob's own move reads too).
-use super::{
-    Game, boats::Boat, commands::Target, minecarts::Minecart, remote_vehicles::passenger_root,
-};
+use super::{Game, boats::Boat, commands::Target, minecarts::Minecart};
 use sunrise_client::entity_solids::{Candidate, Mover as Rule, Side, SolidKind, Solids};
 use sunrise_core::geometry::{Aabb, Vec3};
 

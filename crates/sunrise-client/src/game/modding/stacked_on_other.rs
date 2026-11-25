@@ -21,7 +21,7 @@ use std::{
     rc::Rc,
 };
 use sunrise_client::menu::{
-    Env, Input, StackedClick, StackedClickedEdit, StackedEditPolicy, StackedOutcome, StackedResume,
+    StackedClick, StackedClickedEdit, StackedEditPolicy, StackedOutcome, StackedResume,
 };
 
 /// What a pickup click did: it ran, or the decision refused it and nothing changed.

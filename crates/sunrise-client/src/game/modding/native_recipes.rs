@@ -12,6 +12,7 @@ use super::{
         NativeRecipeStack as RecipeStack, NativeRecipes as Recipes,
     },
 };
+#[allow(unused_imports)]
 use mod_api::{CreativeGiveError, LevelRef, RecipeInput, RecipeLookupError, RecipeMatch};
 use std::{collections::HashMap, sync::Arc};
 use sunrise_client::{

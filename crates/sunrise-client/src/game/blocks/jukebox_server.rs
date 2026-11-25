@@ -315,10 +315,8 @@ impl Game<'_> {
             self.jukebox_changed(pos);
             return;
         }
-        if loaded {
-            if let Some(BlockEntity::Jukebox(j)) = self.world.block_entities.get_mut(&key) {
-                j.loaded_clock = false;
-            }
+        if loaded && let Some(BlockEntity::Jukebox(j)) = self.world.block_entities.get_mut(&key) {
+            j.loaded_clock = false;
         }
         if ticks % 20 == 0 {
             let state = self.world.block(pos[0], pos[1], pos[2]);

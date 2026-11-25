@@ -6,6 +6,7 @@ use super::{
     Game,
     transactions::{StrictBlockStep, StrictBlockSteps, take_replay_row},
 };
+#[allow(unused_imports)]
 pub(in crate::game) use crate::game::block_edits_common::{
     MAX_COLUMNS, column_height, loaded_heights,
 };
@@ -20,7 +21,7 @@ use sunrise_client::{
     fast_hash::{FxHashMap, FxHashSet},
     world::World,
 };
-use sunrise_world::{registry::BlockStateId, worldgen::terrain::TerrainBlockStates};
+use sunrise_world::registry::BlockStateId;
 
 /// A change `World::edit_runs` reported: position, previous and new state.
 pub(in crate::game) type Tracked = ((i32, i32, i32), u32, u32);

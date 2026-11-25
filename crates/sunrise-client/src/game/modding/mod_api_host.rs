@@ -131,6 +131,7 @@ impl Game<'_> {
     /// Access a holder's attachment map, to lend to a mod: a server's, whose
     /// synced changes are sent at the pass's end, or a client's copy of what
     /// its server synced.
+    #[allow(dead_code)]
     pub(in crate::game::server_side) fn attachment_map(
         &mut self,
         holder: mod_api::Holder,

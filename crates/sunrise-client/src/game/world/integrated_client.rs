@@ -94,6 +94,7 @@ impl Game<'_> {
             .is_some_and(|s| s.published().is_some())
     }
     #[inline(always)]
+    #[allow(dead_code)]
     pub(in crate::game) fn integrated_tick_loop_client(&mut self, started: Instant) -> f32 {
         self.client
             .debug_charts

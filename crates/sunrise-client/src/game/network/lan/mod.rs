@@ -117,6 +117,7 @@ pub(in crate::game) struct LanHost {
 
 impl Game<'_> {
     #[inline(always)]
+    #[allow(dead_code)]
     pub(in crate::game) fn lan_guest_acting(&self) -> bool {
         self.server.lan_acting.is_some()
     }
@@ -1191,6 +1192,7 @@ impl Game<'_> {
         }
     }
 
+    #[allow(dead_code)]
     pub(in crate::game) fn lan_open(&mut self, settings: LanSettings) -> Result<()> {
         if self.serving() {
             self.publish(settings).map(drop).map_err(Into::into)

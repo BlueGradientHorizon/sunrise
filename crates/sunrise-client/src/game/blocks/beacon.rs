@@ -10,6 +10,7 @@ use super::{
         tooltip::{WidgetTooltipPositioner, quantize_tooltip_anchor},
     },
 };
+#[allow(unused_imports)]
 pub(in crate::game) use crate::game::beacon_common::{EFFECTS, effect_box_hits};
 use sunrise_client::{
     containers::BlockEntity, hud::HudBatch, items::ItemStack, mesher::Vertex,

@@ -1,5 +1,6 @@
 //! Server-owned block entity item helpers and placement tests.
 use super::Game;
+#[allow(unused_imports)]
 use sunrise_client::{
     block_entity_item, containers::BlockEntity, item_data, items::ItemStack, save,
 };

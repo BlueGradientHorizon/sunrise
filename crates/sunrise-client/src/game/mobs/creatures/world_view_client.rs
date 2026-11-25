@@ -133,7 +133,7 @@ impl Game<'_> {
                 player_effects: &self.potions.effects,
                 player_uuid: None,
                 player_attachments: &self.player_state.attachments,
-                entity_attachments: &*self.entity_attachments,
+                entity_attachments: &self.entity_attachments,
             },
             tag_items: self.remote.as_ref().and_then(|remote| remote.tags.as_ref()),
         }

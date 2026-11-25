@@ -506,7 +506,6 @@ impl Game<'_> {
         right: bool,
         input: sunrise_client::menu::Input,
     ) {
-        use sunrise_client::menu::Input;
         let button = i32::from(right);
         if self.remote.is_some() {
             if self.client.screen == Screen::Creative {

@@ -27,6 +27,7 @@ pub(in crate::game) struct Ammo {
     pub(in crate::game) slot: Option<usize>,
 }
 
+#[allow(unused_imports)]
 pub(in crate::game) use super::held_items::{is_arrow, projectile_slot};
 
 /// `CrossbowItem.onUseTick`'s loading sounds for a charge now at `charge`

@@ -9,6 +9,7 @@ pub(in crate::game) fn saved_silent(extra: Option<&Tag>) -> bool {
 
 impl Game<'_> {
     /// `Entity.isSilent` for the player this window plays.
+    #[allow(dead_code)]
     pub(in crate::game::client_side) fn player_silent(&self) -> bool {
         saved_silent(self.level.player_extra.as_ref())
     }

@@ -17,6 +17,7 @@ use sunrise_world::level::data::BlockSet;
 
 /// [`Game::level_suffocation`] from the fields it reads, for a caller that holds other fields: the
 /// world's own tables (its datapacks' `causes_suffocation`), else the built-in ones.
+#[allow(dead_code)]
 pub(in crate::game) fn level_suffocation_of<'a>(
     world_tables: &'a Option<WorldTables>,
     res: &'a Resources,

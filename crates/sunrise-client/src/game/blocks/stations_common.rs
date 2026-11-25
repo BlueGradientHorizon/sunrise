@@ -172,6 +172,7 @@ pub(in crate::game) struct Station {
     pub(in crate::game) anvil_last: Option<ItemStack>,
     /// Anvil on a server: the name last sent (the client menu's `itemName`).
     pub(in crate::game) anvil_sent: Option<String>,
+    #[allow(dead_code)]
     pub(in crate::game) last_sound: u64,
     /// Villager trading state.
     pub(in crate::game) merchant: Option<Box<crate::game::trading::MerchantState>>,

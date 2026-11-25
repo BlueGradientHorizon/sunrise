@@ -4,8 +4,10 @@
 //! it picks up (the end of `AbstractBoat.tick`), where they sit
 //! (`positionRider`, `clampRotation`) and how they get out.
 //! Saving them under the boat's `Passengers` lives in `persist.rs`.
+#[allow(unused_imports)]
 use super::{Game, boats::Boat, collision_source::Mover, commands::Target, lan_mobs::guest_bounds};
 use std::cell::{Cell, Ref, RefCell};
+#[allow(unused_imports)]
 use sunrise_client::{
     camera::wrap_degrees,
     fast_hash::FxHashMap,

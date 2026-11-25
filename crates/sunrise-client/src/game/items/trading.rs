@@ -439,6 +439,7 @@ impl Game<'_> {
         trade.offers = session.offers.clone();
     }
     /// Opens a merchant menu without a mob (sunrise-ctl `trade`).
+    #[allow(dead_code)]
     pub(in crate::game) fn open_merchant(&mut self, profession: &str, variant: &str, level: i32) {
         let profession = if profession.contains(':') {
             profession.to_owned()
@@ -493,6 +494,7 @@ impl Game<'_> {
     }
     /// After a menu click: the session back to the station, its random to
     /// the mob, and what it did (orbs, level-ups, the yes/no voice).
+    #[allow(dead_code)]
     pub(in crate::game) fn merchant_sync_out(&mut self, session: Box<merchant::Session>) {
         let mob = self
             .station
@@ -657,6 +659,7 @@ impl Game<'_> {
             }
         }
     }
+    #[allow(dead_code)]
     pub(in crate::game) fn merchant_scroll(&mut self, d: f32) -> bool {
         let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut()) else {
             return false;
@@ -719,6 +722,7 @@ pub(in crate::game) fn drag_scroll(y: f32, offers: usize) -> usize {
 
 /// `MerchantScreen.mouseScrolled`: `Mth.clamp((int)(scrollOff - scrollY), 0, max)`,
 /// so a fractional wheel step that truncates to zero does not move the list.
+#[allow(dead_code)]
 pub(in crate::game::server_side) fn scrolled(scroll: usize, max: usize, d: f32) -> usize {
     ((scroll as f64 - f64::from(d)) as i32).clamp(0, max as i32) as usize
 }

@@ -1,5 +1,6 @@
 //! Client jukebox song playback, Now Playing overlay, and level-event handlers.
 use super::Game;
+#[allow(unused_imports)]
 pub(in crate::game) use crate::game::jukebox_common::{
     jukebox_playable, jukebox_signals, song_of_record,
 };

@@ -59,6 +59,7 @@ impl Game<'_> {
         }
     }
     #[inline(always)]
+    #[allow(dead_code)]
     pub(in crate::game) fn tick_hand_server(
         &mut self,
         reset: bool,

@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use sunrise_client::fast_hash::FxHashMap;
 use sunrise_client::join_seq::{
     JoinSeq, Joined as _,
-    residency::table::{EntityLookup, SectionKey, SectionSearch},
+    residency::table::{SectionKey, SectionSearch},
 };
 use sunrise_core::geometry::{Aabb, Vec3};
 

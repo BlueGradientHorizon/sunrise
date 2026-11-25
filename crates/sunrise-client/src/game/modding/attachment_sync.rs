@@ -10,7 +10,7 @@ use super::Game;
 use crate::lan::{conn::PlayerSender, hub::AttachmentSnapshot};
 use mod_api::{PayloadBytes, PayloadId, PayloadSendError};
 use sunrise_client::raw_payloads::Endpoint;
-use sunrise_mod_runtime::attachments::{Attachments, Holder};
+use sunrise_mod_runtime::attachments::Holder;
 use sunrise_protocol::attachment_sync::{self, Message};
 
 impl Game<'_> {

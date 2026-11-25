@@ -9,10 +9,10 @@ use mod_api::{
     Passage, PassageCrossError as Error, PassageCrossRefusal as Refusal, PassageId, PassageTurn,
     Vec3,
 };
-use sunrise_client::lan::hub::passage_cross::{REACH, crossing_source, refusal_named};
+use sunrise_client::lan::hub::passage_cross::{REACH, refusal_named};
 use sunrise_core::geometry::Vec3 as Motion;
 use sunrise_protocol::packets::{configuration::CustomPayload, play::Serverbound as S};
-use sunrise_protocol::passage_sync::{CROSS_CHANNEL, Cross, decode_cross, encode_cross};
+use sunrise_protocol::passage_sync::{CROSS_CHANNEL, Cross, encode_cross};
 
 /// Where `point` comes out of `p`: as far from the destination, turned, as it is from the
 /// opening's centre (Immersive Portals' `Portal.transformPoint`).
@@ -62,6 +62,7 @@ fn within_reach(p: &Passage, point: [f64; 3]) -> bool {
 }
 
 /// The chunk holding `point`.
+#[allow(dead_code)]
 fn chunk_of(point: [f64; 3]) -> (i32, i32) {
     (
         (point[0].floor() as i32) >> 4,

@@ -15,6 +15,7 @@ impl Game<'_> {
     /// (`player_swap_hands`), and may stop it or change what each hand gets.
     /// Then setItemInHand for the off hand, then the main hand. The stacks are
     /// copied only for a listener: `heard` holds the old main and off hands.
+    #[allow(dead_code)]
     pub(in crate::game) fn own_swap_hands(&mut self) {
         if self.spectator() {
             return;

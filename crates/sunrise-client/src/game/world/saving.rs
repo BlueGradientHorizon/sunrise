@@ -22,9 +22,11 @@ pub(in crate::game) struct ClosingSave {
     pub quit: bool,
     pub(in crate::game) close: bool,
     pub(in crate::game) reply: Option<std::sync::mpsc::Sender<String>>,
+    #[allow(dead_code)]
     pub(in crate::game) started: Instant,
     pub(in crate::game) stage: Stage,
 }
+#[allow(dead_code)]
 pub(in crate::game) enum Stage {
     Generation,
     Chunks(VecDeque<(i32, i32)>),
@@ -36,7 +38,11 @@ pub(in crate::game) enum Stage {
 
 // Bound the work in both sparse and block-entity-heavy worlds. A single chunk
 // is indivisible; check the time budget after each snapshot, not each batch.
+#[allow(dead_code)]
 pub(in crate::game) const SNAPSHOTS_PER_FRAME: usize = 16;
+#[allow(dead_code)]
 pub(in crate::game) const SNAPSHOT_BUDGET: Duration = Duration::from_millis(2);
+#[allow(dead_code)]
 pub(in crate::game) const CLOSING_SNAPSHOTS_PER_FRAME: usize = 256;
+#[allow(dead_code)]
 pub(in crate::game) const CLOSING_SNAPSHOT_BUDGET: Duration = Duration::from_millis(10);

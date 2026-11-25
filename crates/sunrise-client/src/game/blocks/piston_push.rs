@@ -15,7 +15,6 @@ use super::{
 };
 use crate::game::collision_source::Mover;
 use sunrise_client::collisions::{EntityCollisions, SceneCollisions, no_collision_empty};
-use sunrise_client::entity_rules::EntityRules;
 use sunrise_client::join_seq::JoinSeq;
 use sunrise_client::mobs::Species;
 use sunrise_core::geometry::{Aabb, Direction, Vec3, border::BorderGeometry};

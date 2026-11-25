@@ -5,6 +5,7 @@
 //! the shield (`Player.blockUsingItem`, `BlocksAttacks.disable`).
 use super::Game;
 use sunrise_client::health::Attack;
+#[allow(unused_imports)]
 use sunrise_client::{
     health::{BlockOutcome, Blocking, HurtSource},
     items::ItemStack,

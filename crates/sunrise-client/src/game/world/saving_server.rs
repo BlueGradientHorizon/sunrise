@@ -27,6 +27,7 @@ pub(in crate::game::server_side) use sunrise_client::{Result, hud::HudBatch};
 
 impl Game<'_> {
     #[inline(always)]
+    #[allow(dead_code)]
     pub(in crate::game) fn poll_closing_save_chunks_server(
         &mut self,
         keys: &mut VecDeque<(i32, i32)>,
@@ -56,6 +57,7 @@ impl Game<'_> {
         }
     }
     #[inline(always)]
+    #[allow(dead_code)]
     pub(in crate::game) fn poll_closing_save_entities_server(
         &mut self,
         keys: &mut VecDeque<(i32, i32)>,
@@ -84,6 +86,7 @@ impl Game<'_> {
         }
     }
     #[inline(always)]
+    #[allow(dead_code)]
     pub(in crate::game) fn poll_closing_save_flush_server(
         &self,
     ) -> Result<Receiver<std::io::Result<()>>> {
@@ -153,6 +156,7 @@ impl Game<'_> {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub(in crate::game) fn begin_server_control_save(
         &mut self,
         all: bool,
@@ -173,6 +177,7 @@ impl Game<'_> {
     }
 
     /// Advance a server-owned staged save by one step. Returns `Ok(true)` once finished.
+    #[allow(dead_code)]
     pub(in crate::game) fn poll_server_closing_save(
         &mut self,
         save: &mut ClosingSave,

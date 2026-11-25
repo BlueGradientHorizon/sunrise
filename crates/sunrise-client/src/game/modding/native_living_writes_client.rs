@@ -63,7 +63,6 @@ impl Game<'_> {
             EquipmentSlot::Legs => self.armor[2].as_ref(),
             EquipmentSlot::Feet => self.armor[3].as_ref(),
             EquipmentSlot::Body | EquipmentSlot::Saddle => self.equipment.get(slot as usize),
-            _ => return None,
         }?;
         Some(sunrise_client::mobs::finalize::EquipmentRead::resident(
             stack,

@@ -1,6 +1,7 @@
 //! `AnvilScreen`'s rename box: the 50-character `EditBox`, read-only while
 //! the input slot is empty (`AnvilScreen.slotChanged`).
 use super::Station;
+#[allow(unused_imports)]
 pub(in crate::game) use crate::game::stations_common::{NAME_CHARS, rename_box};
 
 /// `AnvilScreen.slotChanged`: the box shows the input's name, and only an

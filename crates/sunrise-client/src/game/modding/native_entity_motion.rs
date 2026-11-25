@@ -63,6 +63,7 @@ impl Game<'_> {
             .find(|h| with_entity!(self, *h, e => e.id() == id))
     }
     /// This window's own player, when a client's target names it.
+    #[allow(dead_code)]
     pub(in crate::game::server_side) fn native_client_player(
         &self,
         t: Target,

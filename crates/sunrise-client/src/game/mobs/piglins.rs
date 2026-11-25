@@ -12,7 +12,7 @@ use sunrise_client::{
             OFFHAND, SLOT_NAMES, item_stack, set_drop_chance, set_item_stack,
             set_slot_enchantments, stored_drop_chance,
         },
-        piglin::{ADMIRE, BARTERING_ITEM, eat, has_eaten_recently, is_idle},
+        piglin::{ADMIRE, eat, has_eaten_recently, is_idle},
     },
 };
 use sunrise_core::{geometry::Vec3, random::RandomSource};

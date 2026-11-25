@@ -123,6 +123,7 @@ pub(in crate::game) fn look_impulse(effect: &Value, level: u32, yaw: f32, pitch:
 }
 /// `Player.getDestroySpeed` multiplies by `BLOCK_BREAK_SPEED`; a player
 /// without the attribute keeps the vanilla default of 1.0.
+#[allow(dead_code)]
 pub(in crate::game::server_side) fn block_break_speed_factor(value: Option<f64>) -> f32 {
     value.map_or(1.0, |value| value as f32)
 }

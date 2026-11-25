@@ -614,6 +614,7 @@ impl Game<'_> {
     /// The conduit's `destroyTarget` as the client draws it: the block
     /// entity's `Target`, which `sendBlockUpdated` keeps in step for every
     /// window; the server's own copy answers where there is no block entity.
+    #[allow(dead_code)]
     pub(in crate::game) fn conduit_target(&self, pos: [i32; 3]) -> Option<ConduitTarget> {
         let id = match self.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
             Some(BlockEntity::Conduit(target)) => self.mob_by_uuid((*target)?)?,

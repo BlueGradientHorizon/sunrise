@@ -450,6 +450,7 @@ impl Game<'_> {
         self.levels.0.clear();
     }
     #[inline(always)]
+    #[allow(dead_code)]
     pub(in crate::game) fn server_clear_render_caches(&mut self) {}
     #[allow(dead_code)]
     #[inline(always)]

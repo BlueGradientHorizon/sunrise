@@ -8,8 +8,8 @@
 use super::Game;
 use mod_api::__private::game::*;
 use mod_api::{
-    ClientObjective, ClientScore, ClientScoreboard, DisplaySlot, NumberFormat, ObjectiveError,
-    ObjectiveRef, ObjectiveRenderType, ScoreEntry, ScoreHolder, TextFormError,
+    DisplaySlot, NumberFormat, ObjectiveError, ObjectiveRef, ObjectiveRenderType, ScoreEntry,
+    ScoreHolder, TextFormError,
 };
 use sunrise_client::{
     scoreboard::{self as sb, Comp, comp_text, literal},

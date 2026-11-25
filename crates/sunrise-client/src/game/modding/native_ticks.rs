@@ -12,7 +12,6 @@
 //! either hook is listened to.
 use super::Game;
 use std::sync::Arc;
-use sunrise_client::join_seq::JoinSeq;
 use sunrise_client::mobs::MobType;
 
 /// The item entities' type, as the hooks name it.

@@ -9,7 +9,6 @@
 //! Ticks lived (`Entity.tickCount`) are read for players, mobs, items, orbs and minecarts.
 use super::{Game, commands::Target};
 use mod_api::EntityRef;
-use sunrise_client::join_seq::residency::table::EntityLookup;
 use sunrise_client::mobs::{Mob, Species, sync};
 use sunrise_client::motion::PlayerMotion;
 use sunrise_client::pose::Pose;

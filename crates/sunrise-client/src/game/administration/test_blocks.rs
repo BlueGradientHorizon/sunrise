@@ -10,6 +10,7 @@ use sunrise_protocol::packets::play;
 
 type Pos = (i32, i32, i32);
 
+#[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay::test_blocks::own_signal;
 
 impl Game<'_> {

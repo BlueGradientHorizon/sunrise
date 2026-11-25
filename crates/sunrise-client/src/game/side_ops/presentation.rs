@@ -94,6 +94,7 @@ impl Game<'_> {
     }
 
     #[inline(always)]
+    #[allow(dead_code)]
     pub(in crate::game) fn side_clear_render_caches(&mut self) {
         if self.is_logical_server() {
             self.server_clear_render_caches();

@@ -7,7 +7,7 @@ use super::{Game, native_scoreboard::api_text};
 use core::ops::ControlFlow;
 use mod_api::__private::game::*;
 use mod_api::{
-    ClientTeam, CollisionRule, ScoreHolder, TeamColor, TeamError, TeamMembersReadError, TeamRef,
+    CollisionRule, ScoreHolder, TeamColor, TeamError, TeamMembersReadError, TeamRef,
     TeamVisibility, TextFormError,
 };
 use sunrise_client::{
@@ -56,6 +56,7 @@ fn api_color(team: &sb::Team) -> Option<TeamColor> {
     team.color.as_deref().and_then(TeamColor::from_name)
 }
 
+#[allow(dead_code)]
 fn api_comp(comp: &Comp) -> Result<mod_api::Text, TextFormError> {
     api_text(&comp_text(comp))
 }
