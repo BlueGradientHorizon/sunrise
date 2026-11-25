@@ -21,14 +21,14 @@ pub trait Hooks {
     /// already-passed slot is not revisited.
     /// Version 4 fires whenever a mod subscribes to `entity_tick_pre` directly (removing the
     /// `entity_tick_listened` opt-in poll hook, the `entity_tick_each` / `entity_tick_each_entity`
-    /// registrar flags, and family batching), carries one entity (`entity`, `kind`) returning
-    /// [`Flow`], and adds the server's item and glow item frames, paintings, armor stands and
-    /// thrown tridents.
+    /// registrar flags, and family batching) and carries one entity (`entity`, `kind`) returning
+    /// [`Flow`]. Version 5 adds the server's item and glow item frames, paintings, armor stands
+    /// and thrown tridents.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_entity_tick_pre",
         dispatch = "flat",
         side = "both",
-        version = 4,
+        version = 5,
         contract = "cancel",
         out = "canceled",
         neoforge = "EntityTickEvent.Pre",

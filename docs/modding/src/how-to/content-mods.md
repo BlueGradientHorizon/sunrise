@@ -55,9 +55,13 @@ cargo sunrise-mod check             # validate the project before release
   - Loot item entries' `name` and block-state conditions' `block` fields. Recipes, tags, loot tables and loot pools
     that `neoforge:conditions` may disable are left alone.
 
-  A missing reference is an **error** (exit 1) only when the tool has enough information to confirm it. Otherwise,
-  it can **warn** without failing: a `[[jar]]` layer, dependency or atlas source may supply the resource, an inline
-  composite child may override a texture, or a local recipe filter may remove the recipe or swap the reference.
+  A missing reference is an **error** (exit 1) only when the tool has enough information to confirm it. When a
+  manifest lists `[[jar]]`, `check` and `build` read each jar from the local jar store (fetching any missing jar
+  from Modrinth) and resolve references, blockstates, loot tables, item definitions and English names against the
+  mod and its jars together. If a jar cannot be fetched (for example offline), the tool prints a note and skips
+  the checks that jar could satisfy; `build` still succeeds offline. Otherwise, it can **warn** without failing: a
+  dependency's jar or atlas source may supply the resource, an inline composite child may override a texture, or a
+  local recipe filter may remove the recipe or swap the reference.
   The tool does not fetch dependencies or check registry entries declared in code.
   It also checks for blockstates on blocks with `render_shape` set to `MODEL` and warns about missing local loot
   tables, item definitions or English names, or registry content on a client-only package. Reference diagnostics name
@@ -65,8 +69,8 @@ cargo sunrise-mod check             # validate the project before release
 - `check <file>` reads `.smod`, `.spack`, resource pack `.zip` and `.sshader` files. A `.smod` also
   needs its [release attestation](../reference/sdk/05-commands.md#check-a-released-package).
 - To release a mod to the registry, follow [Publishing your mod](publish.md).
-- `use-jar <path>` records and caches an original Java jar as an external asset/data source, without copying it into the mod
-  ([Java jars as external assets](#java-jars-as-external-assets)).
+- `use-jar <path | modrinth-url | <project> <version>>` records and caches an original Java jar as an external
+  asset/data source, without copying it into the mod ([Java jars as external assets](#java-jars-as-external-assets)).
 
 ## Vegetation behaviour is independent of the template
 
@@ -166,12 +170,16 @@ From a content or native mod's project folder:
 
 ```sh
 cargo sunrise-mod use-jar /path/to/original-mod.jar
+cargo sunrise-mod use-jar https://modrinth.com/mod/<project>/version/<version>
+cargo sunrise-mod use-jar <project> <version>
 ```
 
-The command reads NeoForge or Fabric metadata and appends a `[[jar]]` table to `sunrise-mod.toml` with the original
-`id`, `version` and the exact file's `sha512` (128 lowercase hexadecimal characters). It does not infer identity
-from the filename, rename the Java mod to the Sunrise mod's namespace, or run Java code. An unknown jar, invalid
-identity, unresolved version or file larger than the shared 512 MiB hash limit is refused without changing the manifest.
+When given a Modrinth version page URL or a `<project> <version>` pair, `use-jar` downloads the verified jar from
+Modrinth's CDN into the local jar store before inspecting it. The command reads NeoForge or Fabric metadata and
+appends a `[[jar]]` table to `sunrise-mod.toml` with the original `id`, `version` and the exact file's `sha512`
+(128 lowercase hexadecimal characters). It does not infer identity from the filename, rename the Java mod to the
+Sunrise mod's namespace, or run Java code. An unknown jar, invalid identity, unresolved version or file larger than
+the shared 512 MiB hash limit is refused without changing the manifest.
 
 The original manifest text, comments and existing list order are preserved. Listing the same hash and identity again
 leaves the file byte-for-byte unchanged; a hash already listed with another ID or version is an error to correct,
@@ -179,14 +187,15 @@ not another entry. Use `[[jar]]` tables rather than an inline `jar = [...]` arra
 The list is ordered: new references are appended, not sorted.
 
 `use-jar` stores the exact file as `<sha512>.jar` in the usual game home's `jars/` directory (`SUNRISE_HOME` if set,
-otherwise `sunrise` in your platform's data folder). Run `cargo sunrise-mod run` after adding the jar; `run` verifies
+otherwise `sunrise` in your platform's data folder). `check` and `build` read cached jars from that store (fetching
+missing ones from Modrinth when online) so resource references resolve against the mod and its jars together. Run
+`cargo sunrise-mod run` after adding the jar; `run` verifies
 and stages only the jars in your manifest in `target/sunrise-mod/run/home/jars/` before building. The first run copies
 each original while checking its SHA-512, using space for one extra copy per jar. Later runs still verify the original.
 On Unix, `run` reuses a matching staged copy only after checking its link count to confirm it is independent.
 On other platforms, it writes a fresh copy. Editing or replacing the original cannot change the staged bytes.
 Leave the game's `--home` unset to use this development home; the staging path must not go through directory links.
 To read originals from a different folder, supply its `<sha512>.jar` files with `cargo sunrise-mod run --jars <dir>`.
-Neither command downloads jars.
 
 Jar bytes stay external. The original's `assets/` and `data/` are passive pack layers below the Sunrise mod's own
 files. Do not copy a jar or its extracted files into the mod's source or `.smod`. A jar reference supplies assets
@@ -339,10 +348,34 @@ below it and head instruments (`ZOMBIE` through `CUSTOM_HEAD`) from the block ab
 is silent without a skull block entity above the note block with a `note_block_sound`.
 `ignited_by_lava` sets lava's ignition flag; a subscribed per-position `ignited_by_lava` hook still answers
 first. `replaceable` controls replacement by block placement and by features that check replaceability;
-the usual refusal when the hand holds the block's own item still applies. `skip_same_block_faces: true`
-hides model faces against any state of this same block, as glass does; `false` disables the template's render
-definition skip rule. Leaf and ice graphics options can still hide faces based on the template class.
-Unset values inherit the template. These are load-time properties on both sides, with no new hook.
+the usual refusal when the hand holds the block's own item still applies. Unset values inherit the
+template. These are load-time properties on both sides, with no new hook.
+
+`skip_rendering`, `hides_neighbor_face` and `supports_external_face_hiding` control culled neighbor
+faces as compiled block data (`BlockBehaviour.skipRendering`, NeoForge
+`IBlockExtension.hidesNeighborFace` and `supportsExternalFaceHiding`), without running mod code on
+meshing workers:
+- `skip_rendering` is a list of face rules that replaces the template's skip rule (`[]` disables it;
+  omitted inherits the template). `[{"neighbor": "self"}]` skips faces against any state of this
+  same block, as glass does.
+- `hides_neighbor_face` is a list of face rules whose matching neighbor faces pointing toward this
+  block are hidden when the neighbor supports external face hiding.
+- `supports_external_face_hiding: false` prevents any neighbor's `hides_neighbor_face` rules from
+  hiding this block's faces (default `true`).
+
+Each rule object accepts optional `neighbor` (a block id, `#tag`, `{"block"|"tag", "state"}`,
+`"self"`, or omitted for any neighbor), `state` (required property values on this block), `same`
+(property names that must match on both states), `faces` (`"all"`, `"horizontal"`, `"vertical"` or
+a list of direction names) and `facts` (a closed set of `BlockBehaviour.BlockStateBase` booleans:
+`is_air`, `can_occlude`, `is_solid_render`, `liquid`). Tag rules resolve against the client's
+synced block tags and remesh loaded sections on tag sync.
+
+`spawn_rule` sets which mobs spawn on the block (`BlockBehaviour.Properties.isValidSpawn`): `default` is vanilla's
+(a sturdy top face and light emission below 14), `always` and `never` answer for every mob, and `ocelot_or_parrot`
+only for those two. It is read once at load into the block's spawn tables, so it is one answer per state; `default`
+uses the template's top face and the declared `light` or `state_light` (the template's when none is declared), not a
+`dynamic_light` cell's (sunrise-org/sunrise#5518: a declared shape doesn't change the top face yet). Unset keeps
+the template's rule. In code, `BlockProperties::spawn_rule` takes the same rules as `SpawnRule`.
 
 `destroy_overlay: false` hides the breaking crack (`destroy_stage_0` to `9`) on the block, for one broken by use
 (a feast or a cake taken apart bite by bite). It is read once at load into the block's facts, and only the overlay
@@ -646,10 +679,12 @@ was made: `entity()` (the entity's id, `None` for the empty, position and cache 
   paths, on the thread that owns the level: the server tick, and the client's own prediction. A
   guest's move is checked by the server with the same entity id. Fluid passage and face-support
   checks never ask. Another thread (the mesher, world generation) reads the normal shape.
-- **Once a tick.** A part is asked once for each distinct question in a tick: the state, the
-  position and every input of the query (entity, kind, height, descending, placement, held item)
-  make one question. A step-up retry or a second sweep reads the first answer, so the shape cannot change
-  in the middle of a move.
+- **Every query.** A part is asked for every query that meets an opted-in state, as vanilla asks
+  `getCollisionShape` for every block of every sweep. A step-up retry or a second sweep asks
+  again, and a change to the mod's own state inside a tick is seen by the next query.
+- **Not the selection shape.** The outline a player targets is the declared shape or the one the
+  block entity publishes; this part is never asked for it, so a block can be solid and
+  unselectable, or passable and selectable.
 - **No re-entry.** The query holds the entity's state from before the move, and a collision query
   made inside the callback gets the empty-context answer, never a nested call.
 - **No `Host`.** A move holds the level's collision data and cannot lend a `Host`, as for
@@ -667,7 +702,7 @@ was made: `entity()` (the entity's id, `None` for the empty, position and cache 
   the previous answer, or `None` if no earlier Part answered. A failed shape construction
   returns an error to its caller without changing the answer.
 - **Cost.** Nothing for a block without such a part. An opted-in block costs one call per
-  distinct question in a tick.
+  query that meets it.
 
 #### Items
 
@@ -879,10 +914,32 @@ An optional `sort_order` (an integer) sets where the effect sits among the HUD's
 as NeoForge's `IMobEffectExtension.getSortOrder` does: the lists compare it where vanilla compares the colour, and it
 is the colour when left out. It is fixed per effect, where NeoForge may answer per instance.
 
+An optional `attribute_modifiers` list is what the effect's constructor would add with
+`MobEffect.addAttributeModifier(attribute, id, amount, operation)`:
+
+```json
+{
+  "category": "harmful",
+  "color": 16111426,
+  "attribute_modifiers": [
+    { "attribute": "minecraft:movement_speed", "id": "ruby:effect/stun_speed", "amount": -1.0, "operation": "add_multiplied_total" },
+    { "attribute": "minecraft:jump_strength", "id": "ruby:effect/stun_jump", "amount": -1.0, "operation": "add_multiplied_total" }
+  ]
+}
+```
+
+`attribute` is vanilla's or a mod's attribute and `id` the modifier's id, both `namespace:path`; `operation` is
+`add_value`, `add_multiplied_base` or `add_multiplied_total`. One entry per attribute, as vanilla keeps one per
+attribute: a second for the same attribute, or an attribute the game does not have, refuses the mod. While the
+effect is on an entity, player or mob, each modifier is on it with `amount × (amplifier + 1)`, replaced when the
+amplifier changes and removed with the effect, however it ends (expiry, milk, `/effect clear`, death); an entity with
+no such attribute gets none. The modifiers are saved and synced as the entity's others are, and a potion's "When
+Applied:" lines list them, for the potion's own effects and its `custom_effects`.
+
 It is the effect `<id>:<name>`: `/effect give @s ruby:glow 30` gives it, saves and mobs keep it, and it reaches LAN and
 dedicated server players who run the same mods (its network id follows vanilla's). Its name is the translation
 `effect.<id>.<name>` from the mod's `assets/<id>/lang/`, its icon `assets/<id>/textures/mob_effect/<name>.png` (18x18,
-as vanilla's; without one it draws as the missing texture). The declaration supplies neither tick behaviour nor attribute modifiers. A world opened without the mod drops the effect from its players and mobs. Clients join a server
+as vanilla's; without one it draws as the missing texture). The declaration supplies no tick behaviour. A world opened without the mod drops the effect from its players and mobs. Clients join a server
 only with the same mods' effects, as with its blocks.
 
 Code mods read a registered type's classification with `effect_key.category(host)`,
@@ -1122,7 +1179,19 @@ entry's record schema. Its scalar kinds are `Bool`, `Int { min, max }`, `Float {
   `DatapackVariant`s the schema lists, with that variant's fields beside it (`Codec.dispatch`). The id reads as
   vanilla's `byNameCodec` reads one (`growing` is `minecraft:growing`), and an id no variant declares fails the
   entry. `variant_id` names the variant, and `get` reads its fields. Only the declaring mod lists variants; there
-  is no way for another mod to add one.
+  is no way for another mod to add one;
+- Four vanilla codec kinds, decoded by the engine at load (and re-decoded on clients for synced registries) into
+  small `Copy` handles you copy out of `level.datapack_read` and evaluate afterwards:
+  - `IntProvider { min, max }` (`IntProviders.codec(min, max)`): `as_int_provider()` gives an `IntProviderValue`,
+    evaluated with `value.sample(host, random)`;
+  - `BlockStateProvider` (`BlockStateProvider.CODEC`): `as_block_state_provider()` gives a
+    `BlockStateProviderValue`, evaluated with `value.state(host, level, random, pos)`;
+  - `BlockPredicate` (`BlockPredicate.CODEC`): `as_block_predicate()` gives a `BlockPredicateValue`, evaluated
+    with `value.test(host, level, pos)`;
+  - `HolderSet { registry }` (`RegistryCodecs.homogeneousList`, `minecraft:block` only; any other registry is
+    refused at registration): `as_holder_set()` gives a `HolderSetValue`, queried with `value.contains(host, block)`.
+  Handles carry the load's generation number: after `/reload` (or a client snapshot swap), evaluating an older
+  handle returns `Err(DatapackValueError::Stale)` instead of panicking.
 
 Each field, at any depth, is required (`DatapackField::required`), given a default (`with_default`) or optional with
 no default (`DatapackField::optional`, `optionalFieldOf`), which reads as `None` when left out. An optional kind
@@ -1371,7 +1440,7 @@ are public server collect hooks.
 The fence: files go in the mod's own namespaces (`assets/<id>/`,
 `data/<id>/`, and those its manifest lists), plus additions to vanilla tags
 (`data/minecraft/tags/`), to the convention tags NeoForge and Fabric mods
-share (`data/c/tags/`), and sources added to vanilla's atlases
+share (`data/c/tags/` and `data/neoforge/tags/`), and sources added to vanilla's atlases
 (`assets/minecraft/atlases/`), which follow vanilla's own as a reload appends them.
 Packages of every kind may also add to the declared [`sunrise:` extension tags](extension-tags.md),
 by writing exactly the listed registry and tag path under `data/sunrise/tags/`.
@@ -1411,7 +1480,7 @@ left in place.
 #### Tags and enchantments
 
 Tags merge as a data pack's do. Every mod's file for one tag (vanilla's `data/minecraft/tags/`, the convention
-`data/c/tags/`, or another mod's) adds its values after vanilla's and the mods' before it, in load order. A file with
+`data/c/tags/` and `data/neoforge/tags/`, or another mod's) adds its values after vanilla's and the mods' before it, in load order. A file with
 `"replace": true` first drops what came before it, vanilla's entries and the earlier mods', and the mods after it
 add theirs, as a higher data pack does. Since the result depends on load order, the game says so in the log:
 "mod towns replaces data/minecraft/tags/worldgen/biome/has_structure/village_plains.json: vanilla's entries and those
@@ -1592,9 +1661,9 @@ declare a [biome region](content-mods/biome-regions.md) instead.
 
 The modifiers rewrite the biomes when the content root builds, and the generator orders every biome's features as
 vanilla's `FeatureSorter` does, so an added feature takes its place in that order (its random seed follows from it). A
-biome no modifier names keeps its text, and a world without mods keeps vanilla's biomes byte for byte. A modifier
-naming a biome, biome tag, feature, feature tag, entity type or entity type tag the game doesn't have (another mod's, a
-`#c:` convention tag), or of an unsupported type (a mod's own serializer), is skipped with a warning
+biome no modifier names keeps its text, and a world without mods keeps vanilla's biomes byte for byte. Built-in `c:`
+and `neoforge:` convention tags resolve automatically beneath vanilla, pack, and mod tag files. A modifier
+naming a biome, biome tag, feature, feature tag, entity type or entity type tag the game doesn't have (such as another mod's), or of an unsupported type (a mod's own serializer), is skipped with a warning
 naming the mod and file; the mods load. A malformed modifier of a type
 that is read (an unknown step, a missing field, `minCount > maxCount`) stops the build, and the game starts without
 content mods ("content mods not loaded: ..." in the log). Feature selectors read vanilla feature tags, not a mod's `placed_feature` tags. Modifiers are reapplied after the world's data packs, so a pack
@@ -1628,6 +1697,25 @@ radius. `kernel_size` 0 is none.
 ```json
 { "sunrise:enhanced_terrain_adaptation": { "kernel_size": 24, "kernel_distance": 24,
     "top": "carve", "bottom": "none", "rigid_junctions": true, "inflate": true } }
+```
+
+#### NeoForge model loaders and the root transform
+
+Block and item model files read NeoForge's built-in loaders `neoforge:composite`, `neoforge:obj` and
+`neoforge:empty`. `"loader": "neoforge:empty"` is a model with no quads: its other keys, `parent` and
+`textures` included, are ignored, and a model inheriting from it has no geometry either.
+
+A model's `transform` (NeoForge's root transform) moves its elements, its composite children and its OBJ faces
+before the blockstate's rotation. It is `"identity"`, a 3x4 row-major matrix (bare or as `{"matrix": ...}`), or an
+object of `translation`, `rotation` (or `left_rotation`), `scale` (one number or three), `right_rotation` (or
+`post-rotation`) and `origin` (`"center"`, `"corner"`, `"opposing-corner"`, the default, or three numbers). A
+rotation is one `{"x": degrees}` axis object, a list of them, three XYZ degrees or a quaternion. The model closest
+to the leaf that names a `transform` wins, so a child's `"identity"` removes its parent's. A composite's transform
+applies after each child's own. A registered loader's quads don't get it: the loader reads `transform` from
+`input.config` itself.
+
+```json
+{ "parent": "mymod:block/pipe", "transform": { "scale": 0.5, "origin": "center" } }
 ```
 
 #### Custom block-state definition types

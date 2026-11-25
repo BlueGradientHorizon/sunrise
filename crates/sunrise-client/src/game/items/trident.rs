@@ -602,11 +602,26 @@ impl Game<'_> {
         // The trident whose tick just ended, whatever ended it: it hears its Post before the
         // next one's Pre.
         let mut told = None;
+        // EntityTickList copy-on-iterate: while a listener may remove tridents, the round visits
+        // the tridents that were there when it began, each found again by its join.
+        let joins: Option<Vec<_>> = round
+            .told_listening()
+            .then(|| self.tridents.iter().map(|t| t.join).collect());
+        let mut turns = joins.iter().flatten();
         let mut i = 0;
         let mut through = None;
-        while i < self.tridents.len() {
+        loop {
             if let Some(id) = told.take() {
                 self.native_tick_post_one(&round, id, "minecraft:trident");
+            }
+            if joins.is_some() {
+                let Some(&join) = turns.next() else { break };
+                let Some(at) = self.tridents.locate(join) else {
+                    continue;
+                };
+                i = at;
+            } else if i >= self.tridents.len() {
+                break;
             }
             let t = &self.tridents[i];
             let target = Target::Trident(t.id);
@@ -1021,6 +1036,7 @@ impl Game<'_> {
                             damage_type: "minecraft:trident",
                             causing,
                             direct: t.id as i32,
+                            direct_type: Some("minecraft:trident"),
                             position: Some([t.previous.x, t.previous.y, t.previous.z]),
                         };
                         let hurt_living = hurt_mob

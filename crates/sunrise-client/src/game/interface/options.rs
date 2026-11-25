@@ -504,18 +504,6 @@ impl Game<'_> {
                     use sunrise_client::clipboard::Clipboard;
                     self.clipboard.set(&text);
                 }
-                Event::BrowseMods => {
-                    let ui = &mut self.ui.options.mod_browser;
-                    self.mod_jobs.browse(ui, Self::game_dir());
-                }
-                Event::InstallMod(id) => {
-                    if self.player.is_none() {
-                        let ui = &mut self.ui.options.mod_browser;
-                        self.mod_jobs.install(ui, Self::game_dir(), id);
-                    }
-                }
-                // The website, through ConfirmLinkScreen as other links.
-                Event::OpenModPage(url) => self.confirm_trusted_link(&url, Screen::Options),
                 Event::ListShaderPacks => {
                     let (key, _) = sunrise_client::shader_pack_list::resolve(
                         &Self::shader_packs_dir(),
@@ -629,11 +617,12 @@ impl Game<'_> {
             self.settings.sunrise.save(dir);
         }
         self.hold_fullbright();
+        let vsync = self.effective_vsync();
         let s = &self.settings;
         if let Some(r) = self.renderer.as_mut() {
             r.gamma = s.gamma as f32;
             r.improved_transparency = s.improved_transparency;
-            r.set_present_mode(s.vsync, s.sunrise.present_mode);
+            r.set_present_mode(vsync, s.sunrise.present_mode);
             r.animated_textures = s.sunrise.animated_textures;
             r.screenshot_quality = s.sunrise.screenshot_quality;
             r.set_mipmap_levels(s.mipmap_levels.max(0) as u32);

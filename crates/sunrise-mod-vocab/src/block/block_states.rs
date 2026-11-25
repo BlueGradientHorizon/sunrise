@@ -2,8 +2,9 @@
 //! Queries consume owned API block states, never world numeric IDs. Both sides read the
 //! game's published tables and borrow their property definitions.
 use crate::{
-    BlockKey, BlockMetadata, BlockSoundType, BlockState, BlockStateError, BlockStateRange, Host,
-    LevelReadError, PushReaction, host::block_states::BlockStatesBackend,
+    BlockKey, BlockLanding, BlockMetadata, BlockSoundType, BlockState, BlockStateError,
+    BlockStateRange, Host, LevelReadError, PathType, PushReaction, StateCollision,
+    host::block_states::BlockStatesBackend,
 };
 
 // no wire: borrows a name and values from the host's state definition.
@@ -269,7 +270,19 @@ macro_rules! impl_block_states_without_tables {
                 fn block_state_jump_factor(&self, _: BlockState) -> Option<f32> {
                     None
                 }
+                fn block_state_collision(&self, _: BlockState) -> Option<$crate::StateCollision> {
+                    None
+                }
+                fn block_state_landing(&self, _: BlockState) -> Option<$crate::BlockLanding> {
+                    None
+                }
+                fn block_state_path_type(&self, _: BlockState) -> Option<$crate::PathType> {
+                    None
+                }
                 fn block_state_is_solid_render(&self, _: BlockState) -> Option<bool> {
+                    None
+                }
+                fn block_state_poi_type(&self, _: BlockState) -> Option<crate::Identifier> {
                     None
                 }
                 fn block_state_propagates_skylight_down(&self, _: BlockState) -> Option<bool> {
@@ -529,11 +542,38 @@ impl BlockStates<'_> {
     pub fn jump_factor(&self, state: BlockState) -> Option<f32> {
         self.backend.block_state_jump_factor(state)
     }
+    /// The state's collision boxes with an empty collision context, in block-local
+    /// coordinates (`[min_x, min_y, min_z, max_x, max_y, max_z]`; a box may leave the cell, as a
+    /// fence's reaches y 1.5), and whether they hold at every position ([`StateCollision`]).
+    /// None as for `replaceable`.
+    pub fn collision(&self, state: BlockState) -> Option<StateCollision> {
+        self.backend.block_state_collision(state)
+    }
+    /// The bounce restitution and fall-distance reduction `state`'s block declares
+    /// (`BlockBehaviour.Properties`): 0.75 and 0.5 for beds and the shelf mushroom, a bounce of 1.0
+    /// for slime, 0 for most blocks. Not what a block part's `bounce_restitution` answers or a
+    /// custom `fallOn` does (hay's lighter fall damage). None as for `replaceable`.
+    pub fn landing(&self, state: BlockState) -> Option<BlockLanding> {
+        self.backend.block_state_landing(state)
+    }
+    /// The state's walking path type (`WalkNodeEvaluator.getPathTypeFromState`) after the block
+    /// parts' `isPathfindable` answers, without per-position overrides or neighbour rules.
+    /// None as for `replaceable`.
+    pub fn path_type(&self, state: BlockState) -> Option<PathType> {
+        self.backend.block_state_path_type(state)
+    }
     /// `BlockState.isSolidRender()`: whether the state is a full, occluding cube for rendering
     /// and light (stone yes; glass, leaves and slabs no). This is not redstone conduction.
     /// None as for `replaceable`.
     pub fn is_solid_render(&self, state: BlockState) -> Option<bool> {
         self.backend.block_state_is_solid_render(state)
+    }
+    /// `PoiTypes.forState`: the point of interest type `state` belongs to (`minecraft:home`,
+    /// `minecraft:librarian`, `minecraft:meeting`...), the states mods add with
+    /// `extend_poi_types` included; it says whether a placed block becomes a job site or a
+    /// bed a villager can claim. None for a state in no POI type, and as for `replaceable`.
+    pub fn poi_type(&self, state: BlockState) -> Option<crate::Identifier> {
+        self.backend.block_state_poi_type(state)
     }
     /// `BlockState.propagatesSkylightDown()`: whether sky light passes down through `state`
     /// unchanged, the block's own answer included (glass, barriers and vegetation override what

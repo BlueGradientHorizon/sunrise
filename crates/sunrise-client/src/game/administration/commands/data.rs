@@ -125,6 +125,12 @@ impl Game<'_> {
         if let Some(u) = self.saved_player_uuid() {
             set_key(&mut tag, "UUID", Tag::IntArray(u.to_vec()));
         }
+        // Entity.saveWithoutId: the live `portalCooldown`, the player's own on its turn.
+        set_key(
+            &mut tag,
+            "PortalCooldown",
+            Tag::Int(self.portals.player.cooldown),
+        );
         // NbtPredicate.getEntityTagToCompare: a player's held stack.
         let selected = self.level.selected_slot;
         let held = match tag.get("Inventory") {
@@ -564,6 +570,7 @@ impl Game<'_> {
                 .ok_or_else(stale)?;
                 sunrise_client::mobs::armor::prepare(&new, &self.motion.attributes);
                 self.resolve_loaded_profession(&mut new);
+                entity_nbt::read_mob_variants(&mut new, &tag, self.world_variants());
                 let unresolved = self
                     .stations()
                     .professions
@@ -646,7 +653,7 @@ impl Game<'_> {
                     // Mob.readAdditionalSaveData updates persistent home fields,
                     // while retaining the rest of the live AI/runtime state.
                     entity_nbt::read_mob_home(slot, &tag);
-                    slot.extra.armor_attributes = old.extra.armor_attributes;
+                    slot.extra.generic_attributes = old.extra.generic_attributes;
                     // LivingEntity.lastEquipmentItems is runtime state Entity.load
                     // keeps: the next tick swaps the archetype modifiers.
                     slot.extra.adopted_body = old.extra.adopted_body;
@@ -930,7 +937,7 @@ impl Game<'_> {
                 let (pos, facing) =
                     entity_nbt::painting_placement_from_nbt(&tag).ok_or_else(stale)?;
                 let known = entity_nbt::painting_from_nbt(&tag)
-                    .and_then(|(_, _, v)| self.painting_variants.get(&v?).cloned());
+                    .and_then(|(_, _, v)| world_paintings!(self).get(&v?).cloned());
                 let p = self
                     .paintings
                     .iter_mut()
@@ -1434,7 +1441,8 @@ impl Game<'_> {
     /// Comparators and decorated pots come from their own views; any other
     /// entry gets what the model keeps outside it: the hopper's
     /// `TransferCooldown` (`HopperBlockEntity.saveAdditional`), the custom
-    /// name and the pending loot table.
+    /// name and the pending loot table, over the NBT it was loaded from (stored
+    /// components and keys Sunrise does not model, as `live_full_metadata` gives a loot roll).
     fn full_block_entity_data(&self, p: [i32; 3]) -> Option<Tag> {
         if let Some(tag) = self.comparator_data(p).or_else(|| self.pot_data(p)) {
             return Some(tag);
@@ -1449,7 +1457,7 @@ impl Game<'_> {
             .and_then(|chunk| chunk.saved.as_ref())
             .and_then(|saved| saved.pending_loot.get(&key));
         let items = self.items();
-        Some(save::block_entity_encode::data_with(
+        let current = save::block_entity_encode::data_with(
             key,
             e,
             &name,
@@ -1461,6 +1469,15 @@ impl Game<'_> {
             },
             items,
             |row| self.capture_block_entity_payload(key, &name, row, items),
+        );
+        // Over the NBT it was loaded from, as the chunk save and a loot roll read it.
+        Some(crate::game::spill::live_full_metadata(
+            &self.world,
+            key,
+            e,
+            &name,
+            items,
+            current,
         ))
     }
     pub(in crate::game) fn set_data_of(&mut self, r: &DataRef, tag: Tag) -> R<()> {
@@ -1543,6 +1560,9 @@ impl Game<'_> {
     /// What `BlockDataAccessor.setData` tells the world after a load: `setChanged` and
     /// `sendBlockUpdated(3)`, even when the block state stays the same.
     pub(in crate::game) fn block_entity_updated(&mut self, key: (i32, i32, i32)) {
+        if self.defer_placed_block_entity_update(key) {
+            return;
+        }
         self.mark_block_entity_updated(key);
         let state = self.world.block(key.0, key.1, key.2);
         // Redraw what shows the block entity (signs, banners).

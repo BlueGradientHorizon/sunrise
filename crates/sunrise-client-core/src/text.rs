@@ -58,11 +58,22 @@ pub enum InlineObject {
         sprite: String,
         fallback: String,
     },
+    /// A client mod's dynamic texture, one GPU texture of its own: the id a mod's
+    /// `substitute_inline_images` named, and the texture's `handle` and `size` when it was
+    /// substituted. Only the game's own substitution makes one; a component never decodes to it.
+    Dynamic {
+        id: String,
+        handle: u64,
+        size: [u32; 2],
+        fallback: String,
+    },
 }
 impl InlineObject {
     pub fn fallback(&self) -> &str {
         match self {
-            Self::Player { fallback, .. } | Self::Atlas { fallback, .. } => fallback,
+            Self::Player { fallback, .. }
+            | Self::Atlas { fallback, .. }
+            | Self::Dynamic { fallback, .. } => fallback,
         }
     }
 }
@@ -956,14 +967,18 @@ impl Text {
     }
     /// Component.getString: the plain characters.
     pub fn plain(&self) -> String {
-        self.rendered
-            .spans
-            .iter()
-            .map(|s| match &s.style.inline_object {
+        let mut out = String::new();
+        self.write_plain(&mut out);
+        out
+    }
+    /// [`Text::plain`] appended to `out`, so a caller reusing one buffer allocates nothing.
+    pub fn write_plain(&self, out: &mut String) {
+        for s in &self.rendered.spans {
+            out.push_str(match &s.style.inline_object {
                 Some(object) if s.text == "\u{fffc}" => object.fallback(),
                 _ => s.text.as_str(),
-            })
-            .collect()
+            });
+        }
     }
     pub fn is_empty(&self) -> bool {
         self.rendered.spans.iter().all(|s| s.text.is_empty())
@@ -1173,6 +1188,12 @@ fn style_json_with(
                 ("object".into(), "atlas".into()),
                 ("atlas".into(), atlas.clone().into()),
                 ("sprite".into(), sprite.clone().into()),
+                ("fallback".into(), fallback.clone().into()),
+            ]),
+            InlineObject::Dynamic { id, fallback, .. } => out.extend([
+                ("object".into(), "atlas".into()),
+                ("atlas".into(), "minecraft:gui".into()),
+                ("sprite".into(), id.clone().into()),
                 ("fallback".into(), fallback.clone().into()),
             ]),
         }

@@ -152,43 +152,6 @@ fn object_skin_revision_tracks_changes_and_capacity_clear() {
     assert!(atlas.object_skins.is_empty());
 }
 
-/// The pool of dynamic texture slots is paid only by a game with a client mod loaded: with
-/// none, the atlas packs no slot and does not grow. The slots' names leave the sprites, so
-/// no mod draws a slot another mod's image holds.
-#[test]
-fn the_dynamic_texture_pool_exists_only_when_a_mod_is_loaded() {
-    let root = sunrise_assets::resource_source::ResourceSource::directory(
-        Path::new("/nonexistent/sunrise-test-assets").to_path_buf(),
-    );
-    let plain = HudAtlas::build(&root).unwrap();
-    let without = HudAtlas::build_over_with_dynamic_textures(&root, &root, &root, false).unwrap();
-    assert!(plain.dynamic_texture_pool.is_none() && without.dynamic_texture_pool.is_none());
-    assert_eq!((without.width, without.height), (plain.width, plain.height));
-    let with = HudAtlas::build_over_with_dynamic_textures(&root, &root, &root, true).unwrap();
-    let pool = with.dynamic_texture_pool.as_ref().expect("the pool");
-    assert_eq!(pool.slots(), dynamic_textures::DYNAMIC_TEXTURE_SLOTS);
-    assert!(
-        !with
-            .sprites
-            .keys()
-            .any(|name| name.starts_with("sunrise/dynamic-texture/"))
-    );
-    // Every slot lies whole in the atlas, apart from every other slot.
-    let mut slots = Vec::new();
-    for (class, side) in mod_api::DYNAMIC_TEXTURE_CLASSES.into_iter().enumerate() {
-        for slot in 0..pool.slots()[class] {
-            let [x, y] = pool.origin(class, slot);
-            assert!(x + side <= with.width && y + side <= with.height);
-            slots.push([x, y, x + side, y + side]);
-        }
-    }
-    for (i, a) in slots.iter().enumerate() {
-        for b in &slots[i + 1..] {
-            assert!(a[2] <= b[0] || b[2] <= a[0] || a[3] <= b[1] || b[3] <= a[1]);
-        }
-    }
-}
-
 /// The GUI atlas's final list decides its sprites, under the names the GUI is looked up by
 /// (vanilla's definition: the folder `gui/sprites` with no prefix): a mod's pixels replace a
 /// walked sprite, an alias takes its texture's pixels and flags under the mod's plain id, a

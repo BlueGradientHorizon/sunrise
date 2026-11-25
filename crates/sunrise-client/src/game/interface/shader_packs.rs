@@ -11,7 +11,9 @@ use sunrise_client::mod_list::ModList;
 use sunrise_client::shader_options::ShaderOptions;
 use sunrise_client::text::Text;
 use sunrise_shader_api::Api;
-use sunrise_shaders::{BlockIds, Macros, Pack, Properties, dimension_folder_named, load_post};
+use sunrise_shaders::{
+    BlockIds, BlockLayers, Macros, Pack, Properties, dimension_folder_named, load_post,
+};
 
 use super::native_shaders::{fingerprint, outcome, refused, remember};
 use super::{Dim, Game, Screen};
@@ -261,6 +263,11 @@ pub(super) fn picks_material_pack(settings: &sunrise_client::settings::Settings)
 pub(super) struct PackIds {
     entities: HashMap<String, i32>,
     blocks: BlockIds,
+    /// `block.properties`' `layer.*` rules (4.2), as the terrain meshes them.
+    pub(super) layers: super::pack_layers::PackLayers,
+    /// `terrain_state_ids` of the loaded pack: two ids per block state, the model's then the
+    /// fluid's (the renderer holds the same table).
+    terrain_states: Vec<i32>,
     /// `blockEntityId` by block state, filled as states are drawn.
     block_states: RefCell<HashMap<u32, i32>>,
     /// The id of a name the file lacks: 65535, or 0 without the file.
@@ -285,6 +292,18 @@ pub(super) struct PackIds {
     pub(super) separate_ao: bool,
 }
 
+impl PackIds {
+    /// The pack's `block.properties` id for the block state at registry index `state`, the
+    /// model id the terrain carries; `None` when the file gives it none or the index is past
+    /// the registry.
+    fn block_state_id(&self, state: usize) -> Option<i32> {
+        self.terrain_states
+            .get(state.checked_mul(2)?)
+            .copied()
+            .filter(|id| *id >= 0)
+    }
+}
+
 #[cfg(test)]
 impl PackIds {
     pub(super) fn with_entity_ids<'a>(ids: impl IntoIterator<Item = (&'a str, i32)>) -> Self {
@@ -298,7 +317,33 @@ impl PackIds {
     }
 }
 
+/// The id table is read only while a `shaders/` (Iris-format) pack is loaded and rendering:
+/// `pack_ids` outlives the panorama and is set before the pack's pipelines finish building.
+fn running_block_state_id(
+    active: bool,
+    kind: Option<&str>,
+    ids: Option<&PackIds>,
+    state_idx: usize,
+) -> Option<i32> {
+    if !active || kind != Some("iris") {
+        return None;
+    }
+    ids?.block_state_id(state_idx)
+}
+
 impl Game<'_> {
+    /// `RenderAssets::shader_pack_block_id`: the running `shaders/` pack's `block.properties` id
+    /// for the block state at registry index `state_idx`, or `None` while no pack runs (the
+    /// panorama and a pack still loading included) or the pack gives it none.
+    pub(in crate::game) fn active_block_state_id(&self, state_idx: usize) -> Option<i32> {
+        running_block_state_id(
+            self.shader_pack_active(),
+            self.renderer.as_ref().and_then(|r| r.shader_pack_kind()),
+            self.pack_ids.as_ref(),
+            state_idx,
+        )
+    }
+
     /// Loads the pack for the current dimension when it changed, and returns this frame's
     /// inputs to the pack's uniforms.
     pub(super) fn shader_pack_inputs(
@@ -330,6 +375,9 @@ impl Game<'_> {
             self.streaming.separate_ao = separate_ao;
             self.all_sections_changed();
         }
+        // Its `layer.*` rules (4.2), none without a pack: in the frame after it loads or drops, as
+        // the flags above, so one meshing of every section takes them all.
+        self.sync_pack_layers();
         let selected = picked_pack(&self.settings).to_owned();
         let path = self.native_shaders.resolve_path(
             &Self::shader_packs_dir(),
@@ -457,8 +505,10 @@ impl Game<'_> {
                             biomes.list.iter().map(|b| b.name.as_str()).collect();
                         post.custom.set_biomes(&names);
                         let text = pack.read_text("block.properties").unwrap_or_default();
-                        let ids = BlockIds::parse(&Properties::parse(&text, &macros));
-                        for note in &ids.notes {
+                        let block_properties = Properties::parse(&text, &macros);
+                        let ids = BlockIds::parse(&block_properties);
+                        let layers = BlockLayers::parse(&block_properties);
+                        for note in ids.notes.iter().chain(&layers.notes) {
                             log::warn!("shader pack {name}: block.properties: {note}");
                         }
                         let text = pack.read_text("entity.properties");
@@ -495,10 +545,15 @@ impl Game<'_> {
                             missing_entity: if text.is_some() { 65535 } else { 0 },
                             missing_block: if ids.is_empty() { 0 } else { 65535 },
                             blocks: ids.clone(),
+                            layers: super::pack_layers::PackLayers::new(name, layers),
+                            terrain_states: Vec::new(),
                             block_states: RefCell::default(),
                         });
                         let started_ids = std::time::Instant::now();
                         let table = terrain_state_ids(self.pack.assets.registry, &ids);
+                        if let Some(pack_ids) = &mut self.pack_ids {
+                            pack_ids.terrain_states.clone_from(&table);
+                        }
                         log::info!(
                             "shader pack {name}: mc_Entity for {} of {} block states in {} ms",
                             table.chunks(2).filter(|p| p[0] != -1).count(),
@@ -587,7 +642,7 @@ impl Game<'_> {
                 self.pack.clouds.0,
             ) as f32
                 * 0.030_000_001,
-            mod_params: self.native_shader_params_now(partial),
+            mod_params: [[0.0; 4]; 8],
             status,
             end_flash,
             end_flash_direction,
@@ -1062,6 +1117,46 @@ mod terrain_source_tests {
             [-1, -1, -1, -1, 211, 223, 223, 223, 223, 223, -1, -1]
         );
         assert_eq!(terrain_state_ids(&registry, &BlockIds::default()), [-1; 12]);
+
+        let pack = |ids: &BlockIds| PackIds {
+            terrain_states: terrain_state_ids(&registry, ids),
+            ..Default::default()
+        };
+        let signal = pack(&ids);
+        // The model's id, not the fluid's: state 3 is water level 0, state 4 level 1.
+        assert_eq!(signal.block_state_id(1), Some(31));
+        assert_eq!(signal.block_state_id(2), Some(47));
+        assert_eq!(signal.block_state_id(3), Some(59));
+        assert_eq!(signal.block_state_id(4), Some(61));
+        assert_eq!(signal.block_state_id(5), Some(73));
+        assert_eq!(signal.block_state_id(0), None);
+        assert_eq!(signal.block_state_id(6), None);
+        assert_eq!(signal.block_state_id(usize::MAX), None);
+        assert_eq!(pack(&BlockIds::default()).block_state_id(1), None);
+        assert_eq!(PackIds::default().block_state_id(1), None);
+    }
+
+    #[test]
+    fn running_block_state_id_needs_a_running_iris_pack() {
+        let ids = PackIds {
+            terrain_states: vec![-1, -1, 31, -1],
+            ..Default::default()
+        };
+        assert_eq!(
+            running_block_state_id(true, Some("iris"), Some(&ids), 1),
+            Some(31)
+        );
+        // Loaded but suppressed (title screen) or not yet rendering.
+        assert_eq!(
+            running_block_state_id(false, Some("iris"), Some(&ids), 1),
+            None
+        );
+        assert_eq!(running_block_state_id(true, None, Some(&ids), 1), None);
+        assert_eq!(
+            running_block_state_id(true, Some("native"), Some(&ids), 1),
+            None
+        );
+        assert_eq!(running_block_state_id(true, Some("iris"), None, 1), None);
     }
 }
 

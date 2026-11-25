@@ -18,6 +18,16 @@ pub trait ClientViewClientHost {
     /// that is hidden, canceled or replaced adds nothing. None outside the HUD layer pass.
     fn gui_status_heights(&self) -> Option<[i32; 2]>;
     /// Side: client.
+    /// Sets the HUD status columns' heights, left and right in GUI pixels above the bottom
+    /// edge, as assigning NeoForge's `Hud.leftHeight` and `rightHeight` does: the vanilla rows
+    /// that draw after the current layer start from them, and add their own height on top. A
+    /// layer placed `Below` `minecraft:vehicle_health` that raises the right column moves the
+    /// mount's hearts and the air row up; a wrapper that sets them before `draw_previous` moves
+    /// the row it wraps. Rows already drawn stay where they are, and both columns go back to 39
+    /// at the start of each HUD pass. `gui_status_heights` reads the new heights at once. False,
+    /// setting nothing, outside the HUD layer pass.
+    fn set_gui_status_heights(&self, heights: [i32; 2]) -> bool;
+    /// Side: client.
     /// Read effective HUD visibility independently of first-person hands.
     fn hud_mode(&self) -> HudMode;
     /// Side: client.
@@ -57,6 +67,13 @@ pub trait ClientViewClientHost {
     /// (`ClientboundSetTimePacket`), advanced each tick between packets; none
     /// on the title screen.
     fn clock(&self) -> Option<Clock>;
+    /// Side: client.
+    /// The tick rate state of the world this window shows (`ClientLevel.tickRateManager()`):
+    /// its rate, whether it is frozen and the frozen steps left to run, as the server last
+    /// sent them (`ClientPacketListener.handleTickingState` / `handleTickingStep`). It is there
+    /// from `Login`, when the client level is made, before the player is placed; none outside
+    /// a client world (the title screen, before login, or while reconfiguring).
+    fn tick_rate(&self) -> Option<ClientTickRate>;
     /// Side: client.
     /// The first block along the view within `distance`, in loaded chunks only;
     /// `None` on a miss or a nonpositive or non-finite `distance`.
@@ -123,6 +140,15 @@ pub trait ClientViewClientHost {
     /// strider never jumps. The HUD's jump bar makes the same decision. None when the player
     /// controls no such vehicle (a second passenger included), or outside a client world.
     fn jumpable_vehicle(&self) -> Option<EntityRef>;
+    /// Side: client.
+    /// How far the local player has charged its mount's jump (`LocalPlayer.getJumpRidingScale`),
+    /// 0.0 to 1.0: the value the HUD's jump bar draws and `Hud.willPrioritizeJumpInfo` tests
+    /// (`> 0`). It rises while the jump key is held on a [`Self::jumpable_vehicle`] and drops
+    /// back to 0.0 when the jump is released and its cooldown runs out. 0.0 once a client tick
+    /// has run with the player controlling no mount that can jump (that tick resets it), and
+    /// outside a client world. Read-only: the jump key
+    /// drives it, and the server checks the jump it is sent.
+    fn jump_riding_scale(&self) -> f32;
     /// Side: client.
     /// Whether the server tracks any waypoint for this client
     /// (`ClientWaypointManager.hasWaypoints`), the waypoints the locator bar draws. The HUD's

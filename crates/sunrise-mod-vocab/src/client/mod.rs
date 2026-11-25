@@ -15,6 +15,8 @@ pub(crate) mod entity_layers;
 pub(crate) mod entity_render_attachments;
 pub(crate) mod entity_renderers;
 pub(crate) mod item_extensions;
+pub(crate) mod stock_layers;
+pub(crate) mod storage_buffer;
 // hidden: a module of game-side types; mods use their re-exports
 #[doc(hidden)]
 pub mod first_person;
@@ -37,6 +39,9 @@ pub(crate) mod key_mapping;
 pub(crate) mod keyframe_animation;
 pub(crate) mod menu_screen;
 pub(crate) mod mod_key_refusal;
+// hidden: module of an API-owned render value; mods use the re-export
+#[doc(hidden)]
+pub mod name_tag_line;
 // hidden: a module of game-side types; mods use their re-exports
 #[doc(hidden)]
 pub mod mesher;

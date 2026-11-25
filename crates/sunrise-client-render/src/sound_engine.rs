@@ -346,13 +346,13 @@ impl SoundInstance {
         instance
     }
     /// `EntityBoundSoundInstance.canPlaySound`, also checked on replay.
-    pub fn can_play_sound(&self) -> bool {
+    pub(crate) fn can_play_sound(&self) -> bool {
         self.bound_entity
             .as_ref()
             .is_none_or(|entity| !entity.state().silent)
     }
     /// `SimpleSoundInstance.forUI(sound, pitch, volume)`.
-    pub fn for_ui(id: &str, pitch: f32, volume: f32, random: LegacyRandom) -> Self {
+    pub(crate) fn for_ui(id: &str, pitch: f32, volume: f32, random: LegacyRandom) -> Self {
         Self::new(
             id,
             UI,
@@ -401,7 +401,7 @@ impl SoundInstance {
         s
     }
     /// `SimpleSoundInstance.forJukeboxSong`.
-    pub fn for_jukebox_song(id: &str, at: [f64; 3], random: LegacyRandom) -> Self {
+    pub(crate) fn for_jukebox_song(id: &str, at: [f64; 3], random: LegacyRandom) -> Self {
         Self::new(
             id,
             RECORDS,
@@ -416,7 +416,12 @@ impl SoundInstance {
         )
     }
     /// `SimpleSoundInstance.forLocalAmbience`.
-    pub fn for_local_ambience(id: &str, pitch: f32, volume: f32, random: LegacyRandom) -> Self {
+    pub(crate) fn for_local_ambience(
+        id: &str,
+        pitch: f32,
+        volume: f32,
+        random: LegacyRandom,
+    ) -> Self {
         Self::new(
             id,
             AMBIENT,
@@ -1111,6 +1116,10 @@ pub struct SoundEngine {
     /// `instanceBySource`.
     instance_by_source: Vec<(usize, InstanceId)>,
     gain_by_source: [f32; 11],
+    /// A client mod's scale over each source's volume (`set_source_scale`), 1 by default; the
+    /// master's scales every source. Kept apart from `gain_by_source`, which the music's fade
+    /// owns, and from the player's options.
+    scale_by_source: [f32; 11],
     ticking: Vec<InstanceId>,
     live_scratch: Vec<(u64, ChannelId)>,
     mapped_scratch: Vec<u64>,
@@ -1153,6 +1162,7 @@ impl SoundEngine {
             next_handle: 1,
             instance_by_source: Vec::new(),
             gain_by_source: [1.0; 11],
+            scale_by_source: [1.0; 11],
             ticking: Vec::new(),
             live_scratch: Vec::new(),
             mapped_scratch: Vec::new(),
@@ -1176,7 +1186,7 @@ impl SoundEngine {
         }
     }
     /// Sound events exempt from muffling, including channels already playing.
-    pub fn set_unmuffled(&mut self, events: HashSet<String>, backend: &mut impl Backend) {
+    pub(crate) fn set_unmuffled(&mut self, events: HashSet<String>, backend: &mut impl Backend) {
         self.unmuffled = events;
         for (id, handle) in &self.instance_to_channel {
             let (Some(instance), Some(channel)) = (
@@ -1291,7 +1301,7 @@ impl SoundEngine {
         self.tick_count
     }
     /// `Options.getFinalSoundSourceVolume`.
-    pub fn final_source_volume(&self, source: usize) -> f32 {
+    pub(crate) fn final_source_volume(&self, source: usize) -> f32 {
         if source == MASTER {
             self.source_volumes[MASTER]
         } else {
@@ -1299,13 +1309,28 @@ impl SoundEngine {
         }
     }
     /// `calculateVolume(volume, source)`.
-    pub fn calculate_volume(&self, volume: f32, source: usize) -> f32 {
+    pub(crate) fn calculate_volume(&self, volume: f32, source: usize) -> f32 {
         volume.clamp(0.0, 1.0)
             * self.final_source_volume(source).clamp(0.0, 1.0)
             * self.gain_by_source[source]
+            * self.source_scale(source)
+    }
+    /// A mod's scale for `source`, times the master's for any other source.
+    pub fn source_scale(&self, source: usize) -> f32 {
+        if source == MASTER {
+            self.scale_by_source[MASTER]
+        } else {
+            self.scale_by_source[source] * self.scale_by_source[MASTER]
+        }
+    }
+    /// A mod scales `source`'s volume by `scale` (0 to 1), playing sounds included, as
+    /// `updateCategoryVolume` updates the live channels of a source.
+    pub fn set_source_scale(&mut self, source: usize, scale: f32, backend: &mut impl Backend) {
+        self.scale_by_source[source] = scale.clamp(0.0, 1.0);
+        self.refresh_category_volume(source, backend);
     }
     /// `calculatePitch`.
-    pub fn calculate_pitch(pitch: f32) -> f32 {
+    pub(crate) fn calculate_pitch(pitch: f32) -> f32 {
         pitch.clamp(0.5, 2.0)
     }
     fn channel_of(&self, id: InstanceId) -> Option<u64> {
@@ -1402,7 +1427,7 @@ impl SoundEngine {
     }
     /// A mod's `SoundRef::stop`: `stop`, and for good. A waiting instance leaves the queue and
     /// never starts, and a looping one never repeats; it is gone once its channel ends.
-    pub fn stop_for_good(&mut self, id: InstanceId, backend: &mut impl Backend) {
+    pub(crate) fn stop_for_good(&mut self, id: InstanceId, backend: &mut impl Backend) {
         if let Some(instance) = self.instances.get_mut(&id) {
             instance.stop();
         }

@@ -561,7 +561,7 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
                         let sig = entry.sig.to_token_stream();
                         let args = signature_args(&entry.sig, name)?;
                         code.push_str(&format!(
-                            "{sig} {{ mod_api::__private::{}({args}) }}\n",
+                            "#[inline]\n{sig} {{ mod_api::__private::{}({args}) }}\n",
                             read.to_token_stream()
                         ));
                         continue;
@@ -591,6 +591,16 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
                         format!("self, {args}")
                     };
                     let sig = entry.sig.to_token_stream();
+                    let game_method = entry
+                        .attrs
+                        .iter()
+                        .find(|attr| attr.path().is_ident("game_method"))
+                        .map(|attr| {
+                            attr.parse_args::<syn::Ident>()
+                                .map(|method| method.to_string())
+                        })
+                        .transpose()
+                        .map_err(|error| format!("{name}: {error}"))?;
                     let is_service = entry.attrs.iter().any(|a| a.path().is_ident("service"));
                     let call = if is_service {
                         "self".into()
@@ -598,7 +608,12 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
                         let table = table.unwrap_or_default();
                         format!("{table}::of(self).{name}({view_args})")
                     } else {
-                        format!("{target}::{name}({args})")
+                        let method = if target == "Game" {
+                            game_method.as_deref().unwrap_or(name)
+                        } else {
+                            name
+                        };
+                        format!("{target}::{method}({args})")
                     };
                     let keeps_api_output = entry
                         .attrs
@@ -678,7 +693,7 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
                             "mod_api::__private::game::CallbackOwner::call_host(move || {{ {call} }})"
                         ),
                     };
-                    code.push_str(&format!("{sig} {{ {setup} {call} }}\n"));
+                    code.push_str(&format!("#[inline]\n{sig} {{ {setup} {call} }}\n"));
                 }
                 code.push_str("}\n");
             }
@@ -1314,12 +1329,12 @@ fn goal_view(
         };
         impls.add(
             area.trait_name(*tier),
-            format!("{} {{ {body} }}\n", sig.to_token_stream()),
+            format!("#[inline]\n{} {{ {body} }}\n", sig.to_token_stream()),
         );
     }
     code.push_str(&impls.take());
     code.push_str(
-        "/// The same view as a host: the entity lookups answer the tick's own rules\n/// (the ticking mob, the player it sees, the snapshot, else None), the mutable\n/// methods stay out of reach of the shared host the view holds, and everything\n/// else - the level, its blocks, tags, recipes and settings - forwards to the\n/// game host the view carries.\nimpl Host for super::GoalCx<'_, '_> {\n#[doc(hidden)]\nfn backend(&self) -> Option<BackendRef<'_>> { Some(mod_api::__private::backend_ref(self)) }\n}\n",
+        "/// The same view as a host: the entity lookups answer the tick's own rules\n/// (the ticking mob, the player it sees, the snapshot, else None), the mutable\n/// methods stay out of reach of the shared host the view holds, and everything\n/// else - the level, its blocks, tags, recipes and settings - forwards to the\n/// game host the view carries.\nimpl Host for super::GoalCx<'_, '_> {\n#[doc(hidden)]\n#[inline]\nfn backend(&self) -> Option<BackendRef<'_>> { Some(mod_api::__private::backend_ref(self)) }\n}\n",
     );
     // An area whose host methods all write has nothing to forward, but the view still implements it.
     for area in areas
@@ -1346,7 +1361,7 @@ fn goal_view(
         };
         impls.add(
             area.trait_name(Tier::Host),
-            format!("{} {{ {body} }}\n", sig.to_token_stream()),
+            format!("#[inline]\n{} {{ {body} }}\n", sig.to_token_stream()),
         );
     }
     code.push_str(&impls.take());
@@ -1381,6 +1396,13 @@ mod state_write_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_backend_can_forward_to_a_distinct_game_method() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let generated = game_forwarders(&root).unwrap();
+        assert!(generated.contains("Game::native_level_can_survive(self, level, pos, state)"));
+    }
 
     fn entry(source: &str) -> Entry {
         let method: syn::TraitItemFn = syn::parse_str(source).unwrap();

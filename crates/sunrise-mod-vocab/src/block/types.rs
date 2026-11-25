@@ -11,7 +11,7 @@ impl BlockKey {
     /// Whether this block is in `tag` (`BlockState.is(TagKey)`), over `tags`'s current
     /// authoritative snapshot. An unknown tag is `Some(false)`; unavailable tags or mappings
     /// return `None`.
-    pub fn is_in_tag(self, tags: &dyn Tags, tag: TagKey) -> Option<bool> {
+    pub fn is_in_tag(self, tags: &dyn Tags, tag: TagKey<BlockKey>) -> Option<bool> {
         tags.block_in_tag(self, tag)
     }
 }
@@ -384,8 +384,9 @@ impl StepOnEvent<'_> {
 
     /// Queue a write to the stepping entity, before inside-block effects.
     /// Returns false on the client. As with `entity_inside`, the body applies
-    /// the writes it supports, in request order. Boats and minecarts (#4177),
-    /// armor stands and projectiles ignore contact hurt.
+    /// the writes it supports, in request order. Boats and minecarts take
+    /// hurt from this contact only (#4177); armor stands and projectiles
+    /// ignore contact hurt.
     pub fn write_entity(&mut self, write: EntityWrite) -> bool {
         if !self.writes.server {
             return false;

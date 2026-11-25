@@ -2790,13 +2790,12 @@ mod registered_slot_source_read_tests {
     #[test]
     #[ignore = "daily"]
     fn registered_first_three_reads_match_inline_and_keep_the_chest() {
+        let directory = tempfile::tempdir().unwrap();
         let mut resources = None;
         let mut game = crate::game::game_tests::tests::server_game(&mut resources);
         game.build_registries();
         game.set_allow_commands(true);
-        let root = std::env::current_dir()
-            .unwrap()
-            .join("registered-slot-read-world");
+        let root = directory.path().join("registered-slot-read-world");
         assert!(!root.exists());
         let pack = root.join("datapacks/parity");
         std::fs::create_dir_all(pack.join("data/parity/slot_source")).unwrap();
@@ -2889,12 +2888,11 @@ mod registered_slot_source_preservation_tests {
 
     fn scene<'a>(
         resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-        name: &str,
+        root: std::path::PathBuf,
     ) -> (Game<'a>, std::path::PathBuf) {
         let mut game = crate::game::game_tests::tests::server_game(resources);
         game.build_registries();
         game.set_allow_commands(true);
-        let root = std::env::current_dir().unwrap().join(name);
         assert!(!root.exists());
         let mut high = std::path::PathBuf::new();
         for (pack, limit) in [("a-low", 1), ("parity", 3)] {
@@ -2925,8 +2923,10 @@ mod registered_slot_source_preservation_tests {
     fn loaded_snapshot_changes_only_on_existing_reload_with_pack_precedence() {
         let mut resources = None;
         let directory = tempfile::tempdir().unwrap();
-        let world = directory.path().join("slot-source-snapshot-world");
-        let (mut game, file) = scene(&mut resources, world.to_str().unwrap());
+        let (mut game, file) = scene(
+            &mut resources,
+            directory.path().join("slot-source-snapshot-world"),
+        );
         let before = game.block_entity_nbt([0, 100, 0]).unwrap();
         let clock = game.world.game_time;
         count(&mut game, 3); // Higher-priority pack overrides the same id.
@@ -2936,9 +2936,11 @@ mod registered_slot_source_preservation_tests {
             .unwrap();
         count(&mut game, 2);
         std::fs::write(file, "{").unwrap();
-        game.reload_datapacks(true, &game.level.enabled_features.clone())
-            .unwrap();
-        count(&mut game, 1); // Existing policy: invalid higher JSON is skipped.
+        assert!(
+            game.reload_datapacks(true, &game.level.enabled_features.clone())
+                .is_err()
+        );
+        count(&mut game, 2); // A refused reload keeps the loaded data (ReloadableServerRegistries).
         assert!(!game.run_command("execute if slots block 0 100 0 first_three"));
         assert_eq!(game.block_entity_nbt([0, 100, 0]).as_ref(), Some(&before));
         assert_eq!(game.world.game_time, clock);
@@ -2948,7 +2950,11 @@ mod registered_slot_source_preservation_tests {
     #[ignore = "daily"]
     fn admitted_absent_executor_sources_fail_without_player_fallback() {
         let mut resources = None;
-        let (mut game, _) = scene(&mut resources, "slot-source-unsupported-world");
+        let directory = tempfile::tempdir().unwrap();
+        let (mut game, _) = scene(
+            &mut resources,
+            directory.path().join("slot-source-unsupported-world"),
+        );
         let path = game
             .world_root
             .join("datapacks/parity/data/parity/slot_source/this.json");
@@ -3006,7 +3012,11 @@ mod registered_slot_source_preservation_tests {
     #[ignore = "daily"]
     fn quoted_holders_resolve_and_a_non_int_limit_fails_to_parse() {
         let mut resources = None;
-        let (mut game, _) = scene(&mut resources, "slot-source-quoted-world");
+        let directory = tempfile::tempdir().unwrap();
+        let (mut game, _) = scene(
+            &mut resources,
+            directory.path().join("slot-source-quoted-world"),
+        );
         let before = game.block_entity_nbt([0, 100, 0]).unwrap();
         let clock = game.world.game_time;
         count(&mut game, 3);
@@ -3046,7 +3056,11 @@ mod registered_slot_source_preservation_tests {
     #[ignore = "daily"]
     fn a_byte_or_fractional_limit_selects_its_int_value() {
         let mut resources = None;
-        let (mut game, _) = scene(&mut resources, "slot-source-numeric-limit-world");
+        let directory = tempfile::tempdir().unwrap();
+        let (mut game, _) = scene(
+            &mut resources,
+            directory.path().join("slot-source-numeric-limit-world"),
+        );
         let source = |limit: &str| {
             format!(
                 "{{type:\"limit_slots\",limit:{limit},slot_source:{{type:\"slot_range\",slots:\"container.*\"}}}}"
@@ -3097,7 +3111,11 @@ mod registered_slot_source_preservation_tests {
     #[ignore = "daily"]
     fn a_command_the_player_types_binds_this_to_them() {
         let mut resources = None;
-        let (mut game, _) = scene(&mut resources, "slot-source-player-this-world");
+        let directory = tempfile::tempdir().unwrap();
+        let (mut game, _) = scene(
+            &mut resources,
+            directory.path().join("slot-source-player-this-world"),
+        );
         game.player = Some(
             sunrise_client::motion::PlayerMotion::new(
                 game.motion,

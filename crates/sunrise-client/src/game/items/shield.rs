@@ -379,6 +379,7 @@ mod durability_tests {
                     causing: 0,
                     direct: 0,
                     position: None,
+                    direct_type: None,
                 },
                 &sunrise_client::health::NO_ATTACK,
             );
@@ -416,6 +417,7 @@ mod durability_tests {
                         causing: 0,
                         direct: 0,
                         position: None,
+                        direct_type: None,
                     },
                     &sunrise_client::health::NO_ATTACK,
                 );
@@ -451,6 +453,7 @@ mod blocked_hit_use_tests {
             causing: 1,
             direct: 1,
             position: None,
+            direct_type: None,
         };
         let outcome = BlockOutcome {
             blocking_item_used: true,

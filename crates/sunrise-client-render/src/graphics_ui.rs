@@ -1267,6 +1267,7 @@ impl Item {
                         | H::ShadowCache
                         | H::GraphicsApi
                         | H::TranslucentBatching
+                        | H::GpuCulling
                         | H::HdrSmoothGradients
                 )
                 | Item::Vanilla(
@@ -2276,7 +2277,7 @@ mod tests {
         assert_eq!(s.sunrise.preset, Preset::Ultra);
         // Ultra keeps the optimizations that leave the picture as it is, and no others.
         assert_eq!(s.sunrise.entity_culling, EntityCullingMode::Asynchronous);
-        assert_eq!(s.sunrise.gpu_culling, GpuCullingMode::Auto);
+        assert_eq!(s.sunrise.gpu_culling, GpuCullingMode::Off);
         assert_eq!((s.sunrise.lod_distance, s.sunrise.fxaa), (128, true));
         assert_eq!(
             (s.sunrise.resolution_scale, s.sunrise.opaque_ice),
@@ -2605,7 +2606,7 @@ mod tests {
             assert!(key(&mut ui, &mut s, K::Enter).is_empty());
             assert_eq!(s.sunrise.gpu_culling, GpuCullingMode::On, "{offer:?}");
         }
-        // Where it is, it steps through its three values and leaves the preset.
+        // Where it is, it steps through its three values; the preset stays.
         crate::graphics::offer_gpu_culling(GpuCullingOffer::Offered);
         assert_eq!(item.blocked(&s, &NONE), None);
         for label in ["Auto", "Off", "On"] {
@@ -2621,7 +2622,8 @@ mod tests {
         }
         item.cycle(&mut s, true, FB, &NONE);
         assert_eq!(s.sunrise.gpu_culling, GpuCullingMode::Off);
-        assert_eq!(s.sunrise.preset, Preset::Custom);
+        // No preset sets it, so changing it keeps the preset.
+        assert_eq!(s.sunrise.preset, Preset::Balanced);
         // Auto says what it does.
         s.sunrise.gpu_culling = GpuCullingMode::Auto;
         assert!(description(item, &s, &NONE, "").starts_with("Auto: "));

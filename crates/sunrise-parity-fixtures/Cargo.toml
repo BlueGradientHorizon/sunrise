@@ -38,11 +38,11 @@ sunrise-hooks = { path = "../sunrise-hooks", features = ["test-support"], option
 sunrise-mod-runtime = { path = "../sunrise-mod-runtime", features = ["test-work-count"], optional = true }
 mod_api = { package = "sunrise-mod-vocab", path = "../sunrise-mod-vocab", features = ["testing"], optional = true }
 sunrise-mod-api-macros = { path = "../sunrise-mod-api-macros", optional = true }
-sunrise-client-lib = { path = "../sunrise-client-lib", default-features = false, features = ["test-menu-validity", "test-payload-probe", "test-publication-scope", "test-residency-observer", "test-dry-side", "test-tooltip-factories", "test-pack-feedback"], optional = true }
+sunrise-client-lib = { path = "../sunrise-client-lib", default-features = false, features = ["test-menu-validity", "test-payload-probe", "test-publication-scope", "test-residency-observer", "test-dry-side", "test-tooltip-factories", "test-pack-feedback", "test-still-clock"], optional = true }
 sunrise-gameplay = { path = "../sunrise-gameplay", optional = true }
 sunrise-client-gameplay = { path = "../sunrise-client-gameplay", optional = true }
 sunrise-assets = { path = "../sunrise-assets", optional = true }
-sunrise-client-core = { path = "../sunrise-client-core", features = ["test-language-publication"], optional = true }
+sunrise-client-core = { path = "../sunrise-client-core", features = ["test-language-publication", "test-effect-registry"], optional = true }
 sunrise-client-input = { path = "../sunrise-client-input", optional = true }
 sunrise-client-render = { path = "../sunrise-client-render", features = ["test-support"], optional = true }
 sunrise-command = { path = "../sunrise-command", optional = true }
@@ -59,7 +59,7 @@ sunrise-shaders = { path = "../sunrise-shaders", optional = true }
 sunrise-shader-api = { path = "../sunrise-shader-api", optional = true }
 sunrise-friends = { path = "../sunrise-friends", optional = true }
 sunrise-narrator = { path = "../sunrise-narrator", optional = true }
-sunrise-mod-package = { path = "../sunrise-mod-package", default-features = false, features = ["index", "runtime-process"], optional = true }
+sunrise-mod-package = { path = "../sunrise-mod-package", default-features = false, features = ["index-read", "runtime-process", "folder"], optional = true }
 wgpu = { version = "30.0.1", default-features = false, features = ["std", "parking_lot", "vulkan", "metal", "wgsl", "naga-ir"], optional = true }
 winit = { version = "0.30.13", optional = true }
 pollster = { version = "0.4", optional = true }
@@ -86,7 +86,7 @@ sunrise-theme = { path = "../sunrise-theme", optional = true }
 sunrise-system = { path = "../sunrise-system", optional = true }
 sunrise-telemetry = { path = "../sunrise-telemetry", default-features = false, optional = true }
 sunrise-bench = { path = "../sunrise-bench", optional = true }
-zip = { version = "9.1.3", default-features = false, features = ["deflate"], optional = true }
+zip = { version = "9.1.3", default-features = false, features = ["deflate-flate2-zlib-rs"], optional = true }
 gilrs = { version = "0.11", optional = true }
 sunrise-dualsense = { path = "../sunrise-dualsense", optional = true }
 ureq = { version = "2", default-features = false, features = ["tls"], optional = true }

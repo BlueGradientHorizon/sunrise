@@ -1317,8 +1317,14 @@ impl Game<'_> {
                         let from = b.position;
                         let b = game.tick_boat(b, false);
                         let to = b.position;
-                        game.store_boat_back(i, b).then_some((from, to))
+                        let stored = game.store_boat_back(i, b);
+                        stored.then_some((from, to))
                     });
+                    // A contact hurt lands on the stored row, not the clone:
+                    // applying it before the store would lose its wear.
+                    if self.apply_vehicle_contact_hurts(super::commands::Target::Boat(id)) {
+                        break 'boat;
+                    }
                     if let Some((from, to)) = section_step {
                         self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
                     }
@@ -1377,12 +1383,25 @@ impl Game<'_> {
                 boat.velocity = b.velocity;
                 boat.fire_ticks = b.fire_ticks;
             });
+            if self.apply_vehicle_contact_hurts(super::commands::Target::Boat(id)) {
+                return;
+            }
+            // A hook may have removed an earlier boat and shifted this one.
+            let Some(i) = self.boats.iter().position(|b| b.id == id) else {
+                return;
+            };
             self.refresh_boat_status(i);
         }
         if self.boats[i].out_of_control >= 60.0 {
             self.eject_boat_riders(i);
         }
-        self.boat_bubble_tick(i);
+        // A breaking second `step_on` removes the boat: no later pass may index it.
+        if !self.boat_bubble_tick(i) {
+            return;
+        }
+        let Some(i) = self.boats.iter().position(|b| b.id == id) else {
+            return;
+        };
         self.boat_contacts(i);
     }
     /// `Entity.canSimulateMovement`: for a boat (`AUTHORITATIVE_SIDE`) a
@@ -1557,7 +1576,7 @@ impl Game<'_> {
     /// `applyEffectsFromBlocks` that reach bubble columns (the lava is
     /// `boat_lava_tick`'s), then `tickBubbleColumn`; and the wobble when this
     /// window is its own client.
-    fn boat_bubble_tick(&mut self, i: usize) {
+    fn boat_bubble_tick(&mut self, i: usize) -> bool {
         let id = self.boats[i].id;
         // An ejection nobody took (its player left the boat first) is void.
         if !self.guest_rides(id) {
@@ -1566,8 +1585,8 @@ impl Game<'_> {
         let touches = self.boat_bubble_columns(i);
         // AbstractBoat.tick calls applyEffectsFromBlocks twice.
         for pass in 0..2 {
-            if pass == 1 {
-                self.boat_second_step(i);
+            if pass == 1 && self.boat_second_step(i) {
+                return false;
             }
             for &column in &touches {
                 if column.surface {
@@ -1581,6 +1600,7 @@ impl Game<'_> {
         if self.options.execution_role.is_client() {
             self.boats.update(i, Boat::tick_bubble_wobble);
         }
+        true
     }
     fn boat_step_on(&mut self, boat: &mut Boat) {
         let mut velocity = boat.velocity;
@@ -1590,10 +1610,12 @@ impl Game<'_> {
             &boat.ground,
             &mut velocity,
         );
+        let (writes, hurts) = super::entity::split_contact_hurts(writes);
         boat.apply_step_writes(velocity, writes);
+        self.queue_vehicle_contact_hurts(super::commands::Target::Boat(boat.id), hurts);
     }
     /// The second `applyEffectsFromBlocks` of `AbstractBoat.tick` uses the movement left by the first.
-    pub(super) fn boat_second_step(&mut self, i: usize) {
+    pub(super) fn boat_second_step(&mut self, i: usize) -> bool {
         let b = &self.boats[i];
         if b.ground.on_ground {
             let mut velocity = b.velocity;
@@ -1604,9 +1626,15 @@ impl Game<'_> {
                 b.ground,
             );
             let writes = self.body_step_on((id, &kind), footprint, &ground, &mut velocity);
+            let (writes, hurts) = super::entity::split_contact_hurts(writes);
             self.boats
                 .update(i, |b| b.apply_step_writes(velocity, writes));
+            self.queue_vehicle_contact_hurts(super::commands::Target::Boat(id), hurts);
+            // The stored row is current here, so the hurt applies at once; a
+            // breaking hit stops the rest of the tick.
+            return self.apply_vehicle_contact_hurts(super::commands::Target::Boat(id));
         }
+        false
     }
     /// `PowderSnowBlock.entityInside` for a boat: the powder snow cells its box, and the box it
     /// had before its move, reach into (`Entity.checkInsideBlocks` along the move).
@@ -1784,6 +1812,7 @@ impl Game<'_> {
             causing: 0,
             direct: 0,
             position: None,
+            direct_type: None,
         };
         !self.native_nonliving_invulnerable(id, &kind, source, invulnerable)
             && self.hurt_boat(i, damage, false)
@@ -2140,6 +2169,7 @@ impl Game<'_> {
             causing: attacker,
             direct: attacker,
             position: None,
+            direct_type: None,
         };
         let vanilla =
             self.saved_refuses_damage(id as u32, "minecraft:player_attack", self.creative);

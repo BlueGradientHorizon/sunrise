@@ -24,6 +24,8 @@ use inventory::{
 };
 mod level_format;
 mod raw_ingress;
+#[cfg(test)]
+pub(in crate::game) use raw_ingress::PacketError;
 mod recipe_properties;
 mod use_item;
 
@@ -84,7 +86,6 @@ use sunrise_protocol::{
         play::{self, Clientbound as C, Serverbound as S},
     },
     registry::{Builtin, DimensionType, Dynamic, SyncedNames, ceil_log2},
-    rsa::RsaPublicKey,
     secure_chat::{self, Signature},
     text::{Language, plain},
 };
@@ -325,41 +326,37 @@ impl ServicesKeys {
 }
 
 /// One `PlayerInfo` property, shared by the list entry and the entities that kept it.
-struct PlayerTextures {
-    property: AccountProperty,
-    unpacked: std::sync::OnceLock<sunrise_client::skins::Textures>,
-}
+struct PlayerTextures(sunrise_client::skins::PackedTextures);
 
 impl PlayerTextures {
-    fn new(property: AccountProperty) -> Self {
-        Self {
-            property,
-            unpacked: std::sync::OnceLock::new(),
-        }
+    fn new(profile: u128, property: AccountProperty) -> Self {
+        Self(sunrise_client::skins::PackedTextures {
+            profile,
+            value: property.value,
+            signature: property.signature,
+        })
     }
 
     /// `SkinManager.createLookup(profile, requireSecure)`: a secure lookup shows
     /// only textures whose signature the keys verified, so it waits for keys that
     /// are still pending; the local player's shows its textures unverified.
+    /// `SkinManager.getOrLoad` unpacks and verifies on a thread of its own, never
+    /// the game thread: `None` until that answers, and the player shows the
+    /// default skin.
     fn unpack(
         &self,
+        downloads: &mut sunrise_client::skins::Downloader,
         services_keys: &ServicesKeys,
-        valid_uris: &[impl AsRef<str>],
         require_secure: bool,
-    ) -> Option<&sunrise_client::skins::Textures> {
-        use sunrise_client::skins;
-        let signature = self.property.signature.as_deref();
-        let property_keys: &[RsaPublicKey] = match services_keys {
+    ) -> Option<Arc<sunrise_client::skins::Textures>> {
+        match services_keys {
             // Never cache an invalid result for a signature the pending keys could verify.
-            ServicesKeys::Pending if signature.is_some() && require_secure => return None,
-            ServicesKeys::Pending => &[],
-            ServicesKeys::Ready(keys) => &keys.profile_property_keys,
-        };
-        Some(self.unpacked.get_or_init(|| {
-            let value = &self.property.value;
-            let signature = skins::property_signature(value, signature, property_keys);
-            skins::unpack(value, signature, valid_uris)
-        }))
+            ServicesKeys::Pending if self.0.signature.is_some() && require_secure => None,
+            // `PlayerInfo.createSkinLookup`: requireSecure is false for the local player, whose
+            // signed property shows unverified. An unsigned one reads the same whatever the keys.
+            ServicesKeys::Pending => downloads.unpacked(&self.0, &[]),
+            ServicesKeys::Ready(keys) => downloads.unpacked(&self.0, &keys.profile_property_keys),
+        }
     }
 }
 
@@ -426,7 +423,7 @@ pub(super) struct Remote {
     /// The colliders the server sent, by entity id (`sunrise:collider_sync`).
     pub colliders: HashMap<u32, sunrise_client::colliders::ColliderState>,
     /// The colliders at the last client tick, before any packets handled between ticks.
-    pub(super) collider_shove_start:
+    pub(super) collider_pass_start:
         Option<(Dim, sunrise_client_render::moving_colliders::Prepared)>,
     /// How old the copy of the collider carrying the player is (`sunrise:carry_age`).
     pub carry_age: sunrise_client::colliders::CarryAge,
@@ -435,6 +432,8 @@ pub(super) struct Remote {
     pub(super) builtin: Arc<Builtin>,
     lang: Arc<Language>,
     pub(in crate::game) registries: Arc<Dynamic>,
+    /// Data-driven mob variant tables decoded from `registries` in server sync order.
+    pub(in crate::game) variants: Arc<sunrise_client::mobs::variants::VariantTables>,
     /// The block, item and fluid tags of `registries` by name, as native mods read them
     /// (`install_remote_tags`).
     pub(super) tags: Option<sunrise_client::items::Items>,
@@ -481,7 +480,7 @@ pub(super) struct Remote {
     synced_type: Option<(String, serde_json::Value)>,
     /// Both environments by synchronized type name, with what they were built from, so that a
     /// level of an unchanged type is entered again without reading the biome files.
-    level_environments: HashMap<String, level_format::LevelEnvironments>,
+    pub(in crate::game) level_environments: HashMap<String, level_format::LevelEnvironments>,
     /// Connection-owned facts, cached by level and the full named type identity.
     facts_cache: HashMap<
         String,
@@ -541,6 +540,9 @@ pub(super) struct Remote {
     /// (`native_client_level_load`), to be told dropped once.
     pub(super) heard_level: Option<String>,
     pub(in crate::game) datapacks: sunrise_client::datapack_net::Receiver,
+    /// Decoded vanilla codec values for [`Self::datapacks`], swapped on join and reload.
+    pub(in crate::game) datapack_vanilla_values:
+        Option<Arc<crate::game::native_datapack_values::DatapackVanillaValues>>,
     /// The constructor's level is visible by name during Load, before Minecraft.setLevel.
     pub(super) constructing_level: Option<ConstructingClientLevel>,
     /// `ClientPacketListener.levelLoadTracker`: the loading screen after a login
@@ -1223,9 +1225,22 @@ impl Game<'_> {
                 self.receive_cauldron_use(&p.data)?;
             }
             // The server's next generation of mod registries: all of it or the connection.
+            // Follows vanilla `ClientCommonPacketListenerImpl.onPacketError`: an invalid
+            // snapshot or vanilla-value decode disconnects cleanly without replacing live state.
             C::CustomPayload(p) if p.channel == sunrise_client::datapack_net::CHANNEL => {
-                if let Some(remote) = &mut self.remote {
-                    remote.datapacks.accept_chunk(&p.data)?;
+                let decoded = if let Some(remote) = &mut self.remote {
+                    remote.datapacks.decode_chunk(&p.data).map_err(|error| {
+                        log::warn!("Sunrise: invalid datapack snapshot payload: {error}");
+                        raw_ingress::PacketError("Invalid datapack registry snapshot.")
+                    })?
+                } else {
+                    None
+                };
+                if let Some(set) = decoded {
+                    self.install_client_datapack_set(&set).map_err(|error| {
+                        log::warn!("Sunrise: invalid datapack vanilla value: {error}");
+                        raw_ingress::PacketError("Invalid datapack vanilla value.")
+                    })?;
                 }
             }
             C::CustomPayload(p)
@@ -2533,6 +2548,9 @@ pub(in crate::game) mod tests {
     }
     mod client_block_changed_tests {
         include!("client_block_changed_tests.rs");
+    }
+    mod client_break_progress_tests {
+        include!("client_break_progress_tests.rs");
     }
     pub(in crate::game) mod camera_draw_tests {
         include!("camera_draw_tests.rs");

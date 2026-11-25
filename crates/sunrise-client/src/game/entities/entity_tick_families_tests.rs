@@ -19,10 +19,13 @@ const TRIDENT: u32 = 72;
 type Heard = Arc<Mutex<Vec<(&'static str, u32, String)>>>;
 /// The entities the listener cancels in Pre.
 type Cancel = Arc<Mutex<Vec<u32>>>;
+/// The entities the listener discards when told their Post.
+type Discard = Arc<Mutex<Vec<u32>>>;
 
 struct Listen {
     heard: Heard,
     cancel: Cancel,
+    discard: Discard,
 }
 
 #[mod_api::__subscriptions]
@@ -42,20 +45,36 @@ impl Hooks for Listen {
         }
     }
 
-    fn entity_tick_post(&self, _: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
-        let mut heard = self.heard.lock().unwrap();
-        heard.push(("post", event.entity, event.kind.to_owned()));
+    fn entity_tick_post(
+        &self,
+        mut host: HostSide<'_>,
+        event: &mut mod_api::EntityTickPostEvent<'_>,
+    ) {
+        self.heard
+            .lock()
+            .unwrap()
+            .push(("post", event.entity, event.kind.to_owned()));
+        let HostSide::Server(server) = &mut host else {
+            return;
+        };
+        if self.discard.lock().unwrap().contains(&event.entity) {
+            let entity = mod_api::prelude::EntitiesHost::entity(&**server, event.entity)
+                .expect("the told entity is still there");
+            assert!(entity.discard(*server));
+        }
     }
 }
 
 /// A server game with the listener, one of each family in an entity-ticking chunk (the frames,
 /// the painting, the stand and the trident), and the listener's levers.
-fn with_families(test: impl FnOnce(&mut Game<'_>, &Heard, &Cancel)) {
+fn with_families(test: impl FnOnce(&mut Game<'_>, &Heard, &Cancel, &Discard)) {
     let heard = Heard::default();
     let cancel = Cancel::default();
+    let discard = Discard::default();
     let listen = Listen {
         heard: heard.clone(),
         cancel: cancel.clone(),
+        discard: discard.clone(),
     };
     let entry = mod_api::ModEntry::new("tick-families", Box::new(listen));
     mod_platform::testing::with_mods(Arc::from([entry]), || {
@@ -75,7 +94,7 @@ fn with_families(test: impl FnOnce(&mut Game<'_>, &Heard, &Cancel)) {
             game.armor_stands.push(ArmorStand::new(STAND, AT, 0.0));
             game.tridents
                 .push(ThrownTrident::remote(TRIDENT, AT, 0.0, 0.0));
-            test(game, &heard, &cancel);
+            test(game, &heard, &cancel, &discard);
         });
     });
 }
@@ -91,19 +110,17 @@ fn told(id: u32, kind: &str) -> [(&'static str, u32, String); 2] {
 #[test]
 #[ignore = "daily"]
 fn item_and_glow_item_frames_are_told_their_tick() {
-    with_families(|game, listened, _| {
+    with_families(|game, listened, _, _| {
         assert_eq!(game.item_frames.len(), 2);
-        let ids = game
-            .item_frames
-            .iter()
-            .map(|f| (f.id, f.kind()))
-            .collect::<Vec<_>>();
+        // Summoned in this order: the item frame, then the glow item frame.
+        let (frame, glow) = (game.item_frames[0].id, game.item_frames[1].id);
         heard(listened);
         game.tick_item_frames();
-        let expected = ids
-            .iter()
-            .flat_map(|&(id, kind)| told(id, kind))
-            .collect::<Vec<_>>();
+        let expected = [
+            told(frame, "minecraft:item_frame"),
+            told(glow, "minecraft:glow_item_frame"),
+        ]
+        .concat();
         assert_eq!(heard(listened), expected);
         assert!(game.item_frames.iter().all(|f| f.ticks == 1));
     });
@@ -112,7 +129,7 @@ fn item_and_glow_item_frames_are_told_their_tick() {
 #[test]
 #[ignore = "daily"]
 fn a_painting_is_told_its_tick() {
-    with_families(|game, listened, _| {
+    with_families(|game, listened, _, _| {
         let id = game.paintings[0].id;
         heard(listened);
         game.tick_paintings();
@@ -124,7 +141,7 @@ fn a_painting_is_told_its_tick() {
 #[test]
 #[ignore = "daily"]
 fn an_armor_stand_is_told_its_tick() {
-    with_families(|game, listened, _| {
+    with_families(|game, listened, _, _| {
         heard(listened);
         game.tick_armor_stands().unwrap();
         assert_eq!(heard(listened), told(STAND, "minecraft:armor_stand"));
@@ -135,7 +152,7 @@ fn an_armor_stand_is_told_its_tick() {
 #[test]
 #[ignore = "daily"]
 fn a_thrown_trident_is_told_its_tick() {
-    with_families(|game, listened, _| {
+    with_families(|game, listened, _, _| {
         let age = game.tridents[0].age;
         heard(listened);
         game.tick_tridents();
@@ -147,7 +164,7 @@ fn a_thrown_trident_is_told_its_tick() {
 #[test]
 #[ignore = "daily"]
 fn a_canceled_pre_skips_the_tick_and_the_post_of_each_family() {
-    with_families(|game, listened, cancel| {
+    with_families(|game, listened, cancel, _| {
         let frames = game.item_frames.iter().map(|f| f.id).collect::<Vec<_>>();
         let painting = game.paintings[0].id;
         let age = game.tridents[0].age;
@@ -167,5 +184,49 @@ fn a_canceled_pre_skips_the_tick_and_the_post_of_each_family() {
         assert_eq!(game.paintings[0].ticks, 0);
         assert_eq!(game.armor_stands[0].tick_count, 0);
         assert_eq!(game.tridents[0].age, age);
+    });
+}
+
+/// How often `id` was told `phase` in `phases`.
+fn times(phases: &[(&'static str, u32, String)], phase: &str, id: u32) -> usize {
+    phases
+        .iter()
+        .filter(|(told, entity, _)| *told == phase && *entity == id)
+        .count()
+}
+
+/// The first of three entities is discarded by the listener when told its Post: the tick does not
+/// panic, and the other two are each told their Pre and their Post once.
+#[test]
+#[ignore = "daily"]
+fn discarding_the_first_in_its_post_spares_the_other_frames_paintings_and_tridents() {
+    with_families(|game, listened, _, discard| {
+        assert!(game.as_console(|g| {
+            g.run_command("summon minecraft:item_frame 6 102 8 {Facing:3b}")
+                && g.run_command("summon minecraft:painting 6 100 8 {facing:0b}")
+                && g.run_command("summon minecraft:painting 2 100 8 {facing:0b}")
+        }));
+        game.tridents
+            .push(ThrownTrident::remote(TRIDENT + 1, AT, 0.0, 0.0));
+        game.tridents
+            .push(ThrownTrident::remote(TRIDENT + 2, AT, 0.0, 0.0));
+        let frames = game.item_frames.iter().map(|f| f.id).collect::<Vec<_>>();
+        let paintings = game.paintings.iter().map(|p| p.id).collect::<Vec<_>>();
+        let tridents = game.tridents.iter().map(|t| t.id).collect::<Vec<_>>();
+        for family in [&frames, &paintings, &tridents] {
+            assert_eq!(family.len(), 3);
+            discard.lock().unwrap().push(family[0]);
+        }
+        heard(listened);
+        game.tick_item_frames();
+        game.tick_paintings();
+        game.tick_tridents();
+        let phases = heard(listened);
+        for family in [&frames, &paintings, &tridents] {
+            for &id in &family[1..] {
+                assert_eq!(times(&phases, "pre", id), 1);
+                assert_eq!(times(&phases, "post", id), 1);
+            }
+        }
     });
 }

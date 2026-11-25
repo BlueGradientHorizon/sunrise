@@ -35,8 +35,6 @@ impl Game<'_> {
         self.stitching_block_atlas = Some(atlas.clone());
         self.native_texture_atlas_stitched(mod_api::TextureAtlas::Blocks);
         self.gui = gui;
-        let (pool, mut names) = self.gui.atlas.dynamic_names();
-        self.dynamic_textures.rebind(pool, &mut names);
         sunrise_client::ui_theme::reset_atlas();
         self.native_texture_atlas_stitched(mod_api::TextureAtlas::Gui);
         prepared
@@ -59,7 +57,11 @@ impl Game<'_> {
         let InitialModelGeneration { pack, gui } = models;
         let item_extensions =
             Self::prepare_client_item_extensions(&gui, &mut self.client_item_extension_owners);
-        let geometry = super::native_block_entity_draw::StandaloneGeometry::new(&pack, &gui);
+        let geometry = super::native_block_entity_draw::StandaloneGeometry::new(
+            &pack,
+            &gui,
+            self.res.try_block_entity_render(),
+        );
         // The atlas listener applies before the model manager. Both use the same
         // prepared atlas/model bundle, but each publishes only its own store.
         let upload = self.publish_client_atlases(&pack.render, gui, renderer);

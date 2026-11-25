@@ -368,7 +368,13 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
             }
         };
         flags(game, ["test:alpha", "test:beta"]);
-        assert_eq!(game.stock_sort_order()[0].item.as_ref(), "minecraft:stick");
+        assert_eq!(
+            game.stock_sort_order().of(
+                "minecraft:stick",
+                ItemStack::new("minecraft:stick", 1).merge_kind()
+            ),
+            Some(0)
+        );
         assert!(seen.lock().unwrap().events.is_empty());
         {
             // A plain read before any build answers nothing and builds nothing.
@@ -384,7 +390,13 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
         let cached = ItemsHost::creative_tabs(game, CreativeTabPermissions::Normal).unwrap();
         assert!(Arc::ptr_eq(&normal, &cached));
         assert_eq!(seen.lock().unwrap().events.len(), built_events);
-        assert_eq!(game.stock_sort_order()[0].item.as_ref(), "minecraft:torch");
+        assert_eq!(
+            game.stock_sort_order().of(
+                "minecraft:torch",
+                ItemStack::new("minecraft:torch", 1).merge_kind()
+            ),
+            Some(0)
+        );
         let a = normal.tab("test:a").unwrap();
         assert_eq!(
             a.display_items,

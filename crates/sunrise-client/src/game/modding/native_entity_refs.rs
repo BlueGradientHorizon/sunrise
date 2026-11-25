@@ -352,6 +352,11 @@ impl Game<'_> {
             Target::Dragon(_)
         ))
     }
+    /// `Entity.getPickResult` of the entity, on the side that holds it.
+    pub(super) fn entity_pick_result(&self, entity: EntityRef) -> Option<ItemStack> {
+        self.native_entity_read_target(entity)?;
+        self.pick_result_of(i32::try_from(entity.id()).ok()?)
+    }
     /// `IEntityExtension.getParts` in `EnderDragon.getSubEntities` order.
     pub(super) fn entity_visit_parts(
         &self,
@@ -976,37 +981,87 @@ impl Game<'_> {
         let _ = self.process_level_events();
         Ok(true)
     }
-    /// Destroy a block in the level in place (`Level.destroyBlock`), optionally dropping
-    /// resources with `tool` (None is an empty hand). With `collect`, return the dropped
-    /// stacks without spawning their item entities; otherwise return an empty list after
-    /// spawning them. The one level drop path runs loot, block-drop hooks and experience
-    /// once, in vanilla's random order. `drop` false suppresses resources entirely.
-    /// None means nothing broke: air, a refused write, a stale handle, a client, an
-    /// unloaded/out-of-height position, or a parked level.
+    /// Destroy a block in the level in place (`Level.destroyBlock(pos, drop, breaker, maxUpdates)`),
+    /// optionally dropping resources with `tool` (None is an empty hand) and `breaker` as the
+    /// loot's `this` entity and the `minecraft:block_destroy` game event's source. With `collect`,
+    /// return the dropped stacks without spawning their item entities; otherwise return an empty
+    /// list after spawning them. The one level drop path runs loot, block-drop hooks and
+    /// experience once, in vanilla's random order. `drop` false suppresses resources entirely.
+    /// None means nothing broke: air, a refused write, a stale or foreign `breaker`, a stale
+    /// handle, a client, an unloaded/out-of-height position, or a parked level.
     pub(super) fn level_destroy_block(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],
         drop: bool,
         tool: Option<&ItemStack>,
+        breaker: Option<EntityRef>,
         collect: bool,
     ) -> Option<Vec<ItemStack>> {
         if !self.native_level_write_position(level, pos).ok()? {
             return None;
         }
+        if let Some(entity) = breaker
+            && (self.native_entity_target(entity).is_none() || !self.native_entity_here(entity))
+        {
+            return None;
+        }
         let [x, y, z] = pos;
         let at = sunrise_core::position::BlockPos::new(x, y, z);
         if let Some(mut write) = super::journal_level_write::JournalLevelWrite::new(self, level) {
-            return write.destroy_block(pos, drop, tool, collect);
+            return write.destroy_block(pos, drop, tool, breaker, collect);
         }
         let (changed, drops) = self.with_level(|b, level, ticks| {
             level.drop_tool = Some(((pos[0], pos[1], pos[2]), tool.cloned()));
+            level.drop_entity = breaker;
+            level.drop_breaker_at = breaker.map(|_| at);
             level.drop_into = collect.then(Vec::new);
             let changed = b.destroy_block(level, ticks, at, drop);
             (changed, level.drop_into.take().unwrap_or_default())
         });
+        let destroyed_state = if changed
+            && let Some(&sunrise_world::level::LevelEvent::GameEvent {
+                pos: event_pos,
+                event: "minecraft:block_destroy",
+                state: Some(state),
+            }) = self.level_events.last()
+            && event_pos == at
+        {
+            self.level_events.pop();
+            Some(state)
+        } else {
+            None
+        };
         let _ = self.process_level_events();
+        if let Some(state) = destroyed_state {
+            self.post_destroy_block_game_event(pos, state, breaker);
+        }
         changed.then_some(drops)
+    }
+
+    pub(in crate::game) fn post_destroy_block_game_event(
+        &mut self,
+        pos: [i32; 3],
+        state: BlockStateId,
+        breaker: Option<EntityRef>,
+    ) {
+        use crate::game::api_values::TryIntoApi as _;
+        let at = [
+            f64::from(pos[0]) + 0.5,
+            f64::from(pos[1]) + 0.5,
+            f64::from(pos[2]) + 0.5,
+        ];
+        if let Ok(api_state) = state.try_into_api() {
+            let context = mod_api::GameEventContext {
+                source_entity: breaker,
+                affected_state: Some(api_state),
+            };
+            if self.post_contextual_game_event("minecraft:block_destroy", at, context) {
+                return;
+            }
+        }
+        // If a deferred transaction's breaker left before commit, still emit block_destroy without a source.
+        self.post_block_game_event("minecraft:block_destroy", pos, None, Some(state));
     }
 
     /// Send `ServerLevel.destroyBlockProgress` in this level: stages 0..9 show a crack,
@@ -1192,13 +1247,14 @@ impl Game<'_> {
         )
     }
 
-    /// Clip an empty-context ray against collider or outline shapes, without fluids or the
-    /// world border (`BlockGetter.clip` / `BlockGetter.clipWithInteractionOverride`), in the
-    /// resident world `native_level_view_world` reads, with no traversal cell cap. Out-of-height
-    /// cells and missing columns read as air without loading chunks. Collider mode uses
-    /// `SceneCollisions`'s full registry/context shapes; outline mode returns None when dynamic
-    /// outline geometry has no implementation. Also None for unavailable levels, non-finite
-    /// endpoints or shape query errors.
+    /// Clip an empty-context ray against collider or outline shapes and fluids
+    /// (`BlockGetter.clip` / `BlockGetter.clipWithInteractionOverride`), without the world border,
+    /// in the resident world `native_level_view_world` reads, with no traversal cell cap.
+    /// Out-of-height cells and missing columns read as air without loading chunks. Collider mode
+    /// uses `SceneCollisions`'s full registry/context shapes; outline mode returns None when dynamic
+    /// outline geometry has no implementation. Fluid modes return None until the tag
+    /// tables mods read are installed (`native_tag_items`). Also None for unavailable levels,
+    /// non-finite endpoints or shape query errors.
     pub(super) fn level_clip(
         &self,
         level: LevelRef,
@@ -1207,14 +1263,14 @@ impl Game<'_> {
         blocks: ClipBlock,
         fluids: ClipFluid,
     ) -> Option<ClipHit> {
-        use sunrise_client::collisions::SceneCollisions;
+        use sunrise_client::{collisions::SceneCollisions, motion::clip_world_with_fluids};
         use sunrise_core::geometry::Direction;
         use sunrise_world::{
             collision_context::CollisionContext,
-            world_ray::{RayBlockMode, RayFluidMode, clip_world},
+            world_ray::{RayBlockMode, RayFluidMode},
         };
         let world = self.native_level_view_world(level)?;
-        let mut rays = super::explosion::ColliderRays {
+        let rays = super::explosion::ColliderRays {
             scene: SceneCollisions {
                 world,
                 binding: self.collision,
@@ -1235,15 +1291,32 @@ impl Game<'_> {
         };
         let fluid = match fluids {
             ClipFluid::None => RayFluidMode::None,
+            ClipFluid::SourceOnly => RayFluidMode::SourceOnly,
+            ClipFluid::Any => RayFluidMode::Any,
+            ClipFluid::Water => RayFluidMode::Water,
             _ => unreachable!("ClipFluid: unhandled variant"),
         };
-        let result = clip_world(
-            &mut rays,
+        let tags = if fluid == RayFluidMode::None {
+            None
+        } else {
+            Some(self.native_tag_items()?)
+        };
+        let result = clip_world_with_fluids(
+            rays,
+            world,
             Vec3::new(from[0], from[1], from[2]),
             Vec3::new(to[0], to[1], to[2]),
             mode,
             fluid,
             usize::MAX,
+            || {
+                let fluid_resources = &self.res.motion().fluids;
+                sunrise_client::motion::FluidClip {
+                    states: fluid_resources.states(),
+                    items: tags.expect("fluid clip closure only runs for non-None fluid mode"),
+                    shapes: &fluid_resources.shapes,
+                }
+            },
         )
         .ok()?;
         let h = result.hit;
@@ -1439,6 +1512,8 @@ mod general_handle_tests {
             rotation: [0.0, 0.0],
             owner: None,
             fall_distance: fall,
+            custom_name: None,
+            custom_name_visible: false,
             payload_version: 1,
             payload_bytes: Vec::new(),
             mount: None,
@@ -2180,6 +2255,7 @@ pub(super) mod tests {
         // A game that opened its world resolves its parts; the harness stops
         // short of the open, so do it here for the by-state part table.
         resolve_parts(&game).unwrap();
+        game.install_root_block_transformers();
         // The title's save folder is under the working directory: give each test its own, so a
         // test that saves leaves the checkout clean and parallel tests don't share files.
         game.save = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
@@ -3407,7 +3483,7 @@ pub(super) mod tests {
                 Ok(false)
             );
             assert!(
-                game.level_destroy_block(level, [0, 128, 0], false, None, false)
+                game.level_destroy_block(level, [0, 128, 0], false, None, None, false)
                     .is_none()
             );
         });
@@ -5183,6 +5259,139 @@ pub(super) mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn level_clip_fluid_modes_shapes_and_solid_on_tie() {
+        use mod_api::{BlockFace as Face, ClipBlock as Block, ClipFluid as Fluid};
+        use std::sync::Arc;
+        use sunrise_client::chunk::Chunk;
+        with_game(|game| {
+            // Fluid clips read the tag tables once the world has built them (`native_tag_items`).
+            let root = tempfile::tempdir().unwrap();
+            game.session_lock =
+                Some(sunrise_client::save::SessionLock::acquire(root.path()).unwrap());
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            game.world
+                .chunks
+                .insert((0, -1), Arc::new(Chunk::empty(0, -1)));
+            let level = game.level(game.dim.id()).unwrap();
+            let stone = game.block_state_id("minecraft:stone").unwrap();
+            let water_src = game.block_state_id("minecraft:water[level=0]").unwrap();
+            let water_flow3 = game.block_state_id("minecraft:water[level=5]").unwrap();
+            let water_flow4 = game.block_state_id("minecraft:water[level=4]").unwrap();
+            let lava_src = game.block_state_id("minecraft:lava[level=0]").unwrap();
+            let lava_flow6 = game.block_state_id("minecraft:lava[level=2]").unwrap();
+            let slab_bot = game
+                .block_state_id("minecraft:oak_slab[type=bottom,waterlogged=true]")
+                .unwrap();
+            let slab_top = game
+                .block_state_id("minecraft:oak_slab[type=top,waterlogged=true]")
+                .unwrap();
+            let h8 = f64::from(8.0_f32 / 9.0);
+            let h6 = f64::from(6.0_f32 / 9.0);
+            let h3 = f64::from(3.0_f32 / 9.0);
+
+            // Matrix over water/lava (source vs flowing) and waterlogged slab with stone below.
+            let cells = [
+                (0, water_src, h8, [false, true, true, true]),
+                (1, water_flow3, h3, [false, false, true, true]),
+                (2, lava_src, h8, [false, true, true, false]),
+                (3, lava_flow6, h6, [false, false, true, false]),
+                (4, slab_bot, h8, [false, true, true, true]),
+            ];
+            for &(x, state, _, _) in &cells {
+                game.world.set(x, 63, 0, stone).unwrap();
+                game.world.set(x, 64, 0, state).unwrap();
+            }
+            // Flowing water under same fluid lifts its shape height to 1.0.
+            game.world.set(5, 64, 0, water_flow4).unwrap();
+            game.world.set(5, 65, 0, water_src).unwrap();
+            // Solid-on-tie comparison: plain water vs waterlogged top slab.
+            game.world.set(6, 64, 0, water_src).unwrap();
+            game.world.set(7, 64, 0, slab_top).unwrap();
+
+            let modes = [Fluid::None, Fluid::SourceOnly, Fluid::Any, Fluid::Water];
+            for &(x, state, height, stops) in &cells {
+                let cx = f64::from(x) + 0.5;
+                for (mode, expect_fluid) in modes.into_iter().zip(stops) {
+                    let hit = level
+                        .clip(game, [cx, 65.5, 0.5], [cx, 62.5, 0.5], Block::Outline, mode)
+                        .unwrap();
+                    assert!(!hit.miss, "x={x} mode={mode:?}");
+                    if expect_fluid {
+                        assert_eq!(hit.block, [x, 64, 0]);
+                        assert_eq!(hit.face, Face::Up);
+                        assert_eq!(hit.location[1], 64.0 + height);
+                    } else if state == slab_bot {
+                        assert_eq!(hit.block, [x, 64, 0]);
+                        assert_eq!(hit.location[1], 64.5);
+                    } else {
+                        assert_eq!(hit.block, [x, 63, 0]);
+                        assert_eq!(hit.location[1], 64.0);
+                    }
+                }
+            }
+
+            let deep = level
+                .clip(
+                    game,
+                    [5.5, 64.95, -0.5],
+                    [5.5, 64.95, 0.5],
+                    Block::Outline,
+                    Fluid::Any,
+                )
+                .unwrap();
+            assert!(!deep.miss);
+            assert_eq!((deep.block, deep.face), ([5, 64, 0], Face::North));
+
+            let plain = level
+                .clip(
+                    game,
+                    [6.5, 64.0 + h8 + 0.5, -0.5],
+                    [6.5, 64.0 + h8 - 0.5, 0.5],
+                    Block::Outline,
+                    Fluid::Any,
+                )
+                .unwrap();
+            assert_eq!((plain.block, plain.face), ([6, 64, 0], Face::Up));
+            let tied = level
+                .clip(
+                    game,
+                    [7.5, 64.0 + h8 + 0.5, -0.5],
+                    [7.5, 64.0 + h8 - 0.5, 0.5],
+                    Block::Outline,
+                    Fluid::Any,
+                )
+                .unwrap();
+            assert_eq!((tied.block, tied.face), ([7, 64, 0], Face::North));
+
+            // Tagging a non-water-named fluid into minecraft:water makes ClipFluid::Water hit it.
+            let mut tagged = game.items().clone();
+            tagged
+                .fluid_tags
+                .entry("minecraft:water".into())
+                .or_default()
+                .insert("minecraft:lava".into());
+            game.server_items = Some(Arc::new(tagged));
+            let tagged_hit = level
+                .clip(
+                    game,
+                    [2.5, 65.5, 0.5],
+                    [2.5, 62.5, 0.5],
+                    Block::Outline,
+                    Fluid::Water,
+                )
+                .unwrap();
+            assert_eq!((tagged_hit.block, tagged_hit.face), ([2, 64, 0], Face::Up));
+            assert_eq!(tagged_hit.location[1], 64.0 + h8);
+            game.server_items = None;
+            assert_eq!(game.world.chunks.len(), 2, "clip loads no chunks");
+            game.session_lock = None;
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn living_attributes_answer_for_mobs_stands_and_the_dragon() {
         use sunrise_client::{entities::ArmorStand, mobs::Mob};
         use sunrise_core::geometry::Vec3;
@@ -5617,7 +5826,7 @@ pub(super) mod tests {
             Err(mod_api::LevelWriteError::Stale)
         );
         assert!(
-            game.level_destroy_block(stale, [0, 64, 0], true, None, false)
+            game.level_destroy_block(stale, [0, 64, 0], true, None, None, false)
                 .is_none()
         );
         let fill_chest = |game: &mut Game<'_>| {
@@ -5672,7 +5881,7 @@ pub(super) mod tests {
             Ok(true)
         );
         assert!(
-            game.level_destroy_block(level, [0, 64, 0], false, None, false)
+            game.level_destroy_block(level, [0, 64, 0], false, None, None, false)
                 .is_some()
         );
         assert!(game.dropped.is_empty());
@@ -5682,7 +5891,7 @@ pub(super) mod tests {
             Ok(true)
         );
         assert!(
-            game.level_destroy_block(level, [0, 64, 0], true, None, false)
+            game.level_destroy_block(level, [0, 64, 0], true, None, None, false)
                 .is_some()
         );
         assert!(
@@ -5691,7 +5900,7 @@ pub(super) mod tests {
                 .any(|item| item.stack.item.as_ref() == "minecraft:cobblestone")
         );
         assert!(
-            game.level_destroy_block(level, [0, 64, 0], true, None, false)
+            game.level_destroy_block(level, [0, 64, 0], true, None, None, false)
                 .is_none()
         );
         game.dropped.clear();
@@ -5704,7 +5913,7 @@ pub(super) mod tests {
         let rolled_back: Result<(), mod_api::TransactionError<()>> = host.transaction(|host, _| {
             assert!(
                 level
-                    .destroy_block(host, [0, 64, 0], true, None, false)
+                    .destroy_block(host, [0, 64, 0], true, None, None, false)
                     .unwrap()
                     .is_some()
             );
@@ -5727,7 +5936,7 @@ pub(super) mod tests {
         host.transaction(|host, _| {
             assert!(
                 level
-                    .destroy_block(host, [0, 64, 0], true, None, false)
+                    .destroy_block(host, [0, 64, 0], true, None, None, false)
                     .unwrap()
                     .is_some()
             );
@@ -5761,7 +5970,7 @@ pub(super) mod tests {
             .transaction(|host, _| {
                 Ok::<_, ()>(
                     level
-                        .destroy_block(host, [0, 64, 0], true, None, true)
+                        .destroy_block(host, [0, 64, 0], true, None, None, true)
                         .unwrap()
                         .unwrap(),
                 )
@@ -5829,8 +6038,215 @@ pub(super) mod tests {
             Err(mod_api::LevelWriteError::Unavailable)
         );
         assert!(
-            game.level_destroy_block(level, [0, 64, 0], true, None, false)
+            game.level_destroy_block(level, [0, 64, 0], true, None, None, false)
                 .is_none()
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn destroy_block_passes_breaker_to_loot_and_game_event() {
+        crate::game::in_own_process(
+            "game::native_entity_refs::tests::destroy_block_passes_breaker_to_loot_and_game_event",
+            || {
+                use mod_api::{BlockUpdateFlags, EntityRef, Flow, Hooks, ModEntry, ServerHost};
+                use std::sync::{Arc, Mutex};
+                use sunrise_client::{chunk::Chunk, mobs::Mob};
+                use sunrise_client_core::who::EventSource;
+                use sunrise_core::geometry::Vec3;
+
+                struct Observer {
+                    drop_breakers: Arc<Mutex<Vec<Option<EntityRef>>>>,
+                    destroy_causes: Arc<Mutex<Vec<Option<u32>>>>,
+                }
+                #[mod_api::__subscriptions]
+                impl Hooks for Observer {
+                    fn block_drops(
+                        &self,
+                        _: &dyn mod_api::LevelHost,
+                        event: &mut mod_api::BlockDropsEvent<'_>,
+                    ) -> Flow {
+                        self.drop_breakers
+                            .lock()
+                            .unwrap()
+                            .push(event.breaker_entity);
+                        Flow::Continue
+                    }
+                    fn vanilla_game_event(
+                        &self,
+                        _: &mut dyn ServerHost,
+                        event: &mut mod_api::VanillaGameEventEvent<'_>,
+                    ) -> Flow {
+                        if event.event == "minecraft:block_destroy" {
+                            self.destroy_causes.lock().unwrap().push(event.cause);
+                        }
+                        Flow::Continue
+                    }
+                }
+
+                let drop_breakers = Arc::new(Mutex::new(Vec::new()));
+                let destroy_causes = Arc::new(Mutex::new(Vec::new()));
+                mod_platform::testing::with_mods(
+                    vec![ModEntry::new(
+                        "destroy_breaker_observer",
+                        Box::new(Observer {
+                            drop_breakers: drop_breakers.clone(),
+                            destroy_causes: destroy_causes.clone(),
+                        }),
+                    )]
+                    .into(),
+                    || {
+                        with_game(|game| {
+                            game.options.dedicated = Some(Vec::new());
+                            game.sculk_prepare();
+                            game.streaming
+                                .insert_remote(&mut game.world, Chunk::empty(0, 0));
+                            let level = game.level(game.dim.id()).unwrap();
+                            let reg = game.pack.assets.registry;
+                            let [chorus_flower, sensor, air] = [
+                                "minecraft:chorus_flower",
+                                "minecraft:sculk_sensor",
+                                "minecraft:air",
+                            ]
+                            .map(|name| reg.default_state(name).unwrap());
+                            let flags = BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS;
+                            let pig_kind =
+                                game.res.mob_types().get("minecraft:pig").unwrap().clone();
+                            game.mobs
+                                .push(Mob::new(42, pig_kind, Vec3::new(0.5, 64.0, 2.5), 0.0));
+                            let pig = game.entity(42).unwrap();
+                            assert_eq!(
+                                game.level_set_block(level, [2, 64, 0], sensor, flags),
+                                Ok(true)
+                            );
+                            game.sculk_sync_index();
+
+                            let sensor_vibration = |game: &mut super::Game<'_>| {
+                                let Some(super::super::BlockEntity::Sculk(sculk)) =
+                                    game.world.block_entities.get_mut(&(2, 64, 0))
+                                else {
+                                    panic!("sculk sensor missing");
+                                };
+                                sculk
+                                    .vibration
+                                    .selector
+                                    .current
+                                    .take()
+                                    .map(|(info, _)| info)
+                            };
+
+                            // Without a breaker: chorus_flower's `entity_properties` on `this` fails
+                            // (no drop), block_drops sees None, and sculk/game_event see no source.
+                            assert_eq!(
+                                game.level_set_block(level, [0, 64, 0], chorus_flower, flags),
+                                Ok(true)
+                            );
+                            let _ = sensor_vibration(game);
+                            assert_eq!(
+                                game.level_destroy_block(
+                                    level,
+                                    [0, 64, 0],
+                                    true,
+                                    None,
+                                    None,
+                                    false
+                                ),
+                                Some(Vec::new())
+                            );
+                            assert!(game.dropped.is_empty());
+                            let info = sensor_vibration(game).expect("sculk sensor heard break");
+                            assert_eq!(info.source, None);
+
+                            // Stale breaker refuses before breaking the block.
+                            assert_eq!(
+                                game.level_set_block(level, [0, 64, 0], chorus_flower, flags),
+                                Ok(true)
+                            );
+                            let stale = EntityRef::new(
+                                mod_api::WorldEpoch::new(pig.epoch().get() + 1),
+                                pig.id(),
+                            );
+                            assert!(
+                                game.level_destroy_block(
+                                    level,
+                                    [0, 64, 0],
+                                    true,
+                                    None,
+                                    Some(stale),
+                                    false
+                                )
+                                .is_none()
+                            );
+                            assert_eq!(game.world.block(0, 64, 0), chorus_flower);
+
+                            // With a breaker outside a transaction: chorus_flower drops, hooks & sculk see pig.
+                            let _ = sensor_vibration(game);
+                            assert_eq!(
+                                game.level_destroy_block(
+                                    level,
+                                    [0, 64, 0],
+                                    true,
+                                    None,
+                                    Some(pig),
+                                    false
+                                ),
+                                Some(Vec::new())
+                            );
+                            assert_eq!(game.world.block(0, 64, 0), air);
+                            assert!(
+                                game.dropped
+                                    .iter()
+                                    .any(|item| item.stack.item.as_ref()
+                                        == "minecraft:chorus_flower")
+                            );
+                            let info = sensor_vibration(game).expect("sculk sensor heard break");
+                            assert_eq!(info.source, Some(EventSource::Mob(42)));
+
+                            // Same with a breaker inside a committed transaction.
+                            game.dropped.clear();
+                            assert_eq!(
+                                game.level_set_block(level, [0, 64, 0], chorus_flower, flags),
+                                Ok(true)
+                            );
+                            let _ = sensor_vibration(game);
+                            let ok: Result<(), ()> = game.storage_transaction(|game, _| {
+                                assert_eq!(
+                                    game.level_destroy_block(
+                                        level,
+                                        [0, 64, 0],
+                                        true,
+                                        None,
+                                        Some(pig),
+                                        false
+                                    ),
+                                    Some(Vec::new())
+                                );
+                                assert!(game.dropped.is_empty());
+                                Ok(())
+                            });
+                            assert!(ok.is_ok());
+                            assert_eq!(game.world.block(0, 64, 0), air);
+                            assert!(
+                                game.dropped
+                                    .iter()
+                                    .any(|item| item.stack.item.as_ref()
+                                        == "minecraft:chorus_flower")
+                            );
+                            let info = sensor_vibration(game).expect("sculk sensor heard break");
+                            assert_eq!(info.source, Some(EventSource::Mob(42)));
+
+                            assert_eq!(
+                                *drop_breakers.lock().unwrap(),
+                                vec![None, Some(pig), Some(pig)]
+                            );
+                            assert_eq!(
+                                *destroy_causes.lock().unwrap(),
+                                vec![None, Some(42), Some(42)]
+                            );
+                        });
+                    },
+                );
+            },
         );
     }
 

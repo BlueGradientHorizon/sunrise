@@ -146,22 +146,24 @@ impl<'g> Game<'g> {
         draw: &mut dyn FnMut(&mut Game<'g>, &mut HudBatch),
     ) {
         self.draw_mod_gui_layers(Some(layer), batch);
-        self.run_gui_layer(
-            layer.id(),
-            batch,
-            gui_layers::order().map_or(&GuiLayerBody::Vanilla, |order| {
-                &order.slots()[order.position(layer)].body
-            }),
-            Some(draw),
-            matches!(
-                layer,
-                VanillaGuiLayer::PlayerHealth
-                    | VanillaGuiLayer::ArmorLevel
-                    | VanillaGuiLayer::FoodLevel
-                    | VanillaGuiLayer::VehicleHealth
-                    | VanillaGuiLayer::AirLevel
-            ),
-        );
+        sunrise_client::spans::time(layer.span_name(), || {
+            self.run_gui_layer(
+                layer.id(),
+                batch,
+                gui_layers::order().map_or(&GuiLayerBody::Vanilla, |order| {
+                    &order.slots()[order.position(layer)].body
+                }),
+                Some(draw),
+                matches!(
+                    layer,
+                    VanillaGuiLayer::PlayerHealth
+                        | VanillaGuiLayer::ArmorLevel
+                        | VanillaGuiLayer::FoodLevel
+                        | VanillaGuiLayer::VehicleHealth
+                        | VanillaGuiLayer::AirLevel
+                ),
+            );
+        });
     }
 
     /// Draws inserted layers not drawn yet this frame, below `until` or to the end with `None`.
@@ -205,6 +207,7 @@ impl<'g> Game<'g> {
         }
         let start = batch.vertices.len();
         self.draw_gui_layer_body(batch, body, vanilla);
+        self.apply_gui_status_heights();
         if status_row {
             self.keep_status_rows(&batch.vertices[start..], batch.width, batch.height);
         }
@@ -212,6 +215,7 @@ impl<'g> Game<'g> {
             self.hud_layer_bounds.push((id, bounds));
         }
         self.native_gui_layer_post(id, batch);
+        self.apply_gui_status_heights();
     }
 
     fn draw_gui_layer_body(
@@ -223,6 +227,8 @@ impl<'g> Game<'g> {
         match body {
             GuiLayerBody::Vanilla => {
                 // Only a vanilla slot can contain this node; its paint site lends the closure.
+                // A wrapper that set the heights before `draw_previous` moves this row.
+                self.apply_gui_status_heights();
                 if let Some(draw) = vanilla {
                     CallbackOwner::call_engine(|| draw(self, batch));
                 }

@@ -222,21 +222,32 @@ impl Game<'_> {
         // game's table, from the data it sent: colours, meshing and the
         // chunk format all go through that table. The window's own server
         // thread set the world's table already.
-        if self.integrated.is_none() {
-            let table = registries
-                .registries
-                .get(BIOME_REGISTRY)
-                .map(|list| client_biomes(self.res.biomes(), list))
-                .transpose()
-                .map_err(|error| format!("refused biome registry: {error}"))?
-                .flatten()
-                .map(Arc::new);
-            if table.is_some() || self.world_biomes.is_some() {
-                self.world_biomes_base = table.clone();
-                self.world_biomes = table;
-                let context = self.worker_context();
-                self.streaming.reload_resources(&mut self.world, context);
-            }
+        let world_biomes = if self.integrated.is_none() {
+            Some(
+                registries
+                    .registries
+                    .get(BIOME_REGISTRY)
+                    .map(|list| client_biomes(self.res.biomes(), list))
+                    .transpose()
+                    .map_err(|error| format!("refused biome registry: {error}"))?
+                    .flatten()
+                    .map(Arc::new),
+            )
+        } else {
+            None
+        };
+        // The trims render from the registries the server sent, in its sync order.
+        self.armor_stand_assets
+            .trims
+            .set_synced(&registries)
+            .map_err(|error| format!("refused trim registry: {error}"))?;
+        if let Some(table) = world_biomes
+            && (table.is_some() || self.world_biomes.is_some())
+        {
+            self.world_biomes_base = table.clone();
+            self.world_biomes = table;
+            let context = self.worker_context();
+            self.streaming.reload_resources(&mut self.world, context);
         }
         let biomes: Vec<u16> = registries
             .registries
@@ -247,6 +258,13 @@ impl Game<'_> {
                     .collect()
             })
             .unwrap_or_default();
+        let variants = Arc::new(
+            sunrise_client::mobs::variants::VariantTables::from_synced(
+                &registries,
+                self.res.variants(),
+            )
+            .map_err(|error| format!("refused variant registries: {error}"))?,
+        );
         if let Some(r) = self.remote.as_mut() {
             r.enchantments = enchantments;
             let bits = ceil_log2(biomes.len());
@@ -254,7 +272,9 @@ impl Game<'_> {
             r.chunk_format =
                 Arc::new(ChunkFormat::new(&r.dimension, biomes, bits).in_column(column));
             r.registries = registries;
+            r.variants = variants;
             r.resolve_clocks();
+            r.level_environments.clear();
             self.install_server_items();
             self.reset_creative_contents();
             self.refresh_creative_search_tags();

@@ -6,7 +6,7 @@ use crate::*;
 #[doc(hidden)]
 #[sunrise_mod_api_macros::host_area]
 pub trait PlayerInteractionBackend {
-    /// Side: server.
+    /// Side: both.
     /// `Player.getAttackStrengthScale(partial)`: the charge the player's next
     /// `Player.attack` reads, from 0 (just swung) to 1 (full), where `partial`
     /// (vanilla reads 0.5) is how far between ticks the read is. It is
@@ -15,7 +15,18 @@ pub trait PlayerInteractionBackend {
     /// Inside `attack_entity` it reads the charge that blow uses: the hook
     /// runs before `Player.attack` resets the ticker. None for a stale or unavailable player.
     /// Non-finite partial ticks return `None`; finite partials are not restricted.
+    /// On a client it answers for the local player alone (vanilla's `minecraft.player`, not the
+    /// camera entity), from the client's own ticker, as `Hud.extractCrosshair`'s attack
+    /// indicator reads it; None for any other player.
     fn player_attack_strength_scale(&self, player: PlayerRef, partial: f32) -> Option<f32>;
+    /// Side: both.
+    /// `Player.getCurrentItemAttackStrengthDelay()`: the ticks a full charge takes, `20 / attack
+    /// speed` from the attack speed attribute with the main-hand item's modifiers.
+    /// `Hud.extractCrosshair` draws the full-charge icon when it is above 5 and the target is in
+    /// reach. On a client it answers for the local player alone, as
+    /// [`player_attack_strength_scale`](Self::player_attack_strength_scale) does. None for a
+    /// stale or unavailable player.
+    fn player_current_item_attack_strength_delay(&self, player: PlayerRef) -> Option<f32>;
     /// Side: server.
     /// `Player.mayUseItemAt(pos, face, stack)`: whether the player may use `stack` at `pos`, the
     /// block it would be placed in when clicked on its `face`. A player who may build (survival,
@@ -208,27 +219,35 @@ pub trait PlayerInteractionBackendMut {
     /// (an editor's or a schematic's). It is `level_set_block` with a placement's flags
     /// (`NEIGHBORS | CLIENTS`, plus `KNOWN_SHAPE` when `update_neighbour_shapes` is false; without
     /// it the neighbours' shapes update, so fences, walls and stairs connect), so the block entity
-    /// follows that write's rules, and then `Block.setPlacedBy` of the block that stands there, run in
-    /// the player's turn (a bed places its head, a door its upper half). Nothing else of vanilla's `BlockItem.place`
+    /// follows that write's rules, and then `Block.setPlacedBy` (a bed places its head, a
+    /// door its upper half). Before commit, `entity_place` sees the tentative placement,
+    /// including block entities and every cell written by `Block.setPlacedBy`, this player
+    /// as `placer`, and the staged state adjacent to `pos` opposite `face`. A change to that against state
+    /// alone does not invalidate the chosen placement. Cancel discards the tentative placement
+    /// and journalled listener writes. If a listener panics, only that listener's tentative writes
+    /// are discarded; it does not veto the placement. An enclosing transaction owns the accepted writes and
+    /// publishes their updates and placement effects at its root commit.
+    /// Nothing else of vanilla's `BlockItem.place`
     /// or `useOn` runs: no check that the block may be placed there (survival, entity
     /// obstruction, build permission, spawn protection), no `placed_block` advancement trigger or
     /// statistic, generic item placement sound or game event, or item use or consumption.
     /// The block callback may produce its own effects.
-    /// `setPlacedBy` is not given the player as placer. The player is only whose turn `setPlacedBy` runs in, so it is
-    /// not "as player" in the sense of a use-on. The state is written as given. Refuses, writing
+    /// `setPlacedBy` is not given the player as placer. The state is written as given. Refuses, writing
     /// nothing, with `PlayerWorldRefusal`: `Client`, `Stale`, `Dead`, `StaleLevel`, `OtherLevel`
     /// (that `level` is not the level in place: both placement steps, the write
     /// and `setPlacedBy`, use the supplied level), `UnknownState`, `OutOfWorld`, `NotLoaded`,
     /// `Fenced` (the origin or a direct companion or callback write is held by a carrier transfer),
-    /// `InTransaction` (a completed wither pattern in an open Host transaction), and `Unchanged`
-    /// (that state already stands there, or `level_set_block` returns false). Neighbour updates
-    /// follow the level's normal rules.
+    /// `InTransaction` (a completed wither pattern in an open Host transaction), `Unchanged`
+    /// (that state already stands there, or `level_set_block` returns false), `Canceled` (a
+    /// placement veto) or `PlacementChanged` (a written cell no longer holds its tentative
+    /// state, is unloaded or is fenced). Neighbour updates follow the level's normal rules.
     fn player_place_block(
         &mut self,
         player: PlayerRef,
         level: LevelRef,
         pos: [i32; 3],
         state: BlockState,
+        face: BlockFace,
         update_neighbour_shapes: bool,
     ) -> Result<(), PlayerWorldRefusal>;
 }
