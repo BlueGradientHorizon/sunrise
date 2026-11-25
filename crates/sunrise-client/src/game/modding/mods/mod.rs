@@ -2460,6 +2460,9 @@ impl Game<'_> {
             .borrow_mut()
             .retire_disabled(&effective);
         self.prepared_items.borrow_mut().retire_disabled(&effective);
+        if let Some(renderer) = &self.renderer {
+            renderer.retire_disabled_mod_meshes(&effective);
+        }
         self.mods.apply_code_switches(&effective);
     }
 }

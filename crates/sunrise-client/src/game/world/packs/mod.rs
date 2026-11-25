@@ -646,6 +646,9 @@ impl Game<'_> {
             game.standalone_geometry = standalone_geometry;
             game.instance_groups.borrow_mut().clear();
             game.prepared_items.borrow_mut().clear();
+            if let Some(renderer) = &game.renderer {
+                renderer.clear_mod_meshes();
+            }
             // The new atlas's skin and map slots are blank: players and maps
             // upload into it again instead of naming sprites it does not have.
             game.skin_slots.forget();

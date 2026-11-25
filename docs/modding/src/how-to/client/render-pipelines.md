@@ -334,6 +334,54 @@ event.register(
   `PrimitiveTopology::Quads` and refuses any other pipeline with
   `PipelineDrawError::TopologyMismatch`.
 
+## Your own vertex layout, retained meshes and `draw_mesh` / `draw_vertices`
+
+A pipeline reads its own vertex layout when it declares `VertexFormat` bindings. Each
+`VertexFormat::builder(VertexStepMode::Vertex)` (or `Instance`) takes named attributes, and
+`.build()` returns the format, or a `VertexFormatError` for an invalid or duplicate name, an offset that
+breaks its alignment, or a step rate the GPU cannot do. Attribute names are the shader's `in`
+names. `RenderPipeline::vertex_binding(binding, format)` attaches one format per binding index,
+up to `MAX_VERTEX_BINDINGS` bindings and `MAX_VERTEX_ELEMENTS` attributes in total. A stride is
+a multiple of `VERTEX_ALIGNMENT` (4 bytes).
+
+```rust,ignore
+let per_vertex = VertexFormat::builder(VertexStepMode::Vertex)
+    .attribute("LocalPos", VertexAttributeFormat::Float32x2)
+    .build()?;
+let per_instance = VertexFormat::builder(VertexStepMode::Instance)
+    .attribute("InstOffset", VertexAttributeFormat::Float32x2)
+    .attribute("InstColor", VertexAttributeFormat::Unorm8x4)
+    .build()?;
+event.register(
+    RenderPipeline::new(id, shader, PipelineBlend::Opaque, WorldDepth::ThroughWalls)
+        .vertex_binding(0, per_vertex)
+        .vertex_binding(1, per_instance),
+);
+```
+
+Two ways feed those bindings during a world stage (`WorldDrawContext`), both validated before
+anything is queued: a refused call returns a `PipelineDrawError` and queues nothing.
+
+- **Retained mesh.** `host.create_mesh(&MeshDescriptor::new(&buffers))` uploads one buffer per
+  binding (`MeshBufferInit::from_bytes(stride, bytes)`), plus an optional index buffer
+  (`.with_indices(MeshIndexInit::from_bytes(IndexFormat::Uint16, bytes))`), and returns a
+  `MeshRef` owned by the calling mod. Update it with `MeshRef::write_vertices` and
+  `write_indices` (4-byte aligned, in bounds) or `MeshRef::replace`. Draw it each frame with
+  `draw.draw_mesh(pipeline, mesh, MeshDraw::vertices(0..n), &DrawBindings::EMPTY)`; nothing is
+  copied per frame. Free the GPU buffers with `MeshRef::release(host)`; the handle is stale
+  (`MeshError::Stale`) afterwards. A mesh is also retired when its mod is disabled, the world
+  closes, or resources reload.
+- **Transient bytes.** `draw.draw_vertices(pipeline, &[vertex_bytes, instance_bytes],
+  Some((IndexFormat::Uint16, index_bytes)), draw, &DrawBindings::EMPTY)` uploads this frame's
+  slices and draws them. There is one slice per binding, in binding order.
+
+`MeshDraw::vertices(range)` draws a range of vertices, `MeshDraw::indexed(range, base_vertex)`
+draws a range of an index buffer, and `.with_instances(range)` sets the instance range. The
+ranges are checked against what the buffers hold: a vertex-step buffer must contain every record
+an indexed draw reaches (after `base_vertex`), an instance-step buffer must contain the instance
+range, and `Quads`, `Lines` and `TriangleFan` draws, which the engine feeds from generated
+indices, must fit the device's largest buffer.
+
 ## Pipeline modifiers (`register_pipeline_modifiers`)
 
 Register reusable data-only state overrides in `Hooks::register_pipeline_modifiers` (NeoForge's
