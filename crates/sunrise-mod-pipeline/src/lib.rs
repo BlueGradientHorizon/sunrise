@@ -110,14 +110,19 @@ fn fragment_loc0_output_name(module: &naga::Module) -> Option<&str> {
         .find(|e| e.stage == naga::ShaderStage::Fragment)?;
     let res = ep.function.result.as_ref()?;
     if let Some(naga::Binding::Location { location: 0, .. }) = res.binding {
-        // Single scalar/vector return: locate the global output variable naga generated for it.
-        return module.global_variables.iter().find_map(|(_, gv)| {
-            if gv.space == naga::AddressSpace::Private {
-                gv.name.as_deref()
-            } else {
-                None
-            }
-        });
+        // Trace the entry point's returned expression back to the GLSL output GlobalVariable.
+        let ret_expr = ep.function.body.iter().rev().find_map(|stmt| match stmt {
+            naga::Statement::Return { value: Some(expr) } => Some(*expr),
+            _ => None,
+        })?;
+        let ptr = match ep.function.expressions[ret_expr] {
+            naga::Expression::Load { pointer } => pointer,
+            _ => ret_expr,
+        };
+        if let naga::Expression::GlobalVariable(gv) = ep.function.expressions[ptr] {
+            return module.global_variables[gv].name.as_deref();
+        }
+        return None;
     }
     if let naga::TypeInner::Struct { ref members, .. } = module.types[res.ty].inner {
         for m in members {
@@ -589,6 +594,41 @@ void main() {
         )
         .unwrap();
         assert!(alpha_only.translated.fragment_writes().is_empty());
+    }
+
+    #[test]
+    fn linear_light_fragment_finish_resolves_loc0_output_past_earlier_globals() {
+        let fsh = "\
+#version 330
+in vec2 texCoord0;
+in vec4 vertexColor;
+vec4 scratchGlobal = vec4(0.25);
+out vec4 customOut;
+void main() {
+    scratchGlobal = vertexColor * 0.5;
+    customOut = scratchGlobal;
+}
+";
+        let built = translate(
+            &sources(VSH, fsh),
+            &Options {
+                linear_light: true,
+                check_backends: true,
+                ..Default::default()
+            },
+            &stub_include,
+        )
+        .unwrap();
+        assert_eq!(built.translated.fragment_writes(), [0]);
+        assert!(
+            built
+                .translated
+                .fragment
+                .functions
+                .iter()
+                .any(|(_, f)| f.name.as_deref() == Some("hz_main")),
+            "linear_light must wrap main as hz_main using customOut, not scratchGlobal"
+        );
     }
 
     #[test]

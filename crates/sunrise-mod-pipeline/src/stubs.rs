@@ -58,7 +58,7 @@ layout(std140) uniform Fog {
     float FogCloudsEnd;
 };
 float linear_fog_value(float vertexDistance, float fogStart, float fogEnd) {
-    return clamp((vertexDistance - fogStart) / max(fogEnd - fogStart, 0.0001), 0.0, 1.0);
+    return 0.0;
 }
 float total_fog_value(
     float sphericalVertexDistance,
@@ -68,10 +68,7 @@ float total_fog_value(
     float renderDistanceStart,
     float renderDistanceEnd
 ) {
-    return max(
-        linear_fog_value(sphericalVertexDistance, environmentalStart, environmentalEnd),
-        linear_fog_value(cylindricalVertexDistance, renderDistanceStart, renderDistanceEnd)
-    );
+    return 0.0;
 }
 vec4 apply_fog(
     vec4 inColor,
@@ -83,21 +80,13 @@ vec4 apply_fog(
     float renderDistanceEnd,
     vec4 fogColor
 ) {
-    float f = total_fog_value(
-        sphericalVertexDistance,
-        cylindricalVertexDistance,
-        environmentalStart,
-        environmentalEnd,
-        renderDistanceStart,
-        renderDistanceEnd
-    );
-    return vec4(mix(inColor.rgb, fogColor.rgb, f * fogColor.a), inColor.a);
+    return inColor;
 }
 float fog_spherical_distance(vec3 pos) {
-    return length(pos);
+    return 0.0;
 }
 float fog_cylindrical_distance(vec3 pos) {
-    return max(length(pos.xz), abs(pos.y));
+    return 0.0;
 }
 #endif
 ";
@@ -106,9 +95,7 @@ const MATRIX_GLSL: &str = "\
 #ifndef SUNRISE_STUB_MATRIX_GLSL
 #define SUNRISE_STUB_MATRIX_GLSL
 mat2 mat2_rotate_z(float radians) {
-    float s = sin(radians);
-    float c = cos(radians);
-    return mat2(c, s, -s, c);
+    return mat2(1.0);
 }
 #endif
 ";
