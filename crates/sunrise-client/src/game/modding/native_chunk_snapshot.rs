@@ -81,26 +81,32 @@ impl EngineChunkSnapshot {
 }
 
 impl mod_api::__private::ChunkSnapshotBackend for EngineChunkSnapshot {
+    #[inline]
     fn pos(&self) -> [i32; 2] {
         self.pos
     }
 
+    #[inline]
     fn min_y(&self) -> i32 {
         self.min_y
     }
 
+    #[inline]
     fn height(&self) -> i32 {
         (self.sections.len() as i32) * 16
     }
 
+    #[inline]
     fn section_count(&self) -> usize {
         self.sections.len()
     }
 
+    #[inline]
     fn has_light(&self) -> bool {
         self.has_light
     }
 
+    #[inline]
     fn heightmap(&self, kind: Heightmap, lx: u8, lz: u8) -> Option<i32> {
         if lx >= 16 || lz >= 16 {
             return None;
@@ -125,6 +131,7 @@ impl mod_api::__private::ChunkSnapshotBackend for EngineChunkSnapshot {
         Some(self.min_y)
     }
 
+    #[inline]
     fn block_state(&self, lx: u8, y: i32, lz: u8) -> Option<BlockState> {
         if lx >= 16 || lz >= 16 {
             return None;
@@ -136,6 +143,7 @@ impl mod_api::__private::ChunkSnapshotBackend for EngineChunkSnapshot {
         self.states.to_api(BlockStateId(id)).ok()
     }
 
+    #[inline]
     fn light(&self, lx: u8, y: i32, lz: u8) -> Option<(u8, u8)> {
         if lx >= 16 || lz >= 16 {
             return None;
@@ -147,6 +155,7 @@ impl mod_api::__private::ChunkSnapshotBackend for EngineChunkSnapshot {
         Some((packed >> 4, packed & 0x0F))
     }
 
+    #[inline]
     fn biome(&self, lx: u8, y: i32, lz: u8) -> Option<u32> {
         if lx >= 16 || lz >= 16 {
             return None;
@@ -158,19 +167,19 @@ impl mod_api::__private::ChunkSnapshotBackend for EngineChunkSnapshot {
         Some(section.biomes.get((qy << 4) | (qz << 2) | qx))
     }
 
-    fn biome_name(&self, biome_index: u32) -> Option<&str> {
-        let id = u16::try_from(biome_index).ok()?;
-        self.biomes.try_name(id)
+    #[inline]
+    fn biome_key(&self, biome_index: u32) -> Option<&mod_api::BiomeKey> {
+        self.biomes
+            .registered_keys()
+            .get(usize::try_from(biome_index).ok()?)
     }
 
-    fn biome_id(&self, name: &str) -> Option<u32> {
-        self.biomes.try_id(name).map(u32::from)
-    }
-
+    #[inline]
     fn section_y(&self, section_index: usize) -> i32 {
         (self.min_y >> 4) + (section_index as i32)
     }
 
+    #[inline]
     fn section_is_empty(&self, section_index: usize) -> bool {
         let Some(section) = self.sections.get(section_index) else {
             return true;
@@ -191,11 +200,13 @@ impl mod_api::__private::ChunkSnapshotBackend for EngineChunkSnapshot {
         })
     }
 
+    #[inline]
     fn section_uniform_block(&self, section_index: usize) -> Option<BlockState> {
         let id = self.sections.get(section_index)?.blocks.uniform()?;
         self.states.to_api(BlockStateId(id)).ok()
     }
 
+    #[inline]
     fn section_uniform_light(&self, section_index: usize) -> Option<(u8, u8)> {
         match self.sections.get(section_index)?.light {
             Light::Uniform(packed) => Some((packed >> 4, packed & 0x0F)),
@@ -203,10 +214,12 @@ impl mod_api::__private::ChunkSnapshotBackend for EngineChunkSnapshot {
         }
     }
 
+    #[inline]
     fn section_uniform_biome(&self, section_index: usize) -> Option<u32> {
         self.sections.get(section_index)?.biomes.uniform()
     }
 
+    #[inline]
     fn section_block_state(
         &self,
         section_index: usize,
@@ -224,6 +237,7 @@ impl mod_api::__private::ChunkSnapshotBackend for EngineChunkSnapshot {
         self.states.to_api(BlockStateId(id)).ok()
     }
 
+    #[inline]
     fn section_light(&self, section_index: usize, lx: u8, ly: u8, lz: u8) -> Option<(u8, u8)> {
         if lx >= 16 || ly >= 16 || lz >= 16 {
             return None;
@@ -235,6 +249,7 @@ impl mod_api::__private::ChunkSnapshotBackend for EngineChunkSnapshot {
         Some((packed >> 4, packed & 0x0F))
     }
 
+    #[inline]
     fn section_biome_quart(&self, section_index: usize, qx: u8, qy: u8, qz: u8) -> Option<u32> {
         if qx >= 4 || qy >= 4 || qz >= 4 {
             return None;
@@ -364,10 +379,8 @@ mod tests {
                 assert_eq!(worker_snap.block_state(0, 0, 0).unwrap().block(), stone_key);
                 assert_eq!(worker_snap.light(0, 0, 0), Some((12, 7)));
 
-                let desert = worker_snap.biome_id("minecraft:desert").unwrap();
-                assert_eq!(worker_snap.biome_name(desert), Some("minecraft:desert"));
-                assert_eq!(worker_snap.biome_id("test:no_such_biome"), None);
-                assert_eq!(worker_snap.biome(3, 3, 3), Some(desert));
+                let desert = mod_api::BiomeKey::parse("minecraft:desert").unwrap();
+                assert_eq!(worker_snap.biome(3, 3, 3), Some(&desert));
 
                 let sec4 = worker_snap.section(4).unwrap();
                 assert_eq!(sec4.section_y(), 0);
@@ -376,7 +389,7 @@ mod tests {
                 assert_eq!(sec4.uniform_light(), None);
                 assert_eq!(sec4.block_state(0, 0, 0).unwrap().block(), stone_key);
                 assert_eq!(sec4.light(0, 0, 0), Some((12, 7)));
-                assert_eq!(sec4.biome_quart(0, 0, 0), Some(desert));
+                assert_eq!(sec4.biome_quart(0, 0, 0), Some(&desert));
                 assert_eq!(sec4.biome_quart(4, 0, 0), None);
                 assert_eq!(sec4.block_state(16, 0, 0), None);
                 assert_eq!(sec4.light(0, 16, 0), None);
@@ -477,7 +490,7 @@ mod tests {
             let unloaded = level.chunk_ref(game, [99, 99]).unwrap();
             assert!(unloaded.snapshot(game).is_none());
             game.native_lifecycle
-                .begin_open(Authority::IntegratedServer);
+                .begin_open(Some(Authority::IntegratedServer));
             assert!(chunk_ref.snapshot(game).is_none());
             let stale = ChunkRef::new(LevelRef::new(level.epoch(), DimensionKey::NETHER), [2, -3]);
             assert!(stale.snapshot(game).is_none());
