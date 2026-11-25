@@ -1009,13 +1009,13 @@ pub fn render_pack(
     render_pack_with(vertices, spans, None)
 }
 
-/// [`render_pack`], with `gbuffers_entities` writing what it samples from `texture` instead of its
+/// [`render_pack`], with `gbuffers_entities` writing what it samples from `dynamic_texture` instead of its
 /// flat colour when given: a 1 x 1 dynamic texture of that colour (handle 1) the draws of that
 /// handle (`DYNAMIC_TEXTURE_*_OVERLAY` quads naming it) bind as their texture.
 fn render_pack_with(
     vertices: &[Vertex],
     spans: &[pack_draw::EntitySpan],
-    texture: Option<[u8; 4]>,
+    dynamic_texture: Option<[u8; 4]>,
 ) -> std::result::Result<Vec<[u8; 4]>, String> {
     let _gpu = crate::gfx::test_gpu::lock();
     use std::io::Write;
@@ -1030,7 +1030,7 @@ fn render_pack_with(
     };
     let programs = ["gbuffers_entities", "gbuffers_block", "gbuffers_textured"];
     for (i, (program, rgba)) in programs.into_iter().zip(PACK_COLOURS).enumerate() {
-        let sampled = texture.is_some() && i == 0;
+        let sampled = dynamic_texture.is_some() && i == 0;
         let (vertex, fragment) = if sampled {
             (
                 "#version 120\nvarying vec2 uv;\nvoid main() { uv = gl_MultiTexCoord0.xy; \
@@ -1140,7 +1140,7 @@ fn render_pack_with(
         (&[], &[]),
     );
     let store = crate::hud::dynamic_textures::Store::default();
-    if let Some(rgba) = texture {
+    if let Some(rgba) = dynamic_texture {
         let mut uploads = super::upload::Uploads::new(&device);
         let mut encoder = device.create_command_encoder(&Default::default());
         store.apply(
