@@ -62,25 +62,23 @@ pub trait ClientRenderClientHost {
     fn refresh_biome_colors(&mut self);
     /// Side: client.
     /// Vanilla's `TextureManager.register` of a `DynamicTexture` under `id`, then its `upload`:
-    /// the calling mod's RGBA image `id`, in its own namespace (`mymod:dynamic/panel`), made from
-    /// `rgba`, `width * height` pixels of four bytes, row by row from the top left. The image
-    /// takes a slot of the HUD atlas's dynamic texture pool, of the smallest class
-    /// ([`DYNAMIC_TEXTURE_CLASSES`]) that holds it, and `id` names it as a GUI sprite of
-    /// `width` x `height` pixels: [`DrawContext::sprite`] (`src` in the image's own pixels),
-    /// [`DrawContext::gui_nine_slice`], [`DrawContext::tiled_sprite`] and
-    /// [`gui_sprite`](Self::gui_sprite) draw and find it as they do any GUI sprite, from the next
-    /// frame on. It lasts, through resource reloads, until
-    /// [`free_dynamic_texture`](Self::free_dynamic_texture) or the game's end.
+    /// the calling mod's RGBA texture `id`, in its own namespace (`mymod:dynamic/panel`), made
+    /// from `rgba`, `width * height` pixels of four bytes, row by row from the top left. The
+    /// texture is a GPU texture of its own, as `DynamicTexture` makes one: `RGBA8_UNORM`, one
+    /// mip level, sampled nearest with repeat, with no choice of format or sampler. Draw it with
+    /// [`GuiCanvas::texture`] under `id` (`region.tex` its size), from the next frame on; any mod
+    /// may draw the id, only the owner changes it. It survives resource reloads (F3+T, a pack
+    /// change) and a world closing, and lasts until
+    /// [`release_dynamic_texture`](Self::release_dynamic_texture) or the mod's unload; if the game loses its graphics device the texture is gone and the next update reads
+    /// [`DynamicTextureError::Unknown`], so create it again.
     ///
-    /// Refused by name, with nothing changed and nothing allocated, as [`DynamicTextureError`]
-    /// lists: `Unavailable` when the atlas has no pool, `NotOwned` for an id outside the mod's
-    /// owned namespaces (its manifest namespaces or a content package it serves via `served_by`),
-    /// `BadSize` for a side of 0 or pixels that are not `width * height * 4` bytes,
-    /// `TooLarge` for a side past [`DYNAMIC_TEXTURE_MAX_SIDE`], `NameTaken` for an id that
-    /// already names an image or a GUI sprite, `OverBudget` past the mod's
-    /// [`DYNAMIC_TEXTURE_MOD_IMAGES`] images or [`DYNAMIC_TEXTURE_MOD_BYTES`] of pixels, and
-    /// `NoSlot` when every slot of the image's class is held. The game keeps a copy of the
-    /// pixels, counted in the byte budget, to upload them again into a rebuilt atlas.
+    /// The game keeps no copy of the pixels, and there is no count limit. Refused by name, with
+    /// nothing changed and nothing allocated, as [`DynamicTextureError`] lists: `Unavailable`
+    /// when nothing draws here, `NotOwned` for an id outside the mod's owned namespaces (its
+    /// manifest namespaces or a content package it serves via `served_by`), `BadSize` for a side
+    /// of 0 or pixels that are not `width * height * 4` bytes, `TooLarge` for a side past the
+    /// device's largest 2D texture, and `NameTaken` for an id that already names a dynamic
+    /// texture.
     fn create_dynamic_texture(
         &mut self,
         id: &Identifier,
@@ -89,16 +87,15 @@ pub trait ClientRenderClientHost {
         rgba: &[u8],
     ) -> Result<(), DynamicTextureError>;
     /// Side: client.
-    /// Vanilla's `DynamicTexture.upload` of new pixels: the calling mod's image `id` takes
-    /// `rgba`, `width * height` pixels of four bytes, written into the atlas slot it already holds
-    /// from the next frame on. The size may change within the image's class; the sprite `id`
-    /// takes the new size. Each update is one copy into the kept pixels and one upload of the
-    /// image, so send one when the image changed, not every frame.
+    /// Vanilla's `DynamicTexture.upload` of new pixels: the calling mod's texture `id` takes
+    /// `rgba`, `width * height` pixels of four bytes, from the next frame on. A different size
+    /// makes a new texture under the same id, as registering a new `DynamicTexture` under an id
+    /// does. Writes apply in the order they were made, none merged. Send one when the texture
+    /// changed, not every frame; for a part of it, use
+    /// [`update_dynamic_texture_region`](Self::update_dynamic_texture_region).
     ///
     /// Refused by name, with nothing changed, as [`DynamicTextureError`] lists: `Unavailable`,
-    /// `NotOwned`, `Unknown` for an id that names no image, `BadSize`, `TooLarge`,
-    /// `ClassChange` for a size of another class than the image's (free it and create it again),
-    /// and `OverBudget` when the new size would pass [`DYNAMIC_TEXTURE_MOD_BYTES`].
+    /// `NotOwned`, `Unknown` for an id that names no texture, `BadSize` and `TooLarge`.
     fn update_dynamic_texture(
         &mut self,
         id: &Identifier,
@@ -107,19 +104,28 @@ pub trait ClientRenderClientHost {
         rgba: &[u8],
     ) -> Result<(), DynamicTextureError>;
     /// Side: client.
-    /// Vanilla's `TextureManager.release`: frees the calling mod's image `id`. The GUI sprite
-    /// `id` is gone at once, the slot goes back to the pool for any mod, and the image and its
-    /// bytes go back to the mod's budget. Refused by name, with nothing changed:
-    /// `Unavailable`, `NotOwned` for an id outside the mod's namespace and `Unknown` for one
-    /// that names no image.
-    fn free_dynamic_texture(&mut self, id: &Identifier) -> Result<(), DynamicTextureError>;
+    /// `CommandEncoder.writeToTexture`'s region overload on the calling mod's texture `id`:
+    /// `rgba`, `size[0] * size[1]` pixels of four bytes, replaces the region of the texture
+    /// whose top left pixel is `origin`, from the next frame on, applied in the order the writes
+    /// were made. The rest of the texture is kept.
+    ///
+    /// Refused by name, with nothing changed, as [`DynamicTextureError`] lists: `Unavailable`,
+    /// `NotOwned`, `Unknown`, `BadSize` for a side of 0 or pixels that are not
+    /// `size[0] * size[1] * 4` bytes, and `OutOfBounds` for a region not inside the texture.
+    fn update_dynamic_texture_region(
+        &mut self,
+        id: &Identifier,
+        origin: [u32; 2],
+        size: [u32; 2],
+        rgba: &[u8],
+    ) -> Result<(), DynamicTextureError>;
     /// Side: client.
-    /// What the calling mod may still create: images and bytes of pixels left of its
-    /// [`DYNAMIC_TEXTURE_MOD_IMAGES`] and [`DYNAMIC_TEXTURE_MOD_BYTES`]. These are limits of the
-    /// atlas pool, which vanilla's `TextureManager` does not have. A free slot of a class is not
-    /// part of it: the slots are shared by every mod. `Unavailable` when the atlas has no pool,
-    /// `NotOwned` when no mod is calling.
-    fn dynamic_texture_budget(&self) -> Result<DynamicTextureBudget, DynamicTextureError>;
+    /// Vanilla's `TextureManager.release`: releases the calling mod's texture `id`. Its GPU
+    /// texture is freed and the id can be created again. A mod's textures are also released when
+    /// the mod unloads, and a draw of the id already submitted that frame shows vanilla's missing
+    /// texture. Refused by name, with nothing changed: `Unavailable`, `NotOwned` for an
+    /// id outside the mod's namespace and `Unknown` for one that names no texture.
+    fn release_dynamic_texture(&mut self, id: &Identifier) -> Result<(), DynamicTextureError>;
     /// The resolver's blended colour at `pos` in the current client level, as opaque ARGB.
     /// Like `ClientLevel.getBlockTint` (`BiomeColors.getAverageGrassColor` and its counterparts),
     /// this samples a square at the block's height using the client's biome blend radius and the
@@ -196,7 +202,7 @@ pub trait ClientRenderClientHost {
     /// or whose entry its definition removed (a server's metrics-only atlas lacks them all). The atlas names its
     /// sprites by GUI id, the id its definition lists them under: `minecraft:container/slot` (also given as
     /// `container/slot`), a mod's `mymod:panel`; a sprite a registered sprite source made in `gui.json` is found
-    /// by the id it named, and a live texture (`create_dynamic_texture`) by its own.
+    /// by the id it named; a client mod's dynamic texture is not a GUI sprite (draw it with `GuiCanvas::texture`).
     fn gui_sprite(&self, sprite: &Identifier) -> Option<AtlasRegion>;
     /// Side: client.
     /// Published asset/data read: available in Setup, Reloading and World.

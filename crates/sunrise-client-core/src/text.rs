@@ -58,11 +58,22 @@ pub enum InlineObject {
         sprite: String,
         fallback: String,
     },
+    /// A client mod's dynamic texture, one GPU texture of its own: the id a mod's
+    /// `substitute_inline_images` named, and the texture's `handle` and `size` when it was
+    /// substituted. Only the game's own substitution makes one; a component never decodes to it.
+    Dynamic {
+        id: String,
+        handle: u64,
+        size: [u32; 2],
+        fallback: String,
+    },
 }
 impl InlineObject {
     pub fn fallback(&self) -> &str {
         match self {
-            Self::Player { fallback, .. } | Self::Atlas { fallback, .. } => fallback,
+            Self::Player { fallback, .. }
+            | Self::Atlas { fallback, .. }
+            | Self::Dynamic { fallback, .. } => fallback,
         }
     }
 }
@@ -1177,6 +1188,12 @@ fn style_json_with(
                 ("object".into(), "atlas".into()),
                 ("atlas".into(), atlas.clone().into()),
                 ("sprite".into(), sprite.clone().into()),
+                ("fallback".into(), fallback.clone().into()),
+            ]),
+            InlineObject::Dynamic { id, fallback, .. } => out.extend([
+                ("object".into(), "atlas".into()),
+                ("atlas".into(), "minecraft:gui".into()),
+                ("sprite".into(), id.clone().into()),
                 ("fallback".into(), fallback.clone().into()),
             ]),
         }

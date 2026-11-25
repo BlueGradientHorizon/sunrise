@@ -5967,12 +5967,15 @@ void main() {
         })
         .expect("textured set-1 pipeline must translate");
 
-        let dyn_id = Identifier::parse("mod_c3:dyn_stripe").unwrap();
         let rgba: [u8; 8] = [255, 0, 0, 255, 0, 0, 255, 255];
-        let mut uniforms = crate::gfx::mod_uniforms::ModUniformBuffers::default();
-        let (view_id, view) = uniforms
-            .resolve_dynamic_texture(&device, &queue, &dyn_id, [2, 1], &rgba, 1)
-            .unwrap();
+        let (_texture, view) = crate::gfx::mod_uniforms::create_rgba_texture(
+            &device,
+            &queue,
+            "Mod dynamic texture",
+            [2, 1],
+            &rgba,
+        );
+        let view_id = crate::gfx::mod_uniforms::DYNAMIC_VIEW_ID_BIT | 1;
 
         let quad = [
             PipelineVertex {

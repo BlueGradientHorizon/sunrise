@@ -1006,6 +1006,17 @@ pub fn render_pack(
     vertices: &[Vertex],
     spans: &[pack_draw::EntitySpan],
 ) -> std::result::Result<Vec<[u8; 4]>, String> {
+    render_pack_with(vertices, spans, None)
+}
+
+/// [`render_pack`], with `gbuffers_entities` writing what it samples from `dynamic_texture` instead of its
+/// flat colour when given: a 1 x 1 dynamic texture of that colour (handle 1) the draws of that
+/// handle (`DYNAMIC_TEXTURE_*_OVERLAY` quads naming it) bind as their texture.
+fn render_pack_with(
+    vertices: &[Vertex],
+    spans: &[pack_draw::EntitySpan],
+    dynamic_texture: Option<[u8; 4]>,
+) -> std::result::Result<Vec<[u8; 4]>, String> {
     let _gpu = crate::gfx::test_gpu::lock();
     use std::io::Write;
     let colour = |[r, g, b, _]: [u8; 4]| format!("vec4({r}.0, {g}.0, {b}.0, 255.0) / 255.0");
@@ -1018,21 +1029,30 @@ pub fn render_pack(
         zip.write_all(source.as_bytes())
     };
     let programs = ["gbuffers_entities", "gbuffers_block", "gbuffers_textured"];
-    for (program, rgba) in programs.into_iter().zip(PACK_COLOURS) {
-        add(
-            &format!("{program}.vsh"),
-            "#version 120\nvoid main() { gl_Position = vec4(gl_Vertex.xy * 0.5, 0.5, 1.0); }\n",
-        )
-        .and_then(|()| {
-            add(
-                &format!("{program}.fsh"),
-                &format!(
+    for (i, (program, rgba)) in programs.into_iter().zip(PACK_COLOURS).enumerate() {
+        let sampled = dynamic_texture.is_some() && i == 0;
+        let (vertex, fragment) = if sampled {
+            (
+                "#version 120\nvarying vec2 uv;\nvoid main() { uv = gl_MultiTexCoord0.xy; \
+                 gl_Position = vec4(gl_Vertex.xy * 0.5, 0.5, 1.0); }\n"
+                    .to_string(),
+                "#version 120\nuniform sampler2D texture;\nvarying vec2 uv;\n\
+                 void main() { gl_FragData[0] = texture2D(texture, uv); }\n"
+                    .to_string(),
+            )
+        } else {
+            (
+                "#version 120\nvoid main() { gl_Position = vec4(gl_Vertex.xy * 0.5, 0.5, 1.0); }\n"
+                    .to_string(),
+                format!(
                     "#version 120\nvoid main() {{ gl_FragData[0] = {}; }}\n",
                     colour(rgba)
                 ),
             )
-        })
-        .map_err(|error| error.to_string())?;
+        };
+        add(&format!("{program}.vsh"), &vertex)
+            .and_then(|()| add(&format!("{program}.fsh"), &fragment))
+            .map_err(|error| error.to_string())?;
     }
     add(
         "final.vsh",
@@ -1119,6 +1139,25 @@ pub fn render_pack(
         None,
         (&[], &[]),
     );
+    let store = crate::hud::dynamic_textures::Store::default();
+    if let Some(rgba) = dynamic_texture {
+        let mut uploads = super::upload::Uploads::new(&device);
+        let mut encoder = device.create_command_encoder(&Default::default());
+        store.apply(
+            &device,
+            &mut uploads,
+            &mut encoder,
+            None,
+            &[crate::hud::dynamic_textures::Command::Create {
+                handle: 1,
+                size: [1, 1],
+                rgba: rgba.to_vec(),
+            }],
+        );
+        uploads.finish(&encoder);
+        queue.submit([encoder.finish()]);
+    }
+    post.resolve_entity_textures(|handle| store.view(handle).expect("the texture was created"));
     let (world, depth, screen) = (
         texture(SIZE, format),
         texture(SIZE, wgpu::TextureFormat::Depth32Float),
@@ -1988,6 +2027,28 @@ pub fn render_hud_lit(
     size: [u32; 2],
     lightmap: &[u8],
 ) -> std::result::Result<Vec<u8>, String> {
+    let mut frames = render_hud_frames_lit(&[batch], atlas, size, lightmap)?;
+    Ok(frames.remove(0))
+}
+
+/// [`render_hud`] for successive frames of one renderer, each batch drawn after the one before
+/// and read back on its own: what a batch's dynamic texture commands made in an earlier frame is
+/// still there in the next.
+pub fn render_hud_frames(
+    batches: &[&HudBatch],
+    atlas: &crate::hud::HudAtlas,
+    size: [u32; 2],
+) -> std::result::Result<Vec<Vec<u8>>, String> {
+    render_hud_frames_lit(batches, atlas, size, &[255u8; 16 * 16 * 4])
+}
+
+/// [`render_hud_frames`] with a custom 16x16 RGBA `lightmap`, as [`render_hud_lit`].
+pub fn render_hud_frames_lit(
+    batches: &[&HudBatch],
+    atlas: &crate::hud::HudAtlas,
+    size: [u32; 2],
+    lightmap: &[u8],
+) -> std::result::Result<Vec<Vec<u8>>, String> {
     let _gpu = crate::gfx::test_gpu::lock();
     let frame = software_frame_lit(
         [atlas.width, atlas.height],
@@ -2014,27 +2075,31 @@ pub fn render_hud_lit(
     // image, upload before the draw.
     hud.atlas_texture = Some(frame.atlas_texture.clone());
     let mut uploads = super::upload::Uploads::new(&frame.device);
-    let mut encoder = frame.device.create_command_encoder(&Default::default());
     let color = frame.color.create_view(&Default::default());
     let depth = frame.depth.create_view(&Default::default());
-    {
-        let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &color,
-                resolve_target: None,
-                depth_slice: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            ..Default::default()
-        });
+    let mut out = Vec::new();
+    for batch in batches {
+        let mut encoder = frame.device.create_command_encoder(&Default::default());
+        {
+            let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &color,
+                    resolve_target: None,
+                    depth_slice: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                ..Default::default()
+            });
+        }
+        hud.prepare(&frame.device, &mut uploads, &mut encoder, batch, size);
+        uploads.finish(&encoder);
+        hud.draw(&mut encoder, &color, &depth, batch, size);
+        out.push(readback(&frame, encoder)?);
     }
-    hud.prepare(&frame.device, &mut uploads, &mut encoder, batch, size);
-    uploads.finish(&encoder);
-    hud.draw(&mut encoder, &color, &depth, batch, size);
-    readback(&frame, encoder)
+    Ok(out)
 }
 
 /// Exposed reversed-Z world projection for cross-crate entity and OIT pixel tests.
@@ -2230,6 +2295,9 @@ pub fn render_entity_world(draw: EntityWorldDraw<'_>) -> std::result::Result<Vec
         glint_only_quads,
         text_offset_solid_quads,
         text_normal_solid_quads,
+        dynamic_solid_quads,
+        dynamic_cutout_quads,
+        dynamic_translucent_quads,
     ] = counts;
     let text_solid_quads = text_offset_solid_quads + text_normal_solid_quads;
     let world_quads: u32 = counts.iter().sum();
@@ -2242,6 +2310,9 @@ pub fn render_entity_world(draw: EntityWorldDraw<'_>) -> std::result::Result<Vec
         - native_cutout_quads
         - native_cutout_mipped_quads
         - native_translucent_quads
+        - dynamic_solid_quads
+        - dynamic_cutout_quads
+        - dynamic_translucent_quads
         - banner_pattern_quads
         - glint_only_quads
         - text_solid_quads;
@@ -2789,4 +2860,356 @@ fn hud_lightmapped_special_item_samples_frame_lightmap_without_disturbing_neighb
         [255, 255, 255, 255],
         "default HUD neighbour must remain unaffected by frame lightmap"
     );
+}
+
+/// `BlockEntityDrawContext::textured_quad`'s quads through `EntityBatch`, the production
+/// `DynamicEntity` bind groups and entity pipeline, on software Vulkan.
+#[cfg(test)]
+mod dynamic_quads {
+    use super::*;
+    use crate::hud::dynamic_textures::{Command, Store};
+    use dynamic_entity::DynamicEntity;
+    use sunrise_render_core::entity::{
+        DYNAMIC_TEXTURE_CUTOUT_OVERLAY, DYNAMIC_TEXTURE_SOLID_OVERLAY,
+        DYNAMIC_TEXTURE_TRANSLUCENT_OVERLAY, dynamic_texture_bits,
+    };
+
+    const RED: [u8; 4] = [255, 0, 0, 255];
+    const GREEN: [u8; 4] = [0, 255, 0, 255];
+    const BLUE: [u8; 4] = [0, 0, 255, 255];
+    const YELLOW: [u8; 4] = [255, 255, 0, 255];
+    const WHITE: [u8; 4] = [255, 255, 255, 255];
+    const BLACK: [u8; 4] = [0, 0, 0, 255];
+    const HANDLE: u64 = 9;
+
+    /// A quad over the whole target showing a texture once: top left, bottom left, bottom right,
+    /// top right, as `textured_quad` takes its corners.
+    fn full_quad(overlay: u32, handle: u64) -> Vec<Vertex> {
+        let corner = |x: f32, y: f32, u: f32, v: f32| Vertex {
+            pos: [x, y, 0.5],
+            uv: [u, v],
+            layer: overlay,
+            color: 0xFFFF_FFFF,
+            light: 0xF0F0,
+            normal: [0; 4],
+            glint_uv: dynamic_texture_bits(handle),
+        };
+        vec![
+            corner(-1.0, 1.0, 0.0, 0.0),
+            corner(-1.0, -1.0, 0.0, 1.0),
+            corner(1.0, -1.0, 1.0, 1.0),
+            corner(1.0, 1.0, 1.0, 0.0),
+        ]
+    }
+
+    fn texels(texels: [[u8; 4]; 4]) -> Vec<u8> {
+        texels.concat()
+    }
+
+    fn create(rgba: Vec<u8>) -> Command {
+        Command::Create {
+            handle: HANDLE,
+            size: [2, 2],
+            rgba,
+        }
+    }
+
+    /// One frame for each of `frames`' command lists, all drawing the same `vertices` with one
+    /// store of textures between them, each read back as RGBA8 over the 64 x 64 target.
+    fn render_frames(
+        vertices: &[Vertex],
+        frames: &[Vec<Command>],
+    ) -> std::result::Result<Vec<Vec<u8>>, String> {
+        let _gpu = crate::gfx::test_gpu::lock();
+        let adapter = software_adapter()?;
+        let (device, queue) = pollster::block_on(adapter.request_device(&Default::default()))
+            .map_err(|error| format!("software Vulkan device request failed: {error}"))?;
+        let format = wgpu::TextureFormat::Rgba8Unorm;
+        let texture = |format, usage| {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: None,
+                size: wgpu::Extent3d {
+                    width: SIZE,
+                    height: SIZE,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage,
+                view_formats: &[],
+            })
+        };
+        let color = texture(
+            format,
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        );
+        let depth = texture(
+            wgpu::TextureFormat::Depth32Float,
+            wgpu::TextureUsages::RENDER_ATTACHMENT,
+        );
+        let white = texture(
+            format,
+            wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        );
+        queue.write_texture(
+            white.as_image_copy(),
+            &[255u8; (SIZE * SIZE * 4) as usize],
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(SIZE * 4),
+                rows_per_image: None,
+            },
+            white.size(),
+        );
+        let white_view = white.create_view(&Default::default());
+        let sampler = device.create_sampler(&Default::default());
+        let mut globals = Globals::zeroed();
+        globals.view_proj = Mat4::IDENTITY.to_cols_array_2d();
+        globals.fog = [1000.0, 2000.0, 1000.0, 2000.0];
+        globals.hdr_light = [0.0, 0.0, 1.0, 0.0];
+        let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::bytes_of(&globals),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+        let bindings = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: None,
+            entries: &entity_binding_entries(),
+        });
+        let mut dynamic = DynamicEntity::new(
+            &device,
+            bindings.clone(),
+            uniform,
+            (white_view.clone(), sampler.clone()),
+            (white_view.clone(), sampler.clone()),
+            white_view,
+        );
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: None,
+            source: wgpu::ShaderSource::Wgsl(entity_shader().into()),
+        });
+        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: None,
+            bind_group_layouts: &[Some(&bindings)],
+            immediate_size: 0,
+        });
+        let buffers = [Some(wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Vertex>() as u64,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &ENTITY_ATTRIBUTES,
+        })];
+        let reuse = reuse::Reuse::default();
+        let kept = reuse.on(&device);
+        let pipeline = entity_pipeline_factory(
+            &kept, &layout, &layout, &shader, &buffers, format, false,
+        )(EntityPipelineOptions {
+            label: "dynamic quads",
+            cull_mode: None,
+            depth_write: true,
+            compare: wgpu::CompareFunction::GreaterEqual,
+            bias: Default::default(),
+            blend: wgpu::BlendState::ALPHA_BLENDING,
+            clouds: false,
+            vertex: "vs_entity",
+            fragment: "fs_entity",
+            write_mask: wgpu::ColorWrites::ALL,
+        });
+        let vertex = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(vertices),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let quads = vertices.len() as u32 / 4;
+        let indices: Vec<u32> = (0..quads)
+            .flat_map(|i| [4 * i, 4 * i + 1, 4 * i + 2, 4 * i, 4 * i + 2, 4 * i + 3])
+            .collect();
+        let index = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(&indices),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        let store = Store::default();
+        let mut uploads = super::upload::Uploads::new(&device);
+        let mut batch = EntityBatch::default();
+        let color_view = color.create_view(&Default::default());
+        let depth_view = depth.create_view(&Default::default());
+        let mut out = Vec::new();
+        for commands in frames {
+            let mut encoder = device.create_command_encoder(&Default::default());
+            store.apply(&device, &mut uploads, &mut encoder, None, commands);
+            let counts = batch
+                .update_within(vertices, &[], &[], &[], &[], false, usize::MAX)
+                .materials;
+            let [.., solid, cutout, translucent] = counts;
+            // The dynamic materials are the only ones here, so they start the buffer.
+            dynamic.prepare(
+                &device,
+                &mut uploads,
+                &mut encoder,
+                &store,
+                &batch.combined,
+                0,
+            );
+            {
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: None,
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &color_view,
+                        depth_slice: None,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: &depth_view,
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(0.0),
+                            store: wgpu::StoreOp::Store,
+                        }),
+                        stencil_ops: None,
+                    }),
+                    ..Default::default()
+                });
+                pass.set_pipeline(&pipeline);
+                pass.set_vertex_buffer(0, vertex.slice(..));
+                pass.set_index_buffer(index.slice(..), wgpu::IndexFormat::Uint32);
+                for (overlay, count) in [
+                    (DYNAMIC_TEXTURE_SOLID_OVERLAY, solid),
+                    (DYNAMIC_TEXTURE_CUTOUT_OVERLAY, cutout),
+                    (DYNAMIC_TEXTURE_TRANSLUCENT_OVERLAY, translucent),
+                ] {
+                    if count > 0 {
+                        dynamic.draw(&mut pass, overlay);
+                    }
+                }
+            }
+            uploads.finish(&encoder);
+            out.push(readback_texture(&device, &queue, &color, encoder)?);
+        }
+        Ok(out)
+    }
+
+    fn pixel(frame: &[u8], x: u32, y: u32) -> [u8; 4] {
+        frame[((y * SIZE + x) * 4) as usize..][..4]
+            .try_into()
+            .unwrap()
+    }
+
+    /// The four quadrants' centres: top left, top right, bottom left, bottom right.
+    const QUADRANTS: [(u32, u32); 4] = [(16, 16), (48, 16), (16, 48), (48, 48)];
+
+    /// A 2 x 2 texture of four colours, through each texture-taking render type: the texel
+    /// colours come back exactly, `unlit` light and tint white leaving them as they are.
+    #[test]
+    #[ignore = "daily"]
+    fn each_texture_taking_render_type_draws_the_four_texels_of_its_texture() {
+        for overlay in [
+            DYNAMIC_TEXTURE_SOLID_OVERLAY,
+            DYNAMIC_TEXTURE_CUTOUT_OVERLAY,
+            DYNAMIC_TEXTURE_TRANSLUCENT_OVERLAY,
+        ] {
+            let frames = render_frames(
+                &full_quad(overlay, HANDLE),
+                &[vec![create(texels([RED, GREEN, BLUE, YELLOW]))]],
+            )
+            .expect("software Vulkan draw");
+            let seen = QUADRANTS.map(|(x, y)| pixel(&frames[0], x, y));
+            assert_eq!(seen, [RED, GREEN, BLUE, YELLOW], "overlay {overlay}");
+        }
+    }
+
+    /// Cutout discards a texel of alpha 0, so the background shows; translucent blends a texel of
+    /// alpha 128 over it (red at 128 over opaque black is 128).
+    #[test]
+    #[ignore = "daily"]
+    fn cutout_discards_clear_texels_and_translucent_blends_over_the_background() {
+        let clear = [255, 255, 255, 0];
+        let cutout = render_frames(
+            &full_quad(DYNAMIC_TEXTURE_CUTOUT_OVERLAY, HANDLE),
+            &[vec![create(texels([clear, GREEN, BLUE, YELLOW]))]],
+        )
+        .expect("software Vulkan draw");
+        assert_eq!(pixel(&cutout[0], 16, 16), BLACK);
+        assert_eq!(pixel(&cutout[0], 48, 16), GREEN);
+        let half = [255, 0, 0, 128];
+        let translucent = render_frames(
+            &full_quad(DYNAMIC_TEXTURE_TRANSLUCENT_OVERLAY, HANDLE),
+            &[vec![create(texels([half, GREEN, BLUE, YELLOW]))]],
+        )
+        .expect("software Vulkan draw");
+        assert_eq!(pixel(&translucent[0], 16, 16), [128, 0, 0, 255]);
+    }
+
+    /// A region written between two frames shows in the second with the same geometry; the first
+    /// is as it was made.
+    #[test]
+    #[ignore = "daily"]
+    fn a_region_update_shows_on_the_next_frame_with_no_new_geometry() {
+        let frames = render_frames(
+            &full_quad(DYNAMIC_TEXTURE_CUTOUT_OVERLAY, HANDLE),
+            &[
+                vec![create(texels([RED, GREEN, BLUE, YELLOW]))],
+                vec![Command::Write {
+                    handle: HANDLE,
+                    origin: [1, 1],
+                    size: [1, 1],
+                    rgba: WHITE.to_vec(),
+                }],
+            ],
+        )
+        .expect("software Vulkan draw");
+        assert_eq!(pixel(&frames[0], 48, 48), YELLOW);
+        assert_eq!(pixel(&frames[1], 48, 48), WHITE);
+        assert_eq!(pixel(&frames[1], 16, 16), RED);
+    }
+
+    /// Under a shader pack, a `textured_quad` is drawn by the pack's entity program with the run's
+    /// texture bound as the entity texture: the pack's sampler reads the texture's colour back.
+    #[test]
+    #[ignore = "daily"]
+    fn a_shader_pack_draws_a_quad_with_its_texture_through_its_entity_program() {
+        const COLOUR: [u8; 4] = [10, 200, 30, 255];
+        let spans = [pack_draw::EntitySpan {
+            start: 0,
+            id: 12,
+            stage: sunrise_shaders::render_stage("ENTITIES"),
+            ..Default::default()
+        }];
+        let frame = render_pack_with(
+            &full_quad(DYNAMIC_TEXTURE_CUTOUT_OVERLAY, 1),
+            &spans,
+            Some(COLOUR),
+        )
+        .expect("software Vulkan pack");
+        let at = |x: u32, y: u32| frame[(y * SIZE + x) as usize];
+        assert_eq!(at(32, 32), COLOUR);
+        assert_eq!(at(20, 44), COLOUR);
+        assert_eq!(
+            at(4, 4),
+            [0, 0, 0, 0],
+            "outside the quad the cleared target is untouched"
+        );
+    }
+
+    /// A texture released after its quad was submitted draws vanilla's missing texture
+    /// (`generateMissingImage`: black top left, magenta top right).
+    #[test]
+    #[ignore = "daily"]
+    fn a_texture_released_after_submit_draws_the_missing_texture() {
+        let frames = render_frames(
+            &full_quad(DYNAMIC_TEXTURE_CUTOUT_OVERLAY, HANDLE),
+            &[
+                vec![create(texels([RED, GREEN, BLUE, YELLOW]))],
+                vec![Command::Release { handle: HANDLE }],
+            ],
+        )
+        .expect("software Vulkan draw");
+        assert_eq!(pixel(&frames[0], 16, 16), RED);
+        assert_eq!(pixel(&frames[1], 16, 16), BLACK);
+        assert_eq!(pixel(&frames[1], 48, 16), [248, 0, 248, 255]);
+    }
 }

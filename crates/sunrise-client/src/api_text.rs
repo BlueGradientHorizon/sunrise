@@ -313,6 +313,11 @@ fn node(source: Source<'_>, lenient: bool) -> Result<Node<'_>, Error> {
                     sprite,
                     fallback: Some(Source::Str(fallback)),
                 },
+                Some(engine::InlineObject::Dynamic { id, fallback, .. }) => Content::Atlas {
+                    atlas: "minecraft:gui",
+                    sprite: id,
+                    fallback: Some(Source::Str(fallback)),
+                },
                 None => Content::Literal(&span.text),
             };
             node.style = Style::Native(&span.style);

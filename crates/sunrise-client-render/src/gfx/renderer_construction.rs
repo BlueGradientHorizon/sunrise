@@ -1076,6 +1076,10 @@ impl Renderer {
             }),
         )?;
         hud.atlas_texture = Some(atlas.clone());
+        // On the same device the previous renderer's dynamic textures are still valid.
+        if let Some(previous) = previous {
+            hud.share_dynamic(previous.hud.dynamic().clone());
+        }
         let entity_step = crate::spans::startup::step("renderer.entity_pipelines");
         let entity_shader = kept.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Sunrise entities"),
@@ -1153,6 +1157,14 @@ impl Renderer {
             })
         };
         let entity_group = entity_group_for(&atlas_view);
+        let dynamic_entity = dynamic_entity::DynamicEntity::new(
+            &device,
+            entity_bindings.clone(),
+            globals.clone(),
+            (lightmap_view.clone(), lightmap_sampler.clone()),
+            (glint_view.clone(), glint_sampler.clone()),
+            glint_armor_view.clone(),
+        );
         let screen_page_groups = hud
             .atlas_page_views()
             .map(|view| view.map(entity_group_for))
@@ -2478,6 +2490,7 @@ impl Renderer {
             static_entity_indices,
             static_entity_index_quads,
             entity_batch: EntityBatch::default(),
+            dynamic_entity,
             entity_order: entity_skin::OrdinaryOrder::default(),
             entity_skin,
             group,

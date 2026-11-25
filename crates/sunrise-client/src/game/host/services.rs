@@ -7,6 +7,7 @@ use sunrise_client::{
     lan::guest::Guest,
     server::{user_cache::UserCache, user_lists::NameAndId},
 };
+use sunrise_client_render::mod_pipelines::BuiltinRenderType;
 
 impl ClientSession for Game<'_> {
     fn client_server(&self) -> Option<ClientServer<'_>> {
@@ -194,6 +195,27 @@ impl RenderAssets for Game<'_> {
     }
     fn render_type(&self, id: &Identifier) -> Result<RenderTypeRef, RenderTypeError> {
         CallbackOwner::call_host(|| self.pack.render.render_type(id))
+    }
+    fn entity_solid(&self, texture: &Identifier) -> Result<RenderTypeRef, RenderTypeError> {
+        CallbackOwner::call_host(|| {
+            self.pack
+                .render
+                .textured_render_type(BuiltinRenderType::EntitySolid, texture)
+        })
+    }
+    fn entity_cutout(&self, texture: &Identifier) -> Result<RenderTypeRef, RenderTypeError> {
+        CallbackOwner::call_host(|| {
+            self.pack
+                .render
+                .textured_render_type(BuiltinRenderType::EntityCutout, texture)
+        })
+    }
+    fn entity_translucent(&self, texture: &Identifier) -> Result<RenderTypeRef, RenderTypeError> {
+        CallbackOwner::call_host(|| {
+            self.pack
+                .render
+                .textured_render_type(BuiltinRenderType::EntityTranslucent, texture)
+        })
     }
     fn pipeline_modifier(
         &self,

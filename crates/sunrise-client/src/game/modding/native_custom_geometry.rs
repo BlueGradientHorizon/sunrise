@@ -788,10 +788,16 @@ impl Game<'_> {
         renderer: &sunrise_client::gfx::Renderer,
         id: &mod_api::Identifier,
     ) -> Result<(u64, wgpu::TextureView), mod_api::PipelineDrawError> {
-        let Some((size, pixels, rev)) = self.dynamic_textures.image_data(id) else {
+        let Some((handle, _)) = self.dynamic_textures.get(id) else {
             return Err(mod_api::PipelineDrawError::InvalidBinding);
         };
-        renderer.resolve_mod_dynamic_texture(id, size, &pixels, rev)
+        let Some((view, revision)) = renderer.hud.dynamic().view(handle) else {
+            return Err(mod_api::PipelineDrawError::InvalidBinding);
+        };
+        Ok((
+            sunrise_client::gfx::mod_uniforms::DYNAMIC_VIEW_ID_BIT | revision,
+            view,
+        ))
     }
 
     /// Submit quads drawn by a mod pipeline: shorthand over [`Self::native_world_draw_vertices`]
