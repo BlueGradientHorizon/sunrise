@@ -797,6 +797,7 @@ fn conditions_nested_to_the_bound_fit_a_small_thread() {
             let code = Expanded {
                 lines: Lines::from_text(&text),
                 files: vec!["t:shaders/t.vsh".into()],
+                version: crate::stage_version(&text),
             };
             run_directives(&code, &[]).map(|c| c.text().to_owned())
         })
