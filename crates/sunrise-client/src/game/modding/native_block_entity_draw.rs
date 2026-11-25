@@ -84,7 +84,11 @@ fn face_bounds(positions: impl IntoIterator<Item = [f32; 3]>) -> [[f32; 3]; 2] {
 }
 
 impl StandaloneGeometry {
-    pub(super) fn new(pack: &super::PackResources, gui: &super::UiResources) -> Self {
+    pub(super) fn new(
+        pack: &super::PackResources,
+        gui: &super::UiResources,
+        block_entity_render: Option<&sunrise_client::block_entity_render::BlockEntityRenderer>,
+    ) -> Self {
         let catalog = &pack.render.model_catalog;
         let layer_sprites: FxHashMap<_, _> = pack
             .layer_names
@@ -121,8 +125,66 @@ impl StandaloneGeometry {
             );
             slots[index] = Some(prepared);
         }
+        let empty_world =
+            block_entity_render.map(|_| sunrise_client::world::World::new(BlockStateId(0), 0));
+        let lid = |_: [i32; 3]| 0.0;
+        let anim = |_: [i32; 3]| sunrise_client::block_entity_render::BlockAnim::default();
+        let sign = |_: [i32; 3]| None;
+        let banner = |_: [i32; 3]| Vec::new();
+        let skull = |_: [i32; 3]| None;
+        let glyph = |c: char| gui.atlas.glyph_cell(c);
+        let special_scene =
+            empty_world
+                .as_ref()
+                .map(|world| sunrise_client::block_entity_render::Scene {
+                    camera: DVec3::ZERO,
+                    sign_outline: sunrise_client::block_entity_render::SignOutline::None,
+                    orientation: Quat::IDENTITY,
+                    anim: &anim,
+                    texts: None,
+                    partial: 0.0,
+                    game_time: 0,
+                    max_y: world.shape.max_y() - 1,
+                    world,
+                    sprites: &gui.atlas.sprites,
+                    emissive: &gui.atlas.emissive,
+                    translucent_sprites: &gui.atlas.translucent,
+                    atlas_revision: gui.atlas.revision,
+                    nether: false,
+                    lid: &lid,
+                    sign: &sign,
+                    banner: &banner,
+                    skull: &skull,
+                    glyph: &glyph,
+                    glyphs: gui.atlas.font.epoch(),
+                    font: Some(&gui.atlas.font),
+                    inline_images: None,
+                    dynamic_visible: None,
+                });
+        let mut special_scratch = Vec::new();
         let states = (0..pack.assets.registry.len() as u32)
-            .map(|state| Self::bind_state(pack, &layer_sprites, BlockStateId(state), None))
+            .map(|state| {
+                let id = BlockStateId(state);
+                // `BuiltInBlockModels.addDefaults`: only run the special renderer for blocks
+                // that have one, widening the state's bounds with its default geometry.
+                let special = special_scene.as_ref().and_then(|scene| {
+                    let renderer = block_entity_render?;
+                    if !pack
+                        .assets
+                        .registry
+                        .state(id)?
+                        .name
+                        .strip_prefix("minecraft:")
+                        .is_some_and(super::text_displays::has_special_model)
+                    {
+                        return None;
+                    }
+                    special_scratch.clear();
+                    renderer.render_state(scene, id.0, Mat4::IDENTITY, 0, &mut special_scratch);
+                    point_bounds(special_scratch.iter().map(|vertex| vertex.pos))
+                });
+                Self::bind_state(pack, &layer_sprites, id, special)
+            })
             .collect();
         Self {
             generation: pack.render.generation,
