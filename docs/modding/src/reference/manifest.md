@@ -32,8 +32,8 @@ my_mod.smod
   itself, listed in a top-level `[runtime]` table (below). A content mod has none.
 - Inconsistent code declarations or executable files in the archive refuse the package.
 - The full native layout is in [Package contents](../how-to/native-mods/03-data-files.md#package-contents). Packing
-  a project folder takes those files and leaves every other file out; in an archive, a file outside the layout
-  refuses the package.
+  a project folder takes the files `cargo package` would carry; in an archive, any file outside the package's own
+  names is source. A prebuilt binary (ELF, Mach-O, PE, `ar`) is refused by its content, never by its name.
 
 There is no mod-id directory level inside the archive. `sunrise-mod.toml` is the only manifest and the only
 source of the mod's id and version; Cargo's package name and version are not mod identity. IDs are plain
@@ -231,13 +231,14 @@ every owner of a shared missing file. The game never downloads jars.
 
 ## Source paths
 
-A code package contains root `Cargo.toml`, optional `Cargo.lock` and `build.rs`, `.rs` and `.toml` files under `src/`,
-and root text files named `README*`, `LICENSE*`, `LICENCE*`, `COPYING*` or `NOTICE*`.
+A code package contains root `Cargo.toml` and the rest of the crate as `cargo package` would list it, with C and
+other source files allowed ([Package contents](../how-to/native-mods/03-data-files.md#package-contents)).
 Your root `impl Hooks` uses `#[mod_api::sunrise_mod]`; the attribute generates the factory
 ([Writing hooks](../start/writing-hooks.md)).
 
-Folder packaging selects source and resource files, excluding `.git/` and `target/`. It validates selected
-files before copying them. Whole archives are checked, not treated as source folders with ignored extra entries.
+Folder packaging selects source and resource files by Cargo's rule for a crate, which leaves out `.git/` and
+`target/`. It validates selected files before copying them. Whole archives are checked, not treated as source
+folders with ignored extra entries.
 
 ## Content paths and icon
 

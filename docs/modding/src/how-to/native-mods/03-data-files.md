@@ -109,17 +109,24 @@ participate in resource reloads.
 
 ## Package contents
 
-A native package holds the manifest, an optional `icon.png`, the root `Cargo.toml`, `Cargo.lock` and `build.rs`,
-the `.rs` and `.toml` files under `src/`, `assets/` and `data/`, a `runtime/` folder listed in `[runtime]`, and root
-text files (`README*`, `LICENSE*`, `LICENCE*`, `COPYING*`, `NOTICE*`). Source and resource size limits are checked
-separately.
+A native package holds the manifest, an optional `icon.png`, `assets/` and `data/`, a `runtime/` folder listed in
+`[runtime]`, and the crate's source: the files `cargo package` would put in the crate, which is Cargo's own rule.
+Source and resource size limits are checked separately.
 
-Packing a project folder takes only these files. Any other file in it (a `module.toml`, `tools/generate.rs`,
-`.cargo/config.toml`, `rust-toolchain.toml`) is left out unread, and the native build, which works on the packed
-files, never sees it. `cargo sunrise-mod check` runs Cargo in the folder itself, so the folder's Cargo configuration
-and toolchain file apply there as they do to plain `cargo`. A few old input paths still refuse a folder:
-`sunrise-native.json`, `horizon-mixin.toml`, and a root `native/` or `rust/`. In an archive, a file outside this
-layout refuses the package ([the manifest](../../reference/manifest.md)).
+Packing a project folder takes the whole folder, not only `src/`, and any kind of file: Rust, C and its headers,
+data a build script reads. It leaves out `target/`, folders whose name starts with `.` (so `.git/` and
+`.cargo/`), a subfolder with its own `Cargo.toml`, and what the folder's root `.gitignore` ignores. Then
+`[package] include` in `Cargo.toml` keeps only the files its patterns match, or else `[package] exclude` drops the
+files its patterns match; both are gitignore-style patterns, as Cargo reads them. `Cargo.toml` and `Cargo.lock` are
+always packaged. A file left out is never read, and the native build, which works on the packed files, never sees
+it. `cargo sunrise-mod check` runs Cargo in the folder itself, so the folder's Cargo configuration applies there as
+it does to plain `cargo`. A few old input paths still refuse a folder: `sunrise-native.json`,
+`horizon-mixin.toml`, and a root `native/` or `rust/`. In an archive, any file outside the package's own names
+(the manifest, `uses.json`, `icon.png`, `runtime/`, `assets/`, `data/`) is source, within the same limits.
+
+A package never carries a prebuilt binary. A file whose first bytes are those of an ELF, Mach-O or PE executable
+or library, or of an `ar` archive (`.a`, `.lib`), refuses the package by name, whatever the file is called: ship
+the source and let the build compile it.
 
 A package may also carry `uses.json`, generated metadata that `cargo sunrise-mod build` writes from a scan of the
 same source files it packs. It is never read from the folder. The build leaves it out for a mod made for exactly one
