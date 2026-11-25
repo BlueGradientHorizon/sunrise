@@ -15,8 +15,8 @@ pub struct InlineImageReplacement {
 }
 
 /// A component tree, retaining translation keys, styles and ordered children.
-/// Build it directly with [`Text::literal`], [`Text::translate`] or [`Text::new`]
-/// and lend it to host reads. The host validates it at the boundary.
+/// Build it directly with [`Text::literal`], [`Text::translate`],
+/// [`Text::translate_with_fallback`] or [`Text::new`] and lend it to host reads. The host validates it at the boundary.
 #[derive(Debug, PartialEq)]
 #[non_exhaustive]
 // no wire: handwritten Wire uses a stack-independent validated iterative codec.
@@ -239,6 +239,20 @@ impl Text {
         Self::new(TextContent::Translatable {
             key: key.into(),
             fallback: None,
+            arguments,
+        })
+    }
+    /// A translatable component with a fallback template (`Component.translatableWithFallback`):
+    /// a language without `key` formats `fallback` with the arguments instead of showing the key.
+    /// The key, fallback and arguments remain unresolved data.
+    pub fn translate_with_fallback(
+        key: impl Into<String>,
+        fallback: impl Into<String>,
+        arguments: Vec<Text>,
+    ) -> Self {
+        Self::new(TextContent::Translatable {
+            key: key.into(),
+            fallback: Some(fallback.into()),
             arguments,
         })
     }
