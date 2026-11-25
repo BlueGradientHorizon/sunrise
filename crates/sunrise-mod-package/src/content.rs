@@ -3990,7 +3990,7 @@ capabilities = ["registries"]
 
     #[test]
     fn face_rules_refuse_properties_the_block_does_not_declare() {
-        use mod_vocab::FaceRule;
+        use mod_vocab::{FaceNeighbor, FaceRule};
         let known = BTreeMap::from([(
             "axis".to_owned(),
             std::collections::BTreeSet::from(["x".to_owned(), "y".to_owned()]),
@@ -4006,7 +4006,7 @@ capabilities = ["registries"]
         let accepted = [
             rule(&[("axis", "x")], &["axis"]),
             FaceRule {
-                neighbor: mod_vocab::FaceNeighbor::Tag {
+                neighbor: FaceNeighbor::Tag {
                     id: "optional:empty".into(),
                     state: BTreeMap::from([("elsewhere".to_owned(), "1".to_owned())]),
                 },
