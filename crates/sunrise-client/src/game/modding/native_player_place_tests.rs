@@ -1020,7 +1020,7 @@ fn a_part_lights_itself_in_on_place_for_a_level_write_and_a_player_placement() {
         let level = game.level(game.dim.id()).unwrap();
         let api_glass = api_state(game, "minecraft:glass");
         assert_eq!(
-            b.place_block(game, level, [5, 70, 6], api_glass, true),
+            b.place_block(game, level, [5, 70, 6], api_glass, BlockFace::Up, true),
             Ok(())
         );
         assert_eq!(game.world.block(5, 70, 6), lit);
