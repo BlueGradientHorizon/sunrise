@@ -1075,6 +1075,10 @@ impl Renderer {
             }),
         )?;
         hud.atlas_texture = Some(atlas.clone());
+        // On the same device the previous renderer's dynamic textures are still valid.
+        if let Some(previous) = previous {
+            hud.share_dynamic(previous.hud.dynamic().clone());
+        }
         let entity_step = crate::spans::startup::step("renderer.entity_pipelines");
         let entity_shader = kept.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Sunrise entities"),

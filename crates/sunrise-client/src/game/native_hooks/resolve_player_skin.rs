@@ -25,16 +25,23 @@ impl Game<'_> {
         let mut selection = None;
         self.native_resolve_player_skin(&mut selection);
         let PlayerSkinOverride { texture, model, .. } = selection?;
-        // The same packed atlas is sampled by the body, the hand, and the preview.
-        // The pool is absent if the current atlas has no slots for live images.
-        if self.gui.atlas.dynamic_texture_pool.is_none()
-            || self.dynamic_textures.size(&texture) != Some([64, 64])
-        {
+        // The body, the hand and the preview sample one packed atlas, so the 64 x 64 dynamic
+        // texture is copied on the GPU into a skin slot of it, every frame it is selected
+        // (as `skin_slots` hands slots out for downloaded skins). Anything else keeps vanilla.
+        if self.dynamic_textures.size(&texture) != Some([64, 64]) {
             return None;
         }
+        let (slot, _) = self.skin_slots.place(format!("dynamic:{texture}"))?;
+        let name = format!("sunrise/skin{slot}");
+        let rect = self.gui.atlas.sprites.get(&name)?;
+        let dst = [
+            (rect.u0 * self.gui.atlas.width as f32).round() as u32,
+            (rect.v0 * self.gui.atlas.height as f32).round() as u32,
+        ];
+        self.dynamic_textures.copy_to_atlas(&texture, dst);
         let avatar = self.player_model.as_mut()?;
         Some((
-            avatar.skin.replace(texture.to_string()),
+            avatar.skin.replace(name),
             std::mem::replace(&mut avatar.slim, model == PlayerModel::Slim),
         ))
     }

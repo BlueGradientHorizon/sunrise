@@ -455,7 +455,18 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
         if tex.contains(&0) {
             return Err(GuiDrawError::BadBlitRegion);
         }
-        self.paint(|batch, atlas| batch.texture(atlas, id, dst, uv, [src, tex], abgr(argb)))
+        // A live dynamic texture first, then the resource stack, as one id space; an id in
+        // neither is refused here, and only one released after this call draws the missing texture.
+        let dynamic = self.game.and_then(|game| game.dynamic_textures.get(id));
+        if dynamic.is_none() && !self.atlas.has_texture(id) {
+            return Err(GuiDrawError::UnknownTexture);
+        }
+        self.paint(|batch, atlas| match dynamic {
+            Some((handle, size)) => {
+                batch.dynamic_texture(handle, size, dst, uv, [src, tex], abgr(argb))
+            }
+            None => batch.texture(atlas, id, dst, uv, [src, tex], abgr(argb)),
+        })
     }
 
     fn player_face(
@@ -494,7 +505,7 @@ mod tests {
             "/nonexistent/sunrise-test-assets".into(),
         ))
         .unwrap();
-        atlas.live.insert(
+        atlas.sprites.insert(
             "test:canvas".into(),
             Rect {
                 u0: 0.25,
@@ -659,7 +670,7 @@ mod tests {
         );
         atlas.gui.insert("test:removed".into(), GuiSprite::Missing);
         atlas.sprites.insert("test:removed".into(), rect);
-        atlas.live.insert("test:live".into(), rect);
+        atlas.sprites.insert("test:live".into(), rect);
 
         let mut batch = HudBatch::scratch([320, 240]);
         GameGuiCanvas::draw(&mut batch, &atlas, None, None, &mut |root| {
@@ -730,6 +741,10 @@ mod tests {
             GuiDrawError::UnknownTexture,
         );
         let standalone = mod_api::Identifier::parse("test:textures/gui/standalone.png").unwrap();
+        refuses(
+            &mut |gui| gui.texture(&standalone, DST, REGION, WHITE),
+            GuiDrawError::UnknownTexture,
+        );
         for (region, error) in [
             (
                 GuiBlitRegion {
@@ -763,7 +778,7 @@ mod tests {
             "/nonexistent/sunrise-test-assets".into(),
         ))
         .unwrap();
-        atlas.live.insert(
+        atlas.sprites.insert(
             "test:mirror".into(),
             Rect {
                 u0: 0.25,

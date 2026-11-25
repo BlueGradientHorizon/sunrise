@@ -899,7 +899,7 @@ impl Renderer {
         if self.device_lost() {
             return Err("the graphics device was lost".into());
         }
-        let patched = !frame.hud.patches.is_empty() || !frame.hud.image_patches.is_empty();
+        let patched = !frame.hud.patches.is_empty() || !frame.hud.dynamic_commands.is_empty();
         if !matches!(rendered, Ok(true)) && patched {
             let section_copies = self.section_copies.take();
             let has_section_copies = section_copies.is_some();
@@ -910,7 +910,7 @@ impl Renderer {
                     })
             });
             self.hud
-                .upload_patches(&mut self.uploads, &mut encoder, frame.hud);
+                .upload_patches(&self.device, &mut self.uploads, &mut encoder, frame.hud);
             self.uploads.finish(&encoder);
             if has_section_copies {
                 self.section_copy_bytes = 0;
@@ -922,6 +922,11 @@ impl Renderer {
         }
         // A scaled screenshot's frame never reached the window.
         rendered.map(|drawn| drawn && scaled.is_none())
+    }
+    /// The device's largest 2D texture side (`max_texture_dimension_2d`), the limit of a dynamic
+    /// texture.
+    pub fn max_texture_side(&self) -> u32 {
+        self.device.limits().max_texture_dimension_2d
     }
     /// Whether the device's loss callback has fired. A surface reconfigure
     /// alone cannot restore resources belonging to a lost device.
