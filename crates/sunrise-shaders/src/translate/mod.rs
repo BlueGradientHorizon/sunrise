@@ -22,8 +22,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write;
 
 use naga::ShaderStage;
-use naga::front::glsl::{Frontend, InterfaceLimits, Options};
-use naga::valid::{Capabilities, ValidationFlags, Validator};
+use naga::front::glsl::InterfaceLimits;
 
 use crate::Preprocessed;
 
@@ -129,12 +128,7 @@ pub struct Sampler {
 }
 
 /// A translation diagnostic at a pack file and line.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Error {
-    pub file: String,
-    pub line: u32,
-    pub message: String,
-}
+pub use sunrise_glsl::Error;
 
 #[derive(Clone)]
 pub struct Program {
@@ -806,27 +800,20 @@ fn translate(
     }
     fragment_main.push_str("}\n");
 
-    let v_text = format!(
-        "{}{}{vertex_main}",
-        header(&v),
-        v.rewrite(&samplers, &uniforms)
-    );
-    let f_text = format!(
-        "{}{}{fragment_main}",
-        header(&f),
-        f.rewrite(&samplers, &uniforms)
-    );
+    let (v_header, f_header) = (header(&v), header(&f));
+    let v_code = format!("{}{vertex_main}", v.rewrite(&samplers, &uniforms));
+    let f_code = format!("{}{fragment_main}", f.rewrite(&samplers, &uniforms));
     if !errors.is_empty() {
         return Err(errors);
     }
-    let mut vertex_module = compile(&v, &v_text, header(&v).lines().count(), limits);
+    let mut vertex_module = compile(&v, &v_header, &v_code, limits);
     // A stage that writes an image or a buffer runs once per vertex: run again by the game's
     // `after`, it would write twice. One that only reads them is run again like any other.
     if run_again && vertex_module.as_ref().is_ok_and(writes_storage) {
-        let once = v_text.replacen(RUNS_AGAIN, RUNS_ONCE, 1);
-        vertex_module = compile(&v, &once, header(&v).lines().count(), limits);
+        let once = v_header.replacen(RUNS_AGAIN, RUNS_ONCE, 1);
+        vertex_module = compile(&v, &once, &v_code, limits);
     }
-    let fragment_module = compile(&f, &f_text, header(&f).lines().count(), limits);
+    let fragment_module = compile(&f, &f_header, &f_code, limits);
     let (vertex, fragment) = match (vertex_module, fragment_module) {
         (Ok(v), Ok(f)) => (v, f),
         (a, b) => return Err(a.err().into_iter().chain(b.err()).flatten().collect()),
@@ -1114,13 +1101,13 @@ pub fn translate_compute(compute: &Preprocessed) -> Result<ComputeProgram, Vec<E
     if folded.is_some() {
         header.push_str("uvec3 hz_WorkGroupID;\n");
     }
-    let text = format!("{header}{code}{main}");
+    let code = format!("{code}{main}");
     if !errors.is_empty() {
         return Err(errors);
     }
     // A compute stage has no location-bound interface, so no device limit of it applies.
     let limits = crate::DEVICELESS_INTERFACE_LIMITS;
-    let module = compile(&c, &text, header.lines().count(), limits).map_err(|e| {
+    let module = compile(&c, &header, &code, limits).map_err(|e| {
         errors.extend(e);
         std::mem::take(&mut errors)
     })?;
@@ -1444,298 +1431,57 @@ pub(super) fn split_sampler(ty: &str) -> (String, &'static str) {
     (base, if shadow { "samplerShadow" } else { "sampler" })
 }
 
-/// Parses and validates one stage; errors at the pack's files and lines.
+/// Parses and validates one stage, `header` (ours, its first lines) then `code` (the pack's,
+/// rewritten, then our `main`), through `sunrise_glsl::compile_stage`; errors at the pack's files
+/// and lines. The pack's own rewrites run first, on the whole stage: image parameters, integer
+/// bounds and array constructors.
 fn compile(
     stage: &Stage,
-    text: &str,
-    header_lines: usize,
+    header: &str,
+    code: &str,
     limits: InterfaceLimits,
 ) -> Result<naga::Module, Vec<Error>> {
-    let options = Options {
-        interface_limits: limits,
-        ..Options::from(stage.kind)
-    };
-    let specialized = image_parameters::rewrite(text).map_err(|message| {
+    let header_lines = header.lines().count();
+    let specialized = image_parameters::rewrite(&format!("{header}{code}")).map_err(|message| {
         vec![Error {
             file: stage.pp.files.first().cloned().unwrap_or_default(),
             line: 1,
             message,
         }]
     })?;
-    let bounded = integer_bounds::rewrite(&array_constructors::rewrite(&specialized));
-    let text = bounded.as_str();
-    let at = |text: &str, span: naga::Span, message: String| {
-        let start = span.to_range().map_or(0, |r| r.start);
-        let line = text[..start.min(text.len())].matches('\n').count();
-        match line
-            .checked_sub(header_lines)
-            .and_then(|l| stage.pp.lines.get(l))
-        {
-            Some(o) => Error {
-                file: stage
-                    .pp
-                    .files
-                    .get(o.file as usize)
-                    .cloned()
-                    .unwrap_or_default(),
-                line: o.line,
-                message,
-            },
-            None => Error {
-                file: "<sunrise>".into(),
-                line: line as u32 + 1,
-                message,
-            },
-        }
+    let text = integer_bounds::rewrite(&array_constructors::rewrite(&specialized));
+    // The rewrites keep every line where it is: the header is the text's first `header_lines`.
+    let code_start = match header_lines.checked_sub(1) {
+        Some(last) => (text.match_indices('\n').nth(last)).map_or(text.len(), |(at, _)| at + 1),
+        None => 0,
     };
-    let parse = |text: &str| {
-        Frontend::default().parse(&options, text).map_err(|e| {
-            e.errors
-                .into_iter()
-                .map(|e| at(text, e.meta, e.kind.to_string()))
-                .collect::<Vec<_>>()
-        })
-    };
-    // naga's frontend refuses a few things GL takes: a scalar's swizzle (`f.x`, GLSL 4.20), a
-    // matrix column's component written to (`m[1].y =`) and `min`/`max`/`clamp` of a `uint` and
-    // integer literals, and a function prototype declared again. Each refusal is rewritten where
-    // naga points, and the source parsed again.
-    let mut text = std::borrow::Cow::Borrowed(text);
-    let mut tries = 0;
-    let mut module = loop {
-        tries += 1;
-        match Frontend::default().parse(&options, &text) {
-            Ok(m) => break m,
-            Err(e) => match e.errors.iter().find_map(|e| {
-                scalar_swizzle(&text, e)
-                    .or_else(|| unsigned_literals(&text, e))
-                    .or_else(|| repeated_prototype(&text, e))
-            }) {
-                Some(fixed) if tries < 256 => text = fixed.into(),
-                _ => return parse(&text),
-            },
-        }
-    };
-    end_returns_give_zero(&mut module);
-    lengths_of_loaded_arrays(&mut module);
-    Validator::new(ValidationFlags::all(), Capabilities::all())
-        .subgroup_operations(naga::valid::SubgroupOperationSet::all())
-        .subgroup_stages(naga::valid::ShaderStages::all())
-        .validate(&module)
-        .map_err(|e| {
-            let span = e.spans().next().map_or(naga::Span::default(), |(s, _)| *s);
-            // The validator nests its reasons: say them all.
-            let inner = e.into_inner();
-            let mut message = inner.to_string();
-            let mut source = std::error::Error::source(&inner);
-            while let Some(s) = source {
-                write!(message, ": {s}").unwrap();
-                source = s.source();
-            }
-            vec![at(&text, span, message)]
-        })?;
-    Ok(module)
-}
-
-/// `block.member.length()` of a buffer block's runtime-sized array: naga's frontend loads the
-/// array and takes the length of the loaded value, which its validator refuses, since a
-/// runtime-sized array can't be loaded. The length is taken of the array's pointer instead. The
-/// load's slot becomes that length, and the old length expression a plain conversion of it, so
-/// every handle and emitted range stays as it was.
-fn lengths_of_loaded_arrays(module: &mut naga::Module) {
-    use naga::Expression as E;
-    let functions = module.functions.iter_mut().map(|(_, f)| f);
-    for f in functions.chain(module.entry_points.iter_mut().map(|e| &mut e.function)) {
-        let loads: Vec<_> = f
-            .expressions
-            .iter()
-            .filter_map(|(at, e)| match *e {
-                E::ArrayLength(loaded) => match f.expressions[loaded] {
-                    E::Load { pointer } => Some((at, loaded, pointer)),
-                    _ => None,
-                },
-                _ => None,
-            })
-            .collect();
-        for (at, loaded, pointer) in loads {
-            f.expressions[loaded] = E::ArrayLength(pointer);
-            f.expressions[at] = E::As {
-                expr: loaded,
-                kind: naga::ScalarKind::Uint,
-                convert: Some(4),
-            };
-        }
-    }
-}
-
-/// GLSL lets a function that returns a value reach its end without a `return`: what it returns
-/// then is undefined (GLSL 4.60, 6.1). naga's frontend ends every body that can reach its end
-/// with a `return` of no value, which its validator refuses in such a function; those returns
-/// give the result type's zero instead.
-fn end_returns_give_zero(module: &mut naga::Module) {
-    fn fill(block: &mut naga::Block, zero: &mut dyn FnMut() -> naga::Handle<naga::Expression>) {
-        // The ends naga's frontend gives a `return` to (`naga::proc::ensure_block_returns`).
-        match block.last_mut() {
-            Some(naga::Statement::Block(b)) => fill(b, zero),
-            Some(naga::Statement::If { accept, reject, .. }) => {
-                fill(accept, zero);
-                fill(reject, zero);
-            }
-            Some(naga::Statement::Switch { cases, .. }) => {
-                for case in cases.iter_mut().filter(|c| !c.fall_through) {
-                    fill(&mut case.body, zero);
-                }
-            }
-            Some(naga::Statement::Return { value }) if value.is_none() => *value = Some(zero()),
-            _ => {}
-        }
-    }
-    for (_, f) in module.functions.iter_mut() {
-        let Some(ty) = f.result.as_ref().map(|r| r.ty) else {
-            continue;
-        };
-        let (body, expressions) = (&mut f.body, &mut f.expressions);
-        let mut made = None;
-        fill(body, &mut || {
-            *made.get_or_insert_with(|| {
-                expressions.append(naga::Expression::ZeroValue(ty), naga::Span::default())
-            })
-        });
-    }
-}
-
-/// `text` without the scalar swizzle naga's frontend refused (`e`, GLSL 4.20's `f.x`, `f.xx`): one
-/// component dropped, more a vector constructor of the scalar.
-fn scalar_swizzle(text: &str, e: &naga::front::glsl::Error) -> Option<String> {
-    if !e
-        .kind
-        .to_string()
-        .starts_with("Can't lookup field on this type")
+    let locate = |line: usize| match line
+        .checked_sub(header_lines)
+        .and_then(|l| stage.pp.lines.get(l))
     {
-        return None;
-    }
-    let r = e.meta.to_range()?;
-    let field = text.get(r.clone())?.strip_prefix('.')?;
-    let one = |c: char| field.chars().all(|f| f == c);
-    let indexed = text[..r.start].trim_end().ends_with(']');
-    let component = field.len() == 1 && "xyzwrgbastpq".contains(field);
-    if field.is_empty()
-        || field.len() > 4
-        || !(one('x') || one('r') || one('s') || indexed && component)
-    {
-        return None;
-    }
-    let mut out = text.to_owned();
-    if field.len() == 1 && indexed {
-        // A matrix column's component, written to: `m[1].y` as `m[1][1]`.
-        let k = "xyzwrgbastpq".find(field).map(|k| k % 4)?;
-        out.replace_range(r, &format!("[{k}]"));
-    } else if field.len() == 1 {
-        out.replace_range(r, "");
-    } else {
-        let start = expression_start(text, r.start)?;
-        out.replace_range(r, ")");
-        out.insert_str(start, &format!("vec{}(", field.len()));
-    }
-    Some(out)
-}
-
-/// `text` with the integer literals of the `min`/`max`/`clamp` call naga found ambiguous (`e`)
-/// made unsigned: with a `uint` beside them GL takes the `uint` overload.
-fn unsigned_literals(text: &str, e: &naga::front::glsl::Error) -> Option<String> {
-    let kind = e.kind.to_string();
-    let f = kind
-        .strip_prefix("Ambiguous best function for '")?
-        .trim_end_matches('\'');
-    if !matches!(f, "min" | "max" | "clamp") {
-        return None;
-    }
-    let r = e.meta.to_range()?;
-    let call = text.get(r.clone())?;
-    let b = call.as_bytes();
-    let word = |c: u8| c.is_ascii_alphanumeric() || c == b'_' || c == b'.';
-    let mut out = String::with_capacity(call.len() + 8);
-    let mut i = 0;
-    let mut changed = false;
-    while i < b.len() {
-        if b[i].is_ascii_digit() && (i == 0 || !word(b[i - 1])) {
-            let start = i;
-            while i < b.len() && b[i].is_ascii_digit() {
-                i += 1;
-            }
-            out.push_str(&call[start..i]);
-            if i == b.len() || !(word(b[i])) {
-                out.push('u');
-                changed = true;
-            }
-            continue;
-        }
-        out.push(b[i] as char);
-        i += 1;
-    }
-    changed.then(|| format!("{}{out}{}", &text[..r.start], &text[r.end..]))
-}
-
-/// `text` without the function prototype naga's frontend refused as declared before (`e`): GLSL
-/// lets a function be declared again (packs include the same helper's prototype from two
-/// files). The prototype and its `;` turn to spaces, keeping lines where they are; one with
-/// qualifiers before its type (naga's span starts at the type) is left alone.
-fn repeated_prototype(text: &str, e: &naga::front::glsl::Error) -> Option<String> {
-    if e.kind.to_string() != "Prototype already defined" {
-        return None;
-    }
-    let r = e.meta.to_range()?;
-    let end = r.end + text.get(r.end..)?.find(';')? + 1;
-    if !text.get(r.end..end - 1)?.trim().is_empty() {
-        return None;
-    }
-    let before = text.get(..r.start)?.trim_end();
-    let line = &before[before.rfind('\n').map_or(0, |n| n + 1)..];
-    let boundary =
-        before.is_empty() || before.ends_with([';', '}']) || line.trim_start().starts_with('#');
-    if !boundary {
-        return None;
-    }
-    let blank: String = text[r.start..end]
-        .chars()
-        .map(|c| if c == '\n' { '\n' } else { ' ' })
-        .collect();
-    Some(format!("{}{blank}{}", &text[..r.start], &text[end..]))
-}
-
-/// Where the operand that ends right before byte `end` begins: a name, a call or an index (with
-/// what it is of), or a bracketed expression.
-fn expression_start(text: &str, end: usize) -> Option<usize> {
-    let b = text.as_bytes();
-    let mut i = end;
-    while i > 0 && b[i - 1].is_ascii_whitespace() {
-        i -= 1;
-    }
-    loop {
-        match b.get(i.checked_sub(1)?) {
-            Some(b')') | Some(b']') => {
-                let mut level = 0i32;
-                loop {
-                    i = i.checked_sub(1)?;
-                    match b[i] {
-                        b')' | b']' => level += 1,
-                        b'(' | b'[' => {
-                            level -= 1;
-                            if level == 0 {
-                                break;
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            Some(c) if c.is_ascii_alphanumeric() || *c == b'_' || *c == b'.' => i -= 1,
-            _ => return Some(i),
-        }
-        if i == 0 {
-            return Some(0);
-        }
-    }
+        Some(o) => sunrise_glsl::Location {
+            file: (stage.pp.files.get(o.file as usize))
+                .cloned()
+                .unwrap_or_default(),
+            line: o.line,
+        },
+        None => sunrise_glsl::Location {
+            file: "<sunrise>".into(),
+            line: line as u32 + 1,
+        },
+    };
+    sunrise_glsl::compile_stage(
+        &sunrise_glsl::Source {
+            stage: stage.kind,
+            header: &text[..code_start],
+            code: &text[code_start..],
+            locate: &locate,
+        },
+        // The pack's buffer blocks are in set 4 already: the scanner writes it into their
+        // layout (`Stage::buffer_block`). Nothing else the pack declares is moved.
+        &sunrise_glsl::BindingMap::new(),
+        limits,
+    )
 }
 
 /// The uniform block's size and member offsets, from naga's layout.
@@ -1762,6 +1508,7 @@ fn block_layout(module: &naga::Module) -> (u32, Vec<(String, u32)>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use naga::valid::{Capabilities, ValidationFlags, Validator};
 
     /// A gbuffers program whose fragment stage writes `float(<name>)` after `decl`.
     fn item_program(
@@ -4212,6 +3959,44 @@ in VertexData {{ {member} }} vIn;
             .err()
             .unwrap();
         assert!(errors[0].message.contains("needs a binding"), "{errors:?}");
+    }
+
+    /// Where each way of writing a buffer block's layout binds it, and a uniform block of the
+    /// pack at an SSBO's binding: each as before this crate compiled through `sunrise-glsl`
+    /// (the scanner writes `set = 4` before the pack's `binding`; naga keeps the last `set`).
+    #[test]
+    fn buffer_blocks_and_a_packs_uniform_block_keep_their_bindings() {
+        let csh = "#version 430\nlayout(local_size_x = 1) in;\nuniform float frameTime;\n\
+                   layout(std430, binding = 0) buffer A { float a[]; } ga;\n\
+                   layout(std430, set = 1, binding = 1) buffer B { float b[]; } gb;\n\
+                   layout(std430, binding = 3, set = 2) buffer C { float c[]; } gc;\n\
+                   layout(std430, set = 1, set = 2, binding = 6) buffer D { float d[]; } gd;\n\
+                   layout(set = 1) layout(std430, binding = 7) buffer E { float e[]; } ge;\n\
+                   layout(std430, binding = 5) buffer F { float f[]; } gf;\n\
+                   layout(std140, binding = 5) uniform U { float u; } gu;\n\
+                   void main() { ga.a[0] = gb.b[0] + gc.c[0] + gd.d[0] + ge.e[0] + gf.f[0] + gu.u + frameTime; }\n";
+        let pack = Pack::from_zip_bytes("P.zip", zip(&[("shaders/deferred_a.csh", csh)])).unwrap();
+        let c = translate_compute(&preprocess(&pack, "deferred_a.csh", &Macros::standard()))
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        assert_eq!(c.interface.buffers, [0, 1, 3, 5, 6, 7]);
+        let bound = |name: &str| {
+            (c.module.global_variables.iter())
+                .find(|(_, g)| g.name.as_deref() == Some(name))
+                .and_then(|(_, g)| g.binding)
+                .map(|b| (b.group, b.binding))
+        };
+        assert_eq!(
+            ["ga", "gb", "gc", "gd", "ge", "gf", "gu"].map(bound),
+            [
+                Some((4, 0)),
+                Some((4, 1)),
+                Some((2, 3)),
+                Some((4, 6)),
+                Some((4, 7)),
+                Some((4, 5)),
+                Some((0, 5)),
+            ]
+        );
     }
 
     #[test]

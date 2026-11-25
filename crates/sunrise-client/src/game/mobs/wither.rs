@@ -127,34 +127,39 @@ impl Game<'_> {
     /// `WitherSkullBlock.checkSpawn`: the T of three skulls on four soul sand
     /// or soul soil, built in any orientation, becomes a wither.
     pub(super) fn check_wither_spawn(&mut self, placed: [i32; 3]) -> sunrise_client::Result<()> {
-        // The transaction journals ordinary state and entity changes, not this
-        // pattern's flag-2 writes, destroy events and subsequent neighbour pass.
-        // The mod placement preflight refuses a completing formation before it writes.
-        // Do not clear a formation created reentrantly by the write's neighbours either.
-        if !self.transactions.is_empty() {
+        // A chosen placement captures the pattern clears in its savepoint. Other
+        // transactional routes still do not stage the wither callback.
+        let staged = self.captures_placement();
+        if !self.transactions.is_empty() && !staged {
             return Ok(());
         }
         let state = self.world.block(placed[0], placed[1], placed[2]);
         let Some((found, cells)) = self.wither_spawn_pattern(placed, state) else {
             return Ok(());
         };
+        if staged {
+            self.clear_pattern_blocks(&cells)?;
+            self.after_commit(super::transactions::After::WitherPattern(found, cells));
+            return Ok(());
+        }
         // Clear and update the formation before the item notice, without publishing
         // unrelated effects that were already queued (notably the item's place sound
         // and block_place event). Restore those even if pattern processing fails.
         let pending = std::mem::take(&mut self.level_events);
-        let result = self.spawn_wither_pattern(found, &cells);
+        let result = self
+            .clear_pattern_blocks(&cells)
+            .and_then(|()| self.finish_wither_pattern(found, &cells));
         self.level_events.splice(..0, pending);
         result
     }
 
-    fn spawn_wither_pattern(
+    pub(super) fn finish_wither_pattern(
         &mut self,
         found: PatternMatch,
         cells: &[[i32; 3]],
     ) -> sunrise_client::Result<()> {
-        // Clear the pattern, the wither appears on the middle of the bottom
-        // row facing along the pattern's forwards axis, then neighbours update.
-        self.clear_pattern_blocks(cells)?;
+        // The cells were cleared before spawning. The wither appears on the middle of
+        // the bottom row facing along the pattern's forwards axis, then neighbours update.
         let base = found.block(1, 2, 0);
         let at = [
             f64::from(base[0]) + 0.5,

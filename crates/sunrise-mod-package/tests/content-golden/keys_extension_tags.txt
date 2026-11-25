@@ -85,6 +85,7 @@ Content {
                 skip_rendering: None,
                 hides_neighbor_face: [],
                 supports_external_face_hiding: None,
+                spawn_rule: None,
                 vegetation: false,
             },
             shapes: None,

@@ -51,6 +51,7 @@
       }
     ],
     "supports_external_face_hiding": false,
+    "spawn_rule": "default",
     "vegetation": true
   },
   "state_properties": {
