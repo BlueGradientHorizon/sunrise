@@ -225,6 +225,9 @@ mod client_services;
 mod client_setup;
 mod client_stopped;
 mod client_stopping;
+mod client_take_item_entity;
+#[cfg(test)]
+mod client_take_item_entity_tests;
 mod client_text;
 mod client_tick_post;
 mod client_tick_pre;
