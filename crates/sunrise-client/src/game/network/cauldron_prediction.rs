@@ -1,8 +1,7 @@
 //! Shared cauldron client selection. Prediction never invokes authoritative callbacks.
-use super::remote::DryUse;
 use super::*;
 use sunrise_client::cauldron::{
-    self, Outcome,
+    self,
     interactions::{Dispatcher, Entry},
 };
 use sunrise_core::vanilla_bytes::Writer;
@@ -10,7 +9,6 @@ use sunrise_protocol::{
     buf::{Codec, Ident, Reader},
     packets::{configuration::CustomPayload, play::Clientbound},
 };
-use sunrise_world::level::InteractionResult;
 
 pub(super) use sunrise_protocol::packets::custom_payload::{
     CAULDRON_ENTRIES_CHANNEL as ENTRIES_CHANNEL, CAULDRON_USE_CHANNEL as USE_CHANNEL,
@@ -83,29 +81,6 @@ pub(super) fn use_result(receipt: i64, outcome: UseOnOutcome) -> Clientbound {
     })
 }
 
-struct DryHand<'a> {
-    creative: bool,
-    hand: Option<ItemStack>,
-    inventory: &'a [Option<ItemStack>],
-}
-impl cauldron::Player for DryHand<'_> {
-    fn creative(&self) -> bool {
-        self.creative
-    }
-    fn hand(&mut self) -> &mut Option<ItemStack> {
-        &mut self.hand
-    }
-    fn add(&mut self, _: &mut ItemStack) -> bool {
-        true
-    }
-    fn contains(&self, stack: &ItemStack) -> bool {
-        self.inventory
-            .iter()
-            .flatten()
-            .any(|have| have.same_item_same_components(stack))
-    }
-    fn drop_stack(&mut self, _: ItemStack) {}
-}
 impl Game<'_> {
     /// The server's registration snapshot, not the client's installed mods,
     /// determines whether the click needs an authoritative block result.
@@ -133,63 +108,5 @@ impl Game<'_> {
             ),
             Some(Entry::Mod(()))
         )
-    }
-
-    /// Predict vanilla only. The remote click path suspends a server-registered
-    /// handler before reaching either of these prediction routes.
-    pub(super) fn client_cauldron_prediction(
-        &self,
-        pos: [i32; 3],
-        held: Option<&ItemStack>,
-    ) -> (Outcome, DryUse) {
-        let pass = || (Outcome::Pass, DryUse::default());
-        let Some(held) = held else {
-            return pass();
-        };
-        if self.held_mapping(Mapping::Sneak) {
-            return pass();
-        }
-        let Some((state, underwater)) = self.cauldron_at(pos) else {
-            return pass();
-        };
-        let table = Dispatcher::vanilla();
-        let removes_dye = cauldron::removes_dye(self.items(), &held.item);
-        let items = self.items();
-        let entry = table.select(&state.name, &held.item, removes_dye, |tag| {
-            items.item_in_tag(tag, &held.item)
-        });
-        let mut hand = DryHand {
-            creative: self.creative,
-            hand: Some(held.clone()),
-            inventory: &self.inventory,
-        };
-        let result = cauldron::interact_selected(&state, underwater, entry.as_ref(), &mut hand);
-        let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
-        let changes = result
-            .block
-            .and_then(|block| self.pack.assets.registry.resolve(&block).ok())
-            .map(|block| (at, block))
-            .into_iter()
-            .collect();
-        let sounds = result
-            .sound
-            .map(|sound| (at, Arc::from(sound), mod_api::SoundSource::Blocks, 1.0, 1.0))
-            .into_iter()
-            .collect();
-        (result.outcome, (changes, sounds))
-    }
-    /// The visual prediction route uses the same decision as the item-use consumption guard.
-    pub(super) fn remote_cauldron_reacts(
-        &self,
-        hit: &Hit,
-        held: Option<&ItemStack>,
-    ) -> Option<(InteractionResult, DryUse)> {
-        let (outcome, changes) = self.client_cauldron_prediction(hit.pos, held);
-        let answer = match outcome {
-            Outcome::Pass => return None,
-            Outcome::Consume => InteractionResult::Consume,
-            Outcome::Success => InteractionResult::Success,
-        };
-        Some((answer, changes))
     }
 }

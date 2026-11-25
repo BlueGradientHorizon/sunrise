@@ -212,6 +212,32 @@ pub(in crate::game::server_side) fn triggers(name: &str) -> bool {
         || n == "bell"
 }
 impl Game<'_> {
+    /// `WindChargeItem.use`.
+    pub(in crate::game) fn throw_wind_charge(&mut self, stack: &ItemStack) -> Result<bool> {
+        let (Some(eye), Some(p)) = (self.eye_position(), self.player.as_ref()) else {
+            return Ok(false);
+        };
+        let (on_ground, pos) = (p.ground.on_ground, p.position);
+        let velocity = self.known_player_movement();
+        let start = Vec3::new(pos.x, eye[1], pos.z);
+        let mut proj = Projectile::new(ProjectileKind::WindCharge, start, Some(Who::Player));
+        proj.shoot_from_rotation(self.pitch, self.yaw, 0.0, 1.5, 1.0, velocity, on_ground);
+        self.spawn_projectile(proj, stack);
+        let pitch = 0.4 / (self.world.random.next_float() * 0.4 + 0.8);
+        self.server_play_sound("minecraft:entity.wind_charge.throw", eye, 0.5, pitch);
+        self.award_stat("used", "minecraft:wind_charge", 1);
+        self.swing_arm();
+        if !self.creative
+            && let Some(s) = self.held_mut().as_mut()
+        {
+            s.count -= 1;
+            if s.count == 0 {
+                *self.held_mut() = None;
+            }
+        }
+        Ok(true)
+    }
+
     /// `Player.itemAttackInteraction` applies trigger-only held-item effects
     /// after an EnderDragonPart is successfully hit.
     pub(in crate::game::server_side) fn post_attack_dragon_burst(&mut self) {

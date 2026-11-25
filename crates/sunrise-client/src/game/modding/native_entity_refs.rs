@@ -1539,7 +1539,7 @@ pub(in crate::game) mod tests {
     }
 
     /// The parent runs and checks an isolated child; the child loads the Part fixtures' types.
-    pub(in crate::game::server_side) fn declared_part_root(
+    pub(in crate::game) fn declared_part_root(
         name: &str,
     ) -> Option<std::path::PathBuf> {
         if run_fresh_cases(name, "SUNRISE_DECLARED_PART_GAME_CHILD", &["valid"]) {

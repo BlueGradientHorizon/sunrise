@@ -60,7 +60,7 @@ fn interaction_key_literal_matrix_preserves_actions_and_swing_independently() {
                     game.world.set(0, 63, 0, stone).unwrap();
                     game.world.set(0, 64, 0, lever).unwrap();
                     game.set_test_forced_hit(Some(hit()));
-                    let before =game.remote.as_ref().unwrap().sequence;
+                    let before = game.remote.as_ref().unwrap().sequence;
                     let before_swings = game.swings_started;
                     if key == InteractionKey::Attack && attempt == InteractionAttempt::Press {
                         game.remote_start_attack();

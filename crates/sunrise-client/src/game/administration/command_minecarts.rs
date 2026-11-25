@@ -2,11 +2,7 @@
 //! rail (`performCommand`, `CloseableCommandBlockSource`), the entity data
 //! that carries its command and last output to clients, and the edit screen's
 //! `ServerboundSetCommandMinecartPacket` with `handleSetCommandMinecart`.
-use super::{
-    Game,
-    command_blocks::CommandBlockScreen,
-    minecarts::{CartKind, Minecart},
-};
+use super::{Game, command_blocks::CommandBlockScreen, minecarts::CartKind};
 use sunrise_client::{command_block::Mode, text::Text};
 use sunrise_protocol::packets::play::{self, Serverbound as S};
 
@@ -53,12 +49,13 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::minecarts::Minecart;
     use sunrise_core::geometry::Vec3;
 
     #[test]
     #[ignore = "daily"]
     fn scoped_cart_commands_keep_tick_and_self_removal_rules() {
-        super::super::native_entity_refs::tests::with_game(|game| {
+        crate::game::native_entity_refs::tests::with_game(|game| {
             game.world.game_time = 10;
             game.carts
                 .push(Minecart::new(41, CartKind::CommandBlock, Vec3::ZERO));

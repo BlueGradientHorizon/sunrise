@@ -62,39 +62,6 @@ impl Game<'_> {
         true
     }
 
-    /// `ServerPlayer.getKnownMovement` of the acting player: what they moved
-    /// in the last tick. A guest's comes with their moves. A rider's is its
-    /// mount's move (`getKnownSpeed`: the vehicle's, or the move the driver's
-    /// client sent for it), so a charge on horseback carries the horse's speed.
-    pub(in crate::game) fn known_player_movement(&self) -> Vec3 {
-        if let Some(i) = self
-            .riding
-            .and_then(|v| self.mobs.iter().position(|m| m.id == v))
-        {
-            return self.mob_speed(i).scale(1.0 / 20.0);
-        }
-        if self.server.lan_acting.is_some() {
-            return self.server.known_movement;
-        }
-        self.player
-            .as_ref()
-            .map_or(Vec3::ZERO, |p| p.position.subtract(self.previous_position))
-    }
-
-    /// `Entity.getKnownSpeed` of the mob at `index`, per second: its root
-    /// vehicle's (`KineticWeapon.getMotion`).
-    pub(in crate::game::server_side) fn mob_speed(&self, index: usize) -> Vec3 {
-        let mut mob = &self.mobs[index];
-        while let Some(vehicle) = mob
-            .extra
-            .mount
-            .and_then(|v| self.mobs.iter().find(|m| m.id == v))
-        {
-            mob = vehicle;
-        }
-        mob.position.subtract(mob.previous).scale(20.0)
-    }
-
     /// `Level.clip` with COLLIDER shapes and no fluids: where the segment
     /// first meets a block, if it does (tall grass lets a stab through).
     pub(in crate::game::server_side) fn clip_collider(&self, from: Vec3, to: Vec3) -> Option<Vec3> {

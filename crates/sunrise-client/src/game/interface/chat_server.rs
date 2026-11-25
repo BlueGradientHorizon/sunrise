@@ -1,11 +1,10 @@
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::{Game, Screen};
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::BLOCK_PROPERTIES;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::BlockProperties;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::COMMAND_EXPORTS;
+pub(in crate::game::server_side) use crate::game::chat_common::{
+    BLOCK_PROPERTIES, BlockProperties, COMMAND_EXPORTS, PLAYER_NAME, RESOURCE_IDS, ResourceIds,
+    block_properties, command_export,
+};
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::chat::ChatDraft;
 #[allow(unused_imports)]
@@ -15,19 +14,9 @@ pub(in crate::game::server_side) use crate::game::client_side::chat::LINK_COPY;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::chat::LINK_YES;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::PLAYER_NAME;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::RESOURCE_IDS;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::ResourceIds;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::chat::SessionDispatcher;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::chat::UiState;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::block_properties;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::command_export;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::chat::*;
 #[allow(unused_imports)]

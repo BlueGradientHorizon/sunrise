@@ -12,7 +12,7 @@ impl Game<'_> {
     /// Draws the thrown item projectile `a` at `at` (the frame's position; `c` the same relative
     /// to the camera), lit by `packed` as the entity pass packs it: true when it was one and is
     /// drawn.
-    pub(super) fn thrown_item_geometry(
+    pub(in crate::game) fn thrown_item_geometry(
         &self,
         a: &Projectile,
         alpha: f64,

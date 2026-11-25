@@ -16,6 +16,40 @@ pub(in crate::game::client_side) use sunrise_gameplay::game_modes::{
 pub(in crate::game::client_side) use sunrise_world::world_movement::in_range_of_ground;
 
 impl Game<'_> {
+    /// `MultiPlayerGameMode.setLocalMode(GameType)`: updates only the local mode and `Abilities`.
+    pub(in crate::game) fn set_local_mode(&mut self, mode: GameMode) {
+        if mode != self.mode {
+            self.previous_mode = Some(self.mode);
+        }
+        self.mode = mode;
+        self.update_world_options_personal_mode(mode.id());
+        if let (Some(r), Some(p)) = (self.remote.as_mut(), self.player.as_ref()) {
+            r.sync_body_flight(p.flying, p.flying_speed);
+        }
+        self.finish_local_mode_update(mode);
+    }
+    /// `MultiPlayerGameMode.setLocalMode(GameType, @Nullable GameType)` for `Login` and `Respawn`.
+    pub(in crate::game) fn set_local_mode_with_previous(
+        &mut self,
+        mode: GameMode,
+        previous: Option<GameMode>,
+    ) {
+        self.mode = mode;
+        self.previous_mode = previous;
+        self.finish_local_mode_update(mode);
+    }
+    pub(in crate::game) fn finish_local_mode_update(&mut self, mode: GameMode) {
+        let r = self
+            .remote
+            .as_mut()
+            .expect("set_local_mode requires a remote client");
+        self.creative = r.update_local_mode_abilities(mode.id());
+        self.apply_remote_abilities();
+        let local_spectator = self.spectator();
+        if let Some(player) = self.player.as_mut() {
+            player.local_spectator = local_spectator;
+        }
+    }
     /// Whether `Screen::Inventory` currently shows the player's own `InventoryScreen`
     /// rather than a container, crafting table, workstation, mount, or server/mod menu.
     pub(in crate::game) fn is_player_inventory_screen(&self) -> bool {

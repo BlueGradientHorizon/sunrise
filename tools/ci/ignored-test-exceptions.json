@@ -898,7 +898,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::remote::tests::client_camera_tests::a_named_mob_the_server_camera_is_attached_to_shows_no_name_tag",
+    "test": "game::client_side::remote_client::client_camera_tests::a_named_mob_the_server_camera_is_attached_to_shows_no_name_tag",
     "path": "crates/sunrise-client/src/game/network/remote/client_camera_tests.rs",
     "reason": "run by tools/test_camera_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera name-tag witness into .local and runs this test against it through SUNRISE_NAME_TAG_CAMERA_WITNESS, so no recorded vanilla data is committed."

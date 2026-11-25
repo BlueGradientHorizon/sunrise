@@ -5,7 +5,7 @@
 //! forcing the game mode. Its difficulty lock asks first (PopupScreen), and
 //! Restrictions opens RestrictionsScreen.
 //! Parity reference: https://mcsrc.dev/2/26.3/net/minecraft/client/gui/screens/WorldOptionsScreen
-use super::{Game, Screen, integrated::ServerOptions, lan::LanSettings};
+use super::{Game, Screen, integrated::ServerOptions};
 use sunrise_client::{
     font::Font,
     game_rules_screen::{Exit, RulesScreen},
@@ -1731,7 +1731,6 @@ impl Game<'_> {
                 };
                 self.send_publish_message(message);
             }
-            return;
         }
     }
 }

@@ -113,25 +113,26 @@ impl Game<'_> {
     }
     /// The pickable projectile under the crosshair within entity reach.
     pub(in crate::game::server_side) fn redirectable_hit(&self) -> Option<(usize, f64)> {
-        if let Some(hit) = self.cached_entity_pick() {
-            let (entity, distance, _) = hit?;
-            let index = self
-                .creatures
-                .projectiles
-                .iter()
-                .position(|f| f.id == entity.id() && self.projectile_is_pickable(f))?;
-            return Some((index, distance));
+        let (eye, dir) = self.aim()?;
+        let reach = self.entity_reach;
+        let (from, to) = super::pick_ray::pick_ray_segment(eye, dir, reach);
+        let mut pick = super::pick_ray::PickAccumulator::new(reach * reach);
+        let mut best = None;
+        for (i, p) in self.creatures.projectiles.iter().enumerate() {
+            if !self.projectile_is_pickable(p) {
+                continue;
+            }
+            let radius = self.projectile_pick_radius(p);
+            let bb = if radius == 0.0 {
+                p.bounds()
+            } else {
+                p.bounds().inflate(Vec3::new(radius, radius, radius))
+            };
+            if pick.consider_box(self, p.id, from, to, bb) {
+                best = Some((i, pick.hovered.unwrap().distance_sq.sqrt()));
+            }
         }
-        let super::pick_entity::CrosshairDecision::Entity(hit) = self.compute_crosshair_decision()
-        else {
-            return None;
-        };
-        let index = self
-            .creatures
-            .projectiles
-            .iter()
-            .position(|f| f.id == hit.id && self.projectile_is_pickable(f))?;
-        Some((index, hit.distance_sq.sqrt()))
+        best
     }
 
     /// `Player.attack` on a redirectable projectile nearer than any mob or
@@ -146,7 +147,9 @@ impl Game<'_> {
         if self.mob_hit().is_some_and(|(_, d, _)| d < t) {
             return false;
         }
-        if !self.before_block(t) { return false; }
+        if !self.before_block(t) {
+            return false;
+        }
         if matches!(
             self.creatures.projectiles[i].kind,
             ProjectileKind::ShulkerBullet { .. }
@@ -208,7 +211,6 @@ impl Game<'_> {
         let (Some(eye), Some(p)) = (self.eye_position(), self.creatures.projectiles.get(i)) else {
             return false;
         };
-        // A client's copy takes the box of its `entity_size` answer.
         let b = p.bounds();
         let (lo, hi) = (b.min_position(), b.max_position());
         let (lo, hi) = ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);

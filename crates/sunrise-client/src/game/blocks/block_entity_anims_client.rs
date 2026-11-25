@@ -81,13 +81,43 @@ impl Game<'_> {
         }
         Some(skin.fallback.to_owned())
     }
-    /// `BellBlockEntity.tick` and `makeRaidersGlow`, using live entity/tag state.
-    pub(in crate::game) fn tick_bell(
+    /// `BellBlockEntity.updateEntities` on the client: entities within 48 blocks.
+    pub(in crate::game) fn client_bell_gather(&self, pos: [i32; 3]) -> Vec<u64> {
+        let area = Aabb::new(
+            Vec3::new(
+                f64::from(pos[0]) - 48.0,
+                f64::from(pos[1]) - 48.0,
+                f64::from(pos[2]) - 48.0,
+            ),
+            Vec3::new(
+                f64::from(pos[0]) + 49.0,
+                f64::from(pos[1]) + 49.0,
+                f64::from(pos[2]) + 49.0,
+            ),
+        );
+        let mut out = Vec::new();
+        if self
+            .client_player_view()
+            .is_some_and(|p| p.bounds.intersects(area))
+        {
+            out.push(PLAYER);
+        }
+        for m in &self.mobs {
+            if !m.removed && m.bounds().intersects(area) {
+                out.push(u64::from(m.id));
+            }
+        }
+        out
+    }
+    /// Client no-op: only the server informs villager brains when a bell rings.
+    pub(in crate::game) fn client_bell_heard(&mut self, _pos: [i32; 3], _now: i64) {}
+    /// `BellBlockEntity.clientTick`: resonance particles on the client copy.
+    pub(in crate::game) fn client_tick_bell(
         &mut self,
         pos: [i32; 3],
         tags: &sunrise_client::items::EntityTypeTags,
     ) {
-        let player = self.player_view().map(|p| BellEntity {
+        let player = self.client_player_view().map(|p| BellEntity {
             position: [p.position.x, p.position.y, p.position.z],
             alive: p.alive,
             raider: false,
@@ -113,24 +143,7 @@ impl Game<'_> {
             .entry(pos)
             .or_default()
             .tick(pos, entity);
-        let centre = [
-            f64::from(pos[0]) + 0.5,
-            f64::from(pos[1]) + 0.5,
-            f64::from(pos[2]) + 0.5,
-        ];
-        if self.is_logical_server() {
-            if tick.resonate {
-                self.server_play_sound("minecraft:block.bell.resonate", centre, 1.0, 1.0);
-            }
-            if let Some((_, glow)) = tick.ended {
-                // makeRaidersGlow (the server's effect).
-                for m in &mut self.mobs {
-                    if glow.contains(&u64::from(m.id)) {
-                        m.add_effect("minecraft:glowing", 60, 0);
-                    }
-                }
-            }
-        } else if let Some((particles, _)) = tick.ended {
+        if let Some((particles, _)) = tick.ended {
             for (p, color) in particles {
                 // ColorParticleOption.create(ENTITY_EFFECT, color): ARGB.
                 let c = color as u32;

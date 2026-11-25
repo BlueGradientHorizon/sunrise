@@ -2,8 +2,8 @@
 //! `ClockAdjustment` from `sleep_finished_time` (NeoForge's `SleepFinishedTimeEvent`), and the
 //! clock time markers both read.
 use super::{Dim, Game};
-use crate::game::chat::{OVERWORLD_CLOCK, TimeMarker};
 use mod_api::{ClockAdjustment, Identifier, LevelRef};
+use sunrise_gameplay::world_clock::{OVERWORLD_CLOCK, TimeMarker};
 
 /// Vanilla's wake-up time marker, where sleeping through the night moves the clock
 /// (`ClockTimeMarkers.WAKE_UP_FROM_SLEEP`).
@@ -49,7 +49,7 @@ impl Game<'_> {
 
     /// The level's clock, its time now and where sleeping moves it, after the mods; None when a
     /// mod canceled the move, or when no time fits (the clock is at the end of its range).
-    pub(super) fn sleep_finished_move(&mut self) -> Option<(String, i64, i64)> {
+    pub(in crate::game) fn sleep_finished_move(&mut self) -> Option<(String, i64, i64)> {
         let clock = self.level_clock_name(self.dim);
         let current = self.command_clock_time(&clock);
         let morning = vanilla_morning(current);
@@ -103,8 +103,8 @@ fn wake_time(
 #[cfg(test)]
 mod tests {
     use super::{Refused, WAKE_UP_FROM_SLEEP, vanilla_morning, wake_time};
-    use crate::game::chat::TimeMarker;
     use mod_api::{ClockAdjustment, Identifier};
+    use sunrise_gameplay::world_clock::TimeMarker;
 
     const NOW: i64 = 13_000;
 
@@ -223,8 +223,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_later_listener_reads_and_replaces_the_earlier_adjustment() {
-        use crate::game::chat::OVERWORLD_CLOCK;
         use std::sync::{Arc, Mutex};
+        use sunrise_gameplay::world_clock::OVERWORLD_CLOCK;
         struct First;
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for First {

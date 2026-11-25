@@ -23,7 +23,81 @@ pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_core::random::{LegacyRandom, RandomSource};
 
+fn p_zrot(p: &mut Poses, part: &str, v: f32) {
+    p.zrot(part, v);
+}
+
 impl Game<'_> {
+    /// `EvokerFangsRenderer`: the jaws snapping up and closing.
+    pub(in crate::game) fn fangs_geometry(
+        &self,
+        camera: glam::DVec3,
+        alpha: f64,
+        out: &mut Vec<sunrise_client_render::render_geometry::Vertex>,
+    ) {
+        let Some(model) = self.fangs.model.as_ref() else {
+            return;
+        };
+        let Some(r) = self
+            .gui
+            .atlas
+            .sprites
+            .get("entity/illager/evoker_fangs")
+            .copied()
+        else {
+            return;
+        };
+        let partial = alpha as f32;
+        for f in &self.fangs.list {
+            if !f.started || self.hides_as_camera(f.id) {
+                continue;
+            }
+            // getAnimationProgress.
+            let i = f.life - 2;
+            let bite = if i <= 0 {
+                1.0
+            } else {
+                1.0 - (i as f32 - partial) / 20.0
+            };
+            if bite == 0.0 {
+                continue;
+            }
+            let mut poses = Poses::new(model);
+            let amount = (bite * 2.0).min(1.0);
+            let amount = 1.0 - amount * amount * amount;
+            let pi = std::f32::consts::PI;
+            p_zrot(&mut poses, "upper_jaw", pi - amount * 0.35 * pi);
+            p_zrot(&mut poses, "lower_jaw", pi + amount * 0.35 * pi);
+            poses.get("base")[1] -= (bite + (bite * 2.7).sin()) * 7.2;
+            let pre = if bite > 0.9 { (1.0 - bite) / 0.1 } else { 1.0 };
+            let root = poses.get("root");
+            root[1] = 24.0 - 20.0 * pre;
+            root[6] = pre;
+            root[7] = pre;
+            root[8] = pre;
+            let light = self.world.light(
+                f.pos[0].floor() as i32,
+                f.pos[1].floor() as i32,
+                f.pos[2].floor() as i32,
+            );
+            let packed = (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8);
+            let base =
+                glam::Mat4::from_translation((glam::DVec3::from_array(f.pos) - camera).as_vec3())
+                    * glam::Mat4::from_rotation_y((90.0 - f.yaw).to_radians())
+                    * glam::Mat4::from_scale(glam::Vec3::new(-1.0, -1.0, 1.0))
+                    * glam::Mat4::from_translation(glam::Vec3::new(0.0, -1.501, 0.0));
+            sunrise_client::mobs::render::draw(
+                model,
+                base,
+                &poses,
+                [r.u0, r.v0, r.u1, r.v1],
+                0xFFFF_FFFF,
+                packed,
+                0,
+                out,
+            );
+        }
+    }
     pub(in crate::game) fn insert_fangs(
         &mut self,
         id: u32,

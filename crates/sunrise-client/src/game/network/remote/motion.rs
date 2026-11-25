@@ -54,64 +54,95 @@ impl Game<'_> {
                     .map(|m| [m.position.x, m.position.y, m.position.z])
             })
             .unwrap_or([0.0; 3]);
-        if let Some(r) = self.remote.as_mut() {
-            if let Some(t) = r.entities.get_mut(&id) {
-                let d = [0, 1, 2].map(|i| position[i] - t.position[i]);
-                let snap = matches!(packet, MovePacket::PositionSyncSnap)
-                    || (matches!(packet, MovePacket::Teleport | MovePacket::PositionSync)
-                        && d[0] * d[0] + d[1] * d[1] + d[2] * d[2] > 4096.0);
-                if path.is_some() {
-                    t.position = position;
-                }
-                if let Some((yaw, pitch)) = rotation {
-                    if yaw.is_finite() {
-                        t.yaw = if snap { yaw } else { yaw % 360.0 };
-                    }
-                    if pitch.is_finite() {
-                        t.pitch = (pitch % 360.0).clamp(-90.0, 90.0);
-                    }
-                }
-                if snap {
-                    if let Some(old) = snap_old {
-                        t.previous = old.position;
-                        t.previous_yaw = if old.yaw.is_finite() { old.yaw } else { t.yaw };
-                        t.previous_pitch = if old.pitch.is_finite() {
-                            (old.pitch % 360.0).clamp(-90.0, 90.0)
-                        } else {
-                            t.pitch
-                        };
-                    } else {
-                        t.previous = t.position;
-                        t.previous_yaw = t.yaw;
-                        t.previous_pitch = t.pitch;
-                    }
-                }
-            }
-            if driven {
-                // handleMoveEntity, handleEntityPositionSync: the mount or boat
-                // this client moves (isLocalInstanceAuthoritative) keeps its own
-                // position. An interpolation it had going runs on
-                // (`interpolate_driven_mount`, the boat's own), with no new steps.
-                return;
-            }
-            if let Some(m) = mob {
-                // Shulker.createInterpolationHandler is NO_OP, so a move packet
-                // is setPos at once. The 6-tick slide starts from the block
-                // the shulker occupied before this packet.
-                if m.species() == sunrise_client::mobs::Species::Shulker {
-                    r.stepped.remove(&id);
+        if self.remote.is_some() {
+            if let Some(r) = self.remote.as_mut() {
+                if let Some(t) = r.entities.get_mut(&id) {
+                    let d = [0, 1, 2].map(|i| position[i] - t.position[i]);
+                    let snap = matches!(packet, MovePacket::PositionSyncSnap)
+                        || (matches!(packet, MovePacket::Teleport | MovePacket::PositionSync)
+                            && d[0] * d[0] + d[1] * d[1] + d[2] * d[2] > 4096.0);
                     if path.is_some() {
-                        sunrise_client::mobs::shulker::client_set_pos(
-                            m,
-                            position[0],
-                            position[1],
-                            position[2],
-                        );
+                        t.position = position;
                     }
                     if let Some((yaw, pitch)) = rotation {
-                        m.yaw += wrap_degrees(yaw - m.yaw);
-                        m.head_pitch = (pitch % 360.0).clamp(-90.0, 90.0);
+                        if yaw.is_finite() {
+                            t.yaw = if snap { yaw } else { yaw % 360.0 };
+                        }
+                        if pitch.is_finite() {
+                            t.pitch = (pitch % 360.0).clamp(-90.0, 90.0);
+                        }
                     }
+                    if snap {
+                        if let Some(old) = snap_old {
+                            t.previous = old.position;
+                            t.previous_yaw = if old.yaw.is_finite() { old.yaw } else { t.yaw };
+                            t.previous_pitch = if old.pitch.is_finite() {
+                                (old.pitch % 360.0).clamp(-90.0, 90.0)
+                            } else {
+                                t.pitch
+                            };
+                        } else {
+                            t.previous = t.position;
+                            t.previous_yaw = t.yaw;
+                            t.previous_pitch = t.pitch;
+                        }
+                    }
+                }
+                if driven {
+                    // Authoritative client mounts/boats keep their own position and interpolation.
+                    return;
+                }
+                if let Some(m) = mob {
+                    // Shulker uses NO_OP interpolation: setPos immediately, keeping old block.
+                    if m.species() == sunrise_client::mobs::Species::Shulker {
+                        r.stepped.remove(&id);
+                        if path.is_some() {
+                            sunrise_client::mobs::shulker::client_set_pos(
+                                m,
+                                position[0],
+                                position[1],
+                                position[2],
+                            );
+                        }
+                        if let Some((yaw, pitch)) = rotation {
+                            m.yaw += wrap_degrees(yaw - m.yaw);
+                            m.head_pitch = (pitch % 360.0).clamp(-90.0, 90.0);
+                        }
+                        let _ = m.update_retained_ground(
+                            &self.world,
+                            self.collision,
+                            &world_items!(self).entity_type_tags,
+                            on_ground,
+                            None,
+                        );
+                        return;
+                    }
+                    // LivingEntity SteppedInterpolationHandler over its type's update interval.
+                    let entity = PosRot {
+                        position: [m.position.x, m.position.y, m.position.z],
+                        yaw: m.yaw,
+                        pitch: m.head_pitch,
+                    };
+                    let handler = r.stepped.entry(id).or_insert_with(|| {
+                        let interval = sunrise_client::lan::tracking::settings(&m.kind.id).1;
+                        SteppedInterpolation::new(interval as i32)
+                    });
+                    if let Some(at) =
+                        stepped_move(handler, packet, entity, position, path, rotation)
+                    {
+                        place_interpolated(m, at);
+                        if let Some(old) = snap_old {
+                            m.previous =
+                                Vec3::new(old.position[0], old.position[1], old.position[2]);
+                            m.previous_yaw = old.yaw;
+                            m.previous_head_pitch = (old.pitch % 360.0).clamp(-90.0, 90.0);
+                        } else {
+                            m.previous = m.position;
+                            m.previous_yaw = m.yaw;
+                            m.previous_head_pitch = m.head_pitch;
+                        }
+                    }
+                    // ClientPacketListener sets onGround after moving or queuing interpolation.
                     let _ = m.update_retained_ground(
                         &self.world,
                         self.collision,
@@ -121,77 +152,52 @@ impl Game<'_> {
                     );
                     return;
                 }
-                // A living entity: LivingEntity.createInterpolationHandler's
-                // SteppedInterpolationHandler, over its type's update interval.
-                let entity = PosRot {
-                    position: [m.position.x, m.position.y, m.position.z],
-                    yaw: m.yaw,
-                    pitch: m.head_pitch,
-                };
-                let handler = r.stepped.entry(id).or_insert_with(|| {
-                    let interval = sunrise_client::lan::tracking::settings(&m.kind.id).1;
-                    SteppedInterpolation::new(interval as i32)
-                });
-                if let Some(at) = stepped_move(handler, packet, entity, position, path, rotation) {
-                    place_interpolated(m, at);
-                    if let Some(old) = snap_old {
-                        m.previous = Vec3::new(old.position[0], old.position[1], old.position[2]);
-                        m.previous_yaw = old.yaw;
-                        m.previous_head_pitch = (old.pitch % 360.0).clamp(-90.0, 90.0);
-                    } else {
-                        m.previous = m.position;
-                        m.previous_yaw = m.yaw;
-                        m.previous_head_pitch = m.head_pitch;
+                // Armor stands use the same stepped handler in `tick_remote_entities`.
+                if let Some(a) = self.armor_stands.iter_mut().find(|a| a.id == id as u32) {
+                    let entity = PosRot {
+                        position: [a.position.x, a.position.y, a.position.z],
+                        yaw: a.yaw,
+                        pitch: a.pitch,
+                    };
+                    let handler = r.stepped.entry(id).or_insert_with(|| {
+                        let interval =
+                            sunrise_client::lan::tracking::settings("minecraft:armor_stand").1;
+                        SteppedInterpolation::new(interval as i32)
+                    });
+                    if let Some(at) =
+                        stepped_move(handler, packet, entity, position, path, rotation)
+                    {
+                        a.snap(
+                            Vec3::new(at.position[0], at.position[1], at.position[2]),
+                            at.yaw,
+                            at.pitch,
+                        );
+                        if let Some(old) = snap_old {
+                            a.previous =
+                                Vec3::new(old.position[0], old.position[1], old.position[2]);
+                            a.previous_yaw = old.yaw;
+                            a.previous_pitch = (old.pitch % 360.0).clamp(-90.0, 90.0);
+                        }
                     }
-                }
-                // ClientPacketListener sets onGround after moving or queuing the
-                // interpolation; the support probe uses the current bounds.
-                let _ = m.update_retained_ground(
-                    &self.world,
-                    self.collision,
-                    &world_items!(self).entity_type_tags,
-                    on_ground,
-                    None,
-                );
-                return;
-            }
-            // An armor stand is a living entity too: the same handler, over
-            // its type's update interval, stepped in `tick_remote_entities`.
-            if let Some(a) = self.armor_stands.iter_mut().find(|a| a.id == id as u32) {
-                let entity = PosRot {
-                    position: [a.position.x, a.position.y, a.position.z],
-                    yaw: a.yaw,
-                    pitch: a.pitch,
-                };
-                let handler = r.stepped.entry(id).or_insert_with(|| {
-                    let interval =
-                        sunrise_client::lan::tracking::settings("minecraft:armor_stand").1;
-                    SteppedInterpolation::new(interval as i32)
-                });
-                if let Some(at) = stepped_move(handler, packet, entity, position, path, rotation) {
-                    a.snap(
-                        Vec3::new(at.position[0], at.position[1], at.position[2]),
-                        at.yaw,
-                        at.pitch,
+                    let _ = a.update_retained_ground(
+                        &self.world,
+                        self.collision,
+                        &world_items!(self).entity_type_tags,
+                        on_ground,
+                        None,
                     );
-                    if let Some(old) = snap_old {
-                        a.previous = Vec3::new(old.position[0], old.position[1], old.position[2]);
-                        a.previous_yaw = old.yaw;
-                        a.previous_pitch = (old.pitch % 360.0).clamp(-90.0, 90.0);
-                    }
+                    return;
                 }
-                let _ = a.update_retained_ground(
-                    &self.world,
-                    self.collision,
-                    &world_items!(self).entity_type_tags,
-                    on_ground,
-                    None,
-                );
-                return;
             }
-            // Interaction extends Entity and keeps its NO_OP interpolation
-            // handler: the server's position replaces its own at once.
-            if self.side_move_remote_interaction(id, position, path.is_some(), rotation, packet, snap_old) {
+            // Interaction keeps NO_OP interpolation: the server's position replaces its own at once.
+            if self.side_move_remote_interaction(
+                id,
+                position,
+                path.is_some(),
+                rotation,
+                packet,
+                snap_old,
+            ) {
                 return;
             }
             // Projectiles keep Entity's NO_OP InterpolationHandler too: the
@@ -253,7 +259,11 @@ impl Game<'_> {
                 f.position = Vec3::new(position[0], position[1], position[2]);
                 return;
             }
-            if let Some(p) = r.pending_items.get_mut(&id) {
+            if let Some(p) = self
+                .remote
+                .as_mut()
+                .and_then(|r| r.pending_items.get_mut(&id))
+            {
                 p.position = position;
             }
             // ItemEntity, FallingBlockEntity and PrimedTnt keep Entity's
@@ -281,17 +291,22 @@ impl Game<'_> {
             // moving it.
             if let Some(o) = self.orbs.iter_mut().find(|o| o.id == id as u32) {
                 o.ground.on_ground = on_ground;
-                r.lerps.insert(
-                    id,
-                    Lerp {
-                        target: position,
-                        rotation: None,
-                        steps: 3,
-                    },
-                );
+                if let Some(r) = self.remote.as_mut() {
+                    r.lerps.insert(
+                        id,
+                        Lerp {
+                            target: position,
+                            rotation: None,
+                            steps: 3,
+                        },
+                    );
+                }
                 return;
             }
-            let has_cart_lerp = self.remote.as_ref().is_some_and(|r| r.cart_lerps.contains_key(&id));
+            let has_cart_lerp = self
+                .remote
+                .as_ref()
+                .is_some_and(|r| r.cart_lerps.contains_key(&id));
             if has_cart_lerp {
                 // A minecart on NewMinecartBehavior keeps Entity's NO_OP
                 // InterpolationHandler: a teleport puts it there at once.
@@ -306,9 +321,10 @@ impl Game<'_> {
                         }
                     });
                 }
-            } else if !self.side_has_remote_text_display(id) {
-                // AbstractInterpolationHandler.interpolateTo: without a
-                // rotation, the one it was heading for.
+            } else if !self.side_has_remote_text_display(id)
+                && let Some(r) = self.remote.as_mut()
+            {
+                // AbstractInterpolationHandler.interpolateTo keeps the heading rotation when absent.
                 let rotation = rotation.or_else(|| r.lerps.get(&id).and_then(|l| l.rotation));
                 r.lerps.insert(
                     id,

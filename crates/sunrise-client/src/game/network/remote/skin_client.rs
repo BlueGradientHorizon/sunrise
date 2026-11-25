@@ -44,7 +44,7 @@ impl Game<'_> {
         sunrise_client::skins::face_skin(
             uuid,
             listed,
-            &mut self.skin_profiles.0.borrow_mut(),
+            &mut self.skin_profiles.borrow_mut(),
             &mut self.skin_downloads.0.borrow_mut(),
             |location| self.gui.atlas.sprites.contains_key(location),
             name,
@@ -60,7 +60,7 @@ impl Game<'_> {
         for profile in profiles {
             let skin = skins::head_skin(
                 profile,
-                &mut self.skin_profiles.0.borrow_mut(),
+                &mut self.skin_profiles.borrow_mut(),
                 &mut self.skin_downloads.0.borrow_mut(),
                 |location| self.gui.atlas.sprites.contains_key(location),
             );

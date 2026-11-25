@@ -25,11 +25,6 @@ impl Game<'_> {
     }
 }
 
-/// Helpers for native mods, kept as stable as the hook points.
-// Native mods use these; nothing in Sunrise does.
-impl Game<'_> {
-}
-
 #[cfg(test)]
 pub(in crate::game) mod menu_extra_data_tests {
     #[allow(unused_imports)]

@@ -1613,7 +1613,7 @@ impl Game<'_> {
         self.held().is_some_and(|s| self.is_rod(s))
     }
     /// The hook's position this frame.
-    pub(in crate::game::server_side) fn hook_position(&self, alpha: f64) -> Option<glam::DVec3> {
+    pub(in crate::game) fn hook_position(&self, alpha: f64) -> Option<glam::DVec3> {
         let h = self.hook.as_ref()?;
         let lerp = |a: f64, b: f64| a + (b - a) * alpha;
         Some(glam::DVec3::new(

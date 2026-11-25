@@ -250,7 +250,7 @@ impl Game<'_> {
     }
 
     /// On the server thread, between two ticks: begins and ends the captures guests asked for.
-    pub(super) fn serve_perf_asked(&mut self) {
+    pub(in crate::game) fn serve_perf_asked(&mut self) {
         self.pump_perf_files();
         for asked in self.take_perf_asked() {
             match asked {

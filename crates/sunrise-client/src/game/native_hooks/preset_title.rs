@@ -16,6 +16,3 @@ pub(in crate::game) fn preset_editor_key_code(physical: PhysicalKey) -> u32 {
         .and_then(|(id, _)| u32::try_from(*id).ok())
         .unwrap_or(0)
 }
-
-impl Game<'_> {
-}

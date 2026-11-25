@@ -9,6 +9,19 @@ pub(in crate::game::client_side) use crate::game::native_hooks::camera_read::*;
 
 /// Helpers for native mods, kept as stable as the hook points.
 impl Game<'_> {
+    pub(in crate::game) fn activate_projection_frame(&self) -> ProjectionFrame {
+        ProjectionFrame(PROJECT_VIEW.replace(self as *const Self as usize))
+    }
+    /// `Minecraft.setCameraEntity`: follows the local player or a tracked mob, else false.
+    pub(in crate::game) fn set_camera_entity(&mut self, entity: EntityRef) -> bool {
+        use crate::game::commands_common::Target;
+        let id = match self.native_client_entity_target(entity) {
+            Some(Target::Player | Target::Mob(_)) => entity.id() as i32,
+            _ => return false,
+        };
+        self.remote_set_camera(id);
+        true
+    }
     /// The most recently extracted world frame's camera, if one exists.
     /// During GUI rendering this is the current frame, including bob/spin and FOV.
     pub(in crate::game) fn camera(&self) -> Option<mod_api::Camera> {

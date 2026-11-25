@@ -69,10 +69,12 @@ impl Game<'_> {
         id == camera || self.wire_entity_id(id) == Some(camera as i32)
     }
 
+    #[inline(always)]
     pub(in crate::game) fn client_pick_camera_id(&self) -> Option<u32> {
         self.pick_camera_id()
     }
 
+    #[inline(always)]
     pub(in crate::game) fn client_is_pick_camera(&self, id: u32) -> bool {
         self.is_pick_camera(id)
     }
@@ -219,7 +221,7 @@ mod tests {
             false
         ));
         assert_eq!(pick.hovered.unwrap().id, 2);
-        assert_eq!(pick.nearest_sq, 0.0);
+        assert_eq!(pick.nearest_sq(), 0.0);
         assert!(pick.accept(
             PickCandidate {
                 id: 3,
@@ -230,7 +232,7 @@ mod tests {
             false,
             false
         ));
-        assert_eq!(pick.nearest_sq, 16.0);
+        assert_eq!(pick.nearest_sq(), 16.0);
         assert!(!pick.accept(
             PickCandidate {
                 id: 4,

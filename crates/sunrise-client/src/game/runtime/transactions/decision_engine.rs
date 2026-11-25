@@ -59,7 +59,7 @@ impl Target {
     }
 
     /// The owner's stable identity, which no take, restore or lift changes.
-    pub(in crate::game::server_side) fn owner_id(&self) -> MenuId {
+    pub(in crate::game) fn owner_id(&self) -> MenuId {
         self.id
     }
 
@@ -71,7 +71,7 @@ impl Target {
 
     /// Every route must use this boundary before taking or mutating its owner.
     /// First-write snapshots merge into the existing Host transaction journal.
-    pub(in crate::game::server_side) fn edit<R>(
+    pub(in crate::game) fn edit<R>(
         &self,
         game: &mut Game<'_>,
         edit: impl FnOnce(&mut EngineMenu) -> R,

@@ -31,6 +31,26 @@ impl Game<'_> {
     ) -> Option<&sunrise_client::items::ItemInfo> {
         self.items().get(self.server.attack_item.as_deref()?)
     }
+    /// Server-side `LivingEntity.swing` handler called via `side_ops::presentation`.
+    pub(in crate::game) fn server_swing_hand(
+        &mut self,
+        hand: Hand,
+        animation: SwingAnimation,
+    ) -> bool {
+        if self.native_entity_swing_event(hand) {
+            return false;
+        }
+        let effects = &self.potions.effects;
+        let dig_speed = effects
+            .amplifier("haste")
+            .max(effects.amplifier("conduit_power"));
+        let fatigue = effects.amplifier("mining_fatigue");
+        let duration = swing_duration(animation, dig_speed, fatigue);
+        if self.swing.start_if_able(hand, animation, duration) {
+            self.swings_started += 1;
+        }
+        true
+    }
     /// `swing_arm` for a use whose result is `SwingSource.PREDICTED`: the
     /// player's client swings by itself, so a server keeps it to the others.
     pub(in crate::game::server_side) fn swing_arm_predicted(&mut self) {

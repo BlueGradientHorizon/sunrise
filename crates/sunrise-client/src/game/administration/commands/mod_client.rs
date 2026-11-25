@@ -1,13 +1,7 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::{
-    Dim, Game, chat::PLAYER_NAME, vehicle_teleport::TeleportMotion,
+    Dim, Game, chat_common::PLAYER_NAME, vehicle_teleport::TeleportMotion,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::OtherEntity;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::R;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::Target;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::commands::block_input_matches;
 #[allow(unused_imports)]
@@ -17,33 +11,17 @@ pub(in crate::game::client_side) use crate::game::commands::data::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::commands::difficulty_names;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::entity_name_key;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::entity_pitch;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::err;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::format_double;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::formatted_command_failure;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::percent_f;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::rotation_in;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::commands::split_top_level;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::commands::target_entity_mut;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::teleport_velocity;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::texts;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::without_knots;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::wrap_degrees;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::commands::*;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::commands_common::{
+    OtherEntity, R, Target, entity_name_key, entity_pitch, err, format_double,
+    formatted_command_failure, percent_f, rotation_in, teleport_velocity, texts, without_knots,
+    wrap_degrees,
+};
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::{
     command::{

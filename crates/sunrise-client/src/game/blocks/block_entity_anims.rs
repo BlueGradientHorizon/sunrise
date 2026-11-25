@@ -218,6 +218,55 @@ impl Game<'_> {
             }
         }
     }
+    /// `BellBlockEntity.serverTick` and `makeRaidersGlow` on the server.
+    pub(in crate::game) fn server_tick_bell(
+        &mut self,
+        pos: [i32; 3],
+        tags: &sunrise_client::items::EntityTypeTags,
+    ) {
+        let player = self.player_view().map(|p| BellEntity {
+            position: [p.position.x, p.position.y, p.position.z],
+            alive: p.alive,
+            raider: false,
+        });
+        let mobs = &self.mobs;
+        let entity = |h: u64| {
+            if h == PLAYER {
+                return player;
+            }
+            let m = mobs.iter().find(|m| u64::from(m.id) == h)?;
+            Some(BellEntity {
+                position: [m.position.x, m.position.y, m.position.z],
+                alive: m.alive() && !m.removed,
+                raider: tags.has_bit(
+                    m.kind.flags.entity_tag_slot,
+                    sunrise_client::items::EntityTypeTags::RAIDERS,
+                ),
+            })
+        };
+        let tick = self
+            .be_anims
+            .bells
+            .entry(pos)
+            .or_default()
+            .tick(pos, entity);
+        let centre = [
+            f64::from(pos[0]) + 0.5,
+            f64::from(pos[1]) + 0.5,
+            f64::from(pos[2]) + 0.5,
+        ];
+        if tick.resonate {
+            self.server_play_sound("minecraft:block.bell.resonate", centre, 1.0, 1.0);
+        }
+        if let Some((_, glow)) = tick.ended {
+            // makeRaidersGlow (the server's effect).
+            for m in &mut self.mobs {
+                if glow.contains(&u64::from(m.id)) {
+                    m.add_effect("minecraft:glowing", 60, 0);
+                }
+            }
+        }
+    }
     /// `ShulkerBoxBlock.canOpen`: a closed box opens only when its lid has
     /// room to rise (`level.noCollision` of the half-open lid box).
     pub(in crate::game::server_side) fn shulker_can_open(&self, pos: [i32; 3]) -> bool {
@@ -261,7 +310,7 @@ impl Game<'_> {
             {
                 self.be_anims.bells.remove(&pos);
             } else if self.block_ticking_area()(pos[0], pos[2]) {
-                self.tick_bell(pos, &tags);
+                self.server_tick_bell(pos, &tags);
             }
         }
     }
@@ -270,42 +319,6 @@ impl Game<'_> {
     pub(in crate::game::server_side) fn tick_block_entity_servers(&mut self) {
         self.tick_conduit_servers();
         self.tick_bell_servers();
-    }
-
-    /// The animation state belongs to the block entity object at `pos` (its generation): one
-    /// made again there starts fresh, even between two ticks.
-    pub(in crate::game) fn claim_anim(&mut self, pos: [i32; 3]) {
-        if let Some(generation) = self
-            .world
-            .block_entities
-            .generation(&(pos[0], pos[1], pos[2]))
-        {
-            self.be_anims.claim(pos, generation);
-        }
-    }
-
-    /// The start of a client tick of the animated block entities: forgets the state of those
-    /// gone (no longer the object that owned it), and of decorated pots whose block is gone. A
-    /// pot is no block entity here and has no ticker, so its wobble lives with its block.
-    pub(in crate::game) fn begin_block_entity_anims(&mut self) -> AnimTick {
-        let world = &self.world;
-        self.be_anims.retain_owned(
-            |p, g| world.block_entities.generation(&(p[0], p[1], p[2])) == Some(g),
-            |p| world.block(p[0], p[1], p[2]).0,
-        );
-        AnimTick { frames: None }
-    }
-    /// The end of the tick: the lids' collision snapshot.
-    pub(in crate::game) fn finish_block_entity_anims(&mut self) {
-        // The lids' grown boxes collide and push in their turns (`tick_block_entity_anim`): a
-        // client of a server owns its own player's position, so the server's
-        // `moveCollidedEntities` alone would be undone by the client's next
-        // move, and a lid the client cannot collide with never holds it up.
-        // Only the player: `tick_block_entities` has already pushed the mobs
-        // and the guests, and a second push would double the lift.
-        if self.remote.is_some() {
-            self.sync_shulkers();
-        }
     }
     /// `ConduitBlockEntity.serverTick` of every conduit in the chunks that
     /// tick blocks, with or without a renderer. The conduits are looked for
@@ -674,72 +687,6 @@ impl Game<'_> {
     pub(in crate::game::server_side) fn gateway_cooldown_event(&mut self, pos: [i32; 3]) {
         self.block_entity_event(pos, 1, 0);
         self.lan_block_event(pos, 1, 0);
-    }
-    /// The End gateway at `pos`: `Age` from its block entity, else from the
-    /// saved one as its chunk was loaded (`getUpdateTag`), or a new gateway.
-    pub(in crate::game) fn gateway_loaded(&self, pos: [i32; 3]) -> EndGateway {
-        let live = match self.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
-            Some(BlockEntity::EndGateway(g)) => Some(g.age),
-            _ => None,
-        };
-        let age = live.or_else(|| self.saved_tag(pos).and_then(|t| number(t.get("Age"))));
-        EndGateway {
-            age: age.unwrap_or(0),
-            teleport_cooldown: 0,
-        }
-    }
-    /// The block entity at `pos` Sunrise keeps as loaded, if any.
-    pub(in crate::game::server_side) fn saved_tag(&self, pos: [i32; 3]) -> Option<&Tag> {
-        self.world
-            .chunks
-            .get(&(pos[0] >> 4, pos[2] >> 4))
-            .and_then(|c| c.saved.as_deref())
-            .and_then(|saved| {
-                saved.block_entities.iter().find(|t| {
-                    [t.get("x"), t.get("y"), t.get("z")]
-                        .map(number)
-                        .eq(&pos.map(|v| Some(i64::from(v))))
-                })
-            })
-    }
-    /// The renderer's view of the block entity at `pos`, with a decorated
-    /// pot's saved `sherds` (back, left, right, front).
-    pub(in crate::game) fn block_anim(&self, pos: [i32; 3], partial: f32) -> BlockAnim {
-        let state = self.world.block(pos[0], pos[1], pos[2]);
-        // A replacement may draw before its first ConduitBlockEntity.clientTick.
-        if matches!(self.be_anims.ticker(state.0), Some(Ticker::Conduit))
-            && let Some(&owner) = self.be_anims.owners.get(&pos)
-            && self
-                .world
-                .block_entities
-                .generation(&(pos[0], pos[1], pos[2]))
-                != Some(owner)
-        {
-            return BlockAnim::default();
-        }
-        let sherds = if &*self.res.facts().get(state).name == "minecraft:decorated_pot" {
-            let sherds = self.saved_tag(pos).and_then(|t| t.get("sherds"));
-            ["back", "left", "right", "front"].map(|side| match sherds.and_then(|s| s.get(side)) {
-                // An item id, or the item stack the processed templates hold.
-                Some(Tag::String(id)) => Some(id.to_string_lossy()),
-                Some(stack) => {
-                    sunrise_client::save::item_from_nbt(stack).map(|s| s.item.to_string())
-                }
-                None => None,
-            })
-        } else {
-            Default::default()
-        };
-        self.be_anims
-            .block_anim(pos, self.world.game_time, partial, sherds)
-    }
-    /// The client chest ticker, also used when replaying a moved chest.
-    pub(in crate::game) fn tick_chest_lid(&mut self, pos: [i32; 3]) {
-        self.be_anims.chests.entry(pos).or_default().tick();
-    }
-    /// `ChestLidController.getOpenness(partial)` at `pos`.
-    pub(in crate::game) fn chest_lid(&self, pos: [i32; 3], partial: f32) -> f32 {
-        self.be_anims.lid(pos, partial)
     }
 }
 

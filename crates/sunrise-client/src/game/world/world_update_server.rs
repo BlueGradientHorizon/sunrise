@@ -16,6 +16,72 @@ impl Game<'_> {
         })
     }
     pub(in crate::game) fn server_clear_lod(&mut self) {}
+    pub(in crate::game) fn server_update_world(&mut self) {
+        self.ask_edited_light_emission();
+        sunrise_client::spans::time("tick_pregen", || self.tick_pregen());
+        if self.defer_chunk_disk_save() {
+            return;
+        }
+        let areas = self.streaming.extra.len();
+        let dim = self.dim;
+        self.update_world_server(dim);
+        self.streaming.hold_unknown_tickets();
+        let plan = sunrise_client::spans::time("streaming_plan", || {
+            let mut step = self.streaming.begin_plan_update(&mut self.world);
+            loop {
+                match step {
+                    sunrise_client::streaming::PlanStep::Ready(plan) => break plan,
+                    sunrise_client::streaming::PlanStep::Save { chunk, resume } => {
+                        self.native_late_full_chunk_snapshot(&chunk);
+                        self.streaming.save_finished(chunk);
+                        step = self.streaming.resume_plan_update(&mut self.world, resume);
+                    }
+                }
+            }
+        });
+        let (commit, protos) = self.streaming.prepare_commit(&mut self.world, plan);
+        self.native_proto_snapshots(&protos);
+        self.streaming.submit_protos(protos);
+        let (_uploads, unloaded) = sunrise_client::spans::time("streaming", || {
+            self.streaming.complete_commit(&mut self.world, commit)
+        });
+        self.streaming.extra.truncate(areas);
+        let dirty: Vec<_> = unloaded
+            .iter()
+            .filter(|c| self.world.modified.remove(&(c.x, c.z)))
+            .cloned()
+            .collect();
+        let modified = sunrise_client::spans::time("with_entities", || self.with_entities(&dirty));
+        self.native_full_chunk_snapshots(&modified);
+        if !modified.is_empty()
+            && let Err(e) = self.update_world_save_server(&modified)
+        {
+            log::warn!("Sunrise: failed to save unloaded chunks: {e}");
+        }
+        sunrise_client::spans::time("spawn_fresh_chunks", || self.spawn_fresh_chunks());
+        self.ask_loaded_light_emission();
+        sunrise_client::spans::time("mods_chunks_changed", || {
+            self.native_chunks_loaded();
+            self.native_chunks_unloaded(&unloaded);
+        });
+        for chunk in &unloaded {
+            self.world.modified.unloaded(&(chunk.x, chunk.z));
+        }
+        sunrise_client::spans::time("unload_entities", || self.unload_entities(&unloaded));
+        if !unloaded.is_empty() {
+            let gone: sunrise_client::fast_hash::FxHashSet<(i32, i32)> =
+                unloaded.iter().map(|c| (c.x, c.z)).collect();
+            sunrise_client::spans::time("unload_block_entities", || {
+                for &column in &gone {
+                    self.world.block_entities.unload_column(column);
+                }
+            });
+            self.world
+                .block_names
+                .retain(|p, _| !gone.contains(&(p.0 >> 4, p.2 >> 4)));
+        }
+        sunrise_client::spans::time("sync_tick_chunks", || self.sync_tick_chunks());
+    }
     #[inline(always)]
     pub(in crate::game) fn update_world_server(&mut self, dim: Dim) {
         // The configuration connection is not a guest and owns no player area.

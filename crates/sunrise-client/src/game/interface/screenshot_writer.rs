@@ -11,7 +11,7 @@ pub struct ScreenshotWrite {
 }
 
 impl ScreenshotWrite {
-    pub(super) fn start(
+    pub(in crate::game) fn start(
         pending: PendingScreenshot,
         destination: Option<(PathBuf, String)>,
         message: Option<Text>,
@@ -26,7 +26,7 @@ impl ScreenshotWrite {
 }
 
 impl Game<'_> {
-    pub(super) fn poll_screenshot_writes(&mut self) {
+    pub(in crate::game) fn poll_screenshot_writes(&mut self) {
         let mut index = 0;
         while index < self.ui.screenshot_writes.len() {
             let Some((path, result)) = self.ui.screenshot_writes[index].save.try_complete() else {

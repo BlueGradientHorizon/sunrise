@@ -61,6 +61,212 @@ pub(in crate::game::client_side) use sunrise_protocol::packets::play::Clientboun
 pub(in crate::game) mod icons;
 
 impl Game<'_> {
+    /// The `AdvancementToast` or `RecipeToast` in its slot at `y`.
+    pub(in crate::game) fn draw_advancement_toast(
+        &self,
+        batch: &mut HudBatch,
+        t: &Toast,
+        y: f32,
+        multiplier: f64,
+    ) {
+        let x = batch.width - 160.0 * t.slide.portion;
+        let fully_for = t.slide.fully_for;
+        let (title, frame, icon) = (&t.title, t.frame, &t.icon);
+        let empty = Text::literal("");
+        let description = t.description.as_ref().unwrap_or(&empty);
+        let recipe = t
+            .is_recipe()
+            .then(|| &t.recipes[t.displayed_recipe(fully_for, multiplier)]);
+        if let Some((station, item)) = recipe {
+            // RecipeToast: black description under a purple title, station scaled 0.6 over result.
+            let atlas = &self.gui.atlas;
+            batch.sprite(atlas, "toast/recipe", x, y);
+            batch.text_styled(atlas, title, x + 30.0, y + 7.0, 0xFF50_0050, false);
+            batch.text_styled(atlas, description, x + 30.0, y + 18.0, 0xFF00_0000, false);
+            let start = batch.vertices.len();
+            self.draw_item_model(batch, &ItemStack::new(station, 1), x + 3.0, y + 3.0);
+            batch.scale_since(start, x, y, 0.6, 0.6);
+            self.draw_item_model(batch, item, x + 8.0, y + 8.0);
+            return;
+        }
+        let atlas = &self.gui.atlas;
+        batch.sprite(atlas, "toast/advancement", x, y);
+        let (_, color) = toast_label(frame);
+        // AdvancementToast.extractRenderState: single line sits under label; longer wraps at 125.
+        let lines = atlas.font.split(&description.resolve_legacy(), 125.0);
+        let label = title;
+        let rgb = color & 0x00FF_FFFF;
+        if let [line] = lines.as_slice() {
+            batch.text_styled(atlas, label, x + 30.0, y + 7.0, color, false);
+            batch.text_styled(atlas, line, x + 30.0, y + 18.0, u32::MAX, false);
+        } else if fully_for < 1500 {
+            let fade = ((1500 - fully_for) as f32 / 300.0).clamp(0.0, 1.0);
+            let alpha = (fade * 255.0).floor() as u32;
+            if alpha != 0 {
+                batch.text_styled(atlas, label, x + 30.0, y + 11.0, alpha << 24 | rgb, false);
+            }
+        } else {
+            let fade = ((fully_for - 1500) as f32 / 300.0).clamp(0.0, 1.0);
+            let alpha = (fade * 252.0).floor() as u32;
+            if alpha != 0 {
+                let mut line_y = y + (16 - lines.len() as i32 * 9 / 2) as f32;
+                for line in &lines {
+                    batch.text_styled(
+                        atlas,
+                        line,
+                        x + 30.0,
+                        line_y,
+                        alpha << 24 | 0x00FF_FFFF,
+                        false,
+                    );
+                    line_y += 9.0;
+                }
+            }
+        }
+        self.draw_item(batch, icon, x + 8.0, y + 8.0);
+    }
+    /// `ClientAdvancements.update`: update the tree before applying progress.
+    pub(in crate::game) fn remote_advancements(
+        &mut self,
+        p: sunrise_protocol::packets::play::UpdateAdvancements,
+    ) {
+        if p.reset {
+            self.adv.progress = Progress::default();
+        }
+        if self.adv.remote_tree.is_none() || p.reset || !p.removed.is_empty() || !p.added.is_empty()
+        {
+            self.update_remote_advancement_tree(p.reset, &p.removed, p.added);
+        }
+        let tree = self.adv.tree.clone();
+        for (id, criteria) in p.progress {
+            let Some(a) = tree.get(&id) else {
+                log::warn!("Server sent progress for unknown advancement {id}");
+                continue;
+            };
+            self.adv.progress.set_remote(
+                a,
+                criteria
+                    .into_iter()
+                    .filter_map(|(name, at)| at.map(|_| name)),
+            );
+            if !p.reset
+                && p.show
+                && self.adv.progress.done(a)
+                && let Some(d) = a.display.as_ref().filter(|d| d.show_toast)
+            {
+                self.add_advancement_toast(Toast {
+                    icon: d.icon.clone(),
+                    frame: d.frame,
+                    title: Text::translate(toast_label(d.frame).0, &[]),
+                    description: Some(text_of(&d.title)),
+                    slide: Slide::default(),
+                    recipes: Vec::new(),
+                    changed: false,
+                    last_changed: 0,
+                });
+            }
+        }
+        self.remote_advancement_tabs_updated(p.reset);
+    }
+    /// `AdvancementTree.remove` and `AdvancementTree.addAll`: prune subtrees, then admit additions.
+    pub(in crate::game) fn update_remote_advancement_tree(
+        &mut self,
+        reset: bool,
+        removed: &[String],
+        added: Vec<sunrise_protocol::packets::play::Advancement>,
+    ) {
+        let mut tree = Tree::default();
+        let mut remote = RemoteTree::default();
+        if !reset && let Some(old_remote) = self.adv.remote_tree.take() {
+            let old = &self.adv.tree;
+            remote.nodes = old_remote.nodes;
+            let mut deleted = vec![false; old.list.len()];
+            let mut stack = Vec::new();
+            for id in removed {
+                if let Some(&i) = old.by_id.get(id)
+                    && !deleted[i]
+                {
+                    stack.push(old_remote.current[i]);
+                    while let Some(node) = stack.pop() {
+                        let node = &remote.nodes[node];
+                        if let Some(&i) = old.by_id.get(&node.id) {
+                            deleted[i] = true;
+                        }
+                        // Even if this ID is gone, this node can still point to live descendants.
+                        stack.extend(node.children.iter().copied());
+                    }
+                } else {
+                    log::warn!("Server removed unknown advancement {id}");
+                }
+            }
+            for (i, a) in old.list.iter().enumerate() {
+                if !deleted[i] {
+                    tree.by_id.insert(a.id.clone(), tree.list.len());
+                    tree.list.push(a.clone());
+                    remote.current.push(old_remote.current[i]);
+                    remote.positions.push(old_remote.positions[i]);
+                }
+            }
+        } else {
+            for id in removed {
+                log::warn!("Server removed unknown advancement {id}");
+            }
+        }
+
+        let locations: Vec<_> = added.iter().map(|a| (a.id.clone(), (a.x, a.y))).collect();
+        let mut pending = added;
+        let mut unresolved = Vec::new();
+        while !pending.is_empty() {
+            let before = pending.len();
+            for a in pending.drain(..) {
+                let parent = if let Some(id) = &a.parent {
+                    let Some(&i) = tree.by_id.get(id) else {
+                        unresolved.push(a);
+                        continue;
+                    };
+                    Some(remote.current[i])
+                } else {
+                    None
+                };
+                let a = self.remote_advancement(a);
+                let node = remote.nodes.len();
+                if let Some(parent) = parent {
+                    remote.nodes[parent].children.push(node);
+                }
+                remote.nodes.push(RemoteNode {
+                    id: a.id.clone(),
+                    parent,
+                    children: Vec::new(),
+                    displayed: a.display.is_some(),
+                });
+                let i = *tree.by_id.entry(a.id.clone()).or_insert(tree.list.len());
+                if i == tree.list.len() {
+                    tree.list.push(a);
+                    remote.current.push(node);
+                    remote.positions.push((0.0, 0.0));
+                } else {
+                    tree.list[i] = a;
+                    remote.current[i] = node;
+                }
+            }
+            if unresolved.len() == before {
+                let ids: Vec<_> = unresolved.iter().map(|a| &a.id).collect();
+                log::error!("Couldn't load advancements: {ids:?}");
+                break;
+            }
+            std::mem::swap(&mut pending, &mut unresolved);
+        }
+        // ClientAdvancements.update applies all locations in packet order.
+        for (id, position) in locations {
+            if let Some(&i) = tree.by_id.get(&id) {
+                remote.positions[i] = position;
+            }
+        }
+        remote.prune_unreachable();
+        self.ui.registries.advancements = tree.list.iter().map(|a| a.id.clone()).collect();
+        self.adv.tree = Arc::new(tree);
+        self.adv.remote_tree = Some(remote);
+    }
     pub(in crate::game) fn add_advancement_toast(&mut self, mut toast: Toast) {
         let kind = if toast.is_recipe() {
             mod_api::ToastKind::Recipe

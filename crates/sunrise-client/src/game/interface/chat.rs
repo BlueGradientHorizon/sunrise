@@ -201,6 +201,14 @@ impl Game<'_> {
 
 
 #[allow(unused_imports)]
+pub use crate::game::chat_common::{PLAYER_NAME, TimeMarker};
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::chat_common::{
+    BLOCK_PROPERTIES, BlockProperties, COMMAND_EXPORTS, OVERWORLD_CLOCK, RESOURCE_IDS, ResourceIds,
+    block_properties, command_export, ids_in, json_ids_in, json_ids_of_every_namespace,
+    overworld_timelines, owner_permission, resource_ids, summonable_entities, templates_under,
+};
+#[allow(unused_imports)]
 pub use sunrise_gameplay::world_clock::WorldClock;
 /// `ChatComponent.Draft`: the text the chat box kept, and whether it was a command.
 pub struct ChatDraft {

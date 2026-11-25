@@ -947,11 +947,8 @@ impl Game<'_> {
         let Some(BlockEntity::Crafter(c)) = self.world.block_entities.get_mut(&key) else {
             return;
         };
-        let mut changed = false;
         for (i, d) in c.disabled.iter_mut().enumerate() {
-            let disabled = menu.data[i] == 1;
-            changed |= *d != disabled;
-            *d = disabled;
+            *d = menu.data[i] == 1;
         }
     }
     #[inline(always)]

@@ -18,6 +18,95 @@ pub(in crate::game::client_side) use sunrise_world::level::LevelEvent;
 pub(in crate::game::client_side) use sunrise_world::registry::BlockStateId;
 
 impl Game<'_> {
+    /// Queue and replay level event `id` at `pos` on the client.
+    pub(in crate::game) fn client_level_event_at(&mut self, id: i32, pos: [i32; 3], data: i32) {
+        self.level_events.push(LevelEvent::LevelEvent {
+            id,
+            pos: BlockPos::new(pos[0], pos[1], pos[2]),
+            data,
+            source: None,
+        });
+        let _ = self.client_process_level_events();
+    }
+    /// `BoneMealItem.addGrowthParticles` (event 1505) on a block or its neighbours.
+    pub(in crate::game::client_side) fn growth_particles(&mut self, pos: BlockPos, count: i32) {
+        let p = [pos.x, pos.y, pos.z];
+        let state = self.world.block(p[0], p[1], p[2]);
+        let facts = self.res.facts();
+        let (at, count, xz, height, floating) = match self.res.behaviours().bone_meal_spreads(state)
+        {
+            Some(spreads) => {
+                if spreads {
+                    // Neighbor spreaders spark over the block above (#11310).
+                    ([p[0], p[1] + 1, p[2]], count * 3, 3.0, 1.0, false)
+                } else {
+                    // Growers spark in place, or below for rooted dirt and mangrove leaves.
+                    let at = match &*facts.get(state).name {
+                        "minecraft:rooted_dirt" | "minecraft:mangrove_leaves" => {
+                            [p[0], p[1] - 1, p[2]]
+                        }
+                        _ => p,
+                    };
+                    (at, count, 0.5, self.block_shape_top(at), true)
+                }
+            }
+            None if &*facts.get(state).name == "minecraft:water" => (p, count * 3, 3.0, 1.0, false),
+            // Mod blocks default to in-block grower sparks.
+            None if !facts.get(state).name.starts_with("minecraft:") => {
+                (p, count, 0.5, self.block_shape_top(p), true)
+            }
+            None => return,
+        };
+        self.spawn_particles(at, count, xz, height, floating, ParticleType::HappyVillager);
+    }
+    /// `BlockState.getShape(..).max(Y)` of the block at `at`, 1.0 for air.
+    pub(in crate::game::client_side) fn block_shape_top(&self, at: [i32; 3]) -> f64 {
+        let facts = self.res.facts();
+        let inside = self.world.block(at[0], at[1], at[2]);
+        if facts.is_air(inside) {
+            1.0
+        } else {
+            facts
+                .get(inside)
+                .outline
+                .iter()
+                .map(|b| b[4])
+                .fold(0.0, f64::max)
+        }
+    }
+    /// `LevelEventHandler` 2011 and 2012: happy villager sparks inside the block.
+    pub(in crate::game::client_side) fn turtle_egg_particles(&mut self, pos: BlockPos, count: i32) {
+        let at = [pos.x, pos.y, pos.z];
+        let height = self.block_shape_top(at);
+        self.spawn_particles(at, count, 0.5, height, true, ParticleType::HappyVillager);
+    }
+    /// `SpeleothemBlock.isStalactite`: a speleothem whose tip points down.
+    pub(in crate::game) fn is_stalactite(&self, state: BlockStateId) -> bool {
+        self.res.facts().get(state).has_class("SpeleothemBlock")
+            && self
+                .pack
+                .assets
+                .registry
+                .state(state)
+                .and_then(|s| s.properties.get("vertical_direction"))
+                .is_some_and(|d| d == "down")
+    }
+    /// `ClientLevel.addBreakingBlockEffects`: hit sound and mining crumb on the hit face.
+    pub(in crate::game) fn breaking_block_effects(
+        &mut self,
+        pos: [i32; 3],
+        face: [i32; 3],
+        play_sound: bool,
+    ) {
+        let state = self.world.block(pos[0], pos[1], pos[2]);
+        if self.res.facts().is_air(state) {
+            return;
+        }
+        if play_sound {
+            self.play_mining_hit_sound(state, pos, face, true);
+        }
+        self.crack_particle(pos, face, state);
+    }
     /// `LevelEventHandler.levelEvent` 3002 to 3005, drawing from the client
     /// level's random.
     pub(in crate::game) fn block_particle_event(&mut self, id: i32, pos: BlockPos, data: i32) {

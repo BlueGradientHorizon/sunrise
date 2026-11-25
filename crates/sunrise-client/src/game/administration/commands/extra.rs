@@ -253,12 +253,12 @@ impl Game<'_> {
                     *t,
                     self.score
                         .board
-                        .players_team(super::super::chat::PLAYER_NAME),
+                        .players_team(crate::game::chat_common::PLAYER_NAME),
                 ) {
                     (Target::Player, Some(team)) => {
                         let mut n = Text::empty();
                         n.push(sunrise_client::scoreboard::comp_text(&team.prefix));
-                        n.push(super::super::chat::PLAYER_NAME);
+                        n.push(crate::game::chat_common::PLAYER_NAME);
                         n.push(sunrise_client::scoreboard::comp_text(&team.suffix));
                         n
                     }

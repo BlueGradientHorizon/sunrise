@@ -24,6 +24,47 @@ pub(in crate::game::client_side) use sunrise_client::{
 pub(in crate::game::client_side) use sunrise_core::{geometry::Vec3, random::RandomSource};
 
 impl Game<'_> {
+    /// `OminousItemSpawnerRenderer`: full-bright item growing over its first 50 ticks and turning.
+    pub(in crate::game) fn ominous_item_spawner_geometry(
+        &self,
+        camera: glam::DVec3,
+        alpha: f64,
+        out: &mut Vec<Vertex>,
+    ) {
+        for s in &self.ominous_spawners {
+            if self.hides_as_camera(s.id) {
+                continue;
+            }
+            let at = glam::DVec3::from_array(s.position);
+            if at.distance_squared(camera) >= 64.0 * 64.0 {
+                continue;
+            }
+            let state = self.resolve_item(&s.item, DisplayContext::Ground, None, 0);
+            if state.is_empty() {
+                continue;
+            }
+            let age = s.tick_count as f32 + alpha as f32;
+            let scale = if age <= TICKS_SCALING {
+                age.min(TICKS_SCALING) / TICKS_SCALING
+            } else {
+                1.0
+            };
+            let spin = (age * ROTATION_SPEED).rem_euclid(360.0);
+            let pose = glam::Mat4::from_translation((at - camera).as_vec3())
+                * glam::Mat4::from_scale(glam::Vec3::splat(scale))
+                * glam::Mat4::from_rotation_y(spin.to_radians());
+            let seed =
+                i64::from(self.item_number(&s.item.item).unwrap_or(0)) + i64::from(s.item.damage);
+            for copy in item_render::cluster_poses(
+                &state,
+                pose,
+                item_render::rendered_amount(s.item.count),
+                seed,
+            ) {
+                self.submit_item_world(&state, copy, vertex_light(0xFF), out);
+            }
+        }
+    }
     /// `OminousItemSpawner.addParticles`: one to three ominous spawning
     /// particles from the spawner out to points around it.
     pub(in crate::game) fn ominous_spawner_particles(&mut self, at: [f64; 3]) {

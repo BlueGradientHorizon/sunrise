@@ -20,7 +20,7 @@ use std::{
 use sunrise_core::geometry::Vec3;
 use sunrise_perf_format::v1::StopReason;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::game) struct Snapshot {
     pub(in crate::game) default_mode: i32,
     pub(in crate::game) personal_mode: i32,
@@ -303,7 +303,9 @@ impl Game<'_> {
         if wanted.default_mode != before.default_mode {
             self.set_default_game_mode(wanted.default_mode);
         }
-        self.set_owner_mode(wanted.personal_mode);
+        if wanted.personal_mode != before.personal_mode {
+            self.set_owner_mode(wanted.personal_mode);
+        }
         if wanted.cheats != before.cheats {
             self.set_allow_commands(wanted.cheats);
             self.owner_allow_commands(wanted.cheats);

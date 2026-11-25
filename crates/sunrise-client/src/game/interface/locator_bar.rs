@@ -6,7 +6,6 @@
 use super::Game;
 use sunrise_client::{
     hud_layout::GuiDraw,
-    lan::playerdata::ints_uuid,
     locator_bar::{ClientWaypoints, View},
 };
 use sunrise_protocol::packets::play::TrackedWaypoint;

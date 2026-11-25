@@ -30,7 +30,7 @@ const GENERATE: u8 = 5;
 /// `JigsawBlockEditScreen.levels`' range: `clampedLerp(value, 0, 20)`.
 const MAX_LEVELS: f32 = 20.0;
 
-pub(super) struct JigsawEditor {
+pub(in crate::game) struct JigsawEditor {
     edits: Vec<EditBox>,
     joint: JointType,
     /// The block faces up or down: only then is the joint chosen.
@@ -42,7 +42,7 @@ pub(super) struct JigsawEditor {
 }
 
 impl JigsawEditor {
-    pub(super) fn new(b: &JigsawBlock, vertical: bool) -> Self {
+    pub(in crate::game) fn new(b: &JigsawBlock, vertical: bool) -> Self {
         let edit = |max: usize, value: String| {
             let mut e = EditBox::new(0.0, 0.0, 98.0, 20.0);
             e.max_length = max;
@@ -270,7 +270,7 @@ impl Editor for JigsawEditor {
 
 impl Game<'_> {
     /// `LocalPlayer.openJigsawBlock`.
-    pub(super) fn open_jigsaw_block(&mut self, pos: Pos) {
+    pub(in crate::game) fn open_jigsaw_block(&mut self, pos: Pos) {
         let Some(BlockEntity::JigsawBlock(b)) = self.world.block_entities.get(&pos) else {
             return;
         };

@@ -52,6 +52,88 @@ pub(in crate::game::client_side) use sunrise_core::{
 };
 
 impl Game<'_> {
+    /// `EndCrystalRenderer.submit`: the crystal and its beam to the respawn target.
+    pub(in crate::game) fn end_crystal_geometry(
+        &self,
+        crystal: &super::dragon::Crystal,
+        frame: &CrystalDrawFrame<'_>,
+        camera: glam::DVec3,
+        out: &mut Vec<Vertex>,
+    ) {
+        if self.hides_as_camera(crystal.id) {
+            return;
+        }
+        let feet = glam::DVec3::new(crystal.position.x, crystal.position.y, crystal.position.z);
+        let rel = feet - camera;
+        if rel.length_squared() > 256.0 * 256.0 {
+            return;
+        }
+        let age = crystal.time as f32 + frame.partial;
+        let light = self.world.light(
+            feet.x.floor() as i32,
+            feet.y.floor() as i32,
+            feet.z.floor() as i32,
+        );
+        let packed = (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8);
+        let poses = sunrise_client::end_crystal::poses(frame.model, age, crystal.show_bottom);
+        // poseStack.scale(2) then translate(0, -0.5, 0), not flipped.
+        let base = glam::Mat4::from_translation(rel.as_vec3())
+            * glam::Mat4::from_scale(glam::Vec3::splat(2.0))
+            * glam::Mat4::from_translation(glam::Vec3::new(0.0, -0.5, 0.0));
+        let start = out.len();
+        self.mark_entity(start, "minecraft:end_crystal");
+        self.mark_motion(start, 0);
+        sunrise_client::mobs::render::draw(
+            frame.model,
+            base,
+            &poses,
+            frame.uv,
+            0xFFFF_FFFF,
+            packed,
+            0,
+            out,
+        );
+        // HDR output: the crystal shines; its tier's window leaves the dark base alone.
+        for v in &mut out[start..] {
+            v.layer |= u32::from(sunrise_client::mesher::BRIGHT) << 16;
+        }
+        #[cfg(test)]
+        super::native_render_pair_tests::witness_body(crystal.id, start, out.len());
+        if let Some(target) = crystal.beam {
+            // The beam from the target's centre up to the bobbing crystal.
+            let from = glam::DVec3::new(
+                f64::from(target[0]) + 0.5,
+                f64::from(target[1]) + 0.5,
+                f64::from(target[2]) + 0.5,
+            );
+            let delta = feet - from
+                + glam::DVec3::new(0.0, f64::from(sunrise_client::end_crystal::y(age)), 0.0);
+            self.crystal_beam(from, delta, age, camera, out);
+        }
+    }
+
+    /// ThrownItemRenderer: the ender eye item facing the camera.
+    pub(in crate::game) fn eye_geometry(&self, camera: glam::DVec3, out: &mut Vec<Vertex>) {
+        let Some(r) = self.gui.atlas.sprites.get("item/ender_eye").copied() else {
+            return;
+        };
+        let alpha = self.clock.fraction();
+        let (yaw, pitch) = (self.yaw.to_radians(), self.pitch.to_radians());
+        let right = glam::Vec3::new(-yaw.cos(), 0.0, -yaw.sin()) * 0.25;
+        let up = glam::Vec3::new(
+            -yaw.sin() * pitch.sin(),
+            pitch.cos(),
+            yaw.cos() * pitch.sin(),
+        ) * 0.25;
+        for eye in &self.end.eyes {
+            if self.hides_as_camera(eye.id) {
+                continue;
+            }
+            let p = eye.previous + (eye.position - eye.previous) * alpha - camera;
+            out.extend(crate::game::end::eye_quad(p.as_vec3(), right, up, r));
+        }
+    }
+
     pub(in crate::game::client_side) fn begin_crystal_geometry(
         &self,
     ) -> Option<CrystalDrawFrame<'_>> {

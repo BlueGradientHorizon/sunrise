@@ -15,13 +15,13 @@ const DONE: u8 = 0;
 const CANCEL: u8 = 1;
 const MODE: u8 = 2;
 
-pub(super) struct TestBlockEditor {
+pub(in crate::game) struct TestBlockEditor {
     edits: Vec<EditBox>,
     mode: TestBlockMode,
 }
 
 impl TestBlockEditor {
-    pub(super) fn new(b: &TestBlock) -> Self {
+    pub(in crate::game) fn new(b: &TestBlock) -> Self {
         let mut message = EditBox::new(0.0, 0.0, 240.0, 20.0);
         message.max_length = 128;
         message.set_value(&b.message);
@@ -134,7 +134,7 @@ impl Editor for TestBlockEditor {
 
 impl Game<'_> {
     /// `LocalPlayer.openTestBlock`.
-    pub(super) fn open_test_block(&mut self, pos: Pos) {
+    pub(in crate::game) fn open_test_block(&mut self, pos: Pos) {
         let Some(BlockEntity::TestBlock(b)) = self.world.block_entities.get(&pos) else {
             return;
         };

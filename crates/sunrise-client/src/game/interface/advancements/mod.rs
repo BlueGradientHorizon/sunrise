@@ -127,7 +127,7 @@ impl Toast {
     }
     /// `RecipeToast.displayedRecipeIndex`: the displays take turns over the
     /// toast's display time.
-    pub(in crate::game::server_side) fn displayed_recipe(
+    pub(in crate::game) fn displayed_recipe(
         &self,
         fully_for: i64,
         multiplier: f64,
@@ -239,7 +239,7 @@ impl RemoteTree {
 
     /// Release identities no current node can reach in either direction.
     /// A removed or overwritten node remains as long as its links still matter.
-    pub(in crate::game::server_side) fn prune_unreachable(&mut self) {
+    pub(in crate::game) fn prune_unreachable(&mut self) {
         if self.nodes.len() == self.current.len() {
             return;
         }
@@ -2735,7 +2735,7 @@ impl Game<'_> {
 }
 /// The toast's frame label and its colour (`AdvancementToast`: -30465, pink,
 /// for a challenge, else -256, yellow), packed as `hud::rgba` for the batch.
-pub(in crate::game::server_side) fn toast_label(frame: Frame) -> (&'static str, u32) {
+pub(in crate::game) fn toast_label(frame: Frame) -> (&'static str, u32) {
     match frame {
         Frame::Task => ("advancements.toast.task", rgba(255, 255, 0, 255)),
         Frame::Goal => ("advancements.toast.goal", rgba(255, 255, 0, 255)),
@@ -2858,7 +2858,7 @@ impl Game<'_> {
 
     /// Convert the admitted packet's network icon, components and requirements
     /// into the definition used by the screen and toast.
-    pub(in crate::game::server_side) fn remote_advancement(
+    pub(in crate::game) fn remote_advancement(
         &self,
         a: sunrise_protocol::packets::play::Advancement,
     ) -> adv::Advancement {

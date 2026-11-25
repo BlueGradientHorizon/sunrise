@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::Game;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use super::pick_accumulator::{
+pub(in crate::game::server_side) use super::pick_ray::{
     PickAccumulator, PickCandidate, pick_ray_segment,
 };
 #[allow(unused_imports)]

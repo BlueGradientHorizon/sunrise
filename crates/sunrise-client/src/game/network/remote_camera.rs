@@ -519,10 +519,12 @@ impl Game<'_> {
             .map(|id| id as u32)
     }
 
+    #[inline(always)]
     pub(in crate::game) fn client_live_remote_camera_id(&self) -> Option<u32> {
         self.live_remote_camera_id()
     }
 
+    #[inline(always)]
     pub(in crate::game) fn client_outline_camera_kind(
         &self,
     ) -> sunrise_world::collision_context::EntityContextKind {

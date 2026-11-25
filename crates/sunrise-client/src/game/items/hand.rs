@@ -212,6 +212,45 @@ impl Game<'_> {
         }
         true
     }
+    /// The window tick already picked before key handling; simulation keeps its own ray.
+    pub(in crate::game::client_side) fn pick_tick_targets(&mut self) {
+        if self.native_window() {
+            return;
+        }
+        self.client.tick_hit.set(None);
+        self.client.tick_mob = None;
+        match self.compute_crosshair_decision() {
+            super::pick_entity::CrosshairDecision::Block(hit) => {
+                self.client.tick_hit.set(Some(Some(hit)));
+                self.client.tick_mob = Some(None);
+            }
+            super::pick_entity::CrosshairDecision::Entity(hit) => {
+                self.client.tick_hit.set(Some(None));
+                let mob = self.mob_index.find(&self.mobs, hit.id).map(|i| {
+                    let feet = self.mobs[i].position;
+                    (
+                        i,
+                        hit.distance_sq.sqrt(),
+                        [
+                            hit.point[0] - feet.x,
+                            hit.point[1] - feet.y,
+                            hit.point[2] - feet.z,
+                        ],
+                    )
+                });
+                self.client.tick_mob = Some(mob);
+            }
+            super::pick_entity::CrosshairDecision::Miss => {
+                self.client.tick_hit.set(Some(None));
+                self.client.tick_mob = Some(None);
+            }
+        }
+    }
+    /// Releases the non-window simulation's tick-local pick caches.
+    pub(in crate::game::client_side) fn release_tick_targets(&mut self) {
+        self.client.tick_hit.set(None);
+        self.client.tick_mob = None;
+    }
     /// `handleKeybinds`' number keys: keys 1 to 9 in that order, one click of each
     /// (`keyHotbarSlots[i].consumeClick`), so the highest key clicked this tick wins and a
     /// key's further clicks wait for the next ticks. A creative player holding the load or

@@ -419,23 +419,6 @@ impl Game<'_> {
         d.group("heightmaps", lines);
     }
 
-    /// `Heightmap.getFirstAvailable`: one above the highest block the
-    /// heightmap counts. The chunk keeps WORLD_SURFACE; every other type is
-    /// at or under it, scanned down from there.
-    pub(in crate::game) fn column_height(&self, kind: HeightmapType, x: i32, z: i32) -> i32 {
-        let properties = &self.pack.assets.properties;
-        let surface = self
-            .world
-            .world_surface(x, z, |s| properties.heightmap_state(s).is_air());
-        if kind == HeightmapType::WorldSurface {
-            return surface;
-        }
-        (self.world.bottom_y()..surface)
-            .rev()
-            .find(|&y| kind.is_opaque(properties.heightmap_state(self.world.block(x, y, z))))
-            .map_or(self.world.bottom_y(), |y| y + 1)
-    }
-
     /// `Entity.pick(20, 0, false)` from the camera: the block outline hit.
     pub(in crate::game::client_side) fn debug_block_hit(&self) -> Option<[i32; 3]> {
         let (origin, dir) = self.aim()?;

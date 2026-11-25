@@ -37,7 +37,7 @@ const ACTION_RUN: i32 = 6;
 const WIDTH: f32 = 316.0;
 const PADDING: f32 = 8.0;
 
-pub(super) struct TestInstanceEditor {
+pub(in crate::game) struct TestInstanceEditor {
     edits: Vec<EditBox>,
     rotation: Rotation,
     include_entities: bool,
@@ -80,7 +80,7 @@ fn rotation_display(rotation: Rotation) -> Text {
 }
 
 impl TestInstanceEditor {
-    pub(super) fn new(b: &TestInstanceBlock, rotation: Rotation) -> Self {
+    pub(in crate::game) fn new(b: &TestInstanceBlock, rotation: Rotation) -> Self {
         let edit = |max: usize, value: String| {
             let mut e = EditBox::new(0.0, 0.0, 80.0, 20.0);
             e.max_length = max;
@@ -340,8 +340,14 @@ impl Editor for TestInstanceEditor {
 }
 
 impl Game<'_> {
+    pub(in crate::game) fn client_test_holder_padding(&self, _pos: Pos) -> i32 {
+        0
+    }
+    pub(in crate::game) fn client_test_rotation(&self, _pos: Pos) -> Rotation {
+        Rotation::None
+    }
     /// `LocalPlayer.openTestInstanceBlock`.
-    pub(super) fn open_test_instance_block(&mut self, pos: Pos) {
+    pub(in crate::game) fn open_test_instance_block(&mut self, pos: Pos) {
         let Some(BlockEntity::TestInstanceBlock(b)) = self.world.block_entities.get(&pos) else {
             return;
         };

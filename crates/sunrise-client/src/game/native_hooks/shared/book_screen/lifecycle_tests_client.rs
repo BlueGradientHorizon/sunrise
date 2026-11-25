@@ -1,35 +1,35 @@
 #[allow(unused_imports)]
+pub(in crate::game::client_side) use super::lifecycle_tests_shared::BookMod;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use super::lifecycle_tests_shared::BoundBookMod;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use super::lifecycle_tests_shared::BoundBookScreen;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use super::lifecycle_tests_shared::BoundLayoutEdit;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use super::lifecycle_tests_shared::KEY;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use super::lifecycle_tests_shared::MENU;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use super::lifecycle_tests_shared::OpeningProbe;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use super::lifecycle_tests_shared::REOPENED_MENU;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use super::lifecycle_tests_shared::ReopenedMod;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use super::lifecycle_tests_shared::STONE;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use super::lifecycle_tests_shared::ScreenTrace;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use super::lifecycle_tests_shared::geometry;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use super::lifecycle_tests_shared::receive;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use super::lifecycle_tests_shared::with_bound_menu_type;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use super::lifecycle_tests_shared::*;
+#[allow(unused_imports)]
 pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::book_screen::lifecycle_tests::BookMod;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::book_screen::lifecycle_tests::BoundBookMod;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::book_screen::lifecycle_tests::BoundBookScreen;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::book_screen::lifecycle_tests::BoundLayoutEdit;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::book_screen::lifecycle_tests::KEY;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::book_screen::lifecycle_tests::MENU;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::book_screen::lifecycle_tests::OpeningProbe;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::book_screen::lifecycle_tests::REOPENED_MENU;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::book_screen::lifecycle_tests::ReopenedMod;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::book_screen::lifecycle_tests::STONE;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::book_screen::lifecycle_tests::ScreenTrace;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::book_screen::lifecycle_tests::geometry;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::book_screen::lifecycle_tests::receive;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::book_screen::lifecycle_tests::with_bound_menu_type;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::book_screen::lifecycle_tests::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use std::sync::{Mutex, OnceLock};
 #[allow(unused_imports)]

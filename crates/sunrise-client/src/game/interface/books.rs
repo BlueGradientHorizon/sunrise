@@ -853,29 +853,6 @@ impl Game<'_> {
         if self.remote.is_some() {
             let _ = self.remote_button_click(id);
         }
-        // delete local lectern_menu fallback body below
-        let Some(mut menu) = self.lectern_menu(key) else {
-            return;
-        };
-        for i in 0..36 {
-            menu.set_player_item(i, self.inventory[i].clone());
-        }
-        menu.set_player_item(40, self.offhand.clone());
-        menu.creative = self.creative;
-        menu.selected = self.selected;
-        menu.may_build = self.may_build();
-        if !menu.button(&self.menu_env(), id) {
-            return;
-        }
-        for i in 0..36 {
-            self.inventory[i] = menu.player_item(i).cloned();
-        }
-        self.offhand = menu.player_item(40).cloned();
-        for stack in std::mem::take(&mut menu.dropped) {
-            self.player_drop(stack);
-        }
-        self.lectern_menu_done(key, &menu);
-        self.follow_lectern();
     }
     #[inline(always)]
     pub(in crate::game) fn lectern_book_open(&self) -> bool {

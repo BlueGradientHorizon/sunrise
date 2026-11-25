@@ -1,6 +1,6 @@
 //! A remote catalogue supplies recipe membership, never the client's local recipe JSON.
-use super::native_book_displays::Resources;
 use super::*;
+use crate::game::native_book_displays::Resources;
 use std::collections::{BTreeMap, BTreeSet};
 use std::result::Result;
 use sunrise_client::recipe_book::{DisplayResources, ModBookIndex, placement_sync as sync};
@@ -153,7 +153,7 @@ impl Game<'_> {
                         {
                             self.native_net.placement.deadline = None;
                             self.native_net.placement.view =
-                                Some(super::native_book_placement::View {
+                                Some(crate::game::native_book_placement::View {
                                     identity: data.identity,
                                     index,
                                 });

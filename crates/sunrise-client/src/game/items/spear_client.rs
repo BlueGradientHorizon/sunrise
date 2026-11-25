@@ -25,7 +25,7 @@ pub(in crate::game::client_side) use sunrise_core::{
 
 impl Game<'_> {
     /// A sound at the player's feet.
-    pub(in crate::game::client_side) fn client_play_at_feet(&mut self, sound: &str) {
+    pub(in crate::game) fn client_play_at_feet(&mut self, sound: &str) {
         if let Some(p) = &self.player {
             let at = [p.position.x, p.position.y, p.position.z];
             self.audio.0.play(sound, Some(at), 1.0, 1.0);

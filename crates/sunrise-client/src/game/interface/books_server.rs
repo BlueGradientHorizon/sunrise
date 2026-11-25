@@ -1,20 +1,6 @@
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::{Game, chat::PLAYER_NAME, screen_info};
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::books::BLACK;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::books::BOOK_TEXT;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::books::BookScreen;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::books::LINES;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::books::MAX_PAGES;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::books::PAGE_CHARS;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::books::*;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_client::{
     containers::{BlockEntity, Lectern},
     first_person::Hand,
@@ -242,42 +228,170 @@ impl Game<'_> {
             .lan_acting_name
             .clone()
             .unwrap_or_else(|| super::chat::PLAYER_NAME.to_owned());
-        let Some(stack) = self
-            .stack_in_mut(slot)
-            .as_mut()
-            .filter(|s| &*s.item == "minecraft:writable_book")
+        self.write_book_with_author(slot, pages, title, author);
+    }
+
+    /// `ServerPlayer.openItemGui` -> `WrittenBookContent.resolveForItem`: resolve selectors/scores.
+    pub(in crate::game) fn resolve_held_book(&mut self) -> bool {
+        let Some(mut book) = self
+            .held()
+            .and_then(|s| s.data())
+            .and_then(|d| d.written.clone())
         else {
+            return false;
+        };
+        if book.resolved {
+            return false;
+        }
+        let string = |v: &Tag| match v {
+            Tag::String(s) => Some(s.to_string_lossy()),
+            _ => None,
+        };
+        let changed = book.resolve(|tag| {
+            let Tag::Compound(c) = tag else { return None };
+            if let Some(Tag::String(selector)) = c.get(&"selector".into()) {
+                let selector = selector.to_string_lossy();
+                return Some(self.resolve_selector_text(&selector));
+            }
+            let score = c.get(&"score".into())?;
+            let name = score.get("name").and_then(string).unwrap_or_default();
+            let objective = score.get("objective").and_then(string).unwrap_or_default();
+            let name = if name == "*" {
+                PLAYER_NAME
+            } else {
+                name.as_str()
+            };
+            Some(
+                self.score
+                    .board
+                    .score(name, &objective)
+                    .map_or_else(String::new, |s| s.value.to_string()),
+            )
+        });
+        if let Some(stack) = self.held_mut() {
+            stack.data_mut().written = Some(book);
+        }
+        changed
+    }
+
+    pub(in crate::game) fn set_lectern_powered(&mut self, key: (i32, i32, i32), powered: bool) {
+        self.set_lectern_property(key, "powered", powered);
+        let p = BlockPos::new(key.0, key.1, key.2);
+        let state = self.world.block(key.0, key.1, key.2);
+        self.with_level(|b, level, ticks| {
+            b.lectern_update_below(level, ticks, p, state);
+        });
+    }
+
+    /// `LecternBlock.resetBookState`: the property with the block change event.
+    pub(in crate::game) fn set_lectern_has_book(
+        &mut self,
+        key: (i32, i32, i32),
+        has_book: bool,
+        who: Option<Who>,
+    ) {
+        self.set_lectern_property(key, "has_book", has_book);
+        let after = self.world.block(key.0, key.1, key.2);
+        self.post_block_game_event(
+            "minecraft:block_change",
+            [key.0, key.1, key.2],
+            who,
+            Some(after),
+        );
+    }
+
+    pub(in crate::game) fn set_lectern_property(
+        &mut self,
+        key: (i32, i32, i32),
+        name: &str,
+        value: bool,
+    ) {
+        let state = self.world.block(key.0, key.1, key.2);
+        let registry = self.pack.assets.registry;
+        let Some(mut s) = registry.state(state).cloned() else {
             return;
         };
-        if let Some(title) = title {
-            // `signBook` transmutes the carried stack, so a renamed book and
-            // quill stays renamed and keeps its other components.
-            let mut written = stack.transmute("minecraft:written_book", stack.count);
-            let data = written.data_mut();
-            data.writable_pages = Vec::new();
-            data.writable_filtered = Vec::new();
-            data.written = Some(WrittenBook {
-                title,
-                author,
-                generation: 0,
-                pages,
-                page_tags: Vec::new(),
-                // `signBook`'s `new WrittenBookContent(..., true)`: the pages
-                // are literals, so the content is already resolved.
-                resolved: true,
-            });
-            *stack = written;
-        } else {
-            let data = stack.data_mut();
-            // `updateBookContents`: new `Filterable` pages, unfiltered while no text filter runs.
-            data.writable_filtered = Vec::new();
-            data.writable_pages = if pages.iter().all(String::is_empty) {
-                Vec::new()
-            } else {
-                pages
-            };
-            stack.tidy();
+        if !s.properties.contains_key(name) {
+            return;
         }
+        s.properties.insert(name.into(), value.to_string());
+        if let Some(new) = registry.id(&s) {
+            let p = BlockPos::new(key.0, key.1, key.2);
+            self.with_level(|b, level, ticks| {
+                b.set_block(level, ticks, p, new, level_flags::UPDATE_ALL)
+            });
+        }
+    }
+
+    /// `LecternMenu` over the lectern at `key`: its book and page.
+    pub(in crate::game) fn lectern_menu(&self, key: (i32, i32, i32)) -> Option<Menu> {
+        let Some(BlockEntity::Lectern(l)) = self.world.block_entities.get(&key) else {
+            return None;
+        };
+        let mut menu = Menu::new(Kind::Lectern);
+        menu.set_registry_id(Some("minecraft:lectern"));
+        menu.set_slot(&self.menu_env(), 0, l.book.clone());
+        menu.data[0] = l.page;
+        Some(menu)
+    }
+}
+
+#[cfg(test)]
+pub(in crate::game) mod lectern_book_removal_tests {
+    use super::super::game_tests::tests::server_game;
+    use sunrise_client::{
+        containers::{BlockEntity, Lectern},
+        items::ItemStack,
+    };
+
+    /// `LecternBlock.resetBookState`: removing a book clears `has_book` and posts `block_change`.
+    #[test]
+    #[ignore = "daily"]
+    fn a_lectern_book_removal_posts_block_change() {
+        let mut game_resources = None;
+        let mut game = server_game(&mut game_resources);
+        let key = (2, 4, 3);
+        let state = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:lectern")
+            .unwrap();
+        game.world.set(key.0, key.1, key.2, state).unwrap();
+        game.world.block_entities.insert(
+            key,
+            BlockEntity::Lectern(Lectern {
+                book: Some(ItemStack::new("minecraft:written_book", 1)),
+                page: 0,
+            }),
+        );
+        game.set_lectern_property(key, "has_book", true);
+        crate::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+
+        game.set_lectern_has_book(key, false, None);
+
+        let has_book = game
+            .pack
+            .assets
+            .registry
+            .state(game.world.block(key.0, key.1, key.2))
+            .and_then(|s| s.properties.get("has_book").cloned());
+        assert_eq!(
+            has_book.as_deref(),
+            Some("false"),
+            "the lectern has no book"
+        );
+        crate::game::sculk::TEST_POSTED_EVENTS.with(|e| {
+            assert!(
+                e.borrow().as_ref().unwrap().contains(&(
+                    "minecraft:block_change",
+                    [2.5, 4.5, 3.5],
+                    None
+                )),
+                "{:?}",
+                e.borrow()
+            );
+        });
     }
 }
 
@@ -285,8 +399,6 @@ impl Game<'_> {
 pub(in crate::game) mod lectern_books_tag_tests {
     #[allow(unused_imports)]
     pub(in crate::game::server_side) use super::super::game_tests::tests::server_game;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::books::lectern_books_tag_tests::*;
     #[allow(unused_imports)]
     pub(in crate::game::server_side) use sunrise_client::{
         containers::BlockEntity, items::ItemStack,

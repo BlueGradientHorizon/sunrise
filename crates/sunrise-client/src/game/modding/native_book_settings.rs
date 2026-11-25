@@ -6,25 +6,7 @@ use mod_api::{
 };
 
 impl Game<'_> {
-    pub(super) fn player_synced_recipe_book_settings(
-        &self,
-        player: PlayerRef,
-        book: &RecipeBookTypeKey,
-    ) -> Option<RecipeBookSettings> {
-        self.native_local_status(player)?;
-        self.custom_book_settings(book)
-    }
-    pub(super) fn player_request_recipe_book_settings(
-        &mut self,
-        player: PlayerRef,
-        book: &RecipeBookTypeKey,
-        settings: RecipeBookSettings,
-    ) -> bool {
-        self.native_local_status(player).is_some()
-            && self.request_custom_book_settings(book, settings)
-    }
-
-    pub(super) fn player_set_recipe_book_settings(
+    pub(in crate::game) fn player_set_recipe_book_settings(
         &mut self,
         player: PlayerRef,
         book: &RecipeBookTypeKey,
@@ -64,7 +46,7 @@ impl Game<'_> {
         true
     }
 
-    pub(super) fn player_recipe_book_settings(
+    pub(in crate::game) fn player_recipe_book_settings(
         &self,
         player: PlayerRef,
         book: &RecipeBookTypeKey,

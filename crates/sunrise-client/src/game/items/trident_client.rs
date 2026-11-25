@@ -33,6 +33,45 @@ pub(in crate::game::client_side) use sunrise_gameplay::trident::{
 };
 
 impl Game<'_> {
+    /// ThrownTridentRenderer.
+    pub(in crate::game) fn trident_geometry(
+        &self,
+        camera: glam::DVec3,
+        alpha: f64,
+        out: &mut Vec<Vertex>,
+        run: std::ops::Range<usize>,
+    ) {
+        // AbstractArrow.shouldRenderAtSqrDistance: ten times the default.
+        let range = 10.0
+            * super::entity_culling::default_range(
+                glam::DVec3::splat(2.0 * HALF),
+                self.view_scale(),
+            );
+        let live = self.tridents[run]
+            .iter()
+            .filter(|t| {
+                !self.hides_as_camera(t.id)
+                    && self.standing_entity_in_view(
+                        camera,
+                        super::entity_culling::at(t.previous),
+                        super::entity_culling::at(t.position),
+                        alpha,
+                        2.0 * HALF,
+                        2.0 * HALF,
+                        range,
+                        1.5,
+                    )
+            })
+            .map(|t| {
+                let at = [
+                    t.previous.x + (t.position.x - t.previous.x) * alpha,
+                    t.previous.y + (t.position.y - t.previous.y) * alpha,
+                    t.previous.z + (t.position.z - t.previous.z) * alpha,
+                ];
+                (t, at)
+            });
+        self.draw_tridents(camera, live, out);
+    }
     pub(in crate::game) fn draw_tridents<'a>(
         &self,
         camera: glam::DVec3,

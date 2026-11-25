@@ -3,6 +3,30 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::native_hooks::menu_extra_data::*;
 
+impl Game<'_> {
+    /// The opener position for the currently shown mod menu, if known.
+    pub(in crate::game) fn screen_pos(&self) -> Option<[i32; 3]> {
+        self.shown_native_screen()?.menu.pos
+    }
+    /// Applies the `sunrise:menu_extra` payload sent before `OpenScreen`, or disconnects on error.
+    pub(in crate::game) fn receive_menu_extra(&mut self, data: &[u8]) -> crate::game::Result<()> {
+        match sunrise_protocol::menu_extra::decode(data) {
+            Ok(extra) => {
+                if let Some(r) = self.remote.as_mut() {
+                    r.menu_extra = Some(extra);
+                }
+                Ok(())
+            }
+            Err(e) => {
+                log::error!("Sunrise: malformed menu extra payload: {e}");
+                let reason =
+                    Text::translate("disconnect.genericReason", &[Text::literal(e.to_string())]);
+                self.leave_server(Some(reason))
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 pub(in crate::game) mod menu_extra_data_tests {
     #[allow(unused_imports)]

@@ -204,6 +204,10 @@ impl Game<'_> {
         self.test_holder(pos).map_or(0, |t| t.padding)
     }
 
+    pub(in crate::game) fn server_test_holder_padding(&self, pos: Pos) -> i32 {
+        self.test_holder_padding(pos)
+    }
+
     /// `getRotation`: the test's rotation turned by the block's.
     pub(in crate::game) fn test_rotation(&self, pos: Pos) -> Rotation {
         let own = self
@@ -212,6 +216,10 @@ impl Game<'_> {
         self.test_holder(pos)
             .map_or(Rotation::None, |t| t.rotation)
             .get_rotated(own)
+    }
+
+    pub(in crate::game) fn server_test_rotation(&self, pos: Pos) -> Rotation {
+        self.test_rotation(pos)
     }
 
     /// `getTestName`.

@@ -34,6 +34,37 @@ impl Game<'_> {
         }
         super::entity_type_rows::entity_type_rows(&self.options.resources).dimensions(kind)
     }
+
+    /// Size a client's copy `id` takes from its `entity_size` answer while its vanilla size holds.
+    pub(in crate::game) fn client_copy_answer(&self, id: u32) -> Option<[f32; 3]> {
+        let remote = self.remote.as_ref()?;
+        let answer = remote.entities.get(&(id as i32))?.size_answer?;
+        let size = answer.size?;
+        let (kind, _) = remote.tracked_entity(id as i32)?;
+        (self.client_object_dimensions(id, kind)? == answer.vanilla).then_some(size)
+    }
+
+    /// Bounding box of a client's copy `id` at `position`, preserving `vanilla`'s bottom.
+    pub(in crate::game::client_side) fn client_copy_box_inner(
+        &self,
+        id: u32,
+        position: Vec3,
+        vanilla: Aabb,
+    ) -> Aabb {
+        let Some([width, height, _]) = self.client_copy_answer(id) else {
+            return vanilla;
+        };
+        let half = f64::from(width / 2.0);
+        let bottom = vanilla.min_position().y;
+        Aabb::new(
+            Vec3::new(position.x - half, bottom, position.z - half),
+            Vec3::new(
+                position.x + half,
+                bottom + f64::from(height),
+                position.z + half,
+            ),
+        )
+    }
 }
 
 #[cfg(test)]

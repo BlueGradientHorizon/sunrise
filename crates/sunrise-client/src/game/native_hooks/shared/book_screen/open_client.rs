@@ -1,9 +1,21 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::book_screen::open::*;
 
 impl Game<'_> {
+    /// Returns the mod block at `pos` if its declared container opens menu type `menu`.
+    pub(in crate::game) fn menu_opener_block(&self, pos: Pos, menu: &str) -> Option<&str> {
+        let block = &self
+            .res
+            .facts()
+            .get(self.world.block(pos.0, pos.1, pos.2))
+            .name;
+        if block.starts_with("minecraft:") {
+            return None;
+        }
+        let container = mod_api::__private::parts_installation::block_container(block)?;
+        let (opens, _) = mod_menu(container.menu.as_deref()?)?;
+        (opens == menu).then_some(block.as_ref())
+    }
     /// Stage the current remote opening's screen for the window. Its slots
     /// are stored under `key`; `extra` was already matched to this opening.
     /// The packet handler checked for required factories before changing menus.

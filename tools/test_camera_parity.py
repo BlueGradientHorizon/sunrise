@@ -372,7 +372,7 @@ CLIENT_WITNESS_TESTS = [
     'game::remote::tests::camera_parity_red_tests::review_followup_camera_parity_26_3',
     'game::remote::tests::camera_parity_red_tests::sleeping_spectated_living_entity_bed_view_and_visibility_26_3',
     'game::remote::tests::camera_parity_red_tests::spectated_rider_mount_attributes_26_3',
-    'game::remote::tests::client_camera_tests::a_named_mob_the_server_camera_is_attached_to_shows_no_name_tag',
+    'game::client_side::remote_client::client_camera_tests::a_named_mob_the_server_camera_is_attached_to_shows_no_name_tag',
     'game::remote::tests::client_hud_camera_tests::hud_bars_follow_the_camera_player_like_26_3',
     'game::remote::tests::set_camera_kinds_tests::set_camera_follows_the_real_26_3_clients_camera_for_every_entity_kind',
     'game::client_side::remote_camera::camera_mount_tests::a_spectated_rider_backs_off_by_its_living_vehicles_camera_distance',

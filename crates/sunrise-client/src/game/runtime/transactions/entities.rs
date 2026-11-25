@@ -31,24 +31,24 @@ pub(in crate::game) type KeptAnon = (
 pub(in crate::game) struct EntityJournal {
     /// Below the join number of every entity added in the transaction (`JoinSeq::upcoming` as
     /// it opened).
-    mark: JoinSeq,
+    pub(in crate::game) mark: JoinSeq,
     /// How many thrown potions there were as it opened.
-    potions: usize,
+    pub(in crate::game) potions: usize,
     /// The travellers that arrived from another level, by the ids they arrived under.
-    arrivals: HashSet<u32>,
+    pub(in crate::game) arrivals: HashSet<u32>,
     /// The removals asked for, in order: each runs at the root commit.
-    removals: Vec<Removal>,
+    pub(in crate::game) removals: Vec<Removal>,
     /// Each mob's `removed` flag before the transaction first removed it.
-    mob_removed: HashMap<u32, bool>,
+    pub(in crate::game) mob_removed: HashMap<u32, bool>,
     /// The join and leave announcements held for the root commit, in order.
-    announcements: Vec<Announcement>,
+    pub(in crate::game) announcements: Vec<Announcement>,
     /// Each raw record a spawn wrote over in `persist.anon` (by kind and position: an end
     /// crystal standing there keeps its own there), as it was before the first such spawn.
-    anon: Vec<KeptAnon>,
+    pub(in crate::game) anon: Vec<KeptAnon>,
 }
 
 /// A removal waiting for the root commit.
-enum Removal {
+pub(in crate::game) enum Removal {
     /// The mob is marked already; a killed one's effects that act on removal wait.
     Mob {
         id: u32,
@@ -73,7 +73,7 @@ pub(in crate::game) enum Announcement {
 }
 
 /// One place in a commit's queue.
-enum Step {
+pub(in crate::game) enum Step {
     Tell(Announcement),
     /// The removals of a transaction, run once its joins are told.
     Remove(Vec<Removal>),
@@ -81,7 +81,7 @@ enum Step {
 
 impl Step {
     /// A journal's steps: its joins, then its removals, then the rest of what it held.
-    fn of(announcements: Vec<Announcement>, removals: Vec<Removal>) -> Vec<Step> {
+    pub(in crate::game) fn of(announcements: Vec<Announcement>, removals: Vec<Removal>) -> Vec<Step> {
         let (joins, rest): (Vec<_>, Vec<_>) = (announcements.into_iter())
             .partition(|announcement| matches!(announcement, Announcement::Joins { .. }));
         let steps = joins.into_iter().map(Step::Tell);
@@ -96,23 +96,23 @@ impl Step {
 /// half-told batches: the entities the transaction added and removed are never announced,
 /// and each batch keeps its `loaded_from_disk` and bound.
 pub(in crate::game) struct Committing {
-    dimension: Dim,
+    pub(in crate::game) dimension: Dim,
     /// The entities the transaction added and removed: never told to join.
-    removed: Vec<u32>,
+    pub(in crate::game) removed: Vec<u32>,
     /// What is left to tell, in the order it was asked for: the transaction's own
     /// announcements, then those the listeners ask for. Entries stay, so an index is a place.
-    queue: Vec<Step>,
+    pub(in crate::game) queue: Vec<Step>,
     /// The entity whose removal is running: it reads as present until it has run, as it does
     /// outside a transaction.
-    removing: Option<u32>,
+    pub(in crate::game) removing: Option<u32>,
 }
 
 /// Takes the commit it pushed, and any a listener's left, off the stack when it ends, however
 /// it ends.
-struct Telling<'a, 'g> {
-    game: &'a mut Game<'g>,
+pub(in crate::game) struct Telling<'a, 'g> {
+    pub(in crate::game) game: &'a mut Game<'g>,
     /// The stack's length before the commit was pushed: its place.
-    frame: usize,
+    pub(in crate::game) frame: usize,
 }
 
 impl Drop for Telling<'_, '_> {
@@ -123,7 +123,7 @@ impl Drop for Telling<'_, '_> {
 
 /// The innermost commit being told in `dimension`: a listener's commit in another level sits
 /// above it on the stack and must not hide it.
-fn committing_in(commits: &mut [Committing], dimension: Dim) -> Option<&mut Committing> {
+pub(in crate::game) fn committing_in(commits: &mut [Committing], dimension: Dim) -> Option<&mut Committing> {
     commits
         .iter_mut()
         .rev()
@@ -300,219 +300,6 @@ impl Game<'_> {
             _ => level.lifetimes.removals.push(Removal::Other(entity)),
         }
         true
-    }
-    /// What `journal` left for the root commit: the joins it held, then its removals, in order,
-    /// then the leaves it held. An entity added and removed in it is never announced, so it never
-    /// leaves. What the listeners ask for meanwhile waits in the commit's queue and is told after
-    /// it, in the order it was asked for; a transaction a listener commits tells through the
-    /// running commit too.
-    /// `effects` is what the root transaction's other deferred effects do (`root_commit`): it runs
-    /// with the commit in place, so a join it causes waits behind the commit's own batches.
-    pub(in crate::game) fn commit_entity_journal(
-        &mut self,
-        journal: EntityJournal,
-        effects: impl FnOnce(&mut Self),
-    ) {
-        let removed: Vec<u32> = (journal.removals.iter())
-            .map(|removal| match removal {
-                Removal::Mob { id, .. } => *id,
-                Removal::Other(entity) => entity.id(),
-            })
-            .collect();
-        let dimension = self.dim;
-        let steps = Step::of(journal.announcements, journal.removals);
-        if let Some(commit) = committing_in(&mut self.transactions.committing, dimension) {
-            commit.removed.extend(removed);
-            commit.queue.extend(steps);
-            effects(self);
-            return;
-        }
-        let commit = Committing {
-            dimension,
-            removed,
-            queue: steps,
-            removing: None,
-        };
-        let frame = self.transactions.committing.len();
-        self.transactions.committing.push(commit);
-        let telling = Telling { game: self, frame };
-        effects(telling.game);
-        telling.game.tell_commit(frame);
-    }
-    /// The step `next` of the queue of the commit at `frame`, with the entities never to join. The
-    /// removals of a step are taken when `run`, so they run once.
-    fn commit_step(&mut self, frame: usize, next: usize, run: bool) -> Option<(Step, Vec<u32>)> {
-        let commit = self.transactions.committing.get_mut(frame)?;
-        let step = match commit.queue.get_mut(next)? {
-            Step::Tell(announcement) => Step::Tell(*announcement),
-            Step::Remove(removals) if run => Step::Remove(std::mem::take(removals)),
-            Step::Remove(_) => Step::Remove(Vec::new()),
-        };
-        Some((step, commit.removed.clone()))
-    }
-    /// Publish an item spawned by `preRemoveSideEffects` before returning to the block
-    /// write. At commit, tell the already-queued batches first, excluding pending removes.
-    pub(in crate::game) fn flush_removal_join(&mut self, watch: u32) -> bool {
-        let Some(frame) = self
-            .transactions
-            .committing
-            .iter()
-            .rposition(|commit| commit.dimension == self.dim)
-        else {
-            return self.native_joins_flush(false, watch);
-        };
-        self.tell_commit_joins(frame);
-        let removed = self.transactions.committing[frame].removed.clone();
-        self.flush_joins(false, watch, &removed, Some(JoinSeq::latest()))
-    }
-
-    fn tell_commit_joins(&mut self, frame: usize) -> usize {
-        let mut next = 0;
-        while let Some((step, removed)) = self.commit_step(frame, next, false) {
-            next += 1;
-            if let Step::Tell(Announcement::Joins {
-                loaded_from_disk,
-                through,
-            }) = step
-            {
-                self.flush_joins(loaded_from_disk, 0, &removed, Some(through));
-            }
-        }
-        next
-    }
-
-    /// Tells every join first, as the queue grows, then the remaining steps in order.
-    fn tell_commit(&mut self, frame: usize) {
-        let joined = self.tell_commit_joins(frame);
-        let mut next = 0;
-        while let Some((step, removed)) = self.commit_step(frame, next, true) {
-            match step {
-                Step::Tell(Announcement::Joins { .. }) if next < joined => {}
-                Step::Tell(Announcement::Joins {
-                    loaded_from_disk,
-                    through,
-                }) => {
-                    self.flush_joins(loaded_from_disk, 0, &removed, Some(through));
-                }
-                Step::Tell(Announcement::Left(id)) => self.entity_left_now(id),
-                Step::Tell(Announcement::Leaves) => {
-                    self.native_removals_flush();
-                    self.leaves_now();
-                }
-                Step::Remove(removals) => self.remove_committed(removals),
-            }
-            next += 1;
-        }
-    }
-    /// Marks `id` as the entity being removed in the commit of the level in place; the mark it
-    /// replaced.
-    fn set_removing(&mut self, id: Option<u32>) -> Option<u32> {
-        let dimension = self.dim;
-        let commit = committing_in(&mut self.transactions.committing, dimension)?;
-        std::mem::replace(&mut commit.removing, id)
-    }
-    /// Runs the removals a commit holds, as a removal outside a transaction does.
-    fn remove_committed(&mut self, removals: Vec<Removal>) {
-        for removal in removals {
-            match removal {
-                Removal::Mob { id, killed } => {
-                    if killed {
-                        self.mob_removal_effects(id);
-                    }
-                    self.finish_mob_removal(id);
-                }
-                Removal::Other(entity) => {
-                    // The commit lists the entity as removed until now, so the handle resolves
-                    // only while it is marked as being removed. `remove_target_now` records the
-                    // removal (`persist.removals`) before any callback runs: what a callback
-                    // reads of the entity is "gone" whatever the mark. A callback may commit a
-                    // transaction of its own, which marks and unmarks its removals: the mark
-                    // this one set is put back as it was.
-                    let outer = self.set_removing(Some(entity.id()));
-                    if let Some(target) = self.native_entity_target(entity) {
-                        self.remove_target_now(entity, target);
-                    }
-                    self.set_removing(outer);
-                }
-            }
-        }
-    }
-    /// Undoes `journal`'s entity changes, after the rest of its transaction rolled back: the
-    /// removed mobs back, the entities it added out. Its arrivals come back.
-    pub(in crate::game) fn roll_back_entity_journal(
-        &mut self,
-        journal: EntityJournal,
-    ) -> HashSet<u32> {
-        for (id, was) in journal.mob_removed {
-            for mob in self.mobs.iter_mut().filter(|m| m.id == id) {
-                mob.removed = was;
-            }
-        }
-        self.potions.thrown.truncate(journal.potions);
-        // One load when nothing joined anywhere since the transaction opened.
-        if JoinSeq::latest() >= journal.mark {
-            self.discard_joined_since(journal.mark, &journal.arrivals);
-        }
-        // After the discard: forgetting an aborted entity reads nothing keyed by position.
-        for kept in journal.anon {
-            self.persist.put_back_anon(kept);
-        }
-        journal.arrivals
-    }
-    /// Takes every entity that joined at `mark` or later out of its list, but the `arrivals`,
-    /// with no hook (as a join a mod cancels), and forgets what was kept of it.
-    fn discard_joined_since(&mut self, mark: JoinSeq, arrivals: &HashSet<u32>) {
-        use super::super::entity::{Entity as _, with_entity};
-        let added = |id: u32, join: JoinSeq| join >= mark && !arrivals.contains(&id);
-        let mut gone = Vec::new();
-        for handle in self.entity_handles_rev() {
-            let (id, join) = with_entity!(self, handle, e => (e.id(), e.join_seq()));
-            if added(id, join) {
-                self.discard_entity(handle);
-                gone.push(id);
-            }
-        }
-        macro_rules! apart {
-            ($($list:expr),* $(,)?) => {$(
-                $list.retain(|e| {
-                    let out = added(e.id, e.join_seq());
-                    if out {
-                        gone.push(e.id);
-                    }
-                    !out
-                });
-            )*};
-        }
-        apart!(
-            self.crystals,
-            self.cushions,
-            self.paintings,
-            self.item_frames,
-            self.others.0,
-            self.breath_clouds,
-            self.bolts,
-            self.fangs.list,
-            self.ominous_spawners,
-            self.resident_entities.knots,
-        );
-        if let Some(id) = (self.dragon.as_ref())
-            .filter(|dragon| added(dragon.id, dragon.join_seq()))
-            .map(|dragon| dragon.id)
-        {
-            self.discard_resident_dragon();
-            gone.push(id);
-        }
-        if let Some(id) = (self.hook.as_ref())
-            .filter(|hook| added(hook.id(), hook.join_seq()))
-            .map(|hook| hook.id())
-        {
-            self.hook.discard();
-            gone.push(id);
-        }
-        (self.native_lifecycle.pending_item_spawns).retain(|spawn| !gone.contains(&spawn.0));
-        for id in gone.into_iter().filter(|&id| id != 0) {
-            self.forget_entity(id);
-        }
     }
 }
 

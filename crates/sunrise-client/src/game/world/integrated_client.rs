@@ -76,6 +76,23 @@ pub(in crate::game::client_side) use sunrise_protocol::connection::Pipe;
 pub(in crate::game::client_side) use sunrise_protocol::{crypto::offline_uuid, text::translatable};
 
 impl Game<'_> {
+    /// Only the owner window changes its integrated server's command tree.
+    pub(in crate::game) fn sync_pregen_option(&self) {
+        let Some(server) = &self.integrated else {
+            return;
+        };
+        let enabled = self.options.pregen || self.settings.extras.pregen;
+        // Check on the server after earlier updates so a later toggle wins without blocking.
+        server.queue_pregen_option(enabled);
+    }
+    pub(in crate::game) fn client_has_singleplayer_server(&self) -> bool {
+        self.integrated.is_some()
+    }
+    pub(in crate::game) fn client_is_published(&self) -> bool {
+        self.integrated
+            .as_ref()
+            .is_some_and(|s| s.published().is_some())
+    }
     #[inline(always)]
     pub(in crate::game) fn integrated_tick_loop_client(&mut self, started: Instant) -> f32 {
         self.client

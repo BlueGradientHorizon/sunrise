@@ -24,7 +24,7 @@ use sunrise_client::client_perf::{
         Started, Status, Stopped, Traced,
     },
 };
-use sunrise_client::command::{Arg, Dispatcher, PROFILER_GPU, Registries};
+use sunrise_client::command::{Arg, CommandError, Dispatcher, PROFILER_GPU, Registries};
 use sunrise_client::perf_net::Link;
 use sunrise_client::server_perf::{self, TickDetail, WorldCounts};
 use sunrise_client::spans::{self, Span};
@@ -723,6 +723,20 @@ impl Game<'_> {
     /// The pass timings the running capture asked for, as the renderer shows them now.
     fn gpu_readout(&self) -> Option<sunrise_client::gfx::pack_timing::GpuReadout> {
         gpu_readout(self.profile.gpu, self.renderer.0.as_ref())
+    }
+
+    fn client_syntax_failure(&mut self, e: &CommandError, command: &str) {
+        self.client_system_message(crate::game::commands_common::formatted_command_failure(
+            e.message.clone(),
+            None,
+        ));
+        if let Some(context) =
+            crate::game::commands_common::format_syntax_failure_context(e, command)
+        {
+            self.client_system_message(crate::game::commands_common::formatted_command_failure(
+                context, None,
+            ));
+        }
     }
 
     /// `/profiler start|stop|status|mark`: the requests of `sunrise-ctl profile`, answered in chat.

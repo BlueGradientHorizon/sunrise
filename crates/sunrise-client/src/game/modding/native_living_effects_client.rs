@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::Game;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use super::commands::Target;
+pub(in crate::game::client_side) use super::commands_common::Target;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::native_living_effects::active_effect;
 #[allow(unused_imports)]
@@ -16,6 +16,35 @@ pub(in crate::game::client_side) use sunrise_client::effects::{EffectInstance, P
 pub(in crate::game::client_side) use sunrise_client::mobs::Mob;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_items::items::ItemStack;
+
+impl Game<'_> {
+    /// `LivingEntity.getEffectBlendFactor` for the local player on a client.
+    pub(in crate::game) fn living_effect_blend_factor(
+        &self,
+        living: LivingRef,
+        effect: EffectKey,
+        partial: f32,
+    ) -> Option<f32> {
+        let def = mod_api::__private::effect_index(effect)
+            .and_then(sunrise_client_core::potions::effect_by_index)?;
+        let Target::Player = self.native_living_read_target(living)? else {
+            return None;
+        };
+        let Some(e) = self.potions.effects.get_registered(def.index) else {
+            return Some(0.0);
+        };
+        Some(match def.id {
+            "darkness" => self.darkness_blend(partial),
+            "nausea" => self.nausea_blend(partial),
+            _ => {
+                let (previous, current) = e.client_blend;
+                let previous = u8::from(previous) as f32;
+                let current = u8::from(current) as f32;
+                previous + partial * (current - previous)
+            }
+        })
+    }
+}
 
 #[cfg(test)]
 pub(in crate::game) mod tests {

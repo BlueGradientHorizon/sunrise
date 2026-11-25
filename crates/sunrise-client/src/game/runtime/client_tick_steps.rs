@@ -60,7 +60,7 @@ impl Game<'_> {
             // ClientTickEvent.Post, the tick's work done.
             self.native_client_tick_post();
             self.clock.record(started.elapsed());
-            if let Some(report) = self.clock.take_sprint_report() {
+            if self.clock.take_sprint_report().is_some() {
                 self.on_tick_rate_changed();
             }
         }
