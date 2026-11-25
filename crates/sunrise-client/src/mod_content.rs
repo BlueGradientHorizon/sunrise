@@ -233,9 +233,6 @@ pub fn fluid_look(id: &str) -> Option<FluidLook> {
         .cloned()
 }
 
-/// JSON with its object keys in file order, so a rewritten table differs
-/// from the original only by what was added.
-#[derive(Clone, Debug, PartialEq)]
 fn face_rules_json(rules: &[mod_api::FaceRule]) -> J {
     let state_obj = |map: &BTreeMap<String, String>| -> J {
         J::Obj(
@@ -339,6 +336,9 @@ fn face_rules_json(rules: &[mod_api::FaceRule]) -> J {
     )
 }
 
+/// JSON with its object keys in file order, so a rewritten table differs
+/// from the original only by what was added.
+#[derive(Clone, Debug, PartialEq)]
 enum J {
     Null,
     Bool(bool),

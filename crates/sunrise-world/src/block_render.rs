@@ -2,10 +2,11 @@
 //! This decides whether a culled model face is emitted; it does not shade it or
 //! implement translucent sorting, fluid meshing, or block updates.
 use crate::{
+    chunk::BlockState,
     collision::CachedCollisionRegistry,
     compression::invalid,
     fluid::{FluidKind, FluidState},
-    registry::{BlockRegistry, BlockState, BlockStateId},
+    registry::{BlockRegistry, BlockStateId},
 };
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
