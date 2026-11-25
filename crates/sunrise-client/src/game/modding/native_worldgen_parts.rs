@@ -63,8 +63,8 @@ pub(in crate::game) fn with_host<R>(
     Some(f(&mod_api::OwningWorldgen::new(
         &reader,
         &state_with_property,
-    )
-    .with_state_property(&state_property)))
+        &state_property,
+    )))
 }
 
 /// The engine's feature callback: one feature's Part lookups read the tables published when it

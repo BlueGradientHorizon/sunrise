@@ -11,8 +11,8 @@ pub trait Hooks {
     /// them, and the template reads `LevelRef::visit_structure_template` visits. Mirroring stays the
     /// game's. Server-side, on the worldgen worker threads and on the server thread, with the
     /// server's worldgen `context`: no `Host`, no writes; `context.state_property` reads a
-    /// property of a state and `context.state_with_property` builds states. A panicking part is contained and the game's answer kept. Diverges from
-    /// upstream: new hook.
+    /// property of a state and `context.state_with_property` builds states. A panicking part is
+    /// contained and the game's answer kept. Diverges from upstream: new hook.
     #[notes = r#"## Rotated block states
 
 - **`BlockPart::rotate(context, event)`** (`RotateEvent { state, pos, rotation }`, `event.rotated`): NeoForge's `IBlockExtension.rotate(state, level, pos, rotation)`, asked as a structure template places a block, where vanilla runs `state.mirror(mirror).rotate(rotation)`. `event.state` is already mirrored (mirroring has no NeoForge extension and stays the game's: vanilla's table, or the template's for a mod block), `event.pos` is where the block goes and `event.rotation` the template's turn. `event.rotated` starts at the game's own turned state; set it to another state of the same block, typically built with `context.state_with_property(event.state, "facing", "north")`, to place that instead; `context.state_property(event.state, "facing")` reads the value to turn, as vanilla's `state.getValue(FACING)`. A state of another block, or one this game does not have, is refused with a warning and the game's answer kept.

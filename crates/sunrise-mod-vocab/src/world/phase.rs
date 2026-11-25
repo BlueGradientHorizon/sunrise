@@ -1365,7 +1365,7 @@ pub trait WorldgenReader: Sync {
 pub struct OwningWorldgen<'a> {
     source: &'a dyn WorldgenReader,
     state_with_property: &'a StateWithProperty<'a>,
-    state_property: Option<&'a StateProperty<'a>>,
+    state_property: &'a StateProperty<'a>,
     mods: LoadedMods,
 }
 
@@ -1377,24 +1377,20 @@ type StateWithProperty<'a> =
 type StateProperty<'a> = dyn Fn(crate::BlockState, &str) -> Option<String> + 'a;
 
 impl<'a> OwningWorldgen<'a> {
-    /// Borrow the owning engine's frozen metadata reader and block-state query.
+    /// Borrow the owning engine's frozen metadata reader and its block-state build and read
+    /// (`BlockState.setValue`, `getValue`). A context with no block index to answer from passes
+    /// closures that answer None.
     pub fn new(
         source: &'a dyn WorldgenReader,
         state_with_property: &'a StateWithProperty<'a>,
+        state_property: &'a StateProperty<'a>,
     ) -> Self {
         Self {
             source,
             state_with_property,
-            state_property: None,
+            state_property,
             mods: LoadedMods::enabled_at_startup(),
         }
-    }
-
-    /// Answer [`WorldgenHost::state_property`] with the owning engine's block-state read;
-    /// without it, every read is None.
-    pub fn with_state_property(mut self, state_property: &'a StateProperty<'a>) -> Self {
-        self.state_property = Some(state_property);
-        self
     }
 }
 
@@ -1417,7 +1413,7 @@ impl WorldgenHost for OwningWorldgen<'_> {
         (self.state_with_property)(state, key, value)
     }
     fn state_property(&self, state: crate::BlockState, key: &str) -> Option<String> {
-        self.state_property.and_then(|read| read(state, key))
+        (self.state_property)(state, key)
     }
 }
 
