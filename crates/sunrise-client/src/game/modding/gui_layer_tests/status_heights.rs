@@ -1,5 +1,5 @@
 //! A layer reads the status columns' heights as they stand when it starts (NeoForge's
-//! `Hud.leftHeight`, `rightHeight`).
+//! `Hud.leftHeight`, `rightHeight`), and one that sets them moves the rows drawn after it.
 
 use crate::game::{
     execution_role::ExecutionRole,
@@ -17,12 +17,15 @@ static SEEN: Mutex<Vec<(&str, Option<[i32; 2]>)>> = Mutex::new(Vec::new());
 
 struct Probe {
     replace_armor: bool,
+    /// The layer after armour raises the right column to 60, as a mod that draws a row there.
+    set_right: bool,
 }
 
 #[mod_api::__subscriptions]
 impl Hooks for Probe {
     fn register_gui_layers(&self, _: &RegistrationContext, event: &mut RegisterGuiLayersEvent<'_>) {
         use GuiLayerPlacement::*;
+        let set_right = self.set_right;
         for (id, placement) in [
             (
                 "heights:before_health",
@@ -41,6 +44,11 @@ impl Hooks for Probe {
                 placement,
                 Box::new(move |host: &dyn ClientHost, _| {
                     SEEN.lock().unwrap().push((id, host.gui_status_heights()));
+                    if set_right && id == "heights:after_armor" {
+                        let [left, _] = host.gui_status_heights().unwrap();
+                        assert!(host.set_gui_status_heights([left, 60]));
+                        assert_eq!(host.gui_status_heights(), Some([left, 60]));
+                    }
                 }),
             ));
         }
@@ -61,14 +69,23 @@ fn a_layer_reads_the_status_heights_the_vanilla_rows_before_it_left() {
     if run_fresh_cases(
         "game::gui_layer_tests::status_heights::a_layer_reads_the_status_heights_the_vanilla_rows_before_it_left",
         CASE,
-        &["vanilla", "replace_armor"],
+        &["vanilla", "replace_armor", "set_right"],
     ) {
         return;
     }
-    let replace_armor = std::env::var(CASE).unwrap() == "replace_armor";
+    let case = std::env::var(CASE).unwrap();
+    let replace_armor = case == "replace_armor";
+    let set_right = case == "set_right";
     with_client_game(|game| {
         mod_platform::__private::install(
-            vec![ModEntry::new("heights", Box::new(Probe { replace_armor }))].into(),
+            vec![ModEntry::new(
+                "heights",
+                Box::new(Probe {
+                    replace_armor,
+                    set_right,
+                }),
+            )]
+            .into(),
         );
         mods::register_gui_layers(ExecutionRole::Client);
         game.title = None;
@@ -85,17 +102,20 @@ fn a_layer_reads_the_status_heights_the_vanilla_rows_before_it_left() {
         player.air = 181;
         game.player = Some(player);
         assert_eq!(game.gui_status_heights(), None);
+        assert!(!game.set_gui_status_heights([1, 1]));
         game.hud_layers([640, 480]);
         let after_armor = if replace_armor { [49, 39] } else { [59, 39] };
         let [left, _] = after_armor;
+        // Food and air push 10 each from wherever the right column stands.
+        let right = if set_right { 60 } else { 39 };
         assert_eq!(
             *SEEN.lock().unwrap(),
             [
                 ("heights:before_health", Some([39, 39])),
                 ("heights:after_health", Some([49, 39])),
                 ("heights:after_armor", Some(after_armor)),
-                ("heights:after_food", Some([left, 49])),
-                ("heights:after_air", Some([left, 59])),
+                ("heights:after_food", Some([left, right + 10])),
+                ("heights:after_air", Some([left, right + 20])),
             ]
         );
         assert_eq!(game.gui_status_heights(), None);

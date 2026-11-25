@@ -3653,6 +3653,9 @@ struct Game<'a> {
     hud_layer_bounds: Vec<(&'static str, [f32; 4])>,
     /// The status columns' heights in this HUD pass (NeoForge's `Hud.leftHeight`, `rightHeight`).
     hud_status_heights: hud_layout::StatusBarHeights,
+    /// Heights a mod set during the current HUD layer (`set_gui_status_heights`), applied to
+    /// `hud_status_heights` before the next body draws. A cell, as mods write through `&self`.
+    hud_status_heights_set: std::cell::Cell<Option<[i32; 2]>>,
     /// The mod block entities' view distances, asked of the parts once (`native_block_entity_draw`).
     mod_view_distances: std::cell::OnceCell<native_block_entity_draw::ViewDistances>,
     /// What drawing a block entity asks of its block, by state id (`block_entity_reach`):
@@ -7801,6 +7804,7 @@ impl Game<'_> {
         let dispatch_hud = !gui_canceled && !replaying;
         self.hud_layer_next = dispatch_hud.then_some(0);
         self.hud_status_heights = Default::default();
+        self.hud_status_heights_set.set(None);
         self.ui.room = self.hud_room(w, h, show_hud);
         let mut guide_from = 0;
         if dispatch_hud {
@@ -8121,6 +8125,7 @@ impl Game<'_> {
             });
             self.draw_mod_gui_layers(None, &mut batch);
             self.hud_layer_next = None;
+            self.hud_status_heights_set.set(None);
             self.native_render_gui_post(&mut batch);
             self.hud_layer_bounds.clear();
         }
@@ -14300,6 +14305,7 @@ impl<'a> Game<'a> {
             hud_layer_next: None,
             hud_layer_bounds,
             hud_status_heights: Default::default(),
+            hud_status_heights_set: Default::default(),
             mod_view_distances: Default::default(),
             block_entity_reach: Default::default(),
             item_level_cache: Default::default(),
