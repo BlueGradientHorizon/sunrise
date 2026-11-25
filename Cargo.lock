@@ -544,6 +544,7 @@ dependencies = [
  "dunce",
  "libc",
  "lzma-rust2",
+ "object",
  "ring",
  "rustc-demangle",
  "semver",

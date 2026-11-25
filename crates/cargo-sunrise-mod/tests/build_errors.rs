@@ -1,3 +1,4 @@
+use object::{Object, ObjectSymbol};
 use std::{path::Path, process::Command};
 
 /// A starter native mod in a folder whose name has an `=`, with `extra` added to its manifest
@@ -143,5 +144,42 @@ fn a_native_mod_compiles_its_c_source_with_cc_from_its_build_script() {
             .project
             .join("target/sunrise-mod/greeter.smod")
             .is_file()
+    );
+    // On Linux a dylib may leave an undefined symbol to be resolved at load, so a green build
+    // does not show the C function was linked: the library the build left in its cache must
+    // define it.
+    let name = format!(
+        "{}greeter{}",
+        std::env::consts::DLL_PREFIX,
+        std::env::consts::DLL_SUFFIX
+    );
+    let (mut pending, mut libraries) = (vec![project.cache.clone()], Vec::new());
+    while let Some(dir) = pending.pop() {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_type().unwrap().is_dir() {
+                pending.push(entry.path());
+            } else if entry.file_name().to_str() == Some(name.as_str()) {
+                libraries.push(entry.path());
+            }
+        }
+    }
+    assert!(!libraries.is_empty(), "no {name} under the cache");
+    let defines_the_c_function = |library: &Path| {
+        let bytes = std::fs::read(library).unwrap();
+        let file = object::File::parse(&*bytes).unwrap();
+        file.symbols().chain(file.dynamic_symbols()).any(|symbol| {
+            // Mach-O prefixes C names with an underscore.
+            symbol.is_definition()
+                && symbol
+                    .name()
+                    .is_ok_and(|name| name.trim_start_matches('_') == "sunrise_c_answer")
+        })
+    };
+    assert!(
+        libraries
+            .iter()
+            .any(|library| defines_the_c_function(library)),
+        "no {name} under the cache defines sunrise_c_answer: {libraries:?}"
     );
 }
