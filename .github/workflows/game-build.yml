@@ -203,7 +203,7 @@ jobs:
         # Snapshots can build older refs, whose stack reservation may differ: the machine is checked, not the stack.
         if: matrix.name == 'windows'
         run: |
-          ${{ runner.os == 'Windows' && 'python' || 'python3' }} .workflow-tools/tools/check_pe_arch.py "${{ matrix.pe_arch }}" \
+          python .workflow-tools/tools/check_pe_arch.py "${{ matrix.pe_arch }}" \
             "$BIN/sunrise-client${{ matrix.exe }}" "$BIN/sunrise-ctl${{ matrix.exe }}" \
             "$BIN/sunrise-perf${{ matrix.exe }}" "$BIN/sunrise-prepare${{ matrix.exe }}" \
             "$BIN/sunrise-server${{ matrix.exe }}" "$BIN/sunrise-port-pack${{ matrix.exe }}"
@@ -303,7 +303,7 @@ jobs:
           # Windows x64: Microsoft's DXC, pinned and checksummed, which DirectX 12 uses on integrated GPUs
           # (gfx/dx12_compiler.rs), with its licence.
           if [[ "${{ matrix.name }}" == windows ]]; then
-            ${{ runner.os == 'Windows' && 'python' || 'python3' }} tools/ci/fetch_dxc.py "dist/${{ matrix.dir }}"
+            python tools/ci/fetch_dxc.py "dist/${{ matrix.dir }}"
           fi
           cd dist
           rm -f "${{ matrix.asset }}"
