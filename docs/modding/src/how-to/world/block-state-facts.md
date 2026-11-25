@@ -68,6 +68,13 @@ position).
 
 Option-only queries return `None` for an unknown state or block, including an invalid local ordinal, and on a host with no game behind it (a mod's test double). Queries returning `Result<Option<_>, LevelReadError>` distinguish unknown states (`Ok(None)`) from unavailable metadata (`Err(LevelReadError::Unavailable)`). The ordinal order is defined by the complete canonical property constraints, not by the engine's numeric enumeration.
 
+## Spawn rule
+
+A declared block's `spawn_rule` property (`default`, `always`, `never` or `ocelot_or_parrot`; see
+[content mods](../content-mods.md)) sets the block's mob spawn surface flags, which natural spawning reads as
+`BlockBehaviour.Properties.isValidSpawn` does. The default rule asks for a sturdy top face and light emission below
+14 from the block's own light, which `light_emission` above reports without the cell's dynamic answer.
+
 ## Block sounds
 
 The facts query does not run the block's parts or check loaded sound resources. Read an event by
@@ -136,6 +143,23 @@ your own scan and transmitter checks if summing powers for a table; the read doe
 cap them. It doesn't load chunks or write to the world. A stale handle or unavailable view
 or state refuses the query. A nested enchanting-power query for an active provider state
 is also refused, even at another level or position; it can still ask a different state.
+
+## Where an enchanting table finds its bookshelves
+
+A table scans vanilla's 32 positions (the ring two blocks out, two blocks high). A mod adds
+positions with `registrar.add_enchanting_table_offsets(&[[3, 0, 0], ...])` in `register`; they
+follow vanilla's in mod load order, and one already scanned is dropped. The list is fixed at
+startup, so a mod whose offsets come from its settings needs a restart to change them; `/reload`
+doesn't re-run registration. Each added position adds one `nextInt(16)` draw to every table's
+particle tick on the client, and nothing to the server's offers.
+
+At each scanned position, `is_valid_book_shelf(level, table_pos, offset, valid)` decides whether
+it counts (`EnchantingTableBlock.isValidBookShelf`). `valid` starts at vanilla's answer: the block
+there has a nonzero enchanting power and the block halfway to the table (x and z halved, rounded
+toward zero) is in `#minecraft:enchantment_power_transmitter`. A position set to valid adds its
+block's enchanting power to the offers, so a block with none still adds 0. The client's
+glyphs ask it too, only where vanilla does (after that position's `nextInt(16)` draw is 0), so a
+mod that changes it belongs on both sides.
 
 ## Block classes
 
@@ -208,6 +232,13 @@ What depends on a position is on `LevelRef`, not in this service: `fluid_tick_de
 (water 5, lava 30 and 10 in the Nether, a mod fluid's as its `fluid_rules` parts change it there),
 `fluid_height`, `fluid_height_for_camera` and `fluid_can_be_replaced_with(host, pos, fluid, direction)`.
 `fluid_tick(server, pos)` runs a fluid's flow step immediately; `schedule_fluid_tick` queues one.
+
+`fluid_passage` closes one side of a cell to a flowing fluid. It is asked on the server wherever a fluid decides
+where to go: the step down, the choice of sides and every step of the search for the way down, so a closed side
+changes which sides the fluid picks and not only whether one cell fills. It is asked only after the game's own
+answer was yes, so it can close a side and never open a wall; the answer is not kept, and it reschedules no fluid tick
+(the neighbour updates of the block change that moved your answer already do). `fluid_rules` changes how a mod's fluid
+flows everywhere it is; `fluid_passage` answers for one step of one position, for any fluid.
 
 `FluidState::matches(constraints)` is a pure local check of carried vanilla fields. Unknown properties
 or noncanonical serialized values return false. A falling source remains a source; a flowing state

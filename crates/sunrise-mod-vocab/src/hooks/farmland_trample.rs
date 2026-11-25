@@ -27,7 +27,8 @@ pub trait Hooks {
         out = "cancel",
         neoforge = "BlockEvent.FarmlandTrampleEvent",
         cancellable = true,
-        version = 4
+        version = 4,
+        listener_transaction = "always"
     )]
     fn farmland_trample(
         entity: mod_api::LivingRef,

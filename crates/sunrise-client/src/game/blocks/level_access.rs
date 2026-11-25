@@ -133,6 +133,20 @@ impl LevelAccess for GameLevel<'_> {
             self.native_neighbor_changed(ticks, self.dimension, pos, state, changed.block(), moved);
         }
     }
+    fn observe_on_place(
+        &mut self,
+        ticks: &mut Ticks,
+        pos: BlockPos,
+        state: BlockStateId,
+        old: BlockStateId,
+        moved: bool,
+    ) {
+        if self.native_authoritative
+            && api_values::block_state::block_listens(mod_api::HookId::OnPlace, state)
+        {
+            self.native_on_place(ticks, self.dimension, pos, state, old, moved);
+        }
+    }
     #[inline]
     fn affect_neighbors_after_removal(
         &self,
@@ -345,6 +359,33 @@ impl LevelAccess for GameLevel<'_> {
         Self::answered_fluid_rules(self.dimension, pos, fluid, registered, |call| {
             self.native_fluid_rules(call)
         })
+    }
+    fn fluid_passage(
+        &self,
+        fluid: &'static str,
+        from: BlockPos,
+        from_state: BlockStateId,
+        direction: Direction,
+        to: BlockPos,
+        to_state: BlockStateId,
+    ) -> bool {
+        if !self.native_authoritative
+            || !mod_api::__private::listened(mod_api::HookId::FluidPassage)
+        {
+            return true;
+        }
+        let mut passes = true;
+        self.native_fluid_passage(
+            self.dimension,
+            fluid,
+            from,
+            from_state,
+            direction,
+            to,
+            to_state,
+            &mut passes,
+        );
+        passes
     }
     #[inline]
     fn allow_block_ignite(&self, pos: BlockPos, cause: &'static str) -> bool {

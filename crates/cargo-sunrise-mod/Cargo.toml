@@ -27,6 +27,7 @@ sunrise-native-build = { path = "../sunrise-native-build" }
 sunrise-mod-surface = { path = "../sunrise-mod-surface" }
 sunrise-mod-pipeline = { path = "../sunrise-mod-pipeline" }
 sunrise-release-sign = { path = "../sunrise-release-sign" }
+sunrise-jar-fetch = { path = "../sunrise-jar-fetch" }
 sunrise-port-pack = { path = "../sunrise-port-pack" }
 sunrise-proxy = { path = "../sunrise-proxy" }
 rustc-demangle = "0.1"
@@ -37,6 +38,8 @@ sha2 = "0.10"
 tempfile = "3.27.0"
 toml = "1.1.6"
 toml_edit = "0.25"
+# A new collection's random ID.
+getrandom = "0.4"
 url = "2"
 # The page bundle is a plain ustar archive.
 tar = { version = "0.4", default-features = false }
@@ -54,6 +57,7 @@ base64 = "0.22"
 ring = "0.17"
 # The daily C-source test reads the symbols of the library the tool built.
 object = { version = "0.39", default-features = false, features = ["read", "std"] }
+png = "0.18"
 
 [lints]
 workspace = true
