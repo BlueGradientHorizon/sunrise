@@ -3428,14 +3428,13 @@ mod link_and_path_tests {
         });
     }
 
-    /// From a tick, with the chat's link options off, the confirmation opens holding the
-    /// link; No (or Cancel) closes it and opens nothing.
+    /// From a tick, the confirmation opens holding the link, titled and labelled by `trusted`;
+    /// No (or Cancel) closes it and opens nothing.
     #[test]
     #[ignore = "daily"]
     fn a_mod_asks_to_open_a_web_link() {
         ask("https://example.com/a?b=c", false, |game, result| {
             assert_eq!(result, Ok(()));
-            (game.settings.chat_links, game.settings.chat_links_prompt) = (false, false);
             let prompt = game.link_prompt.clone().expect("the prompt opens");
             assert_eq!(prompt.url, "https://example.com/a?b=c");
             assert!(!prompt.trusted);
@@ -3460,13 +3459,15 @@ mod link_and_path_tests {
         });
     }
 
-    /// Only http and https open a prompt, the scheme in any case; nothing panics.
+    /// Only http and https open a prompt, the scheme in any case, whatever the chat's link
+    /// options say; nothing panics.
     #[test]
     #[ignore = "daily"]
     fn a_mod_link_must_be_http_or_https() {
         super::super::native_entity_refs::tests::with_game(|game| {
             game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
             game.options.headless = true;
+            (game.settings.chat_links, game.settings.chat_links_prompt) = (false, false);
             assert_eq!(game.confirm_link("HTTPS://Example.com", false), Ok(()));
             assert!(game.link_prompt.is_some());
             game.answer_link_prompt(false);
