@@ -41,7 +41,7 @@ impl DiskRuntime {
         // A disk job has no block-state index (that is the game's, published for worldgen), so
         // `state_with_property` answers None, as worldgen does before the index is published.
         job.run(
-            &mod_api::OwningWorldgen::new(&reader, &|_, _, _| None),
+            &mod_api::OwningWorldgen::new(&reader, &|_, _, _| None, &|_, _| None),
             sunrise_world::datafix::upgrade_compound,
         )
         .clone()

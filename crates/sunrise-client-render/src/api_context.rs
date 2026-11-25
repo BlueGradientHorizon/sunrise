@@ -283,7 +283,7 @@ mod tests {
                     .captured_loop_context(engine::LoopSide::Server)
                     .worldgen_context();
                 let reader = WorldgenReader(&worldgen);
-                let host = mod_api::OwningWorldgen::new(&reader, &|_, _, _| None);
+                let host = mod_api::OwningWorldgen::new(&reader, &|_, _, _| None, &|_, _| None);
                 let context: &dyn WorldgenHost = &host;
                 let names = context.registry("item").unwrap();
                 assert_eq!(names, ["test:second", "test:first"]);
