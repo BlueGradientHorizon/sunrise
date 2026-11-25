@@ -49,6 +49,8 @@ pub const DYNAMIC_TEXTURE_CUTOUT_OVERLAY: u32 = 53;
 /// `RenderTypes.entityTranslucent(texture)`: as [`DYNAMIC_TEXTURE_SOLID_OVERLAY`], alpha
 /// blended, depth written, quads sorted far to near.
 pub const DYNAMIC_TEXTURE_TRANSLUCENT_OVERLAY: u32 = 54;
+/// Armor foil without its color material: additive, with no depth or outline writes.
+pub const ARMOR_GLINT_ONLY_OVERLAY: u32 = 55;
 pub const WATER_MASK_OVERLAY: u32 = 13;
 pub const TRANSLUCENT_PARTICLE_OVERLAY: u32 = 15;
 pub const OIT_ENTITY: u32 = 1 << 24;

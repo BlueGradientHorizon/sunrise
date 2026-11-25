@@ -4,11 +4,12 @@
 //! an `Err` skips only that draw, and a panic disables only that layer for the session.
 use super::Game;
 use super::entity_type_rows::EntityTypeRows;
-use super::native_entity_layers::LayerRegistration;
+use super::native_entity_layers::{LayerRegistration, StockLayerContext};
 use super::native_entity_renderers::RegisteredEntityRenderer;
 use mod_api::{
-    BlockEntityDrawContext, EntityLayers, EntityRenderLayer, EntityRenderState, EntityRenderer,
-    FrameModel, LayerTarget, PlayerModel,
+    ArmorLayerPass, ArmorLayerSlot, BlockEntityDrawContext, EntityLayers, EntityRenderLayer,
+    EntityRenderState, EntityRenderer, FrameModel, Hand, Hooks, LayerTarget, PlayerModel,
+    RegisterEntityLayersEvent, RegistrationContext, StockLayer, StockLayerDraw,
 };
 use std::{
     collections::BTreeMap,
@@ -68,6 +69,7 @@ impl EntityRenderLayer for Raised {
         entity: &EntityRenderState,
         _: Option<&dyn FrameModel>,
         draw: &mut dyn BlockEntityDrawContext,
+        _: &mut dyn StockLayerDraw,
     ) -> Result<(), String> {
         let call = self.calls.fetch_add(1, Ordering::Relaxed);
         self.id.store(entity.id, Ordering::Relaxed);
@@ -108,6 +110,7 @@ impl EntityRenderLayer for PanickingLayer {
         _: &EntityRenderState,
         _: Option<&dyn FrameModel>,
         draw: &mut dyn BlockEntityDrawContext,
+        _: &mut dyn StockLayerDraw,
     ) -> Result<(), String> {
         self.calls.fetch_add(1, Ordering::Relaxed);
         let (low, high) = (self.height, self.height + 1.0);
@@ -144,7 +147,23 @@ fn the_event_tells_the_renderers_this_load_built() {
         "nope:ghost".into(),
         RegisteredEntityRenderer::new(Arc::new(Nothing), None),
     );
-    let event = LayerRegistration::new(&rows, &renderers, &routed);
+    let stock = BTreeMap::from([
+        (
+            "minecraft:zombie".into(),
+            vec![
+                StockLayer::Armor(ArmorLayerSlot::Chest, ArmorLayerPass::Base),
+                StockLayer::HeldItem(Hand::Main),
+            ],
+        ),
+        (
+            "ruby:golem".into(),
+            vec![StockLayer::Armor(
+                ArmorLayerSlot::Head,
+                ArmorLayerPass::Base,
+            )],
+        ),
+    ]);
+    let event = LayerRegistration::new(&rows, &renderers, &routed, &stock);
     let types: &[String] = event.entity_types();
     assert!(std::ptr::eq(types, rows.non_player_ids.as_slice()));
     assert_eq!(
@@ -172,13 +191,53 @@ fn the_event_tells_the_renderers_this_load_built() {
     assert!(event.has_mod_renderer("ruby:golem"));
     assert!(!event.has_mod_renderer("minecraft:zombie"));
     assert!(!event.has_mod_renderer("nope:ghost"), "no entity type");
+    assert_eq!(
+        event.stock_layers(&LayerTarget::Entity("minecraft:zombie".into())),
+        stock["minecraft:zombie"].as_slice()
+    );
+    assert!(
+        event
+            .stock_layers(&LayerTarget::Entity("ruby:golem".into()))
+            .is_empty(),
+        "a mod-replaced renderer has no stock layers"
+    );
+    for empty in [
+        "minecraft:oak_boat",
+        "minecraft:player",
+        "minecraft:armor_stand",
+        "nope:ghost",
+    ] {
+        assert!(
+            event
+                .stock_layers(&LayerTarget::Entity(empty.into()))
+                .is_empty(),
+            "{empty}"
+        );
+    }
+    for model in [PlayerModel::Wide, PlayerModel::Slim] {
+        let player_layers = event.stock_layers(&LayerTarget::Player(model));
+        assert!(player_layers.contains(&StockLayer::Cape));
+        assert!(player_layers.contains(&StockLayer::Wings));
+        assert!(player_layers.contains(&StockLayer::Armor(
+            ArmorLayerSlot::Chest,
+            ArmorLayerPass::Base
+        )));
+        assert!(!player_layers.contains(&StockLayer::SnowGolemHead));
+    }
 }
 
 #[test]
 fn a_target_that_is_no_living_entity_type_is_refused_by_name() {
     let rows = rows();
     let renderers = BTreeMap::new();
-    let mut event = LayerRegistration::new(&rows, &renderers, &routed);
+    let stock = BTreeMap::from([(
+        "minecraft:zombie".into(),
+        vec![StockLayer::Armor(
+            ArmorLayerSlot::Chest,
+            ArmorLayerPass::Base,
+        )],
+    )]);
+    let mut event = LayerRegistration::new(&rows, &renderers, &routed, &stock);
     let mut add = |target: &str| event.add(LayerTarget::Entity(target.into()), Raised::new(1.0));
     assert_eq!(
         add("minecraft:oak_boat"),
@@ -206,6 +265,97 @@ fn a_target_that_is_no_living_entity_type_is_refused_by_name() {
         event.add(LayerTarget::Player(PlayerModel::Slim), Raised::new(1.0)),
         Ok(())
     );
+}
+
+#[test]
+fn hiding_stock_layers_validates_target_and_supported_layers() {
+    let rows = rows();
+    let mut renderers = BTreeMap::new();
+    struct Nothing;
+    impl EntityRenderer for Nothing {
+        fn submit(
+            &self,
+            _: &EntityRenderState,
+            _: &mut dyn BlockEntityDrawContext,
+        ) -> Result<(), String> {
+            Ok(())
+        }
+    }
+    renderers.insert(
+        "ruby:golem".into(),
+        RegisteredEntityRenderer::new(Arc::new(Nothing), None),
+    );
+    let stock = BTreeMap::from([
+        (
+            "minecraft:zombie".into(),
+            vec![StockLayer::Armor(
+                ArmorLayerSlot::Chest,
+                ArmorLayerPass::Base,
+            )],
+        ),
+        (
+            "ruby:golem".into(),
+            vec![StockLayer::Armor(
+                ArmorLayerSlot::Chest,
+                ArmorLayerPass::Base,
+            )],
+        ),
+    ]);
+    let mut event = LayerRegistration::new(&rows, &renderers, &routed, &stock);
+    assert_eq!(
+        event.hide(
+            LayerTarget::Entity("minecraft:zombie".into()),
+            StockLayer::Armor(ArmorLayerSlot::Chest, ArmorLayerPass::Base)
+        ),
+        Ok(())
+    );
+    assert_eq!(
+        event.hide(
+            LayerTarget::Player(PlayerModel::Wide),
+            StockLayer::Armor(ArmorLayerSlot::Chest, ArmorLayerPass::Base)
+        ),
+        Ok(())
+    );
+    assert!(
+        event
+            .hide(
+                LayerTarget::Player(PlayerModel::Wide),
+                StockLayer::SnowGolemHead
+            )
+            .is_err(),
+        "players have no SnowGolemHead layer"
+    );
+    assert!(
+        event
+            .hide(
+                LayerTarget::Entity("minecraft:zombie".into()),
+                StockLayer::SnowGolemHead
+            )
+            .is_err(),
+        "zombies have no SnowGolemHead layer"
+    );
+    assert!(
+        event
+            .hide(
+                LayerTarget::Entity("ruby:golem".into()),
+                StockLayer::Armor(ArmorLayerSlot::Chest, ArmorLayerPass::Base)
+            )
+            .is_err(),
+        "mod-replaced renderers have no stock layers"
+    );
+    for bad in [
+        "minecraft:oak_boat",
+        "minecraft:player",
+        "minecraft:armor_stand",
+        "nope:ghost",
+    ] {
+        assert!(
+            event
+                .hide(LayerTarget::Entity(bad.into()), StockLayer::CustomHead)
+                .is_err(),
+            "{bad}"
+        );
+    }
 }
 
 type LayerList = Vec<(LayerTarget, Arc<dyn EntityRenderLayer>)>;
@@ -264,7 +414,8 @@ fn layer_frame(game: &Game<'_>, kind: &str, slim: bool) -> Vec<Vertex> {
     let mut out = Vec::new();
     let mob = mob(game, kind, slim);
     let layers = game.mod_layers(&mob);
-    game.mod_layer_geometry(&mob, None, None, layers, 1.0, CAMERA, LIGHT, &mut out);
+    let ctx = StockLayerContext::none(1.0, CAMERA, LIGHT);
+    game.mod_layer_geometry(&mob, None, None, layers, &ctx, 1.0, CAMERA, LIGHT, &mut out);
     out
 }
 
@@ -452,11 +603,13 @@ fn this_windows_player_is_told_its_own_entity_id() {
             };
             let layers = game.mod_layers(&model);
             let mut out = Vec::new();
+            let ctx = StockLayerContext::none(1.0, CAMERA, LIGHT);
             game.mod_layer_geometry(
                 &model,
                 Some(who),
                 None,
                 layers,
+                &ctx,
                 1.0,
                 CAMERA,
                 LIGHT,
@@ -475,6 +628,7 @@ fn this_windows_player_is_told_its_own_entity_id() {
                 Some(who),
                 None,
                 layers,
+                &ctx,
                 1.0,
                 CAMERA,
                 LIGHT,
@@ -586,6 +740,416 @@ fn a_panicking_layer_stays_disabled_across_reload_without_affecting_siblings() {
             assert_eq!(replacement.calls(), 1);
             assert_eq!(scene.sheep_panic.calls(), 1);
             assert!(mod_api::__private::take_hook_panics().is_empty());
+        },
+    );
+}
+
+type VertexKey = ([u32; 3], [u32; 2], u32, u32, u32, [i8; 4], [u32; 2]);
+
+fn vertex_keys(verts: &[Vertex]) -> Vec<VertexKey> {
+    verts
+        .iter()
+        .map(|v| {
+            (
+                v.pos.map(f32::to_bits),
+                v.uv.map(f32::to_bits),
+                v.layer,
+                v.color,
+                v.light,
+                v.normal,
+                v.glint_uv.map(f32::to_bits),
+            )
+        })
+        .collect()
+}
+
+fn draw_single_mob(game: &mut Game<'_>, mob: Mob) -> Vec<Vertex> {
+    game.mobs.clear();
+    game.mobs.push(mob);
+    game.prepare_entity_culling();
+    let mut out = Vec::new();
+    game.mob_geometry(CAMERA, 1.0, &mut out);
+    out
+}
+
+fn in_child(test: &str, check: impl FnOnce(&mut Game<'_>)) {
+    if std::env::var_os("SUNRISE_ENTITY_LAYERS_CHILD").is_none() {
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                &format!("game::native_entity_layers_tests::{test}"),
+                "--include-ignored",
+                "--nocapture",
+            ])
+            .env("SUNRISE_ENTITY_LAYERS_CHILD", "1")
+            .status()
+            .unwrap();
+        assert!(status.success());
+        return;
+    }
+    super::native_entity_refs::tests::with_client_game(check);
+}
+
+fn wide_player(game: &Game<'_>, id: u32, chestplate: bool) -> Mob {
+    let kind = game.res.player_type().clone().unwrap();
+    let at = sunrise_core::geometry::Vec3::new(FEET[0], FEET[1], FEET[2]);
+    let mut m = Mob::new(id, kind, at, 0.0);
+    m.slim = false;
+    if chestplate {
+        m.extra.set_slot_stack(
+            sunrise_items::equipment::CHEST,
+            Some(sunrise_items::items::ItemStack::new(
+                "minecraft:diamond_chestplate",
+                1,
+            )),
+        );
+    }
+    m
+}
+
+#[test]
+#[ignore = "daily"]
+fn hiding_snow_golem_head_removes_the_carved_pumpkin_and_lists_it() {
+    in_child(
+        "hiding_snow_golem_head_removes_the_carved_pumpkin_and_lists_it",
+        |game| {
+            let snow_golem = |game: &Game<'_>, sheared: bool| {
+                let mut m = mob(game, "minecraft:snow_golem", false);
+                m.extra.sheared = sheared;
+                m
+            };
+            let with_pumpkin = draw_single_mob(game, snow_golem(game, false));
+            let sheared_only = draw_single_mob(game, snow_golem(game, true));
+            assert!(
+                with_pumpkin.len() > sheared_only.len(),
+                "unsheared snow golem draws its carved pumpkin"
+            );
+
+            #[derive(Default)]
+            struct Observed {
+                snow_golem: Vec<StockLayer>,
+                zombie: Vec<StockLayer>,
+                horse: Vec<StockLayer>,
+                player_wide: Vec<StockLayer>,
+            }
+            struct HidePumpkin(Arc<Mutex<Observed>>);
+            #[mod_api::__subscriptions]
+            impl Hooks for HidePumpkin {
+                fn register_entity_layers(
+                    &self,
+                    _: &RegistrationContext,
+                    event: &mut RegisterEntityLayersEvent<'_>,
+                ) {
+                    let mut obs = self.0.lock().unwrap();
+                    obs.snow_golem = event
+                        .layers
+                        .stock_layers(&LayerTarget::Entity("minecraft:snow_golem".into()))
+                        .to_vec();
+                    obs.zombie = event
+                        .layers
+                        .stock_layers(&LayerTarget::Entity("minecraft:zombie".into()))
+                        .to_vec();
+                    obs.horse = event
+                        .layers
+                        .stock_layers(&LayerTarget::Entity("minecraft:horse".into()))
+                        .to_vec();
+                    obs.player_wide = event
+                        .layers
+                        .stock_layers(&LayerTarget::Player(PlayerModel::Wide))
+                        .to_vec();
+                    event
+                        .layers
+                        .hide(
+                            LayerTarget::Entity("minecraft:snow_golem".into()),
+                            StockLayer::SnowGolemHead,
+                        )
+                        .unwrap();
+                }
+            }
+            let observed = Arc::new(Mutex::new(Observed::default()));
+            let mods = vec![mod_api::ModEntry::new(
+                "hide_pumpkin",
+                Box::new(HidePumpkin(observed.clone())),
+            )]
+            .into();
+            mod_platform::testing::with_mods(mods, || {
+                game.resolve_entity_renderers();
+                let obs = observed.lock().unwrap();
+                assert!(obs.snow_golem.contains(&StockLayer::SnowGolemHead));
+                assert!(!obs.zombie.contains(&StockLayer::SnowGolemHead));
+                assert!(obs.zombie.contains(&StockLayer::Armor(
+                    ArmorLayerSlot::Chest,
+                    ArmorLayerPass::Base
+                )));
+                assert!(obs.zombie.contains(&StockLayer::HeldItem(Hand::Main)));
+                assert!(obs.zombie.contains(&StockLayer::CustomHead));
+                assert!(obs.horse.is_empty());
+                assert!(obs.player_wide.contains(&StockLayer::Cape));
+                assert!(obs.player_wide.contains(&StockLayer::Wings));
+                assert!(obs.player_wide.contains(&StockLayer::Arrow));
+                assert!(obs.player_wide.contains(&StockLayer::BeeStinger));
+                drop(obs);
+
+                let hidden_pumpkin = draw_single_mob(game, snow_golem(game, false));
+                assert_eq!(
+                    vertex_keys(&hidden_pumpkin),
+                    vertex_keys(&sheared_only),
+                    "hiding SnowGolemHead removes only the carved pumpkin"
+                );
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn hiding_player_chestplate_and_redrawing_conditionally_matches_baseline() {
+    in_child(
+        "hiding_player_chestplate_and_redrawing_conditionally_matches_baseline",
+        |game| {
+            const HIDE_ID: u32 = 201;
+            const KEEP_ID: u32 = 202;
+            let bare_hidden = draw_single_mob(game, wide_player(game, HIDE_ID, false));
+            let baseline_kept = draw_single_mob(game, wide_player(game, KEEP_ID, true));
+            let bare_kept = draw_single_mob(game, wide_player(game, KEEP_ID, false));
+            assert!(
+                baseline_kept.len() > bare_kept.len(),
+                "wearing a diamond chestplate emits armour vertices"
+            );
+
+            struct ConditionalChestplate {
+                keep_id: u32,
+            }
+            impl EntityRenderLayer for ConditionalChestplate {
+                fn submit(
+                    &self,
+                    entity: &EntityRenderState,
+                    _: Option<&dyn FrameModel>,
+                    _: &mut dyn BlockEntityDrawContext,
+                    stock: &mut dyn StockLayerDraw,
+                ) -> Result<(), String> {
+                    if entity.id == self.keep_id {
+                        stock.draw_stock_layer(StockLayer::Armor(
+                            ArmorLayerSlot::Chest,
+                            ArmorLayerPass::Base,
+                        ))?;
+                        stock.draw_stock_layer(StockLayer::Armor(
+                            ArmorLayerSlot::Chest,
+                            ArmorLayerPass::Glint,
+                        ))?;
+                        stock.draw_stock_layer(StockLayer::Armor(
+                            ArmorLayerSlot::Chest,
+                            ArmorLayerPass::Trim,
+                        ))?;
+                    }
+                    Ok(())
+                }
+            }
+            struct HideChestplate;
+            #[mod_api::__subscriptions]
+            impl Hooks for HideChestplate {
+                fn register_entity_layers(
+                    &self,
+                    _: &RegistrationContext,
+                    event: &mut RegisterEntityLayersEvent<'_>,
+                ) {
+                    for model in [PlayerModel::Wide, PlayerModel::Slim] {
+                        let target = LayerTarget::Player(model);
+                        for pass in [
+                            ArmorLayerPass::Base,
+                            ArmorLayerPass::Glint,
+                            ArmorLayerPass::Trim,
+                        ] {
+                            event
+                                .layers
+                                .hide(
+                                    target.clone(),
+                                    StockLayer::Armor(ArmorLayerSlot::Chest, pass),
+                                )
+                                .unwrap();
+                        }
+                        event
+                            .layers
+                            .add(target, Arc::new(ConditionalChestplate { keep_id: KEEP_ID }))
+                            .unwrap();
+                    }
+                }
+            }
+            let mods = vec![mod_api::ModEntry::new(
+                "conditional_armor",
+                Box::new(HideChestplate),
+            )]
+            .into();
+            mod_platform::testing::with_mods(mods, || {
+                game.resolve_entity_renderers();
+                let drawn_hidden = draw_single_mob(game, wide_player(game, HIDE_ID, true));
+                assert_eq!(
+                    vertex_keys(&drawn_hidden),
+                    vertex_keys(&bare_hidden),
+                    "player {HIDE_ID} draws no chestplate vertices"
+                );
+                let drawn_kept = draw_single_mob(game, wide_player(game, KEEP_ID, true));
+                assert_eq!(
+                    vertex_keys(&drawn_kept),
+                    vertex_keys(&baseline_kept),
+                    "player {KEEP_ID} redraws the chestplate identically to the unmodded baseline"
+                );
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn refused_stock_hides_and_draws_and_rollback_on_layer_failure() {
+    in_child(
+        "refused_stock_hides_and_draws_and_rollback_on_layer_failure",
+        |game| {
+            const PROBE_ID: u32 = 301;
+            const ERR_ID: u32 = 302;
+            const PANIC_ID: u32 = 303;
+            let bare_probe = draw_single_mob(game, wide_player(game, PROBE_ID, false));
+            let bare_err = draw_single_mob(game, wide_player(game, ERR_ID, false));
+            let bare_panic = draw_single_mob(game, wide_player(game, PANIC_ID, false));
+
+            #[derive(Default)]
+            struct Results {
+                hide_zombie_pumpkin: Option<Result<(), String>>,
+                hide_player_pumpkin: Option<Result<(), String>>,
+                draw_unhidden_cape: Option<Result<(), String>>,
+                draw_unsupported_pumpkin: Option<Result<(), String>>,
+            }
+            struct ProbingLayer(Arc<Mutex<Results>>);
+            impl EntityRenderLayer for ProbingLayer {
+                fn submit(
+                    &self,
+                    entity: &EntityRenderState,
+                    _: Option<&dyn FrameModel>,
+                    draw: &mut dyn BlockEntityDrawContext,
+                    stock: &mut dyn StockLayerDraw,
+                ) -> Result<(), String> {
+                    match entity.id {
+                        PROBE_ID => {
+                            let mut r = self.0.lock().unwrap();
+                            r.draw_unhidden_cape = Some(stock.draw_stock_layer(StockLayer::Cape));
+                            r.draw_unsupported_pumpkin =
+                                Some(stock.draw_stock_layer(StockLayer::SnowGolemHead));
+                            Ok(())
+                        }
+                        ERR_ID => {
+                            stock.draw_stock_layer(StockLayer::Armor(
+                                ArmorLayerSlot::Chest,
+                                ArmorLayerPass::Base,
+                            ))?;
+                            draw.quad(
+                                "block/stone",
+                                [
+                                    [0.0, 101.0, 0.0],
+                                    [0.0, 100.0, 0.0],
+                                    [1.0, 100.0, 0.0],
+                                    [1.0, 101.0, 0.0],
+                                ],
+                                [0.0, 0.0, 16.0, 16.0],
+                                0xFF_FFFF,
+                            );
+                            Err("rollback both stock and custom draw".into())
+                        }
+                        PANIC_ID => {
+                            stock.draw_stock_layer(StockLayer::Armor(
+                                ArmorLayerSlot::Chest,
+                                ArmorLayerPass::Base,
+                            ))?;
+                            draw.quad(
+                                "block/stone",
+                                [
+                                    [0.0, 101.0, 0.0],
+                                    [0.0, 100.0, 0.0],
+                                    [1.0, 100.0, 0.0],
+                                    [1.0, 101.0, 0.0],
+                                ],
+                                [0.0, 0.0, 16.0, 16.0],
+                                0xFF_FFFF,
+                            );
+                            panic!("panic after stock draw");
+                        }
+                        _ => Ok(()),
+                    }
+                }
+            }
+            struct ProbeMod(Arc<Mutex<Results>>);
+            #[mod_api::__subscriptions]
+            impl Hooks for ProbeMod {
+                fn register_entity_layers(
+                    &self,
+                    _: &RegistrationContext,
+                    event: &mut RegisterEntityLayersEvent<'_>,
+                ) {
+                    let mut r = self.0.lock().unwrap();
+                    r.hide_zombie_pumpkin = Some(event.layers.hide(
+                        LayerTarget::Entity("minecraft:zombie".into()),
+                        StockLayer::SnowGolemHead,
+                    ));
+                    r.hide_player_pumpkin = Some(event.layers.hide(
+                        LayerTarget::Player(PlayerModel::Wide),
+                        StockLayer::SnowGolemHead,
+                    ));
+                    drop(r);
+                    let target = LayerTarget::Player(PlayerModel::Wide);
+                    event
+                        .layers
+                        .hide(
+                            target.clone(),
+                            StockLayer::Armor(ArmorLayerSlot::Chest, ArmorLayerPass::Base),
+                        )
+                        .unwrap();
+                    event
+                        .layers
+                        .add(target, Arc::new(ProbingLayer(self.0.clone())))
+                        .unwrap();
+                }
+            }
+            let results = Arc::new(Mutex::new(Results::default()));
+            let mods = vec![mod_api::ModEntry::new(
+                "probe_stock",
+                Box::new(ProbeMod(results.clone())),
+            )]
+            .into();
+            mod_platform::testing::with_mods(mods, || {
+                let _ = mod_api::__private::take_hook_panics();
+                game.resolve_entity_renderers();
+
+                let out_probe = draw_single_mob(game, wide_player(game, PROBE_ID, true));
+                assert_eq!(vertex_keys(&out_probe), vertex_keys(&bare_probe));
+                {
+                    let r = results.lock().unwrap();
+                    assert!(r.hide_zombie_pumpkin.as_ref().unwrap().is_err());
+                    assert!(r.hide_player_pumpkin.as_ref().unwrap().is_err());
+                    assert!(r.draw_unhidden_cape.as_ref().unwrap().is_err());
+                    assert!(r.draw_unsupported_pumpkin.as_ref().unwrap().is_err());
+                }
+
+                let out_err = draw_single_mob(game, wide_player(game, ERR_ID, true));
+                assert_eq!(
+                    vertex_keys(&out_err),
+                    vertex_keys(&bare_err),
+                    "Err return rolls back both draw_stock_layer and custom draw vertices"
+                );
+                assert!(mod_api::__private::take_hook_panics().is_empty());
+
+                let out_panic = draw_single_mob(game, wide_player(game, PANIC_ID, true));
+                assert_eq!(
+                    vertex_keys(&out_panic),
+                    vertex_keys(&bare_panic),
+                    "panic rolls back both draw_stock_layer and custom draw vertices"
+                );
+                assert_eq!(
+                    mod_api::__private::take_hook_panics(),
+                    [mod_api::__private::HookPanicReport {
+                        mod_id: "probe_stock",
+                        hook: "EntityRenderLayer::submit",
+                    }]
+                );
+            });
         },
     );
 }

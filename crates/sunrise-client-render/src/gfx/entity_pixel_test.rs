@@ -62,6 +62,7 @@ fn software_frame(
         sky,
         size,
         &FLAT_LIGHTMAP.repeat(16 * 16),
+        0.0,
     )
 }
 
@@ -73,6 +74,7 @@ fn software_frame_lit(
     sky: f32,
     size: [u32; 2],
     lightmap_pixels: &[u8],
+    glint_alpha: f32,
 ) -> std::result::Result<Frame, String> {
     let adapter = software_adapter()?;
     let mut required_limits = wgpu::Limits::default();
@@ -150,6 +152,7 @@ fn software_frame_lit(
     let mut globals = Globals::zeroed();
     globals.view_proj = view_proj.to_cols_array_2d();
     globals.fog = [1000.0, 2000.0, 1000.0, 2000.0];
+    globals.fog_ends[3] = glint_alpha;
     // Sky factor for `hdr_scene`. Zero keeps the older pixel tests on colour only.
     globals.hdr_light = [sky, sky, 1.0, 0.0];
     let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -301,6 +304,7 @@ pub fn render_see_through_lit(
         view_proj,
         false,
         lightmap,
+        None,
     )
 }
 
@@ -321,9 +325,11 @@ fn render_layers(
         view_proj,
         hdr,
         &flat,
+        None,
     )
 }
 
+/// `view_clip` selects the secondary-view entity pass, with or without oblique clipping.
 fn render_layers_lit(
     vertices: &[Vertex],
     see_through: &[Vertex],
@@ -332,9 +338,18 @@ fn render_layers_lit(
     view_proj: Mat4,
     hdr: bool,
     lightmap: &[u8],
+    view_clip: Option<bool>,
 ) -> std::result::Result<Vec<u8>, String> {
     let _gpu = crate::gfx::test_gpu::lock();
-    let frame = software_frame_lit(atlas_size, atlas, view_proj, 0.0, [SIZE, SIZE], lightmap)?;
+    let frame = software_frame_lit(
+        atlas_size,
+        atlas,
+        view_proj,
+        0.0,
+        [SIZE, SIZE],
+        lightmap,
+        if view_clip.is_some() { 1.0 } else { 0.0 },
+    )?;
     let shader = frame
         .device
         .create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -355,16 +370,17 @@ fn render_layers_lit(
     })];
     let reuse = reuse::Reuse::default();
     let kept = reuse.on(&frame.device);
+    let make_pipeline = entity_pipeline_factory(
+        &kept,
+        &layout,
+        &layout,
+        &shader,
+        &buffers,
+        wgpu::TextureFormat::Rgba8Unorm,
+        false,
+    );
     let make_with = |fragment, depth_write, bias, blend, write_mask, compare, cull_mode| {
-        entity_pipeline_factory(
-            &kept,
-            &layout,
-            &layout,
-            &shader,
-            &buffers,
-            wgpu::TextureFormat::Rgba8Unorm,
-            false,
-        )(EntityPipelineOptions {
+        make_pipeline(EntityPipelineOptions {
             label: "Entities",
             cull_mode,
             depth_write,
@@ -390,16 +406,36 @@ fn render_layers_lit(
         )
     };
     let pipeline = make(
-        "fs_entity",
+        if view_clip == Some(true) {
+            "fs_entity_clipped"
+        } else {
+            "fs_entity"
+        },
         true,
         wgpu::DepthBiasState {
-            constant: 128,
+            constant: if view_clip == Some(true) { 0 } else { 128 },
             slope_scale: 0.0,
             clamp: 0.0,
         },
         wgpu::BlendState::ALPHA_BLENDING,
         wgpu::ColorWrites::ALL,
     );
+    let (world_view, vertices) = if let Some(clipped) = view_clip {
+        let mut batch = super::entity_batch::EntityBatch::default();
+        let [ordinary, ..] = batch
+            .update_within(vertices, &[], &[], &[], &[], false, usize::MAX)
+            .materials;
+        let draws = super::world_views::EntityDraws {
+            ordinary,
+            foil: batch.armor_foil,
+        };
+        (
+            Some((draws, make_pipeline(energy_swirl_options(clipped)))),
+            batch.combined,
+        )
+    } else {
+        (None, [vertices, see_through].concat())
+    };
     let hdr_pipeline = hdr.then(|| {
         make(
             "fs_hdr_mark",
@@ -418,8 +454,7 @@ fn render_layers_lit(
         wgpu::CompareFunction::Always,
         Some(wgpu::Face::Back),
     );
-    let entity_quads = vertices.len() as u32 / 4;
-    let vertices = [vertices, see_through].concat();
+    let entity_quads = (vertices.len() - see_through.len()) as u32 / 4;
     let vertex = frame
         .device
         .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -464,7 +499,12 @@ fn render_layers_lit(
         });
         // An empty scene still clears and reads back the target, but wgpu refuses
         // a slice of a zero-sized buffer. There is nothing to bind or draw here.
-        if !indices.is_empty() {
+        if let Some((draws, foil)) = &world_view {
+            if !indices.is_empty() {
+                pass.set_index_buffer(index.slice(..), wgpu::IndexFormat::Uint32);
+                draws.draw(&mut pass, [&pipeline, foil], &frame.group, &vertex);
+            }
+        } else if !indices.is_empty() {
             pass.set_pipeline(&pipeline);
             pass.set_bind_group(0, &frame.group, &[]);
             pass.set_vertex_buffer(0, vertex.slice(..));
@@ -508,6 +548,36 @@ mod see_through_tests {
 
     fn centre(pixels: &[u8]) -> [u8; 4] {
         pixels.as_chunks::<4>().0[(SIZE / 2 * SIZE + SIZE / 2) as usize]
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn secondary_views_draw_foil_without_unrelated_energy_swirl() {
+        let foil = quad(-0.3, 0.3, 0.5, 0xFF00_FF00).map(|mut v| {
+            v.layer = ARMOR_GLINT_ONLY_OVERLAY;
+            v
+        });
+        let swirl = quad(0.5, 1.0, 0.5, 0xFFFF_FFFF).map(|mut v| {
+            v.layer = ENERGY_SWIRL_OVERLAY;
+            v
+        });
+        for clipped in [false, true] {
+            let pixels = render_layers_lit(
+                &[foil, swirl].concat(),
+                &[],
+                [1, 1],
+                &[128, 0, 0, 255],
+                Mat4::IDENTITY,
+                false,
+                &FLAT_LIGHTMAP.repeat(16 * 16),
+                Some(clipped),
+            )
+            .expect("software Vulkan secondary-view pixels");
+            // GLINT adds the square of a 128/255 red texel, without writing alpha.
+            assert_eq!(centre(&pixels), [64, 0, 0, 255]);
+            let right = (SIZE / 2 * SIZE + 7 * SIZE / 8) as usize;
+            assert_eq!(pixels.as_chunks::<4>().0[right], [0, 0, 0, 255]);
+        }
     }
 
     /// A wall hides an entity quad behind it; the same quad drawn see-through shows over the
@@ -1728,6 +1798,7 @@ fn explicit_particle_layers_render_in_device_sized_draws() {
         0.0,
         [SIZE; 2],
         &[255; 16 * 16 * 4],
+        0.0,
     )
     .expect("software Vulkan frame");
     let shader = frame
