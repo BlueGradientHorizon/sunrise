@@ -457,7 +457,7 @@ entity_attachments	native_colliders::EntityMaps	game	shared (survey + review)	45
 collider_changes	Vec<native_colliders::ColliderChange>	server	server (survey + review)	455	side	-
 collider_placements	native_colliders::Placements	game	shared (survey + review)	456	-	-
 collider_histories	native_colliders::Histories	game	shared (survey + review)	457	-	-
-entity_initialization	entity_initialization::EntityInitialization	server	server (survey; review=common from unpruned BFS, group=modding-server)	458	side	-
+entity_initialization	entity_initialization::EntityInitialization	game	shared (entity initialization state shared across server and client)	458	-	-
 attachment_indexes	attachment_index::Indexes	game	shared (survey + review)	459	-	-
 remote	Option<remote::Remote>	game	mode (survey + review)	460	-	-
 client_tasks	sunrise_client::net::ClientTasks	game	drop-order (client): ClientTasks impl Drop closes inbox and disposes queued mod callbacks; precedes replay (470), lan (472), integrated (473), fangs (603)	461	-	client_only
@@ -539,7 +539,7 @@ stabbed	HashMap<(Option<u32>, u32), i64>	server	server (survey + review)	536	sid
 stab_players	Vec<spear_players::StabPlayer>	server	server (survey + review)	537	side	-
 player_stabs	Vec<spear_players::StabBatch>	server	server (survey + review)	538	side	-
 known_movement	Vec3	server	server (survey; review=common from unpruned BFS, group=player-actions)	539	side	-
-kinetic_feedback	HashMap<i32, i64>	server	server (survey; review=common from unpruned BFS, group=player-actions)	540	side	-
+kinetic_feedback	HashMap<i32, i64>	game	shared (kinetic weapon hit feedback timestamps shared across server and client)	540	-	-
 lan_global_events	Vec<(&'static str, i32, [i32; 3], i32)>	server	server (survey; review=common from unpruned BFS, group=lan-host)	541	side	-
 lid_openers	HashMap<(i32, i32, i32), i32>	server	server (survey; review=common from unpruned BFS, group=block-entities)	542	game	-
 lan_acting	Option<u32>	server	server (survey; review=common from unpruned BFS, group=lan-host)	543	game	-
@@ -614,3 +614,4 @@ pending_native_sounds	Vec<creatures::NativeSound>	server	server (portable server
 effect_rng	sunrise_core::random::LegacyRandom	server	server (server effect pitch RNG)	612	game	-
 predicted_equipment_modifiers	Vec<(String, String)>	client	client predicted equipment attributes (distinct from server applied_modifiers)	613	side	-
 darkness_blend	(f32, f32)	client	client-only darkness effect fade blend (split from SculkState::darkness)	614	side	-
+item_features	sunrise_items::creative_catalog::ItemFeatureRequirements	game	shared (item feature requirements shared across server and client)	615	-	-
