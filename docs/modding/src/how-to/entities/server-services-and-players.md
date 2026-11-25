@@ -627,6 +627,8 @@ kept body:
 | `is_crouching` | `LocalPlayer.isCrouching` for the local player: its own crouching flag, set before its input each tick, so it can differ from its pose for a tick. A kept entity's crouching pose otherwise. |
 | `LivingRef::no_jump_delay` | `LivingEntity.noJumpDelay` of the local player's prediction: 10 after a ground jump, counting down. `None` for other entities. |
 | `main_arm` | `LivingEntity.getMainArm` for every living entity the client tracks, as the server last sent it: another player's or a mannequin's main hand, a mob's left-handed flag; the local player's own Main Hand option. `None` for an entity that isn't living. |
+| `previous_position`, `previous_rotation` | `Entity.xo`, `yo`, `zo` and `yRotO`, `xRotO`: where the local player's or a ticked copy's tick began, the start of the step a frame eases along (`position_at(host, partial)` is `Entity.getPosition(float)`). `previous_rotation` answers where `rotation` does. |
+| `is_alive` | `Entity.isAlive` of the client's copy: a living entity's synced health above 0. `None` for an entity whose body the client doesn't keep. |
 
 Client reads are views, not server authority. Inventory access here is read-only;
 inventory and movement writes still require a server host.

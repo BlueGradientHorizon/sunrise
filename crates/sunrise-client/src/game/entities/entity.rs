@@ -99,6 +99,9 @@ pub(super) trait Entity: EntityRules {
     fn reset_fall_distance(&mut self);
     /// `Entity.getYRot` and `getXRot`: yaw, pitch.
     fn rotation(&self) -> [f32; 2];
+    /// `Entity.yRotO` and `xRotO`: the yaw and pitch `setOldPosAndRot` kept when the last
+    /// tick began. Required, so a new kind states where it keeps them.
+    fn previous_rotation(&self) -> [f32; 2];
     /// The rotation part of `Entity.teleportSetPosition`: `setYRot`, `setXRot`
     /// (clamped to -90..90), then `setOldRot`.
     fn set_rotation(&mut self, rotation: [f32; 2]);
@@ -3158,6 +3161,10 @@ impl Entity for Mob {
         [self.yaw, self.head_pitch]
     }
     #[inline]
+    fn previous_rotation(&self) -> [f32; 2] {
+        [self.previous_yaw, self.previous_head_pitch]
+    }
+    #[inline]
     fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
         let previous = self.rotation();
         let yaw = if yaw.is_finite() { yaw } else { previous[0] };
@@ -3325,6 +3332,12 @@ impl Entity for ItemEntity {
     fn rotation(&self) -> [f32; 2] {
         self.rotation
     }
+    /// An item never turns on its own; what turns it (a load, a teleport) sets the old
+    /// rotation too.
+    #[inline]
+    fn previous_rotation(&self) -> [f32; 2] {
+        self.rotation
+    }
     #[inline]
     fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
         let previous = self.rotation();
@@ -3421,6 +3434,12 @@ impl Entity for ExperienceOrb {
     fn rotation(&self) -> [f32; 2] {
         self.rotation
     }
+    /// An orb never turns on its own; what turns it (a load, a teleport) sets the old
+    /// rotation too.
+    #[inline]
+    fn previous_rotation(&self) -> [f32; 2] {
+        self.rotation
+    }
     #[inline]
     fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
         let previous = self.rotation();
@@ -3508,6 +3527,11 @@ impl Entity for Boat {
     fn rotation(&self) -> [f32; 2] {
         [self.yaw, self.pitch]
     }
+    /// A boat's pitch changes only with a load or a teleport, which set the old pitch too.
+    #[inline]
+    fn previous_rotation(&self) -> [f32; 2] {
+        [self.previous_yaw, self.pitch]
+    }
     #[inline]
     fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
         let previous = self.rotation();
@@ -3515,6 +3539,7 @@ impl Entity for Boat {
         let pitch = if pitch.is_nan() { previous[1] } else { pitch };
         self.yaw = yaw;
         self.pitch = pitch.clamp(-90.0, 90.0);
+        self.previous_yaw = self.yaw;
     }
     #[inline]
     fn native_type(&self) -> Cow<'_, str> {
@@ -3621,12 +3646,18 @@ impl Entity for Minecart {
         [self.yaw, self.pitch]
     }
     #[inline]
+    fn previous_rotation(&self) -> [f32; 2] {
+        [self.previous_yaw, self.previous_pitch]
+    }
+    #[inline]
     fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
         let previous = self.rotation();
         let yaw = if yaw.is_finite() { yaw } else { previous[0] };
         let pitch = if pitch.is_nan() { previous[1] } else { pitch };
         self.yaw = yaw;
         self.pitch = pitch.clamp(-90.0, 90.0);
+        self.previous_yaw = self.yaw;
+        self.previous_pitch = self.pitch;
     }
     #[inline]
     fn native_type(&self) -> Cow<'_, str> {
@@ -3755,6 +3786,10 @@ impl Entity for ArmorStand {
         [self.yaw, self.pitch]
     }
     #[inline]
+    fn previous_rotation(&self) -> [f32; 2] {
+        [self.previous_yaw, self.previous_pitch]
+    }
+    #[inline]
     fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
         let previous = self.rotation();
         let yaw = if yaw.is_finite() { yaw } else { previous[0] };
@@ -3766,6 +3801,7 @@ impl Entity for ArmorStand {
         self.previous_body_yaw = yaw;
         self.previous_yaw = yaw;
         self.pitch = pitch.clamp(-90.0, 90.0);
+        self.previous_pitch = self.pitch;
     }
     #[inline]
     fn fluid_eye_y(&self) -> f64 {
@@ -3924,6 +3960,12 @@ impl Entity for PrimedTnt {
     fn rotation(&self) -> [f32; 2] {
         self.rotation
     }
+    /// A primed TNT never turns on its own; what turns it (a load, a teleport) sets the old
+    /// rotation too.
+    #[inline]
+    fn previous_rotation(&self) -> [f32; 2] {
+        self.rotation
+    }
     #[inline]
     fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
         let previous = self.rotation();
@@ -4046,6 +4088,12 @@ impl Entity for FallingBlock {
     fn rotation(&self) -> [f32; 2] {
         self.rotation
     }
+    /// A falling block never turns on its own; what turns it (a load, a teleport) sets the
+    /// old rotation too.
+    #[inline]
+    fn previous_rotation(&self) -> [f32; 2] {
+        self.rotation
+    }
     #[inline]
     fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
         let previous = self.rotation();
@@ -4149,6 +4197,10 @@ impl Entity for Projectile {
     #[inline]
     fn rotation(&self) -> [f32; 2] {
         [self.yaw, self.pitch]
+    }
+    #[inline]
+    fn previous_rotation(&self) -> [f32; 2] {
+        [self.previous_yaw, self.previous_pitch]
     }
     #[inline]
     fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
@@ -4351,11 +4403,16 @@ impl Entity for Rocket {
         self.rotation
     }
     #[inline]
+    fn previous_rotation(&self) -> [f32; 2] {
+        self.previous_rotation
+    }
+    #[inline]
     fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
         let previous = self.rotation();
         let yaw = if yaw.is_finite() { yaw } else { previous[0] };
         let pitch = if pitch.is_nan() { previous[1] } else { pitch };
         self.rotation = [yaw, pitch.clamp(-90.0, 90.0)];
+        self.previous_rotation = self.rotation;
     }
     #[inline]
     fn native_type(&self) -> Cow<'_, str> {
@@ -4438,12 +4495,18 @@ impl Entity for ThrownTrident {
         [self.yaw, self.pitch]
     }
     #[inline]
+    fn previous_rotation(&self) -> [f32; 2] {
+        [self.previous_yaw, self.previous_pitch]
+    }
+    #[inline]
     fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
         let previous = self.rotation();
         let yaw = if yaw.is_finite() { yaw } else { previous[0] };
         let pitch = if pitch.is_nan() { previous[1] } else { pitch };
         self.yaw = yaw;
         self.pitch = pitch.clamp(-90.0, 90.0);
+        self.previous_yaw = self.yaw;
+        self.previous_pitch = self.pitch;
     }
     #[inline]
     fn set_on_ground(&mut self, on_ground: bool) {

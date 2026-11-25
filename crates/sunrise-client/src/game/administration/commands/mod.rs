@@ -1525,6 +1525,8 @@ impl Game<'_> {
                             row.rotation[1] = entity_pitch(pitch);
                         }
                     }
+                    // Entity.teleportSetPosition ends with setOldPosAndRot.
+                    row.previous_rotation = row.rotation;
                 }
             }
             Target::Guest(_) => {
@@ -1687,6 +1689,7 @@ impl Game<'_> {
             Target::Crystal(id) => {
                 if let Some(c) = self.crystals.iter_mut().find(|c| c.id == id) {
                     (c.position, c.fall.0) = (v, true); // performTeleport: setOnGround(true)
+                    c.previous = v;
                 }
             }
             Target::Dragon(id) => {
