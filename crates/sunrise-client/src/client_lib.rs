@@ -161,7 +161,7 @@ pub mod save;
 // save.rs below it. Not part of the mods' API surface.
 #[cfg(test)]
 mod carrier_recover_tests;
-pub mod carrier_store;
+pub use save::carrier as carrier_store;
 #[cfg(test)]
 mod carrier_store_tests;
 pub mod scoreboard_cmd;
