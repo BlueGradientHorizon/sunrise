@@ -7,7 +7,7 @@ use serde_json::json;
 use std::sync::Arc;
 use sunrise_client::{advancements as a, chunk::Chunk, items::ItemStack as EngineStack};
 
-fn install(game: &mut Game<'_>) {
+fn install(game: &mut crate::game::ServerGame<'_>) {
     game.build_registries();
     game.world
         .chunks
@@ -70,7 +70,7 @@ fn install(game: &mut Game<'_>) {
         .guests
         .update_all(|g| g.advancements_loaded = true);
 }
-fn has(game: &Game<'_>, id: &str) -> bool {
+fn has(game: &crate::game::ServerGame<'_>, id: &str) -> bool {
     game.lan
         .as_ref()
         .unwrap()

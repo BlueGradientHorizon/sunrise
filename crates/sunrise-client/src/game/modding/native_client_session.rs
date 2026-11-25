@@ -265,7 +265,7 @@ pub(in crate::game) mod tests {
     }
 
     pub(in crate::game) fn logged_client(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ClientGame<'_>,
     ) -> sunrise_protocol::connection::Pipe {
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(client, "SessionReadTest").unwrap();
@@ -279,7 +279,7 @@ pub(in crate::game) mod tests {
     /// Drive the server's side of a memory client login through to play, so a test can
     /// read packets from the ordinary client sender.
     pub(in crate::game) fn finish_login(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ClientGame<'_>,
         server: &mut sunrise_protocol::connection::Connection,
     ) {
         use sunrise_protocol::packets::{Empty, configuration as cfg, login};
@@ -379,7 +379,7 @@ pub(in crate::game) mod tests {
                 "es_es",
                 "publication does not mutate earlier snapshots"
             );
-            game.client.debug_charts.frame_times.reset();
+            game.side.debug_charts.frame_times.reset();
             assert_eq!(
                 game.client_session()
                     .client_frame_stats()
@@ -387,9 +387,9 @@ pub(in crate::game) mod tests {
                     .frame_time_ns,
                 None
             );
-            game.client.fps = 63.5;
-            game.client.frames = 99;
-            game.client.debug_charts.frame_times.log(15_432_123);
+            game.side.fps = 63.5;
+            game.side.frames = 99;
+            game.side.debug_charts.frame_times.log(15_432_123);
             assert_eq!(
                 game.client_session().client_frame_stats(),
                 Some(ClientFrameStats {
@@ -398,9 +398,9 @@ pub(in crate::game) mod tests {
                     frame_time_ns: Some(15_432_123),
                 })
             );
-            game.client.fps = 59.0;
-            game.client.frames = 100;
-            game.client.debug_charts.frame_times.log(17_123_456);
+            game.side.fps = 59.0;
+            game.side.frames = 100;
+            game.side.debug_charts.frame_times.log(17_123_456);
             assert_eq!(
                 game.client_session().client_frame_stats(),
                 Some(ClientFrameStats {
@@ -471,7 +471,7 @@ pub(in crate::game) mod tests {
             let _server = logged_client(game);
             let player = game.local_player().unwrap();
             assert_eq!(player.block_breaking(game), Some(BlockBreakingState::Idle));
-            game.client.ambience.moodiness = 0.375;
+            game.side.ambience.moodiness = 0.375;
             assert_eq!(player.ambient_mood(game), Some(0.375));
             for (progress, stage) in [(0.0, None), (0.45, Some(4)), (1.0, Some(9))] {
                 game.mining = Some(super::super::Mining {
@@ -491,7 +491,7 @@ pub(in crate::game) mod tests {
                 );
             }
             game.mining = None;
-            game.client.ambience.moodiness = 0.0;
+            game.side.ambience.moodiness = 0.0;
             assert_eq!(player.block_breaking(game), Some(BlockBreakingState::Idle));
             assert_eq!(player.ambient_mood(game), Some(0.0));
             let fields = mod_api::__private::game::player_ref;

@@ -56,9 +56,9 @@ fn a_frozen_level_eases_the_vignette_as_vanillas_does() {
         game.streaming.insert_remote(&mut game.world, chunk);
         let ticking = |frozen| C::TickingState(play::TickingState { rate: 20.0, frozen });
         let bits =
-            |game: &crate::game::Game<'_>| game.client.screen_fx.vignette_brightness.to_bits();
+            |game: &crate::game::ClientGame<'_>| game.side.screen_fx.vignette_brightness.to_bits();
 
-        game.client.screen_fx.vignette_brightness = f32::from_bits(JAVA_FREEZING[0]);
+        game.side.screen_fx.vignette_brightness = f32::from_bits(JAVA_FREEZING[0]);
         game.handle_packet(ticking(true)).unwrap();
         assert!(game.clock.frozen());
         for (tick, want) in JAVA_FREEZING.iter().enumerate().skip(1) {
@@ -66,7 +66,7 @@ fn a_frozen_level_eases_the_vignette_as_vanillas_does() {
             assert_eq!(bits(game), *want, "frozen tick {tick}");
         }
 
-        game.client.screen_fx.vignette_brightness = f32::from_bits(JAVA_UNFREEZING[0]);
+        game.side.screen_fx.vignette_brightness = f32::from_bits(JAVA_UNFREEZING[0]);
         game.tick_remote().unwrap();
         assert_eq!(bits(game), JAVA_UNFREEZING[1], "the last frozen tick");
         game.handle_packet(ticking(false)).unwrap();

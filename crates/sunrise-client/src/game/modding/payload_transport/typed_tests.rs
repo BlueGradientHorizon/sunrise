@@ -228,7 +228,7 @@ fn typed_payloads_follow_the_raw_routes() {
 }
 
 /// Exercise enumeration and a handle-addressed send, not a reply to the sender.
-fn singleplayer_list(game: &mut super::Game<'_>) {
+fn singleplayer_list(game: &mut crate::game::ClientGame<'_>) {
     assert_eq!(game.integrated.as_ref().unwrap().published(), None);
     let owner = game.local_player().expect("logged-in local player");
     *OWNER.lock().unwrap() = Some((owner.uuid(), owner.entity().id()));
@@ -250,7 +250,7 @@ fn singleplayer_list(game: &mut super::Game<'_>) {
     assert_eq!(game.integrated.as_ref().unwrap().published(), None);
 }
 
-fn integrated(game: &mut super::Game<'_>) {
+fn integrated(game: &mut crate::game::ClientGame<'_>) {
     // A declared typed payload costs nothing while no message is sent.
     let start = game.world.game_time;
     let deadline = Instant::now() + Duration::from_secs(60);
@@ -318,7 +318,7 @@ fn integrated(game: &mut super::Game<'_>) {
     assert_eq!(*CLIENT.lock().unwrap(), [2, 8]);
 }
 
-fn lan(game: &mut super::Game<'_>) {
+fn lan(game: &mut crate::game::ClientGame<'_>) {
     let port = game
         .integrated
         .as_ref()

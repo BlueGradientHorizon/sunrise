@@ -86,7 +86,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 #[cfg(test)]
 mod tests {
     use crate::game::Game;
-    use crate::game::native_entity_refs::tests::with_game;
+    use crate::game::native_entity_refs::tests::{with_game, with_client_game};
     use mod_api::HostSide;
     use std::sync::{Arc, Mutex};
     use sunrise_protocol::packets::play;
@@ -117,7 +117,7 @@ mod tests {
 
     /// A client of a server whose local player is loaded, in the air over an empty chunk.
     /// Returns the server end's reader, what the client sends.
-    fn loaded_client(game: &mut Game<'_>) -> sunrise_protocol::connection::ConnReader {
+    fn loaded_client(game: &mut crate::game::ClientGame<'_>) -> sunrise_protocol::connection::ConnReader {
         game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(client, "writes").unwrap();
@@ -153,7 +153,7 @@ mod tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
+            with_client_game(|game| {
                 loaded_client(game);
                 // The write itself sets the flag, either way, before any tick can overwrite it.
                 for flag in [true, false, true] {
@@ -429,7 +429,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn with_no_player_of_its_own_both_writes_answer_false() {
-        with_game(|game| {
+        with_client_game(|game| {
             game.player = None;
             assert!(!game.set_local_player_velocity([0.0; 3]));
             assert!(!game.set_local_player_on_ground(true));
@@ -439,7 +439,7 @@ mod tests {
     }
 
     /// A client whose connection completed login and configuration, with its player loaded.
-    fn loaded_menu_client(game: &mut Game<'_>) -> sunrise_protocol::connection::ConnReader {
+    fn loaded_menu_client(game: &mut crate::game::ClientGame<'_>) -> sunrise_protocol::connection::ConnReader {
         let (peer, _writer) = crate::game::remote::tests::connect_menu_test(game);
         crate::game::remote::tests::spawn_menu_test(game);
         let remote = game.remote.as_mut().unwrap();
@@ -472,7 +472,7 @@ mod tests {
         }
         let mods = vec![mod_api::ModEntry::new("start", Box::new(Start))].into();
         mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
+            with_client_game(|game| {
                 let mut peer = loaded_menu_client(game);
                 game.player.as_mut().unwrap().fall_flying = false;
                 game.tick_remote().unwrap();
@@ -505,7 +505,7 @@ mod tests {
         use sunrise_core::geometry::Vec3;
         use sunrise_world::entity_move::MoverType;
 
-        let check = |game: &mut Game<'_>| {
+        let check = |game: &mut crate::game::ClientGame<'_>| {
             let player = game.player(456).unwrap();
             let stone = game
                 .pack
@@ -565,7 +565,7 @@ mod tests {
             game.sleeping = Some([0, 64, 0]);
             assert_eq!(game.move_local_player_by([1.0, 0.0, 0.0]), Ok(None));
             game.sleeping = None;
-            game.client.screen = crate::game::Screen::Dead;
+            game.side.screen = crate::game::Screen::Dead;
             assert_eq!(game.move_local_player_by([1.0, 0.0, 0.0]), Ok(None));
             assert_eq!(game.player.as_ref().unwrap().position, before);
         });

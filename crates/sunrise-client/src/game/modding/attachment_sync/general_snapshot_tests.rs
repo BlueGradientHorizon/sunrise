@@ -34,7 +34,7 @@ impl mod_api::Hooks for Declare {
 }
 
 /// A server game with `sync_route:robot` declared and `sync_route:value` synced.
-fn with_robot(test: impl FnOnce(&mut super::super::Game<'_>)) {
+fn with_robot(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     mod_platform::__private::initialize().unwrap();
     let _phase = mod_platform::__private::RegistrationGuard::open();
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("sync_route", Box::new(Declare))].into();
@@ -50,7 +50,7 @@ fn with_robot(test: impl FnOnce(&mut super::super::Game<'_>)) {
 }
 
 /// One live `sync_route:robot` row; its id.
-fn robot(game: &mut super::super::Game<'_>) -> u32 {
+fn robot(game: &mut crate::game::ServerGame<'_>) -> u32 {
     let record = GeneralEntityRecord {
         position: [0.5, 64.0, 0.5],
         velocity: [0.0; 3],
@@ -175,7 +175,7 @@ fn remote_player_attachments_only_apply_while_the_foreign_player_is_tracked() {
                 value: Some([("n".into(), Tag::Int(99))].into()),
             }],
         };
-        let mirrored = |game: &super::Game<'_>| {
+        let mirrored = |game: &crate::game::ClientGame<'_>| {
             game.remote
                 .as_ref()
                 .unwrap()

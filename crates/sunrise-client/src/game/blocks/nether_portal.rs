@@ -2044,7 +2044,7 @@ pub(in crate::game) mod tests {
             let child = game.mob_passenger_ids(root)[0];
             let leaf = game.mob_passenger_ids(child)[0];
             assert!(!game.mobs.iter().any(|m| m.id == child));
-            game.tickets.0.add_portal((0, 0));
+            game.side.tickets.0.add_portal((0, 0));
             game.update_chunk_tickets();
             assert!(game.entity_ticking_area()(0, 0));
             game.set_portal_cooldown(leaf);
@@ -2161,13 +2161,13 @@ pub(in crate::game) mod tests {
     }
 
     /// Runs `test` with a `Gate` installed, on a server with guests 12 and 13.
-    fn with_gate(test: impl FnOnce(&mut Game<'_>, &AtomicU32, &Mutex<Vec<(u32, String, String)>>)) {
+    fn with_gate(test: impl FnOnce(&mut crate::game::ServerGame<'_>, &AtomicU32, &Mutex<Vec<(u32, String, String)>>)) {
         with_gate_mode(false, test);
     }
 
     fn with_gate_mode(
         discard: bool,
-        test: impl FnOnce(&mut Game<'_>, &AtomicU32, &Mutex<Vec<(u32, String, String)>>),
+        test: impl FnOnce(&mut crate::game::ServerGame<'_>, &AtomicU32, &Mutex<Vec<(u32, String, String)>>),
     ) {
         let spare = Arc::new(AtomicU32::new(0));
         let heard = Arc::default();
@@ -2252,7 +2252,7 @@ pub(in crate::game) mod tests {
     /// `Entity.setPortalCooldown` sets only the cooldown; the restart and
     /// the portal process use the same delay.
     fn portal_cooldown_keeps_the_process(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         id: u32,
         entry: BlockPos,
         expected: i32,
@@ -2520,7 +2520,7 @@ pub(in crate::game) mod tests {
             crate::game::native_entity_refs::tests::with_game(|game| {
                 let chunk = (0, 0);
                 let at = BlockPos::new(4, 64, 4);
-                let spawn = |game: &mut Game<'_>, nbt| {
+                let spawn = |game: &mut crate::game::ServerGame<'_>, nbt| {
                     let target = game
                         .summon_with_nbt("minecraft:text_display", [4.0, 64.0, 4.0], nbt)
                         .unwrap()
@@ -2534,7 +2534,7 @@ pub(in crate::game) mod tests {
                 game.send_through_portal(transient.id(), at);
                 game.send_through_portal(persistent.id(), at);
                 let world = tempfile::tempdir().unwrap();
-                game.server.world_root = world.path().to_path_buf();
+                game.side.world_root = world.path().to_path_buf();
                 let path = game.arrivals_path();
                 std::fs::create_dir_all(path.parent().unwrap()).unwrap();
                 game.save_portal_arrivals();

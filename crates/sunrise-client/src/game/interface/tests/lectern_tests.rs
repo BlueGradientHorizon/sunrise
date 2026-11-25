@@ -11,7 +11,7 @@ use sunrise_client::{
 };
 
 /// A lectern at `pos`: the state's `has_book`, and the entity's book.
-fn lectern(game: &mut Game<'_>, pos: [i32; 3], has_book: bool, book: Option<ItemStack>) {
+fn lectern(game: &mut crate::game::ServerGame<'_>, pos: [i32; 3], has_book: bool, book: Option<ItemStack>) {
     let registry = game.pack.assets.registry;
     let default = registry.default_state("minecraft:lectern").unwrap();
     let mut state = registry.state(default).unwrap().clone();
@@ -50,7 +50,7 @@ fn click(pos: [i32; 3]) -> Hit {
 
 /// The `has_book` of the lectern state at `pos`, and what a comparator beside
 /// it reads (`LecternBlock.getAnalogOutputSignal`).
-fn state_at(game: &Game<'_>, pos: [i32; 3]) -> (String, i32) {
+fn state_at(game: &crate::game::ServerGame<'_>, pos: [i32; 3]) -> (String, i32) {
     let registry = game.pack.assets.registry;
     let state = game.world.block(pos[0], pos[1], pos[2]);
     let has_book = registry

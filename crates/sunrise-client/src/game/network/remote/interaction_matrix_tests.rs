@@ -199,7 +199,7 @@ pub(in crate::game) fn cases(hand: Hand) -> Vec<Case> {
     cases
 }
 
-pub(in crate::game) fn advancement_tree(game: &mut Game<'_>) {
+pub(in crate::game) fn advancement_tree<S: crate::game::Side>(game: &mut Game<'_, S>) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
     use sunrise_client::advancements as a;
     let mut tree = a::Tree::default();
     for (index, name) in ["item_used_on_block", "default_block_use"]

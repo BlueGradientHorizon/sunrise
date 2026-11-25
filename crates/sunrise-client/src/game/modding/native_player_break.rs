@@ -150,35 +150,35 @@ mod tests {
 
     /// A server's game with its own player in survival standing at the
     /// origin chunk, holding `held`: their handle.
-    fn with_player(game: &mut Game<'_>, held: ItemStack) -> PlayerRef {
+    fn with_player(game: &mut crate::game::ServerGame<'_>, held: ItemStack) -> PlayerRef {
         // The shared fixture does not open a server or register a ticking chunk.
         game.options.dedicated = Some(Vec::new());
         let _ = game
             .block_ticks
             .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0));
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 64.0, 4.5)).unwrap());
-        game.server.lan_acting_uuid = Some(123);
+        game.side.lan_acting_uuid = Some(123);
         // The host acts, whose entity the hooks name as 0 while no guest acts.
-        game.server.lan_acting_entity = Some(0);
-        game.server.lan_acting_name = Some("Breaker".into());
-        game.server.lan_acting_permission = Some(0);
+        game.side.lan_acting_entity = Some(0);
+        game.side.lan_acting_name = Some("Breaker".into());
+        game.side.lan_acting_permission = Some(0);
         game.set_mode(GameMode::Survival);
         game.inventory[game.selected] = Some(held);
         game.native_acting_player().unwrap()
     }
-    fn place(game: &mut Game<'_>, pos: [i32; 3], block: &str) {
+    fn place(game: &mut crate::game::ServerGame<'_>, pos: [i32; 3], block: &str) {
         let state = game.pack.assets.registry.default_state(block).unwrap();
         game.world.set(pos[0], pos[1], pos[2], state).unwrap();
     }
-    fn block(game: &Game<'_>, pos: [i32; 3]) -> String {
+    fn block(game: &crate::game::ServerGame<'_>, pos: [i32; 3]) -> String {
         let state = game.world.block(pos[0], pos[1], pos[2]);
         game.res.facts().get(state).name.to_string()
     }
-    fn carried(game: &Game<'_>, item: &str) -> u32 {
+    fn carried(game: &crate::game::ServerGame<'_>, item: &str) -> u32 {
         let held = game.inventory.iter().flatten();
         held.filter(|s| &*s.item == item).map(|s| s.count).sum()
     }
-    fn popped(game: &Game<'_>, item: &str) -> bool {
+    fn popped(game: &crate::game::ServerGame<'_>, item: &str) -> bool {
         game.dropped.iter().any(|e| &*e.stack.item == item)
     }
 
@@ -237,7 +237,7 @@ mod tests {
             game.offhand = None;
             game.hand = sunrise_client::first_person::Hand::Main;
             let (lower, upper) = ([6, 64, 4], [6, 65, 4]);
-            let door = |game: &mut Game<'_>, half: &str, pos: [i32; 3]| {
+            let door = |game: &mut crate::game::ServerGame<'_>, half: &str, pos: [i32; 3]| {
                 let state = game
                     .pack
                     .assets

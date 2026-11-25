@@ -8,8 +8,8 @@ mod typed_state_range_read_tests {
         let mut game = crate::game::game_tests::tests::server_game(&mut resources);
         let source =
             std::path::PathBuf::from(std::env::var_os("SUNRISE_TYPED_RANGE_PACK").unwrap());
-        game.server.world_root = std::env::current_dir().unwrap().join("typed-range-world");
-        let target = game.server.world_root.join("datapacks/typed_ranges");
+        game.side.world_root = std::env::current_dir().unwrap().join("typed-range-world");
+        let target = game.side.world_root.join("datapacks/typed_ranges");
         let preds = target.join("data/ranges/predicate");
         std::fs::create_dir_all(&preds).unwrap();
         std::fs::copy(source.join("pack.mcmeta"), target.join("pack.mcmeta")).unwrap();
@@ -20,14 +20,14 @@ mod typed_state_range_read_tests {
         game.build_registries();
         game.set_allow_commands(true);
         assert!(game.run_command("reload"));
-        assert!(game.fns.0.enabled.contains(&"file/typed_ranges".to_owned()));
+        assert!(game.side.fns.0.enabled.contains(&"file/typed_ranges".to_owned()));
         assert!(
-            game.fns.0.store.errors.is_empty(),
+            game.side.fns.0.store.errors.is_empty(),
             "{:?}",
-            game.fns.0.store.errors
+            game.side.fns.0.store.errors
         );
         assert_eq!(
-            game.fns
+            game.side.fns
                 .0
                 .store
                 .predicates
@@ -42,7 +42,7 @@ mod typed_state_range_read_tests {
             let expected: serde_json::Value =
                 serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
             assert_eq!(
-                game.fns.0.store.predicates.get(&id),
+                game.side.fns.0.store.predicates.get(&id),
                 Some(&expected),
                 "{id}"
             );
@@ -77,7 +77,7 @@ mod typed_state_range_read_tests {
         assert_eq!(chest, expected_chest);
         let clock = game.world.game_time;
         let mut failures = Vec::new();
-        let mut callback = |game: &mut Game<'_>, x: i32, name: &str, expected: bool| {
+        let mut callback = |game: &mut crate::game::ServerGame<'_>, x: i32, name: &str, expected: bool| {
             for (sign, expected) in [("if", expected), ("unless", !expected)] {
                 for h in ["#r", "#s"] {
                     assert!(game.run_command(&format!("scoreboard players set {h} ranges -99")));
@@ -160,10 +160,10 @@ mod typed_state_range_read_tests {
         let mut game = crate::game::game_tests::tests::server_game(&mut resources);
         let source =
             std::path::PathBuf::from(std::env::var_os("SUNRISE_TYPED_RANGE_PACK").unwrap());
-        game.server.world_root = std::env::current_dir()
+        game.side.world_root = std::env::current_dir()
             .unwrap()
             .join("typed-direction-world");
-        let target = game.server.world_root.join("datapacks/typed_ranges");
+        let target = game.side.world_root.join("datapacks/typed_ranges");
         let preds = target.join("data/ranges/predicate");
         std::fs::create_dir_all(&preds).unwrap();
         std::fs::copy(source.join("pack.mcmeta"), target.join("pack.mcmeta")).unwrap();
@@ -174,14 +174,14 @@ mod typed_state_range_read_tests {
         game.build_registries();
         game.set_allow_commands(true);
         assert!(game.run_command("reload"));
-        assert!(game.fns.0.enabled.contains(&"file/typed_ranges".to_owned()));
+        assert!(game.side.fns.0.enabled.contains(&"file/typed_ranges".to_owned()));
         assert!(
-            game.fns.0.store.errors.is_empty(),
+            game.side.fns.0.store.errors.is_empty(),
             "{:?}",
-            game.fns.0.store.errors
+            game.side.fns.0.store.errors
         );
         assert_eq!(
-            game.fns
+            game.side.fns
                 .0
                 .store
                 .predicates
@@ -196,7 +196,7 @@ mod typed_state_range_read_tests {
             let expected: serde_json::Value =
                 serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
             assert_eq!(
-                game.fns.0.store.predicates.get(&id),
+                game.side.fns.0.store.predicates.get(&id),
                 Some(&expected),
                 "{id}"
             );
@@ -249,7 +249,7 @@ mod typed_state_range_read_tests {
         }
         assert!(game.run_command("reload"));
         assert_eq!(
-            game.fns
+            game.side.fns
                 .0
                 .store
                 .predicates
@@ -263,7 +263,7 @@ mod typed_state_range_read_tests {
         assert!(game.run_command("item replace block 0 200 0 container.0 with minecraft:stone 3"));
         let chest = game.block_entity_nbt([0, 200, 0]).unwrap();
         let clock = game.world.game_time;
-        let callback = |game: &mut Game<'_>, x: i32, name: &str, expected: bool| {
+        let callback = |game: &mut crate::game::ServerGame<'_>, x: i32, name: &str, expected: bool| {
             for (sign, want) in [("if", expected), ("unless", !expected)] {
                 for h in ["#r", "#s"] {
                     assert!(game.run_command(&format!("scoreboard players set {h} ranges -99")));

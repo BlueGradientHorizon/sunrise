@@ -6,7 +6,7 @@ pub(in crate::game::client_side) use crate::game::remote::tests::menu_packets_te
 pub(in crate::game::client_side) use crate::game::remote::tests::menu_packets_tests::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::{
-    Game, Screen, in_own_process, mount_menu::CHEST, native_entity_refs::tests::with_game,
+    Game, Screen, in_own_process, mount_menu::CHEST, native_entity_refs::tests::{with_game, with_client_game},
 };
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use std::time::{Duration, Instant};
@@ -44,7 +44,7 @@ fn a_mount_chest_beyond_the_slot_range_ends_the_connection() {
                 (Some("minecraft:nautilus"), -1),
                 (None, i32::MAX),
             ] {
-                with_game(|game| {
+                with_client_game(|game| {
                     let (_reader, _writer) = connect_menu_test(game);
                     spawn_menu_test(game);
                     if let Some(species) = species {
@@ -79,7 +79,7 @@ fn rejected_menu_packets_retire_the_previous_client_menu() {
     in_own_process(
         "game::client_side::remote_client::tests::menu_packets_tests::rejected_menu_packets_retire_the_previous_client_menu",
         || {
-            with_game(|game| {
+            with_client_game(|game| {
                 let (mut reader, _writer) = connect_menu_test(game);
                 let remote = game.remote.as_mut().unwrap();
                 remote.menu.set(Some((7, "minecraft:generic_9x3".into())));
@@ -113,7 +113,7 @@ fn rejected_mounts_preserve_the_previous_client_menu_without_sending_close() {
     in_own_process(
         "game::client_side::remote_client::tests::menu_packets_tests::rejected_mounts_preserve_the_previous_client_menu_without_sending_close",
         || {
-            with_game(|game| {
+            with_client_game(|game| {
                 let (mut reader, _writer) = connect_menu_test(game);
                 spawn_menu_test(game);
                 let zombie = game
@@ -184,7 +184,7 @@ fn remote_mount_is_installed_before_screen_init_and_keeps_all_columns() {
             )]
             .into();
             mod_platform::testing::with_mods(mods, || {
-                with_game(|game| {
+                with_client_game(|game| {
                     let (mut reader, _writer) = connect_menu_test(game);
                     spawn_menu_test(game);
                     game.handle_packet(C::PlayerPosition(PlayerPosition {

@@ -2155,15 +2155,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
 }
 
 #[cfg(test)]
-impl Game<'_> {
+impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn test_ender_items(&self) -> &[Option<sunrise_client::items::ItemStack>] {
-        &self.server.ender_items
+        &self.side.ender_items
     }
     pub(in crate::game) fn test_lan_guest_swaps(&self) -> &[u32] {
-        &self.server.lan_guest_swaps
+        &self.side.lan_guest_swaps
     }
     pub(in crate::game) fn test_clear_hopper(&mut self, pos: (i32, i32, i32)) {
-        self.server.hoppers.remove(&pos);
+        self.side.hoppers.remove(&pos);
     }
     pub(in crate::game) fn test_attachment_slot(
         &mut self,

@@ -18,7 +18,7 @@ pub(in crate::game) const START: Vec3 = Vec3::new(4.5, 64.0, 4.5);
 /// the blocks `Entity.isInRain` samples at either start height: the feet blocks (4, 64, 4) and
 /// (4, 65, 4) and the tops (4, 65, 4) and (4, 66, 4), whose corners are the quarts with x and
 /// z in {0, 1} and y in 15..=17.
-pub(in crate::game) fn arena(game: &mut Game<'_>, roof: bool) {
+pub(in crate::game) fn arena<S: crate::game::Side>(game: &mut Game<'_, S>, roof: bool) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
     let plains = game.res.biomes().id("minecraft:plains");
     let mut chunk = Chunk::empty(0, 0);
     let bottom = game.world.bottom_y() >> 2;
@@ -50,7 +50,7 @@ pub(in crate::game) use crate::game::server_side::remote_server::riptide_tests::
 
 pub(in crate::game) fn server_to_client(
     rx: &Receiver<Out>,
-    client: &mut Game<'_>,
+    client: &mut crate::game::ClientGame<'_>,
 ) -> Vec<play::PlayerPosition> {
     let mut teleports = Vec::new();
     for body in rx.try_iter().flat_map(|out| match out {

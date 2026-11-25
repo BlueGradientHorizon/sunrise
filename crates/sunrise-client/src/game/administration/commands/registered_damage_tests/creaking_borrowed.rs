@@ -259,9 +259,9 @@ pub(in crate::game) fn run_borrowed_creaking_hurt_finishes_before_the_tick_conti
             creaking.ai.last_hurt_by_player = 1;
             heard.lock().unwrap().mob = mob;
             game.remember_mob_player_credit(mob);
-            assert!(game.server.last_hurt_by_player.contains_key(&mob));
+            assert!(game.side.last_hurt_by_player.contains_key(&mob));
             if case == "offline" {
-                game.server
+                game.side
                     .last_hurt_by_player
                     .insert(mob, PlayerCredit(0x23));
             }
@@ -278,7 +278,7 @@ pub(in crate::game) fn run_borrowed_creaking_hurt_finishes_before_the_tick_conti
                 // following tick's in-wall check is still before reference expiry.
                 game.tick_creature_entities().unwrap();
                 assert_eq!(game.mob_object(mob).unwrap().ai.last_hurt_by_player, 0);
-                assert!(game.server.last_hurt_by_player.contains_key(&mob));
+                assert!(game.side.last_hurt_by_player.contains_key(&mob));
             }
             let peer = if case == "cramming" {
                 game.set_difficulty_forced(2);
@@ -342,19 +342,19 @@ pub(in crate::game) fn run_borrowed_creaking_hurt_finishes_before_the_tick_conti
                 None
             };
 
-            game.server.lan_entity_events.clear();
+            game.side.lan_entity_events.clear();
             game.start_audio_capture();
             TEST_POSTED_EVENT_ORDER.with(|order| *order.borrow_mut() = Some(Vec::new()));
-            let live_reaction = |game: &Game<'_>| {
+            let live_reaction = |game: &crate::game::ServerGame<'_>| {
                 let flap = (mob as i32, 66);
                 let flashes = game
-                    .server
+                    .side
                     .lan_entity_events
                     .iter()
                     .filter(|&&entry| entry == flap)
                     .count();
                 let sways = game
-                    .server
+                    .side
                     .pending_sounds
                     .iter()
                     .filter(|sound| sound.event == "minecraft:entity.creaking.sway")
@@ -364,7 +364,7 @@ pub(in crate::game) fn run_borrowed_creaking_hurt_finishes_before_the_tick_conti
             let parity_output = (case == "expiry")
                 .then(|| std::env::var_os("SUNRISE_CREAKING_BORROWED_OUTPUT"))
                 .flatten();
-            let snapshot = |game: &Game<'_>| {
+            let snapshot = |game: &crate::game::ServerGame<'_>| {
                 let (flashes, _) = live_reaction(game);
                 let action = TEST_POSTED_EVENT_ORDER.with(|order| {
                     order
@@ -385,7 +385,7 @@ pub(in crate::game) fn run_borrowed_creaking_hurt_finishes_before_the_tick_conti
                     panic!("missing heart");
                 };
                 let sounds = game
-                    .server
+                    .side
                     .pending_sounds
                     .iter()
                     .filter_map(|s| {
@@ -394,7 +394,7 @@ pub(in crate::game) fn run_borrowed_creaking_hurt_finishes_before_the_tick_conti
                     .collect::<Vec<_>>();
                 serde_json::json!({
                     "action": action, "flashes": flashes, "sounds": sounds, "emitter": heart.emitter,
-                    "animation": creaking.extra.ints[0], "remembered": game.server.last_hurt_by_player.contains_key(&mob),
+                    "animation": creaking.extra.ints[0], "remembered": game.side.last_hurt_by_player.contains_key(&mob),
                     "clock": creaking.ai.last_hurt_by_player,
                 })
             };
@@ -476,7 +476,7 @@ pub(in crate::game) fn run_borrowed_creaking_hurt_finishes_before_the_tick_conti
                 );
                 assert_eq!(poison(pig(4)), Some(59));
                 let sounds: Vec<_> = game
-                    .server
+                    .side
                     .pending_sounds
                     .iter()
                     .filter(|s| s.event == "minecraft:entity.puffer_fish.sting")
@@ -538,7 +538,7 @@ pub(in crate::game) fn run_borrowed_creaking_hurt_finishes_before_the_tick_conti
                 }
             });
             if case == "expiry" {
-                assert!(!game.server.last_hurt_by_player.contains_key(&mob));
+                assert!(!game.side.last_hurt_by_player.contains_key(&mob));
                 // Remove cooldown, but leave the wall in place. With no reference
                 // there is neither a replay nor another environmental reaction.
                 game.mob_object_mut(mob).unwrap().extra.ints[0] = 0;

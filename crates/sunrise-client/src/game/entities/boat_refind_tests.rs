@@ -3,12 +3,12 @@
 use crate::game::Game;
 use crate::game::hook_meddler_tests::with_meddler;
 
-fn mob_id(game: &Game<'_>, kind: &str) -> u32 {
+fn mob_id(game: &crate::game::ServerGame<'_>, kind: &str) -> u32 {
     game.mobs.iter().find(|m| &*m.kind.id == kind).unwrap().id
 }
 
 /// An empty boat and a pig touching it, both held still, and the boat's id.
-fn set_up(game: &mut Game<'_>) -> u32 {
+fn set_up(game: &mut crate::game::ServerGame<'_>) -> u32 {
     assert!(game.run_command("summon oak_boat 8.5 100 8.5"));
     assert!(game.run_command("summon pig 8.5 100 8.5 {NoAI:1b,Silent:1b}"));
     game.boats[0].id

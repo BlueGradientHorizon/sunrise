@@ -73,7 +73,7 @@ pub(in crate::game) mod tests {
     }
 
     /// Opens the game to a LAN host with one placed guest (UUID 123, conn 1).
-    pub(in crate::game) fn add_guest(game: &mut Game<'_>) -> PlayerRef {
+    pub(in crate::game) fn add_guest(game: &mut crate::game::ServerGame<'_>) -> PlayerRef {
         use sunrise_client::lan::{NetConfig, hub::HubConfig};
 
         let settings = super::super::lan::LanSettings {

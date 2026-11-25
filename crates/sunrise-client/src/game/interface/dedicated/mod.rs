@@ -2571,9 +2571,9 @@ mod tests {
                 game.native_lifecycle.begin_open(Authority::DedicatedServer);
                 game.native_lifecycle.world_open_ready().unwrap();
                 let dir = tempfile::tempdir().unwrap();
-                game.server.world_root = dir.path().to_path_buf();
-                game.save.0 = Arc::new(SaveDir::new(
-                    game.server.world_root.clone(),
+                game.side.world_root = dir.path().to_path_buf();
+                game.side.save.0 = Arc::new(SaveDir::new(
+                    game.side.world_root.clone(),
                     LevelShape::OVERWORLD,
                     Some(Default::default()),
                 ));
@@ -2581,7 +2581,7 @@ mod tests {
                     game.save_dedicated_checkpoint("startup fixture").unwrap(),
                     0
                 );
-                let fail_next_save = |game: &mut crate::game::Game<'_>| {
+                let fail_next_save = |game: &mut crate::game::ServerGame<'_>| {
                     let key = (2, 0);
                     let mut chunk = sunrise_client::chunk::Chunk::with_layout(
                         key.0,
@@ -2600,7 +2600,7 @@ mod tests {
                     fail_next_save(game);
                     assert_eq!(game.save_dedicated_checkpoint(phase).unwrap(), 1);
                 }
-                assert_eq!(game.save.0.record_save_failures(), 2);
+                assert_eq!(game.side.save.0.record_save_failures(), 2);
                 assert_eq!(game.save_dedicated_checkpoint("no new edits").unwrap(), 0);
 
                 fail_next_save(game);
@@ -2613,7 +2613,7 @@ mod tests {
                     assert_eq!(events[0].0, WorldPhase::WorldCloseFailed);
                     assert!(events[0].1.contains(cause));
                 }
-                assert_eq!(game.save.0.record_save_failures(), 3);
+                assert_eq!(game.side.save.0.record_save_failures(), 3);
 
                 let blocked = dir.path().join("level.dat_new");
                 std::fs::create_dir(&blocked).unwrap();
@@ -3149,10 +3149,10 @@ mod console_source_tests {
     use sunrise_core::position::ChunkPos;
 
     /// Runs `command` as the console does and returns whether it worked and every message it printed.
-    fn console(game: &mut Game<'_>, command: &str) -> (bool, String) {
-        game.server.chat_capture = Some(Vec::new());
+    fn console(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, String) {
+        game.side.chat_capture = Some(Vec::new());
         let ok = game.as_console_in_spawn_level(|g| g.run_command(command));
-        let said = game.server.chat_capture.take().unwrap_or_default();
+        let said = game.side.chat_capture.take().unwrap_or_default();
         let said = said
             .iter()
             .map(|t| t.component().to_string())
@@ -3187,15 +3187,12 @@ mod console_source_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -3212,16 +3209,16 @@ mod console_source_tests {
             ok && said.contains("chat.type.emote") && said.contains("\"Server\""),
             "{said}"
         );
-        game.server.rcon_source = true;
+        game.side.rcon_source = true;
         let (ok, said) = console(&mut game, "me waves");
         assert!(ok && said.contains("\"Rcon\""), "{said}");
-        game.server.rcon_source = false;
+        game.side.rcon_source = false;
         let (ok, said) = console(&mut game, "teammsg hi");
         assert!(
             !ok && said.contains("permissions.requires.entity"),
             "{said}"
         );
         // The console's source is put back after each line.
-        assert!(game.server.command_source.is_none());
+        assert!(game.side.command_source.is_none());
     }
 }

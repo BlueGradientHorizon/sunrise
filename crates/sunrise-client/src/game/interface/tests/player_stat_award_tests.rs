@@ -67,7 +67,7 @@ fn a_worn_out_helmet_awards_the_broken_statistic() {
 }
 
 /// A bed's state with its `part`, facing north.
-fn bed_state(game: &Game<'_>, kind: &str, part: &str) -> BlockStateId {
+fn bed_state(game: &crate::game::ServerGame<'_>, kind: &str, part: &str) -> BlockStateId {
     let registry = game.pack.assets.registry;
     let mut state = registry
         .state(registry.default_state(kind).unwrap())
@@ -79,7 +79,7 @@ fn bed_state(game: &Game<'_>, kind: &str, part: &str) -> BlockStateId {
 
 /// Both halves of a bed of `kind` at `x`, facing north: the foot at z+1, the
 /// head at z. Answers the head.
-fn place_bed(game: &mut Game<'_>, x: i32, kind: &str) -> [i32; 3] {
+fn place_bed(game: &mut crate::game::ServerGame<'_>, x: i32, kind: &str) -> [i32; 3] {
     let foot = bed_state(game, kind, "foot");
     let head = bed_state(game, kind, "head");
     game.world.set(x, 64, 3, foot).unwrap();

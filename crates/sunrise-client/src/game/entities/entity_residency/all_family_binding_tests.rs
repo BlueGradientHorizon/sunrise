@@ -29,7 +29,7 @@ fn every_ordinary_resident_family_binds_its_actual_owned_slot() {
         let index = Arc::new(Mutex::new(AttachmentIndex::default()));
         let key = ("test".into(), "all_resident_families".into());
         let mut maps = Vec::new();
-        let mut bind = |game: &mut Game<'_>, id: u32, expected: Kind| {
+        let mut bind = |game: &mut crate::game::ServerGame<'_>, id: u32, expected: Kind| {
             let EntityLookup::Found { location, .. } = game.server_resident_entity(id) else {
                 panic!("{expected:?} did not become resident");
             };

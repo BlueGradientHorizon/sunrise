@@ -5,7 +5,7 @@ use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -28,15 +28,12 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = &*resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -59,7 +56,7 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
 }
 
 /// An arrow from `(0.5, 64.5, z)` flying east into the wall at x = 4.
-fn shoot(game: &mut Game<'_>, z: f64) {
+fn shoot(game: &mut crate::game::ServerGame<'_>, z: f64) {
     assert!(game.run_command(&format!(
         "summon minecraft:arrow 0.5 64.5 {z} {{Motion:[1.0d,0.0d,0.0d]}}"
     )));
@@ -68,7 +65,7 @@ fn shoot(game: &mut Game<'_>, z: f64) {
     }
 }
 
-fn dropped(game: &Game<'_>, item: &str) -> usize {
+fn dropped(game: &crate::game::ServerGame<'_>, item: &str) -> usize {
     game.dropped
         .iter()
         .filter(|d| &*d.stack.item == item)

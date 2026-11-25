@@ -26,7 +26,7 @@ pub(in crate::game) struct Snapshot {
     pub(in crate::game) pitch: f32,
     pub(in crate::game) hand: Option<ItemStack>,
 }
-pub(in crate::game) fn snapshot(g: &Game<'_>) -> Snapshot {
+pub(in crate::game) fn snapshot(g: &crate::game::ServerGame<'_>) -> Snapshot {
     let h = g.lan.as_ref().unwrap();
     let p = &h.hub.guests[0];
     Snapshot {
@@ -40,7 +40,7 @@ pub(in crate::game) fn snapshot(g: &Game<'_>) -> Snapshot {
         hand: p.inventory[0].clone(),
     }
 }
-pub(in crate::game) fn group(g: &mut Game<'_>, packets: Vec<S>, token: i32) {
+pub(in crate::game) fn group(g: &mut crate::game::ServerGame<'_>, packets: Vec<S>, token: i32) {
     g.lan.as_mut().unwrap().hub.guests.update(0, |p| {
         for packet in packets {
             p.inbox

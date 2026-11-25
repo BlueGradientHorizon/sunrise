@@ -242,7 +242,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     pub(in crate::game) fn client_pick_unfiltered(&self) -> Option<Hit> {
         #[cfg(test)]
-        if let Some(hit) = self.client.client_pick.test_forced_hit {
+        if let Some(hit) = self.side.client_pick.test_forced_hit {
             return Some(hit);
         }
         let (origin, dir) = self.client_aim()?;
@@ -251,7 +251,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     pub(in crate::game) fn client_pick(&self) -> Option<Hit> {
         #[cfg(test)]
-        if let Some(hit) = self.client.client_pick.test_forced_hit {
+        if let Some(hit) = self.side.client_pick.test_forced_hit {
             return Some(hit);
         }
         if self.uses_stored_pick() {
@@ -487,7 +487,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     #[cfg(test)]
     pub(in crate::game) fn client_set_test_forced_hit(&mut self, hit: Option<Hit>) {
-        self.client.client_pick.test_forced_hit = hit;
+        self.side.client_pick.test_forced_hit = hit;
     }
 
     // Client item-use hooks.

@@ -8,7 +8,7 @@ const FINISH: &str = "G 10,64,-4 minecraft:item_interact_finish";
 /// Starts eating a golden apple with the use button held and 64 arrows in the
 /// inventory, runs `ticks` ticks of the use, then `f`. Returns the interaction
 /// vibrations posted after the start's.
-fn eating(ticks: u32, f: impl FnOnce(&mut Game<'_>)) -> Vec<String> {
+fn eating(ticks: u32, f: impl FnOnce(&mut crate::game::ServerGame<'_>)) -> Vec<String> {
     let lines = with_game("minecraft:golden_apple", |game| {
         game.creative = false;
         game.build_registries();
@@ -32,7 +32,7 @@ fn eating(ticks: u32, f: impl FnOnce(&mut Game<'_>)) -> Vec<String> {
     lines
 }
 
-fn arrows(game: &Game<'_>) -> u32 {
+fn arrows(game: &crate::game::ServerGame<'_>) -> u32 {
     game.inventory[9].as_ref().map_or(0, |s| s.count)
 }
 

@@ -53,7 +53,7 @@ impl Hooks for Heard {
 /// A survival player on a server's client, playing with nothing open, the tick's first packets
 /// (the held slot) sent: `test` gets the game, the packets sent since and the hands triggered.
 pub(in crate::game) fn with_pressing_game(
-    test: impl FnOnce(&mut Game<'_>, &Mutex<Vec<String>>, &Mutex<Vec<Hand>>),
+    test: impl FnOnce(&mut crate::game::ClientGame<'_>, &Mutex<Vec<String>>, &Mutex<Vec<Hand>>),
 ) {
     with_callback_game(false, |game, packets, triggered, _| {
         test(game, packets, triggered);
@@ -216,9 +216,9 @@ fn the_host_presses_by_name_and_refuses_the_others() {
             assert_eq!(mapping.is_down(game), Ok(false));
             assert_eq!(mapping.click(game), Ok(()));
             if key == "key.chat" {
-                assert_eq!(game.client.screen, Screen::Playing);
+                assert_eq!(game.side.screen, Screen::Playing);
                 game.remote_handle_input();
-                assert_eq!(game.client.screen, Screen::Chat);
+                assert_eq!(game.side.screen, Screen::Chat);
                 game.set_screen(Screen::Playing);
             }
         }
@@ -228,10 +228,10 @@ fn the_host_presses_by_name_and_refuses_the_others() {
         assert_eq!(game.pending_mapping_clicks("key.hotbar.3"), 0);
         // An open screen suppresses polling, not changes to the logical mappings.
         game.player = None;
-        game.title.0 = Some(game.new_title(game.save.0.root.clone()));
+        game.side.title.0 = Some(game.new_title(game.save.0.root.clone()));
         assert!(game.mod_mappings_screen_open());
         let hotbar_slot = game.vanilla_mapping_slot(hotbar).unwrap();
-        let before_clicks = game.client.vanilla_mappings.pending_clicks(hotbar_slot);
+        let before_clicks = game.side.vanilla_mappings.pending_clicks(hotbar_slot);
         {
             assert_eq!(forward.set_down(game, true), Ok(()));
             assert_eq!(forward.is_down(game), Ok(true));
@@ -240,10 +240,10 @@ fn the_host_presses_by_name_and_refuses_the_others() {
             assert_eq!(hotbar.click(game), Ok(()));
         }
         assert_eq!(
-            game.client.vanilla_mappings.pending_clicks(hotbar_slot),
+            game.side.vanilla_mappings.pending_clicks(hotbar_slot),
             before_clicks + 1
         );
-        assert!(game.client.vanilla_mappings.consume_click(hotbar_slot));
+        assert!(game.side.vanilla_mappings.consume_click(hotbar_slot));
     });
 }
 

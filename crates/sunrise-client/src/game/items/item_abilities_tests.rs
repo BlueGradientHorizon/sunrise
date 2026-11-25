@@ -40,7 +40,7 @@ impl Hooks for Mod {
 }
 
 /// A serving level with one chunk of air and a pumpkin at (4, 64, 4).
-fn field(game: &mut Game<'_>) {
+fn field(game: &mut crate::game::ServerGame<'_>) {
     game.options.dedicated = Some(Vec::new());
     game.native_lifecycle
         .begin_open(mod_api::Authority::IntegratedServer);
@@ -57,16 +57,16 @@ fn field(game: &mut Game<'_>) {
     game.world.set(4, 64, 4, pumpkin).unwrap();
 }
 
-fn block_name(game: &Game<'_>, pos: [i32; 3]) -> String {
+fn block_name(game: &crate::game::ServerGame<'_>, pos: [i32; 3]) -> String {
     let state = game.world.block(pos[0], pos[1], pos[2]);
     game.res.facts().get(state).name.to_string()
 }
 
-fn add_sheep(game: &mut Game<'_>, x: f64) -> usize {
+fn add_sheep(game: &mut crate::game::ServerGame<'_>, x: f64) -> usize {
     let kind = game.res.mob_types().get("minecraft:sheep").unwrap().clone();
-    game.server.next_entity += 1;
+    game.side.next_entity += 1;
     game.mobs.push(Mob::new(
-        game.server.next_entity,
+        game.side.next_entity,
         kind,
         Vec3::new(x, 64.0, 0.5),
         0.0,
@@ -75,7 +75,7 @@ fn add_sheep(game: &mut Game<'_>, x: f64) -> usize {
 }
 
 /// Right click on the sheep at `index` holding `stack`.
-fn click_sheep(game: &mut Game<'_>, index: usize, stack: &ItemStack) -> bool {
+fn click_sheep(game: &mut crate::game::ServerGame<'_>, index: usize, stack: &ItemStack) -> bool {
     game.inventory[game.selected] = Some(stack.clone());
     let id = game.mobs[index].id as i32;
     game.interact_mob(Some(crate::game::InteractTarget {
@@ -167,7 +167,7 @@ fn parts_grant_and_deny_the_abilities_vanilla_asks_of_an_item_isolated() {
 
             // Shears carve a pumpkin only when the ability is not denied: a stick the part lets
             // carve does, and an item no part is attached to never does.
-            let carve = |game: &mut Game<'_>, item: &str| {
+            let carve = |game: &mut crate::game::ServerGame<'_>, item: &str| {
                 let held = ItemStack::new(item, 1);
                 let carved = game
                     .use_pumpkin([4, 64, 4], [0, 1, 0], Some(&held))

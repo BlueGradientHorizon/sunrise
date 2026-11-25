@@ -315,7 +315,7 @@ pub(in crate::game) mod tests {
 
     /// Lit empty chunks around the origin, a stone floor at y 63 over
     /// -8..8, and two zombies standing on it five blocks apart.
-    pub(in crate::game) fn floor_and_zombies(game: &mut Game<'_>) {
+    pub(in crate::game) fn floor_and_zombies(game: &mut crate::game::ServerGame<'_>) {
         for (x, z) in (-1..=1).flat_map(|x| (-1..=1).map(move |z| (x, z))) {
             let mut chunk = sunrise_client::chunk::Chunk::empty(x, z);
             chunk.lit = true;
@@ -377,7 +377,7 @@ pub(in crate::game) mod tests {
         crate::game::entity::taken_pass_tests::in_both_dimensions(|game, balance| {
             floor_and_zombies(game);
             let zombie = game.living(game.entity(12).unwrap()).unwrap();
-            let at = |game: &Game<'_>| game.mobs.iter().find(|m| m.id == 12).unwrap().position;
+            let at = |game: &crate::game::ServerGame<'_>| game.mobs.iter().find(|m| m.id == 12).unwrap().position;
             // From six blocks up it lands on the floor, one block lower per
             // step down (`randomTeleport`).
             crate::game::entity::taken_pass_tests::assert_mob_spawn_survives(
@@ -449,8 +449,8 @@ pub(in crate::game) mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.server.level_shapes,
-                level_seeds: game.levels.0.runtime.seeds(),
+                levels: game.side.level_shapes,
+                level_seeds: game.side.levels.0.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
             let (tx, _rx) = std::sync::mpsc::channel();

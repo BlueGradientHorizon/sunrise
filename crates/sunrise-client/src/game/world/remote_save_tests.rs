@@ -9,11 +9,11 @@ fn remote_save_with_a_held_lease_is_still_a_silent_noop() {
         game.connect_local(pipe, "RemoteSave").unwrap();
         assert!(game.remote.is_some());
         let _lease = sunrise_client::join_seq::visibility::PassLease::enter();
-        let message = game.client.message.clone();
+        let message = game.side.message.clone();
         assert!(game.save_game().is_ok());
         assert!(game.save_game_with(false).is_ok());
         assert_eq!(
-            game.client.message, message,
+            game.side.message, message,
             "a no-op save must not display a refusal"
         );
     });

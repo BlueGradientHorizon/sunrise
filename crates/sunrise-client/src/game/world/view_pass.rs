@@ -134,7 +134,7 @@ pub(in crate::game) mod tests {
         resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
         root: &std::path::Path,
         home: &std::path::Path,
-    ) -> Game<'a> {
+    ) -> crate::game::ServerGame<'a> {
         use crate::game::{Audio, Options, Progress, Settings, load_resources};
         let settings = Settings::default();
         let loaded = load_resources(
@@ -156,15 +156,12 @@ pub(in crate::game) mod tests {
         options.game_dir = Some(home.to_path_buf());
         options.player_name = Some("Viewer".into());
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
             None,
         )
         .unwrap();
@@ -188,7 +185,7 @@ pub(in crate::game) mod tests {
     /// Opens the world to the network with one player in the Overworld whose client, of revision
     /// 3, views 2 levels; its packets.
     pub(in crate::game) fn host_a_viewer(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
     ) -> std::sync::mpsc::Receiver<sunrise_client::lan::Out> {
         host_with_viewer(game, || {
             let (tx, rx) = std::sync::mpsc::channel();
@@ -200,7 +197,7 @@ pub(in crate::game) mod tests {
     }
 
     fn host_with_viewer<T>(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         make_sender: impl FnOnce() -> (sunrise_client::lan::PlayerSender, T),
     ) -> T {
         use sunrise_client::lan::{Joined, NetConfig, guest::Guest, hub::HubConfig};
@@ -248,8 +245,8 @@ pub(in crate::game) mod tests {
             address: "127.0.0.1:25565".parse().unwrap(),
             expected: false,
         };
-        game.server.next_entity += 1;
-        let mut guest = Guest::new(joined, game.server.next_entity as i32, [0.5, 80.0, 0.5], 0);
+        game.side.next_entity += 1;
+        let mut guest = Guest::new(joined, game.side.next_entity as i32, [0.5, 80.0, 0.5], 0);
         guest.placed = true;
         guest.loaded = true;
         guest.dimension = Dim::Overworld.id().into();
@@ -333,7 +330,7 @@ pub(in crate::game) mod tests {
         resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
         name: &str,
     ) -> (
-        Game<'a>,
+        crate::game::ServerGame<'a>,
         std::sync::mpsc::Receiver<sunrise_client::lan::Out>,
         Sent,
     ) {
@@ -347,7 +344,7 @@ pub(in crate::game) mod tests {
         name: &str,
         mode: sunrise_client::lan::viewed_levels::areas::ChunkAreaMode,
     ) -> (
-        Game<'a>,
+        crate::game::ServerGame<'a>,
         std::sync::mpsc::Receiver<sunrise_client::lan::Out>,
         Sent,
     ) {
@@ -400,7 +397,7 @@ pub(in crate::game) mod tests {
             game.tick_server(false).unwrap();
             all.times.extend(sent(&rx).times);
         }
-        let world = game.levels.0.parked_world(Dim::Nether).unwrap();
+        let world = game.side.levels.0.parked_world(Dim::Nether).unwrap();
         assert!(
             square().iter().all(|c| world.chunks.contains_key(c)),
             "still loaded"
@@ -506,7 +503,7 @@ pub(in crate::game) mod tests {
     }
 
     /// Summons `entity` in the Nether, at chunk (40, 40) above its bedrock roof, and gives its id.
-    fn summon_in_the_nether(game: &mut Game<'_>, entity: &str) -> i32 {
+    fn summon_in_the_nether(game: &mut crate::game::ServerGame<'_>, entity: &str) -> i32 {
         game.enter_level(Dim::Nether).unwrap();
         game.set_allow_commands(true);
         assert!(game.run_command(&format!("summon {entity} 648.5 130 648.5")));
@@ -850,15 +847,15 @@ pub(in crate::game) mod tests {
     }
 
     /// The viewer, a server player.
-    fn viewer<'h>(game: &'h Game<'_>) -> &'h sunrise_client::lan::guest::Guest {
+    fn viewer<'h>(game: &'h crate::game::ServerGame<'_>) -> &'h sunrise_client::lan::guest::Guest {
         let hub = &game.lan.as_ref().unwrap().hub;
         hub.guests.iter().find(|g| g.uuid == 2).unwrap()
     }
 
     /// Sends the viewer (connection 2) into level `dim` at `at`, as `/tp` into another level
     /// does (`ServerPlayer.teleport(TeleportTransition)`).
-    fn travel(game: &mut Game<'_>, dim: Dim, at: [f64; 3]) {
-        game.server
+    fn travel(game: &mut crate::game::ServerGame<'_>, dim: Dim, at: [f64; 3]) {
+        game.side
             .level_teleports
             .push(crate::game::server_travel::LevelTeleport {
                 conn: 2,
@@ -1006,7 +1003,7 @@ pub(in crate::game) mod tests {
     /// Runs `command` in the Overworld, where the player is, then a tick: what the viewer's Nether
     /// was told of its clocks meanwhile, each update's clocks as their totals and rates.
     fn clocks_after(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         rx: &std::sync::mpsc::Receiver<sunrise_client::lan::Out>,
         command: &str,
     ) -> Vec<Vec<(i64, f32)>> {
@@ -1099,7 +1096,7 @@ pub(in crate::game) mod tests {
             game.tick_server(false).unwrap();
         }
         let _ = sent(&rx);
-        let tracks = |game: &Game<'_>| {
+        let tracks = |game: &crate::game::ServerGame<'_>| {
             let view = viewer(game).viewed.view(Dim::Nether.id()).unwrap();
             view.tracker.is_tracking(pig)
         };

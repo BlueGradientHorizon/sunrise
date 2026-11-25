@@ -247,7 +247,7 @@ fn internal_slots_preserve_automation_limits_and_nested_transactions() {
 }
 
 /// A mod holder with nine container slots and `keys` entries of saved data beside them.
-fn container_holder(game: &mut super::Game<'_>, keys: usize) -> mod_api::BlockEntityRef {
+fn container_holder(game: &mut crate::game::ServerGame<'_>, keys: usize) -> mod_api::BlockEntityRef {
     let entity = mod_holder(game);
     let stone = game.world.block(1, 64, 1);
     game.world.block_entities.set_mod_containers(
@@ -286,7 +286,7 @@ fn container_moves_roll_back_slots_and_saved_data_in_any_order() {
             let items = level.capability(game, &ITEMS, [1, 64, 1], None).unwrap();
             let dirt =
                 ItemResource::of(&ItemStack::new("minecraft:dirt", 1).try_into_api().unwrap());
-            let saved = |game: &super::Game<'_>| {
+            let saved = |game: &crate::game::ServerGame<'_>| {
                 let BlockEntity::Mod(holder) = game.world.block_entities.get(&(1, 64, 1)).unwrap()
                 else {
                     panic!()
@@ -351,7 +351,7 @@ fn dirt() -> ItemResource {
 
 /// A mod holder's slots, saved data and data slots, compared whole.
 fn holder_state(
-    game: &super::Game<'_>,
+    game: &crate::game::ServerGame<'_>,
 ) -> (
     Vec<Option<ItemStack>>,
     sunrise_core::nbt::Compound,
@@ -549,7 +549,7 @@ fn an_insert_past_a_short_mod_list_rolls_back_its_length() {
 /// Each block whose slots the journal keeps one at a time, with its block entity and these
 /// stacks, at `pos`.
 fn container_at(
-    game: &mut super::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     pos: (i32, i32, i32),
     block: &str,
 ) -> Vec<Option<ItemStack>> {
@@ -572,7 +572,7 @@ fn container_at(
     slots
 }
 
-fn slots_at(game: &super::Game<'_>, pos: (i32, i32, i32)) -> Option<Vec<Option<ItemStack>>> {
+fn slots_at(game: &crate::game::ServerGame<'_>, pos: (i32, i32, i32)) -> Option<Vec<Option<ItemStack>>> {
     Some(game.world.block_entities.get(&pos)?.slots().to_vec())
 }
 
@@ -643,7 +643,7 @@ fn a_kept_slot_goes_back_only_into_the_block_entity_it_came_from() {
                 .map(|name| mod_api::prelude::BlockStatesHost::block_state_id(game, name).unwrap());
             let stone =
                 ItemResource::of(&ItemStack::new("minecraft:stone", 1).try_into_api().unwrap());
-            let replace = |game: &mut super::Game<'_>, state, commit: bool| {
+            let replace = |game: &mut crate::game::ServerGame<'_>, state, commit: bool| {
                 let items = level.capability(game, &ITEMS, at, None).unwrap();
                 let result: Result<(), TransactionError<()>> = (game as &mut dyn ServerHost)
                     .transaction(|host, tx| {
@@ -712,7 +712,7 @@ fn timing_container_moves_beside_saved_data() {
     }
     with_mod_parts(NAME, |root| {
         super::native_entity_refs::tests::with_game_at(root, |game| {
-            let time = |game: &mut super::Game<'_>, keys: usize| {
+            let time = |game: &mut crate::game::ServerGame<'_>, keys: usize| {
                 let entity = container_holder(game, keys);
                 let level = entity.level(game).unwrap();
                 let items = level.capability(game, &ITEMS, [1, 64, 1], None).unwrap();
@@ -858,11 +858,11 @@ fn storage_asks_a_game_container_by_kind_and_rolls_back_with_its_transaction() {
 
 /// A block entity's whole state, and a hopper's cooldown beside it, compared as text: what an
 /// abort must put back whatever kind of container it is.
-fn whole_state(game: &super::Game<'_>, pos: (i32, i32, i32)) -> String {
+fn whole_state(game: &crate::game::ServerGame<'_>, pos: (i32, i32, i32)) -> String {
     format!(
         "{:?} {:?}",
         game.world.block_entities.get(&pos),
-        game.server.hoppers.get(&pos).map(|h| h.cooldown)
+        game.side.hoppers.get(&pos).map(|h| h.cooldown)
     )
 }
 
@@ -904,7 +904,7 @@ fn storage_writes_abort_to_the_exact_state_of_every_container_kind() {
                     game.level_set_block(level, [3, 64, 1], state, mod_api::BlockUpdateFlags::NONE)
                         .unwrap();
                 }
-                game.server.hoppers.remove(&pos);
+                game.side.hoppers.remove(&pos);
                 let storage = level
                     .capability(game, &mod_api::STORAGE, [3, 64, 1], side)
                     .unwrap_or_else(|| panic!("{block} must answer STORAGE"));
@@ -959,7 +959,7 @@ fn an_aborted_bulk_transfer_conserves_every_item() {
                 .iter()
                 .map(|id| ItemResource::of(&ItemStack::new(id, 1).try_into_api().unwrap()))
                 .collect();
-            let total = |game: &mut super::Game<'_>| {
+            let total = |game: &mut crate::game::ServerGame<'_>| {
                 let mut n = 0;
                 for kind in &kinds {
                     n += from.amount(game, kind).unwrap() + to.amount(game, kind).unwrap();
@@ -1023,7 +1023,7 @@ fn timing_storage_against_items_across_barrel_cells() {
             }
             let at = |cell: i32| (cell % side * 2, cell / side);
             let kinds = ["minecraft:stone", "minecraft:dirt", "minecraft:cobblestone"];
-            let fill = |game: &mut super::Game<'_>| {
+            let fill = |game: &mut crate::game::ServerGame<'_>| {
                 for cell in 0..cells {
                     let (x, z) = at(cell);
                     for (y, full) in [(64, true), (66, false)] {
@@ -1048,7 +1048,7 @@ fn timing_storage_against_items_across_barrel_cells() {
                 .iter()
                 .map(|id| ItemResource::of(&ItemStack::new(id, 1).try_into_api().unwrap()))
                 .collect();
-            let total = |game: &mut super::Game<'_>| {
+            let total = |game: &mut crate::game::ServerGame<'_>| {
                 let mut n = 0u64;
                 for cell in 0..cells {
                     let (x, z) = at(cell);
@@ -1077,7 +1077,7 @@ fn timing_storage_against_items_across_barrel_cells() {
             fill(game);
             let before = total(game);
             let mut moves = 0u32;
-            let mut run_items = |game: &mut super::Game<'_>| {
+            let mut run_items = |game: &mut crate::game::ServerGame<'_>| {
                 let mut moved = 0;
                 for cell in 0..cells {
                     let (x, z) = at(cell);
@@ -1144,7 +1144,7 @@ fn timing_storage_against_items_across_barrel_cells() {
                 .collect();
             let mut awake = vec![true; pipes.len()];
             let mut moves = 0u32;
-            let mut run_storage = |game: &mut super::Game<'_>| {
+            let mut run_storage = |game: &mut crate::game::ServerGame<'_>| {
                 let mut moved = 0;
                 for (cell, (from, to)) in pipes.iter().enumerate() {
                     if !awake[cell] {

@@ -24,7 +24,7 @@ fn resources() -> Option<std::path::PathBuf> {
 
 /// A server's game on `root`: hard difficulty, a long-inhabited chunk, the
 /// player at (2.5, 99, 2.5), midnight (sky darken 11) and a fixed level seed.
-fn game<'a>(root: &std::path::Path, resources: &'a mut Option<Arc<Resources>>) -> Game<'a> {
+fn game<'a>(root: &std::path::Path, resources: &'a mut Option<Arc<Resources>>) -> crate::game::ServerGame<'a> {
     let settings = Settings::default();
     let loaded = load_resources(
         sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
@@ -43,15 +43,12 @@ fn game<'a>(root: &std::path::Path, resources: &'a mut Option<Arc<Resources>>) -
     options.resources = root.to_path_buf();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
         None,
     )
     .unwrap();
@@ -77,7 +74,7 @@ fn game<'a>(root: &std::path::Path, resources: &'a mut Option<Arc<Resources>>) -
 
 /// The sky light under a 5×5 roof of `roof` at y=100 (`None`: open sky), lit by
 /// `tables`, and the phantoms 64 spawn attempts make for the player under it.
-fn attempt(game: &mut Game<'_>, tables: &LightTables, roof: Option<&str>) -> (i32, Vec<Vec3>) {
+fn attempt(game: &mut crate::game::ServerGame<'_>, tables: &LightTables, roof: Option<&str>) -> (i32, Vec<Vec3>) {
     let mut chunk = Chunk::empty(0, 0);
     if let Some(roof) = roof {
         let state = game.pack.assets.registry.default_state(roof).unwrap().0;

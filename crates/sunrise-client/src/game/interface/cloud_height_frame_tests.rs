@@ -44,7 +44,7 @@ fn pack() -> ResourceSource {
 
 /// Joins a server whose Overworld's synchronized dimension type is the prepared resources' with
 /// its `minecraft:visual/cloud_height` set to `height`, through the `Login` packet a server sends.
-fn join_overworld(game: &mut super::Game<'_>, height: f64) {
+fn join_overworld(game: &mut crate::game::ClientGame<'_>, height: f64) {
     use sunrise_protocol::packets::play::{self, Clientbound as C};
     let resources = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let path = "data/minecraft/dimension_type/overworld.json";
@@ -93,8 +93,8 @@ fn join_overworld(game: &mut super::Game<'_>, height: f64) {
 }
 
 /// A pixel left of the hotbar and the crosshair.
-fn drawn_pixel(game: &mut super::Game<'_>) -> [u8; 4] {
-    game.renderer.0.as_mut().unwrap().screenshot = Some(ScreenshotRequest {
+fn drawn_pixel(game: &mut crate::game::ClientGame<'_>) -> [u8; 4] {
+    game.side.renderer.0.as_mut().unwrap().screenshot = Some(ScreenshotRequest {
         path: "unused.png".into(),
         size: None,
         scaled: false,
@@ -102,7 +102,7 @@ fn drawn_pixel(game: &mut super::Game<'_>) -> [u8; 4] {
     });
     game.render_with(|renderer, frame| renderer.render(frame))
         .unwrap();
-    let result = game.renderer.0.as_mut().unwrap().screenshot_result.take();
+    let result = game.side.renderer.0.as_mut().unwrap().screenshot_result.take();
     let mut pending = result.unwrap().unwrap();
     let image = pending.image_mut();
     let at = (40 * image.width as usize + 20) * 4;
@@ -123,8 +123,8 @@ fn the_cloud_layer_follows_the_dimensions_height() {
         assert!(game.gui.atlas.clouds_shader.is_some());
         join_overworld(game, if raised { 250.0 } else { 192.33 });
         let _event_loop = frame_scene(game);
-        game.client.screen = super::Screen::Playing;
-        game.client.screen_fx.vignette_brightness = 0.0;
+        game.side.screen = super::Screen::Playing;
+        game.side.screen_fx.vignette_brightness = 0.0;
         let expected = if raised { 255 } else { 0 };
         assert_eq!(drawn_pixel(game), [expected, expected, expected, 255]);
     });

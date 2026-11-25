@@ -125,7 +125,7 @@ struct States {
 
 /// Runs `test` in a fresh process on a game whose content root holds the two blocks, with the
 /// overworld's chunk (0, 0) empty and no light edits queued.
-fn with_lights(name: &str, test: impl FnOnce(&mut Game<'_>, LevelRef, States, Depth)) {
+fn with_lights(name: &str, test: impl FnOnce(&mut crate::game::ClientGame<'_>, LevelRef, States, Depth)) {
     with_lights_sides(name, &["server"], |game, level, states, depth, _| {
         test(game, level, states, depth);
     });
@@ -134,7 +134,7 @@ fn with_lights(name: &str, test: impl FnOnce(&mut Game<'_>, LevelRef, States, De
 fn with_lights_sides(
     name: &str,
     cases: &[&str],
-    test: impl FnOnce(&mut Game<'_>, LevelRef, States, Depth, &AtomicU8),
+    test: impl FnOnce(&mut crate::game::ClientGame<'_>, LevelRef, States, Depth, &AtomicU8),
 ) {
     const CHILD: &str = "SUNRISE_DYNAMIC_LIGHT_CHILD";
     if run_fresh_cases(name, CHILD, cases) {
@@ -334,7 +334,7 @@ fn light_providers_can_delegate_but_an_active_cycle_refuses() {
 }
 
 /// The stored answer of the cell at (1, y, 2) of chunk (0, 0).
-fn answer(game: &Game<'_>, y: i32) -> Option<u8> {
+fn answer(game: &crate::game::ClientGame<'_>, y: i32) -> Option<u8> {
     let chunk = game.world.chunks.get(&(0, 0)).unwrap();
     let cell = chunk.dynamic_cell(1, y, 2).unwrap();
     chunk.dynamic_emission.get(&cell).copied()

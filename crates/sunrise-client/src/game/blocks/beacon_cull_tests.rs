@@ -13,7 +13,7 @@ use sunrise_client::{
     settings::Settings,
 };
 
-fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
     game_as(resources, execution_role::ExecutionRole::IntegratedServer)
 }
 
@@ -22,7 +22,7 @@ fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> Game<'a> 
 pub(in crate::game) fn game_as<'a>(
     resources: &'a mut Option<Arc<crate::game::Resources>>,
     role: execution_role::ExecutionRole,
-) -> Game<'a> {
+) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -45,7 +45,59 @@ pub(in crate::game) fn game_as<'a>(
     options.resources = root.clone();
     options.execution_role = role;
     let res = &*resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
+        res,
+        loaded.pack,
+        loaded.gui.unwrap(),
+        options,
+        settings,
+        None,
+    )
+    .unwrap();
+    game.build_registries();
+    // The beam's sprite joins the GUI atlas with a renderer: any rectangle draws it here.
+    let rect = sunrise_client::hud::Rect {
+        u0: 0.0,
+        v0: 0.0,
+        u1: 1.0,
+        v1: 1.0,
+        w: 16,
+        h: 16,
+    };
+    game.gui
+        .atlas
+        .sprites
+        .insert("entity/beacon/beacon_beam".into(), rect);
+    game
+}
+
+pub(in crate::game) fn game_as_client<'a>(
+    resources: &'a mut Option<Arc<crate::game::Resources>>,
+    role: execution_role::ExecutionRole,
+) -> crate::game::ClientGame<'a> {
+    let root = std::path::PathBuf::from(
+        std::env::var_os("SUNRISE_TEST_RESOURCES")
+            .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
+    );
+    let settings = Settings::default();
+    let loaded = load_resources(
+        sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+        Vec::new(),
+        None,
+        &root,
+        &settings,
+        std::time::Instant::now(),
+        false,
+        role,
+        &Progress::new(),
+        &mut |_, _| unreachable!(),
+    )
+    .unwrap();
+    let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+    options.resources = root.clone();
+    options.execution_role = role;
+    let res = &*resources.insert(loaded.resources);
+    let mut game = crate::game::ClientGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
@@ -75,7 +127,7 @@ pub(in crate::game) fn game_as<'a>(
 }
 
 /// The vertices `beacon_geometry` writes for a camera at (0.5, 70, 0.5).
-fn beam_vertices(game: &mut Game<'_>) -> usize {
+fn beam_vertices(game: &mut crate::game::ClientGame<'_>) -> usize {
     let mut out = Vec::new();
     game.beacon_geometry(glam::DVec3::new(0.5, 70.0, 0.5), 0.0, &mut out);
     out.len()

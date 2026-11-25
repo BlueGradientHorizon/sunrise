@@ -154,7 +154,7 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
                     },
                 );
                 let (packets, builtin, state) = sent.unwrap();
-                crate::game::native_entity_refs::tests::with_game_role(
+                crate::game::native_entity_refs::tests::with_game_role_client(
                     root.prepared().to_owned(),
                     ExecutionRole::Client,
                     |game| {
@@ -172,9 +172,9 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
                         for packet in packets {
                             game.handle_packet(packet).unwrap();
                         }
-                        assert_eq!(game.client.screen, Screen::Inventory);
+                        assert_eq!(game.side.screen, Screen::Inventory);
                         let open = game
-                            .mod_screen
+                            .side.mod_screen
                             .0
                             .as_ref()
                             .expect("registered screen for the mod menu");
@@ -230,7 +230,7 @@ fn a_mod_blocks_custom_menu_gets_its_registered_screen() {
                 None,
             )],
             || {
-                crate::game::native_entity_refs::tests::with_game_role(
+                crate::game::native_entity_refs::tests::with_game_role_client(
                     root.prepared().to_owned(),
                     crate::game::execution_role::ExecutionRole::Client,
                     |game| {
@@ -255,12 +255,12 @@ fn a_mod_blocks_custom_menu_gets_its_registered_screen() {
                             .unwrap();
                         game.world.set(pos.0, pos.1, pos.2, state).unwrap();
                         assert!(game.open_native_screen(pos, Some(pos), 27, None));
-                        let open = game.mod_screen.0.as_ref().expect("the menu type's screen");
+                        let open = game.side.mod_screen.0.as_ref().expect("the menu type's screen");
                         assert_eq!(open.menu.block.as_deref(), Some("test:crate"));
                         assert_eq!(open.layout().height, 166.0);
                         assert!(open.layout().slots[4].is_none());
                         game.container = Some(pos);
-                        game.title.0 = None;
+                        game.side.title.0 = None;
                         game.ui.hide_gui = true;
                         game.settings.gui_scale = 2;
                         game.level.recipe_book.open = [false; 4];
@@ -279,8 +279,8 @@ fn a_mod_blocks_custom_menu_gets_its_registered_screen() {
                         game.hud([641, 481]);
 
                         // A cursor supplied in GUI pixels directly still truncates toward zero.
-                        game.client.window_cursor = None;
-                        game.client.cursor = (-3.75, 129.75);
+                        game.side.window_cursor = None;
+                        game.side.cursor = (-3.75, 129.75);
                         game.hud([641, 481]);
                         {
                             let seen = seen.lock().unwrap();
@@ -343,7 +343,7 @@ fn a_mod_menu_opened_without_a_block_gets_its_types_screen() {
                 let key = (i32::MIN, 0, 0);
                 seed_native_menu(game, 1, PACK);
                 assert!(game.open_native_screen(key, None, 9, None));
-                let open = game.mod_screen.0.as_ref().expect("the menu type's screen");
+                let open = game.side.mod_screen.0.as_ref().expect("the menu type's screen");
                 assert_eq!((open.layout().height, &open.menu.block), (133.0, &None));
                 assert_eq!(open.layout().slots, vec![None; 9]);
                 game.container = Some(key);
@@ -354,7 +354,7 @@ fn a_mod_menu_opened_without_a_block_gets_its_types_screen() {
                 seed_native_menu(game, 2, "minecraft:generic_9x3");
                 assert!(game.open_native_screen(key, None, 27, None));
                 assert!(
-                    game.mod_screen.0.is_none(),
+                    game.side.mod_screen.0.is_none(),
                     "a vanilla chest keeps its screen"
                 );
             });
@@ -437,7 +437,7 @@ fn custom_menu_screens_route_by_menu_type_and_allow_cross_mod_slot_controls() {
                 ),
             ],
             || {
-                crate::game::native_entity_refs::tests::with_game_role(
+                crate::game::native_entity_refs::tests::with_game_role_client(
                     root.prepared().to_owned(),
                     crate::game::execution_role::ExecutionRole::Client,
                     |game| {
@@ -459,7 +459,7 @@ fn custom_menu_screens_route_by_menu_type_and_allow_cross_mod_slot_controls() {
                             assert!(game.open_native_screen(pos, Some(pos), 5, None));
                             game.container = Some(pos);
                             game.set_screen(Screen::Inventory);
-                            let open = game.mod_screen.0.as_ref().expect("the machine's screen");
+                            let open = game.side.mod_screen.0.as_ref().expect("the machine's screen");
                             let (menu, open_block, base) = (
                                 open.menu.name.clone(),
                                 open.menu.block.clone().unwrap(),
@@ -472,7 +472,7 @@ fn custom_menu_screens_route_by_menu_type_and_allow_cross_mod_slot_controls() {
                             assert_eq!(game.native_screen_slots(), Some(ids));
                             let mut batch = HudBatch::scratch([512, 512]);
                             let (ox, oy) = game.inventory_origin(&batch);
-                            game.client.cursor = (ox + 90.0, oy + 105.0);
+                            game.side.cursor = (ox + 90.0, oy + 105.0);
                             assert!(game.draw_native_screen(&mut batch, ox, oy));
                             assert!(game.native_screen_press_at(&batch, false));
                             let click = (0..32).find_map(|_| {
@@ -530,7 +530,7 @@ fn custom_menu_screens_route_by_menu_type_and_allow_cross_mod_slot_controls() {
                         seed_native_menu(game, 3, "minecraft:hopper");
                         assert!(game.open_native_screen(pos, Some(pos), 5, None));
                         assert!(
-                            game.mod_screen.0.is_none(),
+                            game.side.mod_screen.0.is_none(),
                             "a vanilla hopper keeps its screen"
                         );
                         assert_eq!(game.menu_opener_block(pos, "minecraft:hopper"), None);
@@ -578,7 +578,7 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
                         ["minecraft:anvil", PACK].map(str::to_owned).to_vec(),
                     ),
                 );
-                let open = |game: &mut Game<'_>, window, menu| {
+                let open = |game: &mut crate::game::ClientGame<'_>, window, menu| {
                     game.handle_packet(C::OpenScreen(OpenScreen {
                         container: window,
                         menu,
@@ -586,7 +586,7 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
                     }))
                     .unwrap();
                 };
-                let receive = |game: &mut Game<'_>, window, index, value| {
+                let receive = |game: &mut crate::game::ClientGame<'_>, window, index, value| {
                     game.handle_packet(C::CustomPayload(CustomPayload {
                         channel: DATA_CHANNEL.into(),
                         data: DataSlot {
@@ -598,17 +598,17 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
                     }))
                     .unwrap();
                 };
-                let draw = |game: &Game<'_>| {
+                let draw = |game: &crate::game::ClientGame<'_>| {
                     let mut batch = HudBatch::scratch([200, 200]);
                     assert!(game.draw_native_screen(&mut batch, 0.0, 0.0));
                 };
                 open(game, 1, 0); // Anvil
                 assert!(game.station.is_some());
                 assert!(!game.slots().is_empty());
-                game.client.cursor = (25.0, 40.0);
+                game.side.cursor = (25.0, 40.0);
                 open(game, 2, 1); // No intervening close packet.
-                assert_eq!(game.client.screen, Screen::Inventory);
-                assert_eq!(game.client.cursor, (25.0, 40.0));
+                assert_eq!(game.side.screen, Screen::Inventory);
+                assert_eq!(game.side.cursor, (25.0, 40.0));
                 assert!(game.station.is_none());
                 assert!(game.slots().is_empty());
                 assert_eq!(game.slot_count(), 0);
@@ -619,7 +619,7 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
                 );
                 seen.lock().unwrap().cancel_opening = true;
                 game.set_screen(Screen::Paused);
-                assert_eq!(game.client.screen, Screen::Inventory);
+                assert_eq!(game.side.screen, Screen::Inventory);
                 assert!(
                     game.native_screen_shown(),
                     "an unrelated veto keeps the menu"
@@ -654,9 +654,9 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
                 assert!(game.shown_native_screen().is_none());
                 seen.lock().unwrap().cancel_opening = true;
                 open(game, 2, 1);
-                assert_eq!(game.client.screen, Screen::Playing);
+                assert_eq!(game.side.screen, Screen::Playing);
                 assert!(
-                    game.mod_screen.0.is_none(),
+                    game.side.mod_screen.0.is_none(),
                     "a veto drops the staged screen"
                 );
                 assert!(game.remote.as_ref().unwrap().menu.as_ref().is_none());
@@ -715,7 +715,7 @@ fn stock_menu_data_sync_round_trips_above_255_and_enforces_signed_short_boundary
         mod_api::__private::mark_game_thread();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let root = crate::game::mods::content_root(&base, &Default::default()).unwrap();
-        crate::game::native_entity_refs::tests::with_game_role(
+        crate::game::native_entity_refs::tests::with_game_role_client(
             root.prepared().to_owned(),
             crate::game::execution_role::ExecutionRole::Client,
             |game| {
@@ -735,13 +735,13 @@ fn stock_menu_data_sync_round_trips_above_255_and_enforces_signed_short_boundary
                 game.world.set(pos.0, pos.1, pos.2, state).unwrap();
                 assert!(game.open_native_screen(pos, Some(pos), 27, None));
                 assert!(
-                    game.mod_screen.0.is_none(),
+                    game.side.mod_screen.0.is_none(),
                     "the stock menu has no mod factory"
                 );
                 // Stock screens cannot be replaced by registration. Stage a draw
                 // probe to inspect the data delivered by the stock packet handler.
                 let draw_seen = seen.clone();
-                game.mod_screen.0 = Some(OpenNativeScreen {
+                game.side.mod_screen.0 = Some(OpenNativeScreen {
                     menu: OpenNativeMenu {
                         key: pos,
                         window: 1,

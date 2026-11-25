@@ -24,7 +24,7 @@ pub(in crate::game::server_side) use sunrise_protocol::packets::configuration::C
 
 pub(in crate::game) fn scene<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> (Game<'a>, mpsc::Receiver<Out>) {
+) -> (crate::game::ServerGame<'a>, mpsc::Receiver<Out>) {
     let mut g = crate::game::game_tests::tests::server_game(resources);
     g.build_registries();
     g.set_allow_commands(true);
@@ -100,6 +100,6 @@ pub(in crate::game) fn scene<'a>(
     guest.inventory[0] = Some(ItemStack::new("minecraft:lead", 1));
     g.lan.as_mut().unwrap().hub.guests.push(guest);
     g.sync_tick_chunks();
-    g.server.ticked_entities_through = g.server.next_entity;
+    g.side.ticked_entities_through = g.side.next_entity;
     (g, rx)
 }

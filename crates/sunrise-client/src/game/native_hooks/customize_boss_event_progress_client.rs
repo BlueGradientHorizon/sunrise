@@ -32,7 +32,7 @@ pub(in crate::game::client_side) use crate::game::native_hooks::customize_boss_e
 pub(in crate::game::client_side) use crate::game::native_hooks::customize_boss_event_progress::customize_boss_event_progress_tests::backgrounds;
 
     /// Pink, blue and red bars, in that order.
-    pub(in crate::game) fn add_bars(game: &mut super::Game<'_>) {
+    pub(in crate::game) fn add_bars(game: &mut crate::game::ClientGame<'_>) {
         for (id, color) in [(1, 0), (2, 1), (3, 2)] {
             let packet = BossEvent {
                 id,
@@ -46,7 +46,7 @@ pub(in crate::game::client_side) use crate::game::native_hooks::customize_boss_e
                     fog: false,
                 },
             };
-            game.client.boss_overlay.apply(&packet, 0);
+            game.side.boss_overlay.apply(&packet, 0);
         }
     }
 
@@ -60,7 +60,7 @@ pub(in crate::game::client_side) use crate::game::native_hooks::customize_boss_e
         ) {
             return;
         }
-        super::super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::super::native_entity_refs::tests::with_client_game(|game| {
             // Inject a malformed local component without the packet codec. Its UUID has
             // three words instead of the four required by vanilla's UUIDUtil.CODEC.
             let name = Tag::compound([
@@ -73,7 +73,7 @@ pub(in crate::game::client_side) use crate::game::native_hooks::customize_boss_e
                     ]),
                 ),
             ]);
-            game.client.boss_overlay.apply(
+            game.side.boss_overlay.apply(
                 &BossEvent {
                     id: 1,
                     action: BossAction::Add {
@@ -89,7 +89,7 @@ pub(in crate::game::client_side) use crate::game::native_hooks::customize_boss_e
                 0,
             );
             assert!(matches!(
-                game.client
+                game.side
                     .boss_overlay
                     .mod_bar(0, 0)
                     .unwrap()

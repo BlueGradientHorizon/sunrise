@@ -681,10 +681,10 @@ pub(in crate::game) mod passenger_relation_tests {
     pub(in crate::game) fn actor(i: usize) -> String {
         format!("00000096-0000-0002-0000-{i:012x}")
     }
-    pub(in crate::game) fn value(game: &Game<'_>, i: usize, objective: &str) -> i32 {
+    pub(in crate::game) fn value(game: &crate::game::ServerGame<'_>, i: usize, objective: &str) -> i32 {
         game.score.board.score(&actor(i), objective).unwrap().value
     }
-    pub(in crate::game) fn vehicle(game: &mut Game<'_>, child: usize, parent: usize) {
+    pub(in crate::game) fn vehicle(game: &mut crate::game::ServerGame<'_>, child: usize, parent: usize) {
         assert!(game.run_command("scoreboard players set #r h150u 91"));
         assert!(game.run_command("scoreboard players set #s h150u 17"));
         assert!(game.run_command(&format!(
@@ -733,15 +733,12 @@ pub(in crate::game) use crate::game::server_side::commands_server::execute::term
         options.resources = root.clone();
         options.game_dir = Some(std::env::current_dir().unwrap().join("game"));
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -838,7 +835,7 @@ pub(in crate::game) mod score_condition_tests {
 
     pub(in crate::game) fn game(
         resources: &mut Option<std::sync::Arc<crate::game::Resources>>,
-    ) -> Game<'_> {
+    ) -> crate::game::ServerGame<'_> {
         let mut game = server_game(resources);
         game.build_registries();
         game.set_allow_commands(true);

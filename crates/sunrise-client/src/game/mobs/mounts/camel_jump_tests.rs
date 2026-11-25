@@ -17,7 +17,7 @@ const GUEST: &str = "CamelGuest";
 /// A host on a stone floor with one connected, placed guest (conn 2).
 pub(in crate::game::server_side) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> Game<'a> {
+) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -40,15 +40,12 @@ pub(in crate::game::server_side) fn game<'a>(
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = &*resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -119,15 +116,15 @@ pub(in crate::game::server_side) fn game<'a>(
     game.lan.as_mut().unwrap().hub.guests.push(guest);
     // This fixture installs the guest without the normal login allocator.
     // Reserve its entity ID before commands allocate the camel and sensor mob.
-    game.server.next_entity = game.server.next_entity.max(2);
+    game.side.next_entity = game.side.next_entity.max(2);
     game
 }
 
 /// Runs `command`: whether it succeeded and what the issuer was told.
-fn run(game: &mut Game<'_>, command: &str) -> (bool, Vec<String>) {
-    game.server.chat_capture = Some(Vec::new());
+fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Vec<String>) {
+    game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.server.chat_capture.take().unwrap_or_default();
+    let said = game.side.chat_capture.take().unwrap_or_default();
     (
         ok,
         said.iter().map(sunrise_client::text::Text::plain).collect(),
@@ -136,7 +133,7 @@ fn run(game: &mut Game<'_>, command: &str) -> (bool, Vec<String>) {
 
 const SENSOR: &str = "11 100 8";
 
-fn scene(game: &mut Game<'_>, saddled: bool) {
+fn scene(game: &mut crate::game::ServerGame<'_>, saddled: bool) {
     let gear = if saddled {
         r#",equipment:{saddle:{id:"minecraft:saddle",count:1}}"#
     } else {
@@ -169,7 +166,7 @@ fn scene(game: &mut Game<'_>, saddled: bool) {
     );
 }
 
-fn jump(game: &mut Game<'_>, data: i32) {
+fn jump(game: &mut crate::game::ServerGame<'_>, data: i32) {
     game.lan_guest_packet(
         2,
         sunrise_protocol::packets::play::Serverbound::PlayerCommand(
@@ -182,7 +179,7 @@ fn jump(game: &mut Game<'_>, data: i32) {
     );
 }
 
-fn selected(game: &mut Game<'_>) -> Option<String> {
+fn selected(game: &mut crate::game::ServerGame<'_>) -> Option<String> {
     let (ok, said) = run(
         game,
         &format!("data get block {SENSOR} listener.selector.event.game_event"),
@@ -248,7 +245,7 @@ fn the_scene_sensor_hears_a_mob_beside_it() {
 // Added after the baseline: one entity_action per accepted jump, none for a
 // refused one (the game events posted, as `dispense_fixture` records them).
 
-fn posted_actions(game: &mut Game<'_>, jumps: &[i32]) -> usize {
+fn posted_actions(game: &mut crate::game::ServerGame<'_>, jumps: &[i32]) -> usize {
     crate::game::dispense_fixture::start_recording();
     for &data in jumps {
         jump(game, data);

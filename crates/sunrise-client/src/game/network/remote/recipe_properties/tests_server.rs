@@ -62,7 +62,7 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
     );
     with_guests(|server| {
         let _serving = crate::game::integrated::tests::install_serving(server, false);
-        server.server.world_root = root.to_owned();
+        server.side.world_root = root.to_owned();
         let (tx, rx) = std::sync::mpsc::channel();
         let host = server.lan.as_mut().unwrap();
         host.play.entry(12).or_default();
@@ -95,7 +95,7 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
         server.lan_guest_packet(12, click(0, 0));
         with_client_game(|client| {
             let (mut peer, _writer) = super::super::tests::connect_menu_test(client);
-            let deliver = |client: &mut Game<'_>, expect_closed: bool| {
+            let deliver = |client: &mut crate::game::ClientGame<'_>, expect_closed: bool| {
                 let mut recipes = None;
                 for out in rx.try_iter() {
                     let bodies = match out {
@@ -134,7 +134,7 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
                 client.remote.as_ref().unwrap().tags.is_none(),
                 "no native tag view"
             );
-            let shown = |client: &Game<'_>| client.station_info()["recipe_results"].clone();
+            let shown = |client: &crate::game::ClientGame<'_>| client.station_info()["recipe_results"].clone();
             assert_eq!(
                 shown(client),
                 serde_json::json!([
@@ -150,7 +150,7 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
                 Some(0x112233)
             );
 
-            let mut press = |client: &mut Game<'_>, server: &mut Game<'_>, button| {
+            let mut press = |client: &mut crate::game::ClientGame<'_>, server: &mut crate::game::ServerGame<'_>, button| {
                 assert!(client.menu_session(|menu, env, _| Some(menu.button(env, button))));
                 assert!(client.remote_button_click(button));
                 let (id, payload) = peer.recv().unwrap();
@@ -299,7 +299,7 @@ fn guest_stonecutter_waits_for_deferred_recipe_publication() {
     }
     with_guests(|server| {
         let _serving = crate::game::integrated::tests::install_serving(server, false);
-        server.server.world_root = root.to_owned();
+        server.side.world_root = root.to_owned();
         let (tx, rx) = std::sync::mpsc::channel();
         let host = server.lan.as_mut().unwrap();
         host.play.entry(12).or_default();
@@ -309,7 +309,7 @@ fn guest_stonecutter_waits_for_deferred_recipe_publication() {
         server.reload_datapacks(true, &[]).unwrap();
         let station = place_stonecutter(server);
         assert!(server.lan_open_station(12, &station));
-        let menu = |server: &Game<'_>| {
+        let menu = |server: &crate::game::ServerGame<'_>| {
             server.lan.as_ref().unwrap().menus[&12]
                 .station
                 .as_ref()

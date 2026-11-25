@@ -13,7 +13,7 @@ use sunrise_client::{
 use sunrise_world::piston_shape::MovingPistonState;
 
 /// Places the case's block entity and reports whether the game draws it from the case's camera.
-fn drawn(game: &mut Game<'_>, block: &str, pos: [i32; 3], camera: glam::DVec3) -> Option<bool> {
+fn drawn(game: &mut crate::game::ClientGame<'_>, block: &str, pos: [i32; 3], camera: glam::DVec3) -> Option<bool> {
     let registry = game.pack.assets.registry;
     let state = |spec: &str| {
         let (name, props) = spec.split_once('[').unwrap_or((spec, ""));
@@ -141,7 +141,7 @@ pub(in crate::game) fn run_block_entity_draws_match_the_vanilla_cases() {
     };
     let mut resources = None;
     // A client: it loads what the draws need (the item atlas, baked block models).
-    let mut game = super::beacon_cull_tests::game_as(
+    let mut game = super::beacon_cull_tests::game_as_client(
         &mut resources,
         crate::game::execution_role::ExecutionRole::Client,
     );

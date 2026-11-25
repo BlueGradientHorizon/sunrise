@@ -18,7 +18,7 @@ use sunrise_client::{
 use sunrise_protocol::packets::play::Clientbound as C;
 
 /// Guest 1 (UUID 123) on a world open to LAN, and what their client is sent.
-fn watched_guest(game: &mut Game<'_>) -> mpsc::Receiver<Out> {
+fn watched_guest(game: &mut crate::game::ServerGame<'_>) -> mpsc::Receiver<Out> {
     open_to_lan(game);
     let (tx, rx) = mpsc::channel();
     let mut player = guest(1);
@@ -28,7 +28,7 @@ fn watched_guest(game: &mut Game<'_>) -> mpsc::Receiver<Out> {
 }
 
 /// A one-row chest display for UUID 123 (`Host::open_menu`), replacing the open menu: its window.
-fn open(game: &mut Game<'_>) -> i32 {
+fn open(game: &mut crate::game::ServerGame<'_>) -> i32 {
     let host: &mut dyn ServerHost = game;
     host.open_menu(
         123,
@@ -53,7 +53,7 @@ fn the_container_counter_is_the_last_window_and_advances_as_an_open_does() {
             with_game(|game| {
                 let rx = watched_guest(game);
                 let player = game.player(123).unwrap();
-                let counter = |game: &Game<'_>| player.container_counter(game as &dyn Host);
+                let counter = |game: &crate::game::ServerGame<'_>| player.container_counter(game as &dyn Host);
                 assert_eq!(counter(game), Some(0), "no menu has opened yet");
                 let first = open(game);
                 assert_eq!((first, counter(game)), (1, Some(1)));

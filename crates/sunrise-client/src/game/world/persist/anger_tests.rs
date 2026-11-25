@@ -33,7 +33,7 @@ fn h13076_loaded_anger_end_time_is_kept() {
         let past = summon(1, "wolf", 1, true);
         let zero = summon(2, "iron_golem", 0, true);
         let future = summon(3, "iron_golem", 999_999, false);
-        let saved = |game: &mut Game<'_>, id: u32| {
+        let saved = |game: &mut crate::game::ServerGame<'_>, id: u32| {
             let i = game.mobs.iter().position(|m| m.id == id).unwrap();
             game.mob_tree_nbt(i).get("anger_end_time").cloned()
         };

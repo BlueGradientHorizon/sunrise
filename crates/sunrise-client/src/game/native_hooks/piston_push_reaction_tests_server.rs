@@ -193,7 +193,7 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
                         game.res.item_defaults(),
                     )
                     .unwrap();
-                    game.server_loot.0.set(Some(Arc::new(loot)));
+                    game.side.server_loot.0.set(Some(Arc::new(loot)));
                     let mut extras = game.world.block_entity_extras(from);
                     extras.pending_loot = Some(PendingContainerLoot {
                         table: Tag::String("test:carry".into()),
@@ -202,12 +202,12 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
                     game.world.set_block_entity_extras(from, extras);
                 }
                 if case == "hopper" || case == "same-scope" {
-                    game.server
+                    game.side
                         .hoppers
                         .insert(from, crate::game::machines::HopperState::with_cooldown(40));
                 }
                 if !client {
-                    game.server.lid_openers.insert(from, 2);
+                    game.side.lid_openers.insert(from, 2);
                 }
                 game.world.chest_openers.insert(from, (2, 4.0));
                 game.be_anims.chests.insert(
@@ -220,7 +220,7 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
                 );
                 game.container = Some(from);
                 if !client {
-                    game.server.open_container_slots = Some((from, 27));
+                    game.side.open_container_slots = Some((from, 27));
                 }
                 if case == "same-scope" {
                     let far = (5, 64, 2);
@@ -243,8 +243,8 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
                     });
                     assert_eq!(game.hopper_cooldown(far), 40);
                     assert!(
-                        !game.server.hoppers.contains_key(&from)
-                            && !game.server.hoppers.contains_key(&to)
+                        !game.side.hoppers.contains_key(&from)
+                            && !game.side.hoppers.contains_key(&to)
                     );
                     assert!(
                         matches!(game.world.block_entities.get(&far),Some(BlockEntity::Chest(after)) if after==&slots)
@@ -273,7 +273,7 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
                 assert!(game.world.block_lock(from).is_none());
                 assert_eq!(game.world.container_stack_limit(from), None);
                 if !client {
-                    assert!(!game.server.lid_openers.contains_key(&from));
+                    assert!(!game.side.lid_openers.contains_key(&from));
                 }
                 assert!(!game.world.chest_openers.contains_key(&from));
                 assert!(!game.be_anims.chests.contains_key(&[3, 64, 2]));
@@ -336,7 +336,7 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
                         matches!(game.world.block_entities.get(&to),Some(BlockEntity::Chest(after)) if after==&slots)
                     );
                     if case == "hopper" {
-                        assert!(!game.server.hoppers.contains_key(&from));
+                        assert!(!game.side.hoppers.contains_key(&from));
                         assert_eq!(game.hopper_cooldown(to), 40);
                     } else if case != "loot" && case != "mixed-loot" {
                         if !client {

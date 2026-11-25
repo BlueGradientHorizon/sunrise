@@ -146,13 +146,13 @@ fn pig(tag: &str, n: i32, riders: &str) -> String {
 fn riders(list: &[String]) -> String {
     format!(",Passengers:[{}]", list.join(","))
 }
-fn summon(game: &mut Game<'_>, tag: &str, n: i32, children: &str) -> bool {
+fn summon(game: &mut crate::game::ServerGame<'_>, tag: &str, n: i32, children: &str) -> bool {
     let body = pig(tag, n, children);
     let body = body.trim_start_matches("{id:\"minecraft:pig\",");
     game.run_command(&format!("summon minecraft:pig 4.5 200 4.5 {{{body}"))
 }
 /// The entities in the level that carry `uuid`.
-fn live(game: &Game<'_>, n: i32) -> Vec<u32> {
+fn live(game: &crate::game::ServerGame<'_>, n: i32) -> Vec<u32> {
     let mut ids: Vec<u32> = game
         .persist
         .uuids
@@ -164,18 +164,18 @@ fn live(game: &Game<'_>, n: i32) -> Vec<u32> {
     ids.sort_unstable();
     ids
 }
-fn mob_tagged(game: &Game<'_>, tag: &str) -> Vec<u32> {
+fn mob_tagged(game: &crate::game::ServerGame<'_>, tag: &str) -> Vec<u32> {
     game.mobs
         .iter()
         .filter(|m| game.tags_of(Target::Mob(m.id)).iter().any(|t| t == tag))
         .map(|m| m.id)
         .collect()
 }
-fn mount(game: &Game<'_>, id: u32) -> Option<u32> {
+fn mount(game: &crate::game::ServerGame<'_>, id: u32) -> Option<u32> {
     game.mobs.iter().find(|m| m.id == id).unwrap().extra.mount
 }
 /// The first tag and the UUID of each saved passenger of mob `id`, in order.
-fn saved_riders(game: &mut Game<'_>, id: u32) -> Vec<(String, Option<Tag>)> {
+fn saved_riders(game: &mut crate::game::ServerGame<'_>, id: u32) -> Vec<(String, Option<Tag>)> {
     let saved = game.command_target_nbt(Target::Mob(id)).expect("saved mob");
     let Some(Tag::List(list)) = saved.get("Passengers") else {
         return Vec::new();
@@ -378,7 +378,7 @@ fn dismount_uses_the_retained_vehicle_and_repairs_both_object_lists() {
 
 /// A game with a loaded, force-loaded chunk 0 0, a live pig holding UUID
 /// 100 and a live armor stand holding UUID 150.
-fn with_game(test: impl FnOnce(&mut Game<'_>, u32)) {
+fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>, u32)) {
     crate::game::native_entity_refs::tests::with_game(|game| {
         game.options.game_dir = Some(
             std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
@@ -455,7 +455,7 @@ fn summon_refuses_a_tree_holding_a_live_uuid() {
         ];
         for (tag, n, children, fresh) in conflicts {
             let mobs = game.mobs.len();
-            let next = game.server.next_entity;
+            let next = game.side.next_entity;
             let hooks = (game.persist.joins_canceled, game.persist.joined_seq);
             let draw = game.world.random.clone().next_long();
             if summon(game, tag, n, &children) {
@@ -467,10 +467,10 @@ fn summon_refuses_a_tree_holding_a_live_uuid() {
                     game.mobs.len()
                 ));
             }
-            if game.server.next_entity != next {
+            if game.side.next_entity != next {
                 failures.push(format!(
                     "{tag}: entity id {} expected {next}",
-                    game.server.next_entity
+                    game.side.next_entity
                 ));
             }
             if (game.persist.joins_canceled, game.persist.joined_seq) != hooks {
@@ -686,7 +686,7 @@ fn removed_root_retains_its_geometry_until_offlevel_passengers_dismount() {
 fn dimension_travel_admits_the_duplicate_child_before_the_copied_root() {
     with_game(|game, _| {
         game.options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        game.server.world_root = game.save.0.root.clone();
+        game.side.world_root = game.side.save.0.root.clone();
         game.enter_level(super::super::Dim::Nether).unwrap();
         assert_eq!(game.dim, super::super::Dim::Nether);
         game.world
@@ -874,7 +874,7 @@ const MINECART_TRAVEL: RootTravel = RootTravel {
     rejected_dismounted: [200.69999998807907, 201.19999998807907],
 };
 
-fn age(game: &mut Game<'_>, id: u32) -> Option<Tag> {
+fn age(game: &mut crate::game::ServerGame<'_>, id: u32) -> Option<Tag> {
     game.command_target_nbt(Target::Mob(id))
         .unwrap()
         .get("Age")
@@ -882,7 +882,7 @@ fn age(game: &mut Game<'_>, id: u32) -> Option<Tag> {
 }
 
 /// Write and read back the entities of chunk 0 0, as an unload or a restart does.
-fn reload_chunk(game: &mut Game<'_>) {
+fn reload_chunk(game: &mut crate::game::ServerGame<'_>) {
     let chunks = game.entity_chunks(&HashSet::from([(0, 0)]), true);
     for (key, tags) in chunks {
         game.world.queue_entity_nbt(key, tags);
@@ -897,7 +897,7 @@ fn reload_chunk(game: &mut Game<'_>) {
 fn vehicle_root_travel(expected: &RootTravel, dismount: Option<&str>) {
     with_game(|game, _| {
         game.options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        game.server.world_root = game.save.0.root.clone();
+        game.side.world_root = game.side.save.0.root.clone();
         let ticking = crate::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood;
         ticking(game, ChunkPos::new(0, 0));
         game.enter_level(super::super::Dim::Nether).unwrap();
@@ -955,7 +955,7 @@ fn vehicle_root_travel(expected: &RootTravel, dismount: Option<&str>) {
         assert!(game.boats.iter().all(|b| b.id != root));
         assert!(game.carts.iter().all(|c| c.id != root));
         assert!(game.boat_object(root).is_some() || game.cart_object(root).is_some());
-        let y = |game: &Game<'_>, id: u32| game.mob_object(id).unwrap().position.y;
+        let y = |game: &crate::game::ServerGame<'_>, id: u32| game.mob_object(id).unwrap().position.y;
         assert_eq!([y(game, rejected), y(game, grandchild)], expected.seated);
         for _ in 0..5 {
             game.tick_world(true).unwrap();

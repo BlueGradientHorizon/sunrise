@@ -20,7 +20,7 @@ fn record(f: impl FnOnce()) -> Vec<(&'static str, [f64; 3], Option<Who>)> {
 
 /// A windowless integrated-server game from the prepared resources with a
 /// resident chunk; `None` without them.
-fn with_game<R>(f: impl FnOnce(&mut Game<'_>) -> R) -> Option<R> {
+fn with_game<R>(f: impl FnOnce(&mut crate::game::ServerGame<'_>) -> R) -> Option<R> {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES")?);
     let mut answer = None;
     crate::game::native_entity_refs::tests::with_game_at(root, |game| {
@@ -33,7 +33,7 @@ fn with_game<R>(f: impl FnOnce(&mut Game<'_>) -> R) -> Option<R> {
     answer
 }
 
-fn click(game: &mut Game<'_>, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
+fn click(game: &mut crate::game::ServerGame<'_>, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
     use mod_api::InteractionResult;
     use sunrise_world::level::UseBranch;
     let state = game.world.block(pos[0], pos[1], pos[2]);
@@ -49,7 +49,7 @@ fn click(game: &mut Game<'_>, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
 const AT: [f64; 3] = [0.5, 64.5, 0.5];
 
 /// The jukebox at (0, 64, 0) in the state `record` names; its state id.
-fn place_jukebox(game: &mut Game<'_>, record: bool) -> BlockStateId {
+fn place_jukebox(game: &mut crate::game::ServerGame<'_>, record: bool) -> BlockStateId {
     let registry = game.pack.assets.registry;
     let mut state = registry
         .state(registry.default_state("minecraft:jukebox").unwrap())
@@ -66,7 +66,7 @@ fn place_jukebox(game: &mut Game<'_>, record: bool) -> BlockStateId {
 
 /// A jukebox block entity as a save writes it, loaded back into the world at
 /// (0, 64, 0): `RecordItem` and, with a `clock`, `ticks_since_song_started`.
-fn load_saved(game: &mut Game<'_>, clock: Option<i64>) {
+fn load_saved(game: &mut crate::game::ServerGame<'_>, clock: Option<i64>) {
     let clock = clock.map_or(String::new(), |n| format!("ticks_since_song_started:{n}L,"));
     let (tag, _) = sunrise_core::nbt::parse_snbt(&format!(
         "{{id:\"minecraft:jukebox\",x:0,y:64,z:0,\
@@ -186,24 +186,24 @@ fn the_has_record_state_decides_both_clicks() {
 fn a_saved_song_comes_back_without_its_sound() {
     let Some(cases) = with_game(|game| {
         place_jukebox(game, true);
-        let signal = |game: &Game<'_>| {
+        let signal = |game: &crate::game::ServerGame<'_>| {
             let p = sunrise_core::position::BlockPos::new(0, 64, 0);
             super::jukebox_signals(&game.world, game.items(), p)
                 .unwrap()
                 .0
         };
-        game.server.audio_capture_active = true;
+        game.side.audio_capture_active = true;
         let mut cases = Vec::new();
         for clock in [Some(41), Some(10_000), None, Some(0)] {
             load_saved(game, clock);
-            game.server.lan_songs.clear();
+            game.side.lan_songs.clear();
             let events = record(|| game.tick_jukebox((0, 64, 0)));
             let j = game.jukebox([0, 64, 0]).unwrap();
             cases.push((
                 clock,
                 (j.playing, j.ticks, j.song_clock_present),
                 signal(game),
-                !game.server.lan_songs.is_empty(),
+                !game.side.lan_songs.is_empty(),
                 events,
             ));
         }

@@ -46,7 +46,7 @@ fn framed_compass(id: u32, pos: [i32; 3], facing: u8, rotation: i8) -> ItemFrame
 
 /// A game with the client's item definitions and atlas: resolving a stack to
 /// its model needs both, and `server_game` loads neither.
-fn client_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+fn client_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -69,15 +69,12 @@ fn client_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resourc
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = &*resources.insert(loaded.resources);
-    Game::new(
+    crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
         None,
     )
     .unwrap()
@@ -86,7 +83,7 @@ fn client_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resourc
 /// The `item/compass_NN` sprite the renderer draws for the frame's item: the
 /// item quad's four atlas corners fall inside exactly one of the 32 compass
 /// sprites `compass.json` dispatches over.
-fn drawn_needle(game: &mut Game<'_>, frame: ItemFrame) -> String {
+fn drawn_needle(game: &mut crate::game::ClientGame<'_>, frame: ItemFrame) -> String {
     game.item_frames = Default::default();
     game.item_frames.push(frame);
     // The camera sits at the frame, so the frame passes `shouldRender`.

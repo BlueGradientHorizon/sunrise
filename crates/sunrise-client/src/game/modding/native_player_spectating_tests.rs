@@ -55,7 +55,7 @@ impl Hooks for Probe {
 }
 
 /// Guest 14 joins the two of `with_guests` (12 and 13, both at 3, 64, 5), standing at `position`.
-fn third_guest(game: &mut super::Game<'_>, position: [f64; 3]) {
+fn third_guest(game: &mut crate::game::ServerGame<'_>, position: [f64; 3]) {
     let (tx, _rx) = std::sync::mpsc::channel();
     let mut guest = Guest::new(
         Joined {
@@ -79,7 +79,7 @@ fn third_guest(game: &mut super::Game<'_>, position: [f64; 3]) {
 }
 
 /// Runs `test` with the probe listening and three guests, guest 14 standing apart at `FAR`.
-fn with_probe(test: impl FnOnce(&mut super::Game<'_>, &dyn Fn() -> Vec<Heard>)) {
+fn with_probe(test: impl FnOnce(&mut crate::game::ServerGame<'_>, &dyn Fn() -> Vec<Heard>)) {
     let heard = Arc::new(Mutex::new(Vec::new()));
     let mods = vec![ModEntry::new("spectating", Box::new(Probe(heard.clone())))];
     mod_platform::testing::with_mods(mods.into(), || {
@@ -94,8 +94,8 @@ fn with_probe(test: impl FnOnce(&mut super::Game<'_>, &dyn Fn() -> Vec<Heard>)) 
 const FAR: [f64; 3] = [9.5, 70.0, 9.5];
 const NEAR: [f64; 3] = [3.0, 64.0, 5.0];
 
-fn camera(game: &super::Game<'_>, conn: u32) -> Option<i32> {
-    game.cmds.0.guest_cameras.get(&conn).map(|c| c.id)
+fn camera(game: &crate::game::ServerGame<'_>, conn: u32) -> Option<i32> {
+    game.side.cmds.0.guest_cameras.get(&conn).map(|c| c.id)
 }
 
 #[test]

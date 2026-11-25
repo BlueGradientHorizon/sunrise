@@ -152,7 +152,7 @@ pub(super) fn with_mod_parts(name: &str, test: impl FnOnce(std::path::PathBuf)) 
     });
 }
 
-pub(super) fn mod_holder(game: &mut super::Game<'_>) -> mod_api::BlockEntityRef {
+pub(super) fn mod_holder(game: &mut crate::game::ServerGame<'_>) -> mod_api::BlockEntityRef {
     game.options.dedicated = Some(Vec::new());
     game.world
         .chunks
@@ -187,7 +187,7 @@ fn data_slot_sizing_after_creation_and_load_joins_the_existing_journal() {
                 "scalar writes cannot declare slots"
             );
             assert_eq!(entity.set_data_slots(game, vec![0]), Ok(true));
-            let revision = |game: &super::Game<'_>| {
+            let revision = |game: &crate::game::ServerGame<'_>| {
                 let BlockEntity::Mod(entity) = game.world.block_entities.get(&pos).unwrap() else {
                     panic!("mod holder missing")
                 };

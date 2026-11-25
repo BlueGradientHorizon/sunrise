@@ -84,7 +84,7 @@ fn a_packs_text_draws_its_expression_uniforms() {
         // A text display in front of the camera, as a server's would arrive.
         let sy = game.world.shape.column().section_index(65).unwrap() as i32;
         game.settings.chunk_fade = 0.0;
-        game.renderer
+        game.side.renderer
             .0
             .as_mut()
             .unwrap()
@@ -99,10 +99,10 @@ fn a_packs_text_draws_its_expression_uniforms() {
             0,
             sunrise_protocol::entity_data::Value::Text(sunrise_core::nbt::Tag::String("W".into())),
         )]);
-        game.text_displays.0.insert(1, display);
+        game.side.text_displays.0.insert(1, display);
         game.tick_text_displays(game.clock.runs_normally());
         // Fullbright, in its own process, is on from the first frame: it changes nothing.
-        game.renderer.0.as_mut().unwrap().fullbright = fullbright;
+        game.side.renderer.0.as_mut().unwrap().fullbright = fullbright;
         // The world text over the frame with the GUI hidden (F1), then the GUI's (F3's text)
         // over it.
         game.ui.hide_gui = true;
@@ -112,10 +112,10 @@ fn a_packs_text_draws_its_expression_uniforms() {
             "fullbright {fullbright}"
         );
         game.ui.hide_gui = false;
-        game.client.debug = true;
+        game.side.debug = true;
         assert_eq!(corner(game, frame), [51, 192, 0], "fullbright {fullbright}");
         // The title screen: no world runs, the GUI text's value and `PolyGlobals` are 0.
-        game.title.0 = Some(game.new_title(std::path::PathBuf::from("saves")));
+        game.side.title.0 = Some(game.new_title(std::path::PathBuf::from("saves")));
         assert!(!game.reads_pack_expressions(), "none to evaluate");
         assert!(!game.reads_poly_globals(), "none to give");
         assert_eq!(corner(game, frame), [0, 128, 0]);
@@ -125,16 +125,16 @@ fn a_packs_text_draws_its_expression_uniforms() {
 /// A loading screen's frame (`loading_frame`, as the level loading and file fixer screens draw)
 /// after a world frame evaluated the GUI text's value and gave its `PolyGlobals`: its text draws
 /// 0 for both.
-fn the_loading_screen_draws_zeros(game: &mut super::Game<'_>) {
-    game.client.debug = true;
+fn the_loading_screen_draws_zeros(game: &mut crate::game::ClientGame<'_>) {
+    game.side.debug = true;
     assert_eq!(corner(game, frame), [51, 192, 0]);
-    let renderer = game.renderer.0.as_ref().unwrap();
+    let renderer = game.side.renderer.0.as_ref().unwrap();
     let size = [renderer.config.width, renderer.config.height];
     let mut hud = sunrise_client::hud::HudBatch::new(size, game.settings.gui_scale_inputs());
     sunrise_client::level_loading::draw_progress(&mut hud, &game.gui.atlas, "Loading", 0.5);
-    let loading = |game: &mut super::Game<'_>| {
+    let loading = |game: &mut crate::game::ClientGame<'_>| {
         let frame = super::loading_frame(&hud);
-        game.renderer.0.as_mut().unwrap().render(&frame)
+        game.side.renderer.0.as_mut().unwrap().render(&frame)
     };
     assert_eq!(corner(game, loading), [0, 128, 0]);
 }

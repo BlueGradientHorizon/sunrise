@@ -56,7 +56,7 @@ impl mod_api::CommandArgumentType for WarpNames {
 fn game_with_guest<'a>(
     resources: &'a mut Option<Arc<crate::game::Resources>>,
     name: &str,
-) -> (Game<'a>, mpsc::Receiver<Out>) {
+) -> (crate::game::ServerGame<'a>, mpsc::Receiver<Out>) {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.world
         .chunks
@@ -116,7 +116,7 @@ fn game_with_guest<'a>(
 
 /// The warps command in the server's dispatcher and in every player's tree: `/warp` for everyone,
 /// `/warp go <name>` for everyone, `/warp admin <name>` for owners.
-fn install_warps(game: &mut Game<'_>) {
+fn install_warps(game: &mut crate::game::ServerGame<'_>) {
     let arguments: CommandArguments = std::collections::HashMap::from([(
         "test:warp".to_owned(),
         Arc::new(WarpNames) as Arc<dyn mod_api::CommandArgumentType>,
@@ -173,7 +173,7 @@ fn children(packet: &play::Commands, name: &str) -> Vec<String> {
 }
 
 /// The completions the server answered the guest's request for `command` with.
-fn suggestions(game: &mut Game<'_>, rx: &mpsc::Receiver<Out>, command: &str) -> Vec<String> {
+fn suggestions(game: &mut crate::game::ServerGame<'_>, rx: &mpsc::Receiver<Out>, command: &str) -> Vec<String> {
     let mut w = Writer::new();
     w.varint(7);
     w.string(command);

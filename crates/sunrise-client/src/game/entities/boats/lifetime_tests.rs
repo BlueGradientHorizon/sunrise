@@ -70,8 +70,8 @@ fn a_bound_ridden_boat_commits_the_server_leash_tick() {
     });
 }
 
-fn bound_boat_case(client: bool, tick: impl Fn(&mut Game<'_>, i32)) {
-    let test = |game: &mut Game<'_>| {
+fn bound_boat_case(client: bool, tick: impl Fn(&mut crate::game::ServerGame<'_>, i32)) {
+    let test = |game: &mut crate::game::ServerGame<'_>| {
         let _server = if client {
             let (client, server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "BoatLifetimeTest").unwrap();
@@ -81,7 +81,7 @@ fn bound_boat_case(client: bool, tick: impl Fn(&mut Game<'_>, i32)) {
         } else {
             None
         };
-        game.tickets.0.update(None);
+        game.side.tickets.0.update(None);
         game.boats
             .push(Boat::new(71, "oak".into(), Vec3::new(0.5, 70.0, 0.5), 0.0));
         game.boats.update(0, |boat| boat.hurt_time = 6);

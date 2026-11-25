@@ -15,12 +15,12 @@ fn id(text: &str) -> Identifier {
     Identifier::parse_namespaced(text).unwrap()
 }
 
-fn lookup(game: &super::Game<'_>, registry: &str, name: &str) -> Option<i32> {
+fn lookup<S: crate::game::Side>(game: &super::Game<'_, S>, registry: &str, name: &str) -> Option<i32> where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
     game.registry_protocol_id(&id(registry), &id(name))
 }
 
 /// Opens `game` to the network, as `with_guests` does, without guests.
-fn serve(game: &mut super::Game<'_>) {
+fn serve(game: &mut crate::game::ServerGame<'_>) {
     let settings = LanSettings {
         port: 0,
         guest_commands: false,
@@ -44,8 +44,8 @@ fn serve(game: &mut super::Game<'_>) {
         seed: 0,
         max_players: 2,
         integrated: true,
-        levels: game.server.level_shapes,
-        level_seeds: game.levels.0.runtime.seeds(),
+        levels: game.side.level_shapes,
+        level_seeds: game.side.levels.0.runtime.seeds(),
     };
     game.lan_host(settings, net, config).unwrap();
 }

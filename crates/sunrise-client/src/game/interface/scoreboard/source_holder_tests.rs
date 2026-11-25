@@ -15,7 +15,7 @@ use sunrise_protocol::{buf::Reader, ids, packets::configuration::ClientInformati
 fn game_with_guest<'a>(
     resources: &'a mut Option<Arc<crate::game::Resources>>,
     name: &str,
-) -> (Game<'a>, mpsc::Receiver<Out>) {
+) -> (crate::game::ServerGame<'a>, mpsc::Receiver<Out>) {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.world
         .chunks
@@ -86,15 +86,15 @@ fn a_score_for_another_player_uses_their_team_formatted_name() {
     ] {
         assert!(game.run_command(command), "{command}");
     }
-    game.server.chat_capture = Some(Vec::new());
+    game.side.chat_capture = Some(Vec::new());
     assert!(game.run_command("scoreboard players set Alex o 5"));
-    let lines = game.server.chat_capture.take().unwrap();
+    let lines = game.side.chat_capture.take().unwrap();
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].plain(), "Set [o] for [R] Alex to 5");
 }
 
 /// The `/trigger` suggestions the server sent the guest for `trigger `.
-fn guest_trigger_suggestions(game: &mut Game<'_>, rx: &mpsc::Receiver<Out>) -> Vec<String> {
+fn guest_trigger_suggestions(game: &mut crate::game::ServerGame<'_>, rx: &mpsc::Receiver<Out>) -> Vec<String> {
     let mut w = Writer::new();
     w.varint(7);
     w.string("trigger ");
@@ -160,11 +160,11 @@ fn a_wildcard_reset_names_tracked_holders_without_their_team_formatting() {
     // `Scoreboard.getTrackedPlayers` hands out `ScoreHolder.forNameOnly`, which has no display name.
     let (ok, lines) = game
         .with_guest_swap(2, game.dim, |game| {
-            game.server.chat_capture = Some(Vec::new());
+            game.side.chat_capture = Some(Vec::new());
             let permission = std::mem::replace(&mut game.ui.registries.permission, 4);
             let ok = game.run_command("scoreboard players reset *");
             game.ui.registries.permission = permission;
-            (ok, game.server.chat_capture.take().unwrap())
+            (ok, game.side.chat_capture.take().unwrap())
         })
         .unwrap();
     assert!(ok);

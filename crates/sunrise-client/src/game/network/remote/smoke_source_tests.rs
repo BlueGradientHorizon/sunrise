@@ -1,5 +1,5 @@
 use super::*;
-use crate::game::native_entity_refs::tests::with_game_role;
+use crate::game::native_entity_refs::tests::{with_game_role, with_game_role_client};
 use mod_api::{BlockPart, Hooks, LevelSide, Registrar, SmokeSourceEvent};
 
 struct Bale;
@@ -59,7 +59,7 @@ fn client_placement_predicts_signal_fire_from_a_block_part() {
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("smoke_test", Box::new(SmokeMod))].into();
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
-        with_game_role(
+        with_game_role_client(
             root.path().to_path_buf(),
             crate::game::execution_role::ExecutionRole::Client,
             |game| {

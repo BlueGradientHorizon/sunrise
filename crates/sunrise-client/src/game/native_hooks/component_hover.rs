@@ -49,7 +49,7 @@ mod component_hover_tests {
         let text = Text::from(serde_json::json!({ "text": "x", "hover_event": hover }));
         text.spans[0].style.clone()
     }
-    fn drawn(game: &mut super::Game<'_>, style: &Style) -> Vec<([f32; 2], u32)> {
+    fn drawn(game: &mut crate::game::ClientGame<'_>, style: &Style) -> Vec<([f32; 2], u32)> {
         let mut batch = HudBatch::scratch([320, 240]);
         game.component_hover_effect(&mut batch, style, (40.0, 30.0));
         batch.vertices.iter().map(|v| (v.uv, v.color)).collect()

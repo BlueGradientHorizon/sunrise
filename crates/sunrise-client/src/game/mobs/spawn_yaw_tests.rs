@@ -10,7 +10,7 @@ use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -33,15 +33,12 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     options.resources = root.clone();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -63,7 +60,7 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     game
 }
 
-fn yaw_of(game: &Game<'_>, id: u32) -> f32 {
+fn yaw_of(game: &crate::game::ServerGame<'_>, id: u32) -> f32 {
     game.mobs.iter().find(|m| m.id == id).expect("spawned").yaw
 }
 

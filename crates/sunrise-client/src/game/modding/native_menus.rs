@@ -576,7 +576,7 @@ mod tests {
     };
 
     /// Guest 1 (UUID 123) on a world open to LAN, and what their client is sent.
-    fn watched_guest(game: &mut Game<'_>) -> mpsc::Receiver<Out> {
+    fn watched_guest(game: &mut crate::game::ServerGame<'_>) -> mpsc::Receiver<Out> {
         open_to_lan(game);
         let (tx, rx) = mpsc::channel();
         let mut player = guest(1);
@@ -601,7 +601,7 @@ mod tests {
             .collect()
     }
 
-    fn open(game: &mut Game<'_>, rows: u8, title: &str, replace: MenuReplace) -> i32 {
+    fn open(game: &mut crate::game::ServerGame<'_>, rows: u8, title: &str, replace: MenuReplace) -> i32 {
         let host: &mut dyn ServerHost = game;
         host.open_menu(
             123,
@@ -1241,7 +1241,7 @@ mod tests {
     fn shutdown_saves_current_and_parked_inventory_cursors() {
         with_game(|game| {
             let world = tempfile::tempdir().unwrap();
-            game.server.world_root = world.path().to_owned();
+            game.side.world_root = world.path().to_owned();
             let _rx = watched_guest(game);
             let current = ItemStack::new("minecraft:lapis_lazuli", 3);
             let parked = ItemStack::new("minecraft:iron_ingot", 4);
@@ -1547,7 +1547,7 @@ mod tests {
 
     /// [`with_game`] with [`MOD_MENU`] as the thread's menu types, so a test neither depends on
     /// registering first nor touches the one-shot process table.
-    fn with_mod_menu_game(test: impl FnOnce(&mut Game<'_>)) {
+    fn with_mod_menu_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         sunrise_client::containers::with_mod_menu_types(
             [(
                 MOD_MENU.into(),
@@ -1567,7 +1567,7 @@ mod tests {
 
     /// [`watched_guest`] on a Sunrise client that reads a menu opened with no block, and the
     /// key of [`MOD_MENU`].
-    pub(super) fn mod_menu_guest(game: &mut Game<'_>) -> (mpsc::Receiver<Out>, mod_api::MenuKey) {
+    pub(super) fn mod_menu_guest(game: &mut crate::game::ServerGame<'_>) -> (mpsc::Receiver<Out>, mod_api::MenuKey) {
         let rx = watched_guest(game);
         game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.brand = "sunrise".into();
@@ -2283,7 +2283,7 @@ mod tests {
                             menu.set_data_slot(game, 2, 1),
                             Err(MenuDataRefusal::InvalidIndex)
                         );
-                        let resend = |game: &mut Game<'_>| {
+                        let resend = |game: &mut crate::game::ServerGame<'_>| {
                             game.lan
                                 .as_mut()
                                 .unwrap()

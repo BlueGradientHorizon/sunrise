@@ -60,7 +60,7 @@ fn a_mob_presses_a_plate_only_inside_the_simulation_distance() {
         for _ in 0..3 {
             game.tick_blocks().unwrap();
         }
-        let powered = |game: &Game<'_>, x: i32| {
+        let powered = |game: &crate::game::ServerGame<'_>, x: i32| {
             let state = game.world.block(x, 64, 8);
             registry
                 .state(state)

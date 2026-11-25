@@ -10,16 +10,16 @@ use super::*;
 #[test]
 #[ignore = "daily"]
 fn closing_options_opened_from_the_title_leaves_the_pointer_free() {
-    crate::game::native_entity_refs::tests::with_game(|game| {
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
         let saves = tempfile::tempdir().unwrap();
-        game.title.0 = Some(game.new_title(saves.path().to_path_buf()));
-        game.client.focused = true;
+        game.side.title.0 = Some(game.new_title(saves.path().to_path_buf()));
+        game.side.focused = true;
         game.open_options(true);
-        game.client.agent_pointer = true;
+        game.side.agent_pointer = true;
         game.leave_options();
-        assert_eq!(game.client.screen, Screen::Playing);
-        assert!(game.title.0.is_some());
-        assert!(game.client.agent_pointer, "the title is shown: no grab");
+        assert_eq!(game.side.screen, Screen::Playing);
+        assert!(game.side.title.0.is_some());
+        assert!(game.side.agent_pointer, "the title is shown: no grab");
     });
 }
 
@@ -28,15 +28,15 @@ fn closing_options_opened_from_the_title_leaves_the_pointer_free() {
 #[test]
 #[ignore = "daily"]
 fn closing_title_options_into_a_world_entered_behind_them_grabs() {
-    crate::game::native_entity_refs::tests::with_game(|game| {
-        game.title.0 = None;
-        game.client.focused = true;
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
+        game.side.title.0 = None;
+        game.side.focused = true;
         game.open_options(true);
-        game.client.agent_pointer = true;
+        game.side.agent_pointer = true;
         game.leave_options();
-        assert_eq!(game.client.screen, Screen::Playing);
+        assert_eq!(game.side.screen, Screen::Playing);
         assert!(
-            !game.client.agent_pointer,
+            !game.side.agent_pointer,
             "a world is shown: the pointer is grabbed"
         );
     });
@@ -47,15 +47,15 @@ fn closing_title_options_into_a_world_entered_behind_them_grabs() {
 #[test]
 #[ignore = "daily"]
 fn closing_pause_menu_options_leaves_the_pointer_free() {
-    crate::game::native_entity_refs::tests::with_game(|game| {
-        game.title.0 = None;
-        game.client.focused = true;
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
+        game.side.title.0 = None;
+        game.side.focused = true;
         game.open_options(false);
-        game.client.agent_pointer = true;
+        game.side.agent_pointer = true;
         game.leave_options();
-        assert_eq!(game.client.screen, Screen::Paused);
+        assert_eq!(game.side.screen, Screen::Paused);
         assert!(
-            game.client.agent_pointer,
+            game.side.agent_pointer,
             "the pause menu keeps the pointer free"
         );
     });

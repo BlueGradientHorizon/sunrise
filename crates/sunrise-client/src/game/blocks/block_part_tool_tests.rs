@@ -63,7 +63,7 @@ fn a_block_part_allows_replaces_or_denies_a_tool_action_and_a_preview_changes_no
             game.world
                 .set(pos[0], pos[1], pos[2], state(block))
                 .unwrap();
-            let at = |game: &Game<'_>| game.world.block(pos[0], pos[1], pos[2]);
+            let at = |game: &crate::game::ServerGame<'_>| game.world.block(pos[0], pos[1], pos[2]);
             // The preview answers as the action will, and changes nothing.
             let native = BlockHit::new(hit_on(pos).point, [0, 1, 0], false);
             let preview = level.block_transform(
@@ -116,7 +116,7 @@ fn a_block_part_can_deny_a_shovel_putting_out_a_campfire() {
         let registry = game.pack.assets.registry;
         let state = |name: &str| registry.default_state(name).unwrap();
         let shovel = ItemStack::new("minecraft:iron_shovel", 1);
-        let is_lit = |game: &Game<'_>, pos: [i32; 3], block: &str| {
+        let is_lit = |game: &crate::game::ServerGame<'_>, pos: [i32; 3], block: &str| {
             let id = game.world.block(pos[0], pos[1], pos[2]);
             let state = game.pack.assets.registry.state(id).unwrap();
             assert_eq!(&*state.name, block);

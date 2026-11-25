@@ -41,7 +41,7 @@ pub(in crate::game) fn spawn(dimension: &str) -> SpawnInfo {
 }
 
 /// A spectator client in the overworld, holding a zombie at (10, 64, 12) and an oak boat.
-pub(in crate::game) fn with_spectator(test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_spectator(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     with_client_game(|game| {
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "CameraViewTest").unwrap();
@@ -62,7 +62,7 @@ pub(in crate::game) fn with_spectator(test: impl FnOnce(&mut Game<'_>)) {
     });
 }
 
-pub(in crate::game) fn add(game: &mut Game<'_>, id: i32, kind: &str, position: [f64; 3]) {
+pub(in crate::game) fn add(game: &mut crate::game::ClientGame<'_>, id: i32, kind: &str, position: [f64; 3]) {
     let kind = registry_id(game, "minecraft:entity_type", kind);
     game.handle_packet(C::AddEntity(play::AddEntity {
         id,
@@ -78,13 +78,13 @@ pub(in crate::game) fn add(game: &mut Game<'_>, id: i32, kind: &str, position: [
     .unwrap();
 }
 
-pub(in crate::game) fn registry_id(game: &Game<'_>, registry: &str, name: &str) -> i32 {
+pub(in crate::game) fn registry_id(game: &crate::game::ClientGame<'_>, registry: &str, name: &str) -> i32 {
     let remote = game.remote.as_ref().unwrap();
     remote.builtin.get(registry).unwrap().id(name).unwrap()
 }
 
 pub(in crate::game) fn update(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ClientGame<'_>,
     id: i32,
     effect: &str,
     duration: i32,
@@ -101,19 +101,19 @@ pub(in crate::game) fn update(
     .unwrap();
 }
 
-pub(in crate::game) fn remove(game: &mut Game<'_>, id: i32, effect: &str) {
+pub(in crate::game) fn remove(game: &mut crate::game::ClientGame<'_>, id: i32, effect: &str) {
     let effect = registry_id(game, "minecraft:mob_effect", effect);
     game.handle_packet(C::RemoveMobEffect(play::RemoveMobEffect { id, effect }))
         .unwrap();
 }
 
-pub(in crate::game) fn set_camera(game: &mut Game<'_>, camera_id: i32) {
+pub(in crate::game) fn set_camera(game: &mut crate::game::ClientGame<'_>, camera_id: i32) {
     game.handle_packet(C::SetCamera(play::SetCamera { camera_id }))
         .unwrap();
 }
 
 /// The view's values but its light, read at the partial tick 0.25.
-pub(in crate::game) fn view(game: &Game<'_>) -> ViewEntity {
+pub(in crate::game) fn view(game: &crate::game::ClientGame<'_>) -> ViewEntity {
     ViewEntity {
         eye_light: [0; 2],
         ..game.pack_view_entity(glam::DVec3::new(0.5, 65.62, 0.5), 0.25)
@@ -122,7 +122,7 @@ pub(in crate::game) fn view(game: &Game<'_>) -> ViewEntity {
 
 /// The effects the client keeps for the entity `id` (a mob, another player or an armor stand),
 /// `None` when the level holds no such entity or it has none.
-pub(in crate::game) fn kept(game: &Game<'_>, id: i32) -> Option<Vec<(&'static str, i32)>> {
+pub(in crate::game) fn kept(game: &crate::game::ClientGame<'_>, id: i32) -> Option<Vec<(&'static str, i32)>> {
     let id = id as u32;
     let list = match game.mobs.iter().find(|m| m.id == id) {
         Some(m) => &m.extra.client_effects.list,
@@ -225,7 +225,7 @@ fn other_entities_effects_go_with_the_entity() {
 }
 
 /// Puts `light` (`sky << 4 | block`) at one block, every other block of its section dark.
-pub(in crate::game) fn set_light(game: &mut Game<'_>, at: glam::IVec3, light: u8) {
+pub(in crate::game) fn set_light(game: &mut crate::game::ClientGame<'_>, at: glam::IVec3, light: u8) {
     let key = (at.x >> 4, at.z >> 4);
     let layout = game.world.layout();
     if game.world.chunks.get(&key).is_none() {
@@ -243,7 +243,7 @@ pub(in crate::game) fn set_light(game: &mut Game<'_>, at: glam::IVec3, light: u8
     section.light = sunrise_client::chunk::Light::from_slice(&all);
 }
 
-pub(in crate::game) fn ride(game: &mut Game<'_>, vehicle: i32, passengers: Vec<i32>) {
+pub(in crate::game) fn ride(game: &mut crate::game::ClientGame<'_>, vehicle: i32, passengers: Vec<i32>) {
     game.handle_packet(C::SetPassengers(play::SetPassengers {
         vehicle,
         passengers,
@@ -307,7 +307,7 @@ fn the_camera_entitys_effect_lifecycle_is_vanillas() {
         assert_eq!(view(game).darkness, 0.0);
 
         // nightVision: 1 above 200 ticks left and for the infinite -1 only; else the flicker.
-        fn night_vision(game: &mut Game<'_>, duration: i32) -> f32 {
+        fn night_vision(game: &mut crate::game::ClientGame<'_>, duration: i32) -> f32 {
             update(game, ZOMBIE, "minecraft:night_vision", duration, 0);
             view(game).night_vision
         }
@@ -418,7 +418,7 @@ fn effects_count_down_on_the_ticks_their_entity_ticks() {
         for id in ids {
             update(game, id, "minecraft:speed", 100, 0);
         }
-        let left = |game: &Game<'_>| ids.map(|id| kept(game, id).unwrap()[0].1);
+        let left = |game: &crate::game::ClientGame<'_>| ids.map(|id| kept(game, id).unwrap()[0].1);
         game.tick_remote_entities(true);
         assert_eq!(left(game), [99; 5], "a running level ticks every entity");
         game.tick_remote_entities(false);
@@ -519,7 +519,7 @@ fn a_canceled_tick_counts_no_effect_down() {
                 update(game, id, "minecraft:speed", 100, 0);
             }
             let left =
-                |game: &Game<'_>| [ZOMBIE, HUSK, TICKING].map(|id| kept(game, id).unwrap()[0].1);
+                |game: &crate::game::ClientGame<'_>| [ZOMBIE, HUSK, TICKING].map(|id| kept(game, id).unwrap()[0].1);
             take(&heard);
             game.tick_remote_entities(true);
             // The camera entity's tick was canceled from its own Pre event, the husk's from
@@ -540,7 +540,7 @@ pub(in crate::game) const FRAME_NAME: &str = "game::client_side::remote_client::
 pub(in crate::game) const FRAME_CASE: &str = "SUNRISE_CAMERA_VIEW_FRAME_CASE";
 
 /// What a game's frame gives the pack: its camera, its `eyePosition` and the view's light.
-pub(in crate::game) fn framed(game: &mut Game<'_>) -> (glam::DVec3, glam::DVec3, [i32; 2]) {
+pub(in crate::game) fn framed(game: &mut crate::game::ClientGame<'_>) -> (glam::DVec3, glam::DVec3, [i32; 2]) {
     let mut seen = None;
     game.render_with(|_, frame| {
         seen = Some((frame.camera, frame.eye, frame.pack.view.eye_light));

@@ -5,7 +5,7 @@ use crate::game::Game;
 use sunrise_client::{items::ItemStack, mobs::Mob, motion::PlayerMotion};
 use sunrise_core::geometry::Vec3;
 
-fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let mut resources = None;
     let mut g = crate::game::game_tests::tests::server_game(&mut resources);
     test(&mut g);

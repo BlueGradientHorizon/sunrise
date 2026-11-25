@@ -85,7 +85,7 @@ fn registered_angles_reach_local_remote_and_humanoid_before_species_animation() 
                 game.tick_remote_arm_poses();
                 game.tick_player_model();
                 for mob in [
-                    game.client.player_model.as_ref().unwrap(),
+                    game.side.player_model.as_ref().unwrap(),
                     &game.mobs[0],
                     &game.mobs[1],
                 ] {

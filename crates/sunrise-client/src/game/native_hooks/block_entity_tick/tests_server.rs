@@ -39,7 +39,7 @@ fn replacement_and_item_stack_journals_close_in_their_own_dimensions() {
     }
     let scratch = tempfile::tempdir().unwrap();
     with_ticker(|game, _| {
-        game.server.world_root = scratch.path().into();
+        game.side.world_root = scratch.path().into();
         let overworld = place_subject(game, KIND);
         game.enter_level(Dim::Nether).unwrap();
         let nether = place_subject(game, KIND);
@@ -79,7 +79,7 @@ fn replacement_and_item_stack_journals_close_in_their_own_dimensions() {
             ];
             game.spawn_item(ItemStack::new(item, 8), [1.0, 64.0, 1.0], [0.0; 3], 0);
         }
-        let replace = |game: &mut Game<'_>, subject| {
+        let replace = |game: &mut crate::game::ServerGame<'_>, subject| {
             let item = game
                 .item_entity(game.entity(game.dropped[0].id).unwrap())
                 .unwrap();

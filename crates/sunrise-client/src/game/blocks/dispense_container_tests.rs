@@ -333,11 +333,11 @@ fn spawn_dispenser_case(test: &str) -> bool {
 
 /// A dedicated server with a chunk at the origin, a stone floor, an empty dispenser facing east
 /// and the containers' parts installed.
-fn with_dispenser(test: impl FnOnce(&mut Game<'_>, LevelRef)) {
+fn with_dispenser(test: impl FnOnce(&mut crate::game::ServerGame<'_>, LevelRef)) {
     with_dispenser_notices(Notices::default(), |game, level, _| test(game, level));
 }
 
-fn with_dispenser_notices(notices: Notices, test: impl FnOnce(&mut Game<'_>, LevelRef, &Notices)) {
+fn with_dispenser_notices(notices: Notices, test: impl FnOnce(&mut crate::game::ServerGame<'_>, LevelRef, &Notices)) {
     let mods: Mods = vec![ModEntry::new(
         "containers",
         Box::new(Containers(notices.clone())),
@@ -365,7 +365,7 @@ fn with_dispenser_notices(notices: Notices, test: impl FnOnce(&mut Game<'_>, Lev
     });
 }
 
-fn place_dispenser(game: &mut Game<'_>, level: LevelRef) {
+fn place_dispenser(game: &mut crate::game::ServerGame<'_>, level: LevelRef) {
     let base = state(game, "minecraft:dispenser");
     let dispenser = game.with_props(base, &[("facing", "east")]).unwrap();
     assert_eq!(
@@ -374,21 +374,21 @@ fn place_dispenser(game: &mut Game<'_>, level: LevelRef) {
     );
 }
 
-fn state(game: &Game<'_>, name: &str) -> BlockStateId {
+fn state(game: &crate::game::ServerGame<'_>, name: &str) -> BlockStateId {
     game.pack.assets.registry.default_state(name).unwrap()
 }
 
-fn front(game: &Game<'_>) -> BlockStateId {
+fn front(game: &crate::game::ServerGame<'_>) -> BlockStateId {
     game.world.block(FRONT[0], FRONT[1], FRONT[2])
 }
 
-fn set_front(game: &mut Game<'_>, name: &str) {
+fn set_front(game: &mut crate::game::ServerGame<'_>, name: &str) {
     let block = state(game, name);
     game.world.set(FRONT[0], FRONT[1], FRONT[2], block).unwrap();
 }
 
 /// The dispenser dispenses `stack` from its slot: what the slot holds then.
-fn dispense(game: &mut Game<'_>, stack: ItemStack) -> Option<ItemStack> {
+fn dispense(game: &mut crate::game::ServerGame<'_>, stack: ItemStack) -> Option<ItemStack> {
     let at = (DISPENSER[0], DISPENSER[1], DISPENSER[2]);
     game.dispense_item(at, Direction::East, stack)
         .unwrap()
@@ -397,7 +397,7 @@ fn dispense(game: &mut Game<'_>, stack: ItemStack) -> Option<ItemStack> {
 }
 
 /// Exercise the fluid helper through its ItemPart without the caller's click and smoke.
-fn dispense_part(game: &mut Game<'_>, input: &str) -> Dispensed {
+fn dispense_part(game: &mut crate::game::ServerGame<'_>, input: &str) -> Dispensed {
     let mut answer = None;
     game.native_dispense_item(
         game.dim.id(),
@@ -607,7 +607,7 @@ fn dispenser_remainder_merges_without_contents_changed() {
             .get_mut(&SLOT_POS)
             .unwrap()
             .slots_mut()[0] = Some(ItemStack::new("minecraft:stick", 10));
-        let merge = |game: &mut Game<'_>| {
+        let merge = |game: &mut crate::game::ServerGame<'_>| {
             let mut offered = ItemStack::new("minecraft:stick", 2);
             offered
                 .data_mut()
@@ -675,7 +675,7 @@ fn nested_dispense_settles_in_the_command_source_level() {
             }
         });
 
-        let dispense = |game: &mut Game<'_>| {
+        let dispense = |game: &mut crate::game::ServerGame<'_>| {
             game.storage_transaction(|game, _| {
                 let stick = ItemStack::new("minecraft:stick", 1);
                 let stack = test_snapshot(&ItemStack::new("minecraft:bucket", 2));
@@ -784,7 +784,7 @@ fn nested_dispense_container_publishes_fluid_changes_only_in_the_source_level() 
         nether.dimension = Dim::Nether;
         let [x, y, z] = FRONT;
         let pos = BlockPos::new(x, y, z);
-        let water_tick = |game: &Game<'_>| {
+        let water_tick = |game: &crate::game::ServerGame<'_>| {
             game.block_ticks
                 .fluids
                 .has_scheduled(pos, TickTypeId(FluidKind::Water.tick_id()))
@@ -1023,7 +1023,7 @@ fn dispenser_replacement_before_notice_replay_does_not_receive_the_notice() {
     });
 }
 
-fn run_dispenser_replacement(replacement: Replacement, tick: impl FnOnce(&mut Game<'_>, LevelRef)) {
+fn run_dispenser_replacement(replacement: Replacement, tick: impl FnOnce(&mut crate::game::ServerGame<'_>, LevelRef)) {
     let notices = Notices {
         replacement,
         ..Notices::default()
@@ -1118,7 +1118,7 @@ fn a_container_that_could_give_picks_up_first_and_its_event_comes_before_the_cli
         // Holding 1000 of 2000, it could empty into the air or take more: with a source in
         // front it takes more.
         set_front(game, "minecraft:water");
-        game.server.pending_native_sounds.clear();
+        game.side.pending_native_sounds.clear();
         dispense_fixture::start_recording();
         let full = dispense(game, half.unwrap());
         let lines = dispense_fixture::stop_recording();
@@ -1130,7 +1130,7 @@ fn a_container_that_could_give_picks_up_first_and_its_event_comes_before_the_cli
         let click = lines.iter().position(|line| line.starts_with("L 1000 "));
         assert!(pickup.is_some() && pickup < click, "{lines:?}");
         let sounds: Vec<_> = game
-            .server
+            .side
             .pending_native_sounds
             .iter()
             .map(|s| s.sound.clone())
@@ -1154,7 +1154,7 @@ fn a_container_that_could_give_picks_up_first_and_its_event_comes_before_the_cli
                 ("amount", Tag::Int(1500)),
             ])),
         );
-        game.server.pending_native_sounds.clear();
+        game.side.pending_native_sounds.clear();
         dispense_fixture::start_recording();
         let placed = dispense(game, almost_full);
         let lines = dispense_fixture::stop_recording();
@@ -1182,7 +1182,7 @@ fn a_container_that_could_give_picks_up_first_and_its_event_comes_before_the_cli
             "{lines:?}"
         );
         let sounds: Vec<_> = game
-            .server
+            .side
             .pending_native_sounds
             .iter()
             .map(|s| s.sound.clone())

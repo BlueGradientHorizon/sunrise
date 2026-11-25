@@ -1036,7 +1036,7 @@ mod tests {
     /// A hub with one guest (conn 12) trading with a farmer villager (mob 40)
     /// at `level`; the guest's channel comes back with the villager.
     fn open_trade(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         level: i32,
     ) -> (
         mod_api::MerchantRef,
@@ -1066,8 +1066,8 @@ mod tests {
             seed: 0,
             max_players: 2,
             integrated: true,
-            levels: game.server.level_shapes,
-            level_seeds: game.levels.0.runtime.seeds(),
+            levels: game.side.level_shapes,
+            level_seeds: game.side.levels.0.runtime.seeds(),
         };
         game.lan_host(settings, net, config).unwrap();
         let (tx, rx) = std::sync::mpsc::channel();
@@ -1110,7 +1110,7 @@ mod tests {
         for id in
             merchant::Session::sequences_needed(&game.stations().trades, &session.profession, level)
         {
-            let random = game.server.rand_sequences.lend(&id, game.level.seed);
+            let random = game.side.rand_sequences.lend(&id, game.level.seed);
             session.sequences.insert(id, random);
         }
         let gm = GuestMerchant {
@@ -1223,7 +1223,7 @@ mod tests {
                 ),
                 _ => false,
             }));
-            assert_eq!(game.server.missing_professions.len(), 1);
+            assert_eq!(game.side.missing_professions.len(), 1);
             let tag = sunrise_client::entity_nbt::mob_to_nbt(
                 &game.mobs[0],
                 [0; 4],
@@ -1234,7 +1234,7 @@ mod tests {
             );
             game.apply_entity_nbt(super::super::commands::Target::Mob(40), tag)
                 .unwrap();
-            assert_eq!(game.server.missing_professions.len(), 1);
+            assert_eq!(game.side.missing_professions.len(), 1);
             let second = spawn(game, 41, "minecraft:villager");
             let mut tag = sunrise_client::entity_nbt::mob_to_nbt(
                 &game.mobs[1],
@@ -1259,14 +1259,14 @@ mod tests {
                 tag.clone(),
             )
             .unwrap();
-            assert_eq!(game.server.missing_professions.len(), 1);
-            game.server.missing_professions.clear();
+            assert_eq!(game.side.missing_professions.len(), 1);
+            game.side.missing_professions.clear();
             game.apply_entity_nbt(
                 super::super::commands::Target::Mob(second.entity().id()),
                 tag,
             )
             .unwrap();
-            assert_eq!(game.server.missing_professions.len(), 1);
+            assert_eq!(game.side.missing_professions.len(), 1);
             assert_eq!(
                 game.mobs[0].extra.trade.as_ref().unwrap().offers,
                 vec![offer]

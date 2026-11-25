@@ -60,15 +60,15 @@ fn run(mode: Option<u8>) -> (Vec<(String, u32)>, usize, i32, u32, i64, bool) {
     mod_platform::testing::with_mods(Default::default(), || {
         crate::game::native_entity_refs::tests::with_game(|game| {
             let scratch = tempfile::tempdir().unwrap();
-            game.server.world_root = scratch.path().into();
-            game.save.0 = Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.world_root = scratch.path().into();
+            game.side.save.0 = Arc::new(sunrise_client::save::SaveDir::new(
                 scratch.path().join("save"),
                 sunrise_client::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
             ));
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
-            game.server.lan_acting_uuid = Some(7);
-            game.server.next_entity = 1000;
+            game.side.lan_acting_uuid = Some(7);
+            game.side.next_entity = 1000;
             game.level.seed = 12345;
             *game.world.random = LegacyRandom::new(12345);
             let advancement = scratch.path().join("test/advancement/catch.json");
@@ -86,7 +86,7 @@ fn run(mode: Option<u8>) -> (Vec<(String, u32)>, usize, i32, u32, i64, bool) {
                 game.res.item_defaults(),
             )
             .unwrap();
-            game.server_loot.0.set(Some(Arc::new(loot)));
+            game.side.server_loot.0.set(Some(Arc::new(loot)));
             let mut hook = Hook {
                 uuid: [0; 4],
                 attachment_lifetime: Default::default(),
@@ -137,7 +137,7 @@ fn run(mode: Option<u8>) -> (Vec<(String, u32)>, usize, i32, u32, i64, bool) {
                 .into();
             let before_items = game.dropped.len();
             let before_orbs = game.orbs.len();
-            let stat = |game: &Game<'_>| {
+            let stat = |game: &crate::game::ServerGame<'_>| {
                 game.stats
                     .values
                     .get("minecraft:custom")

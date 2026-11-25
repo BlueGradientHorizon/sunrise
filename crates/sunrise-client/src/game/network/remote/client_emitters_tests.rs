@@ -17,7 +17,7 @@ pub(in crate::game) fn with_isolated_client(name: &str, body: impl FnOnce()) {
     crate::game::in_own_process(&test, body);
 }
 
-pub(in crate::game) fn registry_id<__Side: crate::game::Side>(game: &Game<'_, __Side>, registry: &str, name: &str) -> i32 {
+pub(in crate::game) fn registry_id(game: &crate::game::ClientGame<'_>, registry: &str, name: &str) -> i32 {
     game.remote
         .as_ref()
         .unwrap()
@@ -28,8 +28,8 @@ pub(in crate::game) fn registry_id<__Side: crate::game::Side>(game: &Game<'_, __
         .unwrap()
 }
 
-pub(in crate::game) fn add_entity<__Side: crate::game::Side>(
-    game: &Game<'_, __Side>,
+pub(in crate::game) fn add_entity(
+    game: &crate::game::ClientGame<'_>,
     id: i32,
     uuid: u128,
     kind: &str,
@@ -48,14 +48,14 @@ pub(in crate::game) fn add_entity<__Side: crate::game::Side>(
     })
 }
 
-pub(in crate::game) fn deliver<__Side: crate::game::Side>(game: &mut Game<'_, __Side>, packet: C) {
+pub(in crate::game) fn deliver(game: &mut crate::game::ClientGame<'_>, packet: C) {
     let bytes = packet.encode();
     let mut reader = sunrise_protocol::buf::Reader::new(&bytes);
     game.handle_packet(C::decode(reader.varint().unwrap(), reader.rest()).unwrap())
         .unwrap();
 }
 
-pub(in crate::game) fn animate<__Side: crate::game::Side>(game: &mut Game<'_, __Side>, id: i32, action: u8) {
+pub(in crate::game) fn animate(game: &mut crate::game::ClientGame<'_>, id: i32, action: u8) {
     deliver(game, C::Animate(play::Animate { id, action }));
 }
 
@@ -170,7 +170,7 @@ fn hit_emitters_use_cloud_radius_and_the_live_thrown_potion() {
                 game.step_remote_thrown();
                 // Read the independently ticked projectile, not its packet position
                 // or the resolver under test. Gravity moves it even at zero motion.
-                let position = |game: &Game<'_>| {
+                let position = |game: &crate::game::ClientGame<'_>| {
                     let at = game.potions.thrown_entities()[0].1;
                     [at.x, at.y, at.z]
                 };

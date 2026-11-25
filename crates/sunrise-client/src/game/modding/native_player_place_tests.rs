@@ -6,7 +6,7 @@ use super::native_guest_turn_tests::with_guests;
 use mod_api::{EntityRef, PlayerWorldRefusal as Refusal, WorldEpoch};
 
 /// The API's value for a block state of the world.
-fn api_state(game: &super::Game<'_>, name: &str) -> mod_api::BlockState {
+fn api_state<S: crate::game::Side>(game: &super::Game<'_, S>, name: &str) -> mod_api::BlockState where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
     use super::api_values::TryIntoApi;
     game.pack
         .assets
@@ -17,7 +17,7 @@ fn api_state(game: &super::Game<'_>, name: &str) -> mod_api::BlockState {
         .unwrap()
 }
 
-fn loaded(game: &mut super::Game<'_>) {
+fn loaded(game: &mut crate::game::ServerGame<'_>) {
     // The write is `level_set_block`'s, which an authoritative server only takes.
     game.options.dedicated = Some(Vec::new());
     game.world.chunks.insert(

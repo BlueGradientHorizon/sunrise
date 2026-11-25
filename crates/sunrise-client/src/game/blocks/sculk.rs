@@ -418,15 +418,12 @@ pub(in crate::game) mod shriek_capture_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -483,7 +480,7 @@ pub(in crate::game) mod shriek_capture_tests {
             world_random.next_long(),
             "level random continuation"
         );
-        let shared = &game.server.pending_sounds;
+        let shared = &game.side.pending_sounds;
         assert_eq!(
             shared.iter().map(|s| s.event.as_str()).collect::<Vec<_>>(),
             vec![before, after],
@@ -517,7 +514,7 @@ pub(in crate::game) mod shriek_capture_tests {
         let mut client_options = Options::parse(std::iter::empty()).unwrap().unwrap();
         client_options.resources = root.clone();
         client_options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-        let mut client = Game::new(
+        let mut client = crate::game::ClientGame::new(
             &client_loaded.resources,
             client_loaded.pack,
             client_loaded.gui.unwrap(),
@@ -535,9 +532,9 @@ pub(in crate::game) mod shriek_capture_tests {
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         client.world.set(4, 200, 4, dry_state).unwrap();
         client.world.set(7, 200, 4, wet_state).unwrap();
-        client.particles.0.requested = Some(Vec::new());
-        client.particles.0.seed_randoms(6500, 6501, 6502);
-        client.audio.0.capture = Some(Vec::new());
+        client.side.particles.0.requested = Some(Vec::new());
+        client.side.particles.0.seed_randoms(6500, 6501, 6502);
+        client.side.audio.0.capture = Some(Vec::new());
         let mut random = LegacyRandom::new(6500);
         let mut client_world_random = client.world.random.clone();
         client.level_events.push(LevelEvent::LevelEvent {
@@ -548,13 +545,13 @@ pub(in crate::game) mod shriek_capture_tests {
         });
         client.client_process_level_events().unwrap();
         assert_eq!(
-            client.audio.0.heard.get(effect),
+            client.side.audio.0.heard.get(effect),
             Some(&1),
             "dry effect must play locally on client"
         );
         random.next_float();
         assert_eq!(
-            client.particles.0.random().next_long(),
+            client.side.particles.0.random().next_long(),
             random.next_long(),
             "dry random continuation"
         );
@@ -566,16 +563,16 @@ pub(in crate::game) mod shriek_capture_tests {
         });
         client.client_process_level_events().unwrap();
         assert_eq!(
-            client.audio.0.heard.get(effect),
+            client.side.audio.0.heard.get(effect),
             Some(&1),
             "waterlogged effect stays silent"
         );
         assert_eq!(
-            client.particles.0.random().next_long(),
+            client.side.particles.0.random().next_long(),
             random.next_long(),
             "wet branch consumes no pitch draw"
         );
-        let requests = client.particles.0.requested.as_ref().unwrap();
+        let requests = client.side.particles.0.requested.as_ref().unwrap();
         assert_eq!(requests.len(), 20);
         for (i, (options, position, velocity)) in requests.iter().enumerate() {
             assert_eq!(options.ty, ParticleType::Shriek);
@@ -589,7 +586,7 @@ pub(in crate::game) mod shriek_capture_tests {
             "client level random untouched"
         );
         assert!(
-            client.audio.0.capture.as_ref().unwrap().is_empty(),
+            client.side.audio.0.capture.as_ref().unwrap().is_empty(),
             "client local shriek must not enter capture"
         );
     }

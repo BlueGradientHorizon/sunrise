@@ -40,8 +40,8 @@ pub(in crate::game) fn post_effects_before_login_disconnects_case(case_name: &st
         .as_str()
         .unwrap();
     with_client_game(|game| {
-        game.title.0 = None;
-        game.client.post_effects.clear();
+        game.side.title.0 = None;
+        game.side.post_effects.clear();
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "PostEffectsBeforeLogin")
             .unwrap();
@@ -75,11 +75,11 @@ pub(in crate::game) fn post_effects_before_login_disconnects_case(case_name: &st
             "play_before_login ({case_name}): post_effects before Login did not disconnect"
         );
         assert!(
-            game.client.post_effects.is_empty(),
+            game.side.post_effects.is_empty(),
             "play_before_login ({case_name}): post_effects were applied before Login"
         );
         let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
-            game.title.0.as_ref().map(|t| &t.mode)
+            game.side.title.0.as_ref().map(|t| &t.mode)
         else {
             panic!("play_before_login ({case_name}): missing Disconnected screen");
         };
@@ -108,11 +108,11 @@ pub(in crate::game) fn post_effects_cleared_on_login_respawn_and_reconfigure_bod
             .unwrap();
 
         // Stale post_effects must clear when initial Login creates the player.
-        game.client.post_effects = vec!["minecraft:stale".into()];
+        game.side.post_effects = vec!["minecraft:stale".into()];
         peer.send(&C::Login(login_packet(1)).encode()).unwrap();
         wait_for_pong(game, &mut peer, 1);
         assert_eq!(
-            game.client.post_effects,
+            game.side.post_effects,
             json_strings(&lifecycle["after_initial_login"]),
             "after_initial_login"
         );
@@ -126,20 +126,20 @@ pub(in crate::game) fn post_effects_cleared_on_login_respawn_and_reconfigure_bod
         )
         .unwrap();
         wait_for_pong(game, &mut peer, 2);
-        assert_eq!(game.client.post_effects, two, "after_set_two");
+        assert_eq!(game.side.post_effects, two, "after_set_two");
 
         peer.send(&C::PostEffects(play::PostEffects { effects: vec![] }).encode())
             .unwrap();
         wait_for_pong(game, &mut peer, 3);
         assert_eq!(
-            game.client.post_effects,
+            game.side.post_effects,
             json_strings(&lifecycle["after_set_empty"]),
             "after_set_empty"
         );
 
         // Respawn creates a fresh LocalPlayer with empty post_effects for every keep mask,
         // and clears any spectated entity shader effect.
-        game.title.0 = None;
+        game.side.title.0 = None;
         if game.player.is_none() {
             game.player = Some(
                 sunrise_client::motion::PlayerMotion::new(
@@ -194,8 +194,8 @@ pub(in crate::game) fn post_effects_cleared_on_login_respawn_and_reconfigure_bod
         .unwrap();
         spectate(&mut peer, 500, creeper_kind);
         wait_for_pong(game, &mut peer, 8);
-        assert_eq!(game.client.spectated_post_effect, Some("minecraft:creeper"));
-        assert!(game.client.spectated_post_effect_active);
+        assert_eq!(game.side.spectated_post_effect, Some("minecraft:creeper"));
+        assert!(game.side.spectated_post_effect_active);
         assert_eq!(
             game.requested_post_effects(),
             vec![
@@ -205,13 +205,13 @@ pub(in crate::game) fn post_effects_cleared_on_login_respawn_and_reconfigure_bod
             ]
         );
         game.toggle_spectator_post_effect();
-        assert!(!game.client.spectated_post_effect_active);
+        assert!(!game.side.spectated_post_effect_active);
         assert_eq!(
             game.requested_post_effects(),
             vec!["minecraft:end_of_frame", "minecraft:invert"]
         );
         game.toggle_spectator_post_effect();
-        assert!(game.client.spectated_post_effect_active);
+        assert!(game.side.spectated_post_effect_active);
         spectate(&mut peer, 501, enderman_kind);
         wait_for_pong(game, &mut peer, 9);
         assert_eq!(
@@ -243,18 +243,18 @@ pub(in crate::game) fn post_effects_cleared_on_login_respawn_and_reconfigure_bod
 
         // Server camera switch vs F5 perspective transitions match vanilla 26.3.
         let cam_witness = &witness["camera_switch_and_perspective"];
-        let expect_cam = |game: &Game<'_>, prefix: &str| {
+        let expect_cam = |game: &crate::game::ClientGame<'_>, prefix: &str| {
             let expected_effect = match cam_witness[format!("{prefix}_effect")].as_str().unwrap() {
                 "none" => None,
                 other => Some(other),
             };
             let expected_active = cam_witness[format!("{prefix}_active")].as_bool().unwrap();
             assert_eq!(
-                game.client.spectated_post_effect, expected_effect,
+                game.side.spectated_post_effect, expected_effect,
                 "{prefix}"
             );
             assert_eq!(
-                game.client.spectated_post_effect_active, expected_active,
+                game.side.spectated_post_effect_active, expected_active,
                 "{prefix}"
             );
         };
@@ -297,15 +297,15 @@ pub(in crate::game) fn post_effects_cleared_on_login_respawn_and_reconfigure_bod
             wait_for_pong(game, &mut peer, 10 + i32::from(keep));
             let key = format!("keep_{keep}");
             assert_eq!(
-                game.client.post_effects,
+                game.side.post_effects,
                 json_strings(&lifecycle["after_respawn"][key.as_str()]),
                 "after_respawn {key}"
             );
             assert_eq!(
-                game.client.spectated_post_effect, None,
+                game.side.spectated_post_effect, None,
                 "respawn clears spectator effect"
             );
-            assert!(!game.client.spectated_post_effect_active);
+            assert!(!game.side.spectated_post_effect_active);
         }
 
         // Repeat Login without clearClientLevel keeps the existing LocalPlayer's post_effects
@@ -319,25 +319,25 @@ pub(in crate::game) fn post_effects_cleared_on_login_respawn_and_reconfigure_bod
         .unwrap();
         spectate(&mut peer, 520, creeper_kind);
         wait_for_pong(game, &mut peer, 19);
-        assert_eq!(game.client.spectated_post_effect, Some("minecraft:creeper"));
+        assert_eq!(game.side.spectated_post_effect, Some("minecraft:creeper"));
         peer.send(&C::Login(login_packet(2)).encode()).unwrap();
         wait_for_pong(game, &mut peer, 20);
         assert_eq!(
-            game.client.post_effects,
+            game.side.post_effects,
             json_strings(&lifecycle["after_repeat_login_without_clear"]),
             "after_repeat_login_without_clear"
         );
         assert_eq!(
-            game.client.spectated_post_effect, None,
+            game.side.spectated_post_effect, None,
             "repeat login clears spectator effect"
         );
-        assert!(!game.client.spectated_post_effect_active);
+        assert!(!game.side.spectated_post_effect_active);
 
         // Reconfiguration runs clearClientLevel, so the next Login starts with empty post_effects
         // and clears the spectated entity shader immediately.
         spectate(&mut peer, 521, creeper_kind);
         wait_for_pong(game, &mut peer, 21);
-        assert_eq!(game.client.spectated_post_effect, Some("minecraft:creeper"));
+        assert_eq!(game.side.spectated_post_effect, Some("minecraft:creeper"));
         peer.send(&C::StartConfiguration(Empty).encode()).unwrap();
         let deadline = Instant::now() + Duration::from_secs(5);
         let mut acked = false;
@@ -353,10 +353,10 @@ pub(in crate::game) fn post_effects_cleared_on_login_respawn_and_reconfigure_bod
         }
         assert!(acked, "never received ConfigurationAcknowledged");
         assert_eq!(
-            game.client.spectated_post_effect, None,
+            game.side.spectated_post_effect, None,
             "reconfigure clears spectator effect"
         );
-        assert!(!game.client.spectated_post_effect_active);
+        assert!(!game.side.spectated_post_effect_active);
 
         peer.send(&cfg::Clientbound::FinishConfiguration(Empty).encode())
             .unwrap();
@@ -380,7 +380,7 @@ pub(in crate::game) fn post_effects_cleared_on_login_respawn_and_reconfigure_bod
         peer.send(&C::Login(login_packet(3)).encode()).unwrap();
         wait_for_pong(game, &mut peer, 30);
         assert_eq!(
-            game.client.post_effects,
+            game.side.post_effects,
             json_strings(&lifecycle["after_reconfigure_then_login"]),
             "after_reconfigure_then_login"
         );
@@ -388,12 +388,12 @@ pub(in crate::game) fn post_effects_cleared_on_login_respawn_and_reconfigure_bod
         // Disconnecting also clears the spectated entity shader.
         spectate(&mut peer, 522, creeper_kind);
         wait_for_pong(game, &mut peer, 31);
-        assert_eq!(game.client.spectated_post_effect, Some("minecraft:creeper"));
+        assert_eq!(game.side.spectated_post_effect, Some("minecraft:creeper"));
         game.leave_server(None).unwrap();
         assert_eq!(
-            game.client.spectated_post_effect, None,
+            game.side.spectated_post_effect, None,
             "disconnect clears spectator effect"
         );
-        assert!(!game.client.spectated_post_effect_active);
+        assert!(!game.side.spectated_post_effect_active);
     });
 }

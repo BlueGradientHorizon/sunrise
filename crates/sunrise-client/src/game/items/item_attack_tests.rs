@@ -97,12 +97,12 @@ fn with_probe(probe: &Probe, test: impl FnOnce()) {
 }
 
 /// Guest 12's held stack.
-fn held(game: &super::Game<'_>) -> ItemStack {
+fn held(game: &crate::game::ServerGame<'_>) -> ItemStack {
     let guest = game.lan.as_ref().unwrap().hub.guest(12).unwrap();
     guest.inventory[guest.selected].clone().unwrap()
 }
 
-fn hold(game: &mut super::Game<'_>, item: &str) {
+fn hold(game: &mut crate::game::ServerGame<'_>, item: &str) {
     game.lan
         .as_mut()
         .unwrap()
@@ -113,7 +113,7 @@ fn hold(game: &mut super::Game<'_>, item: &str) {
         .unwrap();
 }
 
-fn health(game: &super::Game<'_>, id: u32) -> f32 {
+fn health(game: &crate::game::ServerGame<'_>, id: u32) -> f32 {
     game.mobs.iter().find(|m| m.id == id).unwrap().health
 }
 

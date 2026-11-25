@@ -254,7 +254,7 @@ pub(in crate::game::server_side) fn with_both(test: impl FnOnce()) {
     mod_platform::testing::with_mods(mods, test);
 }
 
-pub(in crate::game) fn open(game: &mut Game<'_>, payment: u32) -> ContainerClick {
+pub(in crate::game) fn open(game: &mut crate::game::ServerGame<'_>, payment: u32) -> ContainerClick {
     use super::{
         native_merchant_refs::tests::{offer, spawn},
         trading::MerchantState,
@@ -310,11 +310,11 @@ pub(in crate::game) fn open(game: &mut Game<'_>, payment: u32) -> ContainerClick
 pub(in crate::game) const WORK_TICK: i64 = 3_000;
 
 /// A loaded composter with an adult farmer close enough to start work on its next AI tick.
-pub(in crate::game) fn prepare_work(game: &mut Game<'_>, save: &std::path::Path) {
+pub(in crate::game) fn prepare_work(game: &mut crate::game::ServerGame<'_>, save: &std::path::Path) {
     use sunrise_client::mobs::villager_brain;
     use sunrise_core::{geometry::Vec3, random::LegacyRandom};
 
-    game.server.world_root = save.to_path_buf();
+    game.side.world_root = save.to_path_buf();
     game.enter_level(super::Dim::Overworld).unwrap();
     game.options.dedicated = Some(Vec::new());
     game.streaming
@@ -341,8 +341,8 @@ pub(in crate::game) fn prepare_work(game: &mut Game<'_>, save: &std::path::Path)
     villager_brain::init(mob, WORK_TICK, WORK_TICK, 40);
 }
 
-pub(in crate::game) fn tick_work(game: &mut Game<'_>) {
-    let worked_at = |game: &Game<'_>| {
+pub(in crate::game) fn tick_work(game: &mut crate::game::ServerGame<'_>) {
+    let worked_at = |game: &crate::game::ServerGame<'_>| {
         sunrise_client::mobs::villager::ext(game.mob_object(40).unwrap())
             .unwrap()
             .brain
@@ -358,7 +358,7 @@ pub(in crate::game) fn tick_work(game: &mut Game<'_>) {
 }
 
 pub(in crate::game) fn work_screen<'a>(
-    game: &'a Game<'_>,
+    game: &'a crate::game::ServerGame<'_>,
 ) -> &'a super::lan_trading::GuestMerchant {
     game.lan.as_ref().unwrap().menus[&12]
         .merchant
@@ -367,7 +367,7 @@ pub(in crate::game) fn work_screen<'a>(
 }
 
 pub(in crate::game) fn work_screen_mut<'a>(
-    game: &'a mut Game<'_>,
+    game: &'a mut crate::game::ServerGame<'_>,
 ) -> &'a mut super::lan_trading::GuestMerchant {
     game.lan
         .as_mut()
@@ -380,7 +380,7 @@ pub(in crate::game) fn work_screen_mut<'a>(
         .unwrap()
 }
 
-pub(in crate::game::server_side) fn reloaded_trader(game: &Game<'_>) -> Box<Trader> {
+pub(in crate::game::server_side) fn reloaded_trader(game: &crate::game::ServerGame<'_>) -> Box<Trader> {
     let saved = sunrise_client::entity_nbt::mob_to_nbt(
         game.mob_object(40).unwrap(),
         [1, 2, 3, 4],
@@ -804,7 +804,7 @@ fn an_invalid_offer_restores_another_merchants_effects_and_modifiers() {
 }
 
 /// Observe the order from gameplay's store and independently through the mod API's live map.
-pub(in crate::game::server_side) fn speed_modifier_ids(game: &Game<'_>) -> [Vec<String>; 2] {
+pub(in crate::game::server_side) fn speed_modifier_ids(game: &crate::game::ServerGame<'_>) -> [Vec<String>; 2] {
     let attrs = game.mobs[1].extra.attributes.as_deref().unwrap();
     let legacy = attrs
         .modifiers
@@ -999,7 +999,7 @@ fn exploration_trade_maps_share_nested_reservations() {
     });
 }
 
-pub(in crate::game::server_side) fn record_packets(game: &mut Game<'_>) -> mpsc::Receiver<Out> {
+pub(in crate::game::server_side) fn record_packets(game: &mut crate::game::ServerGame<'_>) -> mpsc::Receiver<Out> {
     let (tx, rx) = mpsc::channel();
     game.lan
         .as_mut()
@@ -1045,7 +1045,7 @@ pub(in crate::game::server_side) fn corrected(rx: &mpsc::Receiver<Out>, window: 
 pub(in crate::game::server_side) fn count(stack: Option<&ItemStack>) -> u32 {
     stack.map_or(0, |s| s.count)
 }
-pub(in crate::game::server_side) fn result(game: &Game<'_>) -> u32 {
+pub(in crate::game::server_side) fn result(game: &crate::game::ServerGame<'_>) -> u32 {
     let guest = &game.lan.as_ref().unwrap().hub.guests[0];
     guest
         .inventory
@@ -1061,10 +1061,10 @@ pub(in crate::game::server_side) fn result(game: &Game<'_>) -> u32 {
                 .filter(|s| s.item.as_ref() == "minecraft:emerald"),
         )
 }
-pub(in crate::game::server_side) fn dirt(game: &Game<'_>) -> u32 {
+pub(in crate::game::server_side) fn dirt(game: &crate::game::ServerGame<'_>) -> u32 {
     count(game.lan.as_ref().unwrap().hub.guests[0].inventory[20].as_ref())
 }
-pub(in crate::game::server_side) fn stat(game: &Game<'_>) -> i32 {
+pub(in crate::game::server_side) fn stat(game: &crate::game::ServerGame<'_>) -> i32 {
     game.lan.as_ref().unwrap().play[&12]
         .stats
         .values
@@ -1073,7 +1073,7 @@ pub(in crate::game::server_side) fn stat(game: &Game<'_>) -> i32 {
         .copied()
         .unwrap_or(0)
 }
-pub(in crate::game::server_side) fn unchanged(game: &mut Game<'_>, payment: u32) {
+pub(in crate::game::server_side) fn unchanged(game: &mut crate::game::ServerGame<'_>, payment: u32) {
     assert_eq!(result(game), 0);
     assert_eq!(dirt(game), 0);
     assert_eq!(stat(game), 0);

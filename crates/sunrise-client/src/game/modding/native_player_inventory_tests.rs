@@ -6,16 +6,16 @@ use mod_api::{
     TransactionError, prelude::*,
 };
 
-fn api_item(game: &super::Game<'_>, snbt: &str) -> Option<ItemStack> {
+fn api_item(game: &crate::game::ServerGame<'_>, snbt: &str) -> Option<ItemStack> {
     let host: &dyn Host = game;
     host.item_from_snbt(snbt)
 }
 
-fn stack(game: &super::Game<'_>, snbt: &str) -> ItemStack {
+fn stack(game: &crate::game::ServerGame<'_>, snbt: &str) -> ItemStack {
     api_item(game, snbt).unwrap_or_else(|| panic!("{snbt}"))
 }
 
-fn guest<'a>(game: &'a super::Game<'_>, conn: u32) -> &'a sunrise_client::lan::guest::Guest {
+fn guest<'a>(game: &'a crate::game::ServerGame<'_>, conn: u32) -> &'a sunrise_client::lan::guest::Guest {
     game.lan.as_ref().unwrap().hub.guest(conn).unwrap()
 }
 

@@ -195,7 +195,7 @@ fn quads(out: &[Vertex]) -> Vec<f32> {
 }
 
 /// A mob of `kind` (a player of the slim model when `slim`), standing at [`FEET`].
-fn mob(game: &Game<'_>, kind: &str, slim: bool) -> Mob {
+fn mob(game: &crate::game::ClientGame<'_>, kind: &str, slim: bool) -> Mob {
     let kind = if kind == "minecraft:player" {
         game.res.player_type().clone().unwrap()
     } else {
@@ -209,7 +209,7 @@ fn mob(game: &Game<'_>, kind: &str, slim: bool) -> Mob {
 
 /// The mods' layers one frame draws over a mob of `kind` (a player of the slim model when
 /// `slim`).
-fn layer_frame(game: &Game<'_>, kind: &str, slim: bool) -> Vec<Vertex> {
+fn layer_frame(game: &crate::game::ClientGame<'_>, kind: &str, slim: bool) -> Vec<Vertex> {
     let mut out = Vec::new();
     let mob = mob(game, kind, slim);
     let layers = game.mod_layers(&mob);
@@ -220,7 +220,7 @@ fn layer_frame(game: &Game<'_>, kind: &str, slim: bool) -> Vec<Vertex> {
 /// Runs `check` on a client game with prepared resources and the [`Scene`]'s mods, resolved as
 /// the first load does. In a child process running only `test`: the registrations of a process
 /// are its own.
-fn in_scene(test: &str, check: impl FnOnce(&mut Game<'_>, &Scene)) {
+fn in_scene(test: &str, check: impl FnOnce(&mut crate::game::ClientGame<'_>, &Scene)) {
     if std::env::var_os("SUNRISE_ENTITY_LAYERS_CHILD").is_none() {
         let status = std::process::Command::new(std::env::current_exe().unwrap())
             .args([

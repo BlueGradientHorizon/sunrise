@@ -6,7 +6,7 @@ use super::*;
 use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
 
-fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
+fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -29,15 +29,12 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -60,21 +57,21 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
         }
     }
     assert!(game.run_command("fill 0 99 0 15 99 15 stone"));
-    game.server.chat_capture = Some(Vec::new());
+    game.side.chat_capture = Some(Vec::new());
     game
 }
 
 /// Runs `command` and returns whether it succeeded and the text of the one
 /// message it sent, as vanilla 26.3 shows it.
-fn run(game: &mut Game<'_>, command: &str) -> (bool, Option<String>) {
-    game.server.chat_capture = Some(Vec::new());
+fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Option<String>) {
+    game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let messages = game.server.chat_capture.take().unwrap_or_default();
+    let messages = game.side.chat_capture.take().unwrap_or_default();
     let text = messages.first().map(sunrise_client::text::Text::plain);
     (ok, text)
 }
 
-fn block_is(game: &mut Game<'_>, at: &str, block: &str) -> bool {
+fn block_is(game: &mut crate::game::ServerGame<'_>, at: &str, block: &str) -> bool {
     run(game, &format!("execute if block {at} {block}")).0
 }
 
@@ -173,7 +170,7 @@ fn an_inline_feature_draws_the_level_random_as_its_named_twin() {
         std::fs::read_to_string(root.join("data/minecraft/worldgen/feature/flower_default.json"))
             .expect("the vanilla feature");
     let inline: String = json.split_whitespace().collect::<Vec<_>>().join(" ");
-    let flower = |game: &mut Game<'_>, at: &str| {
+    let flower = |game: &mut crate::game::ServerGame<'_>, at: &str| {
         ["minecraft:poppy", "minecraft:dandelion"]
             .into_iter()
             .find(|f| block_is(game, at, f))

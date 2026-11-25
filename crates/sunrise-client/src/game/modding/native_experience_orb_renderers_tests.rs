@@ -119,12 +119,12 @@ fn hanging(id: u32, previous: Vec3) -> ExperienceOrb {
 }
 
 /// The vertices one frame of experience orbs draws for a single entity.
-fn orb_frame(game: &mut Game<'_>, id: u32) -> Vec<Vertex> {
+fn orb_frame(game: &mut crate::game::ClientGame<'_>, id: u32) -> Vec<Vertex> {
     orb_frame_from(game, id, Vec3::new(FEET[0], FEET[1], FEET[2]))
 }
 
 /// [`orb_frame`] for an orb that moved to its position from `previous`.
-fn orb_frame_from(game: &mut Game<'_>, id: u32, previous: Vec3) -> Vec<Vertex> {
+fn orb_frame_from(game: &mut crate::game::ClientGame<'_>, id: u32, previous: Vec3) -> Vec<Vertex> {
     game.orbs.clear();
     game.orbs.push(hanging(id, previous));
     let live = game.orbs.iter().map(|o| {
@@ -171,7 +171,7 @@ fn an_experience_orb_registration_resolves_to_the_orb_slot() {
 /// Runs `check` on a client game with prepared resources and the scene's orb renderer, resolved
 /// as the first load does. In a child process running only `test`: the registrations are kept
 /// once per process.
-fn in_scene(test: &str, check: impl FnOnce(&mut Game<'_>, &Arc<Mutex<Heard>>, &Flaky)) {
+fn in_scene(test: &str, check: impl FnOnce(&mut crate::game::ClientGame<'_>, &Arc<Mutex<Heard>>, &Flaky)) {
     if std::env::var_os("SUNRISE_EXPERIENCE_ORB_RENDERERS_CHILD").is_none() {
         let status = std::process::Command::new(std::env::current_exe().unwrap())
             .args([

@@ -76,7 +76,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 }
 
 #[cfg(test)]
-pub(in crate::game) fn with_headless_game(run: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_headless_game(run: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     use crate::game::{
         Audio, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
     };
@@ -101,15 +101,12 @@ pub(in crate::game) fn with_headless_game(run: impl FnOnce(&mut Game<'_>)) {
     options.resources = root.clone();
     options.game_dir = Some(save.path().into());
     options.execution_role = ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root,
-        )),
         None,
     )
     .unwrap();

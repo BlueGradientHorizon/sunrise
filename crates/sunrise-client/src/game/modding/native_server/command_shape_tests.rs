@@ -50,7 +50,7 @@ impl mod_api::Hooks for ShapedCommands {
 /// A server with the shaped commands and its two guests, guest 12 (level 2) receiving its packets
 /// on the returned channel from the tree it is sent when the commands register.
 fn with_shaped_commands(
-    test: impl FnOnce(&mut crate::game::Game<'_>, &Calls, std::sync::mpsc::Receiver<Out>),
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Calls, std::sync::mpsc::Receiver<Out>),
 ) {
     let calls = Calls::default();
     mod_platform::testing::with_mods(

@@ -17,7 +17,7 @@ use winit::keyboard::KeyCode;
 fn editing<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
     text: &str,
-) -> Game<'a> {
+) -> crate::game::ClientGame<'a> {
     let mut game = server_game(resources);
     *game.held_mut() = Some(ItemStack::new("minecraft:writable_book", 1));
     let stack = game.held().expect("a book in hand").clone();
@@ -27,7 +27,7 @@ fn editing<'a>(
 }
 
 /// The pages saved into the stack in hand (empty: nothing was written to it).
-fn saved_pages(game: &Game<'_>) -> Vec<String> {
+fn saved_pages(game: &crate::game::ClientGame<'_>) -> Vec<String> {
     game.held()
         .and_then(|stack| stack.data())
         .map(|data| data.writable_pages.clone())
@@ -42,7 +42,7 @@ fn escape_in_the_editor_saves_nothing() {
     let mut resources = None;
     let mut game = editing(&mut resources, "hello");
     game.book_input(Some(KeyCode::Escape), None);
-    assert!(game.client.book.is_none(), "Escape left the editor open");
+    assert!(game.side.book.is_none(), "Escape left the editor open");
     assert!(saved_pages(&game).is_empty(), "Escape saved the page");
 }
 
@@ -55,12 +55,12 @@ fn escape_on_the_sign_screen_closes_the_book() {
     let mut game = editing(&mut resources, "hi");
     game.book_control(Some("sign")).expect("the Sign button");
     assert!(matches!(
-        game.client.book,
+        game.side.book,
         Some(BookScreen::Edit { signing: true, .. })
     ));
     game.book_input(Some(KeyCode::Escape), None);
     assert!(
-        game.client.book.is_none(),
+        game.side.book.is_none(),
         "Escape went back to the editor instead of closing the book"
     );
     assert!(saved_pages(&game).is_empty(), "Escape saved the page");
@@ -77,7 +77,7 @@ fn enter_signs_a_title_of_spaces_but_not_an_empty_one() {
     game.book_control(Some("sign")).expect("the Sign button");
     game.book_input(Some(KeyCode::Enter), None);
     assert!(
-        game.client.book.is_some(),
+        game.side.book.is_some(),
         "Enter signed a book with an empty title"
     );
     game.book_input(None, Some("   "));

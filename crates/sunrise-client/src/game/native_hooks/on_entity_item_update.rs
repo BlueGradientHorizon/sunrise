@@ -132,7 +132,7 @@ pub(in crate::game) mod on_entity_item_update_tests {
     }
 
     /// A serving level with a stone floor at y 63 and nothing dropped.
-    pub(in crate::game) fn floor(game: &mut Game<'_>) {
+    pub(in crate::game) fn floor(game: &mut crate::game::ServerGame<'_>) {
         game.options.dedicated = Some(Vec::new());
         game.native_lifecycle
             .begin_open(mod_api::Authority::IntegratedServer);
@@ -157,7 +157,7 @@ pub(in crate::game) mod on_entity_item_update_tests {
     #[allow(unused_imports)]
 pub(in crate::game) use crate::game::server_side::native_hooks_server::on_entity_item_update::on_entity_item_update_tests::rest;
 
-    pub(in crate::game) fn counts(game: &Game<'_>, ids: &[u32]) -> Vec<u32> {
+    pub(in crate::game) fn counts(game: &crate::game::ServerGame<'_>, ids: &[u32]) -> Vec<u32> {
         game.dropped
             .iter()
             .filter(|item| ids.contains(&item.id))

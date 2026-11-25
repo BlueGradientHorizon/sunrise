@@ -1788,7 +1788,7 @@ mod tests {
             let dirt = registry.default_state("minecraft:dirt").unwrap();
             let ore = registry.default_state("minecraft:diamond_ore").unwrap();
             let pos = BlockPos::new(1, 64, 2);
-            let break_of = |game: &mut Game<'_>, state, item, exp_to_drop| {
+            let break_of = |game: &mut crate::game::ServerGame<'_>, state, item, exp_to_drop| {
                 game.world.random =
                     sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(7));
                 let dropped = game.with_level(|_, level, _| {
@@ -1987,7 +1987,7 @@ mod tests {
                 .default_state("minecraft:stone")
                 .unwrap();
             let pos = BlockPos::new(1, 64, 2);
-            let break_of = |game: &mut Game<'_>| {
+            let break_of = |game: &mut crate::game::ServerGame<'_>| {
                 game.world.random =
                     sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(7));
                 let dropped = game.with_level(|_, level, _| {

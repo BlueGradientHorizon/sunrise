@@ -111,7 +111,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         reply: std::sync::mpsc::Sender<String>,
     ) {
-        self.pending_save.0 = Some(ClosingSave {
+        self.side.pending_save.0 = Some(ClosingSave {
             quit: false,
             close: false,
             reply: Some(reply),

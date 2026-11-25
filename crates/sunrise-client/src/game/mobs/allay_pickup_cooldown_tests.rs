@@ -11,7 +11,7 @@ use sunrise_core::position::ChunkPos;
 
 const SUPPLIED: &str = "00006096-0000-0000-0000-000000000001";
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -34,15 +34,12 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -66,7 +63,7 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     game
 }
 
-fn index(game: &mut Game<'_>) -> usize {
+fn index(game: &mut crate::game::ServerGame<'_>) -> usize {
     match game.target_with_uuid(sunrise_client::save::uuid_from_text(SUPPLIED).unwrap()) {
         Some(super::commands::Target::Mob(id)) => {
             game.mobs.iter().position(|m| m.id == id).unwrap()
@@ -75,7 +72,7 @@ fn index(game: &mut Game<'_>) -> usize {
     }
 }
 
-fn saved(game: &mut Game<'_>, i: usize) -> Option<Tag> {
+fn saved(game: &mut crate::game::ServerGame<'_>, i: usize) -> Option<Tag> {
     game.mob_tree_nbt(i)
         .get("Brain")
         .and_then(|b| b.get("memories"))
@@ -157,7 +154,7 @@ fn pickup_cooldown_saves_the_full_integer_value() {
 }
 
 // Added controls (after the frozen baseline above).
-fn step(game: &mut Game<'_>, ticks: u32) {
+fn step(game: &mut crate::game::ServerGame<'_>, ticks: u32) {
     for _ in 0..ticks {
         assert!(game.run_command("tick step 1"));
         game.tick_server(false).unwrap();
@@ -179,7 +176,7 @@ fn the_saved_pickup_cooldown_follows_the_model() {
         "summon allay 7.5 101 8.5 {NoAI:1b,PersistenceRequired:1b,NoGravity:1b,UUID:[I;24726,0,0,2],Brain:{memories:{\"minecraft:item_pickup_cooldown_ticks\":{value:30}}}}"
     ));
     let at =
-        |game: &mut Game<'_>, tail: u32| match game.target_with_uuid([24726, 0, 0, tail as i32]) {
+        |game: &mut crate::game::ServerGame<'_>, tail: u32| match game.target_with_uuid([24726, 0, 0, tail as i32]) {
             Some(super::commands::Target::Mob(id)) => {
                 game.mobs.iter().position(|m| m.id == id).unwrap()
             }

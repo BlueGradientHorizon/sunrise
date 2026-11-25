@@ -62,20 +62,20 @@ pub(in crate::game) mod input_routing;
 /// and real `WindowEvent` input paths execute end to end. Returns the `EventLoop` (kept alive
 /// for the test's duration) and `WindowId`.
 pub(in crate::game) fn attach_offscreen_window(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ClientGame<'_>,
 ) -> (EventLoop<()>, winit::window::WindowId) {
     let (event_loop, window) = crate::game::native_entity_refs::tests::test_window([640, 480]);
     let id = window.id();
     game.options.offscreen = true;
     game.settings.gui_scale = 1;
-    game.window.0 = Some(window.clone());
-    game.renderer.0 = Some(game.new_renderer(window).unwrap());
-    game.title.0 = None;
+    game.side.window.0 = Some(window.clone());
+    game.side.renderer.0 = Some(game.new_renderer(window).unwrap());
+    game.side.title.0 = None;
     game.player = Some(
         sunrise_client::motion::PlayerMotion::new(game.motion, sunrise_core::geometry::Vec3::ZERO)
             .unwrap(),
     );
-    game.client.focused = true;
+    game.side.focused = true;
     (event_loop, id)
 }
 
@@ -250,7 +250,7 @@ fn button_on_press_state_mutation_keyboard_and_synchronous_transitions() {
             move_mouse(game, win_id, 50.0, 90.0);
             send_mouse_button(game, win_id, MouseButton::Left, true);
             send_mouse_button(game, win_id, MouseButton::Left, false);
-            assert_eq!(game.client.screen, Screen::Mod);
+            assert_eq!(game.side.screen, Screen::Mod);
             assert_eq!(game.mod_screen(), Some("mod_b"));
             assert_eq!(
                 take_log(&log),
@@ -258,16 +258,16 @@ fn button_on_press_state_mutation_keyboard_and_synchronous_transitions() {
             );
             // Extracted mod_a button was disposed rather than written back into mod_b's table.
             assert_eq!(mod_a_btn_drops.load(Ordering::SeqCst), 1);
-            assert_eq!(game.screen_state.0.widgets.len(), 1);
+            assert_eq!(game.side.screen_state.0.widgets.len(), 1);
             assert_eq!(mod_b_btn_drops.load(Ordering::SeqCst), 0);
 
             // Pressing Enter on mod_b's focused button calls host.close_screen() synchronously.
             assert!(game.mounted_widget_key_pressed(KeyCode::Enter, false, 0));
-            assert_eq!(game.client.screen, Screen::Playing);
+            assert_eq!(game.side.screen, Screen::Playing);
             assert_eq!(game.mod_screen(), None);
             assert_eq!(take_log(&log), vec!["close_b:true:None"]);
             assert_eq!(mod_b_btn_drops.load(Ordering::SeqCst), 1);
-            assert!(game.screen_state.0.widgets.is_empty());
+            assert!(game.side.screen_state.0.widgets.is_empty());
         });
     });
 }
@@ -324,7 +324,7 @@ fn controller_activates_the_selected_mount_and_edits_its_field() {
             game.settings.controller.keyboard = TextKeyboard::Sunrise;
             assert!(game.mod_screen_open("controller_mounts"));
             let targets = game.mounted_widget_targets();
-            game.pad.0.menu.focus = Some(targets[1]);
+            game.side.pad.0.menu.focus = Some(targets[1]);
             game.pad_menu_button(&NoLoop, PadButton::South, true)
                 .unwrap();
             assert!(take_log(&log).is_empty());
@@ -337,23 +337,23 @@ fn controller_activates_the_selected_mount_and_edits_its_field() {
             send_mouse_button(game, win_id, MouseButton::Left, false);
             assert_eq!(take_log(&log), ["first"]);
 
-            game.pad.0.menu.focus = Some(targets[2]);
+            game.side.pad.0.menu.focus = Some(targets[2]);
             game.pad_menu_button(&NoLoop, PadButton::South, true)
                 .unwrap();
-            assert!(game.pad.0.menu.osk.is_some());
+            assert!(game.side.pad.0.menu.osk.is_some());
             game.pad_osk_output(Output::Text("ab".into()));
             game.pad_osk_output(Output::Backspace);
             game.pad_osk_output(Output::Enter);
             assert_eq!(take_log(&log), ["submit:a"]);
-            assert!(game.pad.0.menu.osk.is_none());
+            assert!(game.side.pad.0.menu.osk.is_none());
 
             game.ui.chat.add_recent("from history");
             game.begin_chat_screen("native draft", false);
             let field = game.mounted_widget_targets()[0];
-            game.pad.0.menu.focus = Some(field);
+            game.side.pad.0.menu.focus = Some(field);
             game.pad_menu_button(&NoLoop, PadButton::South, true)
                 .unwrap();
-            assert!(game.pad.0.menu.osk.is_some());
+            assert!(game.side.pad.0.menu.osk.is_some());
             game.pad_osk_output(Output::Text("mounted draft".into()));
             game.pad_osk_output(Output::Previous);
             assert_eq!(
@@ -655,7 +655,7 @@ fn custom_screen_widget_callbacks_and_per_widget_panic_isolation() {
             assert!(game.mod_screen_open("panic_mod"));
             game.sync_mounted_focus(game.mounted_widget_targets()[0]);
             assert!(game.mounted_widget_key_pressed(KeyCode::KeyX, false, 0));
-            assert_eq!(game.client.screen, Screen::Playing);
+            assert_eq!(game.side.screen, Screen::Playing);
             assert_eq!(
                 take_log(&log),
                 ["focus:true", "key_down:key.keyboard.x:false", "focus:false"]
@@ -666,21 +666,21 @@ fn custom_screen_widget_callbacks_and_per_widget_panic_isolation() {
             move_mouse(game, win_id, 40.0, 60.0);
             send_mouse_button(game, win_id, MouseButton::Left, true);
             send_mouse_button(game, win_id, MouseButton::Left, false);
-            assert!(game.screen_state.0.widgets.is_disabled(1));
+            assert!(game.side.screen_state.0.widgets.is_disabled(1));
 
             // 2) Panic in TextField on_change disables only the text field.
             move_mouse(game, win_id, 40.0, 90.0);
             send_mouse_button(game, win_id, MouseButton::Left, true);
             send_mouse_button(game, win_id, MouseButton::Left, false);
             assert!(game.mounted_widget_char_typed('a', 0));
-            assert!(game.screen_state.0.widgets.is_disabled(2));
+            assert!(game.side.screen_state.0.widgets.is_disabled(2));
 
             // 3) Panic in custom ScreenWidget mouse_clicked disables only the custom widget.
             panic_custom.store(true, Ordering::SeqCst);
             move_mouse(game, win_id, 40.0, 30.0);
             send_mouse_button(game, win_id, MouseButton::Left, true);
             send_mouse_button(game, win_id, MouseButton::Left, false);
-            assert!(game.screen_state.0.widgets.is_disabled(0));
+            assert!(game.side.screen_state.0.widgets.is_disabled(0));
 
             let notices = mod_api::__private::take_hook_panics();
             assert_eq!(notices.len(), 3, "{notices:?}");
@@ -705,7 +705,7 @@ fn custom_screen_widget_callbacks_and_per_widget_panic_isolation() {
                 take_log(&log),
                 vec!["sibling_open:false", "sibling_open:false"]
             );
-            assert!(!game.screen_state.0.widgets.is_disabled(3));
+            assert!(!game.side.screen_state.0.widgets.is_disabled(3));
             assert!(mod_api::__private::take_hook_panics().is_empty());
         });
     });
@@ -815,11 +815,11 @@ fn init_post_edits_ordered_children_and_discards_a_failed_stage() {
     with_mods(mods.into(), || {
         with_client_game(|game| {
             let (_event_loop, win_id) = attach_offscreen_window(game);
-            game.client.pause_menu = true;
+            game.side.pause_menu = true;
             game.set_screen(Screen::Paused);
             assert_eq!(take_log(&log), ["added", "about to panic", "published"]);
-            assert_eq!(game.screen_state.0.widgets.len(), 1);
-            assert!(!game.screen_state.0.widgets.has_focus());
+            assert_eq!(game.side.screen_state.0.widgets.len(), 1);
+            assert!(!game.side.screen_state.0.widgets.has_focus());
             assert!(game.pause_child_removed(0));
             assert!(!game.pause_child_removed(1));
             let [x, y, _, _] = game.mounted_widget_targets()[0].rect;
@@ -830,7 +830,7 @@ fn init_post_edits_ordered_children_and_discards_a_failed_stage() {
             );
             send_mouse_button(game, win_id, MouseButton::Left, true);
             send_mouse_button(game, win_id, MouseButton::Left, false);
-            assert_eq!(game.client.screen, Screen::Paused);
+            assert_eq!(game.side.screen, Screen::Paused);
             assert_eq!(take_log(&log), ["replacement pressed"]);
             let notices = mod_api::__private::take_hook_panics();
             assert_eq!(notices.len(), 1);
@@ -956,8 +956,8 @@ fn mounted_button_sprites_keep_their_pixels_and_accessibility() {
                 widgets::end_frame(1);
                 let stock = render_hud(&stock, &game.gui.atlas, SIZE).unwrap();
                 assert!(game.mod_screen_open("sprite_fixture"));
-                let frame = |game: &mut Game<'_>, at, serial| {
-                    game.client.cursor = at;
+                let frame = |game: &mut crate::game::ClientGame<'_>, at, serial| {
+                    game.side.cursor = at;
                     let mut batch = HudBatch::scratch(SIZE);
                     batch.image_patches.push(patch.clone());
                     widgets::begin_screen(|| ScreenInfo::new("fixture", "Mounted sprite buttons"));
@@ -1003,7 +1003,7 @@ fn mounted_button_sprites_keep_their_pixels_and_accessibility() {
                 assert!(game.mounted_widget_mouse_clicked([11.0, 11.0], 0, 0, false));
                 assert!(game.mounted_widget_mouse_released([11.0, 11.0], 0, 0));
                 assert!(game.key_focus_key(&NoLoop, KeyCode::Tab).is_some());
-                assert_eq!(game.screen_state.0.widgets.focused_index(), Some(2));
+                assert_eq!(game.side.screen_state.0.widgets.focused_index(), Some(2));
 
                 let _ = widgets::take_cursor();
                 widgets::set_narrating(true);
@@ -1069,7 +1069,7 @@ fn mounted_widgets_draw_as_the_games_own() {
         || {
             with_client_game(|game| {
                 game.set_screen(Screen::Paused);
-                game.client.cursor = (11.0, 11.0);
+                game.side.cursor = (11.0, 11.0);
                 let focus_time = Instant::now();
                 game.with_mounted_widget(1, |_, entry| {
                     let MountedWidgetKind::TextField { edit_box, .. } = &mut entry.kind else {
@@ -1341,15 +1341,15 @@ fn mounting_lifecycle_focus_remove_resize_and_close_dispose() {
             // The removed custom widget was dropped immediately during init; 3 live drop counters remain.
             assert_eq!(drops.load(Ordering::SeqCst), 1);
             // 4 entries stay mounted (btn, tf, kept custom, inactive btn) and tf (index 1) has focus.
-            assert_eq!(game.screen_state.0.widgets.len(), 4);
-            assert_eq!(game.screen_state.0.widgets.focused_index(), Some(1));
+            assert_eq!(game.side.screen_state.0.widgets.len(), 4);
+            assert_eq!(game.side.screen_state.0.widgets.focused_index(), Some(1));
 
             // Click into the text field to establish drag state, then resize the window.
             move_mouse(game, win_id, 30.0, 50.0);
             send_mouse_button(game, win_id, MouseButton::Left, true);
-            assert_eq!(game.screen_state.0.widgets.dragging(), Some((1, 0)));
+            assert_eq!(game.side.screen_state.0.widgets.dragging(), Some((1, 0)));
 
-            let gen_before_resize = game.screen_state.0.widgets.generation();
+            let gen_before_resize = game.side.screen_state.0.widgets.generation();
             game.handle_window_event(
                 &NoLoop,
                 win_id,
@@ -1361,24 +1361,24 @@ fn mounting_lifecycle_focus_remove_resize_and_close_dispose() {
             assert_eq!(failed_drops.load(Ordering::SeqCst), 1);
             game.screen_chars_typed(Some("r"));
             assert_eq!(game.mounted_focused_text_edit(None).unwrap().value, "r");
-            assert_ne!(game.screen_state.0.widgets.generation(), gen_before_resize);
+            assert_ne!(game.side.screen_state.0.widgets.generation(), gen_before_resize);
             // Prior 3 live drop counters + 1 newly removed drop counter = 5 total drops.
             assert_eq!(drops.load(Ordering::SeqCst), 5);
             // Drag state cleared on rebuild; initial focus re-applied to the newly mounted text field.
-            assert_eq!(game.screen_state.0.widgets.dragging(), None);
-            assert_eq!(game.screen_state.0.widgets.focused_index(), Some(1));
+            assert_eq!(game.side.screen_state.0.widgets.dragging(), None);
+            assert_eq!(game.side.screen_state.0.widgets.focused_index(), Some(1));
 
             // Closing the screen disposes the remaining 3 widgets and clears focus/drag state.
             assert!(game.close_screen());
-            assert_eq!(game.client.screen, Screen::Playing);
+            assert_eq!(game.side.screen, Screen::Playing);
             assert_eq!(drops.load(Ordering::SeqCst), 8);
-            assert!(game.screen_state.0.widgets.is_empty());
-            assert_eq!(game.screen_state.0.widgets.focused_index(), None);
-            assert_eq!(game.screen_state.0.widgets.dragging(), None);
+            assert!(game.side.screen_state.0.widgets.is_empty());
+            assert_eq!(game.side.screen_state.0.widgets.focused_index(), None);
+            assert_eq!(game.side.screen_state.0.widgets.dragging(), None);
 
             // Options arranges its existing children instead of rebuilding them.
             game.open_options(false);
-            let field = game.screen_state.0.widgets.focused_id().unwrap();
+            let field = game.side.screen_state.0.widgets.focused_id().unwrap();
             assert_eq!(init_count.load(Ordering::SeqCst), 3);
             let mut edit = game.mounted_focused_text_edit(None).unwrap();
             edit.value = "note".to_owned();
@@ -1392,7 +1392,7 @@ fn mounting_lifecycle_focus_remove_resize_and_close_dispose() {
                 InputOrigin::User,
             );
             assert_eq!(init_count.load(Ordering::SeqCst), 3);
-            assert_eq!(game.screen_state.0.widgets.focused_id(), Some(field));
+            assert_eq!(game.side.screen_state.0.widgets.focused_id(), Some(field));
             let preserved = game.mounted_focused_text_edit(None).unwrap();
             assert_eq!(preserved.value, "note");
             assert_eq!((preserved.highlight, preserved.cursor), (1, 3));
@@ -1858,7 +1858,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             take_log(&log);
             move_mouse(game, win_id, 40.0, 30.0);
             send_mouse_button(game, win_id, MouseButton::Left, true);
-            assert_eq!(game.client.screen, Screen::Mod);
+            assert_eq!(game.side.screen, Screen::Mod);
             assert_eq!(game.mod_screen(), Some("target_mod"));
             assert_eq!(
                 take_log(&log),
@@ -1877,7 +1877,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             move_mouse(game, win_id, 40.0, 70.0);
             send_mouse_button(game, win_id, MouseButton::Left, true);
             send_mouse_button(game, win_id, MouseButton::Left, false);
-            assert!(game.screen_state.0.last_click.is_none());
+            assert!(game.side.screen_state.0.last_click.is_none());
             take_log(&log);
             // Next click immediately after sees double_click = false.
             *override_press_handled.lock().unwrap() = None;
@@ -1893,16 +1893,16 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
                     "release_post:mod:0:true",
                 ]
             );
-            assert!(game.screen_state.0.last_click.is_some());
+            assert!(game.side.screen_state.0.last_click.is_some());
 
             // 3) Force a handled result on an unhandled click records last_click, so an
             //    immediate second click receives double_click = true on both Pre and Post.
-            game.screen_state.0.last_click = None;
+            game.side.screen_state.0.last_click = None;
             *override_press_handled.lock().unwrap() = Some(true);
             move_mouse(game, win_id, 400.0, 400.0);
             send_mouse_button(game, win_id, MouseButton::Left, true);
             send_mouse_button(game, win_id, MouseButton::Left, false);
-            assert!(game.screen_state.0.last_click.is_some());
+            assert!(game.side.screen_state.0.last_click.is_some());
             take_log(&log);
             *override_press_handled.lock().unwrap() = None;
             send_mouse_button(game, win_id, MouseButton::Left, true);
@@ -1981,11 +1981,11 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             // 6) KeyPressed.Post & KeyReleased.Post: returning Flow::Cancel blocks mapped_key_event_from.
             //    Pressing W on Screen::Mod fires KeyPressed.Pre and KeyPressed.Post on "mod" and
             //    never holds a movement key while a screen is open (matching KeyboardHandler.keyPress).
-            game.client.keys.clear();
+            game.side.keys.clear();
             cancel_key_post.store(true, Ordering::SeqCst);
             take_log(&log);
             send_key_control(game, "key w down");
-            assert!(!game.client.keys.raw(&KeyCode::KeyW));
+            assert!(!game.side.keys.raw(&KeyCode::KeyW));
             assert_eq!(
                 take_log(&log),
                 vec![
@@ -1995,7 +1995,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             );
             cancel_key_post.store(false, Ordering::SeqCst);
             send_key_control(game, "key w down");
-            assert!(!game.client.keys.raw(&KeyCode::KeyW));
+            assert!(!game.side.keys.raw(&KeyCode::KeyW));
             assert_eq!(
                 take_log(&log),
                 vec![
@@ -2007,11 +2007,11 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             //    KeyReleased.Post on the receiving screen; cancelling Post blocks mapped_key_event_from
             //    from releasing an already-held key, while continuing lets the release through.
             game.press_device_key(KeyCode::KeyW, sunrise_client::held::Source::Agent);
-            assert!(game.client.keys.raw(&KeyCode::KeyW));
+            assert!(game.side.keys.raw(&KeyCode::KeyW));
             take_log(&log);
             cancel_key_post.store(true, Ordering::SeqCst);
             send_key_control(game, "key w up");
-            assert!(game.client.keys.raw(&KeyCode::KeyW));
+            assert!(game.side.keys.raw(&KeyCode::KeyW));
             assert_eq!(
                 take_log(&log),
                 vec![
@@ -2021,7 +2021,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             );
             cancel_key_post.store(false, Ordering::SeqCst);
             send_key_control(game, "key w up");
-            assert!(!game.client.keys.raw(&KeyCode::KeyW));
+            assert!(!game.side.keys.raw(&KeyCode::KeyW));
             assert_eq!(
                 take_log(&log),
                 vec![
@@ -2032,7 +2032,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             //    `key w tap` runs both press and release phases through Pre and Post.
             take_log(&log);
             send_key_control(game, "key w tap");
-            assert!(!game.client.keys.raw(&KeyCode::KeyW));
+            assert!(!game.side.keys.raw(&KeyCode::KeyW));
             assert_eq!(
                 take_log(&log),
                 vec![
@@ -2045,11 +2045,11 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
 
             // 7) Closing screen from button press still fires MouseButtonPressed.Post with "mod"
             //    even though the screen is now Playing.
-            game.screen_state.0.last_click = None;
+            game.side.screen_state.0.last_click = None;
             move_mouse(game, win_id, 40.0, 30.0);
             take_log(&log);
             send_mouse_button(game, win_id, MouseButton::Left, true);
-            assert_eq!(game.client.screen, Screen::Playing);
+            assert_eq!(game.side.screen, Screen::Playing);
             assert_eq!(
                 take_log(&log),
                 vec!["press_pre:mod:0:false", "press_post:mod:0:false:true"]
@@ -2061,7 +2061,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             take_log(&log);
             cancel_key_post.store(true, Ordering::SeqCst);
             send_key_control(game, "key l down");
-            assert_eq!(game.client.screen, Screen::Playing);
+            assert_eq!(game.side.screen, Screen::Playing);
             assert_eq!(
                 take_log(&log),
                 ["key_press_pre:advancements:key.keyboard.l"]
@@ -2071,7 +2071,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             game.settings.keys.set("key.advancements", "key.keyboard.u");
             take_log(&log);
             send_key_control(game, "key l down");
-            assert_eq!(game.client.screen, Screen::Advancements);
+            assert_eq!(game.side.screen, Screen::Advancements);
             assert_eq!(
                 take_log(&log),
                 [
@@ -2080,7 +2080,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
                 ]
             );
             send_key_control(game, "key u down");
-            assert_eq!(game.client.screen, Screen::Playing);
+            assert_eq!(game.side.screen, Screen::Playing);
             assert_eq!(
                 take_log(&log),
                 ["key_press_pre:advancements:key.keyboard.u"]
@@ -2158,13 +2158,13 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             // Two mounted fields at identical bounds still have distinct focus identities.
             game.set_screen(Screen::Chat);
             game.open_screen_overlay("link_prompt", |game| {
-                game.client.link_prompt = Some("https://example.com".into())
+                game.side.link_prompt = Some("https://example.com".into())
             });
-            assert_eq!(game.screen_state.0.widgets.focused_index(), Some(0));
+            assert_eq!(game.side.screen_state.0.widgets.focused_index(), Some(0));
             game.ime_preedit("old", Some((0, 3)));
             assert!(sunrise_client::preedit::composing());
             send_key_control(game, "key tab down");
-            assert_eq!(game.screen_state.0.widgets.focused_index(), Some(1));
+            assert_eq!(game.side.screen_state.0.widgets.focused_index(), Some(1));
             game.ime_preedit("new", Some((0, 3)));
             game.sync_ime(); // the redraw must not clear B's newly accepted preedit
             assert!(sunrise_client::preedit::composing());
@@ -2187,18 +2187,18 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             send_mouse_button(game, win_id, MouseButton::Left, true);
             take_log(&log);
             move_mouse(game, win_id, 50.0, 70.0);
-            assert_eq!(game.client.screen, Screen::Playing);
+            assert_eq!(game.side.screen, Screen::Playing);
             assert_eq!(take_log(&log), ["drag_pre:mod", "drag_post:mod"]);
             send_mouse_button(game, win_id, MouseButton::Left, false);
 
             // Closing a confirmation exposes the Chat child before any intervening frame.
             game.set_screen(Screen::Chat);
             game.open_screen_overlay("link_prompt", |game| {
-                game.client.link_prompt = Some("https://example.com".into())
+                game.side.link_prompt = Some("https://example.com".into())
             });
-            let prompt = game.screen_state.0.widgets.focused_id();
+            let prompt = game.side.screen_state.0.widgets.focused_id();
             game.answer_link_prompt(false);
-            assert_ne!(game.screen_state.0.widgets.focused_id(), prompt);
+            assert_ne!(game.side.screen_state.0.widgets.focused_id(), prompt);
             take_log(&log);
             game.screen_chars_typed(Some("c"));
             assert_eq!(game.mounted_focused_text_edit(None).unwrap().value, "c");
@@ -2240,8 +2240,8 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             );
 
             game.sync_mounted_focus(game.mounted_widget_targets()[0]);
-            let original = game.screen_state.0.widgets.focused_id().unwrap();
-            let instance = game.screen_state.0.screen_instance;
+            let original = game.side.screen_state.0.widgets.focused_id().unwrap();
+            let instance = game.side.screen_state.0.screen_instance;
             let [x, y, _, _] = layout
                 .footer
                 .iter()
@@ -2251,20 +2251,20 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
                 })
                 .unwrap();
             // Call the receiving dialog's action without a pointer click moving focus first.
-            game.client.cursor = (x + 4.0, y + 6.0);
+            game.side.cursor = (x + 4.0, y + 6.0);
             veto_dialog.store(true, Ordering::SeqCst);
             assert!(game.dialog_click().unwrap());
             assert!(game.dialog_open());
             assert!(game.dialog_status()["screen"].is_null());
-            assert_eq!(game.screen_state.0.screen_instance, instance);
-            assert_eq!(game.screen_state.0.widgets.focused_id(), Some(original));
+            assert_eq!(game.side.screen_state.0.screen_instance, instance);
+            assert_eq!(game.side.screen_state.0.widgets.focused_id(), Some(original));
             assert_eq!(take_log(&log), ["opening:dialog->dialog"]);
 
             veto_dialog.store(false, Ordering::SeqCst);
             assert!(game.dialog_click().unwrap());
             assert_eq!(game.dialog_status()["screen"], "waiting_for_response");
             assert_eq!(
-                game.screen_state.0.screen_instance,
+                game.side.screen_state.0.screen_instance,
                 instance.wrapping_add(1)
             );
             assert_eq!(take_log(&log), ["opening:dialog->dialog", "closing:dialog"]);
@@ -2279,23 +2279,23 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             // focused widget if that proposal is vetoed.
             game.show_dialog(&dialog);
             let [x, y, _, _] = game.dialog_warning_icon().unwrap();
-            game.client.cursor = (x + 1.0, y + 1.0);
+            game.side.cursor = (x + 1.0, y + 1.0);
             assert!(game.dialog_click().unwrap());
             assert_eq!(game.dialog_status()["screen"], "warning");
-            let warning = game.screen_state.0.widgets.focused_id().unwrap();
-            let instance = game.screen_state.0.screen_instance;
+            let warning = game.side.screen_state.0.widgets.focused_id().unwrap();
+            let instance = game.side.screen_state.0.screen_instance;
             take_log(&log);
             veto_dialog.store(true, Ordering::SeqCst);
             assert!(game.dialog_key(KeyCode::Escape, None).unwrap());
             assert_eq!(game.dialog_status()["screen"], "warning");
-            assert_eq!(game.screen_state.0.screen_instance, instance);
-            assert_eq!(game.screen_state.0.widgets.focused_id(), Some(warning));
+            assert_eq!(game.side.screen_state.0.screen_instance, instance);
+            assert_eq!(game.side.screen_state.0.widgets.focused_id(), Some(warning));
             assert_eq!(take_log(&log), ["opening:dialog->dialog"]);
             veto_dialog.store(false, Ordering::SeqCst);
             assert!(game.dialog_key(KeyCode::Escape, None).unwrap());
             assert!(game.dialog_status()["screen"].is_null());
             assert_eq!(
-                game.screen_state.0.screen_instance,
+                game.side.screen_state.0.screen_instance,
                 instance.wrapping_add(1)
             );
             assert_eq!(take_log(&log), ["opening:dialog->dialog", "closing:dialog"]);
@@ -2323,7 +2323,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
                     "press_post:server_pack_prompt:0:false:false"
                 ]
             );
-            assert!(game.server_packs.0.prompt.is_some());
+            assert!(game.side.server_packs.0.prompt.is_some());
             send_mouse_button(game, win_id, MouseButton::Left, false);
             let (_, (no_x, no_y)) = {
                 let layout = Confirm::new(
@@ -2337,8 +2337,8 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             move_mouse(game, win_id, f64::from(no_x + 4.0), f64::from(no_y + 4.0));
             take_log(&log);
             send_mouse_button(game, win_id, MouseButton::Left, true);
-            assert!(game.server_packs.0.prompt.is_none());
-            assert!(game.client.captured);
+            assert!(game.side.server_packs.0.prompt.is_none());
+            assert!(game.side.captured);
             assert!(
                 !game.mapped_key_down("key.attack"),
                 "the prompt's press must not reach the world"
@@ -2359,7 +2359,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             game.settings.keys.set("key.inventory", "key.keyboard.j");
             game.settings.keys.set("key.hotbar.1", "key.keyboard.k");
             game.open_player_inventory();
-            assert_eq!(game.client.screen, Screen::Inventory);
+            assert_eq!(game.side.screen, Screen::Inventory);
             game.inventory[9] = Some(sunrise_client::items::ItemStack::new("minecraft:stick", 2));
             let batch = game.gui_batch().unwrap();
             let layout = game.built_container(&batch).unwrap();
@@ -2393,14 +2393,14 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             );
             let mut batch = game.gui_batch().unwrap();
             game.draw_mod_browser(&mut batch);
-            let search = game.client.panel.search.as_ref().unwrap();
-            game.client.cursor = (search.x + 2.0, search.y + 2.0);
+            let search = game.side.panel.search.as_ref().unwrap();
+            game.side.cursor = (search.x + 2.0, search.y + 2.0);
             assert!(game.mod_browser_press(false));
             assert!(game.mod_browser_typing());
             cancel_key_post.store(false, Ordering::SeqCst);
             game.dispatch_window_keyboard(&NoLoop, Some(KeyCode::KeyZ), true, false, None, None)
                 .unwrap();
-            assert_eq!(game.client.screen, Screen::Inventory);
+            assert_eq!(game.side.screen, Screen::Inventory);
             assert!(game.mod_browser_typing());
             assert_eq!(
                 take_log(&log),
@@ -2411,7 +2411,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             );
             game.dispatch_window_keyboard(&NoLoop, Some(KeyCode::KeyJ), true, false, None, None)
                 .unwrap();
-            assert_eq!(game.client.screen, Screen::Playing);
+            assert_eq!(game.side.screen, Screen::Playing);
             assert_eq!(take_log(&log), ["key_press_pre:inventory:key.keyboard.j"]);
 
             // K drops one stick but must not trigger sort via its translated Q.
@@ -2644,11 +2644,11 @@ fn text_field_editing_ime_and_double_click_word_selection() {
             assert_eq!(take_log(&preedit_posts), vec!["mod:ni"]);
 
             // A click that hits no child leaves the current focus unchanged.
-            let focused = game.screen_state.0.widgets.focused_id().unwrap();
+            let focused = game.side.screen_state.0.widgets.focused_id().unwrap();
             move_mouse(game, win_id, 400.0, 400.0);
             send_mouse_button(game, win_id, MouseButton::Left, true);
             send_mouse_button(game, win_id, MouseButton::Left, false);
-            assert_eq!(game.screen_state.0.widgets.focused_id(), Some(focused));
+            assert_eq!(game.side.screen_state.0.widgets.focused_id(), Some(focused));
             assert!(!game.text_field_focused());
             game.ime_preedit("go", Some((0, 2)));
             assert_eq!(take_log(&preedit_posts), vec!["mod:go"]);

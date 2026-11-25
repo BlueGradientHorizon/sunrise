@@ -53,7 +53,7 @@ impl Hooks for Mod {
 }
 
 /// Runs `test` on a server game with the two parts, answering nothing.
-fn with_parts(test: impl FnOnce(&mut Game<'_>, &Ratio, &Ratio)) {
+fn with_parts(test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Ratio, &Ratio)) {
     let (pickaxe, helmet) = (Ratio::default(), Ratio::default());
     let parts = Mod {
         pickaxe: pickaxe.clone(),
@@ -71,7 +71,7 @@ fn with_parts(test: impl FnOnce(&mut Game<'_>, &Ratio, &Ratio)) {
 
 /// Holds a Mending diamond pickaxe with `damage`, and the helmet slot an
 /// undamaged Mending diamond helmet.
-fn hold_pickaxe(game: &mut Game<'_>, damage: u32) {
+fn hold_pickaxe(game: &mut crate::game::ServerGame<'_>, damage: u32) {
     game.selected = 0;
     let mut pickaxe = ItemStack::new("minecraft:diamond_pickaxe", 1);
     pickaxe.damage = damage;
@@ -83,13 +83,13 @@ fn hold_pickaxe(game: &mut Game<'_>, damage: u32) {
     game.armor = [None, None, None, Some(helmet)];
 }
 
-fn pickaxe_damage(game: &Game<'_>) -> u32 {
+fn pickaxe_damage(game: &crate::game::ServerGame<'_>) -> u32 {
     game.inventory[0].as_ref().unwrap().damage
 }
 
 /// Mending with 5 points and a part's `answer`: the pickaxe's damage after,
 /// and the experience left for the player.
-fn mend(game: &mut Game<'_>, part: &Ratio, damage: u32, answer: Option<f32>) -> (u32, u32) {
+fn mend(game: &mut crate::game::ServerGame<'_>, part: &Ratio, damage: u32, answer: Option<f32>) -> (u32, u32) {
     hold_pickaxe(game, damage);
     part.answer(answer);
     let rest = game.mending(5);
@@ -206,10 +206,10 @@ fn a_data_packs_mending_arrives_as_the_ratio() {
             serde_json::to_vec(&mending).unwrap(),
         )
         .unwrap();
-        game.server.world_root = root.clone();
+        game.side.world_root = root.clone();
         let stack = game.reload_datapacks(false, &[]).unwrap();
         let resources = game.options.resources.clone();
-        game.world_tables.0 = game
+        game.side.world_tables.0 = game
             .stage_world_tables(&stack, false, &resources)
             .unwrap()
             .tables;

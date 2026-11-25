@@ -3,7 +3,7 @@ mod tests {
     use crate::game::remote::RemoteDimensionEntry;
     use crate::game::{
         Game,
-        native_entity_refs::tests::{run_fresh_cases, with_game_role},
+        native_entity_refs::tests::{run_fresh_cases, with_game_role, with_game_role_client},
     };
     use mod_api::*;
     use std::sync::{
@@ -149,7 +149,7 @@ mod tests {
             }
         }
     }
-    fn with_fixture(replace: bool, f: impl FnOnce(&mut Game<'_>, Log, Arc<AtomicBool>)) {
+    fn with_fixture(replace: bool, f: impl FnOnce(&mut crate::game::ServerGame<'_>, Log, Arc<AtomicBool>)) {
         with_fixture_role(
             replace,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
@@ -159,9 +159,19 @@ mod tests {
     fn with_fixture_role(
         replace: bool,
         role: crate::game::execution_role::ExecutionRole,
-        f: impl FnOnce(&mut Game<'_>, Log, Arc<AtomicBool>),
+        f: impl FnOnce(&mut crate::game::ServerGame<'_>, Log, Arc<AtomicBool>),
     ) {
         with_fixture_options(replace, role, false, |game, log, replace, _| {
+            f(game, log, replace)
+        });
+    }
+
+    fn with_fixture_role_client(
+        replace: bool,
+        role: crate::game::execution_role::ExecutionRole,
+        f: impl FnOnce(&mut crate::game::ClientGame<'_>, Log, Arc<AtomicBool>),
+    ) {
+        with_fixture_options_client(replace, role, false, |game, log, replace, _| {
             f(game, log, replace)
         });
     }
@@ -169,7 +179,7 @@ mod tests {
         replace: bool,
         role: crate::game::execution_role::ExecutionRole,
         report_payload: bool,
-        f: impl FnOnce(&mut Game<'_>, Log, Arc<AtomicBool>, Payloads),
+        f: impl FnOnce(&mut crate::game::ServerGame<'_>, Log, Arc<AtomicBool>, Payloads),
     ) {
         let log = Log::default();
         let payloads = Payloads::default();
@@ -206,7 +216,49 @@ mod tests {
             f(game, log, replace, payloads);
         });
     }
-    fn place(game: &mut Game<'_>) {
+
+    fn with_fixture_options_client(
+        replace: bool,
+        role: crate::game::execution_role::ExecutionRole,
+        report_payload: bool,
+        f: impl FnOnce(&mut crate::game::ClientGame<'_>, Log, Arc<AtomicBool>, Payloads),
+    ) {
+        let log = Log::default();
+        let payloads = Payloads::default();
+        let replace = Arc::new(AtomicBool::new(replace));
+        let mods: Mods = vec![ModEntry::new(
+            "test",
+            Box::new(User {
+                log: log.clone(),
+                replace: replace.clone(),
+                payloads: report_payload.then(|| payloads.clone()),
+            }),
+        )]
+        .into();
+        mod_platform::__private::install(mods.clone());
+        crate::game::api_values::install_parts(&mods).unwrap();
+        let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+        let root = crate::game::mods::content_root(&base, &Default::default()).unwrap();
+        with_game_role_client(root.prepared().to_path_buf(), role, |game| {
+            if game.is_logical_server() {
+                game.options.dedicated = Some(vec![]);
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                let level = game.level("minecraft:overworld").unwrap();
+                let stone = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:stone")
+                    .unwrap();
+                game.level_set_block(level, [1, 63, 1], stone, BlockUpdateFlags::NONE)
+                    .unwrap();
+            }
+            f(game, log, replace, payloads);
+        });
+    }
+    fn place(game: &mut crate::game::ServerGame<'_>) {
         let level = game.level("minecraft:overworld").unwrap();
         let state = game.pack.assets.registry.default_state("test:a").unwrap();
         assert_eq!(
@@ -279,7 +331,7 @@ mod tests {
             );
         });
     }
-    fn assert_first_two_ticks(game: &mut Game<'_>, log: &Log, count: i32) {
+    fn assert_first_two_ticks(game: &mut crate::game::ServerGame<'_>, log: &Log, count: i32) {
         assert!(log.lock().unwrap().is_empty());
         assert_eq!(game.world.block_entities.pending_on_load_len(), 1);
         game.tick_mod_block_entity((1, 64, 1));
@@ -459,7 +511,7 @@ mod tests {
         if run_fresh_cases(NAME, "SUNRISE_ON_LOAD_CLIENT", &["run"]) {
             return;
         }
-        with_fixture_role(
+        with_fixture_role_client(
             false,
             crate::game::execution_role::ExecutionRole::Client,
             |game, log, _| {

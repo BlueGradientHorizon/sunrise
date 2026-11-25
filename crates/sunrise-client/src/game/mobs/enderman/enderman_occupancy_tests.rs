@@ -26,15 +26,12 @@ fn a_carried_block_is_not_placed_into_an_entity() {
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();

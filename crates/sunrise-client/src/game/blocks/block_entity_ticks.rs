@@ -536,7 +536,7 @@ pub(in crate::game) mod jukebox_stop_tests {
     /// A windowless game from the prepared resources with a resident chunk and
     /// a jukebox at (0, 64, 0), recording its game events; `None` without the
     /// resources. `f` gets the game and the disc.
-    fn with_jukebox(f: impl FnOnce(&mut Game<'_>, &ItemStack)) -> Option<Vec<String>> {
+    fn with_jukebox(f: impl FnOnce(&mut crate::game::ServerGame<'_>, &ItemStack)) -> Option<Vec<String>> {
         use crate::game::{Audio, Options, Progress, Settings, load_resources};
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES")?);
         let settings = Settings::default();
@@ -556,15 +556,12 @@ pub(in crate::game) mod jukebox_stop_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
             None,
         )
         .unwrap();
@@ -1218,7 +1215,7 @@ pub(in crate::game) mod furnace_changed_tests {
         request.save_root = root.to_owned();
         game.load_world(request).unwrap();
         assert!(
-            game.fns
+            game.side.fns
                 .0
                 .enabled()
                 .iter()
@@ -1379,7 +1376,7 @@ pub(in crate::game) mod slot_mutation_tests {
         }
     }
 
-    fn place(game: &mut Game<'_>, pos: Pos, block: &str) {
+    fn place(game: &mut crate::game::ServerGame<'_>, pos: Pos, block: &str) {
         let state = game.pack.assets.registry.default_state(block).unwrap();
         game.world.set(pos.0, pos.1, pos.2, state).unwrap();
         game.world
@@ -1389,7 +1386,7 @@ pub(in crate::game) mod slot_mutation_tests {
 
     /// A server game with a player beside `A`, `B` and `C`, whose chunk ticks blocks, and
     /// `blocks` placed in order.
-    fn with_blocks(blocks: &[(Pos, &str)], test: impl FnOnce(&mut Game<'_>)) {
+    fn with_blocks(blocks: &[(Pos, &str)], test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let mut game_resources = None;
         let mut game = server_game(&mut game_resources);
         game.player = Some(
@@ -1404,7 +1401,7 @@ pub(in crate::game) mod slot_mutation_tests {
         test(&mut game);
     }
 
-    fn stone_above(game: &mut Game<'_>, pos: Pos) {
+    fn stone_above(game: &mut crate::game::ServerGame<'_>, pos: Pos) {
         let at = [
             f64::from(pos.0) + 0.5,
             f64::from(pos.1) + 1.0,
@@ -1412,7 +1409,7 @@ pub(in crate::game) mod slot_mutation_tests {
         ];
         game.spawn_item(ItemStack::new("minecraft:stone", 1), at, [0.0; 3], 0);
     }
-    fn hopper_count(game: &Game<'_>, pos: Pos) -> u32 {
+    fn hopper_count(game: &crate::game::ServerGame<'_>, pos: Pos) -> u32 {
         match game.world.block_entities.get(&pos) {
             Some(BlockEntity::Chest(items)) => items.iter().flatten().map(|s| s.count).sum(),
             other => panic!("no hopper at {pos:?}: {other:?}"),
@@ -1506,7 +1503,7 @@ pub(in crate::game) mod slot_mutation_tests {
                     // The nested pass ticked the spawner; the outer one has not yet.
                     assert_eq!(tick.game.spawner_tick_positions, []);
                     assert!(
-                        tick.game.server.item_columns.is_some(),
+                        tick.game.side.item_columns.is_some(),
                         "the outer pass's columns"
                     );
                     stone_above(tick.game, C);
@@ -1521,7 +1518,7 @@ pub(in crate::game) mod slot_mutation_tests {
                 );
                 assert!(game.dropped.is_empty());
                 assert_eq!(game.spawner_tick_positions, [B]);
-                assert!(game.server.item_columns.is_none());
+                assert!(game.side.item_columns.is_none());
             },
         );
     }
@@ -1548,11 +1545,11 @@ pub(in crate::game) mod slot_mutation_tests {
                     assert!(nested.is_err());
                     assert_eq!(tick.game.spawner_tick_positions, [A]);
                     assert!(
-                        tick.game.server.item_columns.is_some(),
+                        tick.game.side.item_columns.is_some(),
                         "the outer pass's columns"
                     );
                     assert!(
-                        tick.game.server.pass_mobs.is_some(),
+                        tick.game.side.pass_mobs.is_some(),
                         "the outer pass's mobs"
                     );
                     stone_above(tick.game, C);
@@ -1574,7 +1571,7 @@ pub(in crate::game) mod slot_mutation_tests {
                     "the outer pass's hopper took the item"
                 );
                 assert_eq!(game.spawner_tick_positions, [A]);
-                assert!(game.server.item_columns.is_none());
+                assert!(game.side.item_columns.is_none());
             },
         );
     }
@@ -1690,7 +1687,7 @@ pub(in crate::game) mod own_block_entity_tests {
 
     /// `mods` installed, a game on the prepared resources with a player over chunk (0, 0), whose
     /// blocks tick, and `placed` set there as a player's placement sets them.
-    fn with_machines(mods: Mods, placed: &[(Pos, &str)], test: impl FnOnce(&mut Game<'_>)) {
+    fn with_machines(mods: Mods, placed: &[(Pos, &str)], test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         mod_platform::testing::with_mods(mods.clone(), || {
             crate::game::api_values::install_parts(&mods).unwrap();
             mod_api::__private::mark_game_thread();
@@ -1725,7 +1722,7 @@ pub(in crate::game) mod own_block_entity_tests {
 
     /// The block `block` at `pos` with a new block entity of the mod type `kind` on it, as a save
     /// that holds it loads it.
-    fn place_mod_entity(game: &mut Game<'_>, pos: Pos, block: &str, kind: &str) {
+    fn place_mod_entity(game: &mut crate::game::ServerGame<'_>, pos: Pos, block: &str, kind: &str) {
         let state = game.pack.assets.registry.default_state(block).unwrap();
         game.world.set(pos.0, pos.1, pos.2, state).unwrap();
         let entity = ModBlockEntity::new(kind.into(), Default::default());
@@ -1735,7 +1732,7 @@ pub(in crate::game) mod own_block_entity_tests {
     }
 
     /// The data of the mod block entity at `pos`: a [`mark`] for each of its ticks.
-    fn ticks_of(game: &Game<'_>, pos: Pos) -> Vec<i32> {
+    fn ticks_of(game: &crate::game::ServerGame<'_>, pos: Pos) -> Vec<i32> {
         match game.world.block_entities.get(&pos) {
             Some(BlockEntity::Mod(entity)) => entity.data.clone(),
             _ => panic!("no mod block entity at {pos:?}"),

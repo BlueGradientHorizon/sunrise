@@ -38,14 +38,14 @@ fn bundle_completes_on_tick_200() {
             ];
             game.client.screen = Screen::Playing;
             game.set_mapping_held("key.use", true);
-            game.server.lan_acting = Some(1);
+            game.side.lan_acting = Some(1);
             EVENTS.with(|events| events.borrow_mut().clear());
             assert!(game.start_using_item());
             for _ in 0..199 {
                 game.tick_using_server();
             }
             assert_eq!(game.using, Some((game.selected, 199)));
-            assert!(game.server.guest_entity_events.is_empty());
+            assert!(game.side.guest_entity_events.is_empty());
             assert_eq!(calls.load(Ordering::Relaxed), 0);
             EVENTS.with(|events| {
                 assert!(
@@ -57,7 +57,7 @@ fn bundle_completes_on_tick_200() {
             });
             game.tick_using_server();
             assert_eq!(game.using, None);
-            assert_eq!(game.server.guest_entity_events, vec![9]);
+            assert_eq!(game.side.guest_entity_events, vec![9]);
             assert_eq!(calls.load(Ordering::Relaxed), 1);
             EVENTS.with(|events| {
                 assert_eq!(
@@ -75,7 +75,7 @@ fn bundle_completes_on_tick_200() {
                 )
             });
             game.tick_using_server();
-            assert_eq!(game.server.guest_entity_events, vec![9]);
+            assert_eq!(game.side.guest_entity_events, vec![9]);
             assert_eq!(calls.load(Ordering::Relaxed), 1);
         })
         .expect("prepared resources required");

@@ -18,12 +18,12 @@ use sunrise_core::{geometry::Vec3, position::ChunkPos};
 
 pub(in crate::game) const AT: Vec3 = Vec3::new(4.5, 64.0, 4.5);
 
-pub(in crate::game) fn push_pig(game: &mut Game<'_>, id: u32) {
+pub(in crate::game) fn push_pig(game: &mut crate::game::ServerGame<'_>, id: u32) {
     let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
     game.mobs.push(Mob::new(id, kind, AT, 0.0));
 }
 
-pub(in crate::game::server_side) fn tick_area(game: &mut Game<'_>) {
+pub(in crate::game::server_side) fn tick_area(game: &mut crate::game::ServerGame<'_>) {
     super::native_entity_refs::tests::prepare_entity_ticking_neighborhood(
         game,
         ChunkPos::new(0, 0),
@@ -56,7 +56,7 @@ fn nested_blast_skips_the_stand_or_cushion_already_being_removed() {
             },
             |game, gate| {
                 tick_area(game);
-                game.server.next_entity = 100;
+                game.side.next_entity = 100;
                 push_pig(game, 72);
                 game.mob_object_mut(72).unwrap().extra.mount = Some(71);
                 if stand {
@@ -113,7 +113,7 @@ fn stand_equipment_and_below_world_spills_are_visible_at_dismount() {
                 }
             },
             |game, gate| {
-                game.server.next_entity = 100;
+                game.side.next_entity = 100;
                 let below = Vec3::new(AT.x, f64::from(game.world.shape.min_y - 65), AT.z);
                 let stack = ItemStack::new("minecraft:diamond", 1);
                 push_pig(game, 72);
@@ -229,24 +229,24 @@ impl Hooks for Observe {
 
 pub(in crate::game) fn with_removal_test_hooks(
     hooks: impl Hooks,
-    test: impl FnOnce(&mut Game<'_>),
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>),
 ) {
     let entry = mod_api::ModEntry::new("removal-test", Box::new(hooks));
     mod_platform::testing::with_mods(Arc::from([entry]), || {
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             tick_area(game);
-            game.server.next_entity = 100;
+            game.side.next_entity = 100;
             test(game);
         });
     });
 }
 
-pub(in crate::game) fn finish_death_on_next_tick(game: &mut Game<'_>, id: u32) {
+pub(in crate::game) fn finish_death_on_next_tick(game: &mut crate::game::ServerGame<'_>, id: u32) {
     let mob = game.mob_object_mut(id).unwrap();
     mob.health = 0.0;
     mob.death_time = 19;
-    game.server.died.insert(id);
+    game.side.died.insert(id);
     game.tick_creature_entities().unwrap();
 }
 

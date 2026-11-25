@@ -65,7 +65,7 @@ pub(in crate::game) fn suggestions(receiver: &mpsc::Receiver<Out>) -> Vec<String
 /// A server with two guests on it (`conn` 2 and 7).
 pub(in crate::game) fn server_with_guests<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> (Game<'a>, Vec<mpsc::Receiver<Out>>) {
+) -> (crate::game::ServerGame<'a>, Vec<mpsc::Receiver<Out>>) {
     let mut game = server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);

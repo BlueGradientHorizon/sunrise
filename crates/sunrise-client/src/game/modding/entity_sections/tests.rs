@@ -315,7 +315,7 @@ fn a_server_mob_moved_twice_in_one_tick_is_told_each_move() {
 
 /// A cow joined at `at` in a loaded, empty chunk (0, 0), floating (`NoGravity`): filed by its
 /// join, as `addEntity` files it.
-fn floating_cow(game: &mut crate::game::Game<'_>, at: [f64; 3]) -> u32 {
+fn floating_cow(game: &mut crate::game::ServerGame<'_>, at: [f64; 3]) -> u32 {
     if !game.world.chunks.contains_key(&(0, 0)) {
         game.world.chunks.insert(
             (0, 0),
@@ -369,7 +369,7 @@ impl sunrise_client::mobs::goals::Goal for Teleports {
 /// The cow `id`, moving at `velocity`, runs real mob ticks until one has teleported it through
 /// `targets` (its [`Teleports`] goal starting) and then walked it on, in that same tick.
 fn teleport_then_walk(
-    game: &mut crate::game::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     id: u32,
     targets: &[[f64; 3]],
     velocity: [f64; 3],
@@ -807,7 +807,7 @@ fn a_refused_player_add_does_not_hide_the_resident_entities_crossing() {
             observe(|calls| {
                 with_client_game(|game| {
                     let _reader = logged_in(game);
-                    let add = |game: &Game<'_>, uuid, kind| {
+                    let add = |game: &crate::game::ClientGame<'_>, uuid, kind| {
                         C::AddEntity(play::AddEntity {
                             id: 20,
                             uuid,
@@ -929,7 +929,7 @@ fn section_host_and_game_read_the_same_entity_type_defaults() {
     }
     with_game(|game| {
         let host = LiveSectionHost(None);
-        let read = |game: &crate::game::Game<'_>, entity_type: &str, attribute: &str| {
+        let read = |game: &crate::game::ServerGame<'_>, entity_type: &str, attribute: &str| {
             let scoped = mod_api::prelude::ItemsHost::entity_type_default_attribute(
                 &host,
                 entity_type,

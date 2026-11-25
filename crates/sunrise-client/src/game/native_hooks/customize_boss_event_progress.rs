@@ -87,7 +87,7 @@ pub(in crate::game) use crate::game::client_side::native_hooks_client::customize
     fn a_client_mod_hides_and_spaces_boss_bars() {
         let (w, h) = (480, 270);
         let left = w / 2 - 91;
-        super::super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::super::native_entity_refs::tests::with_client_game(|game| {
             add_bars(game);
             assert_eq!(
                 backgrounds(&game.boss_bar_draws(w, h)),
@@ -105,7 +105,7 @@ pub(in crate::game) use crate::game::client_side::native_hooks_client::customize
         )]
         .into();
         with_mods(mods, || {
-            super::super::super::native_entity_refs::tests::with_game(|game| {
+            super::super::super::native_entity_refs::tests::with_client_game(|game| {
                 add_bars(game);
                 assert_eq!(
                     backgrounds(&game.boss_bar_draws(w, h)),

@@ -146,7 +146,7 @@ impl Hooks for Listener {
 
 fn with_owned_menu(
     return_contents: bool,
-    test: impl FnOnce(&mut Game<'_>, mpsc::Receiver<Out>, MenuKey),
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, mpsc::Receiver<Out>, MenuKey),
 ) {
     with_owned_layout(return_contents, false, test);
 }
@@ -154,7 +154,7 @@ fn with_owned_menu(
 fn with_owned_layout(
     return_contents: bool,
     player_inventory: bool,
-    test: impl FnOnce(&mut Game<'_>, mpsc::Receiver<Out>, MenuKey),
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, mpsc::Receiver<Out>, MenuKey),
 ) {
     let mods: Mods = vec![ModEntry::new(
         "listen",
@@ -194,7 +194,7 @@ fn with_owned_layout(
     });
 }
 
-fn open(game: &mut Game<'_>, key: MenuKey) -> (i32, MenuRef) {
+fn open(game: &mut crate::game::ServerGame<'_>, key: MenuKey) -> (i32, MenuRef) {
     let player = game.player(123).unwrap();
     // Open from the acting player's item action, when the hand lives in the game,
     // not in the guest's record.
@@ -213,7 +213,7 @@ fn open(game: &mut Game<'_>, key: MenuKey) -> (i32, MenuRef) {
     (window, game.player_container_menu(player).unwrap())
 }
 
-fn click(game: &mut Game<'_>, container: i32, slot: i16) {
+fn click(game: &mut crate::game::ServerGame<'_>, container: i32, slot: i16) {
     game.lan_guest_packet(
         1,
         S::ContainerClick(ContainerClick {
@@ -435,7 +435,7 @@ fn owned_click_prediction_applies_caps_and_the_server_corrects_an_override() {
                 carried: Some(Hashed::of(left).unwrap()),
             })
         };
-        let set_server_cursor = |game: &mut Game<'_>| {
+        let set_server_cursor = |game: &mut crate::game::ServerGame<'_>| {
             game.lan
                 .as_mut()
                 .unwrap()
@@ -657,7 +657,7 @@ fn closing_discards_owned_slots_unless_the_listener_returns_their_contents() {
                 game.load_ticking_neighbourhood(0, 0);
                 game.update_chunk_tickets();
                 assert!(game.entity_ticking_area()(0, 0));
-                game.server.ticked_entities_through = game.server.next_entity;
+                game.side.ticked_entities_through = game.side.next_entity;
                 game.tick_items();
             }
             assert!(game.dropped.is_empty());
@@ -725,7 +725,7 @@ fn abort_after_replacement_restores_only_committed_contents_to_the_old_close() {
 fn the_part_closes_the_menu_when_the_opening_stack_leaves_its_hand() {
     with_owned_menu(false, |game, rx, key| {
         let (window, menu) = open(game, key);
-        let change_hand = |game: &mut Game<'_>, change: fn(&mut ItemStack)| {
+        let change_hand = |game: &mut crate::game::ServerGame<'_>, change: fn(&mut ItemStack)| {
             game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 change(g.offhand.as_mut().unwrap());
             });
@@ -922,7 +922,7 @@ fn a_replaced_or_aborted_drag_step_keeps_the_existing_drag() {
 }
 
 fn send_scoped_click(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     flow: Flow,
     window: i32,
     slot: i16,
@@ -1197,7 +1197,7 @@ impl Hooks for ProcessingMod {
     }
 }
 
-fn with_processing_owned_menu(test: impl FnOnce(&mut Game<'_>, mpsc::Receiver<Out>, MenuKey)) {
+fn with_processing_owned_menu(test: impl FnOnce(&mut crate::game::ServerGame<'_>, mpsc::Receiver<Out>, MenuKey)) {
     let mods: Mods = vec![ModEntry::new("listen", Box::new(ProcessingMod))].into();
     mod_platform::testing::with_mods(mods.clone(), || {
         api_values::install_parts(&mods).unwrap();
@@ -1229,7 +1229,7 @@ fn with_processing_owned_menu(test: impl FnOnce(&mut Game<'_>, mpsc::Receiver<Ou
     });
 }
 
-fn raw_click(game: &mut Game<'_>, conn: u32, window: i32, slot: i16, button: i8, input: i32) {
+fn raw_click(game: &mut crate::game::ServerGame<'_>, conn: u32, window: i32, slot: i16, button: i8, input: i32) {
     let state = game
         .lan
         .as_ref()
@@ -1679,7 +1679,7 @@ impl Hooks for BlockProcessingMod {
 /// The world with `BlockProcessingMod` listening on `BLOCK_PROC_MENU` and an empty three-slot mod
 /// processor block at `BLOCK_PROC_POS` (two inputs, one result), for guests 12 and 13 with no
 /// menu open.
-fn with_block_processor(test: impl FnOnce(&mut Game<'_>)) {
+fn with_block_processor(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     use std::sync::Arc;
     use sunrise_client::{
         chunk::Chunk,
@@ -1753,7 +1753,7 @@ fn with_block_processor(test: impl FnOnce(&mut Game<'_>)) {
 
 /// A hopper holding `stack` placed on top of `pos` moves once (`HopperBlockEntity.pushItemsTick`):
 /// a write outside any transaction to the block below.
-fn hopper_above(game: &mut Game<'_>, pos: (i32, i32, i32), stack: ItemStack) {
+fn hopper_above(game: &mut crate::game::ServerGame<'_>, pos: (i32, i32, i32), stack: ItemStack) {
     let hopper_pos = (pos.0, pos.1 + 1, pos.2);
     let hopper_state = game
         .pack
@@ -1769,7 +1769,7 @@ fn hopper_above(game: &mut Game<'_>, pos: (i32, i32, i32), stack: ItemStack) {
         sunrise_client::containers::BlockEntity::Chest(vec![Some(stack), None, None, None, None]),
     );
     // A fresh hopper: no transfer cooldown from an earlier move.
-    game.server.hoppers.remove(&hopper_pos);
+    game.side.hoppers.remove(&hopper_pos);
     game.hopper_try_move_items(hopper_pos);
 }
 
@@ -2253,7 +2253,7 @@ fn processing_owned_menu_returns_inputs_on_close_drops_overflow_and_discards_res
         );
         game.run_native_menu_events();
         assert_eq!(CLOSED_OWNED_LEN.get(), Some(0));
-        let dropped_count = |game: &Game<'_>, id: &str| -> u32 {
+        let dropped_count = |game: &crate::game::ServerGame<'_>, id: &str| -> u32 {
             game.dropped
                 .iter()
                 .filter(|e| &*e.stack.item == id)
@@ -2308,7 +2308,7 @@ fn processing_owned_menu_close_on_death_drops_inputs_unlike_live_close() {
                 .map(|s| s.count)
                 .sum()
         };
-        let dropped_count = |game: &Game<'_>, id: &str| -> u32 {
+        let dropped_count = |game: &crate::game::ServerGame<'_>, id: &str| -> u32 {
             game.dropped
                 .iter()
                 .filter(|e| &*e.stack.item == id)

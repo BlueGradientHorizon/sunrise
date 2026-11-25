@@ -29,7 +29,7 @@ fn run_bundle_case(name: &str) -> bool {
     )
 }
 
-fn run(mode: Option<bool>, test: impl FnOnce(&mut Game<'_>)) {
+fn run(mode: Option<bool>, test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     let mods: Mods = mode
         .map(|mode| ModEntry::new("bundle-test", Box::new(Edit(mode))))
         .into_iter()
@@ -38,7 +38,7 @@ fn run(mode: Option<bool>, test: impl FnOnce(&mut Game<'_>)) {
     run_mods(mods, test);
 }
 
-fn run_mods(mods: Mods, test: impl FnOnce(&mut Game<'_>)) {
+fn run_mods(mods: Mods, test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     mod_platform::testing::with_mods(mods.clone(), || {
         mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
         crate::game::native_entity_refs::tests::with_client_game(|game| {
@@ -62,7 +62,7 @@ fn bundle() -> ItemStack {
     stack.data_mut().bundle_contents = vec![ItemStack::new("minecraft:stone", 1)];
     stack
 }
-fn draw(game: &mut Game<'_>, stack: &ItemStack) -> HudBatch {
+fn draw(game: &mut crate::game::ClientGame<'_>, stack: &ItemStack) -> HudBatch {
     let mut batch = HudBatch::scratch([320, 240]);
     game.draw_stack_tooltip_with(
         &mut batch,
@@ -74,7 +74,7 @@ fn draw(game: &mut Game<'_>, stack: &ItemStack) -> HudBatch {
     );
     batch
 }
-fn grid(game: &Game<'_>, batch: &HudBatch, y: f32, present: bool) {
+fn grid(game: &crate::game::ClientGame<'_>, batch: &HudBatch, y: f32, present: bool) {
     // Positioner: x + 12, y - 12. Slot right-aligned: 22 + 72 = 94.
     let mut expected = HudBatch::scratch([320, 240]);
     sunrise_client::ui::nine_slice(

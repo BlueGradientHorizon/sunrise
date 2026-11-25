@@ -120,7 +120,7 @@ fn assert_caused(
     }
 }
 
-fn with_probe(test: impl FnOnce(&mut super::Game<'_>, &Mutex<Vec<Seen>>)) {
+fn with_probe(test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Mutex<Vec<Seen>>)) {
     let seen = Arc::new(Mutex::new(Vec::new()));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "probe",
@@ -138,7 +138,7 @@ fn with_probe(test: impl FnOnce(&mut super::Game<'_>, &Mutex<Vec<Seen>>)) {
     });
 }
 
-fn with_guest_probe(test: impl FnOnce(&mut super::Game<'_>, &Mutex<Vec<Seen>>)) {
+fn with_guest_probe(test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Mutex<Vec<Seen>>)) {
     let seen = Arc::new(Mutex::new(Vec::new()));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "probe",
@@ -162,15 +162,15 @@ fn with_guest_probe(test: impl FnOnce(&mut super::Game<'_>, &Mutex<Vec<Seen>>)) 
 }
 
 /// A blast centred on `at`, whose causing entity is `owner` (a player when `player`).
-fn blast(game: &mut super::Game<'_>, at: [f64; 3], owner: u32, player: bool, guest: Option<u32>) {
-    game.combat.0.blast_owner = Some((owner, sunrise_client::text::Text::literal("owner")));
-    game.combat.0.blast_owner_player = player;
-    game.combat.0.blast_guest = guest;
+fn blast(game: &mut crate::game::ServerGame<'_>, at: [f64; 3], owner: u32, player: bool, guest: Option<u32>) {
+    game.side.combat.0.blast_owner = Some((owner, sunrise_client::text::Text::literal("owner")));
+    game.side.combat.0.blast_owner_player = player;
+    game.side.combat.0.blast_guest = guest;
     game.server_explode(at, 3.0, super::explosion::BlockInteraction::Keep, false)
         .unwrap();
-    game.combat.0.blast_owner = None;
-    game.combat.0.blast_owner_player = false;
-    game.combat.0.blast_guest = None;
+    game.side.combat.0.blast_owner = None;
+    game.side.combat.0.blast_owner_player = false;
+    game.side.combat.0.blast_guest = None;
 }
 
 /// A projectile of `kind` owned by `owner`, at the origin.
@@ -180,15 +180,15 @@ fn shot(kind: ProjectileKind, owner: Who) -> Projectile {
     p
 }
 
-fn mob_at(game: &super::Game<'_>, id: u32) -> Vec3 {
+fn mob_at(game: &crate::game::ServerGame<'_>, id: u32) -> Vec3 {
     game.mobs.iter().find(|m| m.id == id).unwrap().position
 }
 
-fn move_mob(game: &mut super::Game<'_>, id: u32, to: Vec3) {
+fn move_mob(game: &mut crate::game::ServerGame<'_>, id: u32, to: Vec3) {
     game.mobs.iter_mut().find(|m| m.id == id).unwrap().position = to;
 }
 
-fn projectile(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
+fn projectile(game: &mut crate::game::ServerGame<'_>, seen: &Mutex<Vec<Seen>>) {
     let shooter = summon_mob(game, "minecraft:skeleton", "{NoAI:1b}");
     let pig = summon_mob(game, "minecraft:pig", "{NoAI:1b}");
     let arrow = shot(
@@ -206,7 +206,7 @@ fn projectile(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
     assert_caused(seen, pig, shooter, 20.0, None);
 }
 
-fn explosion(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
+fn explosion(game: &mut crate::game::ServerGame<'_>, seen: &Mutex<Vec<Seen>>) {
     let creeper = summon_mob(game, "minecraft:creeper", "{NoAI:1b}");
     let pig = summon_mob(game, "minecraft:pig", "{NoAI:1b}");
     // The creeper stands out of the blast; the pig in it.
@@ -215,7 +215,7 @@ fn explosion(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
     assert_caused(seen, pig, creeper, 20.0, None);
 }
 
-fn thorns(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
+fn thorns(game: &mut crate::game::ServerGame<'_>, seen: &Mutex<Vec<Seen>>) {
     let zombie = summon_mob(game, "minecraft:zombie", "{NoAI:1b}");
     let mut chest = sunrise_client::items::ItemStack::new("minecraft:diamond_chestplate", 1);
     chest.data_mut().enchantments = vec![("minecraft:thorns".into(), 255)];
@@ -225,7 +225,7 @@ fn thorns(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
     assert_caused(seen, zombie, 7, 20.0, Some(9));
 }
 
-fn sting(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
+fn sting(game: &mut crate::game::ServerGame<'_>, seen: &Mutex<Vec<Seen>>) {
     // A server level whose chunks around the origin are loaded, so the mob tick runs there.
     game.options.dedicated = Some(Vec::new());
     for (x, z) in (-1..=1).flat_map(|x| (-1..=1).map(move |z| (x, z))) {
@@ -247,7 +247,7 @@ fn sting(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
     assert_caused(seen, cow, fish, 3.0, None);
 }
 
-fn firework(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
+fn firework(game: &mut crate::game::ServerGame<'_>, seen: &Mutex<Vec<Seen>>) {
     let shooter = summon_mob(game, "minecraft:skeleton", "{NoAI:1b}");
     let pig = summon_mob(game, "minecraft:pig", "{NoAI:1b}");
     game.rocket_hurt_mobs(
@@ -259,7 +259,7 @@ fn firework(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
     assert_caused(seen, pig, shooter, 20.0, None);
 }
 
-fn fangs(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
+fn fangs(game: &mut crate::game::ServerGame<'_>, seen: &Mutex<Vec<Seen>>) {
     let evoker = summon_mob(game, "minecraft:evoker", "{NoAI:1b}");
     let pig = summon_mob(game, "minecraft:pig", "{NoAI:1b}");
     move_mob(game, evoker, Vec3::new(30.5, 70.0, 0.5));
@@ -274,7 +274,7 @@ fn fangs(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
     assert_caused(seen, pig, evoker, 24.0, None);
 }
 
-fn skull(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
+fn skull(game: &mut crate::game::ServerGame<'_>, seen: &Mutex<Vec<Seen>>) {
     let wither = summon_mob(game, "minecraft:wither", "{NoAI:1b}");
     let pig = summon_mob(game, "minecraft:pig", "{NoAI:1b}");
     move_mob(game, wither, Vec3::new(30.5, 70.0, 0.5));
@@ -291,7 +291,7 @@ fn skull(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
     assert_caused(seen, pig, wither, 300.0, None);
 }
 
-fn wind(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
+fn wind(game: &mut crate::game::ServerGame<'_>, seen: &Mutex<Vec<Seen>>) {
     let owner = summon_mob(game, "minecraft:zombie", "{NoAI:1b}");
     let pig = summon_mob(game, "minecraft:pig", "{NoAI:1b}");
     move_mob(game, owner, Vec3::new(30.5, 70.0, 0.5));
@@ -308,7 +308,7 @@ fn wind(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
     assert_caused(seen, pig, owner, 20.0, None);
 }
 
-fn trident(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
+fn trident(game: &mut crate::game::ServerGame<'_>, seen: &Mutex<Vec<Seen>>) {
     use sunrise_client::chunk::Chunk;
     game.options.dedicated = Some(Vec::new());
     game.world
@@ -342,9 +342,9 @@ fn trident(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
 
 /// A guest's blast going off while the guest is parked: its record is the causer, as the
 /// `LivingRef` reads answer for it then, with its own attachment map.
-fn guest(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
+fn guest(game: &mut crate::game::ServerGame<'_>, seen: &Mutex<Vec<Seen>>) {
     let pig = summon_mob(game, "minecraft:pig", "{NoAI:1b}");
-    assert!(game.server.lan_acting != Some(12));
+    assert!(game.side.lan_acting != Some(12));
     MARK.set(game, Holder::Player(12), 5).unwrap();
     let living = game.living(game.entity(12).unwrap()).unwrap();
     assert_eq!(living.health(game), Some(20.0));
@@ -354,7 +354,7 @@ fn guest(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
 
 /// A parked guest's blast hurting the player in place (another guest, in its turn): the causer
 /// is the parked guest's record, read with its own map, not the player in place's.
-fn guest_player(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
+fn guest_player(game: &mut crate::game::ServerGame<'_>, seen: &Mutex<Vec<Seen>>) {
     MARK.set(game, Holder::Player(12), 5).unwrap();
     game.as_guest(13, |g| {
         g.set_game_mode(GameMode::Creative);
@@ -369,7 +369,7 @@ fn guest_player(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
 
 /// A parked guest's blast killing a pig: the Post waits for the death, and lends the guest
 /// again from its record.
-fn guest_post(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
+fn guest_post(game: &mut crate::game::ServerGame<'_>, seen: &Mutex<Vec<Seen>>) {
     let pig = summon_mob(game, "minecraft:pig", "{NoAI:1b}");
     game.mobs.iter_mut().find(|m| m.id == pig).unwrap().health = 0.5;
     MARK.set(game, Holder::Player(12), 5).unwrap();
@@ -387,7 +387,7 @@ fn guest_post(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
 
 /// The player's own blast hurting the player: the source names the victim, which the listener
 /// reads through `victim()`; `causing()` lends nothing more.
-fn self_caused(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
+fn self_caused(game: &mut crate::game::ServerGame<'_>, seen: &Mutex<Vec<Seen>>) {
     let at = game.player.as_ref().unwrap().position;
     blast(game, [at.x, at.y, at.z], 7, true, None);
     for hit in calls(seen, "incoming", 7) {

@@ -81,7 +81,7 @@ fn each_refusal_is_named_and_says_and_logs_nothing() {
 #[test]
 #[ignore = "daily"]
 fn a_server_threads_game_has_no_narrator_to_narrate_for() {
-    crate::game::native_entity_refs::tests::with_game(|game| {
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
         let host: &mut dyn mod_api::ClientHost = game;
         assert_eq!(
             host.narrate(&mod_api::Text::literal("Oak Log"), Narration::Now),

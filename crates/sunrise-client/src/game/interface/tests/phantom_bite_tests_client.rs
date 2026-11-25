@@ -5,7 +5,7 @@ pub(in crate::game::client_side) use sunrise_core::random::{LegacyRandom, Random
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::level_particles::phantom_bite_tests::*;
 
-pub(in crate::game) fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let mut resources = None;
     let mut g = crate::game::game_tests::tests::server_game(&mut resources);
     g.options.dedicated = Some(Vec::new());

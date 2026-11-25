@@ -7,7 +7,7 @@ use crate::game::{
 #[allow(unused_imports)]
 use sunrise_client::particles::ParticleType;
 
-pub(in crate::game) fn with_isolated_client<__Side: crate::game::Side>(name: &str, body: impl FnOnce(&mut Game<'_, __Side>)) {
+pub(in crate::game) fn with_isolated_client(name: &str, body: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     let test = if name.contains("::") {
         name.split_once("::")
             .map_or(name, |(_, rest)| rest)
@@ -19,7 +19,7 @@ pub(in crate::game) fn with_isolated_client<__Side: crate::game::Side>(name: &st
     crate::game::in_own_process(&test, || with_client_game(body));
 }
 
-pub(in crate::game) fn registry_id<__Side: crate::game::Side>(game: &Game<'_, __Side>, registry: &str, name: &str) -> i32 {
+pub(in crate::game) fn registry_id(game: &crate::game::ClientGame<'_>, registry: &str, name: &str) -> i32 {
     game.remote
         .as_ref()
         .unwrap()

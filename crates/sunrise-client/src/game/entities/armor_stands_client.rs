@@ -798,7 +798,7 @@ pub(in crate::game) mod setup_anim_tests {
                 stand.pitch = 30.0;
                 stand.vehicle = Some(9);
                 stand.pose = [[10.0, 20.0, 30.0]; 6];
-                let model = game.armor_stand_assets.0.main.as_ref().unwrap();
+                let model = game.side.armor_stand_assets.0.main.as_ref().unwrap();
                 let mut poses = Poses::new(model);
                 game.setup_armor_stand_pose(&stand, 0.5, &mut poses);
                 for name in [

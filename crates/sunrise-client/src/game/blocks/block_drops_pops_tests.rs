@@ -10,13 +10,13 @@ use crate::game::game_tests::tests::{isolated_server_game, server_game};
 use sunrise_client::items::ItemStack;
 use sunrise_core::position::ChunkPos;
 
-fn game(resources: &mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'_> {
+fn game(resources: &mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'_> {
     let mut game = server_game(resources);
     set_up(&mut game);
     game
 }
 
-fn set_up(game: &mut Game<'_>) {
+fn set_up(game: &mut crate::game::ServerGame<'_>) {
     game.build_registries();
     game.set_allow_commands(true);
     game.block_ticks
@@ -41,18 +41,18 @@ fn hit(pos: [i32; 3]) -> Hit {
 
 /// Clicks the block with `stack` in the main hand: the block's own use, then
 /// the item's (`BoneMealItem.useOn`). True when something was used.
-fn use_block(game: &mut Game<'_>, pos: [i32; 3], stack: Option<ItemStack>) -> bool {
+fn use_block(game: &mut crate::game::ServerGame<'_>, pos: [i32; 3], stack: Option<ItemStack>) -> bool {
     game.dropped.clear();
     let hit = hit(pos);
-    game.server.forced_hit = Some(hit);
+    game.side.forced_hit = Some(hit);
     *game.held_mut() = stack;
     let used = game.use_hand(Some(&hit)).unwrap();
-    game.server.forced_hit = None;
+    game.side.forced_hit = None;
     *game.held_mut() = None;
     used
 }
 
-fn place(game: &mut Game<'_>, pos: [i32; 3], block: &str) {
+fn place(game: &mut crate::game::ServerGame<'_>, pos: [i32; 3], block: &str) {
     assert!(game.run_command(&format!(
         "setblock {} {} {} {block}",
         pos[0], pos[1], pos[2]
@@ -175,7 +175,7 @@ fn block_drops_on_keeps_the_pop() {
 fn harvest_game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
     table: serde_json::Value,
-) -> (crate::game::game_tests::tests::Published, Game<'a>) {
+) -> (crate::game::game_tests::tests::Published, crate::game::ServerGame<'a>) {
     let (published, mut game) = isolated_server_game(resources);
     set_up(&mut game);
     game.player = Some(
@@ -185,7 +185,7 @@ fn harvest_game<'a>(
         )
         .unwrap(),
     );
-    game.server_loot.0.set(Some(std::sync::Arc::new(
+    game.side.server_loot.0.set(Some(std::sync::Arc::new(
         sunrise_world::loot::LootData::load(
             &game.options.resources,
             &Default::default(),
@@ -204,7 +204,7 @@ fn harvest_game<'a>(
 }
 
 /// Clicks a ripe bush at `[14, 100, 2]` and returns the sorted item ids it dropped.
-fn harvest(game: &mut Game<'_>) -> Vec<String> {
+fn harvest(game: &mut crate::game::ServerGame<'_>) -> Vec<String> {
     let at = [14, 100, 2];
     place(game, at, "minecraft:sweet_berry_bush[age=3]");
     assert!(use_block(game, at, None));

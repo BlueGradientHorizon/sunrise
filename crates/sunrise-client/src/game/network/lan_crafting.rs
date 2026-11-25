@@ -2358,10 +2358,10 @@ mod machine_recipe_placement_tests {
                 .recipe_index
                 .first_display("minecraft:charcoal")
                 .unwrap();
-            let command = |game: &mut Game<'_>, text: &str| {
+            let command = |game: &mut crate::game::ServerGame<'_>, text: &str| {
                 assert!(game.as_guest(2, |g| g.run_command(text)).unwrap(), "{text}");
             };
-            let place = |game: &mut Game<'_>, container, recipe| {
+            let place = |game: &mut crate::game::ServerGame<'_>, container, recipe| {
                 game.lan_guest_packet(
                     2,
                     Serverbound::PlaceRecipe(PlaceRecipe {
@@ -2371,7 +2371,7 @@ mod machine_recipe_placement_tests {
                     }),
                 );
             };
-            let open = |game: &mut Game<'_>, pos| {
+            let open = |game: &mut crate::game::ServerGame<'_>, pos| {
                 game.lan_guest_packet(
                     2,
                     Serverbound::UseItemOn(UseItemOn {
@@ -2583,7 +2583,7 @@ mod recipe_check_tests {
     /// What a check must leave alone: the station's block entity, the guest's
     /// inventory, grid and cursor, its menus' slots, and the station's chunk
     /// unmarked as changed (`container_changed` marks it; this takes the mark).
-    fn state(game: &mut Game<'_>) -> String {
+    fn state(game: &mut crate::game::ServerGame<'_>) -> String {
         let changed = game
             .world
             .modified
@@ -2759,7 +2759,7 @@ mod recipe_check_tests {
             sent(&rx);
             game.world.modified.clear();
             let before = state(game);
-            let check = |game: &mut Game<'_>, window, tag, id| {
+            let check = |game: &mut crate::game::ServerGame<'_>, window, tag, id| {
                 game.guest_recipe_check(2, &request(window, tag, id));
                 assert_eq!(state(game), before, "a check of {id} changed something");
                 reply(&sent(&rx))
@@ -2909,7 +2909,7 @@ mod empty_ingredient_placement_tests {
                         .to_string(),
                     )
                     .unwrap();
-                    game.server.world_root = dir.clone();
+                    game.side.world_root = dir.clone();
                     let resources = game.options.resources.clone();
                     let stack = crate::game::functions::pack_stack(
                         &dir,
@@ -2943,7 +2943,7 @@ mod empty_ingredient_placement_tests {
                         );
                         std::fs::remove_file(path).unwrap();
                     }
-                    game.world_tables.0 = game
+                    game.side.world_tables.0 = game
                         .stage_world_tables(&stack, false, &resources)
                         .unwrap()
                         .tables;

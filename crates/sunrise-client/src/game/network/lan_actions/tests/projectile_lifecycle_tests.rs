@@ -38,7 +38,7 @@ static VALUE: AttachmentType<i32> = AttachmentType {
 #[ignore = "daily"]
 fn projectile_restore_entries_keep_the_bound_arrow() {
     for path in 0..3 {
-        let exercise = |game: &mut Game<'_>| {
+        let exercise = |game: &mut crate::game::ServerGame<'_>| {
             let at = [3.0, 64.0, 5.0];
             game.world
                 .chunks

@@ -55,7 +55,7 @@ fn the_active_stack_survives_a_partial_contact_and_consumption_removes_the_entit
 
 fn the_active_stack_survives_a_partial_contact_and_consumption_removes_the_entity_isolated() {
     use crate::game::native_entity_refs::tests::with_game;
-    let prepare = |game: &mut Game<'_>| {
+    let prepare = |game: &mut crate::game::ServerGame<'_>| {
         game.options.dedicated = Some(Vec::new());
         game.native_lifecycle
             .begin_open(mod_api::Authority::IntegratedServer);
@@ -78,12 +78,12 @@ fn the_active_stack_survives_a_partial_contact_and_consumption_removes_the_entit
     input
         .data_mut()
         .set_other("fixture:opaque", Some(sunrise_core::nbt::Tag::Long(99)));
-    let spawn = |game: &mut Game<'_>, count| {
+    let spawn = |game: &mut crate::game::ServerGame<'_>, count| {
         game.dropped.clear();
         let mut stack = input.clone();
         stack.count = count;
         game.spawn_item(stack, [landing[0], 64.1, landing[2]], [0.0, -0.3, 0.0], 20);
-        game.server.ticked_entities_through = game.server.next_entity;
+        game.side.ticked_entities_through = game.side.next_entity;
         game.dropped[0].clone()
     };
     let mut vanilla = None;
@@ -200,7 +200,7 @@ fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
             mod_platform::testing::with_mods(mods.clone(), || {
                 crate::game::api_values::install_parts(&mods).unwrap();
                 crate::game::native_hooks::install_block_contact_hooks();
-                let run = |game: &mut Game<'_>, client: bool| {
+                let run = |game: &mut crate::game::ServerGame<'_>, client: bool| {
                     let registry = game.pack.assets.registry;
                     let block = |name| registry.default_state(name).unwrap();
                     let glass = block("minecraft:glass");
@@ -488,7 +488,7 @@ fn item_support_survives_idle_then_clears_on_an_airborne_move() {
                     20,
                 );
                 let mut item = game.dropped[0].clone();
-                let tick = |game: &mut Game<'_>, item: &mut ItemEntity| {
+                let tick = |game: &mut crate::game::ServerGame<'_>, item: &mut ItemEntity| {
                     game.tick_item_with_block_contacts(item, None, &[], false, &mut |_| {})
                 };
                 assert_eq!(tick(game, &mut item), (true, false));
@@ -601,7 +601,7 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
             mod_platform::testing::with_mods(mods.clone(), || {
                 crate::game::api_values::install_parts(&mods).unwrap();
                 crate::game::native_hooks::install_block_contact_hooks();
-                let run = |game: &mut Game<'_>, client: bool| {
+                let run = |game: &mut crate::game::ServerGame<'_>, client: bool| {
                     let registry = game.pack.assets.registry;
                     let stone = registry.default_state("minecraft:stone").unwrap();
                     let web = registry.default_state("minecraft:cobweb").unwrap();
@@ -615,7 +615,7 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                     if !client {
                         game.world.set(4, 64, 4, web).unwrap();
                     }
-                    let spawn = |game: &mut Game<'_>, count, height| {
+                    let spawn = |game: &mut crate::game::ServerGame<'_>, count, height| {
                         game.dropped.clear();
                         game.spawn_item(
                             ItemStack::new("minecraft:iron_ingot", count),
@@ -625,7 +625,7 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                         );
                         game.dropped[0].clone()
                     };
-                    let tick = |game: &mut Game<'_>, item: &mut ItemEntity, escape| {
+                    let tick = |game: &mut crate::game::ServerGame<'_>, item: &mut ItemEntity, escape| {
                         sunrise_client::block_contact::in_level(
                             sunrise_client::parallel::TickThread::mint(),
                             Some("minecraft:overworld"),
@@ -703,7 +703,7 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                     assert_eq!(clear_calls(), [(client, 77, floor, true)]);
 
                     if !client {
-                        game.tickets.0.update(Some(crate::ticket_levels::Sources {
+                        game.side.tickets.0.update(Some(crate::ticket_levels::Sources {
                             forced: vec![(0, 0)],
                             ..Default::default()
                         }));
@@ -726,10 +726,10 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                         game.world.set(8, 63, 4, stone).unwrap();
                         game.player = Some(PlayerMotion::new(game.motion, seat).unwrap());
                         bind_local_player(game, 80, 1);
-                        game.server.lan_acting = Some(2);
-                        game.server.lan_acting_name = Some("boat_step".into());
+                        game.side.lan_acting = Some(2);
+                        game.side.lan_acting_name = Some("boat_step".into());
                         bind_acting_guest(game);
-                        game.server.lan_acting = None;
+                        game.side.lan_acting = None;
                         game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
                             guest.vehicle = Some(79);
                         });
@@ -801,7 +801,7 @@ fn step_on_hurts_the_stepping_body_and_guards_its_block_writes() {
             mod_platform::testing::with_mods(mods.clone(), || {
                 crate::game::api_values::install_parts(&mods).unwrap();
                 crate::game::native_hooks::install_block_contact_hooks();
-                let run = |game: &mut Game<'_>, client, change_first| {
+                let run = |game: &mut crate::game::ServerGame<'_>, client, change_first| {
                     let registry = game.pack.assets.registry;
                     let stone = registry.default_state("minecraft:stone").unwrap();
                     let glass = registry.default_state("minecraft:glass").unwrap();
@@ -962,7 +962,7 @@ fn step_on_can_hurt_only_living_bodies_on_the_same_block() {
                         .default_state("minecraft:stone")
                         .unwrap();
                     game.world.set(4, 63, 4, stone).unwrap();
-                    game.tickets.0.update(None);
+                    game.side.tickets.0.update(None);
 
                     let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                     let mut pig =
@@ -1171,7 +1171,7 @@ impl Hooks for HeatedBlocks {
     }
 }
 
-fn with_heated_game(test: impl FnOnce(&mut Game<'_>)) {
+fn with_heated_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("heat", Box::new(HeatedBlocks))].into();
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
@@ -1223,7 +1223,7 @@ fn contact_hurt_uses_the_world_damage_type_tags_and_death_message() {
                     game.mobs.push(mob);
                 }
                 let health =
-                    |game: &Game<'_>, id| game.mobs.iter().find(|mob| mob.id == id).unwrap().health;
+                    |game: &crate::game::ServerGame<'_>, id| game.mobs.iter().find(|mob| mob.id == id).unwrap().health;
                 game.tick_mobs().unwrap();
                 assert_eq!(health(game, 71), 20.0, "hot floor is fire damage");
                 assert_eq!(health(game, 72), 0.0, "the same hit kills a non-immune pig");
@@ -1378,7 +1378,7 @@ fn contact_hurt_uses_the_orbs_level_fall_immunity_tag() {
                     .default_state("minecraft:terracotta")
                     .unwrap();
                 game.world.set(4, 63, 4, block).unwrap();
-                game.tickets.0.update(None);
+                game.side.tickets.0.update(None);
                 for tagged in [false, true] {
                     let mut items = world_items!(game).clone();
                     let mut tags = items.entity_type_tags.ordered().clone();
@@ -1400,7 +1400,7 @@ fn contact_hurt_uses_the_orbs_level_fall_immunity_tag() {
                         Vec3::new(0.0, -0.5, 0.0),
                         1,
                     ));
-                    game.server.ordered.announced = JoinSeq::MAX;
+                    game.side.ordered.announced = JoinSeq::MAX;
                     game.begin_ordered_ticks();
                     sunrise_client::block_contact::in_level(
                         game.tick,

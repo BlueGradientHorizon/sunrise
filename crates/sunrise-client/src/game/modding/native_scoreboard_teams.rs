@@ -462,7 +462,7 @@ mod tests {
             let as_entity = ScoreHolder::Entity(a.entity());
             assert_eq!(red.join(game, as_player.clone()), Ok(true));
             assert_eq!(red.join(game, as_entity.clone()), Ok(true));
-            let members = |game: &Game<'_>| {
+            let members = |game: &crate::game::ServerGame<'_>| {
                 let mut names = Vec::new();
                 assert_eq!(
                     red.visit_members(game, &mut |name| {

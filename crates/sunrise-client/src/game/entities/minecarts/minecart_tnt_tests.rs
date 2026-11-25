@@ -15,7 +15,7 @@ use sunrise_client::items::ItemStack;
 /// (CI has none: the tests then skip quietly).
 pub(in crate::game) fn server(
     resources: &mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> Option<Game<'_>> {
+) -> Option<crate::game::ServerGame<'_>> {
     std::env::var_os("SUNRISE_TEST_RESOURCES")?;
     Some(server_game(resources))
 }
@@ -36,12 +36,12 @@ fn a_silent_tnt_cart_primes_without_its_sound() {
     game.activate_cart(&mut silent, true);
     assert_eq!(silent.fuse, 80, "a silent cart still primes");
     assert!(
-        game.server
+        game.side
             .lan_entity_events
             .iter()
             .any(|(id, event)| *id == 42 && *event == 70),
         "a silent cart still broadcasts EntityEvent.TNT_PRIME: {:?}",
-        game.server.lan_entity_events
+        game.side.lan_entity_events
     );
     let sounds = game.audio.0.capture.take().unwrap();
     assert!(sounds.is_empty(), "a silent cart hissed: {sounds:?}");

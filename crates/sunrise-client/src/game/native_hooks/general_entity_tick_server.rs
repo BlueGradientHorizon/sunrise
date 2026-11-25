@@ -189,8 +189,8 @@ pub(in crate::game) mod tests {
                     let peer = game
                         .item_entity(game.entity(game.dropped[0].id).unwrap())
                         .unwrap();
-                    game.server.next_entity += 1;
-                    let id = game.server.next_entity;
+                    game.side.next_entity += 1;
+                    let id = game.side.next_entity;
                     let epoch = game.native_lifecycle.epoch().unwrap();
                     game.resident_entities.general.rows.push(GeneralRow {
                         id,

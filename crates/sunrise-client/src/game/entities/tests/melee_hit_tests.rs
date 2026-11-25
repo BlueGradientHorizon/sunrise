@@ -10,7 +10,7 @@ use sunrise_client::motion::PlayerMotion;
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
     creative: bool,
-) -> Game<'a> {
+) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -33,15 +33,12 @@ fn game<'a>(
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = &*resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
         None,
     )
     .unwrap();
@@ -53,7 +50,7 @@ fn game<'a>(
         sunrise_client::command::args::GameMode::Survival
     };
     // A full attack charge (`getAttackStrengthScale(0.5)` = 1).
-    game.server.attack_ticks = 20;
+    game.side.attack_ticks = 20;
     game.build_registries();
     game.set_allow_commands(true);
     game.world
@@ -77,7 +74,7 @@ fn set_base(player: &mut PlayerMotion, name: &str, value: f64) {
 }
 
 /// A pig at (0.5, 64, 2.5), 2 blocks south of the player, with `extra` NBT.
-fn summon_pig(game: &mut Game<'_>, extra: &str) {
+fn summon_pig(game: &mut crate::game::ServerGame<'_>, extra: &str) {
     assert!(game.run_command(&format!(
         "summon minecraft:pig 0.5 64.0 2.5 {{NoAI:1b,NoGravity:1b,Silent:1b,PersistenceRequired:1b{extra}}}"
     )));
@@ -85,7 +82,7 @@ fn summon_pig(game: &mut Game<'_>, extra: &str) {
 }
 
 /// Look at the center of the first mob, as the attack fixture does.
-fn aim_at_mob(game: &mut Game<'_>) {
+fn aim_at_mob(game: &mut crate::game::ServerGame<'_>) {
     let center = game.mobs[0].center();
     let eye = game.eye_position().expect("player");
     let (dx, dy, dz) = (center[0] - eye[0], center[1] - eye[1], center[2] - eye[2]);
@@ -131,7 +128,7 @@ fn a_hit_that_deals_no_damage_has_no_knockback_anger_or_exhaustion() {
         "causeFoodExhaustion(0.1F) ran for a hit that dealt no damage"
     );
     assert_eq!(
-        game.server.attack_ticks, 0,
+        game.side.attack_ticks, 0,
         "Player.onAttack did not start the attack strength again"
     );
 }
@@ -166,7 +163,7 @@ fn the_melee_knockback_scales_with_the_attackers_attack_knockback() {
     game.mobs[0].velocity = Vec3::ZERO;
     game.mobs[0].invulnerable = 0;
     game.mobs[0].last_hurt = 0.0;
-    game.server.attack_ticks = 20;
+    game.side.attack_ticks = 20;
     assert!(game.attack(), "the second attack reached the pig");
     let boosted = game.mobs[0].velocity.z;
     assert!(
@@ -193,7 +190,7 @@ fn a_creative_player_hurts_an_invulnerable_mob() {
     // The same hit from a creative player: `source.isCreativePlayer()`.
     game.creative = true;
     game.mode = sunrise_client::command::args::GameMode::Creative;
-    game.server.attack_ticks = 20;
+    game.side.attack_ticks = 20;
     assert!(game.attack(), "the second attack reached the pig");
     assert_eq!(
         game.mobs[0].health, 9.0,

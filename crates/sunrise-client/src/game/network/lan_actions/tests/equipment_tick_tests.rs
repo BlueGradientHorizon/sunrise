@@ -23,7 +23,7 @@ fn a_new_slot_takes_its_items_attributes_at_the_guests_tick() {
         g.selected = 0;
         game.lan.as_mut().unwrap().hub.guests.extend([g]);
         game.tick_guests();
-        let damage = |game: &mut Game<'_>| game.as_guest(1, |g| g.attack_damage()).unwrap();
+        let damage = |game: &mut crate::game::ServerGame<'_>| game.as_guest(1, |g| g.attack_damage()).unwrap();
         // The player's 1 and the diamond sword's base_attack_damage of 6.
         assert_eq!(damage(game), 7.0);
         game.lan_guest_packet(1, S::SetCarriedItem(play::SetCarriedItem { slot: 1 }));
@@ -55,7 +55,7 @@ fn gear_swapped_and_swapped_back_before_the_tick_keeps_its_modifiers() {
         g.selected = 0;
         game.lan.as_mut().unwrap().hub.guests.extend([g]);
         game.tick_guests();
-        let damage = |game: &mut Game<'_>| game.as_guest(1, |g| g.attack_damage()).unwrap();
+        let damage = |game: &mut crate::game::ServerGame<'_>| game.as_guest(1, |g| g.attack_damage()).unwrap();
         assert_eq!(damage(game), 7.0);
         // The hotbar helmet equipped from the hand, then the returned one equipped back:
         // each swap rebuilds the modifiers with a helmet in hand where vanilla waits.

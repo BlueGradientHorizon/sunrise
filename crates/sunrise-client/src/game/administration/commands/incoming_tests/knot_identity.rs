@@ -26,7 +26,7 @@ pub(in crate::game) const AT_FENCE: &str =
 
 pub(in crate::game) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> Game<'a> {
+) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -49,15 +49,12 @@ pub(in crate::game) fn game<'a>(
     options.resources = root.clone();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -83,19 +80,19 @@ pub(in crate::game) fn game<'a>(
     game
 }
 
-pub(in crate::game) fn summon_pig(game: &mut Game<'_>, n: i32, x: f64) {
+pub(in crate::game) fn summon_pig(game: &mut crate::game::ServerGame<'_>, n: i32, x: f64) {
     let command = format!(
         "summon pig {x} 201 0.5 {{NoAI:1b,PersistenceRequired:1b,NoGravity:1b,leash:[I;8,201,0],UUID:[I;24730,0,0,{n}]}}"
     );
     assert!(game.run_command(&command), "{command}");
 }
 
-pub(in crate::game) fn step(game: &mut Game<'_>) {
+pub(in crate::game) fn step(game: &mut crate::game::ServerGame<'_>) {
     assert!(game.run_command("tick step 1"));
     game.tick_server(false).unwrap();
 }
 
-pub(in crate::game) fn mob(game: &mut Game<'_>, uuid: &str) -> usize {
+pub(in crate::game) fn mob(game: &mut crate::game::ServerGame<'_>, uuid: &str) -> usize {
     match game.target_with_uuid(sunrise_client::save::uuid_from_text(uuid).unwrap()) {
         Some(super::Target::Mob(id)) => game.mobs.iter().position(|m| m.id == id).unwrap(),
         other => panic!("{other:?}"),
@@ -103,7 +100,7 @@ pub(in crate::game) fn mob(game: &mut Game<'_>, uuid: &str) -> usize {
 }
 
 /// The knots the level in place's selectors list, by entity id.
-pub(in crate::game) fn knots(game: &Game<'_>) -> Vec<u32> {
+pub(in crate::game) fn knots(game: &crate::game::ServerGame<'_>) -> Vec<u32> {
     game.level_candidates(false)
         .into_iter()
         .filter_map(|t| match t {
@@ -114,7 +111,7 @@ pub(in crate::game) fn knots(game: &Game<'_>) -> Vec<u32> {
 }
 
 /// The UUID `/data` reads from the one knot of the level in place.
-pub(in crate::game) fn knot_uuid(game: &mut Game<'_>) -> [i32; 4] {
+pub(in crate::game) fn knot_uuid(game: &mut crate::game::ServerGame<'_>) -> [i32; 4] {
     let [id] = knots(game)[..] else {
         panic!("one knot: {:?}", knots(game));
     };

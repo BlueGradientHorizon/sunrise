@@ -72,7 +72,7 @@ fn coin_data() -> Compound {
 }
 
 /// A serving level, frozen and stepped by hand, with a stone floor at y 99 and survival rules.
-fn field(game: &mut super::Game<'_>) {
+fn field(game: &mut crate::game::ServerGame<'_>) {
     game.options.dedicated = Some(Vec::new());
     game.build_registries();
     game.set_allow_commands(true);
@@ -93,7 +93,7 @@ fn field(game: &mut super::Game<'_>) {
     game.creative = false;
 }
 
-fn step(game: &mut super::Game<'_>, ticks: usize) {
+fn step(game: &mut crate::game::ServerGame<'_>, ticks: usize) {
     for _ in 0..ticks {
         assert!(game.run_command("tick step 1"));
         game.tick_server(false).unwrap();
@@ -102,7 +102,7 @@ fn step(game: &mut super::Game<'_>, ticks: usize) {
 
 /// An adult (or `baby`) piglin at `(x, 100, z)` that never zombifies, holding `main` in its main
 /// hand; its id.
-fn add_piglin(game: &mut super::Game<'_>, x: f64, z: f64, main: Option<&str>, baby: bool) -> u32 {
+fn add_piglin(game: &mut crate::game::ServerGame<'_>, x: f64, z: f64, main: Option<&str>, baby: bool) -> u32 {
     let before: Vec<u32> = game.mobs.iter().map(|m| m.id).collect();
     let baby = if baby { ",IsBaby:1b" } else { "" };
     let command = format!(
@@ -119,16 +119,16 @@ fn add_piglin(game: &mut super::Game<'_>, x: f64, z: f64, main: Option<&str>, ba
     m.id
 }
 
-fn mob<'a>(game: &'a super::Game<'_>, id: u32) -> &'a Mob {
+fn mob<'a>(game: &'a crate::game::ServerGame<'_>, id: u32) -> &'a Mob {
     game.mobs.iter().find(|m| m.id == id).unwrap()
 }
 
-fn index(game: &super::Game<'_>, id: u32) -> usize {
+fn index(game: &crate::game::ServerGame<'_>, id: u32) -> usize {
     game.mobs.iter().position(|m| m.id == id).unwrap()
 }
 
 /// Right click on the piglin `id` holding `held`; whether the click was taken.
-fn click(game: &mut super::Game<'_>, id: u32, held: ItemStack) -> bool {
+fn click(game: &mut crate::game::ServerGame<'_>, id: u32, held: ItemStack) -> bool {
     game.inventory[game.selected] = Some(held);
     game.interact_mob(Some(crate::game::InteractTarget {
         id: id as i32,
@@ -139,7 +139,7 @@ fn click(game: &mut super::Game<'_>, id: u32, held: ItemStack) -> bool {
 
 /// A player's hit stops the admiring: `ai::after_hurt` and `piglin_hurt` both stop it, and the
 /// game applies what they raised with the next tick's events.
-fn hit(game: &mut super::Game<'_>, id: u32) {
+fn hit(game: &mut crate::game::ServerGame<'_>, id: u32) {
     let i = index(game, id);
     piglin::stop_admiring(&mut game.mobs[i]);
     piglin::stop_admiring(&mut game.mobs[i]);
@@ -147,7 +147,7 @@ fn hit(game: &mut super::Game<'_>, id: u32) {
 }
 
 /// Drop one `stack` right beside the piglin `id`, ready to be picked up, and tick once.
-fn drop_beside(game: &mut super::Game<'_>, id: u32, stack: ItemStack) {
+fn drop_beside(game: &mut crate::game::ServerGame<'_>, id: u32, stack: ItemStack) {
     let at = mob(game, id).position;
     game.spawn_item(stack, [at.x + 0.5, at.y, at.z], [0.0; 3], 0);
     step(game, 1);
@@ -162,7 +162,7 @@ fn stored(m: &Mob, item: &str) -> u32 {
         .sum()
 }
 
-fn off_hand(game: &super::Game<'_>, id: u32) -> Option<ItemStack> {
+fn off_hand(game: &crate::game::ServerGame<'_>, id: u32) -> Option<ItemStack> {
     sunrise_client::mobs::finalize::item_stack(
         mob(game, id),
         sunrise_client::mobs::finalize::OFFHAND,
@@ -170,7 +170,7 @@ fn off_hand(game: &super::Game<'_>, id: u32) -> Option<ItemStack> {
 }
 
 /// Thrown barter items (no other items are on the ground in these tests).
-fn thrown(game: &super::Game<'_>) -> usize {
+fn thrown(game: &crate::game::ServerGame<'_>) -> usize {
     game.dropped.len()
 }
 

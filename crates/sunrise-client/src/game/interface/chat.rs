@@ -1878,7 +1878,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn studio_is_in_the_client_chat_tree_without_a_mod_registering_it() {
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_client_game(|game| {
             let tree = game.chat_tree_for(None);
             let reg = Registries::default();
             assert!(tree.find("studio").is_some());
@@ -2179,8 +2179,8 @@ pub(in crate::game) mod tests {
             ChatAbilities::new(ChatVisibility::Full),
         );
         screen.draw(&m, (0, 0), 0, 0);
-        let (x, y, w, h) = Game::leave_bed_button(width, height);
-        Game::leave_bed_draws(&m, (0, 0), (x, y, w, h));
+        let (x, y, w, h) = crate::game::ClientGame::leave_bed_button(width, height);
+        crate::game::ClientGame::leave_bed_draws(&m, (0, 0), (x, y, w, h));
         sunrise_client::widgets::end_frame(u64::MAX);
 
         let targets = key_focus::drawn_targets();

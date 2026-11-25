@@ -17,7 +17,7 @@ pub(in crate::game) const WOLF: u32 = 50;
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::client_side::core_tests_client::pet_order_tests::game;
 
-pub(in crate::game) fn use_on_wolf(game: &mut Game<'_>, item: &str) -> (bool, u8, u32) {
+pub(in crate::game) fn use_on_wolf(game: &mut crate::game::ServerGame<'_>, item: &str) -> (bool, u8, u32) {
     game.inventory[0] = Some(ItemStack::new(item, 1));
     let target = Some(InteractTarget {
         id: WOLF as i32,

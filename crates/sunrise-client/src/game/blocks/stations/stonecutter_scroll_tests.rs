@@ -10,7 +10,7 @@ fn deepslate(count: u32) -> ItemStack {
 
 /// The scroller at the end of its track: the last of the 17 deepslate
 /// recipes' rows (`startIndex` 8).
-fn scroll_to_bottom(game: &mut Game<'_>) {
+fn scroll_to_bottom(game: &mut crate::game::ClientGame<'_>) {
     game.station_scroll(-2.0);
     let s = game.station.as_ref().unwrap();
     assert_eq!(
@@ -20,12 +20,12 @@ fn scroll_to_bottom(game: &mut Game<'_>) {
     );
 }
 
-fn shown(game: &Game<'_>) -> (usize, f32) {
+fn shown(game: &crate::game::ClientGame<'_>) -> (usize, f32) {
     let s = game.station.as_ref().unwrap();
     (s.start, s.scroll)
 }
 
-fn pick_recipe(game: &mut Game<'_>, index: i32) -> bool {
+fn pick_recipe(game: &mut crate::game::ClientGame<'_>, index: i32) -> bool {
     let mut taken = false;
     game.menu_session(|menu, env, _| {
         taken = menu.button(env, index);

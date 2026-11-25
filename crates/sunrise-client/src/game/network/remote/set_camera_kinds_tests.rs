@@ -25,7 +25,7 @@ pub(in crate::game) fn run_set_camera_follows_the_real_26_3_clients_camera_for_e
         )
     });
     with_client_game(|game| {
-        let camera = |game: &Game<'_>| (game as &dyn ClientHost).camera_entity();
+        let camera = |game: &crate::game::ClientGame<'_>| (game as &dyn ClientHost).camera_entity();
         game.native_lifecycle = NativeLifecycle::default();
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "SetCameraKinds").unwrap();

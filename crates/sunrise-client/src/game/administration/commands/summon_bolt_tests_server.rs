@@ -91,7 +91,7 @@ pub(in crate::game) fn run_a_bolt_summoned_with_nbt_strikes_and_goes() {
                     let entity_id = step["entity_id"].as_i64().unwrap();
                     let level_seed = step["level_seed"].as_i64().unwrap();
                     sunrise_client::random_source::set_thread_uniquifier(uniquifier).unwrap();
-                    game.server.next_entity = u32::try_from(entity_id).unwrap();
+                    game.side.next_entity = u32::try_from(entity_id).unwrap();
                     game.world.random.set_seed(level_seed);
                 }
                 "wait_chunks" => {
@@ -106,11 +106,11 @@ pub(in crate::game) fn run_a_bolt_summoned_with_nbt_strikes_and_goes() {
                 "cmd" => {
                     let cmd = step["cmd"].as_str().unwrap();
                     let line = cmd.strip_prefix('/').unwrap_or(cmd);
-                    game.server.chat_capture = Some(Vec::new());
-                    game.cmds.0.results = Some(Vec::new());
+                    game.side.chat_capture = Some(Vec::new());
+                    game.side.cmds.0.results = Some(Vec::new());
                     game.as_console(|g| g.run_command(line));
-                    let messages = game.server.chat_capture.take().unwrap_or_default();
-                    let results = game.cmds.0.results.take().unwrap_or_default();
+                    let messages = game.side.chat_capture.take().unwrap_or_default();
+                    let results = game.side.cmds.0.results.take().unwrap_or_default();
                     if step["record"].as_bool() != Some(false) {
                         let actual_messages = Value::Array(messages.iter().map(spans).collect());
                         let actual_results =
@@ -125,7 +125,7 @@ pub(in crate::game) fn run_a_bolt_summoned_with_nbt_strikes_and_goes() {
                         );
                     }
                     assert!(
-                        game.others
+                        game.side.others
                             .0
                             .iter()
                             .all(|o| o.kind != "minecraft:lightning_bolt"),

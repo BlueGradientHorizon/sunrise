@@ -20,7 +20,7 @@ pub(in crate::game) const WIND_CHARGE_BURST: &str = "minecraft:entity.wind_charg
 /// set it; the default would discard a zombie as Peaceful does) with chunk
 /// (0, 0) loaded and a stone floor at y 63, which a dead mob falls onto so
 /// that its burst has ground under it. `None` without the prepared resources.
-pub(in crate::game) fn with_game<R>(f: impl FnOnce(&mut Game<'_>) -> R) -> Option<R> {
+pub(in crate::game) fn with_game<R>(f: impl FnOnce(&mut crate::game::ServerGame<'_>) -> R) -> Option<R> {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES")?);
     let settings = Settings::default();
     let loaded = load_resources(
@@ -41,15 +41,12 @@ pub(in crate::game) fn with_game<R>(f: impl FnOnce(&mut Game<'_>) -> R) -> Optio
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
     let mut resources = None;
     let res = &*resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
         None,
     )
     .unwrap();
@@ -69,7 +66,7 @@ pub(in crate::game) fn with_game<R>(f: impl FnOnce(&mut Game<'_>) -> R) -> Optio
 pub(in crate::game) use crate::game::client_side::wind_client::wind_charged_tests::heard;
 
 /// An oak boat two blocks east of the burst's centre.
-pub(in crate::game) fn boat(game: &mut Game<'_>) -> u32 {
+pub(in crate::game) fn boat(game: &mut crate::game::ServerGame<'_>) -> u32 {
     match game
         .summon_with_nbt("minecraft:oak_boat", [6.5, 64.0, 4.5], "{}")
         .unwrap()
@@ -79,7 +76,7 @@ pub(in crate::game) fn boat(game: &mut Game<'_>) -> u32 {
     }
 }
 
-pub(in crate::game) fn boat_speed(game: &Game<'_>, id: u32) -> f64 {
+pub(in crate::game) fn boat_speed(game: &crate::game::ServerGame<'_>, id: u32) -> f64 {
     let v = game.boats.iter().find(|b| b.id == id).unwrap().velocity;
     (v.x * v.x + v.y * v.y + v.z * v.z).sqrt()
 }
@@ -87,7 +84,7 @@ pub(in crate::game) fn boat_speed(game: &Game<'_>, id: u32) -> f64 {
 /// A zombie at (4.5, 64, 4.5) with the Wind Charged effect, `Silent` or not,
 /// killed and ticked out: `LivingEntity.remove` with KILLED runs its effects
 /// after `LivingEntity.tickDeath`'s twenty ticks.
-pub(in crate::game) fn a_wind_charged_zombie_dies(game: &mut Game<'_>, silent: bool) {
+pub(in crate::game) fn a_wind_charged_zombie_dies(game: &mut crate::game::ServerGame<'_>, silent: bool) {
     let nbt = if silent { "{Silent:1b}" } else { "{}" };
     game.summon_with_nbt("minecraft:zombie", [4.5, 64.0, 4.5], nbt)
         .unwrap()

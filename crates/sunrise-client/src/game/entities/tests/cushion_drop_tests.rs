@@ -15,7 +15,7 @@ use sunrise_core::position::ChunkPos;
 /// The cushion's position: `Vec3.atCenterOfWithY(4 199 4, 200.0)`.
 const AT: [f64; 3] = [4.5, 200.0, 4.5];
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -38,15 +38,12 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = &*resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
         None,
     )
     .unwrap();
@@ -157,15 +154,15 @@ fn a_creative_blast_leaves_no_cushion_item() {
         game.dropped.clear();
         assert!(game.place_cushion(&top_hit(), &named_stack()));
         // `Explosion.getIndirectSourceEntity` of a player's TNT is the player.
-        game.combat.0 = Default::default();
-        game.combat.0.blast_owner = Some(if owner_player {
+        game.side.combat.0 = Default::default();
+        game.side.combat.0.blast_owner = Some(if owner_player {
             (1, Text::literal("Steve"))
         } else {
             (700, Text::literal("Zombie"))
         });
-        game.combat.0.blast_owner_player = owner_player;
-        game.combat.0.blast_guest = guest;
-        game.server.lan_acting = guest;
+        game.side.combat.0.blast_owner_player = owner_player;
+        game.side.combat.0.blast_guest = guest;
+        game.side.lan_acting = guest;
         game.server_explode(
             [4.5, 200.5, 4.5],
             2.0,
@@ -173,7 +170,7 @@ fn a_creative_blast_leaves_no_cushion_item() {
             false,
         )
         .unwrap();
-        game.server.lan_acting = None;
+        game.side.lan_acting = None;
         assert!(game.cushions.is_empty(), "the blast breaks the cushion");
         assert_eq!(
             game.dropped.len(),
@@ -231,7 +228,7 @@ fn floats(v: [f32; 2]) -> Tag {
 }
 
 /// The cushion's entity root as the save path writes it.
-fn saved_cushion(game: &mut Game<'_>) -> Tag {
+fn saved_cushion(game: &mut crate::game::ServerGame<'_>) -> Tag {
     let mut chunks = game.entity_chunks(&std::collections::HashSet::from([(0, 0)]), false);
     assert_eq!(chunks.len(), 1);
     let (_, mut roots) = chunks.pop().unwrap();

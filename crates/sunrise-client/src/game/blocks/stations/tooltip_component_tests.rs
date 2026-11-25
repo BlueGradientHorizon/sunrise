@@ -99,7 +99,7 @@ fn run_tooltip_cases(test: &str, cases: &[&str]) -> bool {
     )
 }
 
-fn with_mod_factories(mods: Mods, test: impl FnOnce(&mut Game<'_>)) {
+fn with_mod_factories(mods: Mods, test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     mod_platform::testing::with_mods(mods.clone(), || {
         mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
         let factories = collect_factories();
@@ -1112,9 +1112,9 @@ fn show_tooltip_with_item_in_hand_controls_carried_visibility() {
         let (ox, oy) = game.inventory_origin(&batch);
 
         let (sx, sy) = game.slot_position(9);
-        game.client.cursor = (ox + sx + 8.0, oy + sy + 8.0);
+        game.side.cursor = (ox + sx + 8.0, oy + sy + 8.0);
         assert_eq!(
-            game.slot_at(&batch, game.client.cursor.0, game.client.cursor.1),
+            game.slot_at(&batch, game.side.cursor.0, game.side.cursor.1),
             Some(9)
         );
         game.draw_slot_tooltip(&mut batch);
@@ -1125,9 +1125,9 @@ fn show_tooltip_with_item_in_hand_controls_carried_visibility() {
 
         batch.vertices.clear();
         let (ax, ay) = game.slot_position(10);
-        game.client.cursor = (ox + ax + 8.0, oy + ay + 8.0);
+        game.side.cursor = (ox + ax + 8.0, oy + ay + 8.0);
         assert_eq!(
-            game.slot_at(&batch, game.client.cursor.0, game.client.cursor.1),
+            game.slot_at(&batch, game.side.cursor.0, game.side.cursor.1),
             Some(10)
         );
         game.draw_slot_tooltip(&mut batch);
@@ -1153,7 +1153,7 @@ fn audit_88_no_listener_fast_path_and_deep_local_text() {
     // This one line is 198 pixels wide. Neither side of x=145 on a 160-pixel screen can fit
     // it, but vanilla's item tooltip still passes it to the positioner intact.
     const WIDE: &str = "long item name near a screen edge";
-    let assert_unwrapped = |game: &mut Game<'_>, stack: &ItemStack| {
+    let assert_unwrapped = |game: &mut crate::game::ClientGame<'_>, stack: &ItemStack| {
         let original_font = std::mem::replace(
             &mut game.gui.atlas.font,
             synthetic_ascii_fonts([("default", 6)]),
@@ -2413,8 +2413,8 @@ fn item_tooltip_font_wraps_in_gather_pre_replaces_without_rewrap_and_anchor_quan
             ]),
         );
         game.gui.atlas.font = sunrise_client::font::Font::metrics(&source);
-        game.armor_stand_assets.0.extensions =
-            Game::prepare_client_item_extensions(&game.gui).unwrap();
+        game.side.armor_stand_assets.0.extensions =
+            crate::game::ClientGame::prepare_client_item_extensions(&game.gui).unwrap();
 
         let stick = ItemStack::new("minecraft:stick", 1);
         let text = sunrise_client::text::Text::literal("aa aa");
@@ -2606,9 +2606,9 @@ fn only_hovered_slots_check_show_tooltip_with_item_in_hand() {
             })
             .expect("stick should be visible in station player inventory");
         let (sx, sy) = game.slot_position_any(slot).unwrap();
-        game.client.cursor = (ox + sx + 8.0, oy + sy + 8.0);
+        game.side.cursor = (ox + sx + 8.0, oy + sy + 8.0);
         assert_eq!(
-            game.slot_at(&batch, game.client.cursor.0, game.client.cursor.1),
+            game.slot_at(&batch, game.side.cursor.0, game.side.cursor.1),
             Some(slot)
         );
 
@@ -2638,7 +2638,7 @@ fn only_hovered_slots_check_show_tooltip_with_item_in_hand() {
         game.carried = Some(ItemStack::new("minecraft:stone", 1));
         let mut batch = HudBatch::scratch([512, 512]);
         let (ox, oy) = game.inventory_origin(&batch);
-        game.client.cursor = (ox + 60.0, oy + 25.0);
+        game.side.cursor = (ox + 60.0, oy + 25.0);
         assert!(game.draw_station(&mut batch));
         assert_eq!(hand_calls.load(Ordering::Relaxed), 1);
         assert_eq!(
@@ -2672,7 +2672,7 @@ fn only_hovered_slots_check_show_tooltip_with_item_in_hand() {
         let mut batch = HudBatch::scratch([512, 512]);
         let (ox, oy) = game.inventory_origin(&batch);
         // Merchant screen is shifted left 50px; hover the first payment in the first offer.
-        game.client.cursor = (ox - 40.0, oy + 26.0);
+        game.side.cursor = (ox - 40.0, oy + 26.0);
         assert!(game.draw_station(&mut batch));
         assert_eq!(hand_calls.load(Ordering::Relaxed), 1);
         assert_eq!(

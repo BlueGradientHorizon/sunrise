@@ -77,7 +77,7 @@ fn saved_mob_binding_survives_store_back_and_retires_at_sweep() {
         game.world
             .chunks
             .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-        game.tickets.0.update(None);
+        game.side.tickets.0.update(None);
         game.tick_creature_entities().unwrap();
         assert!(game.mobs.is_empty());
         assert!(index.lock().unwrap().snapshot(&key).is_empty());

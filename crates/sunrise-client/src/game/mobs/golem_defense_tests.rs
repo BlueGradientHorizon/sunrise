@@ -16,7 +16,7 @@ use sunrise_protocol::packets::configuration::ClientInformation;
 const GUEST: &str = "GolemGuest";
 
 /// A host on a stone floor with one connected, placed guest (conn 2).
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -39,15 +39,12 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -92,7 +89,7 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     )
     .unwrap();
     // Reserve the manually installed guest in the shared runtime ID allocator.
-    game.server.next_entity = game.server.next_entity.max(2);
+    game.side.next_entity = game.side.next_entity.max(2);
     let (tx, _rx) = mpsc::channel();
     let mut guest = Guest::new(
         Joined {
@@ -120,10 +117,10 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
 }
 
 /// Runs `command`: whether it succeeded and what the issuer was told.
-fn run(game: &mut Game<'_>, command: &str) -> (bool, Vec<String>) {
-    game.server.chat_capture = Some(Vec::new());
+fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Vec<String>) {
+    game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.server.chat_capture.take().unwrap_or_default();
+    let said = game.side.chat_capture.take().unwrap_or_default();
     (
         ok,
         said.iter().map(sunrise_client::text::Text::plain).collect(),
@@ -134,7 +131,7 @@ const VILLAGER: &str = "00000901-0000-0000-0000-000000000002";
 
 /// The golem, and a villager whose gossips put the guest (UUID 2) at `value`
 /// times -5; the host player stands out of the golem's box.
-fn scene(game: &mut Game<'_>, value: i32) {
+fn scene(game: &mut crate::game::ServerGame<'_>, value: i32) {
     for command in [
         "summon iron_golem 10.5 100 10.5 {PersistenceRequired:1b,PlayerCreated:0b,UUID:[I;2305,0,0,1]}"
             .to_owned(),
@@ -153,7 +150,7 @@ fn scene(game: &mut Game<'_>, value: i32) {
 }
 
 /// Whether the golem targets the guest after `ticks` server ticks.
-fn targets_guest(game: &mut Game<'_>, ticks: usize) -> bool {
+fn targets_guest(game: &mut crate::game::ServerGame<'_>, ticks: usize) -> bool {
     for _ in 0..ticks {
         assert!(game.run_command("tick step 1"));
         game.tick_server(false).unwrap();
@@ -237,7 +234,7 @@ fn control_a_hated_host_does_not_turn_the_golem_on_the_selected_guest() {
     // golem hits the survival host, and two strong rolls kill it, after which
     // the target goes (`TargetGoal.canContinueToUse`) and what follows depends
     // on those rolls, not on whom it chose.
-    let golem_of = |game: &Game<'_>| {
+    let golem_of = |game: &crate::game::ServerGame<'_>| {
         game.mobs
             .iter()
             .find(|m| m.species() == sunrise_client::mobs::Species::IronGolem)

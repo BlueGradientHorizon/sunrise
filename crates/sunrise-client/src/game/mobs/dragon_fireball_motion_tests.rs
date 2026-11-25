@@ -7,7 +7,7 @@ use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -30,15 +30,12 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -55,10 +52,10 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     game
 }
 
-fn pos(game: &mut Game<'_>, uuid: &str) -> String {
-    game.server.chat_capture = Some(Vec::new());
+fn pos(game: &mut crate::game::ServerGame<'_>, uuid: &str) -> String {
+    game.side.chat_capture = Some(Vec::new());
     assert!(game.run_command(&format!("data get entity {uuid} Pos")));
-    let said = game.server.chat_capture.take().unwrap_or_default();
+    let said = game.side.chat_capture.take().unwrap_or_default();
     said.iter().map(sunrise_client::text::Text::plain).collect()
 }
 

@@ -14,7 +14,7 @@ use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
 fn floored_game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
     root: &std::path::Path,
-) -> Game<'a> {
+) -> crate::game::ServerGame<'a> {
     let settings = Settings::default();
     let loaded = load_resources(
         sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
@@ -33,15 +33,12 @@ fn floored_game<'a>(
     options.resources = root.to_path_buf();
     options.execution_role = super::execution_role::ExecutionRole::IntegratedServer;
     let resources = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
         None,
     )
     .unwrap();
@@ -69,7 +66,7 @@ fn floored_game<'a>(
     game
 }
 
-fn enderman(game: &Game, id: u32, at: Vec3, seed: i64) -> Mob {
+fn enderman(game: &crate::game::ServerGame<'_>, id: u32, at: Vec3, seed: i64) -> Mob {
     let kind = game
         .res
         .mob_types()
@@ -180,7 +177,7 @@ fn an_infested_endermans_silverfish_come_out_where_it_was_hurt() {
     }
 }
 
-fn shulker(game: &Game, id: u32, at: Vec3, seed: i64) -> Mob {
+fn shulker(game: &crate::game::ServerGame<'_>, id: u32, at: Vec3, seed: i64) -> Mob {
     let kind = game
         .res
         .mob_types()
@@ -392,9 +389,9 @@ fn a_teleporting_shulker_posts_teleport_where_it_stood() {
             "seed {seed}: the teleport event is posted from the shulker at its old position"
         );
         // The sensor above the old block holds that vibration.
-        game.server.chat_capture = Some(Vec::new());
+        game.side.chat_capture = Some(Vec::new());
         assert!(game.run_command("data get block 8 5 8 listener.selector.event"));
-        let said = game.server.chat_capture.take().unwrap_or_default();
+        let said = game.side.chat_capture.take().unwrap_or_default();
         let said: String = said.iter().map(sunrise_client::text::Text::plain).collect();
         assert!(
             said.contains("minecraft:teleport") && said.contains("[8.5d, 4.5d, 8.5d]"),

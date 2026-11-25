@@ -26,7 +26,7 @@ fn fb(v: f32) -> String {
     format!("{:08x}", v.to_bits())
 }
 
-fn kind_id(game: &Game<'_>, kind: &str) -> i32 {
+fn kind_id(game: &crate::game::ClientGame<'_>, kind: &str) -> i32 {
     game.remote
         .as_ref()
         .unwrap()
@@ -37,7 +37,7 @@ fn kind_id(game: &Game<'_>, kind: &str) -> i32 {
         .unwrap()
 }
 
-fn add(game: &mut Game<'_>, id: i32, kind: &str) {
+fn add(game: &mut crate::game::ClientGame<'_>, id: i32, kind: &str) {
     let kind = kind_id(game, kind);
     game.handle_packet(C::AddEntity(play::AddEntity {
         id,
@@ -53,7 +53,7 @@ fn add(game: &mut Game<'_>, id: i32, kind: &str) {
     .unwrap();
 }
 
-fn spawn(game: &mut Game<'_>, id: i32, kind: &str) {
+fn spawn(game: &mut crate::game::ClientGame<'_>, id: i32, kind: &str) {
     if kind == "minecraft:oak_boat" {
         // The boat models are not loaded here, so the boat is tracked and listed by hand.
         game.spawn_entity(id, kind, [at().x, at().y, at().z], [0.0; 3]);
@@ -68,7 +68,7 @@ fn spawn(game: &mut Game<'_>, id: i32, kind: &str) {
     }
 }
 
-fn attributes(game: &mut Game<'_>, id: i32, scale: f64, distance: f64) {
+fn attributes(game: &mut crate::game::ClientGame<'_>, id: i32, scale: f64, distance: f64) {
     let snapshot = |name: &str, base: f64| {
         let attribute = game.motion.attributes.id(name).unwrap().registry_id();
         play::AttributeSnapshot {
@@ -85,7 +85,7 @@ fn attributes(game: &mut Game<'_>, id: i32, scale: f64, distance: f64) {
         .unwrap();
 }
 
-fn pin_pose(game: &mut Game<'_>, id: i32) {
+fn pin_pose(game: &mut crate::game::ClientGame<'_>, id: i32) {
     let id = id as u32;
     if let Some(m) = game.mobs.iter_mut().find(|m| m.id == id) {
         (m.position, m.previous) = (at(), at());
@@ -101,7 +101,7 @@ fn pin_pose(game: &mut Game<'_>, id: i32) {
 }
 
 /// The spectated rider's view as set by `Camera.alignWithEntity`.
-fn frame(game: &Game<'_>, partial: f32, camera_type: CameraType) -> (String, String, f32) {
+fn frame(game: &crate::game::ClientGame<'_>, partial: f32, camera_type: CameraType) -> (String, String, f32) {
     let e = game
         .spectated_camera_snapshot()
         .expect("the level holds the spectated rider");
@@ -137,7 +137,7 @@ fn want(r: &Value) -> String {
 }
 
 /// Builds the rider and its vehicle as a server's packets do, `attributes_first` or seats first.
-fn setup(game: &mut Game<'_>, key: &Value, attributes_first: bool) {
+fn setup(game: &mut crate::game::ClientGame<'_>, key: &Value, attributes_first: bool) {
     let rider_kind = if key["rider"] == "zombie" {
         "minecraft:zombie"
     } else {
@@ -159,7 +159,7 @@ fn setup(game: &mut Game<'_>, key: &Value, attributes_first: bool) {
     if let Some(kind) = vehicle_kind {
         spawn(game, VEHICLE, kind);
     }
-    let sync = |game: &mut Game<'_>| {
+    let sync = |game: &mut crate::game::ClientGame<'_>| {
         if rider_kind == "minecraft:zombie" {
             attributes(
                 game,
@@ -175,7 +175,7 @@ fn setup(game: &mut Game<'_>, key: &Value, attributes_first: bool) {
             attributes(game, VEHICLE, bits64(&v[1]), bits64(&v[2]));
         }
     };
-    let seat = |game: &mut Game<'_>| {
+    let seat = |game: &mut crate::game::ClientGame<'_>| {
         if vehicle.is_some() {
             game.handle_packet(C::SetPassengers(play::SetPassengers {
                 vehicle: VEHICLE,

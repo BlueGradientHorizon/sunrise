@@ -33,7 +33,7 @@ mod player_heart_type_tests {
         }
     }
 
-    fn add_player(game: &mut super::Game<'_>) {
+    fn add_player(game: &mut crate::game::ServerGame<'_>) {
         let at = sunrise_core::geometry::Vec3::ZERO;
         game.player = Some(sunrise_client::motion::PlayerMotion::new(game.motion, at).unwrap());
     }

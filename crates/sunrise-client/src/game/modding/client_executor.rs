@@ -77,7 +77,7 @@ mod tests {
             .unwrap();
             assert!(calls.lock().unwrap().is_empty());
             assert!(game.remote.is_none());
-            game.client.focused = true;
+            game.side.focused = true;
             game.poll_remote().unwrap();
             assert_eq!(
                 *calls.lock().unwrap(),
@@ -129,7 +129,7 @@ mod tests {
 
             let (reply, completion) = std::sync::mpsc::channel();
             game.test_seed_pending_server_save(reply);
-            assert!(!game.pending_save.0.as_ref().unwrap().quit);
+            assert!(!game.side.pending_save.0.as_ref().unwrap().quit);
             game.options.headless = true;
             game.handle_window_event(
                 &TestLoop,
@@ -137,7 +137,7 @@ mod tests {
                 WindowEvent::CloseRequested,
                 InputOrigin::User,
             );
-            assert!(game.pending_save.0.as_ref().unwrap().quit);
+            assert!(game.side.pending_save.0.as_ref().unwrap().quit);
             assert!(matches!(
                 completion.try_recv(),
                 Err(std::sync::mpsc::TryRecvError::Empty)
@@ -162,7 +162,7 @@ mod tests {
     #[ignore = "daily"]
     fn title_quit_discards_pending_and_late_client_tasks() {
         with_client_game(|game| {
-            game.title.0 = Some(game.new_title(game.save.0.root.clone()));
+            game.side.title.0 = Some(game.new_title(game.save.0.root.clone()));
             let executor = executor(game, "producer");
             let (pending, pending_calls) = mpsc::channel();
             executor.execute(Box::new(move |_| pending.send(()).unwrap()));
@@ -172,7 +172,7 @@ mod tests {
                 pending_calls.try_recv(),
                 Err(mpsc::TryRecvError::Disconnected)
             );
-            assert!(game.pending_save.0.as_ref().unwrap().quit);
+            assert!(game.side.pending_save.0.as_ref().unwrap().quit);
 
             let (late, late_calls) = mpsc::channel();
             thread::spawn(move || executor.execute(Box::new(move |_| late.send(()).unwrap())))
@@ -201,10 +201,10 @@ mod tests {
                 game.remote.as_mut().unwrap().logged_in = true;
                 game.spawn_entity(20, "minecraft:pig", [2.0, 64.0, 0.0], [0.0; 3]);
                 let entity = game.entity(20).unwrap();
-                game.audio.0.backend_live_for_bench();
+                game.side.audio.0.backend_live_for_bench();
                 let stream = |owner| {
                     Arc::new(AudioStreamRef::new(
-                        game.audio
+                        game.side.audio
                             .0
                             .open_stream(
                                 owner,

@@ -173,7 +173,7 @@ fn with_opener(
     name: &'static str,
     id: &'static str,
     level: RuntimeLevel,
-    test: impl FnOnce(&mut super::Game<'_>, &Fixture),
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Fixture),
 ) {
     let fixture = Fixture {
         mode: Arc::new(AtomicU8::new(OPEN)),
@@ -202,7 +202,7 @@ fn with_opener(
         with_game(|game| {
             // Levels' folders go under a world root of the test's own, never the checkout.
             let root = TempRoot::new(name);
-            game.server.world_root = root.0.clone();
+            game.side.world_root = root.0.clone();
             test(game, &fixture);
         });
     });
@@ -232,7 +232,7 @@ impl Drop for TempRoot {
 
 /// `RuntimeLevels::unload` as the mod `name` calls it.
 fn unload_as(
-    game: &mut super::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     name: &'static str,
     id: &str,
 ) -> Result<(), RuntimeLevelError> {
@@ -246,7 +246,7 @@ fn unload_as(
 
 /// `RuntimeLevels::delete` as the mod `name` calls it.
 fn delete_as(
-    game: &mut super::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     name: &'static str,
     id: &str,
 ) -> Result<(), RuntimeLevelError> {
@@ -260,7 +260,7 @@ fn delete_as(
 
 /// Generate the chunk (0, 0) of the open level `id`, put `block` at (1, -50, 1) and leave the
 /// level again.
-fn place_block(game: &mut super::Game<'_>, id: &str, block: &str) {
+fn place_block(game: &mut crate::game::ServerGame<'_>, id: &str, block: &str) {
     let state = game.pack.assets.registry.default_state(block).unwrap();
     let dim = super::Dim::extra(id).unwrap();
     game.enter_level(dim).unwrap();
@@ -281,7 +281,7 @@ fn place_block(game: &mut super::Game<'_>, id: &str, block: &str) {
 }
 
 /// The block at (1, -50, 1) of the open level `id`, loading it as `place_block` does.
-fn block_at(game: &mut super::Game<'_>, id: &str) -> sunrise_world::registry::BlockStateId {
+fn block_at(game: &mut crate::game::ServerGame<'_>, id: &str) -> sunrise_world::registry::BlockStateId {
     let dim = super::Dim::extra(id).unwrap();
     game.enter_level(dim).unwrap();
     game.streaming.forced.insert((0, 0));
@@ -304,7 +304,7 @@ fn write_file(path: &std::path::Path) {
     std::fs::write(path, b"x").unwrap();
 }
 
-fn tick_post(game: &mut super::Game<'_>) {
+fn tick_post(game: &mut crate::game::ServerGame<'_>) {
     let home = game.level("minecraft:overworld").unwrap();
     game.native_level_tick_post(home);
 }
@@ -462,7 +462,7 @@ fn an_idle_level_aborts_an_abandoned_chunk_unload_transaction_before_it_closes()
             mod_platform::testing::with_mods(mods, || {
                 with_game(|game| {
                     let root = TempRoot::new("abandon");
-                    game.server.world_root = root.0.clone();
+                    game.side.world_root = root.0.clone();
                     tick_post(game);
                     game.apply_runtime_levels();
                     place_block(game, ID, "minecraft:stone");
@@ -482,7 +482,7 @@ fn an_idle_level_aborts_an_abandoned_chunk_unload_transaction_before_it_closes()
                     assert!(!game.transaction_matches(None));
 
                     game.close_parked_level(dim).unwrap();
-                    assert!(!game.levels.0.parked.contains_key(&dim));
+                    assert!(!game.side.levels.0.parked.contains_key(&dim));
                     assert_eq!(*open_frames.lock().unwrap(), [false, false]);
                     assert!(game.transaction_matches(None));
                     assert_eq!(home.connection_group(game, POS), Ok(Some(10)));
@@ -522,7 +522,7 @@ fn a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open() {
         for _ in 1..IDLE_TICKS {
             game.tick_server(false).unwrap();
         }
-        assert_eq!(game.levels.0.parked[&dim].idle, IDLE_TICKS - 1);
+        assert_eq!(game.side.levels.0.parked[&dim].idle, IDLE_TICKS - 1);
         // Open the Nether only now and load its chunk (0, 0), then release it:
         // its first drain leaves the view it opened with, so that drain unloads
         // the chunk at once, in the tick the custom level's close is due.
@@ -651,7 +651,7 @@ fn a_live_loading_ticket_keeps_an_idle_custom_level_open_until_it_expires() {
         for _ in 1..IDLE_TICKS {
             game.tick_server(false).unwrap();
         }
-        assert_eq!(game.levels.0.parked[&dim].idle, IDLE_TICKS - 1);
+        assert_eq!(game.side.levels.0.parked[&dim].idle, IDLE_TICKS - 1);
         assert!(!game.chunk_loaded(chunk));
         let host: &mut dyn ServerHost = game;
         assert_eq!(level.load_chunk(host, [5, 5]), Ok(()));
@@ -714,13 +714,13 @@ fn an_unload_drops_a_save_waiting_for_its_level() {
         tick_post(game);
         game.apply_runtime_levels();
         let dim = super::Dim::extra("saved:a").unwrap();
-        game.levels.0.request_save(dim);
+        game.side.levels.0.request_save(dim);
         assert_eq!(unload_as(game, "saved", "saved:a"), Ok(()));
         game.apply_runtime_levels();
-        assert!(!game.levels.0.save_pending(dim));
+        assert!(!game.side.levels.0.save_pending(dim));
         game.run_requested_saves();
         assert!(!game.runtime_level_is_open("saved:a"));
-        assert!(!game.levels.0.parked.contains_key(&dim));
+        assert!(!game.side.levels.0.parked.contains_key(&dim));
         assert_eq!(*seen.loads.lock().unwrap(), ["saved:a"]);
     });
 }
@@ -784,7 +784,7 @@ fn a_reopened_level_comes_back_from_its_folder_with_its_block() {
         unload_as(game, "keep", "keep:a").unwrap();
         game.apply_runtime_levels();
         assert!(
-            game.server.world_root.join("dimensions/keep/a").is_dir(),
+            game.side.world_root.join("dimensions/keep/a").is_dir(),
             "the folder stays"
         );
 
@@ -814,14 +814,14 @@ fn failed_construction_rolls_back_every_published_table() {
     with_opener("rollback", "rollback:a", flat(), |game, seen| {
         tick_post(game);
         let first = seen.answers.lock().unwrap()[0].unwrap();
-        game.levels.0.runtime.fail_open_after_publication = true;
+        game.side.levels.0.runtime.fail_open_after_publication = true;
         game.apply_runtime_levels();
         assert!(!game.runtime_level_is_open("rollback:a"));
-        assert!(!game.levels.0.runtime.holds("rollback:a"));
+        assert!(!game.side.levels.0.runtime.holds("rollback:a"));
         assert!(super::Dim::extra("rollback:a").is_none());
         assert!(
             !game
-                .server
+                .side
                 .level_shapes
                 .extra
                 .iter()
@@ -829,7 +829,7 @@ fn failed_construction_rolls_back_every_published_table() {
         );
         assert!(seen.loads.lock().unwrap().is_empty());
         assert!(!game.level_handle_current(first));
-        game.levels.0.runtime.fail_open_after_publication = false;
+        game.side.levels.0.runtime.fail_open_after_publication = false;
         seen.answers.lock().unwrap().clear();
         tick_post(game);
         game.apply_runtime_levels();
@@ -849,9 +849,9 @@ fn a_delete_closes_the_level_and_removes_its_folder_and_references_file() {
         tick_post(game);
         game.apply_runtime_levels();
         place_block(game, "erase:instance/ab", "minecraft:stone");
-        let folder = game.server.world_root.join("dimensions/erase/instance/ab");
+        let folder = game.side.world_root.join("dimensions/erase/instance/ab");
         let references = game
-            .server
+            .side
             .world_root
             .join("data/sunrise_structure_references_erase_instance/ab.json");
         write_file(&references);
@@ -869,15 +869,15 @@ fn a_delete_closes_the_level_and_removes_its_folder_and_references_file() {
         assert!(!references.exists(), "the references file is gone");
         assert!(
             !game
-                .server
+                .side
                 .world_root
                 .join("data/sunrise_structure_references_erase_instance")
                 .exists(),
             "so is the folder it left empty"
         );
-        assert!(!game.server.world_root.join("dimensions/erase").exists());
-        assert!(game.server.world_root.join("dimensions").is_dir());
-        assert!(game.server.world_root.join("data").is_dir());
+        assert!(!game.side.world_root.join("dimensions/erase").exists());
+        assert!(game.side.world_root.join("dimensions").is_dir());
+        assert!(game.side.world_root.join("data").is_dir());
         assert_eq!(*seen.unloads.lock().unwrap(), ["erase:instance/ab"]);
     });
 }
@@ -887,10 +887,10 @@ fn a_delete_closes_the_level_and_removes_its_folder_and_references_file() {
 #[ignore = "daily"]
 fn a_delete_of_a_level_that_is_not_open_removes_its_leftovers() {
     with_opener("left", "left:room", flat(), |game, seen| {
-        let folder = game.server.world_root.join("dimensions/left/room");
-        let sibling = game.server.world_root.join("dimensions/left/other");
+        let folder = game.side.world_root.join("dimensions/left/room");
+        let sibling = game.side.world_root.join("dimensions/left/other");
         let references = game
-            .server
+            .side
             .world_root
             .join("data/sunrise_structure_references_left_room.json");
         write_file(&folder.join("region/r.0.0.mca"));
@@ -922,14 +922,14 @@ fn a_delete_of_a_level_that_is_not_open_removes_its_leftovers() {
 fn a_delete_outside_the_mods_namespace_is_refused_and_removes_nothing() {
     with_opener("mine", "mine:a", flat(), |game, _| {
         let other = game
-            .server
+            .side
             .world_root
             .join("dimensions/other/x/region/r.0.0.mca");
         let vanilla = game
-            .server
+            .side
             .world_root
             .join("dimensions/minecraft/overworld/region/r.0.0.mca");
-        let escape = game.server.world_root.join("dimensions/mine/x");
+        let escape = game.side.world_root.join("dimensions/mine/x");
         write_file(&other);
         write_file(&vanilla);
         write_file(&escape.join("keep.txt"));
@@ -972,7 +972,7 @@ fn a_level_opened_again_after_a_delete_starts_empty() {
             Err(RuntimeLevelError::AlreadyOpen)
         );
         game.apply_runtime_levels();
-        assert!(!game.server.world_root.join("dimensions/fresh/a").exists());
+        assert!(!game.side.world_root.join("dimensions/fresh/a").exists());
         seen.answers.lock().unwrap().clear();
         tick_post(game);
         game.apply_runtime_levels();
@@ -998,7 +998,7 @@ fn a_level_opened_again_after_a_delete_starts_empty() {
 fn an_open_queued_behind_a_delete_of_leftovers_finds_no_folder() {
     with_opener("behind", "behind:a", flat(), |game, seen| {
         let leftover = game
-            .server
+            .side
             .world_root
             .join("dimensions/behind/a/region/r.0.0.mca");
         write_file(&leftover);
@@ -1028,7 +1028,7 @@ fn a_level_with_a_player_in_it_is_not_deleted() {
             )
             .unwrap(),
         );
-        let marker = game.server.world_root.join("dimensions/guest/a/marker.txt");
+        let marker = game.side.world_root.join("dimensions/guest/a/marker.txt");
         write_file(&marker);
         assert_eq!(
             delete_as(game, "guest", "guest:a"),
@@ -1053,7 +1053,7 @@ fn a_delete_is_applied_after_the_levels_and_not_inside_a_tick() {
     with_opener("later", "later:a", flat(), |game, seen| {
         tick_post(game);
         game.apply_runtime_levels();
-        let marker = game.server.world_root.join("dimensions/later/a/marker.txt");
+        let marker = game.side.world_root.join("dimensions/later/a/marker.txt");
         write_file(&marker);
         seen.open_right_after.lock().unwrap().clear();
         seen.mode.store(DELETE, Ordering::SeqCst);
@@ -1116,7 +1116,7 @@ fn a_delete_marks_an_open_level_closing_and_a_second_unload_finds_it_not_open() 
 fn a_delete_of_a_level_with_a_level_below_it_is_refused() {
     with_opener("kid", "kid:instance/ab", flat(), |game, _| {
         let parent_file = game
-            .server
+            .side
             .world_root
             .join("dimensions/kid/instance/region/r.0.0.mca");
         write_file(&parent_file);
@@ -1137,7 +1137,7 @@ fn a_delete_of_a_level_with_a_level_below_it_is_refused() {
         game.apply_runtime_levels();
         assert!(
             !game
-                .server
+                .side
                 .world_root
                 .join("dimensions/kid/instance/ab")
                 .exists()
@@ -1150,7 +1150,7 @@ fn a_delete_of_a_level_with_a_level_below_it_is_refused() {
         game.apply_runtime_levels();
         assert!(
             !game
-                .server
+                .side
                 .world_root
                 .join("dimensions/kid/instance")
                 .exists()
@@ -1165,16 +1165,16 @@ fn a_delete_of_a_level_with_a_level_below_it_is_refused() {
 fn a_delete_stops_at_a_folder_that_holds_a_level() {
     with_opener("fold", "fold:unused", flat(), |game, _| {
         let child = game
-            .server
+            .side
             .world_root
             .join("dimensions/fold/p/ab/region/r.0.0.mca");
         // `fold:q/region` is a level too, and its folder is where `fold:q` keeps its regions.
         let named_region = game
-            .server
+            .side
             .world_root
             .join("dimensions/fold/q/region/data/minecraft/raids.dat");
         let own = game
-            .server
+            .side
             .world_root
             .join("dimensions/fold/p/region/r.0.0.mca");
         write_file(&child);
@@ -1182,11 +1182,11 @@ fn a_delete_stops_at_a_folder_that_holds_a_level() {
         write_file(&named_region);
         // `fold:r/data/ab` is a level that only exists as a folder under `data`.
         let in_data = game
-            .server
+            .side
             .world_root
             .join("dimensions/fold/r/data/ab/region/r.0.0.mca");
         let own_data = game
-            .server
+            .side
             .world_root
             .join("dimensions/fold/r/data/minecraft/raids.dat");
         write_file(&in_data);
@@ -1223,15 +1223,15 @@ fn a_delete_stops_at_a_folder_that_holds_a_level() {
 fn a_delete_keeps_a_references_file_another_level_shares() {
     with_opener("a_b", "a_b:c", flat(), |game, _| {
         let mine = game
-            .server
+            .side
             .world_root
             .join("dimensions/a_b/c/region/r.0.0.mca");
         let other = game
-            .server
+            .side
             .world_root
             .join("dimensions/a/b_c/region/r.0.0.mca");
         let shared = game
-            .server
+            .side
             .world_root
             .join("data/sunrise_structure_references_a_b_c.json");
         write_file(&mine);
@@ -1245,7 +1245,7 @@ fn a_delete_keeps_a_references_file_another_level_shares() {
             "the other namespace's level is not touched"
         );
         assert!(shared.is_file(), "its references file is kept");
-        std::fs::remove_dir_all(game.server.world_root.join("dimensions/a")).unwrap();
+        std::fs::remove_dir_all(game.side.world_root.join("dimensions/a")).unwrap();
         assert_eq!(delete_as(game, "a_b", "a_b:c"), Ok(()));
         game.apply_runtime_levels();
         assert!(!shared.exists(), "nothing else shares it now");
@@ -1262,11 +1262,11 @@ fn a_failed_removal_leaves_the_level_closed_and_its_id_closed_to_open() {
         game.apply_runtime_levels();
         let first = seen.answers.lock().unwrap()[0].unwrap();
         let marker = game
-            .server
+            .side
             .world_root
             .join("dimensions/stuck2/a/data/marker.dat");
         write_file(&marker);
-        game.levels.0.runtime.fail_erase = true;
+        game.side.levels.0.runtime.fail_erase = true;
         assert_eq!(delete_as(game, "stuck2", "stuck2:a"), Ok(()));
         game.apply_runtime_levels();
         // Closed: not open, out of the world's levels, its handle stale, `level_unload` heard.
@@ -1286,7 +1286,7 @@ fn a_failed_removal_leaves_the_level_closed_and_its_id_closed_to_open() {
         game.apply_runtime_levels();
         assert!(marker.is_file(), "the removal failed again");
         // Once it can, a second delete finishes it and the id opens again, empty.
-        game.levels.0.runtime.fail_erase = false;
+        game.side.levels.0.runtime.fail_erase = false;
         assert_eq!(delete_as(game, "stuck2", "stuck2:a"), Ok(()));
         game.apply_runtime_levels();
         assert!(!marker.exists());
@@ -1306,17 +1306,17 @@ fn a_failed_removal_leaves_the_level_closed_and_its_id_closed_to_open() {
 fn an_open_queued_behind_a_failed_removal_is_dropped() {
     with_opener("behind2", "behind2:a", flat(), |game, seen| {
         let leftover = game
-            .server
+            .side
             .world_root
             .join("dimensions/behind2/a/region/r.0.0.mca");
         write_file(&leftover);
-        game.levels.0.runtime.fail_erase = true;
+        game.side.levels.0.runtime.fail_erase = true;
         assert_eq!(delete_as(game, "behind2", "behind2:a"), Ok(()));
         tick_post(game);
         assert!(seen.answers.lock().unwrap()[0].is_ok());
         game.apply_runtime_levels();
         assert!(!game.runtime_level_is_open("behind2:a"));
-        assert!(!game.levels.0.runtime.holds("behind2:a"));
+        assert!(!game.side.levels.0.runtime.holds("behind2:a"));
         assert!(super::Dim::extra("behind2:a").is_none());
         assert!(leftover.is_file());
         assert!(seen.loads.lock().unwrap().is_empty());
@@ -1452,7 +1452,7 @@ fn a_removal_that_fails_part_way_is_finished_by_a_second_delete() {
     with_opener("part", "part:a", flat(), |game, seen| {
         tick_post(game);
         game.apply_runtime_levels();
-        let folder = game.server.world_root.join("dimensions/part/a");
+        let folder = game.side.world_root.join("dimensions/part/a");
         let locked = folder.join("data/locked/x.dat");
         write_file(&locked);
         write_file(&folder.join("poi/r.0.0.mca"));
@@ -1529,11 +1529,11 @@ impl Drop for UnreadableFolder {
 #[ignore = "daily"]
 fn a_delete_refuses_unreadable_data_and_removes_nothing() {
     with_opener("blind", "blind:a", flat(), |game, _| {
-        let folder = game.server.world_root.join("dimensions/blind/a");
+        let folder = game.side.world_root.join("dimensions/blind/a");
         let marker = folder.join("data/private/marker.dat");
         let region = folder.join("region/r.0.0.mca");
         let references = game
-            .server
+            .side
             .world_root
             .join("data/sunrise_structure_references_blind_a.json");
         write_file(&marker);
@@ -1558,12 +1558,12 @@ fn a_delete_refuses_unreadable_data_and_removes_nothing() {
 #[ignore = "daily"]
 fn a_delete_keeps_references_when_shared_level_metadata_is_unreadable() {
     with_opener("a_b", "a_b:c", flat(), |game, _| {
-        let folder = game.server.world_root.join("dimensions/a_b/c");
+        let folder = game.side.world_root.join("dimensions/a_b/c");
         let references = game
-            .server
+            .side
             .world_root
             .join("data/sunrise_structure_references_a_b_c.json");
-        let other_namespace = game.server.world_root.join("dimensions/a");
+        let other_namespace = game.side.world_root.join("dimensions/a");
         write_file(&folder.join("region/r.0.0.mca"));
         write_file(&references);
         std::fs::create_dir_all(&other_namespace).unwrap();
@@ -1630,7 +1630,7 @@ fn a_level_the_player_left_in_single_player_still_unloads_and_deletes() {
         assert_eq!(delete_as(game, "solo", "solo:a"), Ok(()));
         game.apply_runtime_levels();
         assert!(!game.runtime_level_is_open("solo:a"));
-        assert!(!game.server.world_root.join("dimensions/solo/a").exists());
+        assert!(!game.side.world_root.join("dimensions/solo/a").exists());
     });
 }
 
@@ -1646,7 +1646,7 @@ fn reopening_one_id_with_any_seed_reuses_the_metadata_its_first_open_leaked() {
         let mut first = None;
         for seed in [1, 2, 3, i64::MIN, i64::MAX] {
             let level = RuntimeLevel::new("minecraft:overworld", RuntimeGenerator::Flat, seed);
-            game.levels
+            game.side.levels
                 .0
                 .runtime
                 .queue_open("cycle", "cycle:a", level)
@@ -1654,10 +1654,10 @@ fn reopening_one_id_with_any_seed_reuses_the_metadata_its_first_open_leaked() {
             game.apply_runtime_levels();
             assert!(game.runtime_level_is_open("cycle:a"));
             assert_eq!(
-                game.levels.0.runtime.seeds().get("cycle:a").copied(),
+                game.side.levels.0.runtime.seeds().get("cycle:a").copied(),
                 Some(seed)
             );
-            let table = game.server.level_shapes.extra;
+            let table = game.side.level_shapes.extra;
             let level = table.iter().find(|level| level.id == "cycle:a").unwrap();
             let facts = sunrise_world::dimension_type::DimensionFacts::of_level(key);
             let leaked = (
@@ -1670,7 +1670,7 @@ fn reopening_one_id_with_any_seed_reuses_the_metadata_its_first_open_leaked() {
             unload_as(game, "cycle", "cycle:a").unwrap();
             game.apply_runtime_levels();
             assert!(!game.runtime_level_is_open("cycle:a"));
-            assert_eq!(game.levels.0.runtime.seeds().get("cycle:a").copied(), None);
+            assert_eq!(game.side.levels.0.runtime.seeds().get("cycle:a").copied(), None);
         }
     });
 }

@@ -117,11 +117,11 @@ fn a_block_part_hears_a_piston_destroy_it_before_the_move_overwrites_its_cells()
                 "minecraft:dirt",
             ]
             .map(|name| registry.default_state(name).unwrap());
-            let is_moving = |game: &super::Game<'_>, x, z| {
+            let is_moving = |game: &crate::game::ServerGame<'_>, x, z| {
                 registry.state(game.world.block(x, 64, z)).unwrap().name
                     == "minecraft:moving_piston"
             };
-            let moved = |game: &super::Game<'_>, x, z| {
+            let moved = |game: &crate::game::ServerGame<'_>, x, z| {
                 let at = BlockPos::new(x, 64, z);
                 game.block_ticks
                     .moving_pistons
@@ -130,7 +130,7 @@ fn a_block_part_hears_a_piston_destroy_it_before_the_move_overwrites_its_cells()
                     .map(|(_, m)| m.moved_state)
             };
             // A powered piston facing east at (2, 64, z), `ahead` east of it, then a torch.
-            let extend = |game: &mut super::Game<'_>, z, ahead: &[BlockStateId], client| {
+            let extend = |game: &mut crate::game::ServerGame<'_>, z, ahead: &[BlockStateId], client| {
                 game.with_level(|b, level, ticks| {
                     level.set_raw(BlockPos::new(1, 64, z), power);
                     level.set_raw(BlockPos::new(2, 64, z), piston);
@@ -151,7 +151,7 @@ fn a_block_part_hears_a_piston_destroy_it_before_the_move_overwrites_its_cells()
                     );
                 });
             };
-            let torches = |game: &super::Game<'_>| {
+            let torches = |game: &crate::game::ServerGame<'_>| {
                 game.dropped
                     .iter()
                     .filter(|d| &*d.stack.item == "minecraft:torch")

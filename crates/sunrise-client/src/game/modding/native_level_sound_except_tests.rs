@@ -58,19 +58,19 @@ fn a_level_sound_leaves_out_the_player_asked() {
         let level = game.level(game.dim.id()).unwrap();
         let at = [0.0, 64.0, 0.0];
         let sound = "minecraft:block.bell.use";
-        let play = |game: &mut super::Game<'_>, except| {
+        let play = |game: &mut crate::game::ServerGame<'_>, except| {
             game.level_play_sound(level, sound, at, SoundSource::Blocks, 1.0, 1.0, except)
         };
-        let queued = |game: &super::Game<'_>| game.server.pending_native_sounds.len();
+        let queued = |game: &crate::game::ServerGame<'_>| game.side.pending_native_sounds.len();
         let before = queued(game);
         assert!(play(game, Some(player)));
         assert_eq!(
-            game.server.pending_native_sounds.last().unwrap().except,
+            game.side.pending_native_sounds.last().unwrap().except,
             Some(13)
         );
         assert!(play(game, None));
         assert_eq!(
-            game.server.pending_native_sounds.last().unwrap().except,
+            game.side.pending_native_sounds.last().unwrap().except,
             None
         );
         assert_eq!(queued(game), before + 2);
@@ -153,7 +153,7 @@ fn a_level_sound_inside_a_transaction_waits_for_commit_and_discards_on_rollback(
                         Some(gone)
                     ));
                     assert!(
-                        game.server.pending_native_sounds.is_empty(),
+                        game.side.pending_native_sounds.is_empty(),
                         "deferred sound must not queue before commit"
                     );
                     assert!(sound_packets(&rx12).is_empty());
@@ -161,7 +161,7 @@ fn a_level_sound_inside_a_transaction_waits_for_commit_and_discards_on_rollback(
                     Err::<(), ()>(())
                 });
                 assert!(rolled.is_err());
-                assert!(game.server.pending_native_sounds.is_empty());
+                assert!(game.side.pending_native_sounds.is_empty());
                 assert!(sound_packets(&rx12).is_empty());
                 assert!(sound_packets(&rx13).is_empty());
 
@@ -196,7 +196,7 @@ fn a_level_sound_inside_a_transaction_waits_for_commit_and_discards_on_rollback(
                     });
                     assert!(inner_commit.is_ok());
                     // Still inside the outer transaction: neither queued nor sent yet.
-                    assert!(game.server.pending_native_sounds.is_empty());
+                    assert!(game.side.pending_native_sounds.is_empty());
                     assert!(sound_packets(&rx12).is_empty());
                     assert!(sound_packets(&rx13).is_empty());
                     Ok::<(), ()>(())
@@ -214,7 +214,7 @@ fn a_level_sound_inside_a_transaction_waits_for_commit_and_discards_on_rollback(
                 );
 
                 // Outside a transaction, `level_play_sound` keeps queueing immediately as before.
-                let before = game.server.pending_native_sounds.len();
+                let before = game.side.pending_native_sounds.len();
                 assert!(game.level_play_sound(
                     level,
                     anvil,
@@ -224,7 +224,7 @@ fn a_level_sound_inside_a_transaction_waits_for_commit_and_discards_on_rollback(
                     1.0,
                     None
                 ));
-                assert_eq!(game.server.pending_native_sounds.len(), before + 1);
+                assert_eq!(game.side.pending_native_sounds.len(), before + 1);
             });
         },
     );
@@ -273,7 +273,7 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                 );
                 game.audio.0.set_listener(at, 0.0, 0.0);
                 let end_portal_spawn = "minecraft:block.end_portal.spawn";
-                let portal_plays = |game: &super::Game<'_>| {
+                let portal_plays = |game: &crate::game::ServerGame<'_>| {
                     game.audio
                         .0
                         .heard
@@ -308,14 +308,14 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                 let heart = ParticleOptions::simple(ParticleType::Heart);
                 let flame = ParticleOptions::simple(ParticleType::Flame);
 
-                let clear_queues = |game: &mut super::Game<'_>| {
-                    game.server.pending_native_sounds.clear();
-                    game.server.pending_particles.clear();
+                let clear_queues = |game: &mut crate::game::ServerGame<'_>| {
+                    game.side.pending_native_sounds.clear();
+                    game.side.pending_particles.clear();
                     game.level_events.clear();
-                    game.server.lan_events.clear();
-                    game.server.lan_global_events.clear();
-                    game.server.lan_entity_events.clear();
-                    game.server.pending_sounds.clear();
+                    game.side.lan_events.clear();
+                    game.side.lan_global_events.clear();
+                    game.side.lan_entity_events.clear();
+                    game.side.pending_sounds.clear();
                 };
                 clear_queues(game);
                 decode_packets(&rx12);
@@ -361,22 +361,22 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                     assert!(game.level_send_particles(level, &heart, None, at, [0.0; 3], 0.0, 2));
                     assert!(game.level_level_event(level, 1500, pos, 0));
                     assert!(game.level_global_level_event(level, 1038, pos, 0));
-                    assert!(game.server.pending_native_sounds.is_empty());
-                    assert!(game.server.pending_particles.is_empty());
-                    assert!(game.server.lan_events.is_empty());
-                    assert!(game.server.lan_global_events.is_empty());
-                    assert!(game.server.lan_entity_events.is_empty());
+                    assert!(game.side.pending_native_sounds.is_empty());
+                    assert!(game.side.pending_particles.is_empty());
+                    assert!(game.side.lan_events.is_empty());
+                    assert!(game.side.lan_global_events.is_empty());
+                    assert!(game.side.lan_entity_events.is_empty());
                     assert_eq!(portal_plays(game), portal_before_abort);
                     assert!(decode_packets(&rx12).is_empty());
                     assert!(decode_packets(&rx13).is_empty());
                     Err::<(), ()>(())
                 });
                 assert!(rolled.is_err());
-                assert!(game.server.pending_native_sounds.is_empty());
-                assert!(game.server.pending_particles.is_empty());
-                assert!(game.server.lan_events.is_empty());
-                assert!(game.server.lan_global_events.is_empty());
-                assert!(game.server.lan_entity_events.is_empty());
+                assert!(game.side.pending_native_sounds.is_empty());
+                assert!(game.side.pending_particles.is_empty());
+                assert!(game.side.lan_events.is_empty());
+                assert!(game.side.lan_global_events.is_empty());
+                assert!(game.side.lan_entity_events.is_empty());
                 assert_eq!(
                     portal_plays(game),
                     portal_before_abort,
@@ -458,11 +458,11 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                     assert!(kept_child.is_ok());
 
                     // Nothing published before outermost commit.
-                    assert!(game.server.pending_native_sounds.is_empty());
-                    assert!(game.server.pending_particles.is_empty());
-                    assert!(game.server.lan_events.is_empty());
-                    assert!(game.server.lan_global_events.is_empty());
-                    assert!(game.server.lan_entity_events.is_empty());
+                    assert!(game.side.pending_native_sounds.is_empty());
+                    assert!(game.side.pending_particles.is_empty());
+                    assert!(game.side.lan_events.is_empty());
+                    assert!(game.side.lan_global_events.is_empty());
+                    assert!(game.side.lan_entity_events.is_empty());
                     assert_eq!(portal_plays(game), portal_before_commit);
                     assert!(decode_packets(&rx12).is_empty());
                     assert!(decode_packets(&rx13).is_empty());
@@ -471,9 +471,9 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                 assert!(committed.is_ok());
 
                 // Committed effects deliver directly without waiting for `lan_flush_effects`.
-                assert!(game.server.lan_events.is_empty());
-                assert!(game.server.lan_global_events.is_empty());
-                assert!(game.server.lan_entity_events.is_empty());
+                assert!(game.side.lan_events.is_empty());
+                assert!(game.side.lan_global_events.is_empty());
+                assert!(game.side.lan_entity_events.is_empty());
                 assert_eq!(
                     portal_plays(game),
                     portal_before_commit,
@@ -589,25 +589,25 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                 decode_packets(&rx13);
                 let rolled_plain = game.storage_transaction(|game, _| {
                     assert!(game.level_global_level_event(level, 1023, pos, 0));
-                    assert!(game.server.lan_events.is_empty());
-                    assert!(game.server.lan_global_events.is_empty());
-                    assert!(game.server.pending_sounds.is_empty());
+                    assert!(game.side.lan_events.is_empty());
+                    assert!(game.side.lan_global_events.is_empty());
+                    assert!(game.side.pending_sounds.is_empty());
                     Err::<(), ()>(())
                 });
                 assert!(rolled_plain.is_err());
-                assert!(game.server.lan_events.is_empty());
-                assert!(game.server.lan_global_events.is_empty());
-                assert!(game.server.pending_sounds.is_empty());
+                assert!(game.side.lan_events.is_empty());
+                assert!(game.side.lan_global_events.is_empty());
+                assert!(game.side.pending_sounds.is_empty());
 
                 let committed_plain = game.storage_transaction(|game, _| {
                     assert!(game.level_global_level_event(level, 1023, pos, 0));
-                    assert!(game.server.lan_events.is_empty());
+                    assert!(game.side.lan_events.is_empty());
                     Ok::<(), ()>(())
                 });
                 assert!(committed_plain.is_ok());
-                assert!(game.server.lan_global_events.is_empty());
-                assert!(game.server.lan_events.is_empty());
-                assert!(game.server.pending_sounds.is_empty());
+                assert!(game.side.lan_global_events.is_empty());
+                assert!(game.side.lan_events.is_empty());
+                assert!(game.side.pending_sounds.is_empty());
                 let plain12: Vec<_> = decode_packets(&rx12)
                     .into_iter()
                     .filter_map(|p| match p {
@@ -635,16 +635,16 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                 assert!(game.level_send_particles(level, &heart, None, at, [0.0; 3], 0.0, 1));
                 assert!(game.level_level_event(level, 1500, pos, 0));
                 assert!(game.level_global_level_event(level, 1038, pos, 0));
-                assert_eq!(game.server.pending_native_sounds.len(), 2);
-                assert_eq!(game.server.pending_native_sounds[0].entity, None);
+                assert_eq!(game.side.pending_native_sounds.len(), 2);
+                assert_eq!(game.side.pending_native_sounds[0].entity, None);
                 assert_eq!(
-                    game.server.pending_native_sounds[1].entity,
+                    game.side.pending_native_sounds[1].entity,
                     Some(entity13_id)
                 );
-                assert_eq!(game.server.pending_particles.len(), 1);
-                assert_eq!(game.server.lan_events.len(), 1);
-                assert_eq!(game.server.lan_global_events.len(), 1);
-                assert_eq!(game.server.lan_entity_events, vec![(entity13_id, 35)]);
+                assert_eq!(game.side.pending_particles.len(), 1);
+                assert_eq!(game.side.lan_events.len(), 1);
+                assert_eq!(game.side.lan_global_events.len(), 1);
+                assert_eq!(game.side.lan_entity_events, vec![(entity13_id, 35)]);
                 let direct13 = decode_packets(&rx13);
                 assert!(direct13.iter().any(|p| matches!(p, C::Sound(_))));
                 assert!(direct13.iter().any(|p| matches!(p, C::StopSound(_))));
@@ -765,11 +765,11 @@ fn committed_effects_leave_unrelated_queues_intact_prevent_sound_recursion_and_k
                     assert!(game.level_level_event(level, 1000, pos, 0));
                     assert!(game.level_global_level_event(level, 1028, pos, 0));
                     assert!(game.entity_broadcast_event(entity13, 2));
-                    assert_eq!(game.server.pending_native_sounds.len(), 1);
-                    assert_eq!(game.server.pending_particles.len(), 1);
-                    assert_eq!(game.server.lan_events.len(), 1);
-                    assert_eq!(game.server.lan_global_events.len(), 1);
-                    assert_eq!(game.server.lan_entity_events, vec![(entity13_id, 2)]);
+                    assert_eq!(game.side.pending_native_sounds.len(), 1);
+                    assert_eq!(game.side.pending_particles.len(), 1);
+                    assert_eq!(game.side.lan_events.len(), 1);
+                    assert_eq!(game.side.lan_global_events.len(), 1);
+                    assert_eq!(game.side.lan_entity_events, vec![(entity13_id, 2)]);
                     decode_packets(&rx12);
 
                     // Part B: Inside a transaction, `play_level_sound_at_position` runs synchronously at
@@ -806,15 +806,15 @@ fn committed_effects_leave_unrelated_queues_intact_prevent_sound_recursion_and_k
                     assert!(committed.is_ok());
 
                     // Unrelated queued effects must remain untouched on the normal flush path!
-                    assert_eq!(game.server.pending_native_sounds.len(), 1);
-                    assert_eq!(game.server.pending_native_sounds[0].sound, burp);
-                    assert_eq!(game.server.pending_particles.len(), 1);
-                    assert_eq!(game.server.pending_particles[0].count, 4);
-                    assert_eq!(game.server.lan_events.len(), 1);
-                    assert_eq!(game.server.lan_events[0].kind, 1000);
-                    assert_eq!(game.server.lan_global_events.len(), 1);
-                    assert_eq!(game.server.lan_global_events[0].1, 1028);
-                    assert_eq!(game.server.lan_entity_events, vec![(entity13_id, 2)]);
+                    assert_eq!(game.side.pending_native_sounds.len(), 1);
+                    assert_eq!(game.side.pending_native_sounds[0].sound, burp);
+                    assert_eq!(game.side.pending_particles.len(), 1);
+                    assert_eq!(game.side.pending_particles[0].count, 4);
+                    assert_eq!(game.side.lan_events.len(), 1);
+                    assert_eq!(game.side.lan_events[0].kind, 1000);
+                    assert_eq!(game.side.lan_global_events.len(), 1);
+                    assert_eq!(game.side.lan_global_events[0].1, 1028);
+                    assert_eq!(game.side.lan_entity_events, vec![(entity13_id, 2)]);
 
                     // Commit replay ran zero mod callbacks and delivered both sounds in journal order.
                     assert!(triggered.load(Ordering::SeqCst));
@@ -832,7 +832,7 @@ fn committed_effects_leave_unrelated_queues_intact_prevent_sound_recursion_and_k
                     // Part C: Non-player `living_hurt_and_break` inside an aborted transaction mutates the
                     // mob's equipment immediately (unjournaled), so its break event (49 for Head) must
                     // also emit immediately rather than being discarded on rollback.
-                    game.server.lan_entity_events.clear();
+                    game.side.lan_entity_events.clear();
                     let zombie_id = game
                         .spawn_mob(
                             "minecraft:zombie",
@@ -865,7 +865,7 @@ fn committed_effects_leave_unrelated_queues_intact_prevent_sound_recursion_and_k
                         "non-player equipment write stays broken after abort"
                     );
                     assert_eq!(
-                        game.server.lan_entity_events,
+                        game.side.lan_entity_events,
                         vec![(zombie_id as i32, 49)],
                         "coupled non-player break event stays on the immediate side of the rollback boundary"
                     );
@@ -1071,7 +1071,7 @@ fn sound_listener_transaction_preserves_mixed_play_and_stop_packet_order() {
                     });
                     assert!(aborted.is_err());
                     assert!(decode_packets(&rx12).is_empty());
-                    assert!(game.server.pending_native_sounds.is_empty());
+                    assert!(game.side.pending_native_sounds.is_empty());
 
                     // 2. Committed transaction: listener plays anvil, stops anvil, and plays burp inside
                     // its callback; all resolve at the call, commit runs no mod callbacks and sends
@@ -1103,7 +1103,7 @@ fn sound_listener_transaction_preserves_mixed_play_and_stop_packet_order() {
                         calls_at_closure_end,
                         "commit replay runs no mod listeners"
                     );
-                    assert!(game.server.pending_native_sounds.is_empty());
+                    assert!(game.side.pending_native_sounds.is_empty());
                     let packets = decode_packets(&rx12);
                     let sound_seeds: Vec<i64> = packets
                         .iter()
@@ -1193,7 +1193,7 @@ fn sound_listener_transaction_preserves_mixed_play_and_stop_packet_order() {
                     game.flush_native_sounds();
                     assert_eq!(classify(decode_packets(&rx12)), ["hit_sound"]);
                     assert_eq!(calls.load(Ordering::SeqCst), 1);
-                    assert!(game.server.pending_native_sounds.is_empty());
+                    assert!(game.side.pending_native_sounds.is_empty());
                 });
             });
         },
@@ -1405,7 +1405,7 @@ fn always_producing_sound_listener_stops_at_one_nested_sound_in_and_out_of_trans
                     assert_eq!(entity_calls.load(Ordering::SeqCst), 0);
                     assert_eq!(active_depth.load(Ordering::SeqCst), 0);
                     assert_eq!(max_depth.load(Ordering::SeqCst), 1);
-                    assert!(game.server.pending_native_sounds.is_empty());
+                    assert!(game.side.pending_native_sounds.is_empty());
                     assert_eq!(
                         classify(decode_packets(&rx12)),
                         vec!["pos_anvil", "pos_bell"]
@@ -1428,7 +1428,7 @@ fn always_producing_sound_listener_stops_at_one_nested_sound_in_and_out_of_trans
                     assert_eq!(entity_calls.load(Ordering::SeqCst), 0);
                     assert_eq!(active_depth.load(Ordering::SeqCst), 0);
                     assert_eq!(max_depth.load(Ordering::SeqCst), 1);
-                    assert!(game.server.pending_native_sounds.is_empty());
+                    assert!(game.side.pending_native_sounds.is_empty());
                     assert_eq!(
                         classify(decode_packets(&rx12)),
                         vec!["pos_anvil", "pos_bell"]
@@ -1452,7 +1452,7 @@ fn always_producing_sound_listener_stops_at_one_nested_sound_in_and_out_of_trans
                     assert_eq!(entity_calls.load(Ordering::SeqCst), 1);
                     assert_eq!(active_depth.load(Ordering::SeqCst), 0);
                     assert_eq!(max_depth.load(Ordering::SeqCst), 1);
-                    assert!(game.server.pending_native_sounds.is_empty());
+                    assert!(game.side.pending_native_sounds.is_empty());
                     assert_eq!(
                         classify(decode_packets(&rx12)),
                         vec!["pos_burp", "ent_anvil", "ent_bell"]
@@ -1472,7 +1472,7 @@ fn always_producing_sound_listener_stops_at_one_nested_sound_in_and_out_of_trans
                     assert_eq!(entity_calls.load(Ordering::SeqCst), 2);
                     assert_eq!(active_depth.load(Ordering::SeqCst), 0);
                     assert_eq!(max_depth.load(Ordering::SeqCst), 1);
-                    assert!(game.server.pending_native_sounds.is_empty());
+                    assert!(game.side.pending_native_sounds.is_empty());
                     assert_eq!(
                         classify(decode_packets(&rx12)),
                         vec!["pos_burp", "ent_anvil", "ent_bell"]
@@ -1518,7 +1518,7 @@ fn always_producing_sound_listener_stops_at_one_nested_sound_in_and_out_of_trans
                     assert_eq!(pos_calls.load(Ordering::SeqCst), 3);
                     assert_eq!(after_panic_calls.load(Ordering::SeqCst), 1);
                     assert_eq!(max_depth.load(Ordering::SeqCst), 1);
-                    assert!(game.server.pending_native_sounds.is_empty());
+                    assert!(game.side.pending_native_sounds.is_empty());
                     assert_eq!(
                         classify(decode_packets(&rx12)),
                         vec!["pos_anvil", "pos_bell"]
@@ -1603,7 +1603,7 @@ fn cross_level_sound_listener_block_writes_journal_by_dimension_on_abort_commit_
                 let pos = [3, 64, 5];
                 let at = [3.0, 64.0, 5.0];
                 let bell = "minecraft:block.bell.use";
-                let state = |game: &super::Game<'_>, name: &str| {
+                let state = |game: &crate::game::ServerGame<'_>, name: &str| {
                     game.pack
                         .assets
                         .registry
@@ -1637,7 +1637,7 @@ fn cross_level_sound_listener_block_writes_journal_by_dimension_on_abort_commit_
                 let overworld = game.level("minecraft:overworld").unwrap();
                 let nether = game.level("minecraft:the_nether").unwrap();
 
-                let block_in = |game: &mut super::Game<'_>, dim: super::Dim| {
+                let block_in = |game: &mut crate::game::ServerGame<'_>, dim: super::Dim| {
                     game.with_effect_level(dim, |g| g.world.block(pos[0], pos[1], pos[2]))
                         .unwrap()
                 };
@@ -1801,7 +1801,7 @@ fn cross_level_sound_listener_block_writes_journal_by_dimension_on_abort_commit_
                     assert_eq!(block_in(game, super::Dim::Overworld), gold);
                     assert_eq!(block_in(game, super::Dim::Nether), emerald);
 
-                    let defers_retirement_in = |game: &mut super::Game<'_>, dim: super::Dim| {
+                    let defers_retirement_in = |game: &mut crate::game::ServerGame<'_>, dim: super::Dim| {
                         game.with_effect_level(dim, |g| g.world.block_entities.defers_retirement())
                             .unwrap()
                     };
@@ -2522,7 +2522,7 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
                     }
 
                     let assert_fake_state =
-                        |game: &mut super::Game<'_>,
+                        |game: &mut crate::game::ServerGame<'_>,
                          conn: u32,
                          living: LivingRef,
                          expected_mark: i32,

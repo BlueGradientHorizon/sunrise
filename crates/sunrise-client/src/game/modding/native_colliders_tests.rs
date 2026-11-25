@@ -21,11 +21,11 @@ fn deck() -> Collider {
 }
 
 /// A pig with no AI and no gravity at `at`: it stays where it is put.
-fn stand(game: &mut Game<'_>, at: [f64; 3]) -> EntityRef {
+fn stand(game: &mut crate::game::ServerGame<'_>, at: [f64; 3]) -> EntityRef {
     stand_with_id(game, at).1
 }
 
-fn stand_with_id(game: &mut Game<'_>, at: [f64; 3]) -> (u32, EntityRef) {
+fn stand_with_id(game: &mut crate::game::ServerGame<'_>, at: [f64; 3]) -> (u32, EntityRef) {
     let nbt: Compound = [
         ("NoGravity".into(), Tag::Byte(1)),
         ("NoAI".into(), Tag::Byte(1)),
@@ -126,9 +126,9 @@ fn a_collider_is_set_read_refused_saved_and_loaded() {
 }
 
 /// A stone dropped at `at`, two blocks above it, in the level in place: its id.
-fn drop_item(game: &mut Game<'_>, at: [f64; 3]) -> u32 {
-    game.server.next_entity += 1;
-    let id = game.server.next_entity;
+fn drop_item(game: &mut crate::game::ServerGame<'_>, at: [f64; 3]) -> u32 {
+    game.side.next_entity += 1;
+    let id = game.side.next_entity;
     game.dropped.push(ItemEntity::new(
         id,
         ItemStack::new("minecraft:stone", 1),
@@ -139,7 +139,7 @@ fn drop_item(game: &mut Game<'_>, at: [f64; 3]) -> u32 {
     id
 }
 
-fn item_y(game: &Game<'_>, id: u32) -> Option<f64> {
+fn item_y(game: &crate::game::ServerGame<'_>, id: u32) -> Option<f64> {
     game.dropped
         .iter()
         .find(|i| i.id == id)
@@ -277,7 +277,7 @@ fn a_call_into_another_level_reads_that_levels_colliders_and_restores_the_caller
 }
 
 /// A game that simulates its overworld, with the chunk the tests build on loaded.
-fn with_world(test: impl FnOnce(&mut Game<'_>)) {
+fn with_world(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     super::native_entity_refs::tests::with_game(|game| {
         game.options.dedicated = Some(Vec::new());
         game.native_level_opened(Dim::Overworld);
@@ -291,13 +291,13 @@ fn with_world(test: impl FnOnce(&mut Game<'_>)) {
 }
 
 /// One tick of the level in place, as `tick_server` runs it: with the level's colliders placed.
-fn tick_level(game: &mut Game<'_>) {
+fn tick_level(game: &mut crate::game::ServerGame<'_>) {
     tick_level_moving(game, |_| {});
 }
 
 /// [`tick_level`] with a mod moving its colliders during the tick, after the colliders were
 /// placed and the movers ran, which is when a mod's own tick moves them.
-fn tick_level_moving(game: &mut Game<'_>, moving: impl FnOnce(&mut Game<'_>)) {
+fn tick_level_moving(game: &mut crate::game::ServerGame<'_>, moving: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let placed = game.placed_moving_colliders();
     sunrise_client_render::moving_colliders::in_level(placed.clone(), || {
         game.tick_world(true).unwrap()
@@ -493,7 +493,7 @@ fn two_hundred_items_over_a_capped_collider_rest_and_the_tick_is_timed() {
     const SIDE: usize = 32;
     with_world(|game| {
         let (holder, holder_ref) = stand_with_id(game, [8.0, 70.0, 8.0]);
-        let items = |game: &mut Game<'_>| -> Vec<u32> {
+        let items = |game: &mut crate::game::ServerGame<'_>| -> Vec<u32> {
             (0..200)
                 .map(|i| {
                     let at = [0.5 + (i % 15) as f64, 70.0, 0.5 + (i / 15) as f64];
@@ -502,7 +502,7 @@ fn two_hundred_items_over_a_capped_collider_rest_and_the_tick_is_timed() {
                 .collect()
         };
         let time =
-            |game: &mut Game<'_>, ticks: usize, mut each: Option<&mut dyn FnMut(&mut Game<'_>)>| {
+            |game: &mut crate::game::ServerGame<'_>, ticks: usize, mut each: Option<&mut dyn FnMut(&mut crate::game::ServerGame<'_>)>| {
                 let start = Instant::now();
                 for _ in 0..ticks {
                     if let Some(each) = each.as_mut() {
@@ -542,7 +542,7 @@ fn two_hundred_items_over_a_capped_collider_rest_and_the_tick_is_timed() {
         for _ in 0..20 {
             tick_level(game);
         }
-        let rests = |game: &Game<'_>| {
+        let rests = |game: &crate::game::ServerGame<'_>| {
             on.iter()
                 .filter(|id| item_y(game, **id).is_some_and(|y| (70.0..70.3).contains(&y)))
                 .count()
@@ -552,7 +552,7 @@ fn two_hundred_items_over_a_capped_collider_rest_and_the_tick_is_timed() {
         assert_eq!(rests(game), 200);
         // The collider moves every tick: its placement is rebuilt each time.
         let index = game.mobs.iter().position(|m| m.id == holder).unwrap();
-        let mut step = |game: &mut Game<'_>| {
+        let mut step = |game: &mut crate::game::ServerGame<'_>| {
             game.mobs.update(index, |m| m.position.x += 0.001);
         };
         let moving = time(game, 40, Some(&mut step));
@@ -584,7 +584,7 @@ fn two_hundred_items_over_a_capped_collider_rest_and_the_tick_is_timed() {
 // Carrying: the bodies standing on a collider move with it.
 
 /// Where an item is.
-fn item_at(game: &Game<'_>, id: u32) -> Vec3 {
+fn item_at(game: &crate::game::ServerGame<'_>, id: u32) -> Vec3 {
     game.dropped
         .iter()
         .find(|i| i.id == id)
@@ -593,9 +593,9 @@ fn item_at(game: &Game<'_>, id: u32) -> Vec3 {
 }
 
 /// A different stack from `drop_item`'s, so two items never merge.
-fn drop_dirt(game: &mut Game<'_>, at: [f64; 3]) -> u32 {
-    game.server.next_entity += 1;
-    let id = game.server.next_entity;
+fn drop_dirt(game: &mut crate::game::ServerGame<'_>, at: [f64; 3]) -> u32 {
+    game.side.next_entity += 1;
+    let id = game.side.next_entity;
     game.dropped.push(ItemEntity::new(
         id,
         ItemStack::new("minecraft:dirt", 1),
@@ -607,7 +607,7 @@ fn drop_dirt(game: &mut Game<'_>, at: [f64; 3]) -> u32 {
 }
 
 /// Moves the pig that holds a collider, as a mod's own tick would.
-fn shift_stand(game: &mut Game<'_>, id: u32, by: Vec3) {
+fn shift_stand(game: &mut crate::game::ServerGame<'_>, id: u32, by: Vec3) {
     let index = game.mobs.iter().position(|m| m.id == id).expect("a pig");
     game.mobs.update(index, |m| {
         m.position = Vec3::new(
@@ -618,7 +618,7 @@ fn shift_stand(game: &mut Game<'_>, id: u32, by: Vec3) {
     });
 }
 
-fn settle(game: &mut Game<'_>) {
+fn settle(game: &mut crate::game::ServerGame<'_>) {
     for _ in 0..25 {
         tick_level(game);
     }
@@ -922,7 +922,7 @@ fn a_carried_vehicle_takes_its_passengers_and_theirs_with_it() {
         let (vehicle, _) = stand_with_id(game, [8.5, 70.0, 8.0]);
         let (middle, _) = stand_with_id(game, [8.5, 71.0, 8.0]);
         let (top, _) = stand_with_id(game, [8.5, 72.0, 8.0]);
-        let update = |game: &mut Game<'_>, id: u32, f: &dyn Fn(&mut sunrise_client::mobs::Mob)| {
+        let update = |game: &mut crate::game::ServerGame<'_>, id: u32, f: &dyn Fn(&mut sunrise_client::mobs::Mob)| {
             let at = game.mobs.iter().position(|m| m.id == id).expect("a pig");
             game.mobs.update(at, |m| f(m));
         };
@@ -930,7 +930,7 @@ fn a_carried_vehicle_takes_its_passengers_and_theirs_with_it() {
         update(game, middle, &|m| m.extra.mount = Some(vehicle));
         update(game, top, &|m| m.extra.mount = Some(middle));
         game.position_riders();
-        let position = |game: &Game<'_>, id: u32| {
+        let position = |game: &crate::game::ServerGame<'_>, id: u32| {
             game.mobs
                 .iter()
                 .find(|m| m.id == id)
@@ -963,7 +963,7 @@ fn the_level_records_its_colliders_as_each_tick_begins() {
     with_world(|game| {
         let (holder, holder_ref) = stand_with_id(game, [8.0, 70.0, 8.0]);
         holder_ref.set_collider(game, Some(deck())).unwrap();
-        let x_of = |game: &Game<'_>| {
+        let x_of = |game: &crate::game::ServerGame<'_>| {
             game.mobs
                 .iter()
                 .find(|m| m.id == holder)

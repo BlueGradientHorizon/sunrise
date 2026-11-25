@@ -928,7 +928,7 @@ pub(in crate::game) mod tests {
     use sunrise_core::geometry::Vec3;
 
     pub(in crate::game::server_side) fn add_mob(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         id: u32,
         name: &str,
     ) -> MobRef {
@@ -1047,8 +1047,8 @@ pub(in crate::game) mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.server.level_shapes,
-                level_seeds: game.levels.0.runtime.seeds(),
+                levels: game.side.level_shapes,
+                level_seeds: game.side.levels.0.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
             let (tx, _rx) = std::sync::mpsc::channel();
@@ -1125,7 +1125,7 @@ pub(in crate::game) mod tests {
         with_game(|game| {
             let cow = add_mob(game, 12, "minecraft:cow");
             let wither = add_mob(game, 13, "minecraft:wither");
-            let check = |game: &Game<'_>, handle: MobRef, expected| {
+            let check = |game: &crate::game::ServerGame<'_>, handle: MobRef, expected| {
                 let mob = game
                     .mobs
                     .iter()
@@ -1289,10 +1289,10 @@ pub(in crate::game) mod tests {
             ));
             assert_eq!(stale.requires_custom_persistence(game), None);
             assert!(!stale.set_baby(game, true));
-            game.server.held_out.push(14);
+            game.side.held_out.push(14);
             assert_eq!(mob.requires_custom_persistence(game), None);
             assert!(!mob.set_baby(game, true));
-            game.server.held_out.pop();
+            game.side.held_out.pop();
             game.mobs.last_mut().unwrap().removed = true;
             assert_eq!(mob.requires_custom_persistence(game), None);
             assert!(!mob.set_baby(game, true));
@@ -1400,7 +1400,7 @@ pub(in crate::game) mod tests {
                     .last_hurt_by_player,
                 42
             );
-            assert!(!game.server.last_hurt_by_player.contains_key(&13));
+            assert!(!game.side.last_hurt_by_player.contains_key(&13));
             assert!(piglin.set_target(game, None));
             assert_eq!(
                 game.mobs
@@ -1513,7 +1513,7 @@ pub(in crate::game) mod tests {
                 let kind = game.res.mob_types().get(name).unwrap().clone();
                 game.mobs.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
             }
-            let handle = |game: &Game<'_>, id| game.mob(game.entity(id).unwrap()).unwrap();
+            let handle = |game: &crate::game::ServerGame<'_>, id| game.mob(game.entity(id).unwrap()).unwrap();
             let golem = game.living(game.entity(21).unwrap()).unwrap();
             // Each brain keeps the memory where its behaviours read it, and the
             // read handle answers it back; clearing erases it.

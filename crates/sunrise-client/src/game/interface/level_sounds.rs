@@ -305,7 +305,7 @@ pub(in crate::game) mod tests {
     }
 
     /// Opens the world to the network in place, with no one joined yet.
-    fn host(game: &mut super::Game<'_>) {
+    fn host(game: &mut crate::game::ServerGame<'_>) {
         let net = NetConfig {
             listen: false,
             announce: false,
@@ -324,8 +324,8 @@ pub(in crate::game) mod tests {
             seed: 0,
             max_players: 3,
             integrated: true,
-            levels: game.server.level_shapes,
-            level_seeds: game.levels.0.runtime.seeds(),
+            levels: game.side.level_shapes,
+            level_seeds: game.side.levels.0.runtime.seeds(),
         };
         let settings = LanSettings {
             port: 0,
@@ -353,7 +353,7 @@ pub(in crate::game) mod tests {
                 host(game);
                 let (a, rx) = guest(21, 21, [1.0, 64.0, 2.0]);
                 game.lan.as_mut().unwrap().hub.guests.push(a);
-                let mob = |game: &mut super::Game<'_>, id, kind: &str, x| {
+                let mob = |game: &mut crate::game::ServerGame<'_>, id, kind: &str, x| {
                     let kind = game.res.mob_types().get(kind).unwrap().clone();
                     game.mobs
                         .push(Mob::new(id, kind, Vec3::new(x, 64.0, 2.0), 0.0));
@@ -378,7 +378,7 @@ pub(in crate::game) mod tests {
                     "asked at the end of the tick"
                 );
                 assert!(
-                    game.server.pending_sounds.is_empty(),
+                    game.side.pending_sounds.is_empty(),
                     "not also sent as a positional sound"
                 );
 
@@ -410,7 +410,7 @@ pub(in crate::game) mod tests {
                     sources,
                     [SoundSource::Neutral as i32, SoundSource::Blocks as i32]
                 );
-                assert!(game.server.bound_sounds.is_empty());
+                assert!(game.side.bound_sounds.is_empty());
             });
         });
     }
@@ -447,8 +447,8 @@ pub(in crate::game) mod tests {
                     seed: 0,
                     max_players: 3,
                     integrated: true,
-                    levels: game.server.level_shapes,
-                    level_seeds: game.levels.0.runtime.seeds(),
+                    levels: game.side.level_shapes,
+                    level_seeds: game.side.levels.0.runtime.seeds(),
                 };
                 let settings = LanSettings {
                     port: 0,
@@ -463,7 +463,7 @@ pub(in crate::game) mod tests {
                 let at = [2.0, 64.0, 2.0];
 
                 // The tick's sounds, at their positions.
-                game.server.pending_sounds.extend(
+                game.side.pending_sounds.extend(
                     [
                         "minecraft:block.chest.locked",
                         "minecraft:entity.pig.ambient",
@@ -526,7 +526,7 @@ pub(in crate::game) mod tests {
                 // `Player.playSound` for the first guest (eating): the other
                 // guest hears it, and the mods were asked first.
                 game.as_guest(21, |game| {
-                    game.server.guest_player_sounds.push((
+                    game.side.guest_player_sounds.push((
                         "minecraft:entity.generic.eat".into(),
                         at,
                         1.0,

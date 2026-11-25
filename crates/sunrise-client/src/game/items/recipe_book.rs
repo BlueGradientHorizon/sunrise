@@ -827,7 +827,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     pub(in crate::game) fn batch_for_size(&self) -> Option<HudBatch> {
         #[cfg(test)]
-        if let Some(size) = self.recipe_ui.0.test_viewport {
+        if let Some(size) = self.side.recipe_ui.0.test_viewport {
             return Some(HudBatch::new(size, self.settings.gui_scale_inputs()));
         }
         let r = self.side.renderer.0.as_ref()?;
@@ -2368,7 +2368,7 @@ pub(in crate::game) mod screen_room_tests {
             vec![ModEntry::new("panel", Box::new(Panel(room.clone())))].into();
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_client_game(|game| {
-                game.client.screen = Screen::Inventory;
+                game.side.screen = Screen::Inventory;
                 game.container = None;
                 game.craft_size = 2;
                 game.settings.gui_scale = 1;
@@ -2377,7 +2377,7 @@ pub(in crate::game) mod screen_room_tests {
                 let (x, y) = game.book_origin(&batch);
                 assert_eq!((x, y), (110.0, 37.0));
                 assert_eq!(game.tab_pos(x, y, 0), (80.0, 40.0));
-                assert_eq!(Game::button_pos(x, y, 0), (121.0, 68.0));
+                assert_eq!(crate::game::ClientGame::button_pos(x, y, 0), (121.0, 68.0));
                 assert_eq!(game.inventory_origin(&batch), (259.0, 37.0));
                 let search = Search::default();
                 let tabs = [screen::TabView {
@@ -2409,12 +2409,12 @@ pub(in crate::game) mod screen_room_tests {
                 // A panel-only fit at 510 must be refused because the selected tab would clip.
                 let batch = HudBatch::new([510, 240], game.settings.gui_scale_inputs());
                 room.store(180, Ordering::Relaxed);
-                game.client.frames += 1;
+                game.side.frames += 1;
                 assert_eq!(game.open_book_left(&batch), Some(63.0));
                 assert_eq!(game.book_origin(&batch), (95.0, 37.0));
                 assert_eq!(game.inventory_origin(&batch), (244.0, 37.0));
                 room.store(100, Ordering::Relaxed);
-                game.client.frames += 1;
+                game.side.frames += 1;
                 assert_eq!(game.book_origin(&batch), (45.0, 37.0));
                 assert_eq!(game.inventory_origin(&batch), (194.0, 37.0));
             });

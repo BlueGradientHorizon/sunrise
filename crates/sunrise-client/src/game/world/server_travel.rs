@@ -1699,7 +1699,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             sea_level: self.end.locator().map_or(63, |terrain| terrain.sea_level()),
             world: &mut self.world,
             entities: &[],
-            next_entity: &mut self.server.next_entity,
+            next_entity: &mut self.side.next_entity,
             spawn,
             spawn_angle: self.level.world_spawn_angle,
             spawn_dimension: crate::game::Dim::of_world_spawn(&self.level).id(),
@@ -1801,8 +1801,8 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
                 game.native_joins_skip();
-                let base = game.server.next_entity;
-                game.server.next_entity += 2;
+                let base = game.side.next_entity;
+                game.side.next_entity += 2;
                 game.carts.push(minecarts::Minecart::new(
                     base + 1,
                     minecarts::CartKind::Rideable,
@@ -1833,7 +1833,7 @@ mod tests {
                 assert_eq!(game.portals.entities[&(base + 1)].cooldown, 7);
                 assert!(
                     !game
-                        .levels
+                        .side.levels
                         .0
                         .parked_mut(source)
                         .unwrap()
@@ -2049,7 +2049,7 @@ mod tests {
                 game,
                 sunrise_core::position::ChunkPos::new(0, 0),
             );
-            game.tickets.0.add_portal((0, 0));
+            game.side.tickets.0.add_portal((0, 0));
             game.update_chunk_tickets();
             assert!(game.entity_ticking_area()(1, 2));
             // Supply the block's real inside notification, then exercise the actual
@@ -2066,8 +2066,8 @@ mod tests {
                 "route through the player carrier path"
             );
             game.carry_riders_through_portals();
-            assert_eq!(game.server.server_trips.len(), 1);
-            let trip = &game.server.server_trips[0];
+            assert_eq!(game.side.server_trips.len(), 1);
+            let trip = &game.side.server_trips[0];
             assert_eq!(trip.source, source);
             assert_eq!(trip.dim, Dim::Nether);
             assert_eq!(
@@ -2196,7 +2196,7 @@ mod transfer_lifetime_tests {
         for kind in ["minecraft:minecart", "minecraft:oak_boat", "minecraft:pig"] {
             for bound in [true, false] {
                 super::super::native_entity_refs::tests::with_game(|game| {
-                    game.tickets.0.update(None);
+                    game.side.tickets.0.update(None);
                     let target = game
                         .summon_with_nbt(kind, [0.5, 70.0, 0.5], "{}")
                         .unwrap()
@@ -2253,7 +2253,7 @@ mod transfer_lifetime_tests {
                     game.arrive_vehicle(source, id, Vec3::ZERO, 0.0);
                     macro_rules! transferred {
                         ($list:ident) => {{
-                            let parked = game.levels.0.parked_mut(source).unwrap();
+                            let parked = game.side.levels.0.parked_mut(source).unwrap();
                             assert!(
                                 !parked
                                     .$list
@@ -2430,10 +2430,10 @@ mod credits_respawn_tests {
     /// A scratch server whose Overworld guest has a Nether respawn point.
     pub(super) fn server_with_a_nether_anchor<'a>(
         resources: &'a mut Option<Arc<crate::game::Resources>>,
-    ) -> (tempfile::TempDir, Game<'a>, mpsc::Receiver<Out>) {
+    ) -> (tempfile::TempDir, crate::game::ServerGame<'a>, mpsc::Receiver<Out>) {
         let scratch = tempfile::tempdir().unwrap();
         let mut game = crate::game::game_tests::tests::server_game(resources);
-        game.server.world_root = scratch.path().to_owned();
+        game.side.world_root = scratch.path().to_owned();
         // The world spawn a player without a point of its own comes back to.
         game.level.world_spawn = Some([0, 100, 0]);
         game.lan_host(
@@ -2497,7 +2497,7 @@ mod credits_respawn_tests {
         (guest, rx)
     }
 
-    pub(super) fn light_spawn_chunks(game: &mut Game<'_>) {
+    pub(super) fn light_spawn_chunks(game: &mut crate::game::ServerGame<'_>) {
         for x in -2..=2 {
             for z in -2..=2 {
                 game.streaming
@@ -2506,7 +2506,7 @@ mod credits_respawn_tests {
         }
     }
 
-    pub(super) fn charge_anchor(game: &mut Game<'_>) -> BlockStateId {
+    pub(super) fn charge_anchor(game: &mut crate::game::ServerGame<'_>) -> BlockStateId {
         let registry = game.pack.assets.registry;
         let id = registry.default_state("minecraft:respawn_anchor").unwrap();
         let mut value = registry.state(id).unwrap().clone();

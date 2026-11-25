@@ -268,9 +268,9 @@ pub(in crate::game) mod tests {
             game.world.set_block_lock(pos, &lock);
             assert_eq!(game.lan_open_container(12, pos), MenuOpen::Refused);
             assert!(game.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
-            assert_eq!(game.server.lid_openers.get(&pos), Some(&1));
+            assert_eq!(game.side.lid_openers.get(&pos), Some(&1));
             game.guest_close_all(13);
-            assert!(!game.server.lid_openers.contains_key(&pos));
+            assert!(!game.side.lid_openers.contains_key(&pos));
             game.world
                 .set_block_lock(pos, &Tag::Compound(Default::default()));
             assert_eq!(game.lan_open_container(12, pos), MenuOpen::Opened);
@@ -483,8 +483,8 @@ pub(in crate::game) mod tests {
                     seed: 0,
                     max_players: 2,
                     integrated: true,
-                    levels: game.server.level_shapes,
-                    level_seeds: game.levels.0.runtime.seeds(),
+                    levels: game.side.level_shapes,
+                    level_seeds: game.side.levels.0.runtime.seeds(),
                 };
                 game.lan_host(settings, net, config).unwrap();
                 let (tx, _rx) = std::sync::mpsc::channel();
@@ -1025,12 +1025,12 @@ pub(in crate::game) mod tests {
                 )
                 .unwrap(),
             );
-            game.server.lan_acting_fake = false;
+            game.side.lan_acting_fake = false;
             let real = game.sleep_counts();
             assert_eq!(real.0, 1);
-            game.server.lan_acting_fake = true;
+            game.side.lan_acting_fake = true;
             assert_eq!(game.sleep_counts(), (0, 0, 0));
-            game.server.lan_acting_fake = false;
+            game.side.lan_acting_fake = false;
             assert_eq!(game.sleep_counts(), real);
         });
     }
@@ -1079,15 +1079,12 @@ pub(in crate::game) mod respawn_world_point_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -1100,7 +1097,7 @@ pub(in crate::game) mod respawn_world_point_tests {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&scratch).unwrap();
-        game.server.world_root = scratch.clone();
+        game.side.world_root = scratch.clone();
         let world = [0, 100, 0];
         let personal = [5.5, 101.0, 5.5];
         game.level.world_spawn = Some(world);
@@ -1252,15 +1249,12 @@ pub(in crate::game) mod guest_close_listener_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -1339,7 +1333,7 @@ pub(in crate::game) mod guest_close_listener_tests {
         let clock = game.world.game_time;
         let mut missing = Vec::new();
         let window = open(&mut game, 1, 1);
-        assert_eq!(game.server.lid_openers.get(&(6, 100, 4)), Some(&1));
+        assert_eq!(game.side.lid_openers.get(&(6, 100, 4)), Some(&1));
         assert_eq!(selected(&game).unwrap().event, "minecraft:container_open");
         reset_listener(&mut game);
         close(&mut game, 1, window + 20);
@@ -1356,7 +1350,7 @@ pub(in crate::game) mod guest_close_listener_tests {
                 .window,
             window
         );
-        assert_eq!(game.server.lid_openers.get(&(6, 100, 4)), Some(&1));
+        assert_eq!(game.side.lid_openers.get(&(6, 100, 4)), Some(&1));
         assert!(selected(&game).is_none());
         close(&mut game, 1, window);
         assert!(
@@ -1369,7 +1363,7 @@ pub(in crate::game) mod guest_close_listener_tests {
                 .menu
                 .is_none()
         );
-        assert!(!game.server.lid_openers.contains_key(&(6, 100, 4)));
+        assert!(!game.side.lid_openers.contains_key(&(6, 100, 4)));
         match selected(&game) {
             Some(info) => {
                 assert_eq!(info.event, "minecraft:container_close");
@@ -1382,7 +1376,7 @@ pub(in crate::game) mod guest_close_listener_tests {
         assert_eq!(selected(&game).unwrap().event, "minecraft:container_open");
         reset_listener(&mut game);
         let last = open(&mut game, 2, 1);
-        assert_eq!(game.server.lid_openers.get(&(6, 100, 4)), Some(&2));
+        assert_eq!(game.side.lid_openers.get(&(6, 100, 4)), Some(&2));
         assert!(selected(&game).is_none());
         close(&mut game, 1, first);
         assert!(
@@ -1395,10 +1389,10 @@ pub(in crate::game) mod guest_close_listener_tests {
                 .menu
                 .is_some()
         );
-        assert_eq!(game.server.lid_openers.get(&(6, 100, 4)), Some(&1));
+        assert_eq!(game.side.lid_openers.get(&(6, 100, 4)), Some(&1));
         assert!(selected(&game).is_none());
         close(&mut game, 2, last);
-        assert!(!game.server.lid_openers.contains_key(&(6, 100, 4)));
+        assert!(!game.side.lid_openers.contains_key(&(6, 100, 4)));
         match selected(&game) {
             Some(info) => {
                 assert_eq!(info.event, "minecraft:container_close");
@@ -1408,7 +1402,7 @@ pub(in crate::game) mod guest_close_listener_tests {
         }
         reset_listener(&mut game);
         let spectator = open(&mut game, 3, 1);
-        assert!(!game.server.lid_openers.contains_key(&(6, 100, 4)));
+        assert!(!game.side.lid_openers.contains_key(&(6, 100, 4)));
         assert!(selected(&game).is_none());
         close(&mut game, 3, spectator);
         assert!(

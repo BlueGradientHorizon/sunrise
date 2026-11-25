@@ -7,7 +7,7 @@ use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
 use sunrise_core::position::{BlockPos, ChunkPos};
 
-fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
+fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -30,15 +30,12 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -56,7 +53,7 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
 }
 
 /// The block ticks queued at `pos`: (block, trigger tick).
-fn ticks_at(game: &Game<'_>, pos: BlockPos) -> Vec<(u32, i64)> {
+fn ticks_at(game: &crate::game::ServerGame<'_>, pos: BlockPos) -> Vec<(u32, i64)> {
     game.block_ticks
         .blocks
         .chunk(ChunkPos::new(0, 0))
@@ -110,7 +107,7 @@ fn a_strict_clone_copies_the_pending_block_ticks_of_its_source() {
 fn copied_block_ticks_keep_order_priority_and_dedup() {
     let mut game_resources = None;
     let mut game = game(&mut game_resources);
-    let queued = |game: &Game<'_>, pos: BlockPos| {
+    let queued = |game: &crate::game::ServerGame<'_>, pos: BlockPos| {
         game.block_ticks
             .blocks
             .chunk(ChunkPos::new(0, 0))

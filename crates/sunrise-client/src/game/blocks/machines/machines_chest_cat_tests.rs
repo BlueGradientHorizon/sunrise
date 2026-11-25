@@ -18,7 +18,7 @@ const WIRE: Pos = (2, 64, 0);
 /// A full chest at `CHEST`, a comparator east of it reading west into it,
 /// and the wire that carries the comparator's output, on a floor in a
 /// ticking chunk.
-fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
     let mut game = server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);
@@ -45,13 +45,13 @@ fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> Game<'a> 
         assert!(game.run_command(command), "{command}");
     }
     game.update_chunk_tickets();
-    assert!(game.tickets.0.levels().block_ticking(0, 0));
+    assert!(game.side.tickets.0.levels().block_ticking(0, 0));
     game
 }
 
 /// A block change beside the comparator, so it reads its input again, then
 /// the ticks that settle the comparator and the wire.
-fn poke(game: &mut Game<'_>, block: &str) {
+fn poke(game: &mut crate::game::ServerGame<'_>, block: &str) {
     assert!(game.run_command(&format!(
         "setblock {} {} {} {block}",
         COMPARATOR.0,
@@ -65,14 +65,14 @@ fn poke(game: &mut Game<'_>, block: &str) {
     }
 }
 
-fn summon_cat(game: &mut Game<'_>, sitting: bool) {
+fn summon_cat(game: &mut crate::game::ServerGame<'_>, sitting: bool) {
     assert!(game.run_command(&format!(
         "summon cat 0.5 65 0.5 {{Sitting:{}b,Tame:1b}}",
         i8::from(sitting)
     )));
 }
 
-fn wire_power(game: &Game<'_>) -> i32 {
+fn wire_power(game: &crate::game::ServerGame<'_>) -> i32 {
     let state = game.world.block(WIRE.0, WIRE.1, WIRE.2);
     let info = game
         .pack

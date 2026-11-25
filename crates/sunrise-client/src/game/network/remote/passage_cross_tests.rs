@@ -38,7 +38,7 @@ pub(in crate::game) fn sent(reader: &mut ConnReader) -> Vec<S> {
 /// doorway (passage 1) at (0.5, 65.5, 8.5) facing south, which comes out at (24.5, 65.5,
 /// 8.5) turned a clockwise quarter.
 pub(in crate::game) fn scene(
-    game: &mut crate::game::Game<'_>,
+    game: &mut crate::game::ClientGame<'_>,
     at: [f64; 3],
 ) -> (ConnReader, ConnWriter) {
     let (mut reader, writer) = connect_menu_test(game);

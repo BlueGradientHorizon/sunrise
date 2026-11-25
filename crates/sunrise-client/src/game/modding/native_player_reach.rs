@@ -76,7 +76,7 @@ mod tests {
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             let eye_y = 64.0 + 1.62;
             let half = 0.44999998807907104;
-            let pig_at = |game: &mut crate::game::Game<'_>, id: u32, face: f64| {
+            let pig_at = |game: &mut crate::game::ServerGame<'_>, id: u32, face: f64| {
                 let feet = Vec3::new(3.0 + face + half, eye_y - 0.45, 5.0);
                 game.mobs.push(Mob::new(id, kind.clone(), feet, 0.0));
                 let pig = game.entity(id).unwrap();
@@ -96,7 +96,7 @@ mod tests {
                 .update_guest(12, |guest| guest.motion = Some(Box::new(body)))
                 .unwrap();
             let player = game.player(12).unwrap();
-            let reach = |game: &crate::game::Game<'_>, pig, rule| {
+            let reach = |game: &crate::game::ServerGame<'_>, pig, rule| {
                 game.player_within_entity_reach(player, pig, rule)
             };
             let inside = pig_at(game, 900, -half);
@@ -126,7 +126,7 @@ mod tests {
             // read outside that guest's turn. The server adds the creative reach bonus in
             // the player's tick step, not when the mode changes, so each mode change is
             // followed by that tick step. These distances are literal box faces.
-            let tick_attributes = |game: &mut crate::game::Game<'_>| {
+            let tick_attributes = |game: &mut crate::game::ServerGame<'_>| {
                 assert!(game.native_as_player_handle(player, |g| g.update_player_attributes()));
             };
             assert!(game.player_set_game_mode(player, GameMode::Creative));

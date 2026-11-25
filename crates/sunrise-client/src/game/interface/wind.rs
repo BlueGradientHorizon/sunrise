@@ -1035,9 +1035,9 @@ pub(in crate::game) mod tests {
                 .add_empty_chunk(ChunkPos::new(0, 0))
                 .unwrap();
             assert!(game.run_command("forceload add 0 0"));
-            game.tickets.0.update(None);
+            game.side.tickets.0.update(None);
 
-            game.server.ordered.announced = JoinSeq::upcoming();
+            game.side.ordered.announced = JoinSeq::upcoming();
             assert!(
                 game.run_command(
                     "summon tnt 8.25 70.5 8.5 {fuse:80,Motion:[0d,0d,0d],NoGravity:1b}"
@@ -1049,7 +1049,7 @@ pub(in crate::game) mod tests {
             let charge = game.creatures.projectiles[0].clone();
             game.begin_ordered_ticks();
             game.run_ordered_ticks(charge.join_seq(), false).unwrap();
-            assert_eq!(game.server.ordered.done, Some(game.orbs[0].join_seq()));
+            assert_eq!(game.side.ordered.done, Some(game.orbs[0].join_seq()));
             assert_eq!(game.orbs[0].age, 1);
             assert_eq!(game.tnts[0].fuse, 80);
 
@@ -1069,7 +1069,7 @@ pub(in crate::game) mod tests {
             // Three blocks from the centre, unobstructed: (1 - 3 / 6) due east.
             assert_eq!(game.tnts[0].velocity.x, 0.5);
 
-            game.server.ordered.announced = JoinSeq::upcoming();
+            game.side.ordered.announced = JoinSeq::upcoming();
             game.begin_ordered_ticks();
             game.run_ordered_ticks(charge.join_seq(), false).unwrap();
             assert_eq!(game.tnts[0].fuse, 78);

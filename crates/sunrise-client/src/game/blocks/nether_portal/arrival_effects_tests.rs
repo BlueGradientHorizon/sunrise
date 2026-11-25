@@ -3,7 +3,7 @@ use super::*;
 use crate::game::native_entity_refs::tests::with_game;
 use sunrise_client::{chunk::Chunk, items::ItemStack};
 
-fn prepare(game: &mut Game<'_>) {
+fn prepare(game: &mut crate::game::ServerGame<'_>) {
     game.build_registries();
     game.set_allow_commands(true);
     game.options.dedicated = Some(Vec::new());
@@ -15,7 +15,7 @@ fn prepare(game: &mut Game<'_>) {
 
 /// Capture a real portal traveller, open its destination, and light its arrival
 /// area. A restarted waiting arrival has only its saved payload, not a live token.
-fn depart(game: &mut Game<'_>, id: u32, restart_waiting: bool) -> Vec3 {
+fn depart(game: &mut crate::game::ServerGame<'_>, id: u32, restart_waiting: bool) -> Vec3 {
     let entry = BlockPos::new(8, 70, 8);
     let portal = game
         .pack
@@ -91,7 +91,7 @@ pub(in crate::game::server_side) fn run_portal_arrival_effects_merge_items_befor
 
 /// Expire an actual primed TNT beside a portal and an ordinary block. A valid
 /// frame keeps neighbour updates from removing a protected portal indirectly.
-pub(in crate::game) fn assert_tnt_blast(game: &mut Game<'_>, protected: bool) {
+pub(in crate::game) fn assert_tnt_blast(game: &mut crate::game::ServerGame<'_>, protected: bool) {
     assert_eq!(game.tnts.len(), 1);
     let at = game.tnts[0].position;
     let (x, y, z) = (
@@ -232,7 +232,7 @@ impl Hooks for RemoveOnArrival {
     }
 }
 
-fn callback_destination(game: &mut Game<'_>, id: u32, portal: bool, restart: bool) -> Vec3 {
+fn callback_destination(game: &mut crate::game::ServerGame<'_>, id: u32, portal: bool, restart: bool) -> Vec3 {
     if portal {
         depart(game, id, restart)
     } else {
@@ -244,7 +244,7 @@ fn callback_destination(game: &mut Game<'_>, id: u32, portal: bool, restart: boo
     }
 }
 
-fn complete_callback_arrival(game: &mut Game<'_>, id: u32, portal: bool, at: Vec3) {
+fn complete_callback_arrival(game: &mut crate::game::ServerGame<'_>, id: u32, portal: bool, at: Vec3) {
     if portal {
         game.resolve_arrivals();
         assert!(game.portals.arrivals.is_empty());

@@ -34,7 +34,7 @@ fn parse_expected(raw: &str) -> Tag {
     tag
 }
 
-fn tick(game: &mut crate::game::Game<'_>) {
+fn tick(game: &mut crate::game::ServerGame<'_>) {
     game.handle_entity_portals();
     game.tick_armor_stands().unwrap();
 }

@@ -121,7 +121,7 @@ fn admission_queries(level: &GameLevel<'_, '_>, z: f64) -> String {
 }
 
 fn spawner_batch(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     z: f64,
     dx: f64,
     id: &str,
@@ -239,7 +239,7 @@ fn spawner_batch(
     )
 }
 
-fn with_relay(test: impl FnOnce(&mut Game<'_>)) {
+fn with_relay(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     mod_platform::__private::initialize().unwrap();
     let _phase = mod_platform::__private::RegistrationGuard::open();
     let mods = vec![mod_api::ModEntry::new(

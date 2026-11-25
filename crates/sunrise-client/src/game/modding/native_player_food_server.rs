@@ -154,7 +154,7 @@ mod tests {
     use sunrise_core::geometry::Vec3;
 
     /// The acting player with a body, as a hook's turn finds them.
-    fn acting_player(game: &mut super::Game<'_>) -> PlayerRef {
+    fn acting_player(game: &mut crate::game::ServerGame<'_>) -> PlayerRef {
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
         crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
         game.player(123).unwrap()

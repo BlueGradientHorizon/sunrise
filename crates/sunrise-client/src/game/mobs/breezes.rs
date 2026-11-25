@@ -91,7 +91,7 @@ pub(in crate::game) mod tests {
         game.tick_breeze_effects();
 
         assert_eq!(
-            game.particles.0.made().get("block").copied().unwrap_or(0),
+            game.side.particles.0.made().get("block").copied().unwrap_or(0),
             1,
             "vanilla emits one crumb of the fence the breeze stands on"
         );
@@ -134,7 +134,7 @@ pub(in crate::game) mod tests {
             "the crumb's constructor draws belong to the particle, not the level"
         );
         assert_eq!(
-            game.particles.0.made().get("block").copied().unwrap_or(0),
+            game.side.particles.0.made().get("block").copied().unwrap_or(0),
             1
         );
     }

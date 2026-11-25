@@ -18,7 +18,7 @@ pub(in crate::game) use crate::game::server_side::creatures_server::pufferfish_p
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::server_side::creatures_server::pufferfish_player::pufferfish_sting_tests::stings;
 
-pub(in crate::game) fn health(game: &Game<'_>) -> f32 {
+pub(in crate::game) fn health(game: &crate::game::ServerGame<'_>) -> f32 {
     game.player.as_ref().unwrap().health.health()
 }
 

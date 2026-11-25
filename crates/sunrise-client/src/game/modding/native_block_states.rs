@@ -690,7 +690,7 @@ mod tests {
     #[ignore = "daily"]
     fn fluid_definitions_and_constraints_use_the_loaded_registry() {
         use mod_api::{Host, HostFluidStates};
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_client_game(|game| {
             let host: &dyn Host = game;
             let water = host.fluid_key("minecraft:water").unwrap();
             let flowing = host.fluid_key("minecraft:flowing_water").unwrap();

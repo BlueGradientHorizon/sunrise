@@ -28,7 +28,7 @@ fn a_bound_cart_survives_the_parked_level_swap() {
         game.enter_level(super::super::Dim::Nether).unwrap();
         assert!(game.carts.is_empty());
         assert_eq!(
-            game.levels
+            game.side.levels
                 .0
                 .parked_mut(super::super::Dim::Overworld)
                 .unwrap()
@@ -41,9 +41,9 @@ fn a_bound_cart_survives_the_parked_level_swap() {
     });
 }
 
-pub(in crate::game) fn bound_cart_case(kind: CartKind, action: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn bound_cart_case(kind: CartKind, action: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     super::super::native_entity_refs::tests::with_game(|game| {
-        game.tickets.0.update(None);
+        game.side.tickets.0.update(None);
         game.carts
             .push(Minecart::new(71, kind, Vec3::new(0.5, 70.0, 0.5)));
         let holder = {
@@ -69,7 +69,7 @@ pub(in crate::game) fn bound_cart_case(kind: CartKind, action: impl FnOnce(&mut 
         assert_eq!(VALUE.get(&mut values, Holder::Entity(71)), Ok(10));
         let taken = game.take_entities();
         assert_eq!(index.lock().unwrap().snapshot(&key).len(), 1);
-        game.server.next_entity = game.server.next_entity.max(72);
+        game.side.next_entity = game.side.next_entity.max(72);
         game.summon_with_nbt("minecraft:minecart", [8.5, 70.0, 0.5], "{}")
             .unwrap();
         let spawned = game.carts[0].id;
@@ -166,7 +166,7 @@ fn destroyed_carts_retain_authoritative_state_and_retire_their_registration() {
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
                 game.options.dedicated = Some(Vec::new());
-                game.tickets.0.update(None);
+                game.side.tickets.0.update(None);
                 game.reset_entity_residency();
                 let start = Vec3::new(0.5, 70.0, 0.5);
                 let mut cart = Minecart::new(
@@ -280,7 +280,7 @@ fn disabled_tnt_rule_discards_primed_carts_but_keeps_unprimed_ticks() {
         for primed in [false, true] {
             super::super::native_entity_refs::tests::with_game(|game| {
                 game.options.dedicated = Some(Vec::new());
-                game.tickets.0.update(None);
+                game.side.tickets.0.update(None);
                 game.reset_entity_residency();
                 assert!(game.ui.rules.set(
                     "tnt_explodes",
@@ -353,7 +353,7 @@ fn terminal_vehicle_damage_and_native_removal_retire_residency() {
         for mode in 0..3 {
             super::super::native_entity_refs::tests::with_game(|game| {
                 game.reset_entity_residency();
-                game.tickets.0.update(None);
+                game.side.tickets.0.update(None);
                 game.summon_with_nbt(
                     if cart {
                         "minecraft:minecart"

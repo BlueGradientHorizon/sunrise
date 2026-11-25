@@ -16,7 +16,7 @@ pub(in crate::game) const ALICE: u128 = 10;
 pub(in crate::game) const BOB: u128 = 11;
 pub(in crate::game) const SESSION: u128 = 42;
 
-pub(in crate::game) fn with_delayed_chat(test: &str, check: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_delayed_chat(test: &str, check: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     let full = if test.contains("::") {
         test.split_once("::")
             .map_or(test, |(_, rest)| rest)
@@ -36,7 +36,7 @@ pub(in crate::game) fn with_delayed_chat(test: &str, check: impl FnOnce(&mut Gam
     });
 }
 
-pub(in crate::game) fn tracker_offset(game: &mut Game<'_>) -> i32 {
+pub(in crate::game) fn tracker_offset(game: &mut crate::game::ClientGame<'_>) -> i32 {
     game.remote
         .as_mut()
         .unwrap()
@@ -45,7 +45,7 @@ pub(in crate::game) fn tracker_offset(game: &mut Game<'_>) -> i32 {
         .offset()
 }
 
-pub(in crate::game) fn take_seen_update(game: &mut Game<'_>) -> secure_chat::SeenUpdate {
+pub(in crate::game) fn take_seen_update(game: &mut crate::game::ClientGame<'_>) -> secure_chat::SeenUpdate {
     game.remote
         .as_mut()
         .unwrap()
@@ -82,7 +82,7 @@ pub(in crate::game) fn player_chat(
     }
 }
 
-pub(in crate::game) fn add_sender(game: &mut Game<'_>, sender: u128) {
+pub(in crate::game) fn add_sender(game: &mut crate::game::ClientGame<'_>, sender: u128) {
     game.remote
         .as_mut()
         .unwrap()
@@ -90,7 +90,7 @@ pub(in crate::game) fn add_sender(game: &mut Game<'_>, sender: u128) {
         .insert(sender, TabPlayer::new(sender, "Player"));
 }
 
-pub(in crate::game) fn add_signed_sender(game: &mut Game<'_>, key: &RsaPrivateKey, sender: u128) {
+pub(in crate::game) fn add_signed_sender(game: &mut crate::game::ClientGame<'_>, key: &RsaPrivateKey, sender: u128) {
     add_sender(game, sender);
     // A fixture key signs both its profile certificate and its chat packets;
     // the packet handler still runs the real keyed validator and message chain.
@@ -113,7 +113,7 @@ pub(in crate::game) fn add_signed_sender(game: &mut Game<'_>, key: &RsaPrivateKe
 }
 
 pub(in crate::game) fn deliver_signed(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ClientGame<'_>,
     key: &RsaPrivateKey,
     mut packet: play::PlayerChat,
 ) -> Signature {

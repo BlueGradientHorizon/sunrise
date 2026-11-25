@@ -123,7 +123,7 @@ pub(in crate::game) fn run_resolved_player_info_retains_identity_across_remove_a
                     remote.loaded_sent = true;
                     remote.level_load.finish();
                 }
-                game.client.screen = Screen::Playing;
+                game.side.screen = Screen::Playing;
                 run_local_tick(game);
                 let sent = drain_sent_abilities(game, &mut peer);
                 assert_row_core(game, &rows[4], true, Some(&sent));
@@ -161,7 +161,7 @@ pub(in crate::game) fn run_resolved_player_info_retains_identity_across_remove_a
                     remote.loaded_sent = true;
                     remote.level_load.finish();
                 }
-                game.client.screen = Screen::Playing;
+                game.side.screen = Screen::Playing;
                 game.handle_packet(C::PlayerInfoRemove(play::PlayerInfoRemove {
                     uuids: vec![SELF_UUID],
                 }))
@@ -245,7 +245,7 @@ pub(in crate::game) fn run_split_local_and_player_info_physics_matrix_26_3() {
                                 remote.loaded_sent = true;
                                 remote.level_load.finish();
                             }
-                            game.client.screen = Screen::Playing;
+                            game.side.screen = Screen::Playing;
                             let _ = drain_sent_abilities(game, &mut peer);
 
                             for _ in 0..3 {
@@ -291,7 +291,7 @@ pub(in crate::game) fn run_split_local_and_player_info_physics_matrix_26_3() {
                             remote.loaded_sent = true;
                             remote.level_load.finish();
                         }
-                        game.client.screen = Screen::Playing;
+                        game.side.screen = Screen::Playing;
                         let _ = drain_sent_abilities(game, &mut peer);
 
                         run_local_tick(game);
@@ -307,7 +307,7 @@ pub(in crate::game) fn run_split_local_and_player_info_physics_matrix_26_3() {
 }
 
 pub(in crate::game) fn setup_client(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ClientGame<'_>,
     local_mode: i32,
     previous_mode: Option<i32>,
     pos: [f64; 3],
@@ -329,6 +329,6 @@ pub(in crate::game) fn setup_client(
         remote.loaded_sent = true;
         remote.level_load.finish();
     }
-    game.client.screen = Screen::Playing;
+    game.side.screen = Screen::Playing;
     (peer, writer)
 }

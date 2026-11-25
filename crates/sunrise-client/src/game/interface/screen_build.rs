@@ -933,9 +933,9 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_chat_box_is_resized_by_the_build_not_the_draw() {
-        crate::game::native_entity_refs::tests::with_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             use sunrise_client::chat::{ChatAbilities, ChatScreen, ChatVisibility, Commands};
-            game.title.0 = None;
+            game.side.title.0 = None;
             // 1280x720 at GUI scale 3 is 427x240.
             game.settings.gui_scale = 3;
             let m = sunrise_client::screen_draw::Measure(&game.gui.atlas.font);
@@ -946,27 +946,27 @@ mod tests {
             let abilities = ChatAbilities::new(ChatVisibility::Full);
             let screen = ChatScreen::new(&m, &c, "/say hi", false, 0, 427, 240, abilities);
             game.ui.chat_screen = Some(screen);
-            game.client.screen = Screen::Chat;
+            game.side.screen = Screen::Chat;
             game.build_screen();
-            let input = |game: &crate::game::Game<'_>| {
+            let input = |game: &crate::game::ClientGame<'_>| {
                 let i = &game.ui.chat_screen.as_ref().unwrap().input;
                 [i.x, i.y, i.width, i.height]
             };
             assert_eq!(input(game), [4, 228, 423, 12]);
-            let leave_bed = |game: &crate::game::Game<'_>, w, h| {
+            let leave_bed = |game: &crate::game::ClientGame<'_>, w, h| {
                 game.built_chat(w, h).map(|layout| layout.leave_bed)
             };
             assert_eq!(leave_bed(game, 427.0, 240.0), Some((113, 200, 200, 20)));
-            let builds = game.screen_state.0.build.builds;
+            let builds = game.side.screen_state.0.build.builds;
             game.build_screen();
             assert_eq!(
-                game.screen_state.0.build.builds, builds,
+                game.side.screen_state.0.build.builds, builds,
                 "an unchanged frame"
             );
             // GUI scale 1: the build re-makes the box, keeping its text.
             game.settings.gui_scale = 1;
             game.build_screen();
-            assert_eq!(game.screen_state.0.build.builds, builds + 1);
+            assert_eq!(game.side.screen_state.0.build.builds, builds + 1);
             assert_eq!(input(game), [4, 708, 1276, 12]);
             assert_eq!(game.ui.chat_screen.as_ref().unwrap().value(), "/say hi");
             assert_eq!(leave_bed(game, 1280.0, 720.0), Some((540, 680, 200, 20)));
@@ -977,11 +977,11 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn production_screen_build_geometry() {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            game.client.screen = Screen::Inventory;
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
+            game.side.screen = Screen::Inventory;
             game.container = None;
             game.craft_size = 2;
-            game.title.0 = None;
+            game.side.title.0 = None;
             game.potions.effects.list = vec![sunrise_client::effects::EffectInstance::new(
                 "speed", 200, 0,
             )];
@@ -995,17 +995,17 @@ mod tests {
             let layout = game.container_layout(&batch);
             assert_eq!(layout.origin, (72.0, 37.0));
             assert_eq!(layout.effects, Some([250.0, 37.0, 32.0, 32.0]));
-            game.client.screen = Screen::Creative;
+            game.side.screen = Screen::Creative;
             let layout = game.container_layout(&batch);
             assert_eq!(
                 layout.tabs,
                 Some([[62.0, 24.0, 195.0, 28.0], [62.0, 188.0, 195.0, 28.0]])
             );
             game.build_screen();
-            let before = game.screen_state.0.build.builds;
+            let before = game.side.screen_state.0.build.builds;
             let constructions =
                 crate::game::container_layout::LAYOUT_CONSTRUCTIONS.with(|count| count.get());
-            let slots = match &game.screen_state.0.build.current.as_ref().unwrap().layout {
+            let slots = match &game.side.screen_state.0.build.current.as_ref().unwrap().layout {
                 BuildLayout::Container(layout) => layout.slots.as_ptr(),
                 _ => panic!("container"),
             };
@@ -1015,19 +1015,19 @@ mod tests {
                 crate::game::inventory_slots::SLOT_POSITIONS.with(|count| count.get()),
                 positions
             );
-            assert_eq!(game.screen_state.0.build.builds, before);
+            assert_eq!(game.side.screen_state.0.build.builds, before);
             assert_eq!(
                 crate::game::container_layout::LAYOUT_CONSTRUCTIONS.with(|count| count.get()),
                 constructions
             );
             let BuildLayout::Container(layout) =
-                &game.screen_state.0.build.current.as_ref().unwrap().layout
+                &game.side.screen_state.0.build.current.as_ref().unwrap().layout
             else {
                 panic!("container")
             };
             assert_eq!(layout.slots.as_ptr(), slots);
             // Each changed input builds once; its next frame does no slot work.
-            let check = |game: &mut crate::game::Game<'_>| {
+            let check = |game: &mut crate::game::ClientGame<'_>| {
                 let builds = crate::game::container_layout::LAYOUT_CONSTRUCTIONS.with(|c| c.get());
                 game.build_screen();
                 assert_eq!(
@@ -1043,7 +1043,7 @@ mod tests {
             };
             game.settings.gui_scale = 1;
             check(game);
-            game.client.screen = Screen::Inventory;
+            game.side.screen = Screen::Inventory;
             check(game);
             game.level.recipe_book.open[0] = true;
             check(game);
@@ -1057,16 +1057,16 @@ mod tests {
             ));
             check(game);
             game.station = None;
-            game.client.screen = Screen::Creative;
+            game.side.screen = Screen::Creative;
             check(game);
             let inventory = game
-                .creative_screen
+                .side.creative_screen
                 .0
                 .tab_headers()
                 .iter()
                 .position(|tab| tab.inventory)
                 .unwrap();
-            game.creative_screen.0.select(inventory);
+            game.side.creative_screen.0.select(inventory);
             check(game);
         });
     }
@@ -1524,12 +1524,12 @@ mod tests {
         .into();
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_client_game(|game| {
-                game.client.screen = Screen::Inventory;
+                game.side.screen = Screen::Inventory;
                 game.container = None;
                 game.craft_size = 2;
                 game.level.recipe_book.open.fill(false);
                 game.settings.gui_scale = 3;
-                game.client.frames = 11;
+                game.side.frames = 11;
                 game.build_screen();
                 let batch = HudBatch::new([1280, 720], game.settings.gui_scale_inputs());
                 assert_eq!(game.inventory_origin(&batch), (51.0, 37.0));
@@ -1548,20 +1548,20 @@ mod tests {
                 assert_eq!(slot, [58.0, 178.0, 18.0, 18.0]);
                 assert_eq!(game.slot_at(&batch, 59.0, 179.0), Some(0));
                 assert_eq!(game.slot_at(&batch, 133.0, 179.0), Some(4));
-                let builds = game.screen_state.0.build.builds;
+                let builds = game.side.screen_state.0.build.builds;
                 assert_eq!(calls.load(Ordering::Relaxed), 2);
                 game.build_screen();
                 assert_eq!(calls.load(Ordering::Relaxed), 2);
-                assert_eq!(game.screen_state.0.build.builds, builds);
-                game.client.frames += 1;
+                assert_eq!(game.side.screen_state.0.build.builds, builds);
+                game.side.frames += 1;
                 game.build_screen();
                 assert_eq!(calls.load(Ordering::Relaxed), 4);
-                assert_eq!(game.screen_state.0.build.builds, builds);
+                assert_eq!(game.side.screen_state.0.build.builds, builds);
                 width.store(100, Ordering::Relaxed);
-                game.client.frames += 1;
+                game.side.frames += 1;
                 game.build_screen();
                 assert_eq!(game.inventory_origin(&batch), (75.0, 37.0));
-                assert_eq!(game.screen_state.0.build.builds, builds + 1);
+                assert_eq!(game.side.screen_state.0.build.builds, builds + 1);
                 assert_eq!(game.slot_at(&batch, 83.0, 179.0), Some(0));
                 assert_eq!(
                     game.screen_view(&batch, Screen::Inventory).rect,
@@ -1592,7 +1592,7 @@ mod tests {
             };
             mod_platform::testing::with_mods(mods, || {
                 crate::game::native_entity_refs::tests::with_client_game(|game| {
-                    game.client.screen = Screen::Inventory;
+                    game.side.screen = Screen::Inventory;
                     game.container = None;
                     game.craft_size = 2;
                     game.settings.gui_scale = 1;
@@ -1602,7 +1602,7 @@ mod tests {
                         (380, 102.0, 179.0, 30.0),
                     ] {
                         for open in [false, true] {
-                            game.client.frames += 1;
+                            game.side.frames += 1;
                             game.level.recipe_book.open[BookType::Crafting.index()] = open;
                             let batch =
                                 HudBatch::new([width, 240], game.settings.gui_scale_inputs());
@@ -1717,17 +1717,17 @@ mod tests {
                     )
                     .unwrap(),
                 );
-                game.title.0 = None;
+                game.side.title.0 = None;
                 game.container = None;
                 game.craft_size = 2;
-                game.client.screen = Screen::Inventory;
+                game.side.screen = Screen::Inventory;
                 game.settings.gui_scale = 1;
                 game.settings.force_unicode = false;
                 let crafting = sunrise_client::recipe_book::BookType::Crafting.index();
                 game.level.recipe_book.recipes.clear();
                 game.level.recipe_book.open[crafting] = false;
 
-                let render = |game: &mut crate::game::Game<'_>, size| {
+                let render = |game: &mut crate::game::ClientGame<'_>, size| {
                     game.hud_layers(size);
                     let mut posts = observer.posts.lock().unwrap();
                     assert_eq!(posts.len(), 1, "one Render.Post per draw");
@@ -1786,7 +1786,7 @@ mod tests {
                 game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
                 game.ui.registries.permission = 2;
                 game.settings.operator_items_tab = true;
-                game.client.screen = Screen::Creative;
+                game.side.screen = Screen::Creative;
                 game.refresh_creative_tabs();
                 game.build_screen_at(small);
                 let mut tabs = render(game, small);

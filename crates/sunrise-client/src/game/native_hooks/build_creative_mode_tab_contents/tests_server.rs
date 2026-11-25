@@ -40,7 +40,7 @@ pub(in crate::game::server_side) use crate::game::native_hooks::build_creative_m
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::native_hooks::build_creative_mode_tab_contents::tests::book_level;
 
-pub(in crate::game) fn install_dedicated_holders(game: &mut Game<'_>, max_level: i32) {
+pub(in crate::game) fn install_dedicated_holders(game: &mut crate::game::ServerGame<'_>, max_level: i32) {
     let files = vec![(
         "enchantment/test:levels".into(),
         vec![definition(max_level).to_string().into_bytes()],
@@ -78,8 +78,8 @@ pub(in crate::game) fn install_dedicated_holders(game: &mut Game<'_>, max_level:
         seed: 0,
         max_players: 2,
         integrated: false,
-        levels: game.server.level_shapes,
-        level_seeds: game.levels.0.runtime.seeds(),
+        levels: game.side.level_shapes,
+        level_seeds: game.side.levels.0.runtime.seeds(),
     };
     game.lan = Some(LanHost::for_test(Hub::new(
         lan,

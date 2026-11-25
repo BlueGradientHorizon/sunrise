@@ -60,7 +60,7 @@ fn same_mob_guest_attack_survives_movement_panic() {
         .into(),
         || {
             with_guests(|game| {
-                game.server.world_root = PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
+                game.side.world_root = PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                     .join("same-mob-guest-attack");
                 game.options.dedicated = Some(Vec::new());
                 game.load_server_loot();
@@ -110,7 +110,7 @@ fn same_mob_guest_attack_survives_movement_panic() {
                 // Who::Player names the selected player, so bind it to the nearby guest.
                 host.mob_players.insert(ZOMBIE, TARGET_GUEST);
 
-                let health = |game: &Game<'_>| {
+                let health = |game: &crate::game::ServerGame<'_>| {
                     let hub = &game.lan.as_ref().unwrap().hub;
                     (
                         game.player.as_ref().unwrap().health.health(),

@@ -292,7 +292,7 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             with_guests(|game| {
                 let world = tempfile::tempdir().unwrap();
-                game.server.world_root = world.path().to_path_buf();
+                game.side.world_root = world.path().to_path_buf();
                 game.load_scoreboard();
                 assert!(mod_api::__private::listened(
                     mod_api::HookId::PlayerStatAward
@@ -512,7 +512,7 @@ mod tests {
             game.stats.add("custom", "minecraft:jump", 3);
 
             let player = game.player(123).unwrap();
-            let jump = |game: &super::Game<'_>| game.player_stat(player, StatType::Custom, "jump");
+            let jump = |game: &crate::game::ServerGame<'_>| game.player_stat(player, StatType::Custom, "jump");
             assert_eq!(jump(game), Some(7));
             assert_eq!(
                 game.player_has_discovered_recipe(player, "stick"),
@@ -527,11 +527,11 @@ mod tests {
                 Some(vec!["minecraft:stick".to_string()])
             );
             // In the guest's turn their state is in the game.
-            game.server.lan_acting_uuid = Some(123);
-            game.server.lan_acting_entity = Some(20);
+            game.side.lan_acting_uuid = Some(123);
+            game.side.lan_acting_entity = Some(20);
             assert_eq!(jump(game), Some(3));
-            game.server.lan_acting_uuid = None;
-            game.server.lan_acting_entity = None;
+            game.side.lan_acting_uuid = None;
+            game.side.lan_acting_entity = None;
             // A guest without play state yet has counted nothing.
             game.lan.as_mut().unwrap().play.remove(&1);
             assert_eq!(jump(game), Some(0));

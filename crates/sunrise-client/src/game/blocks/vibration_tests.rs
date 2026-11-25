@@ -115,15 +115,12 @@ fn saddling_a_pig_posts_equip_from_the_pig() {
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -176,15 +173,12 @@ fn a_landing_posts_the_block_game_event_its_rule_posts() {
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -202,7 +196,7 @@ fn a_landing_posts_the_block_game_event_its_rule_posts() {
     let at = BlockPos::new(2, 4, 3);
     // `Entity.checkFallDamage` from 3 blocks up, landed as the player, with the
     // rule's block effects applied and what it posts going out.
-    let land = |game: &mut Game<'_>, state| {
+    let land = |game: &mut crate::game::ServerGame<'_>, state| {
         let mut player = PlayerMotion::new(game.motion, Vec3::new(2.5, 5.0, 3.5)).unwrap();
         {
             let side = game_side!(game);
@@ -293,7 +287,7 @@ fn a_landing_posts_the_block_game_event_its_rule_posts() {
 fn a_cauldron_use_posts_its_fluid_event_after_the_sound() {
     use sunrise_world::registry::BlockStateId;
     type Posted = (&'static str, [f64; 3], Option<Who>);
-    fn use_on(game: &mut Game<'_>, cauldron: BlockStateId, held: ItemStack) -> Vec<Posted> {
+    fn use_on(game: &mut crate::game::ServerGame<'_>, cauldron: BlockStateId, held: ItemStack) -> Vec<Posted> {
         game.world.set(2, 4, 3, cauldron).unwrap();
         *game.held_mut() = Some(held);
         super::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
@@ -322,15 +316,12 @@ fn a_cauldron_use_posts_its_fluid_event_after_the_sound() {
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();

@@ -77,7 +77,7 @@ pub(in crate::game) enum OwnerRequest {
     Control(ControlRequest),
     /// Tests reach into the server thread's `Game` (`Integrated::call`, `Integrated::post`).
     #[cfg(test)]
-    InTest(Box<dyn FnOnce(&mut Game<'_>) + Send>),
+    InTest(Box<dyn FnOnce(&mut crate::game::ServerGame<'_>) + Send>),
 }
 
 /// The agent-control asks, answered on the server thread in the owner's level.

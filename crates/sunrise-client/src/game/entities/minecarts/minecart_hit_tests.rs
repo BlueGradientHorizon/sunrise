@@ -10,7 +10,7 @@ use sunrise_core::geometry::Vec3;
 
 /// A server game with a player at `(8.5, 64, 8.5)`, as a window's player is
 /// there for the piglins that look at it.
-fn game_with_player(resources: &mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'_> {
+fn game_with_player(resources: &mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'_> {
     let mut game = server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);
@@ -103,7 +103,7 @@ fn a_broken_cart_drops_its_item_under_its_name() {
 }
 
 /// The piglin calm again, before the next case.
-fn calm(game: &mut Game<'_>, piglin: usize) {
+fn calm(game: &mut crate::game::ServerGame<'_>, piglin: usize) {
     let m = &mut game.mobs[piglin];
     m.extra.anger = 0;
     m.ai.target = None;

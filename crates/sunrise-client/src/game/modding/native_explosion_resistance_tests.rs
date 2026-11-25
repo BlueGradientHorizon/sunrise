@@ -73,7 +73,7 @@ impl mod_api::Hooks for Resisting {
 
 /// A server's overworld chunk (0, 0): from x 1 along y 80, z 1 stone, obsidian, bedrock,
 /// water, air, dirt at [`SPOT`], dirt, the content block, then four oak planks on z 2.
-fn row(game: &mut Game<'_>) {
+fn row(game: &mut crate::game::ServerGame<'_>) {
     game.build_registries();
     game.set_allow_commands(true);
     game.options.dedicated = Some(Vec::new());
@@ -105,7 +105,7 @@ fn row(game: &mut Game<'_>) {
 
 /// Reads a block blast of radius 4 at the row.
 fn read(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     pos: [i32; 3],
     source: Option<EntityRef>,
 ) -> Option<ExplosionResistance> {
@@ -116,7 +116,7 @@ fn read(
 
 /// `read` for every cell of `cells`.
 fn reads(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     cells: &ResistanceCells,
     source: Option<EntityRef>,
 ) -> Result<Vec<ExplosionResistance>, ResistanceCellsError> {
@@ -130,7 +130,7 @@ fn blast() -> ([f64; 3], f32, bool, ExplosionInteraction) {
 }
 
 /// Runs `test` on a fresh game with the resisting mod.
-fn with_resisting_mod(test: impl Fn(&mut Game<'_>, &Resisting) + Send + Sync + 'static) {
+fn with_resisting_mod(test: impl Fn(&mut crate::game::ServerGame<'_>, &Resisting) + Send + Sync + 'static) {
     run_with_game_stack(move || {
         let parts = Resisting::default();
         let mods: mod_api::Mods = vec![ModEntry::new("test", Box::new(parts.clone()))].into();
@@ -328,7 +328,7 @@ fn a_two_layer_box_reads_y_after_z_after_x() {
 /// `name` is the block at `at`, read with and without `source` and then blasted from beside it
 /// with and without `source`; `kept` is whether it survives each blast.
 fn read_and_blast(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     source: Option<EntityRef>,
     at: [i32; 3],
     expected: [ExplosionResistance; 2],

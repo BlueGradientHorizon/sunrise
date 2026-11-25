@@ -36,7 +36,7 @@ fn a_block_part_decides_whether_lava_lights_it() {
             let registry = game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
             let planks = registry.default_state("minecraft:oak_planks").unwrap();
-            let ignites = |game: &mut super::Game<'_>, state: BlockStateId, face: Direction| {
+            let ignites = |game: &mut crate::game::ServerGame<'_>, state: BlockStateId, face: Direction| {
                 game.with_level(|_, level, _| {
                     let mut ignites = None;
                     level.before_ignited_by_lava(

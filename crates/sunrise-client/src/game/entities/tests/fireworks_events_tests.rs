@@ -16,7 +16,7 @@ use sunrise_client::{
 #[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, position::ChunkPos, random::LegacyRandom};
 
-pub(in crate::game) fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -35,15 +35,12 @@ pub(in crate::game) fn with_game(test: impl FnOnce(&mut Game<'_>)) {
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();

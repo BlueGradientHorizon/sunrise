@@ -465,7 +465,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn tick_guests_inner(&mut self) {
         self.tick_level_guests_inner();
         self.tick_guest_connections_inner(false).unwrap();
-        self.server.pickup_columns = None;
+        self.side.pickup_columns = None;
     }
     /// The level path: `ServerLevel.tick` calls `ServerPlayer.tick` before the
     /// server starts its connection ticks.

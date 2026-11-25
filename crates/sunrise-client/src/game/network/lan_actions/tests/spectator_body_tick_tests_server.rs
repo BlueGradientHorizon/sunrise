@@ -26,7 +26,7 @@ pub(in crate::game::server_side) use sunrise_client::{chunk::Chunk, effects::Eff
 fn leftover_sleep_countdown_waits_at_the_unloaded_edge_then_resumes() {
     mod_platform::testing::with_mods(Vec::new().into(), || {
         with_game(|game| {
-            game.server.world_root = game.save.0.root.clone();
+            game.side.world_root = game.side.save.0.root.clone();
             open_to_lan(game);
             game.world
                 .chunks
@@ -38,7 +38,7 @@ fn leftover_sleep_countdown_waits_at_the_unloaded_edge_then_resumes() {
             assert!(loaded.bed.is_none() && edge.bed.is_none());
             game.lan.as_mut().unwrap().hub.guests.extend([loaded, edge]);
             game.tick_guests();
-            let timers = |game: &Game<'_>| -> Vec<u32> {
+            let timers = |game: &crate::game::ServerGame<'_>| -> Vec<u32> {
                 game.lan
                     .as_ref()
                     .unwrap()
@@ -79,7 +79,7 @@ fn pre_teleport_to_unloaded_edge_keeps_the_resolved_body_tick() {
         vec![mod_api::ModEntry::new("move", Box::new(Move))].into(),
         || {
             with_game(|game| {
-                game.server.world_root = game.save.0.root.clone();
+                game.side.world_root = game.side.save.0.root.clone();
                 open_to_lan(game);
                 // The teleport's target is lit land (an in-level `tp` to land not lit yet holds the
                 // player and skips its body, #15727), yet chunk 1 is not loaded for the edge test.

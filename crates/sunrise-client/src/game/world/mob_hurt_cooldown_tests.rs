@@ -4,7 +4,7 @@ use sunrise_client::chunk::Chunk;
 use sunrise_client::motion::PlayerMotion;
 use sunrise_core::position::ChunkPos;
 
-fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -27,15 +27,12 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
             .join(format!("h248-{:?}", std::thread::current().id())),
     );
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -55,7 +52,7 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
 }
 /// The pig with `[I;0,248,0,n]`: its health and its hurt cooldown state
 /// (`invulnerableTime`, `lastHurt`).
-fn pig(game: &Game<'_>, n: i32) -> (f32, i32, f32) {
+fn pig(game: &crate::game::ServerGame<'_>, n: i32) -> (f32, i32, f32) {
     let m = game
         .mobs
         .iter()
@@ -63,7 +60,7 @@ fn pig(game: &Game<'_>, n: i32) -> (f32, i32, f32) {
         .unwrap();
     (m.health, m.invulnerable, m.last_hurt)
 }
-fn summon(game: &mut Game<'_>, n: i32, x: i32) -> String {
+fn summon(game: &mut crate::game::ServerGame<'_>, n: i32, x: i32) -> String {
     assert!(game.run_command(&format!(
             "summon minecraft:pig {x}.5 200 4.5 {{UUID:[I;0,248,0,{n}],NoAI:1b,NoGravity:1b,Silent:1b,PersistenceRequired:1b,attributes:[{{id:\"minecraft:max_health\",base:40.0d}}],Health:40f}}"
         )));

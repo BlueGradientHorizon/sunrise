@@ -30,7 +30,7 @@ fn a_furnace_cart_is_capped_at_half_the_rule_speed_under_the_new_physics() {
         for z in 0..16 {
             game.world.set(0, 64, z, rail).unwrap();
         }
-        let speed_after = |game: &mut Game<'_>, kind: CartKind, on_rail: bool| {
+        let speed_after = |game: &mut crate::game::ServerGame<'_>, kind: CartKind, on_rail: bool| {
             let at = if on_rail {
                 Vec3::new(0.5, 64.0625, 2.5)
             } else {
@@ -145,7 +145,7 @@ fn cart_index_finds_the_mobs_a_scan_finds() {
             .collect();
         let mut index = CartIndex::default();
         let mut near = Vec::new();
-        let mut check = |game: &Game<'_>, what: &str| {
+        let mut check = |game: &crate::game::ServerGame<'_>, what: &str| {
             for c in &carts {
                 let area = c.bounds().inflate(Vec3::new(0.2, 0.0, 0.2));
                 let scan: Vec<u32> = (0..game.mobs.len() as u32)

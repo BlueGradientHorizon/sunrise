@@ -956,7 +956,7 @@ pub(in crate::game) mod tests {
             following: None,
         });
         let dimension = game.dim.id().to_owned();
-        let ids = |game: &Game<'_>, min, max| -> Vec<u32> {
+        let ids = |game: &crate::game::ServerGame<'_>, min, max| -> Vec<u32> {
             game.experience_orbs(&dimension, min, max)
                 .into_iter()
                 .map(|orb| orb.id)
@@ -1000,7 +1000,7 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) fn with_command_sources(test: impl FnOnce(&mut Game<'_>)) {
+    pub(in crate::game) fn with_command_sources(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         use sunrise_client::{
             chunk::Chunk, chunk::block_entity::BlockEntity, command_block::CommandBlock,
         };
@@ -2907,7 +2907,7 @@ pub(in crate::game) mod fake_action_tests {
     /// A server with a real guest (uuid 1) and a fake (uuid 2) standing at (0.5, 64, 0.5) on
     /// a stone floor, holding `item`, in game mode `mode`: the fake's handle and both conns.
     pub(in crate::game) fn fake(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         item: Option<&str>,
         mode: i32,
     ) -> (PlayerRef, u32, u32) {
@@ -2950,7 +2950,7 @@ pub(in crate::game) mod fake_action_tests {
         (player, fake, real)
     }
 
-    pub(in crate::game) fn place(game: &mut Game<'_>, pos: [i32; 3], state: &str) {
+    pub(in crate::game) fn place(game: &mut crate::game::ServerGame<'_>, pos: [i32; 3], state: &str) {
         // `name[key=value,...]`, as a command writes a state.
         let (name, props) = state.split_once('[').unwrap_or((state, "]"));
         let properties = props
@@ -2983,7 +2983,7 @@ pub(in crate::game) mod fake_action_tests {
         respawn_anchor::RespawnConfig, stations::Kind, stations::Station,
     };
 
-    pub(in crate::game) fn held(game: &Game<'_>, uuid: u128) -> Option<ItemStack> {
+    pub(in crate::game) fn held(game: &crate::game::ServerGame<'_>, uuid: u128) -> Option<ItemStack> {
         let host = game.lan.as_ref().unwrap();
         let g = host.hub.guests.iter().find(|g| g.uuid == uuid).unwrap();
         g.inventory[g.selected].clone()
@@ -2991,7 +2991,7 @@ pub(in crate::game) mod fake_action_tests {
 
     /// A wandering trader at `at`, entity id `id`, and its handle.
     pub(in crate::game) fn trader(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         id: u32,
         at: [f64; 3],
     ) -> mod_api::EntityRef {
@@ -3141,7 +3141,7 @@ pub(in crate::game) mod fake_action_tests {
                 "the guest's use opens the vehicle's menu",
             );
             let key = (i32::MAX - 15, CART_KEY_Y, 6110);
-            let viewer = |game: &Game<'_>| {
+            let viewer = |game: &crate::game::ServerGame<'_>| {
                 game.lan
                     .as_ref()
                     .unwrap()
@@ -3263,7 +3263,7 @@ pub(in crate::game) mod fake_action_tests {
 
     /// A zombie standing at `at`, entity id `id`, and its handle.
     pub(in crate::game) fn zombie(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         id: u32,
         at: [f64; 3],
     ) -> mod_api::EntityRef {
@@ -3283,7 +3283,7 @@ pub(in crate::game) mod fake_action_tests {
         mod_api::EntityRef::new(game.native_lifecycle.epoch().unwrap(), id)
     }
 
-    pub(in crate::game) fn health(game: &Game<'_>, id: u32) -> f32 {
+    pub(in crate::game) fn health(game: &crate::game::ServerGame<'_>, id: u32) -> f32 {
         game.mobs.iter().find(|m| m.id == id).unwrap().health
     }
 
@@ -3688,7 +3688,7 @@ pub(in crate::game) mod fake_action_tests {
     #[ignore = "daily"]
     fn a_fake_breaks_blocks_at_once_by_the_game_modes_rules() {
         use super::super::native_entity_refs::tests::with_game;
-        let level_block = |game: &mut Game<'_>, pos| {
+        let level_block = |game: &mut crate::game::ServerGame<'_>, pos| {
             let level = game.level(game.dim.id()).unwrap();
             game.level_block(level, pos)
         };
@@ -3999,7 +3999,7 @@ pub(in crate::game) mod player_rule_tests {
     use super::*;
 
     /// The guests of `with_guests` are rows 0 and 1; both stand in the level in place.
-    fn in_this_level(game: &mut Game<'_>) {
+    fn in_this_level(game: &mut crate::game::ServerGame<'_>) {
         let level = game.dim.id().to_owned();
         game.lan.as_mut().unwrap().hub.guests.update_all(|g| {
             g.dimension = level.clone();

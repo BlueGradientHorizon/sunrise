@@ -99,13 +99,13 @@ fn a_model_callback_clear_discards_particle_geometry_already_extracted() {
         super::super::native_entity_refs::tests::with_client_game(|game| {
             game.options.execution_role = super::ExecutionRole::Client;
             fill(game);
-            let camera = glam::DVec3::from_array(game.particles.0.camera);
+            let camera = glam::DVec3::from_array(game.side.particles.0.camera);
             let mut out = Vec::new();
             game.client_particle_geometry(camera, 0.0, 70.0, None, &mut out);
             let previous = out.len();
             assert!(previous > 0);
             let positions: Vec<_> = out.iter().map(|v| v.pos).collect();
-            let motion = game.client.entity_motion.borrow().clone();
+            let motion = game.side.entity_motion.borrow().clone();
             // An actual picked-up item resolves a conditional model while the
             // preceding ordinary-particle pass has already produced geometry.
             std::sync::Arc::get_mut(&mut game.pack.item_renderer)
@@ -123,7 +123,7 @@ fn a_model_callback_clear_discards_particle_geometry_already_extracted() {
                     )
                     .unwrap(),
                 );
-            let at = game.particles.0.camera;
+            let at = game.side.particles.0.camera;
             game.spawn_item(
                 sunrise_client::items::ItemStack::new("minecraft:stick", 1),
                 at,
@@ -136,7 +136,7 @@ fn a_model_callback_clear_discards_particle_geometry_already_extracted() {
             game.client_particle_geometry(camera, 0.0, 70.0, None, &mut out);
             assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 1);
             assert_eq!(out.iter().map(|v| v.pos).collect::<Vec<_>>(), positions);
-            assert_eq!(&game.client.entity_motion.borrow()[..motion.len()], &motion);
+            assert_eq!(&game.side.entity_motion.borrow()[..motion.len()], &motion);
             assert_eq!(game.client_particle_count(), 0);
             game.tick_particles();
             assert_eq!(game.client_particle_count(), 0);
@@ -144,18 +144,18 @@ fn a_model_callback_clear_discards_particle_geometry_already_extracted() {
     });
 }
 
-pub(in crate::game) fn add_frame_particles(game: &mut super::Game<'_>) {
+pub(in crate::game) fn add_frame_particles(game: &mut crate::game::ClientGame<'_>) {
     fill(game);
     for _ in 0..20 {
-        game.particles.0.add(
+        game.side.particles.0.add(
             &ParticleOptions::simple(ParticleType::Flame),
-            game.particles.0.camera,
+            game.side.particles.0.camera,
             [0.0; 3],
         );
     }
     game.spawn_item(
         sunrise_client::items::ItemStack::new("minecraft:stick", 1),
-        game.particles.0.camera,
+        game.side.particles.0.camera,
         [0.0; 3],
         0,
     );
@@ -163,7 +163,7 @@ pub(in crate::game) fn add_frame_particles(game: &mut super::Game<'_>) {
     game.add_pickup_toward(
         Taken::Item(Box::new(item)),
         Collector::Player,
-        game.particles.0.camera,
+        game.side.particles.0.camera,
     );
     game.tick_particles();
 }
@@ -171,24 +171,24 @@ pub(in crate::game) fn add_frame_particles(game: &mut super::Game<'_>) {
 /// Fills every particle group Sunrise keeps apart: three flames, a multi-burst firework
 /// starter (`NO_RENDER`), an item pickup (`ITEM_PICKUP`) and the elder guardian
 /// apparition (`ELDER_GUARDIANS`), each live after one particle tick.
-pub(in crate::game) fn fill(game: &mut super::Game<'_>) {
-    let at = game.particles.0.camera;
+pub(in crate::game) fn fill(game: &mut crate::game::ClientGame<'_>) {
+    let at = game.side.particles.0.camera;
     for _ in 0..3 {
-        game.particles
+        game.side.particles
             .0
             .add(&ParticleOptions::simple(ParticleType::Flame), at, [0.0; 3]);
     }
     let bursts = vec![FireworkExplosion::default(); 4];
-    game.particles.0.fireworks(at, [0.0; 3], bursts, at, true);
+    game.side.particles.0.fireworks(at, [0.0; 3], bursts, at, true);
     let v = Vec3::new(at[0], at[1], at[2]);
     game.add_pickup_toward(Taken::Orb(Box::new(orb(v))), Collector::Player, at);
-    game.particles.0.elder_guardian();
+    game.side.particles.0.elder_guardian();
     game.tick_particles();
 }
 
 /// A real offscreen renderer and a world for it to draw; the event loop that returns
 /// holds the window.
-pub(in crate::game) fn frame_scene(game: &mut super::Game<'_>) -> winit::event_loop::EventLoop<()> {
+pub(in crate::game) fn frame_scene(game: &mut crate::game::ClientGame<'_>) -> winit::event_loop::EventLoop<()> {
     let mut builder = winit::event_loop::EventLoop::builder();
     #[cfg(target_os = "linux")]
     {
@@ -207,8 +207,8 @@ pub(in crate::game) fn frame_scene(game: &mut super::Game<'_>) -> winit::event_l
             .unwrap(),
     );
     game.options.offscreen = true;
-    game.renderer.0 = Some(game.new_renderer(window).unwrap());
-    game.title.0 = None;
+    game.side.renderer.0 = Some(game.new_renderer(window).unwrap());
+    game.side.title.0 = None;
     game.settings.extras.dynamic_lights = true;
     game.settings.sunrise.particle_culling = sunrise_client::graphics::ParticleCullingMode::Off;
     let mut chunk = sunrise_client::chunk::Chunk::empty(0, 0);
@@ -218,7 +218,7 @@ pub(in crate::game) fn frame_scene(game: &mut super::Game<'_>) -> winit::event_l
     player.position = Vec3::new(0.5, 64.0, 0.5);
     game.previous_position = player.position;
     game.player = Some(player);
-    game.particles.0.camera = [0.5, 65.5, 1.5];
+    game.side.particles.0.camera = [0.5, 65.5, 1.5];
     // Ordinary (non-particle) entity geometry and an unrelated item light.
     game.spawn_item(
         sunrise_client::items::ItemStack::new("minecraft:torch", 1),
@@ -288,7 +288,7 @@ color = [0.0, 1.0, 0.0]
         ]))
         .unwrap();
         let report = sunrise_shader_api::check(&pack).unwrap();
-        game.renderer
+        game.side.renderer
             .0
             .as_mut()
             .unwrap()
@@ -365,7 +365,7 @@ fn late_gui_clear_prevents_same_frame_particle_geometry_without_a_tick() {
             game.options.execution_role = super::ExecutionRole::Client;
             fill(game);
             game.extras_frame(Duration::ZERO);
-            let camera = glam::DVec3::from_array(game.particles.0.camera);
+            let camera = glam::DVec3::from_array(game.side.particles.0.camera);
             let mut before = Vec::new();
             game.client_particle_geometry(camera, 0.0, 70.0, None, &mut before);
             assert!(

@@ -28,24 +28,21 @@ pub(in crate::game::server_side) fn run_falling_impacts_wear_the_helmet_before_n
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
     let scratch = std::env::temp_dir().join(format!("sunrise-helmet-{}", std::process::id()));
     std::fs::create_dir_all(&scratch).unwrap();
-    game.server.world_root = scratch.clone();
+    game.side.world_root = scratch.clone();
     game.creative = false;
     // Equipment breaks are server notifications, with no local visual RNG.
-    game.server.lan_acting = Some(1);
+    game.side.lan_acting = Some(1);
     let position = Vec3::new(4.5, 100.0, 4.5);
     game.falling.push(FallingBlock {
         size_answer: None,

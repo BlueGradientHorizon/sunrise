@@ -216,7 +216,7 @@ pub(in crate::game) fn definition(max_level: i32) -> serde_json::Value {
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::server_side::native_hooks_server::build_creative_mode_tab_contents::tests::install_dedicated_holders;
 
-pub(in crate::game) fn replace_client_definition(game: &mut Game<'_>, max_level: i32) {
+pub(in crate::game) fn replace_client_definition(game: &mut crate::game::ClientGame<'_>, max_level: i32) {
     let mut registries = (*game.remote.as_ref().unwrap().registries).clone();
     registries.registries.insert(
         "minecraft:enchantment".into(),

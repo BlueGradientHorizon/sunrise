@@ -339,7 +339,7 @@ pub(in crate::game) mod tests {
     fn a_player_opens_and_closes_a_chest_with_its_own_hinge_sound() {
         let mut resources = None;
         let mut game = super::super::game_tests::tests::server_game(&mut resources);
-        game.server.audio_capture_active = true;
+        game.side.audio_capture_active = true;
         for (block, sound) in [
             ("minecraft:chest", "minecraft:block.chest"),
             (
@@ -353,11 +353,11 @@ pub(in crate::game) mod tests {
         ] {
             let state = game.pack.assets.registry.default_state(block).unwrap();
             game.world.set(8, 64, 8, state).unwrap();
-            game.server.pending_sounds.clear();
+            game.side.pending_sounds.clear();
             game.container_edge_sound((8, 64, 8), true);
             game.container_edge_sound((8, 64, 8), false);
             let mut heard: Vec<_> = game
-                .server
+                .side
                 .pending_sounds
                 .iter()
                 .map(|s| s.event.clone())
@@ -432,8 +432,8 @@ pub(in crate::game) mod lock_tests {
     use sunrise_core::nbt::Tag;
     use sunrise_protocol::packets::play::Clientbound;
 
-    fn has_overlay(game: &crate::game::Game<'_>) -> bool {
-        game.server
+    fn has_overlay(game: &crate::game::ServerGame<'_>) -> bool {
+        game.side
             .guest_packets
             .iter()
             .any(|packet| matches!(packet, Clientbound::SystemChat(chat) if chat.overlay))
@@ -467,7 +467,7 @@ pub(in crate::game) mod lock_tests {
         game.world.set_block_lock(key, &lock);
 
         // An empty hand does not match `lock:{items:"minecraft:gold_ingot"}`.
-        game.server.guest_packets.clear();
+        game.side.guest_packets.clear();
         game.open_block_effect_menu([8, 64, 8]);
         assert_eq!(game.container, None, "a locked chest opened");
         assert!(has_overlay(&game), "no `container.isLocked` action bar");
@@ -476,7 +476,7 @@ pub(in crate::game) mod lock_tests {
         // does not open it.
         game.inventory[0] = None;
         game.offhand = Some(ItemStack::new("minecraft:gold_ingot", 1));
-        game.server.guest_packets.clear();
+        game.side.guest_packets.clear();
         game.open_block_effect_menu([8, 64, 8]);
         assert_eq!(
             game.container, None,
@@ -487,7 +487,7 @@ pub(in crate::game) mod lock_tests {
         game.inventory[0] = Some(ItemStack::new("minecraft:gold_ingot", 1));
         game.offhand = None;
         game.selected = 0;
-        game.server.guest_packets.clear();
+        game.side.guest_packets.clear();
         game.open_block_effect_menu([8, 64, 8]);
         assert_eq!(game.container, Some(key), "the lock's item did not open it");
         assert!(!has_overlay(&game));
@@ -532,7 +532,7 @@ pub(in crate::game) mod lock_tests {
         )]);
         game.world.set_block_lock(right_key, &lock);
 
-        game.server.guest_packets.clear();
+        game.side.guest_packets.clear();
         game.open_block_effect_menu([8, 64, 8]);
         assert_eq!(game.container, None, "a half-locked double chest opened");
         assert!(has_overlay(&game));

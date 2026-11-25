@@ -111,7 +111,7 @@ fn reload_conditions_read_candidate_registries_and_bound_tags() {
                 .unwrap();
                 request.save_root = root.to_owned();
                 game.load_world(request).unwrap();
-                let item_tags = |game: &crate::game::Game<'_>, tag| mod_api::Tags::items(game, tag);
+                let item_tags = |game: &crate::game::ServerGame<'_>, tag| mod_api::Tags::items(game, tag);
                 let key = |path: &str| {
                     mod_api::__private::tag_key(
                         &mod_api::Identifier::parse(&format!("reload_conditions:{path}")).unwrap(),
@@ -136,7 +136,7 @@ fn reload_conditions_read_candidate_registries_and_bound_tags() {
                 let flag = key("flag");
                 assert_eq!(item_tags(game, empty), mod_api::TagMembers::Members(vec![]));
                 assert_eq!(item_tags(game, flag), mod_api::TagMembers::Missing);
-                let answers = |game: &crate::game::Game<'_>| {
+                let answers = |game: &crate::game::ServerGame<'_>| {
                     ["registered", "empty", "absent"].map(|name| {
                         game.recipes()
                             .recipe(&format!("reload_conditions:{name}"))

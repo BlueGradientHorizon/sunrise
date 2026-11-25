@@ -384,7 +384,7 @@ mod tests {
     fn server_game<'a>(
         resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
         root: &Path,
-    ) -> Game<'a> {
+    ) -> crate::game::ServerGame<'a> {
         use super::super::super::{Audio, Options, Progress, Settings, load_resources};
         let settings = Settings::default();
         let loaded = load_resources(
@@ -405,15 +405,12 @@ mod tests {
         options.execution_role =
             super::super::super::execution_role::ExecutionRole::IntegratedServer;
         let resources = &*resources.insert(loaded.resources);
-        Game::new(
+        crate::game::ServerGame::new(
             resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
             None,
         )
         .unwrap()

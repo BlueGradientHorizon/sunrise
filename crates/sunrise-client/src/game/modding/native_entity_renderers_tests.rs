@@ -165,7 +165,7 @@ fn feet() -> sunrise_core::geometry::Vec3 {
 }
 
 /// The vertices one frame of mobs and projectiles draws with these thrown types in flight.
-fn thrown_frame(game: &mut Game<'_>, kinds: &[&str]) -> Vec<Vertex> {
+fn thrown_frame(game: &mut crate::game::ClientGame<'_>, kinds: &[&str]) -> Vec<Vertex> {
     use sunrise_client::projectiles::{Projectile, ProjectileKind, thrown_type};
     game.creatures.projectiles.clear();
     for (i, kind) in kinds.iter().enumerate() {
@@ -182,7 +182,7 @@ fn thrown_frame(game: &mut Game<'_>, kinds: &[&str]) -> Vec<Vertex> {
 /// Runs `check` on a client game with prepared resources, the thrown types `ruby:bolt`,
 /// `ruby:dart` and `ruby:spike` and the [`Scene`]'s registrations, resolved as the first load does. In a child
 /// process running only `test`: the thrown types and the registrations are kept once per process.
-fn in_scene(test: &str, check: impl FnOnce(&mut Game<'_>, &Scene)) {
+fn in_scene(test: &str, check: impl FnOnce(&mut crate::game::ClientGame<'_>, &Scene)) {
     if std::env::var_os("SUNRISE_ENTITY_RENDERERS_CHILD").is_none() {
         let status = std::process::Command::new(std::env::current_exe().unwrap())
             .args([

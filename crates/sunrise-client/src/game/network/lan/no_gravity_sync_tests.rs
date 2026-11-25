@@ -11,7 +11,7 @@ use sunrise_protocol::entity_data::{Value, serializer};
 
 /// What the host's tracking pass holds for `id` at 5: the value it sends, and whether false
 /// is its default (so a flag taken away goes out too).
-fn no_gravity_entry(game: &mut Game<'_>, id: u32) -> (Option<Value>, bool) {
+fn no_gravity_entry(game: &mut crate::game::ServerGame<'_>, id: u32) -> (Option<Value>, bool) {
     let mut states = States::default();
     game.lan_entities(&mut states, false, 0, None);
     let e = states
@@ -44,7 +44,7 @@ fn an_items_and_a_mobs_no_gravity_reaches_the_tracker() {
         let mut drop = ItemEntity::new(102, stack, Vec3::new(2.5, 70.0, 1.5), Vec3::ZERO, 0.0);
         drop.no_gravity = true;
         game.dropped.push(drop);
-        game.server.next_entity = 102;
+        game.side.next_entity = 102;
         let (pig, item) = (101, 102);
         assert!(game.mobs.last().unwrap().no_gravity && game.dropped.last().unwrap().no_gravity);
         for id in [pig, item] {

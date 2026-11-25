@@ -55,11 +55,11 @@ fn block_crumble_draws_the_block_it_names() {
 }
 
 /// The one particle the server queues for `command`, decoded into client `ParticleOptions`.
-pub(in crate::game) fn drawn(game: &mut Game<'_>, command: &str) -> ParticleOptions {
+pub(in crate::game) fn drawn(game: &mut crate::game::ServerGame<'_>, command: &str) -> ParticleOptions {
     use crate::lan::server_effects::ServerParticleData;
-    game.server.pending_particles.clear();
+    game.side.pending_particles.clear();
     assert!(game.run_command(command), "{command}");
-    let mut made = std::mem::take(&mut game.server.pending_particles);
+    let mut made = std::mem::take(&mut game.side.pending_particles);
     assert_eq!(made.len(), 1, "{command}");
     let queued = made.remove(0);
     if let ServerParticleData::Mod { name, options } = &queued.particle.data {

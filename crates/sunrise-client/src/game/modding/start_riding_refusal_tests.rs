@@ -11,7 +11,7 @@ use sunrise_core::geometry::Vec3;
 
 use super::{Dim, Game, commands::Target, native_entity_refs::tests::with_game};
 
-fn add_mob(game: &mut Game<'_>, id: u32, name: &str) -> EntityRef {
+fn add_mob(game: &mut crate::game::ServerGame<'_>, id: u32, name: &str) -> EntityRef {
     let kind = game.res.mob_types().get(name).unwrap().clone();
     game.mobs.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
     game.entity(id).unwrap()
@@ -19,7 +19,7 @@ fn add_mob(game: &mut Game<'_>, id: u32, name: &str) -> EntityRef {
 
 /// Both calls on the same mount: the named answer, and the bool that is its `is_ok()`.
 fn try_both(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     rider: Target,
     vehicle: Target,
     force: bool,
@@ -50,7 +50,7 @@ impl Hooks for MountCounter {
     }
 }
 
-fn with_counter(cancel: bool, test: impl FnOnce(&mut Game<'_>, &Mutex<u32>)) {
+fn with_counter(cancel: bool, test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Mutex<u32>)) {
     let heard = Arc::new(Mutex::new(0));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "start_riding_refusal_counter",

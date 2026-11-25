@@ -73,12 +73,12 @@ fn a_mod_denies_one_entity_griefing() {
             // blast that keeps blocks spares decorations when the mod denies
             // it, and reaches them for another exploding entity.
             use super::super::explosion::BlockInteraction::{Destroy, Keep};
-            game.combat.0.explosion_source = Some(denied);
+            game.side.combat.0.explosion_source = Some(denied);
             assert!(game.blast_spares_decorations(Keep));
             assert!(!game.blast_spares_decorations(Destroy));
-            game.combat.0.explosion_source = Some(other);
+            game.side.combat.0.explosion_source = Some(other);
             assert!(!game.blast_spares_decorations(Keep));
-            game.combat.0.explosion_source = None;
+            game.side.combat.0.explosion_source = None;
         });
     });
 }

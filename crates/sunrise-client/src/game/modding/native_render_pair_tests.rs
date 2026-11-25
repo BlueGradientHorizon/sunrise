@@ -109,7 +109,7 @@ impl Hooks for Pair {
 const CAMERA: glam::DVec3 = glam::DVec3::new(0.5, 64.0, -4.5);
 
 /// A mob of `kind` with id `id`, standing `x` blocks east of the camera's line.
-fn mob(game: &Game<'_>, kind: &str, id: u32, x: f64) -> Mob {
+fn mob(game: &crate::game::ClientGame<'_>, kind: &str, id: u32, x: f64) -> Mob {
     let kind = if kind == "minecraft:player" {
         game.res.player_type().clone().unwrap()
     } else {
@@ -127,7 +127,7 @@ fn markers(out: &[Vertex]) -> usize {
 }
 
 /// One frame of the level's mobs, begun as the entity pass begins it.
-fn mob_frame(game: &mut Game<'_>) -> Vec<Vertex> {
+fn mob_frame(game: &mut crate::game::ClientGame<'_>) -> Vec<Vertex> {
     game.prepare_entity_culling();
     let mut out = Vec::new();
     game.mob_geometry(CAMERA, 1.0, &mut out);
@@ -135,7 +135,7 @@ fn mob_frame(game: &mut Game<'_>) -> Vec<Vertex> {
 }
 
 /// Runs `check` on a client game with prepared resources and the [`Pair`] mod.
-fn with_pair(heard: &Arc<Mutex<Heard>>, check: impl FnOnce(&mut Game<'_>)) {
+fn with_pair(heard: &Arc<Mutex<Heard>>, check: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     let mods = vec![mod_api::ModEntry::new(
         "pair",
         Box::new(Pair(heard.clone())),
@@ -165,7 +165,7 @@ fn two_entities_are_asked_in_the_draw_queues_order() {
     }
     let heard = Arc::default();
     with_pair(&heard, |game| {
-        game.client.pack_ids = Some(Default::default());
+        game.side.pack_ids = Some(Default::default());
         game.mobs.push(mob(game, "minecraft:zombie", 91, 0.0));
         admit_own_player(game, false);
         game.mobs.push(mob(game, "minecraft:cow", 92, 2.0));
@@ -184,7 +184,7 @@ fn two_entities_are_asked_in_the_draw_queues_order() {
             ]
         );
         assert_eq!(markers(&out), 12, "each pre hook's marker is kept");
-        let motion = game.client.entity_motion.borrow();
+        let motion = game.side.entity_motion.borrow();
         let tracked: Vec<_> = motion.iter().copied().filter(|&(_, id)| id != 0).collect();
         assert_eq!(
             tracked.iter().map(|&(_, id)| id).collect::<Vec<_>>(),
@@ -195,7 +195,7 @@ fn two_entities_are_asked_in_the_draw_queues_order() {
             ]
         );
         assert!(tracked[0].0 < tracked[1].0 && tracked[1].0 < tracked[2].0);
-        let spans = game.client.entity_spans.borrow();
+        let spans = game.side.entity_spans.borrow();
         let local = spans.iter().find(|span| span.player).unwrap();
         assert_eq!(local.start, tracked[1].0);
         assert!(!local.hidden);
@@ -225,12 +225,12 @@ fn a_spectator_following_an_entity_submits_no_local_body() {
             (CameraType::ThirdPersonBack, false),
             (CameraType::FirstPerson, true),
         ] {
-            game.client.camera_type = camera;
-            game.occlusion.0.shadow_casters.1 = player_shadow;
+            game.side.camera_type = camera;
+            game.side.occlusion.0.shadow_casters.1 = player_shadow;
             game.entity_geometry(CAMERA, 1.0, None, Vec::new(), &mut Vec::new());
             assert!(
                 !game
-                    .client
+                    .side
                     .entity_runs
                     .iter()
                     .any(|run| run.family == super::entity::DrawFamily::LocalPlayer)
@@ -277,8 +277,8 @@ pub(in crate::game::client_side) fn capture_body_witnesses<T>(
 }
 
 pub(in crate::game::client_side) fn submitted_bodies<T>(
-    game: &mut Game<'_>,
-    draw: impl FnOnce(&mut Game<'_>) -> T,
+    game: &mut crate::game::ClientGame<'_>,
+    draw: impl FnOnce(&mut crate::game::ClientGame<'_>) -> T,
 ) -> (T, Vec<u32>) {
     let (output, witnesses) = capture_body_witnesses(|| draw(game));
     let mut bodies: Vec<_> = witnesses
@@ -286,7 +286,7 @@ pub(in crate::game::client_side) fn submitted_bodies<T>(
         .map(|w| (w.vertices.start as u32, w.id))
         .collect();
     bodies.extend(
-        game.client
+        game.side
             .entity_motion
             .borrow()
             .windows(2)
@@ -347,7 +347,7 @@ pub(in crate::game::client_side) fn run_entity_draw_order_after_client_packets()
             portal_cooldown: 0,
             sea_level: 63,
         };
-        game.client.pack_ids = Some(super::shader_packs::PackIds::with_entity_ids([
+        game.side.pack_ids = Some(super::shader_packs::PackIds::with_entity_ids([
             ("minecraft:ender_dragon", 101),
             ("minecraft:end_crystal", 102),
         ]));
@@ -448,7 +448,7 @@ pub(in crate::game::client_side) fn run_entity_draw_order_after_client_packets()
                     relatives: 0,
                 }),
                 ["frame"] => {
-                    game.client.camera_type = CameraType::ThirdPersonBack;
+                    game.side.camera_type = CameraType::ThirdPersonBack;
                     game.tick_player_model();
                     let ((vertices, ..), ids) = submitted_bodies(game, |game| {
                         game.entity_geometry(
@@ -460,7 +460,7 @@ pub(in crate::game::client_side) fn run_entity_draw_order_after_client_packets()
                         )
                     });
                     if std::mem::take(&mut check_beams) {
-                        let spans = game.client.entity_spans.borrow();
+                        let spans = game.side.entity_spans.borrow();
                         let entities = sunrise_shaders::render_stage("ENTITIES");
                         let none = sunrise_shaders::render_stage("NONE");
                         let beams: Vec<_> = spans
@@ -555,14 +555,14 @@ fn a_canceled_entity_draws_no_name_tag() {
         named.custom_name = Some("Bob".into());
         named.name_visible = true;
         game.mobs.push(named);
-        let tag = |game: &mut Game<'_>| {
+        let tag = |game: &mut crate::game::ClientGame<'_>| {
             mob_frame(game);
             let (mut out, mut see_through) = (Vec::new(), Vec::new());
-            let mut collector = std::mem::take(&mut game.client.see_through_collector);
+            let mut collector = std::mem::take(&mut game.side.see_through_collector);
             collector.clear();
             game.name_tag_geometry(CAMERA, 1.0, &mut out, &mut collector);
             collector.flush(&mut see_through);
-            game.client.see_through_collector = collector;
+            game.side.see_through_collector = collector;
             out.len() + see_through.len()
         };
         assert!(tag(game) > 0, "a named zombie's tag");
@@ -572,7 +572,7 @@ fn a_canceled_entity_draws_no_name_tag() {
 }
 
 /// A stone floor under the origin, so a standing entity has something to cast a shadow on.
-fn place_stone_floor(game: &mut Game<'_>) {
+fn place_stone_floor(game: &mut crate::game::ClientGame<'_>) {
     game.world
         .chunks
         .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
@@ -586,14 +586,14 @@ fn place_stone_floor(game: &mut Game<'_>) {
 }
 
 /// Vertices of one whole entity frame (`entity_geometry`).
-fn entity_frame(game: &mut Game<'_>) -> usize {
+fn entity_frame(game: &mut crate::game::ClientGame<'_>) -> usize {
     let (out, ..) = game.entity_geometry(CAMERA, 1.0, None, Vec::new(), &mut Vec::new());
     out.len()
 }
 
 /// The vertices of one whole entity frame with a zombie standing on stone, burning when
 /// `burning`, with entity shadows on when `shadows`.
-fn zombie_frame(game: &mut Game<'_>, burning: bool, shadows: bool) -> usize {
+fn zombie_frame(game: &mut crate::game::ClientGame<'_>, burning: bool, shadows: bool) -> usize {
     let mut zombie = mob(game, "minecraft:zombie", 91, 0.0);
     zombie.fire_ticks = if burning { 100 } else { 0 };
     game.mobs.clear();
@@ -644,7 +644,7 @@ fn a_canceled_pre_keeps_the_local_players_flames() {
         admit_own_player(game, false);
         game.settings.entity_shadows = false;
         let expected = 20; // FlameFeatureRenderer submits five quads for a standing player.
-        let added = |game: &mut Game<'_>| {
+        let added = |game: &mut crate::game::ClientGame<'_>| {
             game.player.as_mut().unwrap().fire_ticks = 0;
             let plain = entity_frame(game);
             game.player.as_mut().unwrap().fire_ticks = 100;
@@ -674,7 +674,7 @@ fn a_culled_entity_is_asked_neither_hook() {
 }
 
 /// Admit this window's player in third person with entity id 4321.
-fn admit_own_player(game: &mut Game<'_>, spectator: bool) {
+fn admit_own_player(game: &mut crate::game::ClientGame<'_>, spectator: bool) {
     let at = sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5);
     let mut player = sunrise_client::motion::PlayerMotion::new(game.motion, at).unwrap();
     player.entity_id = 4321;
@@ -683,13 +683,13 @@ fn admit_own_player(game: &mut Game<'_>, spectator: bool) {
     if let Some(remote) = game.remote.as_mut() {
         remote.entity_id = 4321;
     }
-    game.client.camera_type = sunrise_client::camera::CameraType::ThirdPersonBack;
+    game.side.camera_type = sunrise_client::camera::CameraType::ThirdPersonBack;
     game.resident_entities.local_player.renew();
     game.tick_player_model();
-    game.client.player_model.as_mut().unwrap().extra.spectator = spectator;
+    game.side.player_model.as_mut().unwrap().extra.spectator = spectator;
 }
 
-fn own_player_frame(game: &mut Game<'_>, spectator: bool) -> Vec<Vertex> {
+fn own_player_frame(game: &mut crate::game::ClientGame<'_>, spectator: bool) -> Vec<Vertex> {
     admit_own_player(game, spectator);
     game.prepare_entity_culling();
     let mut out = Vec::new();

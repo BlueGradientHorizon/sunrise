@@ -93,7 +93,7 @@ mod tests {
 
             let (a, b) = (game.player(12).unwrap(), game.player(13).unwrap());
             let level = a.level(&*game).unwrap();
-            let hold = |game: &mut super::super::Game<'_>,
+            let hold = |game: &mut crate::game::ServerGame<'_>,
                         conn,
                         main: Option<ItemStack>,
                         off: Option<ItemStack>| {
@@ -109,7 +109,7 @@ mod tests {
             };
             hold(game, 12, Some(pickaxe.clone()), None);
             hold(game, 13, None, Some(pickaxe));
-            let ask = |game: &mut super::super::Game<'_>, p, s| {
+            let ask = |game: &mut crate::game::ServerGame<'_>, p, s| {
                 game.player_has_correct_tool_for_drops(p, level, [0, 64, 0], s)
             };
             assert_eq!(ask(game, a, stone), Some(true));
@@ -208,7 +208,7 @@ mod tests {
                 let stone = (game as &dyn mod_api::Host)
                     .block_state_id("minecraft:stone")
                     .unwrap();
-                game.server.next_entity = 100;
+                game.side.next_entity = 100;
                 let fakes = [
                     (1234, "pickaxe", "minecraft:iron_pickaxe", true),
                     (5678, "shovel", "minecraft:iron_shovel", false),

@@ -991,7 +991,7 @@ pub(in crate::game) mod tests {
                     if vehicle_kind == "minecraft:armor_stand" {
                         game.armor_stands.push(ArmorStand::new(id, Vec3::ZERO, 0.0));
                     } else {
-                        game.others.0.push(super::super::commands::OtherEntity {
+                        game.side.others.0.push(super::super::commands::OtherEntity {
                             size_answer: None,
                             attachment_lifetime: Default::default(),
                             knot_check: None,
@@ -1299,20 +1299,20 @@ pub(in crate::game) mod tests {
                 rider.id(),
             );
             assert!(game.entity_start_riding(stale, vehicle, true).is_err());
-            game.server.held_out.push(51);
+            game.side.held_out.push(51);
             assert!(game.entity_start_riding(rider, vehicle, true).is_err());
-            game.server.held_out.pop();
+            game.side.held_out.pop();
             assert!(game.entity_start_riding(rider, vehicle, true).is_ok());
             assert_eq!(game.mobs[0].extra.mount, Some(51));
         });
     }
 
-    pub(in crate::game) fn add_mob(
-        game: &mut Game<'_>,
+    pub(in crate::game) fn add_mob<S: crate::game::Side>(
+        game: &mut Game<'_, S>,
         id: u32,
         name: &str,
         at: Vec3,
-    ) -> EntityRef {
+    ) -> EntityRef where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
         let kind = game.res.mob_types().get(name).unwrap().clone();
         game.mobs.push(Mob::new(id, kind, at, 0.0));
         game.entity(id).unwrap()
@@ -1324,7 +1324,7 @@ pub(in crate::game) mod tests {
         )
     }
     /// A floor of stone at y 63 around the origin, with air above it.
-    pub(in crate::game::server_side) fn lay_floor(game: &mut Game<'_>) {
+    pub(in crate::game::server_side) fn lay_floor(game: &mut crate::game::ServerGame<'_>) {
         for (x, z) in [(-1, -1), (-1, 0), (0, -1), (0, 0)] {
             game.world
                 .chunks
@@ -1603,7 +1603,7 @@ pub(in crate::game) mod tests {
             assert_eq!(boat.passengers(game), Some(vec![sailor]));
             assert_eq!(boat.controlling_passenger(game), None);
             let pig = add_mob(game, 96, "minecraft:pig", Vec3::ZERO);
-            let ride = |game: &mut Game<'_>, vehicle| {
+            let ride = |game: &mut crate::game::ServerGame<'_>, vehicle| {
                 game.lan
                     .as_mut()
                     .unwrap()
@@ -1635,7 +1635,7 @@ pub(in crate::game) mod tests {
 
             // A horse and a nautilus ask for the saddle alone, a strider for its own stick too,
             // and a happy ghast for a harness and no still timeout.
-            let mount = |game: &mut Game<'_>, id, name| {
+            let mount = |game: &mut crate::game::ServerGame<'_>, id, name| {
                 let entity = add_mob(game, id, name, Vec3::ZERO);
                 ride(game, id);
                 assert_eq!(entity.controlling_passenger(game), None, "{name}");
@@ -1686,7 +1686,7 @@ pub(in crate::game) mod tests {
             let cow = add_mob(game, 160, "minecraft:cow", at);
             let holder = add_mob(game, 161, "minecraft:sheep", at);
             game.mobs[0].health = 0.0;
-            let tick_cleanup = |game: &mut Game<'_>| {
+            let tick_cleanup = |game: &mut crate::game::ServerGame<'_>| {
                 game.mobs[0].extra.leash = Some(Holder::Mob(161));
                 // What `leash::tick` sends for a mob that is not alive.
                 let event = MobEvent::LeashBreak {
@@ -1732,7 +1732,7 @@ pub(in crate::game) mod tests {
     /// Asks where `rider` gets off `vehicle`, on foot and riding, then has it really get off:
     /// all three must agree. Returns the spot.
     pub(in crate::game::server_side) fn get_off(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         rider: EntityRef,
         vehicle: EntityRef,
     ) -> [f64; 3] {
@@ -1745,7 +1745,7 @@ pub(in crate::game) mod tests {
         asked
     }
     /// The level holds exactly one dropped item, a single lead at `at`; takes it away.
-    pub(in crate::game) fn take_one_lead(game: &mut Game<'_>, at: Vec3) {
+    pub(in crate::game) fn take_one_lead<S: crate::game::Side>(game: &mut Game<'_, S>, at: Vec3) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
         assert_eq!(game.dropped.len(), 1);
         let item = game.dropped.iter().next().unwrap();
         assert_eq!(&*item.stack.item, "minecraft:lead");
@@ -1905,7 +1905,7 @@ pub(in crate::game) mod tests {
             assert_eq!(cow.dismount_location(game, LivingRef::new(player)), None);
             // A marker has a zero-sized box. Entity's default dismount answer is
             // still its position with the box's top as Y, even without a current ride.
-            game.others.0.push(super::super::commands::OtherEntity {
+            game.side.others.0.push(super::super::commands::OtherEntity {
                 size_answer: None,
                 attachment_lifetime: Default::default(),
                 knot_check: None,

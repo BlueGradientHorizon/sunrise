@@ -43,7 +43,7 @@ fn a_farmland_part_answers_fertility_and_hydration() {
                 .behaviours()
                 .fluid(registry.default_state("minecraft:water").unwrap());
             let (pos, at) = (BlockPos::new(0, 64, 0), BlockPos::new(2, 64, 0));
-            let ask = |game: &mut Game<'_>| {
+            let ask = |game: &mut crate::game::ServerGame<'_>| {
                 game.with_level(|_, level, _| {
                     let mut fertile = false;
                     level.before_is_fertile(dry, pos, &mut fertile);

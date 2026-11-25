@@ -134,7 +134,7 @@ fn interception_does_not_send_item_use_or_release_packets() {
     with_owner(|calls| {
         with_client_game(|game| {
             let mut reader = logged_in(game);
-            game.client.screen = Screen::Playing;
+            game.side.screen = Screen::Playing;
             game.remote.as_mut().unwrap().loaded_sent = true;
 
             // An owner for the off-hand kind does not suppress normal off-hand use or release.
@@ -181,7 +181,7 @@ fn interception_does_not_send_item_use_or_release_packets() {
             game.queue_mapping_click(Button::Use.mapping());
             game.queue_mapping_click(Button::Use.mapping());
             game.remote_handle_input();
-            assert!(game.client_item_use.0.is_some());
+            assert!(game.side.client_item_use.0.is_some());
             assert!(game.using.is_none());
 
             game.use_delay = 0;
@@ -192,7 +192,7 @@ fn interception_does_not_send_item_use_or_release_packets() {
 
             game.set_mapping_held("key.use", false);
             game.remote_handle_input();
-            assert!(game.client_item_use.0.is_none());
+            assert!(game.side.client_item_use.0.is_none());
             assert!(game.using.is_none());
             assert_eq!(
                 calls

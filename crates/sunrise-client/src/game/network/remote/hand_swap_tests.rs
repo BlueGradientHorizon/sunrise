@@ -1,6 +1,6 @@
 use crate::game::{
     Audio, Game, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
-    native_entity_refs::tests::with_game,
+    native_entity_refs::tests::{with_game, with_client_game},
 };
 use sunrise_client::{items::ItemStack, mobs::Mob};
 use sunrise_core::geometry::Vec3;
@@ -12,7 +12,7 @@ use sunrise_protocol::packets::play::{Clientbound as C, EntityEvent};
 #[test]
 #[ignore = "daily"]
 fn the_hand_swap_event_keeps_whole_stacks() {
-    with_game(|game| {
+    with_client_game(|game| {
         let kind = game
             .res
             .mob_types()
@@ -28,7 +28,7 @@ fn the_hand_swap_event_keeps_whole_stacks() {
         mob.extra.set_slot_stack(MAINHAND, Some(sword.clone()));
         mob.extra.set_slot_stack(OFFHAND, Some(shield.clone()));
         game.mobs.push(mob);
-        let swap = |game: &mut super::super::Game| {
+        let swap = |game: &mut crate::game::ClientGame<'_>| {
             game.handle_packet(C::EntityEvent(EntityEvent { id: 31, event: 55 }))
                 .unwrap();
         };
@@ -66,7 +66,7 @@ fn joining_a_server_empties_the_off_hand_too() {
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = ExecutionRole::Client;
-    let mut game = Game::new(
+    let mut game = crate::game::ClientGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),

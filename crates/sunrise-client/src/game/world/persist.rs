@@ -2896,15 +2896,12 @@ mod interaction_saved_defaults_tests {
         options.resources = root.clone();
         options.game_dir = Some(std::env::current_dir().unwrap().join("game"));
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -2931,7 +2928,7 @@ mod interaction_saved_defaults_tests {
         assert!(game.run_command("summon marker 10.5 200 7.5 {UUID:[I;109,0,0,4],data:{audit:7}}"));
         assert!(game.run_command("summon pig 10.5 200 8.5 {UUID:[I;109,0,0,5],NoAI:1b,NoGravity:1b,PersistenceRequired:1b,Health:10f}"));
         let marker_id = game
-            .others
+            .side.others
             .0
             .iter()
             .find(|o| game.persist.uuids.get(&o.id) == Some(&[109, 0, 0, 4]))
@@ -2949,7 +2946,7 @@ mod interaction_saved_defaults_tests {
         ] {
             assert!(game.run_command(&format!("summon interaction {} 200 4.5 {{UUID:[I;109,0,0,{n}],Rotation:[15f,-30f],CustomName:\"audit\",Tags:[\"audit\"]{fields}}}", 1.5+3.0*f64::from(n-1))));
             let o = game
-                .others
+                .side.others
                 .0
                 .iter()
                 .find(|o| game.persist.uuids.get(&o.id) == Some(&[109, 0, 0, n]))
@@ -3038,7 +3035,7 @@ mod loaded_tag_tests {
     use sunrise_client::mobs::Species;
 
     fn check(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         target: Target,
         expected: &[String],
         phase: &str,
@@ -3078,7 +3075,7 @@ mod loaded_tag_tests {
         }
     }
 
-    fn action(game: &mut Game<'_>, command: &str, expected: bool, failures: &mut Vec<String>) {
+    fn action(game: &mut crate::game::ServerGame<'_>, command: &str, expected: bool, failures: &mut Vec<String>) {
         if game.run_command(command) != expected {
             failures.push(format!("command result: {command}"));
         }
@@ -3107,15 +3104,12 @@ mod loaded_tag_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -3283,7 +3277,7 @@ mod item_display_saved_transform_tests {
     use crate::game::{Audio, Options, Progress, Settings, commands::Target, load_resources};
     use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
-    fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+    fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -3306,15 +3300,12 @@ mod item_display_saved_transform_tests {
                 .join(format!("h132-{:?}", std::thread::current().id())),
         );
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -3369,13 +3360,13 @@ mod item_display_saved_transform_tests {
             .collect(),
         )
     }
-    fn summon(game: &mut Game<'_>, n: i32, transform: Option<&str>) -> u32 {
+    fn summon(game: &mut crate::game::ServerGame<'_>, n: i32, transform: Option<&str>) -> u32 {
         let suffix = transform
             .map(|t| format!(",transformation:{t}"))
             .unwrap_or_default();
         assert!(game.run_command(&format!("summon item_display 6.5 200 6.5 {{UUID:[I;132,0,0,{n}],Rotation:[12.5f,-20f],NoGravity:1b,CustomName:\"display\",Tags:[\"h132\"],item:{{id:\"minecraft:diamond\",count:2,components:{{\"minecraft:custom_data\":{{h132:7}}}}}}{suffix}}}")));
         let o = game
-            .others
+            .side.others
             .0
             .iter()
             .find(|o| game.persist.uuid_of(o.id) == Some([132, 0, 0, n]))
@@ -3528,7 +3519,7 @@ mod item_display_saved_transform_tests {
             ] {
                 assert!(game.run_command(&format!("summon item_display 6.5 200 6.5 {{UUID:[I;132,0,0,{n}],transformation:{form},item:{{id:\"minecraft:diamond\",count:1}}}}")));
                 let id = game
-                    .others
+                    .side.others
                     .0
                     .iter()
                     .find(|o| game.persist.uuid_of(o.id) == Some([132, 0, 0, n]))
@@ -3547,7 +3538,7 @@ mod item_display_saved_transform_tests {
                     "summon {kind} 10.5 200 10.5 {{UUID:[I;132,0,0,{n}]{extra}}}"
                 )));
                 let id = game
-                    .others
+                    .side.others
                     .0
                     .iter()
                     .find(|o| game.persist.uuid_of(o.id) == Some([132, 0, 0, n]))
@@ -3578,7 +3569,7 @@ mod baby_modifier_mutation_tests {
     use sunrise_client::mobs::finalize::{self, Attr};
     use sunrise_client::motion::PlayerMotion;
 
-    fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+    fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.options.game_dir = Some(
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
@@ -3600,7 +3591,7 @@ mod baby_modifier_mutation_tests {
             test(game);
         });
     }
-    fn zombie(game: &Game<'_>, n: i32) -> usize {
+    fn zombie(game: &crate::game::ServerGame<'_>, n: i32) -> usize {
         let i: Vec<usize> = (0..game.mobs.len())
             .filter(|&i| game.persist.uuid_of(game.mobs[i].id) == Some([235, 0, 0, n]))
             .collect();
@@ -3609,7 +3600,7 @@ mod baby_modifier_mutation_tests {
     }
     /// The effective movement speed, the stored (permanent) minecraft:baby
     /// amount, and the transient one the model reports.
-    fn state(game: &Game<'_>, n: i32) -> (f64, Option<f64>, Option<f64>) {
+    fn state(game: &crate::game::ServerGame<'_>, n: i32) -> (f64, Option<f64>, Option<f64>) {
         let m = &game.mobs[zombie(game, n)];
         assert!(
             close(m.movement_speed(), finalize::value(m, Attr::MovementSpeed)),
@@ -3802,7 +3793,7 @@ mod baby_modifier_mutation_tests {
             }
             let sel =
                 |n: i32| format!("@e[type=minecraft:zombie,nbt={{UUID:[I;235,0,0,{n}]}},limit=1]");
-            let removed = |game: &Game<'_>, n: i32| state(game, n).2.is_none();
+            let removed = |game: &crate::game::ServerGame<'_>, n: i32| state(game, n).2.is_none();
             let mut failures = Vec::new();
             assert!(game.run_command(&format!(
                 "attribute {} {attr} modifier remove minecraft:baby",
@@ -3860,7 +3851,7 @@ mod attribute_instance_save_tests {
     use crate::game::commands::Target;
     use sunrise_client::motion::PlayerMotion;
 
-    fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+    fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.options.game_dir = Some(
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
@@ -3881,7 +3872,7 @@ mod attribute_instance_save_tests {
             test(game);
         });
     }
-    fn mob(game: &Game<'_>, n: i32) -> usize {
+    fn mob(game: &crate::game::ServerGame<'_>, n: i32) -> usize {
         let i: Vec<usize> = (0..game.mobs.len())
             .filter(|&i| game.persist.uuid_of(game.mobs[i].id) == Some([105, 0, 0, n]))
             .collect();
@@ -3889,7 +3880,7 @@ mod attribute_instance_save_tests {
         i[0]
     }
     /// The ids of the attribute instances the mob's save holds, in order.
-    fn saved_ids(game: &mut Game<'_>, i: usize) -> Vec<String> {
+    fn saved_ids(game: &mut crate::game::ServerGame<'_>, i: usize) -> Vec<String> {
         let tag = game
             .command_target_nbt(Target::Mob(game.mobs[i].id))
             .expect("saved mob");
@@ -4048,7 +4039,7 @@ mod mob_inventory_merge_tests {
     use crate::game::commands::Target;
     use sunrise_client::motion::PlayerMotion;
 
-    fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+    fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.options.game_dir = Some(
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
@@ -4069,7 +4060,7 @@ mod mob_inventory_merge_tests {
             test(game);
         });
     }
-    fn mob(game: &Game<'_>, n: i32) -> usize {
+    fn mob(game: &crate::game::ServerGame<'_>, n: i32) -> usize {
         let i: Vec<usize> = (0..game.mobs.len())
             .filter(|&i| game.persist.uuid_of(game.mobs[i].id) == Some([138, 0, 0, n]))
             .collect();
@@ -4077,7 +4068,7 @@ mod mob_inventory_merge_tests {
         i[0]
     }
     /// The live inventory: (item, count, custom_data h138) per stack, in order.
-    fn live(game: &Game<'_>, i: usize) -> Vec<(String, u32, Option<i32>)> {
+    fn live(game: &crate::game::ServerGame<'_>, i: usize) -> Vec<(String, u32, Option<i32>)> {
         let m = &game.mobs[i];
         let stacks = if m.species() == sunrise_client::mobs::Species::Villager {
             sunrise_client::mobs::villager::ext(m)
@@ -4103,7 +4094,7 @@ mod mob_inventory_merge_tests {
             .collect()
     }
     /// The saved Inventory, read the same way.
-    fn saved(game: &mut Game<'_>, i: usize) -> Vec<(String, u32, Option<i32>)> {
+    fn saved(game: &mut crate::game::ServerGame<'_>, i: usize) -> Vec<(String, u32, Option<i32>)> {
         let tag = game
             .command_target_nbt(Target::Mob(game.mobs[i].id))
             .expect("saved mob");
@@ -4237,14 +4228,14 @@ mod invalid_passenger_tests {
     fn pig(tag: &str, n: i32, extra: &str) -> String {
         format!("{{id:\"minecraft:pig\",UUID:[I;161,0,0,{n}],Tags:[\"{tag}\"],{PIG}{extra}}}")
     }
-    fn summon(game: &mut Game<'_>, tag: &str, n: i32, passengers: &str) -> u32 {
+    fn summon(game: &mut crate::game::ServerGame<'_>, tag: &str, n: i32, passengers: &str) -> u32 {
         assert!(game.run_command(&format!(
             "summon minecraft:pig 4.5 200 4.5 {{UUID:[I;161,0,0,{n}],Tags:[\"{tag}\"],{PIG},Passengers:{passengers}}}"
         )));
         mob(game, n)
     }
     /// The mob in the level with UUID `n`.
-    fn mob(game: &Game<'_>, n: i32) -> u32 {
+    fn mob(game: &crate::game::ServerGame<'_>, n: i32) -> u32 {
         let ids: Vec<u32> = game
             .mobs
             .iter()
@@ -4254,12 +4245,12 @@ mod invalid_passenger_tests {
         assert_eq!(ids.len(), 1, "one live mob with UUID {n}");
         ids[0]
     }
-    fn mount(game: &Game<'_>, id: u32) -> Option<u32> {
+    fn mount(game: &crate::game::ServerGame<'_>, id: u32) -> Option<u32> {
         game.mobs.iter().find(|m| m.id == id).unwrap().extra.mount
     }
     /// Each saved passenger of `id` as (id, UUID word 3, first tag), in order;
     /// `None` when the entity saves no Passengers.
-    fn saved(game: &mut Game<'_>, id: u32) -> Option<Vec<(String, Option<i32>, String)>> {
+    fn saved(game: &mut crate::game::ServerGame<'_>, id: u32) -> Option<Vec<(String, Option<i32>, String)>> {
         let tag = game.command_target_nbt(Target::Mob(id)).expect("saved mob");
         let Some(Tag::List(list)) = tag.get("Passengers") else {
             return None;
@@ -4288,7 +4279,7 @@ mod invalid_passenger_tests {
         ("minecraft:pig".into(), Some(n), tag.into())
     }
 
-    fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+    fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.options.game_dir = Some(
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
@@ -4395,7 +4386,7 @@ mod invalid_passenger_tests {
             let passengers = format!("[{UNKNOWN},{}]", pig("h161_merged_child", 220, ""));
             let root = summon(game, "h161_merged", 120, &passengers);
             let child = mob(game, 220);
-            let merged = |game: &mut Game<'_>, merge: &str| {
+            let merged = |game: &mut crate::game::ServerGame<'_>, merge: &str| {
                 game.run_command(&format!(
                     "data merge entity @e[tag=h161_merged,limit=1] {merge}"
                 ))
@@ -4462,7 +4453,7 @@ mod h262_enderman_absolute_anger_tests {
     use crate::game::{Audio, Options, Progress, Settings, load_resources};
     use sunrise_client::motion::PlayerMotion;
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
-    pub(super) fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+    pub(super) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -4485,15 +4476,12 @@ mod h262_enderman_absolute_anger_tests {
                 .join(format!("h262-{:?}", std::thread::current().id())),
         );
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
             None,
         )
         .unwrap();
@@ -4516,7 +4504,7 @@ mod h262_enderman_absolute_anger_tests {
         game.load_ticking_neighbourhood(0, 0);
         test(&mut game);
     }
-    fn load(game: &mut Game<'_>, n: i32, end: Option<i64>) -> (u32, usize) {
+    fn load(game: &mut crate::game::ServerGame<'_>, n: i32, end: Option<i64>) -> (u32, usize) {
         let suffix = end
             .map(|v| format!(",anger_end_time:{v}L"))
             .unwrap_or_default();
@@ -4542,7 +4530,7 @@ mod h262_enderman_absolute_anger_tests {
         (id, i)
     }
     fn check(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         i: usize,
         expected: i64,
         label: &str,
@@ -4704,7 +4692,7 @@ mod sulfur_body_attribute_tests {
     use crate::game::{Audio, Options, Progress, Settings, load_resources};
     use sunrise_client::motion::PlayerMotion;
 
-    fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+    fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -4727,15 +4715,12 @@ mod sulfur_body_attribute_tests {
                 .join(format!("h192-{:?}", std::thread::current().id())),
         );
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -4756,7 +4741,7 @@ mod sulfur_body_attribute_tests {
         test(&mut game);
     }
     /// `/attribute <cube> <attribute> get 1000`, read back through a score.
-    fn read(game: &mut Game<'_>, n: i32, attribute: &str) -> i32 {
+    fn read(game: &mut crate::game::ServerGame<'_>, n: i32, attribute: &str) -> i32 {
         let sel = format!("@e[type=minecraft:sulfur_cube,nbt={{UUID:[I;192,0,0,{n}]}},limit=1]");
         assert!(game.run_command(&format!(
             "execute store result score #v h192 run attribute {sel} minecraft:{attribute} get 1000"
@@ -4827,7 +4812,7 @@ mod sulfur_body_attribute_tests {
                     "summon minecraft:sulfur_cube 4.5 200 8.5 {UUID:[I;192,0,0,9],NoAI:1b,NoGravity:1b,Silent:1b,PersistenceRequired:1b,Size:1}"
                 ));
             let sel = "@e[type=minecraft:sulfur_cube,nbt={UUID:[I;192,0,0,9]},limit=1]";
-            let cached = |game: &Game<'_>| {
+            let cached = |game: &crate::game::ServerGame<'_>| {
                 let m = game
                     .mobs
                     .iter()
@@ -4936,7 +4921,7 @@ mod sulfur_body_attribute_tests {
                     )));
             }
             game.tick_world(true).unwrap();
-            let cached = |game: &Game<'_>, n: i32| {
+            let cached = |game: &crate::game::ServerGame<'_>, n: i32| {
                 game.mobs
                     .iter()
                     .find(|m| game.persist.uuid_of(m.id) == Some([192, 0, 0, n]))
@@ -4988,7 +4973,7 @@ mod summoned_knot_tests {
     use crate::game::{Audio, Options, Progress, Settings, commands::Target, load_resources};
     use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
-    fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+    fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -5011,15 +4996,12 @@ mod summoned_knot_tests {
                 .join(format!("h129-{:?}", std::thread::current().id())),
         );
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -5052,15 +5034,15 @@ mod summoned_knot_tests {
         game.load_ticking_neighbourhood(0, 0);
         test(&mut game);
     }
-    fn knot_id(game: &Game<'_>, n: i32) -> u32 {
-        game.others
+    fn knot_id(game: &crate::game::ServerGame<'_>, n: i32) -> u32 {
+        game.side.others
             .0
             .iter()
             .find(|o| game.persist.uuid_of(o.id) == Some([129, 0, 0, n]))
             .unwrap()
             .id
     }
-    fn summon_knots(game: &mut Game<'_>) -> [u32; 3] {
+    fn summon_knots(game: &mut crate::game::ServerGame<'_>) -> [u32; 3] {
         for x in [6, 14] {
             assert!(game.run_command(&format!("setblock {x} 200 6 oak_fence strict")));
         }
@@ -5076,7 +5058,7 @@ mod summoned_knot_tests {
             let clock = game.world.game_time;
             let ids = summon_knots(game);
             for (i, id) in ids.into_iter().enumerate() {
-                let o = game.others.0.iter().find(|o| o.id == id).unwrap();
+                let o = game.side.others.0.iter().find(|o| o.id == id).unwrap();
                 assert_eq!(o.kind, "minecraft:leash_knot");
                 assert_eq!(game.persist.uuid_of(id), Some([129, 0, 0, i as i32 + 1]));
                 let expected = Vec3::new(6.5 + 4.0 * i as f64, 200.375, 6.5);
@@ -5129,7 +5111,7 @@ mod summoned_knot_tests {
                 )
             );
             let marker = game
-                .others
+                .side.others
                 .0
                 .iter()
                 .find(|o| o.kind == "minecraft:marker")
@@ -5145,21 +5127,21 @@ mod summoned_knot_tests {
                 if tick <= 100 {
                     assert!(
                         ids.iter()
-                            .all(|id| game.others.0.iter().any(|o| o.id == *id)),
+                            .all(|id| game.side.others.0.iter().any(|o| o.id == *id)),
                         "alive through tick{tick}"
                     );
                 }
             }
             assert!(
-                game.others.0.iter().any(|o| o.id == ids[0]),
+                game.side.others.0.iter().any(|o| o.id == ids[0]),
                 "actual fence survives"
             );
             assert!(
-                !game.others.0.iter().any(|o| o.id == ids[1]),
+                !game.side.others.0.iter().any(|o| o.id == ids[1]),
                 "unsupported actual entity gone at101"
             );
             assert!(
-                !game.others.0.iter().any(|o| o.id == ids[2]),
+                !game.side.others.0.iter().any(|o| o.id == ids[2]),
                 "removed support actual entity gone at101"
             );
             assert_eq!(
@@ -5178,7 +5160,7 @@ mod summoned_knot_tests {
             assert!(game.run_command("kill @e[type=leash_knot]"));
             assert!(
                 !game
-                    .others
+                    .side.others
                     .0
                     .iter()
                     .any(|o| o.kind == "minecraft:leash_knot")
@@ -5196,7 +5178,7 @@ mod summoned_knot_tests {
             assert!(game.run_command("summon leash_knot -1.2 200.8 -2.1 {UUID:[I;129,0,0,5]}"));
             let id = knot_id(game, 5);
             assert_eq!(
-                game.others.0.iter().find(|o| o.id == id).unwrap().position,
+                game.side.others.0.iter().find(|o| o.id == id).unwrap().position,
                 Vec3::new(-1.5, 200.375, -2.5)
             );
         });
@@ -5212,7 +5194,7 @@ mod summoned_knot_tests {
             }
             assert!(
                 ids.iter()
-                    .all(|id| game.others.0.iter().any(|o| o.id == *id))
+                    .all(|id| game.side.others.0.iter().any(|o| o.id == *id))
             );
             assert!(game.run_command("tick freeze"));
             for _ in 0..3 {
@@ -5221,7 +5203,7 @@ mod summoned_knot_tests {
             assert_eq!(game.world.game_time, clock + 100);
             assert!(
                 ids.iter()
-                    .all(|id| game.others.0.iter().any(|o| o.id == *id))
+                    .all(|id| game.side.others.0.iter().any(|o| o.id == *id))
             );
             assert!(game.run_command("gamerule spectators_generate_chunks false"));
             assert!(game.run_command("gamemode spectator @s"));
@@ -5234,15 +5216,15 @@ mod summoned_knot_tests {
             assert_eq!(game.world.game_time, clock + 103);
             assert!(
                 ids.iter()
-                    .all(|id| game.others.0.iter().any(|o| o.id == *id))
+                    .all(|id| game.side.others.0.iter().any(|o| o.id == *id))
             );
             assert!(game.run_command("gamemode creative @s"));
             assert!(game.run_command("forceload add 0 0"));
             game.tick().unwrap();
             assert!(game.entity_ticking_area()(10, 6));
-            assert!(game.others.0.iter().any(|o| o.id == ids[0]));
+            assert!(game.side.others.0.iter().any(|o| o.id == ids[0]));
             assert!(
-                !game.others.0.iter().any(|o| o.id == ids[1]),
+                !game.side.others.0.iter().any(|o| o.id == ids[1]),
                 "101 eligible ticks, not elapsed world time"
             );
         });
@@ -5264,20 +5246,20 @@ mod summoned_knot_tests {
             assert!(game.use_knot([14, 200, 2], false));
             assert_eq!(game.mobs[pig].extra.leash, Some(Holder::Knot([14, 200, 2])));
             game.lan_assign_ids();
-            let natural = game.server.knot_ids[&[14, 200, 2]];
+            let natural = game.side.knot_ids[&[14, 200, 2]];
             let ids = summon_knots(game);
             for _ in 0..101 {
                 game.tick().unwrap();
             }
             game.lan_assign_ids();
-            assert_eq!(game.server.knot_ids[&[14, 200, 2]], natural);
+            assert_eq!(game.side.knot_ids[&[14, 200, 2]], natural);
             let pig = game
                 .mobs
                 .iter()
                 .find(|m| game.persist.uuid_of(m.id) == Some([129, 0, 0, 99]))
                 .unwrap();
             assert_eq!(pig.extra.leash, Some(Holder::Knot([14, 200, 2])));
-            assert!(!game.others.0.iter().any(|o| o.id == ids[1]));
+            assert!(!game.side.others.0.iter().any(|o| o.id == ids[1]));
         });
     }
 }
@@ -5309,15 +5291,12 @@ mod camel_pose_saved_tests {
         options.resources = root.clone();
         options.game_dir = Some(std::env::current_dir().unwrap().join("game"));
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -5457,7 +5436,7 @@ mod mob_hurt_cooldown_tests {
     use super::*;
     use sunrise_client::motion::PlayerMotion;
 
-    fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+    fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.options.game_dir = Some(
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
@@ -5481,7 +5460,7 @@ mod mob_hurt_cooldown_tests {
     }
     /// The pig with `[I;0,248,0,n]`: its health and its hurt cooldown state
     /// (`invulnerableTime`, `lastHurt`).
-    fn pig(game: &Game<'_>, n: i32) -> (f32, i32, f32) {
+    fn pig(game: &crate::game::ServerGame<'_>, n: i32) -> (f32, i32, f32) {
         let m = game
             .mobs
             .iter()
@@ -5489,7 +5468,7 @@ mod mob_hurt_cooldown_tests {
             .unwrap();
         (m.health, m.invulnerable, m.last_hurt)
     }
-    fn summon(game: &mut Game<'_>, n: i32, x: i32) -> String {
+    fn summon(game: &mut crate::game::ServerGame<'_>, n: i32, x: i32) -> String {
         assert!(game.run_command(&format!(
             "summon minecraft:pig {x}.5 200 4.5 {{UUID:[I;0,248,0,{n}],NoAI:1b,NoGravity:1b,Silent:1b,PersistenceRequired:1b,attributes:[{{id:\"minecraft:max_health\",base:40.0d}}],Health:40f}}"
         )));
@@ -5647,9 +5626,9 @@ mod restored_vehicle_transfer_tests {
                     game.load_mob(destination_tag.clone(), None),
                     Some(destination)
                 );
-                let before = game.server.next_entity;
+                let before = game.side.next_entity;
                 game.spawn_loaded_entity((0, 0), destination_tag, None);
-                assert_eq!(game.server.next_entity, before);
+                assert_eq!(game.side.next_entity, before);
 
                 let arrived = if generic {
                     game.spawn_loaded_entity((0, 0), incoming, state);
@@ -5709,7 +5688,7 @@ mod trader_llama_discard_tests {
     use crate::game::{Audio, Options, Progress, Settings, load_resources};
     use sunrise_client::motion::PlayerMotion;
 
-    fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+    fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -5734,15 +5713,12 @@ mod trader_llama_discard_tests {
         // A fixed name: no generated sunrise-player.txt in the working directory.
         options.player_name = Some("H182".into());
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -5780,7 +5756,7 @@ mod trader_llama_discard_tests {
                     2 + 3 * n
                 )));
             }
-            let present = |game: &Game<'_>| -> [bool; 4] {
+            let present = |game: &crate::game::ServerGame<'_>| -> [bool; 4] {
                 [1, 2, 3, 4].map(|n| {
                     game.mobs.iter().any(|m| {
                         game.persist.uuid_of(m.id) == Some([0, 182, 0, n])

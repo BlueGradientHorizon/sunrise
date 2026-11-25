@@ -29,7 +29,7 @@ fn stack(input: &str) -> ItemStack {
     stack
 }
 
-fn prepare(game: &mut Game<'_>) {
+fn prepare(game: &mut crate::game::ServerGame<'_>) {
     game.options.dedicated = Some(Vec::new());
     game.world = World::new(game.res.facts().air, 1);
     game.world
@@ -40,16 +40,16 @@ fn prepare(game: &mut Game<'_>) {
     assert!(game.entity_ticking_area()(4, 4));
 }
 
-fn drop_stack(game: &mut Game<'_>, input: &str, position: [f64; 3]) -> u32 {
+fn drop_stack(game: &mut crate::game::ServerGame<'_>, input: &str, position: [f64; 3]) -> u32 {
     game.spawn_item(stack(input), position, [0.0; 3], 100);
     let item = game.dropped.last_mut().unwrap();
     item.no_gravity = true;
     let id = item.id;
-    game.server.ticked_entities_through = game.server.next_entity;
+    game.side.ticked_entities_through = game.side.next_entity;
     id
 }
 
-fn lava(game: &mut Game<'_>) {
+fn lava(game: &mut crate::game::ServerGame<'_>) {
     let lava = game
         .pack
         .assets

@@ -2060,7 +2060,7 @@ pub(in crate::game) mod peaceful_tests {
             let id = game.load_mob(saved, None).unwrap();
             let trader = game.mobs.iter().find(|mob| mob.id == id).unwrap();
             assert!(trader.persistent && trader.no_ai);
-            game.tickets
+            game.side.tickets
                 .0
                 .update(Some(sunrise_client::ticket_levels::Sources {
                     forced: vec![(0, 0)],
@@ -2112,15 +2112,12 @@ pub(in crate::game) mod query_feedback_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
             None,
         )
         .unwrap();
@@ -2141,26 +2138,26 @@ pub(in crate::game) mod query_feedback_tests {
         ];
         // A function's source (silent, like `run_command_quietly`) is told nothing.
         for command in queries {
-            game.server.chat_capture = Some(Vec::new());
+            game.side.chat_capture = Some(Vec::new());
             assert!(game.run_command_quietly(command), "{command}");
-            let lines = game.server.chat_capture.take().unwrap();
+            let lines = game.side.chat_capture.take().unwrap();
             assert!(lines.is_empty(), "{command}: {:?}", lines[0].plain());
         }
         // The player's own source still sees each result.
         for command in queries {
-            game.server.chat_capture = Some(Vec::new());
+            game.side.chat_capture = Some(Vec::new());
             assert!(game.run_command(command), "{command}");
             assert_eq!(
-                game.server.chat_capture.take().unwrap().len(),
+                game.side.chat_capture.take().unwrap().len(),
                 1,
                 "{command}"
             );
         }
         // The result still reaches `execute store`.
         assert!(game.run_command_quietly("execute store result score #t q run time query day"));
-        game.server.chat_capture = Some(Vec::new());
+        game.side.chat_capture = Some(Vec::new());
         assert!(game.run_command("scoreboard players get #t q"));
-        let lines = game.server.chat_capture.take().unwrap();
+        let lines = game.side.chat_capture.take().unwrap();
         assert!(lines[0].plain().contains("1234"), "{:?}", lines[0].plain());
     }
 
@@ -2215,9 +2212,9 @@ pub(in crate::game) mod query_feedback_tests {
                     child: None,
                     literals: vec!["gamerule".into(), input.into()],
                 };
-                game.server.chat_capture = Some(Vec::new());
+                game.side.chat_capture = Some(Vec::new());
                 assert_eq!(game.cmd_gamerule(&context).unwrap(), 1);
-                let lines = game.server.chat_capture.take().unwrap();
+                let lines = game.side.chat_capture.take().unwrap();
                 assert_eq!(lines.len(), 1);
                 let component = lines[0].component();
                 assert_eq!(component["translate"], "commands.gamerule.query");
@@ -2227,9 +2224,9 @@ pub(in crate::game) mod query_feedback_tests {
                     value: Arg::Bool(false),
                     range: (0, 0),
                 });
-                game.server.chat_capture = Some(Vec::new());
+                game.side.chat_capture = Some(Vec::new());
                 assert_eq!(game.cmd_gamerule(&context).unwrap(), 0);
-                let lines = game.server.chat_capture.take().unwrap();
+                let lines = game.side.chat_capture.take().unwrap();
                 assert_eq!(lines.len(), 1);
                 let component = lines[0].component();
                 assert_eq!(component["translate"], "commands.gamerule.set");
@@ -2266,7 +2263,7 @@ pub(in crate::game) mod forced_respawn_tests {
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            game.server.chat_capture = Some(Vec::new());
+            game.side.chat_capture = Some(Vec::new());
 
             assert!(game.run_command("setworldspawn 5 64 5 270 120"));
             assert_eq!(game.level.world_spawn_angle, [-90.0, 90.0]);
@@ -2274,7 +2271,7 @@ pub(in crate::game) mod forced_respawn_tests {
                 "commands.setworldspawn.success",
                 &["5", "64", "5", "-90.0", "90.0", "minecraft:overworld"].map(Text::literal),
             );
-            let lines = game.server.chat_capture.take().unwrap();
+            let lines = game.side.chat_capture.take().unwrap();
             assert_eq!(lines.len(), 1);
             assert_eq!(lines[0].plain(), expected.plain());
         });

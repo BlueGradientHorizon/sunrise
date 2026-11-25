@@ -74,13 +74,13 @@ impl ItemPart for Probe {
         }
     }
 }
-fn setup(game: &mut Game<'_>, probe: &Probe, kind: &str, id: u32) {
+fn setup(game: &mut crate::game::ClientGame<'_>, probe: &Probe, kind: &str, id: u32) {
     game.mobs.clear();
     let kind = game.res.mob_types().get(kind).unwrap().clone();
     game.mobs
         .push(Mob::new(id, kind, Vec3::new(0.5, 64.0, 2.5), 0.0));
     game.station = None;
-    game.client.screen = Screen::Playing;
+    game.side.screen = Screen::Playing;
     game.inventory[0] = Some(ItemStack::new("minecraft:stick", 2));
     game.offhand = Some(ItemStack::new("minecraft:paper", 3));
     game.swing = Default::default();
@@ -132,15 +132,12 @@ fn actual_item_interact_mob_fallback_priority_and_filters_isolated() {
         options.resources = root.clone();
         options.execution_role = execution_role::ExecutionRole::IntegratedServer;
         mod_api::__private::mark_game_thread();
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();

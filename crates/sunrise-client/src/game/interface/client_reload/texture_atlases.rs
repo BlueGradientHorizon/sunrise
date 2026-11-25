@@ -476,7 +476,7 @@ mod tests {
                 game.spawn_pack_reload(crate::game::packs::ReloadKind::Selection)
                     .unwrap();
                 let started = std::time::Instant::now();
-                while game.pack_reload.0.is_some() {
+                while game.side.pack_reload.0.is_some() {
                     assert!(
                         started.elapsed().as_secs() < 300,
                         "the reload never finished"

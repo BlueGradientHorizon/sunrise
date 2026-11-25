@@ -19,7 +19,7 @@ const CENTRE: [f64; 3] = [8.5, 64.5, 8.5];
 
 /// A windowless integrated-server game from the prepared resources with a
 /// resident chunk; `None` without them.
-fn with_game<R>(f: impl FnOnce(&mut Game<'_>) -> R) -> Option<R> {
+fn with_game<R>(f: impl FnOnce(&mut crate::game::ServerGame<'_>) -> R) -> Option<R> {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES")?);
     let settings = Settings::default();
     let loaded = load_resources(
@@ -40,15 +40,12 @@ fn with_game<R>(f: impl FnOnce(&mut Game<'_>) -> R) -> Option<R> {
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
     let mut resources = None;
     let res = &*resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
         None,
     )
     .unwrap();
@@ -70,7 +67,7 @@ fn record(f: impl FnOnce()) -> Vec<(&'static str, [f64; 3], Option<Who>)> {
 /// A chiseled bookshelf facing south at `POS`: the state's `occupied` slots
 /// are full and the block entity holds a book in `books`. They may disagree,
 /// as `/setblock` leaves them.
-fn place_shelf(game: &mut Game<'_>, occupied: &[usize], books: &[usize]) {
+fn place_shelf(game: &mut crate::game::ServerGame<'_>, occupied: &[usize], books: &[usize]) {
     let registry = game.pack.assets.registry;
     let default = registry
         .default_state("minecraft:chiseled_bookshelf")
@@ -97,7 +94,7 @@ fn place_shelf(game: &mut Game<'_>, occupied: &[usize], books: &[usize]) {
 
 /// `ChiseledBookShelfBlock.getAnalogOutputSignal`: the last slot touched, plus
 /// one, as a comparator beside the shelf reads it.
-fn signal(game: &Game<'_>) -> i32 {
+fn signal(game: &crate::game::ServerGame<'_>) -> i32 {
     let registry = game.pack.assets.registry;
     let state = game.world.block(POS[0], POS[1], POS[2]);
     let at = BlockPos::new(POS[0], POS[1], POS[2]);
@@ -105,7 +102,7 @@ fn signal(game: &Game<'_>) -> i32 {
 }
 
 /// The slot `updateState` last stored.
-fn last_slot(game: &Game<'_>) -> i32 {
+fn last_slot(game: &crate::game::ServerGame<'_>) -> i32 {
     match game.world.block_entities.get(&(POS[0], POS[1], POS[2])) {
         Some(BlockEntity::ChiseledBookshelf(b)) => b.last_slot,
         other => panic!("no chiseled bookshelf: {other:?}"),
@@ -164,7 +161,7 @@ fn an_empty_slot_clicked_as_occupied_still_plays_the_pickup() {
                 "removeBook answers SUCCESS"
             );
         });
-        let sounds = std::mem::take(&mut game.server.pending_sounds);
+        let sounds = std::mem::take(&mut game.side.pending_sounds);
         game.stop_audio_capture();
         assert!(game.dropped.is_empty(), "an empty stack drops nothing");
         assert_eq!(last_slot(game), -1, "nothing came out of the slot");

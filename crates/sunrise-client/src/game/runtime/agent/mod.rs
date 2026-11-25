@@ -2535,7 +2535,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn region_adoption_agent_state_reports_the_actual_title_mode() {
-        crate::game::native_entity_refs::tests::with_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             use sunrise_client::title::{Mode, Title, list_worlds};
             let scratch = tempfile::tempdir().unwrap();
             let saves = scratch.path().join("saves");
@@ -2553,12 +2553,12 @@ pub(in crate::game) mod tests {
                 focused: true,
                 adopt_regions: true,
             };
-            game.title.0 = Some(title);
+            game.side.title.0 = Some(title);
             assert_eq!(
                 game.title_value(),
                 json!({"mode":"edit-world", "folder":"Moor", "fields":{"name":"Typed name"}, "focus":"name", "adopt_biome_regions":true})
             );
-            game.title.0.as_mut().unwrap().mode = Mode::AdoptBiomeRegions {
+            game.side.title.0.as_mut().unwrap().mode = Mode::AdoptBiomeRegions {
                 world,
                 name: "Typed name".into(),
             };

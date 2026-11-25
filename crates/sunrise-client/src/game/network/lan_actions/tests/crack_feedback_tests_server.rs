@@ -41,22 +41,19 @@ pub(in crate::game) fn run_crack_packets_follow_start_clock_and_strict_observer_
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
     let scratch =
         std::env::temp_dir().join(format!("sunrise-crack-feedback-{}", std::process::id()));
     std::fs::create_dir_all(&scratch).unwrap();
-    game.server.world_root = scratch.clone();
+    game.side.world_root = scratch.clone();
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -131,14 +128,14 @@ pub(in crate::game) fn run_crack_packets_follow_start_clock_and_strict_observer_
             g.inventory[0] = (tick != 102).then(|| ItemStack::new("minecraft:diamond_pickaxe", 1))
         });
         game.as_guest(1, |g| {
-            g.server.forced_hit = Some(Hit {
+            g.side.forced_hit = Some(Hit {
                 inside: false,
                 pos,
                 face: [0, 1, 0],
                 point: [0.5, 100.5, 0.5],
             });
             g.tick_mining().unwrap();
-            g.server.forced_hit = None;
+            g.side.forced_hit = None;
         });
         game.guest_dig_feedback(1);
         game.guest_dig_feedback(1);

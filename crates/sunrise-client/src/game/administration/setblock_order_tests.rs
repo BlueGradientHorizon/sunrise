@@ -9,7 +9,7 @@ use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
 
-fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
+fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -32,15 +32,12 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
         None,
     )
     .unwrap();
@@ -56,11 +53,11 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
     game
 }
 
-fn at(game: &Game<'_>, x: i32, y: i32, z: i32) -> String {
+fn at(game: &crate::game::ServerGame<'_>, x: i32, y: i32, z: i32) -> String {
     game.state_string(game.world.block(x, y, z))
 }
 
-fn run(game: &mut Game<'_>, commands: &[&str]) {
+fn run(game: &mut crate::game::ServerGame<'_>, commands: &[&str]) {
     for command in commands {
         assert!(game.run_command(command), "{command}");
     }

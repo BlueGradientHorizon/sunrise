@@ -140,14 +140,14 @@ mod tests {
     }
 
     /// What `owner` holds for the viewer, as the hub keeps it.
-    fn held(game: &Game<'_>, owner: &str) -> Vec<engine::ChunkArea> {
+    fn held(game: &crate::game::ServerGame<'_>, owner: &str) -> Vec<engine::ChunkArea> {
         game.lan.as_ref().unwrap().hub.viewed_areas(2, owner)
     }
 
     /// Ticks the server until `done` holds of what the viewer was sent of the Nether since the
     /// last call (at most 2 minutes); that, and how many hub ticks it took.
     fn tick_until(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         rx: &Receiver<Out>,
         done: impl Fn(&Sent) -> bool,
     ) -> (Sent, u64) {

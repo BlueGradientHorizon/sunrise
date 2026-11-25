@@ -15,7 +15,7 @@ fn resource(item: &str) -> ItemResource {
     ItemResource::of(&ItemStack::new(item, 1).try_into_api().unwrap())
 }
 
-fn composter(game: &mut Game<'_>, level: i32) {
+fn composter<S: crate::game::Side>(game: &mut Game<'_, S>, level: i32) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
     let state = game
         .pack
         .assets
@@ -28,7 +28,7 @@ fn composter(game: &mut Game<'_>, level: i32) {
     game.world.set(POS[0], POS[1], POS[2], state).unwrap();
 }
 
-fn quiet(game: &mut Game<'_>, heard: &Mutex<Vec<String>>) {
+fn quiet(game: &mut crate::game::ServerGame<'_>, heard: &Mutex<Vec<String>>) {
     game.world.modified.clear();
     game.world.dirty_sections.clear();
     game.world.block_log = Some(Default::default());
@@ -36,14 +36,14 @@ fn quiet(game: &mut Game<'_>, heard: &Mutex<Vec<String>>) {
     heard.lock().unwrap().clear();
 }
 
-fn assert_quiet(game: &Game<'_>, heard: &Mutex<Vec<String>>) {
+fn assert_quiet(game: &crate::game::ServerGame<'_>, heard: &Mutex<Vec<String>>) {
     assert!(
         heard.lock().unwrap().is_empty(),
         "game events escaped a transaction"
     );
     assert!(game.level_events.is_empty());
     assert!(
-        game.server.pending_sounds.is_empty(),
+        game.side.pending_sounds.is_empty(),
         "sound escaped a transaction"
     );
     assert!(
@@ -266,7 +266,7 @@ fn sided_composter_transactions_preserve_literal_chance_and_defer_all_effects() 
                 game.tick_scheduled().unwrap();
                 assert_eq!(game.composter_level(POS), Some(8));
                 assert!(
-                    game.server
+                    game.side
                         .pending_sounds
                         .iter()
                         .any(|s| s.event == "minecraft:block.composter.ready")
@@ -299,7 +299,7 @@ fn sided_composter_transactions_preserve_literal_chance_and_defer_all_effects() 
                 .unwrap();
                 assert_eq!(game.composter_level(POS), Some(0));
                 assert_eq!(heard.lock().unwrap().as_slice(), ["minecraft:block_change"]);
-                assert!(game.server.pending_sounds.is_empty());
+                assert!(game.side.pending_sounds.is_empty());
                 assert!(game.dropped.is_empty());
 
                 // A real bulk consumer offers all remaining items up to 64, not a pre-trimmed
@@ -308,7 +308,7 @@ fn sided_composter_transactions_preserve_literal_chance_and_defer_all_effects() 
                 // single-slot source still offers all remaining items on each step and must
                 // preserve the literal sequence above across its nested partial attempts, rather
                 // than drawing a second chance on each accepted retry.
-                let move_all = |game: &mut Game<'_>,
+                let move_all = |game: &mut crate::game::ServerGame<'_>,
                                 source: &mod_api::Capability<
                     dyn mod_api::ResourceHandler<mod_api::ItemResource>,
                 >,
@@ -558,7 +558,7 @@ fn a_composter_click_supplies_its_interacting_player_and_no_this() {
     game.block_ticks
         .add_empty_chunk(ChunkPos::new(0, 0))
         .unwrap();
-    let click = |game: &mut Game<'_>, item: &str| {
+    let click = |game: &mut crate::game::ServerGame<'_>, item: &str| {
         composter(game, 0);
         let stack = ItemStack::new(item, 8);
         *game.held_mut() = Some(stack.clone());

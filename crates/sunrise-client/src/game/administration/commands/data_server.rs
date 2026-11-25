@@ -1189,7 +1189,7 @@ pub(in crate::game) mod tests {
             );
             game.persist.raw.insert(12, Tag::Compound(raw));
             game.persist.uuids.insert(12, [1, 2, 3, 4]);
-            game.others.0.push(super::super::OtherEntity {
+            game.side.others.0.push(super::super::OtherEntity {
                 size_answer: None,
                 attachment_lifetime: Default::default(),
                 join: Default::default(),
@@ -1294,22 +1294,19 @@ pub(in crate::game) mod modern_literal_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
         game.build_registries();
         game.set_allow_commands(true);
-        let run = |g: &mut Game<'_>, line: &str| {
-            g.exec.0 = ExecState::default();
+        let run = |g: &mut crate::game::ServerGame<'_>, line: &str| {
+            g.side.exec.0 = ExecState::default();
             let source = g.player_source();
             g.execute_line(line, source)
         };
@@ -1439,7 +1436,7 @@ pub(in crate::game) mod falling_live_adoption_tests {
             let before = game.falling[index].clone();
             assert!(before.join.is_joined());
             assert_eq!((before.age, before.drop_item), (5, true));
-            let next_id = game.server.next_entity;
+            let next_id = game.side.next_entity;
             let clock = game.world.game_time;
             assert!(!game.run_command(&format!("data merge entity {uuid} {{Time:5}}")));
             assert!(
@@ -1494,7 +1491,7 @@ pub(in crate::game) mod falling_live_adoption_tests {
             );
             assert_eq!(saved.get("Silent"), Some(&Tag::Byte(1)));
             assert_eq!(game.falling.len(), 1);
-            assert_eq!(game.server.next_entity, next_id);
+            assert_eq!(game.side.next_entity, next_id);
             assert_eq!(game.world.game_time, clock);
         });
     }

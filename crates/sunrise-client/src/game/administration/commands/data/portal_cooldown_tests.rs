@@ -51,7 +51,7 @@ fn load_witness() -> Witness {
     serde_json::from_str(&raw).expect("valid 26.3 mob portal cooldown witness JSON")
 }
 
-fn cooldown(game: &mut crate::game::Game<'_>, target: Target) -> Option<Tag> {
+fn cooldown(game: &mut crate::game::ServerGame<'_>, target: Target) -> Option<Tag> {
     game.data_of(&DataRef::Entity(target))
         .unwrap()
         .get("PortalCooldown")

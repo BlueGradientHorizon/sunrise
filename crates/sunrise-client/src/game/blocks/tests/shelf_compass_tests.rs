@@ -42,7 +42,7 @@ fn lodestone_compass() -> ItemStack {
 
 /// A client game that draws: its item models (the compass' `range_dispatch`) and
 /// atlas come from the resources, as `ShelfRenderer` gets them.
-fn drawing_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+fn drawing_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ClientGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES").expect("SUNRISE_TEST_RESOURCES"),
     );
@@ -64,7 +64,7 @@ fn drawing_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resour
     options.resources = root.clone();
     options.execution_role = ExecutionRole::Client;
     let res = &*resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ClientGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
@@ -84,7 +84,7 @@ fn drawing_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resour
 
 /// `minecraft:oak_shelf` with `facing` at `pos`, its block entity holding `stack`
 /// in the middle slot.
-fn place_shelf(game: &mut Game<'_>, pos: [i32; 3], facing: &str, stack: &ItemStack) {
+fn place_shelf(game: &mut crate::game::ClientGame<'_>, pos: [i32; 3], facing: &str, stack: &ItemStack) {
     let state = {
         let registry = &game.pack.assets.registry;
         let mut state = registry
@@ -104,7 +104,7 @@ fn place_shelf(game: &mut Game<'_>, pos: [i32; 3], facing: &str, stack: &ItemSta
 }
 
 /// What the shelf at `pos` draws this frame.
-fn drawn_vertices(game: &Game<'_>, pos: [i32; 3]) -> Vec<Vertex> {
+fn drawn_vertices(game: &crate::game::ClientGame<'_>, pos: [i32; 3]) -> Vec<Vertex> {
     let camera = glam::DVec3::new(
         f64::from(pos[0]) + 0.5,
         f64::from(pos[1]) + 0.5,
@@ -118,7 +118,7 @@ fn drawn_vertices(game: &Game<'_>, pos: [i32; 3]) -> Vec<Vertex> {
 /// The sprite every one of `vertices` samples, so the model the compass'
 /// `range_dispatch` chose: `item/compass_16`..`item/compass_31`, one per needle
 /// angle. `None` when nothing was drawn.
-fn drawn_sprite(game: &Game<'_>, vertices: &[Vertex]) -> Option<String> {
+fn drawn_sprite(game: &crate::game::ClientGame<'_>, vertices: &[Vertex]) -> Option<String> {
     if vertices.is_empty() {
         return None;
     }

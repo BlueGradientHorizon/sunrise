@@ -5,7 +5,7 @@ use super::*;
 use crate::game::game_tests::tests::server_game;
 
 /// A pig summoned at a known place takes the rotation `rotate` gives it.
-fn summoned_pig(game: &mut Game<'_>) -> u32 {
+fn summoned_pig(game: &mut crate::game::ServerGame<'_>) -> u32 {
     assert!(game.run_command("summon minecraft:pig 0.5 100 0.5"));
     game.mobs.last().expect("the pig is in the level").id
 }

@@ -474,7 +474,7 @@ mod tests {
 
     /// A mob of `kind` in the game's list, its species goals registered by
     /// `Mob::new`, as a handle.
-    fn mob_in_game(game: &mut super::super::Game<'_>, kind: &str, id: u32) -> MobRef {
+    fn mob_in_game(game: &mut crate::game::ServerGame<'_>, kind: &str, id: u32) -> MobRef {
         let t = game.res.mob_types().get(kind).unwrap().clone();
         let mut m = Mob::new(id, t, Vec3::new(3.5, 65.0, 3.5), 0.0);
         m.ground.on_ground = true;
@@ -484,7 +484,7 @@ mod tests {
     }
 
     /// Whether the mob's goal selector holds a goal of kind `id`.
-    fn has(game: &super::super::Game<'_>, mob: MobRef, id: &str) -> bool {
+    fn has(game: &crate::game::ServerGame<'_>, mob: MobRef, id: &str) -> bool {
         mob.goals(game).unwrap().iter().any(|e| e.id == id)
     }
 

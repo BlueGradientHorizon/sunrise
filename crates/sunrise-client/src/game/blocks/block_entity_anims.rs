@@ -732,15 +732,12 @@ pub(in crate::game) mod tests {
         options.resources = root.clone();
         options.execution_role = execution_role::ExecutionRole::IntegratedServer;
         let res = loaded.resources;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &res,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
             None,
         )
         .unwrap();
@@ -751,7 +748,7 @@ pub(in crate::game) mod tests {
         );
         game.streaming.forced.insert((0, 0));
         game.build_registries();
-        fn command(game: &mut Game<'_>, line: &str) -> bool {
+        fn command(game: &mut crate::game::ServerGame<'_>, line: &str) -> bool {
             game.as_console(|game| game.run_command(line))
         }
         let portal = game
@@ -835,7 +832,7 @@ pub(in crate::game) mod conduit_target_tests {
     fn game_with(
         resources: &mut Option<Arc<crate::game::Resources>>,
         role: execution_role::ExecutionRole,
-    ) -> Game<'_> {
+    ) -> crate::game::ServerGame<'_> {
         let root = std::path::PathBuf::from(
             std::env::var_os("SUNRISE_TEST_RESOURCES")
                 .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -858,7 +855,50 @@ pub(in crate::game) mod conduit_target_tests {
         options.resources = root.clone();
         options.execution_role = role;
         let res = resources.insert(loaded.resources);
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
+            res,
+            loaded.pack,
+            loaded.gui.unwrap(),
+            options,
+            settings,
+            None,
+        )
+        .unwrap();
+        game.build_registries();
+        game.set_allow_commands(true);
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+        game
+    }
+
+    fn game_with_client(
+        resources: &mut Option<Arc<crate::game::Resources>>,
+        role: execution_role::ExecutionRole,
+    ) -> crate::game::ClientGame<'_> {
+        let root = std::path::PathBuf::from(
+            std::env::var_os("SUNRISE_TEST_RESOURCES")
+                .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
+        );
+        let settings = Settings::default();
+        let loaded = load_resources(
+            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+            Vec::new(),
+            None,
+            &root,
+            &settings,
+            std::time::Instant::now(),
+            false,
+            role,
+            &Progress::new(),
+            &mut |_, _| unreachable!(),
+        )
+        .unwrap();
+        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+        options.resources = root.clone();
+        options.execution_role = role;
+        let res = resources.insert(loaded.resources);
+        let mut game = crate::game::ClientGame::new(
             res,
             loaded.pack,
             loaded.gui.unwrap(),
@@ -871,7 +911,7 @@ pub(in crate::game) mod conduit_target_tests {
         )
         .unwrap();
         game.build_registries();
-        game.set_allow_commands(true);
+        
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -879,7 +919,7 @@ pub(in crate::game) mod conduit_target_tests {
     }
 
     /// A conduit in a loaded chunk.
-    fn setup(game: &mut Game<'_>) {
+    fn setup(game: &mut crate::game::ServerGame<'_>) {
         for command in [
             "difficulty normal",
             "forceload add 0 0",
@@ -890,7 +930,7 @@ pub(in crate::game) mod conduit_target_tests {
     }
 
     /// A level of a server.
-    fn game(resources: &mut Option<Arc<crate::game::Resources>>) -> Game<'_> {
+    fn game(resources: &mut Option<Arc<crate::game::Resources>>) -> crate::game::ServerGame<'_> {
         let mut game = game_with(resources, execution_role::ExecutionRole::IntegratedServer);
         setup(&mut game);
         game
@@ -898,8 +938,8 @@ pub(in crate::game) mod conduit_target_tests {
 
     /// A window of one: a client game with no conduit state of its own, and a
     /// conduit block whose block entity arrives from the server.
-    fn client(resources: &mut Option<Arc<crate::game::Resources>>) -> Game<'_> {
-        let mut game = game_with(resources, execution_role::ExecutionRole::Client);
+    fn client(resources: &mut Option<Arc<crate::game::Resources>>) -> crate::game::ClientGame<'_> {
+        let mut game = game_with_client(resources, execution_role::ExecutionRole::Client);
         let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(pipe, "Window").unwrap();
         game.world
@@ -923,7 +963,7 @@ pub(in crate::game) mod conduit_target_tests {
     }
 
     /// A mob of `kind` beside the conduit, in the water.
-    fn summon(game: &mut Game<'_>, kind: &str) -> u32 {
+    fn summon(game: &mut crate::game::ServerGame<'_>, kind: &str) -> u32 {
         assert!(game.run_command(&format!("summon minecraft:{kind} 4.5 100 8.5")));
         let id = game.mobs.last().unwrap().id;
         game.mobs.last_mut().unwrap().fluids.in_water = true;

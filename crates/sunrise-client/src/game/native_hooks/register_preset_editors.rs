@@ -384,13 +384,13 @@ pub(in crate::game) mod tests {
                     title.draw(
                         &game.gui.atlas,
                         &mut stock,
-                        game.client.cursor,
+                        game.side.cursor,
                         false,
                         &mut |_, _| {},
                     );
                     assert!(!stock.vertices.is_empty());
-                    game.title.0 = Some(title);
-                    game.client.screen = Screen::Playing;
+                    game.side.title.0 = Some(title);
+                    game.side.screen = Screen::Playing;
                     let frame = game.hud(size);
                     let (prefix, later) = frame.vertices.split_at(stock.vertices.len());
                     assert!(
@@ -417,7 +417,7 @@ pub(in crate::game) mod tests {
                                 },
                             ..
                         },
-                    ] = game.client.toast_manager.visible.as_slice()
+                    ] = game.side.toast_manager.visible.as_slice()
                     else {
                         panic!("the preset editor failure should produce one mandatory toast");
                     };
@@ -532,11 +532,11 @@ pub(in crate::game) mod tests {
                         title.preset_editor_session().unwrap().title(),
                         Some("Islands Editor")
                     );
-                    game.title.0 = Some(title);
-                    game.client.screen = Screen::Playing;
+                    game.side.title.0 = Some(title);
+                    game.side.screen = Screen::Playing;
                     game.settle_title_mode();
                     let mut batch = HudBatch::new([640, 480], game.settings.gui_scale_inputs());
-                    game.title.0.as_ref().unwrap().draw(
+                    game.side.title.0.as_ref().unwrap().draw(
                         &game.gui.atlas,
                         &mut batch,
                         (0.0, 0.0),
@@ -563,7 +563,7 @@ pub(in crate::game) mod tests {
                         None,
                         None,
                     );
-                    let window_press = |game: &mut Game<'_>, key| {
+                    let window_press = |game: &mut crate::game::ClientGame<'_>, key| {
                         // winit's KeyEvent contains private platform data. Send the key to the
                         // same dispatcher that receives those events, without OS shortcuts.
                         game.dispatch_window_key(
@@ -601,8 +601,8 @@ pub(in crate::game) mod tests {
                         game.control_command(input, &reply, &NoopLoop).unwrap();
                     }
                     assert!(!game.has_shift_down());
-                    assert!(!game.client.physical_keys.contains(&KeyCode::Tab));
-                    assert!(!game.client.physical_keys.contains(&KeyCode::ShiftLeft));
+                    assert!(!game.side.physical_keys.contains(&KeyCode::Tab));
+                    assert!(!game.side.physical_keys.contains(&KeyCode::ShiftLeft));
                     game.control_command("type Ωx", &reply, &NoopLoop).unwrap();
                     // Outside composition the same window dispatcher reaches the editor;
                     // Q is declined by both the editor and its widgets.
@@ -644,10 +644,10 @@ pub(in crate::game) mod tests {
                             "minecraft:overworld_caves".into()
                         ))
                     );
-                    game.client.screen = Screen::Options;
+                    game.side.screen = Screen::Options;
                     assert!(game.preset_editor_dimensions().is_none());
                     assert!(!game.set_preset_editor_dimensions(dimensions));
-                    game.client.screen = Screen::Playing;
+                    game.side.screen = Screen::Playing;
 
                     // Releases target the screen that is open when they arrive, not the editor
                     // that saw the presses. No world is loaded on either screen.
@@ -656,17 +656,17 @@ pub(in crate::game) mod tests {
                         game.control_command(line, &reply, &NoopLoop).unwrap();
                     }
                     assert!(game.has_shift_down());
-                    assert!(game.client.physical_keys.contains(&KeyCode::ShiftLeft));
-                    assert!(game.client.physical_keys.contains(&KeyCode::KeyQ));
+                    assert!(game.side.physical_keys.contains(&KeyCode::ShiftLeft));
+                    assert!(game.side.physical_keys.contains(&KeyCode::KeyQ));
                     game.control_command("key escape tap", &reply, &NoopLoop)
                         .unwrap();
-                    assert_eq!(game.title.0.as_ref().unwrap().mode.id(), "world_create");
+                    assert_eq!(game.side.title.0.as_ref().unwrap().mode.id(), "world_create");
                     for line in ["key shift up", "key q up"] {
                         game.control_command(line, &reply, &NoopLoop).unwrap();
                     }
                     assert!(!game.has_shift_down());
-                    assert!(!game.client.physical_keys.contains(&KeyCode::ShiftLeft));
-                    assert!(!game.client.physical_keys.contains(&KeyCode::KeyQ));
+                    assert!(!game.side.physical_keys.contains(&KeyCode::ShiftLeft));
+                    assert!(!game.side.physical_keys.contains(&KeyCode::KeyQ));
                     assert_eq!(create_openings.load(Ordering::Relaxed), 1);
                     assert_eq!(
                         releases
@@ -688,15 +688,15 @@ pub(in crate::game) mod tests {
 
                     use MouseStep::{Editor, Post, Pre, Release};
                     const PRESET: &str = "world_preset_editor";
-                    let open_editor = |game: &mut Game<'_>| {
+                    let open_editor = |game: &mut crate::game::ClientGame<'_>| {
                         let size = game.gui_size();
-                        let title = game.title.0.as_mut().unwrap();
+                        let title = game.side.title.0.as_mut().unwrap();
                         title.focused_button = Some(26);
                         title.confirm_key_size(size);
                         game.settle_title_mode();
-                        assert_eq!(game.title.0.as_ref().unwrap().mode.id(), PRESET);
+                        assert_eq!(game.side.title.0.as_ref().unwrap().mode.id(), PRESET);
                     };
-                    let button_event = |game: &mut Game<'_>, state, button, millis| {
+                    let button_event = |game: &mut crate::game::ClientGame<'_>, state, button, millis| {
                         game.handle_window_event_inner(
                             &NoopLoop,
                             WindowEvent::MouseInput {
@@ -709,11 +709,11 @@ pub(in crate::game) mod tests {
                         );
                         std::mem::take(&mut mouse.lock().unwrap().events)
                     };
-                    let press = |game: &mut Game<'_>, button, millis| {
+                    let press = |game: &mut crate::game::ClientGame<'_>, button, millis| {
                         button_event(game, ElementState::Pressed, button, millis)
                     };
                     let editor_press =
-                        |game: &mut Game<'_>, button, millis, code, double, handled| {
+                        |game: &mut crate::game::ClientGame<'_>, button, millis, code, double, handled| {
                             assert_eq!(
                                 press(game, button, millis),
                                 [
@@ -728,7 +728,7 @@ pub(in crate::game) mod tests {
                     let other = MouseButton::Other(300);
                     mouse.lock().unwrap().events.clear(); // The direct edit above is not a window press.
                     open_editor(game);
-                    game.client.cursor = (20.0, 30.0);
+                    game.side.cursor = (20.0, 30.0);
 
                     // Post sees the original answer even when it forces unhandled. The next
                     // press is not a double-click: the first press was not recorded.
@@ -760,7 +760,7 @@ pub(in crate::game) mod tests {
                     // Done instead of moving from it to Cancel.
                     game.pad_clear_focus();
                     sunrise_client::widgets::end_frame(1);
-                    let renderer = game.renderer.0.as_ref().unwrap();
+                    let renderer = game.side.renderer.0.as_ref().unwrap();
                     let _ = game.hud_layers([renderer.config.width, renderer.config.height]);
                     sunrise_client::widgets::end_frame(2);
                     let (w, h) = game.gui_size();
@@ -773,40 +773,40 @@ pub(in crate::game) mod tests {
                             (x..x + width).contains(&done.0) && (y..y + height).contains(&done.1)
                         })
                         .expect("the rendered Done button is a focus target");
-                    game.client.cursor = done;
+                    game.side.cursor = done;
                     mouse.lock().unwrap().cancel_press = true;
                     assert_eq!(press(game, left, Some(2000)), [Pre(0, false)]);
-                    assert_eq!(game.title.0.as_ref().unwrap().mode.id(), PRESET);
+                    assert_eq!(game.side.title.0.as_ref().unwrap().mode.id(), PRESET);
                     mouse.lock().unwrap().cancel_press = false;
                     assert_eq!(game.key_focus_key(&NoopLoop, KeyCode::Tab), Some(false));
-                    assert_eq!(game.pad.0.menu.focus.map(|t| t.rect), Some(target.rect));
+                    assert_eq!(game.side.pad.0.menu.focus.map(|t| t.rect), Some(target.rect));
                     game.pad_clear_focus();
-                    game.client.cursor = (20.0, 30.0);
+                    game.side.cursor = (20.0, 30.0);
                     editor_press(game, left, Some(2001), 0, true, true);
 
                     // Done and Cancel are taken by the footer, not the editor callback. The
                     // release resolves its own receiver on the screen they have just opened.
                     // Start the footer sequence outside the preceding press's double-click window.
-                    game.client.cursor = done;
+                    game.side.cursor = done;
                     assert_eq!(
                         press(game, left, Some(2251)),
                         [Pre(0, false), Post(PRESET, 0, false, true, false)]
                     );
-                    assert_eq!(game.title.0.as_ref().unwrap().mode.id(), "world_create");
+                    assert_eq!(game.side.title.0.as_ref().unwrap().mode.id(), "world_create");
                     assert_eq!(
                         button_event(game, ElementState::Released, left, None),
                         [Release("world_create", 0, false)]
                     );
                     open_editor(game);
-                    game.client.cursor = (20.0, 30.0);
+                    game.side.cursor = (20.0, 30.0);
                     // Same hook ID and button as Done, but a different editor instance.
                     editor_press(game, left, Some(2260), 0, false, true);
-                    game.client.cursor = (w / 2.0 + 80.0, h - 18.0);
+                    game.side.cursor = (w / 2.0 + 80.0, h - 18.0);
                     assert_eq!(
                         press(game, left, Some(2270)),
                         [Pre(0, true), Post(PRESET, 0, true, true, false)]
                     );
-                    assert_eq!(game.title.0.as_ref().unwrap().mode.id(), "world_create");
+                    assert_eq!(game.side.title.0.as_ref().unwrap().mode.id(), "world_create");
                 });
             },
         );

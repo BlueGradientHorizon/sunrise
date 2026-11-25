@@ -614,8 +614,8 @@ pub(in crate::game) use crate::game::server_side::native_components_server::item
         )
         .unwrap();
         crate::game::native_entity_refs::tests::with_game_at(root.clone(), |game| {
-            game.session_lock.0 =
-                Some(sunrise_client::save::SessionLock::acquire(&game.save.0.root).unwrap());
+            game.side.session_lock.0 =
+                Some(sunrise_client::save::SessionLock::acquire(&game.side.save.0.root).unwrap());
             let wood = ItemResource::of(&super::super::api_values::test_snapshot(&ItemStack::new(
                 "minecraft:wooden_sword",
                 1,
@@ -730,7 +730,7 @@ pub(in crate::game) use crate::game::server_side::native_components_server::item
                 1,
                 "completion must consume the patched mod item"
             );
-            game.session_lock.0 = None;
+            game.side.session_lock.0 = None;
         });
         fs::remove_dir_all(root).unwrap();
     }
@@ -762,7 +762,7 @@ pub(in crate::game) mod combat_query_tests {
     use sunrise_core::geometry::{Aabb, Vec3};
     use sunrise_core::random::RandomSource;
 
-    fn actor(game: &mut Game<'_>) -> mod_api::LivingRef {
+    fn actor(game: &mut crate::game::ServerGame<'_>) -> mod_api::LivingRef {
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
         crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
         mod_api::LivingRef::new(game.entity(20).unwrap())

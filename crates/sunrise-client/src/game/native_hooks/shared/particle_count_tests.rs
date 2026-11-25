@@ -125,7 +125,7 @@ impl mod_api::Hooks for FrameMod {
 // The test consumer inspects the exact Frame passed to Renderer::render, without
 // comparing pixels or bypassing any GUI, model, hand, fog or extraction callbacks.
 pub(in crate::game) fn with_frame_scene(
-    test: impl FnOnce(&mut super::Game<'_>, &std::sync::Mutex<ClearAt>, &std::sync::atomic::AtomicUsize),
+    test: impl FnOnce(&mut crate::game::ClientGame<'_>, &std::sync::Mutex<ClearAt>, &std::sync::atomic::AtomicUsize),
 ) {
     let at = std::sync::Arc::new(std::sync::Mutex::new(ClearAt::Never));
     let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -238,7 +238,7 @@ fn fog_clear_reaches_the_complete_frame_consumer() {
     });
 }
 
-pub(in crate::game) fn host_clear(game: &super::Game<'_>) -> bool {
+pub(in crate::game) fn host_clear(game: &crate::game::ClientGame<'_>) -> bool {
     let host: &dyn ClientHost = game;
     host.clear_particles()
 }

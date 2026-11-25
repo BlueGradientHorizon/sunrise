@@ -108,15 +108,12 @@ fn game_gateway_phases() -> [[i32; 2]; 4] {
     options.headless = true;
     options.game_dir = Some(std::env::current_dir().unwrap());
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -151,7 +148,7 @@ fn game_gateway_phases() -> [[i32; 2]; 4] {
             ("NoGravity", Tag::Byte(1)),
         ]);
         game.load_listed(kind, Some(uuid), None, tag).unwrap();
-        ids.push(game.server.next_entity);
+        ids.push(game.side.next_entity);
     }
     assert_eq!(game.boats.len(), 1);
     assert_eq!(game.creatures.projectiles.len(), 1);
@@ -159,7 +156,7 @@ fn game_gateway_phases() -> [[i32; 2]; 4] {
         game.creatures.projectiles[0].kind,
         ProjectileKind::EnderPearl
     ));
-    game.tickets.0.update(Some(crate::ticket_levels::Sources {
+    game.side.tickets.0.update(Some(crate::ticket_levels::Sources {
         forced: vec![(0, 0)],
         ..Default::default()
     }));
@@ -169,7 +166,7 @@ fn game_gateway_phases() -> [[i32; 2]; 4] {
         state.set_cooldown(5);
         game.end.gateways.insert(id, state);
     }
-    let counters = |game: &Game| {
+    let counters = |game: &crate::game::ServerGame<'_>| {
         [
             game.end.gateways[&ids[0]].cooldown(),
             game.end.gateways[&ids[1]].cooldown(),

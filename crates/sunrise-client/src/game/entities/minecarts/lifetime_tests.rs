@@ -66,7 +66,7 @@ fn lifecycle_carts_keep_registrations_through_commands_unload_park_and_remote() 
 #[ignore = "daily"]
 fn connecting_to_a_remote_level_clears_the_existing_cart_list() {
     use sunrise_protocol::connection::Pipe;
-    super::super::native_entity_refs::tests::with_game(|game| {
+    super::super::native_entity_refs::tests::with_client_game(|game| {
         game.carts.push(Minecart::new(
             71,
             CartKind::Rideable,
@@ -385,7 +385,7 @@ fn a_bound_tnt_cart_keeps_its_join_when_damage_primes_it() {
 // A public entity lookup also hides a temporarily extracted row. Check the
 // residency journal itself so a terminal path cannot leave a permanent Taken
 // record that poisons later level queries (#2855).
-pub(in crate::game) fn assert_vehicle_residency_retired(game: &mut Game<'_>, id: u32) {
+pub(in crate::game) fn assert_vehicle_residency_retired(game: &mut crate::game::ServerGame<'_>, id: u32) {
     use crate::game::entity_residency::SlotAccess;
     assert_eq!(
         game.with_resident_slot(

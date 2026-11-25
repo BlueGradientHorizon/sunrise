@@ -929,7 +929,7 @@ mod tests {
         });
     }
 
-    fn with_player(test: impl FnOnce(&mut Game<'_>, EntityRef)) {
+    fn with_player(test: impl FnOnce(&mut crate::game::ServerGame<'_>, EntityRef)) {
         use super::super::native_entity_refs::tests::with_game;
         use sunrise_core::geometry::Vec3;
         with_game(|game| {
@@ -963,7 +963,7 @@ mod tests {
                 .unwrap();
             assert!(game.world.set_stored(0, 64, 0, lava));
             game.player.as_mut().unwrap().position = Vec3::new(0.5, 64.0, 0.5);
-            let tick_lava = |game: &mut Game<'_>| {
+            let tick_lava = |game: &mut crate::game::ServerGame<'_>| {
                 let side = game_side!(game);
                 let mut world = MotionWorld {
                     side: &side,
@@ -983,7 +983,7 @@ mod tests {
                 assert!(world.player.is_in_lava());
                 world.tick_environment_damage().unwrap();
             };
-            let health = |game: &Game<'_>| game.player.as_ref().unwrap().health.health();
+            let health = |game: &crate::game::ServerGame<'_>| game.player.as_ref().unwrap().health.health();
             let before = health(game);
             assert_eq!(player.fire_immune(game), Some(false));
             assert!(player.set_fire_immunity(game, true));
@@ -1288,8 +1288,8 @@ mod tests {
                 .registry
                 .default_state("minecraft:sand")
                 .unwrap();
-            game.server.next_entity += 1;
-            let falling = game.server.next_entity;
+            game.side.next_entity += 1;
+            let falling = game.side.next_entity;
             game.falling.push(FallingBlock {
                 size_answer: None,
                 ground: Default::default(),
@@ -1471,8 +1471,8 @@ mod tests {
                 .registry
                 .default_state("minecraft:sand")
                 .unwrap();
-            game.server.next_entity += 1;
-            let id = game.server.next_entity;
+            game.side.next_entity += 1;
+            let id = game.side.next_entity;
             game.falling.push(FallingBlock {
                 size_answer: None,
                 ground: Default::default(),
@@ -2028,7 +2028,7 @@ mod tests {
                     game.entity(33).unwrap(),
                 );
                 let local = game.local_player().unwrap().entity();
-                let read = |game: &Game<'_>, entity: EntityRef| {
+                let read = |game: &crate::game::ClientGame<'_>, entity: EntityRef| {
                     let host: &dyn mod_api::ClientHost = game;
                     entity.main_arm(host)
                 };
@@ -2079,7 +2079,7 @@ mod tests {
             let (a, b) = (game.player(12).unwrap(), game.player(13).unwrap());
             let host = game.lan.as_mut().unwrap();
             host.hub.update_guest(12, |g| g.info.main_hand = 0).unwrap();
-            let read = |game: &Game<'_>, entity: EntityRef| {
+            let read = |game: &crate::game::ServerGame<'_>, entity: EntityRef| {
                 let host: &dyn mod_api::ServerHost = game;
                 entity.main_arm(host)
             };

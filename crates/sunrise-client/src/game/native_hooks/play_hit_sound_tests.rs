@@ -37,8 +37,8 @@ fn play_hit_sound_helper_and_eight_mining_ticks() {
         mod_platform::testing::with_mods(mods.into(), || {
             with_game(|game| {
                 let scratch = tempfile::tempdir().unwrap();
-                game.server.world_root = scratch.path().to_path_buf();
-                game.save.0 = Arc::new(sunrise_client::save::SaveDir::new(
+                game.side.world_root = scratch.path().to_path_buf();
+                game.side.save.0 = Arc::new(sunrise_client::save::SaveDir::new(
                     scratch.path().to_path_buf(),
                     sunrise_client::save::LevelShape::OVERWORLD,
                     Some(Default::default()),

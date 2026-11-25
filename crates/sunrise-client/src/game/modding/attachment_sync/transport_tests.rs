@@ -61,13 +61,13 @@ impl mod_api::Hooks for Route {
 }
 
 /// The server's own attachment store.
-pub(super) fn store<'a>(server: &'a mut Game<'_>) -> &'a mut dyn AttachmentStore {
+pub(super) fn store<'a>(server: &'a mut crate::game::ServerGame<'_>) -> &'a mut dyn AttachmentStore {
     let host: &mut dyn Host = server;
     host.attachments()
 }
 
 /// The server sets the level's value, committed or rolled back.
-pub(super) fn set_level(game: &Game<'_>, value: i32, commit: bool) {
+pub(super) fn set_level(game: &crate::game::ClientGame<'_>, value: i32, commit: bool) {
     game.integrated
         .as_ref()
         .unwrap()
@@ -81,7 +81,7 @@ pub(super) fn set_level(game: &Game<'_>, value: i32, commit: bool) {
 }
 
 /// The window's synced copy of the level's value.
-fn window_value(game: &mut Game<'_>) -> Option<i32> {
+fn window_value(game: &mut crate::game::ClientGame<'_>) -> Option<i32> {
     let host: &dyn Host = game;
     let rows = host
         .attachment_query("sync_route", "value")
@@ -95,8 +95,8 @@ fn window_value(game: &mut Game<'_>) -> Option<i32> {
 }
 
 /// Let the server's hub tick `n` times, so later edits land in a later pass.
-pub(super) fn wait_server_ticks(game: &Game<'_>, n: u64) {
-    let ticks = |game: &Game<'_>| {
+pub(super) fn wait_server_ticks(game: &crate::game::ClientGame<'_>, n: u64) {
+    let ticks = |game: &crate::game::ClientGame<'_>| {
         game.integrated
             .as_ref()
             .unwrap()
@@ -111,7 +111,7 @@ pub(super) fn wait_server_ticks(game: &Game<'_>, n: u64) {
     }
 }
 
-fn wait_window(game: &mut Game<'_>, value: i32) {
+fn wait_window(game: &mut crate::game::ClientGame<'_>, value: i32) {
     let deadline = Instant::now() + Duration::from_secs(30);
     while window_value(game) != Some(value) {
         game.poll_remote().unwrap();

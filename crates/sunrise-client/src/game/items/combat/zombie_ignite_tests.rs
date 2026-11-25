@@ -6,7 +6,7 @@ use sunrise_client::mobs::{Who, ai::do_hurt_target, goals::Cx};
 use sunrise_core::random::LegacyRandom;
 use sunrise_world::food::Difficulty;
 
-fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let mut resources = None;
     let mut g = crate::game::game_tests::tests::server_game(&mut resources);
     g.options.dedicated = Some(Vec::new());

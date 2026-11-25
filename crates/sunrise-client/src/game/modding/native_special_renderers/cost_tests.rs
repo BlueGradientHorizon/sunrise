@@ -34,7 +34,7 @@ const SCENE: [&str; 6] = [
 ];
 
 /// `stack` resolved and submitted as a frame draws an item in the world, into `out`.
-fn draw(game: &Game<'_>, stack: &ItemStack, out: &mut Vec<Vertex>) -> ItemRenderState {
+fn draw(game: &crate::game::ClientGame<'_>, stack: &ItemStack, out: &mut Vec<Vertex>) -> ItemRenderState {
     let state = game.resolve_item(stack, DisplayContext::Gui, None, 0);
     game.submit_item_unlit(&state, glam::Mat4::IDENTITY, LIGHT, out);
     state
@@ -42,7 +42,7 @@ fn draw(game: &Game<'_>, stack: &ItemStack, out: &mut Vec<Vertex>) -> ItemRender
 
 /// The game's GUI atlas with only the missing-texture sprite, which every quad then draws
 /// with: the test game has no window to build the atlas in.
-fn give_every_quad_a_sprite(game: &mut Game<'_>) {
+fn give_every_quad_a_sprite(game: &mut crate::game::ClientGame<'_>) {
     let whole = sunrise_client::hud::Rect {
         u0: 0.0,
         v0: 0.0,
@@ -59,7 +59,7 @@ fn give_every_quad_a_sprite(game: &mut Game<'_>) {
 
 /// One frame of the scene: the frame's start, then every item, with the allocations each
 /// made and the vertices drawn.
-fn frame(game: &Game<'_>, stacks: &[ItemStack], out: &mut Vec<Vertex>) -> (usize, usize) {
+fn frame(game: &crate::game::ClientGame<'_>, stacks: &[ItemStack], out: &mut Vec<Vertex>) -> (usize, usize) {
     out.clear();
     let ((), started) = sunrise_threads::allocation_count::measure(|| game.begin_frame_draws());
     let ((), drawn) = sunrise_threads::allocation_count::measure(|| {
@@ -106,7 +106,7 @@ fn built_in_scenes_cost_nothing_more_without_a_listener() {
 }
 
 fn built_in_scenes_cost_nothing_more_without_a_listener_isolated() {
-    fn scene(game: &mut Game<'_>) -> (Vec<u8>, usize) {
+    fn scene(game: &mut crate::game::ClientGame<'_>) -> (Vec<u8>, usize) {
         let stacks: Vec<ItemStack> = SCENE.iter().map(|id| ItemStack::new(id, 1)).collect();
         give_every_quad_a_sprite(game);
         let mut out = Vec::new();
@@ -128,7 +128,7 @@ fn built_in_scenes_cost_nothing_more_without_a_listener_isolated() {
         (first, counts[0])
     }
     let mut unregistered = None;
-    crate::game::native_entity_refs::tests::with_game(|game| unregistered = Some(scene(game)));
+    crate::game::native_entity_refs::tests::with_client_game(|game| unregistered = Some(scene(game)));
     assert!(install_special_model_factories(BTreeMap::from([(
         mod_api::Identifier::parse("test:unmatched").unwrap(),
         OwnedSpecialModelFactory::new(
@@ -136,7 +136,7 @@ fn built_in_scenes_cost_nothing_more_without_a_listener_isolated() {
             SpecialModelFactory::new(|_| Ok(()), |(), _| Ok(Unmatched)),
         ),
     )])));
-    crate::game::native_entity_refs::tests::with_game(|game| {
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
         assert_eq!(scene(game), unregistered.unwrap());
     });
     assert!(!UNMATCHED_ASKED.load(Ordering::Relaxed));
@@ -178,7 +178,7 @@ fn special_item_draw_cost() {
             ),
         ),
     )]);
-    crate::game::native_entity_refs::tests::with_game(|game| {
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
         // Dirt becomes a special model drawing stone's cube under stone's display transforms.
         let special = game.pack.item_renderer.decode_definition(
             r#"{"model":{"type":"minecraft:special","base":"minecraft:block/stone","model":{"type":"test:stone"}}}"#,

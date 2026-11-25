@@ -70,10 +70,10 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
         ModEntry::new("later_edit", Box::new(Observe)),
     ]
     .into();
-    let check = |game: &mut Game<'_>, side| {
-        game.creative_screen.0 = Creative::from_json(&catalog).unwrap();
-        assert!(!game.creative_screen.0.has_contents());
-        let flags = |game: &mut Game<'_>, ids: [&str; 2]| {
+    let check = |game: &mut crate::game::ClientGame<'_>, side| {
+        game.side.creative_screen.0 = Creative::from_json(&catalog).unwrap();
+        assert!(!game.side.creative_screen.0.has_contents());
+        let flags = |game: &mut crate::game::ClientGame<'_>, ids: [&str; 2]| {
             let flags = ids.map(str::to_owned);
             if let Some(remote) = &mut game.remote {
                 remote.features = flags.into();
@@ -191,7 +191,7 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
         assert_eq!(book_level(&normal), 2);
         normal
     };
-    let check_replacement = |game: &mut Game<'_>, old: &CreativeModeTabs| {
+    let check_replacement = |game: &mut crate::game::ClientGame<'_>, old: &CreativeModeTabs| {
         // Registry installation must not dispatch; the next demand uses the changed definition.
         assert!(seen.lock().unwrap().events.is_empty());
         let fresh = ItemsHost::creative_tabs(game, CreativeTabPermissions::Normal).unwrap();

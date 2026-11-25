@@ -32,7 +32,7 @@ pub(in crate::game) struct BoundProjectiles {
 }
 
 impl BoundProjectiles {
-    pub(in crate::game) fn bind_two(game: &mut Game<'_>) -> Self {
+    pub(in crate::game) fn bind_two(game: &mut crate::game::ServerGame<'_>) -> Self {
         let index = Arc::new(Mutex::new(AttachmentIndex::default()));
         let mut values = [Attachments::default(), Attachments::default()];
         let registrations = std::array::from_fn(|i| {
@@ -122,7 +122,7 @@ impl Hooks for CancelImpacts {
 
 pub(in crate::game) fn with_batch(
     remove: bool,
-    test: impl FnOnce(&mut Game<'_>, [u32; 3], [JoinSeq; 3], u32, u32),
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, [u32; 3], [JoinSeq; 3], u32, u32),
 ) {
     let observed = Arc::new(Mutex::new(Observed::default()));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
@@ -143,8 +143,8 @@ pub(in crate::game) fn with_batch(
                 .default_state("minecraft:stone")
                 .unwrap();
             game.world.set(2, 64, 0, stone).unwrap();
-            let ids = std::array::from_fn(|i| game.server.next_entity + i as u32 + 1);
-            game.server.next_entity += 3;
+            let ids = std::array::from_fn(|i| game.side.next_entity + i as u32 + 1);
+            game.side.next_entity += 3;
             // Snowballs leave on impact; arrows stay in their slot, stuck in the wall.
             // The third projectile misses, so its survivor order must be preserved.
             for (i, kind) in [
@@ -381,7 +381,7 @@ pub(in crate::game) fn terminal_egg(action: Action, abort: bool) {
         }
         assert_eq!(observed.lands.load(Ordering::Relaxed), 0);
         assert_eq!(observed.deaths.load(Ordering::Relaxed), 0);
-        assert!(game.server.lan_entity_events.is_empty());
+        assert!(game.side.lan_entity_events.is_empty());
         assert_eq!(game.particles.0.len(), particles);
         assert_eq!(game.world.random.state(), random);
         assert!(game.mobs.is_empty());
@@ -468,7 +468,7 @@ fn two_discarded_eggs_leave_once_without_dying() {
     });
 }
 
-pub(in crate::game) fn shoot_arrow_at_wall(game: &mut Game<'_>, wall_x: i32, start_x: f64) {
+pub(in crate::game) fn shoot_arrow_at_wall(game: &mut crate::game::ServerGame<'_>, wall_x: i32, start_x: f64) {
     let stone = game
         .pack
         .assets
@@ -794,7 +794,7 @@ pub(in crate::game) fn wind_continuation_boat_witness_26_3(
 
 pub(in crate::game) fn assert_boat_matches_witness(
     witness: &str,
-    game: &Game<'_>,
+    game: &crate::game::ServerGame<'_>,
     tick: usize,
     tag: &str,
 ) {

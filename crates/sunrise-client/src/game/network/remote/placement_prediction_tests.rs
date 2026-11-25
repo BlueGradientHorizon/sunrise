@@ -2,7 +2,7 @@
 use super::*;
 #[allow(unused_imports)]
 use crate::game::{
-    native_connection_groups::ReceivedGroup, native_entity_refs::tests::with_game_role,
+    native_connection_groups::ReceivedGroup, native_entity_refs::tests::{with_game_role, with_game_role_client},
 };
 #[allow(unused_imports)]
 use mod_api::{
@@ -76,11 +76,11 @@ impl Hooks for PlaceMod {
 
 /// `test` on a survival-mode client game with `mods`' parts, connected to a server and with
 /// chunk (0, 0) loaded and empty.
-pub(in crate::game) fn on_a_client(mods: mod_api::Mods, test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn on_a_client(mods: mod_api::Mods, test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
-        with_game_role(
+        with_game_role_client(
             root,
             crate::game::execution_role::ExecutionRole::Client,
             |game| {
@@ -253,7 +253,7 @@ fn placement_and_prediction_choose_from_their_local_item_providers() {
         .unwrap();
     };
     let server_state = std::cell::Cell::new(None);
-    let setup = |game: &mut Game<'_>, lit: bool| {
+    let setup = |game: &mut crate::game::ServerGame<'_>, lit: bool| {
         let registry = game.pack.assets.registry;
         let state = registry
             .resolve(&sunrise_world::chunk::BlockState {
@@ -515,7 +515,7 @@ fn a_neighbour_s_survival_part_reads_the_prediction_s_blocks() {
     .into();
     on_a_client(mods, |game| {
         let state =
-            |game: &Game<'_>, name: &str| game.pack.assets.registry.default_state(name).unwrap();
+            |game: &crate::game::ClientGame<'_>, name: &str| game.pack.assets.registry.default_state(name).unwrap();
         for x in [0, 1] {
             game.world
                 .set(x, 64, 0, state(game, "minecraft:stone"))
@@ -657,7 +657,7 @@ fn a_denied_break_restores_wall_sign_text_and_synced_attachments() {
         let spruce = wall_sign("minecraft:spruce_wall_sign");
         let pos = (0, 65, 0);
         let holder = Holder::BlockEntity([0, 65, 0]);
-        let attachment_values = |game: &Game<'_>| {
+        let attachment_values = |game: &crate::game::ClientGame<'_>| {
             let host: &dyn Host = game;
             let query = host
                 .attachment_query(VALUE.namespace, VALUE.name)
@@ -917,7 +917,7 @@ fn a_placement_part_reads_comparator_outputs_the_client_holds() {
             .set(0, 64, 0, registry.default_state("minecraft:stone").unwrap())
             .unwrap();
         let cobblestone = ItemStack::new("minecraft:cobblestone", 1);
-        let read = |game: &mut Game<'_>| {
+        let read = |game: &mut crate::game::ClientGame<'_>| {
             COMPARATOR_READS.lock().unwrap().clear();
             assert!(game.remote_can_place(&top_of(0, 0), &cobblestone).is_some());
             std::mem::take(&mut *COMPARATOR_READS.lock().unwrap())
@@ -1056,7 +1056,7 @@ fn blocks_answer_a_held_item_s_click_on_the_client_as_vanilla() {
                 })
                 .unwrap()
         };
-        let click = |game: &mut Game<'_>, item: &str| {
+        let click = |game: &mut crate::game::ClientGame<'_>, item: &str| {
             let held = ItemStack::new(item, 1);
             game.remote_block_reacts(&top_of(0, 0), Some(&held), true).0
         };

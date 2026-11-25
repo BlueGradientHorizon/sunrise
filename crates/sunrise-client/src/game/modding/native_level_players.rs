@@ -64,7 +64,7 @@ mod tests {
     use mod_api::{ChunkRef, LevelReadError, LevelRef, PlayerRef, WorldEpoch};
 
     /// Open the Nether and go back, so it is a parked level of the server.
-    fn park_the_nether(game: &mut super::Game<'_>) {
+    fn park_the_nether(game: &mut crate::game::ServerGame<'_>) {
         game.enter_level(Dim::Nether).unwrap();
         game.enter_level(Dim::Overworld).unwrap();
     }
@@ -73,7 +73,7 @@ mod tests {
         players.map(|players| players.into_iter().map(PlayerRef::uuid).collect())
     }
 
-    fn collect_online_players(game: &Game<'_>, level: LevelRef) -> Vec<(u128, u32)> {
+    fn collect_online_players(game: &crate::game::ServerGame<'_>, level: LevelRef) -> Vec<(u128, u32)> {
         let mut players = Vec::new();
         assert_eq!(
             level.visit_online_players(game, &mut |player| {
@@ -155,7 +155,7 @@ mod tests {
         with_guests(|game| {
             let _serving = super::super::integrated::tests::install_serving(game, false);
             place_host(game);
-            game.server.next_entity = 100;
+            game.side.next_entity = 100;
             let level = game.level(game.dim.id()).unwrap();
             let fake = game.fake_player(level, 1234, "machine").unwrap();
             assert_eq!(
@@ -187,7 +187,7 @@ mod tests {
         with_guests(|game| {
             let _serving = super::super::integrated::tests::install_serving(game, false);
             place_host(game);
-            game.server.next_entity = 100;
+            game.side.next_entity = 100;
             let level = game.level(game.dim.id()).unwrap();
             let fake = game.fake_player(level, 1234, "machine").unwrap();
             for cz in -1..=1 {

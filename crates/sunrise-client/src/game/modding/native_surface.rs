@@ -431,7 +431,7 @@ mod tests {
     use sunrise_core::{geometry::Vec3, position::BlockPos};
     use sunrise_world::living_air::{LivingAirWorld, travel_in_air};
 
-    fn item_and_orb(game: &Game<'_>) -> (f64, f64) {
+    fn item_and_orb(game: &crate::game::ServerGame<'_>) -> (f64, f64) {
         use sunrise_client::entities::{ExperienceOrb, ItemEntity};
         let at = Vec3::new(5.5, 65.0, 5.5);
         let mut item = ItemEntity {
@@ -523,7 +523,7 @@ mod tests {
             );
             let floor = BlockPos::new(5, 64, 5);
             // The player's ground travel reads the block through its motion world.
-            let player = |game: &mut Game<'_>| {
+            let player = |game: &mut crate::game::ServerGame<'_>| {
                 let mut player = PlayerMotion::new(game.motion, Vec3::new(5.5, 65.0, 5.5)).unwrap();
                 player.set_walking_speed_base(0.1).unwrap();
                 player.ground.on_ground = true;
@@ -560,7 +560,7 @@ mod tests {
                 )
             };
             // An armor stand moving 0.2 along x on the ground, after one travel: 0.2 × friction × 0.91.
-            let travel_stand = |game: &Game<'_>, stand: &mut ArmorStand| {
+            let travel_stand = |game: &crate::game::ServerGame<'_>, stand: &mut ArmorStand| {
                 let scene = sunrise_client::collisions::SceneCollisions {
                     world: &game.world,
                     binding: game.collision,
@@ -581,7 +581,7 @@ mod tests {
                     .unwrap();
                 stand.tick_settle(StandMedium::Air, step);
             };
-            let stand = |game: &Game<'_>| {
+            let stand = |game: &crate::game::ServerGame<'_>| {
                 let mut stand = ArmorStand::new(7, Vec3::new(5.5, 65.0, 5.5), 0.0);
                 stand.ground.on_ground = true;
                 stand.velocity = Vec3::new(0.2, 0.0, 0.0);
@@ -940,7 +940,7 @@ mod tests {
                 std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
             );
             let dir = tempfile::tempdir().unwrap();
-            game.session_lock.0 =
+            game.side.session_lock.0 =
                 Some(sunrise_client::save::SessionLock::acquire(dir.path()).unwrap());
             let registry = game.pack.assets.registry;
             let chest = registry.default_state("minecraft:chest").unwrap();

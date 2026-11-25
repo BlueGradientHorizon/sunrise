@@ -12,7 +12,7 @@ use sunrise_core::position::ChunkPos;
 
 pub(in crate::game) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> Game<'a> {
+) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -35,15 +35,12 @@ pub(in crate::game) fn game<'a>(
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = &*resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
         None,
     )
     .unwrap();
@@ -53,7 +50,7 @@ pub(in crate::game) fn game<'a>(
 }
 
 /// Gives the current level the empty chunk at `x, z`, as an opened world has it.
-pub(in crate::game) fn load_chunk(game: &mut Game<'_>, x: i32, z: i32) {
+pub(in crate::game) fn load_chunk(game: &mut crate::game::ServerGame<'_>, x: i32, z: i32) {
     game.world
         .chunks
         .insert((x, z), Arc::new(Chunk::empty(x, z)));
@@ -62,7 +59,7 @@ pub(in crate::game) fn load_chunk(game: &mut Game<'_>, x: i32, z: i32) {
 
 /// Opens `dim`'s level through the same adapter the clone uses, gives it the
 /// empty chunk at the origin, and returns to `back`.
-pub(in crate::game) fn load_chunk_in(game: &mut Game<'_>, dim: Dim, back: Dim) {
+pub(in crate::game) fn load_chunk_in(game: &mut crate::game::ServerGame<'_>, dim: Dim, back: Dim) {
     game.enter_command_level(dim);
     assert_eq!(game.dim, dim, "the level is in place");
     load_chunk(game, 0, 0);
@@ -74,7 +71,7 @@ pub(in crate::game) fn load_chunk_in(game: &mut Game<'_>, dim: Dim, back: Dim) {
 pub(in crate::game) use crate::game::server_side::commands_server::clone_writes_tests::run;
 
 /// The value `/clone` returned, through `execute store result`.
-pub(in crate::game) fn cloned(game: &mut Game<'_>, command: &str) -> (bool, Option<String>, i32) {
+pub(in crate::game) fn cloned(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Option<String>, i32) {
     assert!(game.run_command("scoreboard players set r h236 -1"));
     let said = run(
         game,

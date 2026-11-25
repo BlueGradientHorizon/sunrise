@@ -96,7 +96,7 @@ fn a_foreign_id_is_not_owned_before_the_gui_atlas_is_asked() {
     with_mods(mods.into(), || {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             let green = GREEN.repeat(16 * 16);
-            let make = |game: &mut crate::game::Game, id: &str| {
+            let make = |game: &mut crate::game::ClientGame<'_>, id: &str| {
                 let id = Identifier::parse(id).unwrap();
                 as_mod("api-only", || {
                     game.create_dynamic_texture(&id, 16, 16, &green)

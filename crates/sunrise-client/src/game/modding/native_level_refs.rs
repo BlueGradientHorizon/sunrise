@@ -1248,7 +1248,7 @@ mod tests {
 
     /// A logical server with its worker queue running rather than the
     /// title-screen streamer's paused placeholder.
-    fn with_chunk_streaming(test: impl FnOnce(&mut super::Game<'_>)) {
+    fn with_chunk_streaming(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         with_game(|game| {
             game.options.headless = true;
             game.streaming.paused = false;
@@ -1739,7 +1739,7 @@ mod tests {
     /// A stone floor under chunk (0, 0) at `y - 1` and the standing level `y` returned, with
     /// `fluids` placed `dy` blocks above it: each a block id and its `level` property (0 is a
     /// source).
-    fn pool(game: &mut super::super::Game<'_>, fluids: &[([i32; 3], &str, &str)]) -> i32 {
+    fn pool(game: &mut crate::game::ServerGame<'_>, fluids: &[([i32; 3], &str, &str)]) -> i32 {
         use std::sync::Arc;
         use sunrise_client::chunk::Chunk;
 
@@ -1898,7 +1898,7 @@ mod tests {
             let stale = LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension());
             let nether = LevelRef::new(level.epoch(), mod_api::DimensionKey::NETHER);
             let y = pool(game, &[([8, 0, 8], "minecraft:water", "0")]);
-            let amounts = |game: &mut super::super::Game<'_>| {
+            let amounts = |game: &mut crate::game::ServerGame<'_>| {
                 [[9, 8], [7, 8], [8, 9], [8, 7], [8, 8]]
                     .map(|[x, z]| level.fluid_state(game, [x, y, z]).map(|f| f.amount))
             };
@@ -2052,10 +2052,10 @@ mod tests {
             assert!(game.chunk_set_forced(chunk, true));
             assert!(game.levels_to_tick().contains(&game.dim));
             game.save_chunk_tickets().unwrap();
-            assert!(game.save.0.load_forced_chunks().contains(&(5, 6)));
+            assert!(game.side.save.0.load_forced_chunks().contains(&(5, 6)));
             assert!(game.chunk_set_forced(chunk, false));
             game.save_chunk_tickets().unwrap();
-            assert!(game.save.0.load_forced_chunks().is_empty());
+            assert!(game.side.save.0.load_forced_chunks().is_empty());
         });
     }
 
@@ -2137,7 +2137,7 @@ mod tests {
             game.enter_level(other).unwrap();
             game.enter_level(back).unwrap();
             let mut expected = game
-                .levels
+                .side.levels
                 .0
                 .parked_world_of(other.id())
                 .unwrap()
@@ -2148,7 +2148,7 @@ mod tests {
             let drawn = parked.with_random(&mut *host, |r| r.next_long()).unwrap();
             assert_eq!(drawn, expected.next_long());
             let mut after = game
-                .levels
+                .side.levels
                 .0
                 .parked_world_of(other.id())
                 .unwrap()
@@ -2195,15 +2195,15 @@ mod tests {
             expected_active.next_gaussian();
             expected_parked.next_gaussian();
             game.world.random = LevelRandom::for_level(expected_active.clone());
-            game.levels
+            game.side.levels
                 .0
                 .parked_world_mut_of(other.id())
                 .unwrap()
                 .random = LevelRandom::for_level(expected_parked.clone());
-            let states = |game: &super::Game<'_>| {
+            let states = |game: &crate::game::ServerGame<'_>| {
                 [
                     level_random_state(&game.world.random),
-                    level_random_state(&game.levels.0.parked_world_of(other.id()).unwrap().random),
+                    level_random_state(&game.side.levels.0.parked_world_of(other.id()).unwrap().random),
                 ]
             };
             let draw = |rng: &mut dyn mod_api::RandomSource| {
@@ -2368,7 +2368,7 @@ mod tests {
         controller("machines:quarry")
     }
     /// A game whose mods are `Machines` and `Other`, with their controllers registered.
-    fn with_machines(test: impl FnOnce(&mut super::super::Game<'_>)) {
+    fn with_machines(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         mod_platform::testing::with_mods(mods(), || with_chunk_streaming(test));
     }
 
@@ -2401,7 +2401,7 @@ mod tests {
                 .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
                 .unwrap();
             assert!(level.set_weather_levels(game, 0.0, 0.0));
-            let moisture = |game: &super::super::Game<'_>, pos| {
+            let moisture = |game: &crate::game::ServerGame<'_>, pos| {
                 level
                     .block_property(game, pos, "moisture")
                     .unwrap()
@@ -2580,7 +2580,7 @@ mod tests {
                     .as_deref(),
                 Some("7")
             );
-            game.save
+            game.side.save
                 .0
                 .save(
                     &[game.world.chunks.get(&(0, 0)).unwrap().clone()],
@@ -2588,14 +2588,14 @@ mod tests {
                     game.res.biomes(),
                 )
                 .unwrap();
-            let root = game.save.0.root.clone();
+            let root = game.side.save.0.root.clone();
             let shape = game.world.shape;
             game.native_levels_closing();
             let save = SaveDir::new(root, shape, Some(Default::default()));
             let chunk = save.load(0, 0, registry, game.res.biomes()).unwrap();
             game.world = World::new(registry.default_state("minecraft:air").unwrap(), 0);
             game.world.chunks.insert((0, 0), Arc::new(chunk));
-            game.save.0 = Arc::new(save);
+            game.side.save.0 = Arc::new(save);
             game.native_lifecycle
                 .begin_open(mod_api::Authority::IntegratedServer);
             let reopened = game.level(game.dim.id()).unwrap();
@@ -2707,25 +2707,25 @@ mod tests {
             assert!(game.chunk_set_mod_forced(chunk, quarry(), entity, true, false));
             assert!(game.chunk_set_mod_forced(chunk, drill, block, true, false));
             game.save_chunk_tickets().unwrap();
-            let vanilla = game.save.0.load_forced_chunks();
+            let vanilla = game.side.save.0.load_forced_chunks();
             assert!(vanilla.is_empty(), "vanilla's file has no mod ticket");
             // A new level starts with no live tickets; only the saved tickets carry over.
-            let reopen = |game: &mut super::super::Game<'_>, slot_of: fn(&str) -> Option<u32>| {
+            let reopen = |game: &mut crate::game::ServerGame<'_>, slot_of: fn(&str) -> Option<u32>| {
                 let terrain =
                     TestTerrain::new(game.pack.assets.registry, game.res.biomes()).unwrap();
                 game.streaming = Streaming::new(Arc::new(terrain), game.worker_context(), 1);
                 game.streaming.mesh = false;
                 game.streaming.radius = 0;
                 game.streaming.load_forced(
-                    game.save.0.load_forced_chunks(),
-                    game.save.0.load_mod_tickets(slot_of),
+                    game.side.save.0.load_forced_chunks(),
+                    game.side.save.0.load_mod_tickets(slot_of),
                 );
                 game.validate_mod_chunk_tickets(game.dim);
             };
             reopen(game, known_slot);
             // Each ticket comes back under the controller that held it.
             let listed =
-                |game: &super::super::Game<'_>, c| game.level_mod_forced_chunks(level, c).unwrap();
+                |game: &crate::game::ServerGame<'_>, c| game.level_mod_forced_chunks(level, c).unwrap();
             assert_eq!(listed(game, quarry()).len(), 2);
             assert_eq!(listed(game, drill), vec![(block, [-9, 4], false)]);
             assert!(game.streaming.forced.contains(&(-9, 4)));
@@ -2736,7 +2736,7 @@ mod tests {
             game.save_chunk_tickets().unwrap();
             reopen(game, known_slot);
             assert!(game.streaming.forced.is_empty());
-            assert!(game.save.0.load_mod_tickets(known_slot).is_empty());
+            assert!(game.side.save.0.load_mod_tickets(known_slot).is_empty());
             // Released tickets leave the file.
             assert!(game.chunk_set_mod_forced(chunk, quarry(), Block([-140, 70, 70]), true, false));
             assert!(game.chunk_set_mod_forced(
@@ -2747,7 +2747,7 @@ mod tests {
                 false
             ));
             game.save_chunk_tickets().unwrap();
-            assert!(game.save.0.load_mod_tickets(known_slot).is_empty());
+            assert!(game.side.save.0.load_mod_tickets(known_slot).is_empty());
         });
     }
 
@@ -2777,7 +2777,7 @@ mod tests {
     }
 
     /// The result `/forceload query` gives: the chunks listed, or 0 when it reports none.
-    fn query_result(game: &mut super::super::Game<'_>, command: &str) -> Option<i32> {
+    fn query_result(game: &mut crate::game::ServerGame<'_>, command: &str) -> Option<i32> {
         let d = game.ui.dispatcher.0.clone();
         let parse = d.parse(command, &game.ui.registries);
         let (ctx, _) = parse.executable().ok()?;
@@ -2913,7 +2913,7 @@ mod tests {
                 assert_eq!(parked.load_chunk(host, [3, 3]), Ok(()));
                 assert_eq!(game.dim, back, "loading must not switch the acting level");
                 let parked_chunk =
-                    &game.levels.0.parked_world_of(other.id()).unwrap().chunks[&(3, 3)];
+                    &game.side.levels.0.parked_world_of(other.id()).unwrap().chunks[&(3, 3)];
                 assert!(parked_chunk.lit, "the parked level's chunk is lit too");
                 let heard = HEARD.with_borrow_mut(std::mem::take);
                 assert!(
@@ -3028,7 +3028,7 @@ mod tests {
                     .forces_natural_spawning((11, 12))
             );
             game.save_chunk_tickets().unwrap();
-            let saved = game.save.0.load_mod_tickets(known_slot);
+            let saved = game.side.save.0.load_mod_tickets(known_slot);
             game.streaming.load_forced(Default::default(), saved);
             game.validate_mod_chunk_tickets(game.dim);
             let tickets = game.streaming.mod_tickets();
@@ -3148,7 +3148,7 @@ mod tests {
                     .any(|(id, tickets)| *id == "machines:quarry" && tickets.is_empty())
             );
             game.save_chunk_tickets().unwrap();
-            let file = game.save.0.load_mod_tickets(known_slot);
+            let file = game.side.save.0.load_mod_tickets(known_slot);
             assert_eq!(file.len(), 3);
             assert!(
                 !file
@@ -3170,7 +3170,7 @@ mod tests {
                 };
                 let world =
                     std::env::temp_dir().join(format!("sunrise-validate-{}", std::process::id()));
-                game.server.world_root = world.clone();
+                game.side.world_root = world.clone();
                 let root = sunrise_client::save::dimension_dir(&world, other.id());
                 let save = sunrise_client::save::SaveDir::new(
                     root,
@@ -3187,7 +3187,7 @@ mod tests {
                 let back = game.dim;
                 game.enter_level(other).unwrap();
                 game.enter_level(back).unwrap();
-                let parked = game.levels.0.parked_streaming_of(other.id()).unwrap();
+                let parked = game.side.levels.0.parked_streaming_of(other.id()).unwrap();
                 assert!(!parked.forced.contains(&(7, 7)));
                 assert!(parked.forced.contains(&(8, 8)));
                 assert!(game.levels_to_tick().contains(&other));
@@ -3330,7 +3330,7 @@ pub(in crate::game) mod environment_read_tests {
     use std::sync::Arc;
     use sunrise_client::chunk::Chunk;
 
-    fn paint_biome(game: &mut crate::game::Game<'_>, name: &str) {
+    fn paint_biome(game: &mut crate::game::ServerGame<'_>, name: &str) {
         let biome = world_biomes!(game).id(name);
         let mut chunk = Chunk::empty(0, 0);
         for y in 0..chunk.sections.len() as i32 * 4 {
@@ -3502,7 +3502,7 @@ pub(in crate::game) mod environment_read_tests {
             assert_eq!(nether.get_sky_darken(game), Some(11));
             assert_eq!(game.dim, Dim::Nether, "a read does not swap levels");
             let parked = game
-                .levels
+                .side.levels
                 .0
                 .parked_world_of("minecraft:overworld")
                 .unwrap();

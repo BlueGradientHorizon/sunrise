@@ -1661,7 +1661,7 @@ pub(in crate::game) mod tests {
 
         peaceful_tests::with_types(ExecutionRole::IntegratedServer, |game| {
             let egg = peaceful_tests::trader_egg();
-            let dispense = |game: &mut Game<'_>| {
+            let dispense = |game: &mut crate::game::ServerGame<'_>| {
                 game.dispense_spawn_egg((4, 64, 4), Direction::Up, egg.clone())
                     .unwrap()
                     .0
@@ -1853,7 +1853,7 @@ pub(in crate::game) mod tests {
     /// the zombie first. Dispenses `stack` and answers whether the dispenser equipped it, the
     /// zombie's slot that took it, whether the stand took it, and where the two stand.
     pub(in crate::game::server_side) fn dress(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         row: u32,
         stack: ItemStack,
     ) -> (bool, Option<Slot>, bool, [f64; 3]) {
@@ -1958,7 +1958,7 @@ pub(in crate::game) mod tests {
             game.options.dedicated = Some(Vec::new());
             let slot = |name: &str| ("slot", Tag::String(name.into()));
             let allowed = |list: Vec<Tag>| ("allowed_entities", Tag::List(list));
-            let dressed = |game: &mut Game<'_>, row, stack| {
+            let dressed = |game: &mut crate::game::ServerGame<'_>, row, stack| {
                 let (done, worn, stand, _) = dress(game, row, stack);
                 (done, worn, stand)
             };
@@ -2112,7 +2112,7 @@ pub(in crate::game) mod tests {
     fn a_damage_item_part_changes_the_wear_of_a_dispensed_tool() {
         use crate::game::damage_item_tests::{Rule, with_wear_part};
         with_wear_part("minecraft:brush", Rule::Halve, |game, wear| {
-            let damage = |game: &mut Game<'_>, item: &str, points| {
+            let damage = |game: &mut crate::game::ServerGame<'_>, item: &str, points| {
                 game.hurt_and_break(ItemStack::new(item, 1), points)
                     .unwrap()
                     .damage
@@ -2195,7 +2195,7 @@ pub(in crate::game) mod tests {
     /// standing at (8.5, 200, 8.5) on a stone floor.
     pub(in crate::game::server_side) fn server_with_guest(
         resources: &mut Option<std::sync::Arc<crate::game::Resources>>,
-    ) -> Game<'_> {
+    ) -> crate::game::ServerGame<'_> {
         let mut game = super::super::game_tests::tests::server_game(resources);
         game.build_registries();
         game.set_allow_commands(true);
@@ -2256,7 +2256,7 @@ pub(in crate::game) mod tests {
     }
 
     pub(in crate::game::server_side) fn dispense_at_guest(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         item: &str,
     ) -> (bool, u32) {
         let mut stack = ItemStack::new(item, 2);
@@ -2442,7 +2442,7 @@ pub(in crate::game) mod tests {
     fn shulker_box_dispenser_builds_directional_place_context() {
         use sunrise_core::{geometry::Vec3, position::BlockPos};
         for facing in Direction::ALL {
-            let over_air = super::Game::shulker_box_place_context(
+            let over_air = crate::game::ServerGame::shulker_box_place_context(
                 (10, 64, 5),
                 facing,
                 true,
@@ -2459,7 +2459,7 @@ pub(in crate::game) mod tests {
             assert_eq!(over_air.item, "minecraft:shulker_box");
             assert!(!over_air.can_use_game_master_blocks);
 
-            let over_solid = super::Game::shulker_box_place_context(
+            let over_solid = crate::game::ServerGame::shulker_box_place_context(
                 (10, 64, 5),
                 facing,
                 false,
@@ -2508,7 +2508,7 @@ pub(in crate::game) mod tests {
                     .default_state("minecraft:air")
                     .unwrap();
                 game.world.set(6, 64, 5, stone).unwrap();
-                let dispense = |game: &mut Game<'_>, item: &str| {
+                let dispense = |game: &mut crate::game::ServerGame<'_>, item: &str| {
                     super::super::dispense_fixture::start_recording();
                     let out = game
                         .dispense_item((5, 64, 5), Direction::East, ItemStack::new(item, 1))

@@ -57,7 +57,7 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
             [84, 0, 0, 4],
         );
 
-        let reset_warden = |game: &mut Game<'_>| {
+        let reset_warden = |game: &mut crate::game::ServerGame<'_>| {
             let w = game.mobs.iter_mut().find(|m| m.id == warden_id).unwrap();
             w.invulnerable = 0;
             w.last_hurt = 0.0;
@@ -65,7 +65,7 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
             w.extra.warden.as_mut().unwrap().anger = Default::default();
             assert!(ai::set_brain_target(w, None, None));
         };
-        let warden_state = |game: &Game<'_>| {
+        let warden_state = |game: &crate::game::ServerGame<'_>| {
             let st = game
                 .mobs
                 .iter()
@@ -200,7 +200,7 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
         const WARDEN: &str = "00000054-0000-0000-0000-000000000001";
         const DRAGON: &str = "00000054-0000-0000-0000-000000000007";
         let warden = game.mob(game.entity(warden_id).unwrap()).unwrap();
-        let check_target = |game: &mut Game<'_>, expected: Option<mod_api::LivingRef>| {
+        let check_target = |game: &mut crate::game::ServerGame<'_>, expected: Option<mod_api::LivingRef>| {
             assert_eq!(warden.target(game), expected);
             // Keep guest 23 selected in the tick even when the stored target is 22.
             assert_eq!(read_borrowed_target(game, warden, pig_id, 23), expected);
@@ -211,11 +211,11 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
                 Some(_) => "@s[type=minecraft:ender_dragon]",
                 None => "@s",
             };
-            game.cmds.0.results = Some(Vec::new());
+            game.side.cmds.0.results = Some(Vec::new());
             assert!(game.run_command(&format!(
                 "execute as {WARDEN} on target if entity {selector}"
             )));
-            let results = game.cmds.0.results.take().unwrap();
+            let results = game.side.cmds.0.results.take().unwrap();
             if expected.is_some() {
                 assert_eq!(results, [(true, 1)], "{selector}");
             } else {
@@ -228,7 +228,7 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
         guest_server(game, true, false);
         let (first, _first_out) = guest(game, 22);
         let (second, _second_out) = guest(game, 23);
-        let hurt = |game: &mut Game<'_>, amount, direct| {
+        let hurt = |game: &mut crate::game::ServerGame<'_>, amount, direct| {
             game.hurt_target(
                 Target::Mob(warden_id),
                 amount,
@@ -258,7 +258,7 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
 
         // A read after every live edit: absence and the two unreadable shapes
         // keep the brain; a correctly typed empty map replaces it.
-        let cooldown = |game: &mut Game<'_>| {
+        let cooldown = |game: &mut crate::game::ServerGame<'_>| {
             game.data_of(&DataRef::Entity(Target::Mob(warden_id)))
                 .unwrap()
                 .get("Brain")
@@ -312,7 +312,7 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
     });
 }
 
-pub(in crate::game) fn setup_live_damage_world(game: &mut Game<'_>) {
+pub(in crate::game) fn setup_live_damage_world(game: &mut crate::game::ServerGame<'_>) {
     use std::sync::Arc;
     use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
@@ -328,19 +328,19 @@ pub(in crate::game) fn setup_live_damage_world(game: &mut Game<'_>) {
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(14.5, 64.0, 14.5)).unwrap());
     crate::game::native_entity_refs::tests::bind_local_player(game, 1, 99);
     game.set_mode_id(0);
-    game.server.next_entity = 100;
+    game.side.next_entity = 100;
 }
 
 pub(in crate::game) fn spawn_test_projectile(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     kind: sunrise_client::projectiles::ProjectileKind,
     at: sunrise_core::geometry::Vec3,
     owner: Option<Who>,
     uuid: [i32; 4],
 ) -> u32 {
     use sunrise_client::projectiles::Projectile;
-    game.server.next_entity += 1;
-    let id = game.server.next_entity;
+    game.side.next_entity += 1;
+    let id = game.side.next_entity;
     let mut shot = Projectile::new(kind, at, owner);
     shot.id = id;
     shot.previous = at;

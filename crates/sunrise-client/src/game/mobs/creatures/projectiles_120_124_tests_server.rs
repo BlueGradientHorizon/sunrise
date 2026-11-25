@@ -95,14 +95,14 @@ pub(in crate::game::server_side) use sunrise_core::geometry::Vec3;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_core::random::{LegacyRandom, RandomSource};
 
-pub(in crate::game::server_side) fn alive_124(game: &Game<'_>, t: Target124) -> bool {
+pub(in crate::game::server_side) fn alive_124(game: &crate::game::ServerGame<'_>, t: Target124) -> bool {
     match t {
         Target124::Boat(id) => game.boats.iter().any(|b| b.id == id),
         Target124::Cart(id) => game.carts.iter().any(|c| c.id == id),
         Target124::Frame(id) => game.item_frames.iter().any(|f| f.id == id),
         Target124::Painting(id) => game.paintings.iter().any(|p| p.id == id),
         Target124::Falling(id) => game.falling.iter().any(|f| f.id == id),
-        Target124::Knot(id) => game.others.0.iter().any(|o| o.id == id),
+        Target124::Knot(id) => game.side.others.0.iter().any(|o| o.id == id),
         Target124::Cushion(id) => game.cushions.iter().any(|c| c.id == id),
         Target124::Crystal(id) => game.crystals.iter().any(|c| c.id == id),
         Target124::Tnt(id) => game.tnts.iter().any(|t| t.id == id),
@@ -178,7 +178,7 @@ pub(in crate::game) fn run_witness_firework_rocket_targets_124() {
                 assert!(game.run_command("summon minecraft:leash_knot 3.5 64.375 4.5 {}"));
                 targets.insert(
                     "knot".into(),
-                    Target124::Knot(game.others.0.last().unwrap().id),
+                    Target124::Knot(game.side.others.0.last().unwrap().id),
                 );
             }
             "cushion" => {

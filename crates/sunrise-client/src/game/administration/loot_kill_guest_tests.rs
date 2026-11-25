@@ -19,7 +19,7 @@ const PIG: &str = "00000038-0000-0000-0000-000000000002";
 
 /// A host on a stone floor, holding a plain sword, with one connected,
 /// placed guest (conn 2), an elder guardian, a pig and a chest.
-fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
+fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -42,15 +42,12 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -95,7 +92,7 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
     )
     .unwrap();
     // Reserve the manually installed guest in the shared runtime ID allocator.
-    game.server.next_entity = game.server.next_entity.max(2);
+    game.side.next_entity = game.side.next_entity.max(2);
     let (tx, _rx) = mpsc::channel();
     let mut guest = Guest::new(
         Joined {
@@ -127,9 +124,9 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
     assert!(game.run_command("difficulty normal"));
     let still = "NoAI:1b,NoGravity:1b,PersistenceRequired:1b,Silent:1b";
     let mut setup = |command: String| {
-        game.server.chat_capture = Some(Vec::new());
+        game.side.chat_capture = Some(Vec::new());
         let ok = game.run_command(&command);
-        let said = game.server.chat_capture.take().unwrap_or_default();
+        let said = game.side.chat_capture.take().unwrap_or_default();
         let said: Vec<_> = said.iter().map(sunrise_client::text::Text::plain).collect();
         assert!(ok, "{command}: {said:?}");
     };
@@ -143,10 +140,10 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
 }
 
 /// Runs `command`: whether it succeeded and what the issuer was told.
-fn run(game: &mut Game<'_>, command: &str) -> (bool, Vec<String>) {
-    game.server.chat_capture = Some(Vec::new());
+fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Vec<String>) {
+    game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.server.chat_capture.take().unwrap_or_default();
+    let said = game.side.chat_capture.take().unwrap_or_default();
     (
         ok,
         said.iter().map(sunrise_client::text::Text::plain).collect(),
@@ -155,7 +152,7 @@ fn run(game: &mut Game<'_>, command: &str) -> (bool, Vec<String>) {
 
 /// The chest's items after `command` puts the guardian's kill loot in it,
 /// and what the issuer was told.
-fn loot(game: &mut Game<'_>, command: &str) -> (Vec<String>, Vec<String>) {
+fn loot(game: &mut crate::game::ServerGame<'_>, command: &str) -> (Vec<String>, Vec<String>) {
     // An empty chest answers "Nothing changed" here; that is fine.
     let _ = game.run_command("data merge block 8 100 8 {Items:[]}");
     let (_, said) = run(game, command);
@@ -195,7 +192,7 @@ fn loot_kill_as_a_guest_is_killed_by_that_player() {
 }
 
 /// The full stacks (item, count, components) after `command`.
-fn loot_stacks(game: &mut Game<'_>, command: &str) -> Vec<(String, u32, bool)> {
+fn loot_stacks(game: &mut crate::game::ServerGame<'_>, command: &str) -> Vec<(String, u32, bool)> {
     let _ = game.run_command("data merge block 8 100 8 {Items:[]}");
     assert!(game.run_command(command));
     (0..27)

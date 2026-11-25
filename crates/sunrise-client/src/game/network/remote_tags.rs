@@ -345,7 +345,7 @@ pub(in crate::game) mod tests {
                 .unwrap();
                 request.save_root = save.path().to_owned();
                 game.load_world(request).unwrap();
-                let packet = |game: &super::Game<'_>| {
+                let packet = |game: &crate::game::ServerGame<'_>| {
                     sync::sync_data(
                         &game.options.resources,
                         &game.res.core.item_data,
@@ -410,7 +410,7 @@ pub(in crate::game) mod tests {
                     mod_api::__private::tag_key(&Identifier::parse("test:empty_items").unwrap())
                         .unwrap();
                 assert_eq!(mod_api::Tags::items(game, tag), TagMembers::Unavailable);
-                let item_reads = |game: &super::Game<'_>| {
+                let item_reads = |game: &crate::game::ClientGame<'_>| {
                     let reader = LoopReader(&game.loop_context);
                     let view = reader.context();
                     (
@@ -795,7 +795,7 @@ pub(in crate::game) mod tests {
                 }],
             }],
         };
-        let predicting = |game: &mut super::Game<'_>| {
+        let predicting = |game: &mut crate::game::ClientGame<'_>| {
             let hooks = game.damage_hooks.client_side();
             let mut lent = sunrise_client::health::LentLevel::take(&mut game.world);
             let seen = {

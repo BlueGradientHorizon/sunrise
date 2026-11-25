@@ -16,7 +16,7 @@ use sunrise_core::random::RandomSource;
 fn floored_game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
     root: &std::path::Path,
-) -> Game<'a> {
+) -> crate::game::ServerGame<'a> {
     let settings = Settings::default();
     let loaded = load_resources(
         sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
@@ -35,15 +35,12 @@ fn floored_game<'a>(
     options.resources = root.to_path_buf();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let resources = &*resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
         None,
     )
     .unwrap();
@@ -74,14 +71,14 @@ fn floored_game<'a>(
 /// A game whose window player stands at (8.5, 4, 8.5) over the floor.
 fn game_with_player<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> Game<'a> {
+) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
     );
     let mut game = floored_game(resources, &root);
     game.creative = false;
-    game.server.lan_acting = Some(7);
+    game.side.lan_acting = Some(7);
     let at = Vec3::new(8.5, 4.0, 8.5);
     game.player = Some(PlayerMotion::new(game.motion, at).unwrap());
     game
@@ -91,7 +88,7 @@ fn game_with_player<'a>(
 /// (`1 + PuffState`).
 fn game_with_fish<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> Game<'a> {
+) -> crate::game::ServerGame<'a> {
     let mut game = game_with_player(resources);
     let at = Vec3::new(8.5, 4.0, 8.5);
     let kind = game.res.mob_types()["minecraft:pufferfish"].clone();
@@ -101,7 +98,7 @@ fn game_with_fish<'a>(
     game
 }
 
-fn silverfish(game: &Game<'_>) -> usize {
+fn silverfish(game: &crate::game::ServerGame<'_>) -> usize {
     game.mobs
         .iter()
         .filter(|m| m.kind.id == "minecraft:silverfish")

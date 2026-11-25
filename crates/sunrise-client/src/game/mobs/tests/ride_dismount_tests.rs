@@ -112,7 +112,7 @@ fn getting_off_a_pig_steps_to_the_block_beside_its_facing() {
 }
 
 /// The local player standing at 8.5 64 8.5, able to run commands.
-fn scene(game: &mut Game<'_>) {
+fn scene(game: &mut crate::game::ServerGame<'_>) {
     game.build_registries();
     game.set_allow_commands(true);
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5)).unwrap());
@@ -124,7 +124,7 @@ const PIG: &str = "0000ca3e-0000-0000-0000-000000000008";
 const RESOURCES: &str = "set SUNRISE_TEST_RESOURCES to prepared resources";
 
 /// Summons the happy ghast of `GHAST` at 8.5 64 8.5 and returns its id.
-fn ghast(game: &mut Game<'_>) -> u32 {
+fn ghast(game: &mut crate::game::ServerGame<'_>) -> u32 {
     assert!(game.run_command(
         "summon minecraft:happy_ghast 8.5 64 8.5 {Tame:1b,NoAI:1b,UUID:[I;51774,0,0,7]}"
     ));
@@ -206,7 +206,7 @@ fn a_mob_that_boards_a_happy_ghast_after_its_player_takes_the_next_seat() {
 }
 
 /// Boards the pigs of `PIG`'s UUID block (`UUID:[I;51774,0,0,n]`) one after another with `/ride`.
-fn ride_pigs(game: &mut Game<'_>, count: u32) {
+fn ride_pigs(game: &mut crate::game::ServerGame<'_>, count: u32) {
     for n in 0..count {
         let uuid = format!("0000ca3e-0000-0000-0000-{:012x}", 0x10 + n);
         assert!(game.run_command(&format!(

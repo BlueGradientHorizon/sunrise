@@ -571,7 +571,7 @@ pub(in crate::game) mod tests {
 
     /// Opens the game to LAN guests with no saved board on disk (the test world keeps its
     /// folder between runs); returns the scoreboard file's path.
-    pub(in crate::game) fn open_lan(game: &mut Game<'_>) -> std::path::PathBuf {
+    pub(in crate::game) fn open_lan(game: &mut crate::game::ServerGame<'_>) -> std::path::PathBuf {
         let config = HubConfig {
             default_game_mode: 0,
             guest_commands: false,
@@ -584,8 +584,8 @@ pub(in crate::game) mod tests {
             seed: 0,
             max_players: 10,
             integrated: true,
-            levels: game.server.level_shapes,
-            level_seeds: game.levels.0.runtime.seeds(),
+            levels: game.side.level_shapes,
+            level_seeds: game.side.levels.0.runtime.seeds(),
         };
         let mut net = NetConfig::lan(0, "test".into(), 10);
         net.listen = false;
@@ -596,7 +596,7 @@ pub(in crate::game) mod tests {
         };
         game.lan_host(settings, net, config).unwrap();
         // The test world keeps its folder between runs: start from no saved board.
-        let saved_board = game.server.world_root.join("data/minecraft/scoreboard.dat");
+        let saved_board = game.side.world_root.join("data/minecraft/scoreboard.dat");
         let _ = std::fs::remove_file(&saved_board);
         saved_board
     }

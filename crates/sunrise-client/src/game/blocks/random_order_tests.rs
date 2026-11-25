@@ -13,7 +13,7 @@ use sunrise_core::geometry::Vec3;
 fn game_loading<'a>(
     resources: &'a mut Option<Arc<crate::game::Resources>>,
     order: &[(i32, i32)],
-) -> Game<'a> {
+) -> crate::game::ServerGame<'a> {
     let mut game = server_game(resources);
     game.settings.simulation_distance = 5;
     game.settings.render_distance = 8;

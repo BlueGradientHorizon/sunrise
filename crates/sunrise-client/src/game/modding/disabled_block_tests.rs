@@ -257,7 +257,7 @@ pub(in crate::game) mod tests {
 
     pub(in crate::game) fn with_inert_block(
         name: &str,
-        test: impl FnOnce(&mut Game<'_>, BlockStateId, &Probe),
+        test: impl FnOnce(&mut crate::game::ServerGame<'_>, BlockStateId, &Probe),
     ) {
         let name = format!("game::server_side::disabled_block_tests::tests::{name}");
         if fixture::run_fresh_cases(&name, "SUNRISE_INERT_BLOCK_CHILD", &["valid"]) {
@@ -343,7 +343,7 @@ pub(in crate::game) mod tests {
         with_inert_block(
             "reenabled_owner_resumes_held_scheduled_tick",
             |game, state, probe| {
-                game.tickets
+                game.side.tickets
                     .0
                     .update(Some(sunrise_client::ticket_levels::Sources {
                         forced: vec![(0, 0)],
@@ -361,7 +361,7 @@ pub(in crate::game) mod tests {
                     ]
                 };
                 for stepped in [false, true] {
-                    let tick = |game: &mut Game<'_>| {
+                    let tick = |game: &mut crate::game::ServerGame<'_>| {
                         if stepped {
                             game.tick_scheduled().unwrap();
                         } else {
@@ -422,7 +422,7 @@ pub(in crate::game) mod tests {
                     [2, 3, 7].map(|moisture| b.table.set_int(dry, b.props.moisture, moisture))
                 });
                 let fluid_pos = POS.offset(2, 0, 0);
-                let tick = |game: &mut Game<'_>, initial, fluid| {
+                let tick = |game: &mut crate::game::ServerGame<'_>, initial, fluid| {
                     game.with_level(|b, level, ticks| {
                         level.set_raw(POS, initial);
                         level.set_raw(fluid_pos, fluid);
@@ -536,7 +536,7 @@ pub(in crate::game) mod tests {
                 .map(|(block, source, target)| {
                     (target, state(block), state(source), state(target))
                 });
-                game.tickets
+                game.side.tickets
                     .0
                     .update(Some(sunrise_client::ticket_levels::Sources {
                         forced: vec![(0, 0)],
@@ -617,7 +617,7 @@ pub(in crate::game) mod tests {
     pub(in crate::game) const DISPENSER_SLOT: (i32, i32, i32) =
         (DISPENSER.x, DISPENSER.y, DISPENSER.z);
 
-    pub(in crate::game) fn place_dispenser(game: &mut Game<'_>) -> BlockStateId {
+    pub(in crate::game) fn place_dispenser(game: &mut crate::game::ServerGame<'_>) -> BlockStateId {
         let base = game
             .pack
             .assets

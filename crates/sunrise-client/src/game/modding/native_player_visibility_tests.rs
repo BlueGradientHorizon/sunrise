@@ -7,7 +7,7 @@ use mod_api::{EntityRef, PlayerRef, PlayerWorldRefusal as Refusal, WorldEpoch};
 use sunrise_protocol::packets::play::Clientbound as C;
 
 /// The API's value for a block state of the world.
-fn api_state(game: &super::Game<'_>, name: &str) -> mod_api::BlockState {
+fn api_state<S: crate::game::Side>(game: &super::Game<'_, S>, name: &str) -> mod_api::BlockState where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
     use super::api_values::TryIntoApi;
     game.pack
         .assets
@@ -28,13 +28,13 @@ fn stale(player: PlayerRef) -> PlayerRef {
 }
 
 /// A fake player: no connection, not in the server's list.
-fn fake(game: &mut super::Game<'_>) -> PlayerRef {
-    game.server.next_entity = 100;
+fn fake(game: &mut crate::game::ServerGame<'_>) -> PlayerRef {
+    game.side.next_entity = 100;
     let level = game.level(game.dim.id()).unwrap();
     game.fake_player(level, 1234, "machine").unwrap()
 }
 
-fn kept(game: &super::Game<'_>) -> i32 {
+fn kept(game: &crate::game::ServerGame<'_>) -> i32 {
     game.lan
         .as_ref()
         .unwrap()
@@ -321,7 +321,7 @@ fn player_support_uses_the_footprint_then_the_exact_feet_offset_on_both_sides() 
     use sunrise_core::geometry::Vec3;
     use sunrise_world::entity_move::MoverType::SelfMovement;
 
-    let setup = |game: &mut super::Game<'_>| {
+    let setup = |game: &mut crate::game::ServerGame<'_>| {
         game.streaming
             .insert_remote(&mut game.world, Chunk::empty(0, 0));
         let slab = game
@@ -332,7 +332,7 @@ fn player_support_uses_the_footprint_then_the_exact_feet_offset_on_both_sides() 
             .unwrap();
         game.world.set(0, 64, 0, slab).unwrap();
     };
-    let land = |game: &mut super::Game<'_>| {
+    let land = |game: &mut crate::game::ServerGame<'_>| {
         // The player's centre is over air. Only the edge overlaps the slab.
         game.player.as_mut().unwrap().position = Vec3::new(1.125, 65.0, 0.5);
         game.move_local_player(SelfMovement, Vec3::new(0.0, -1.0, 0.0), false)

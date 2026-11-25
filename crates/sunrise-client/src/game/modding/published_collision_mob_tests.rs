@@ -22,7 +22,7 @@ fn fresh(name: &str) -> bool {
 /// A box below the block, ending at its bottom: not empty, with a `max(Y)` of 0.
 const SUNK: [f64; 6] = [0.0, -0.5, 0.0, 1.0, 0.0, 1.0];
 
-fn set(game: &mut Game<'_>, block: &str, pos: [i32; 3]) {
+fn set(game: &mut crate::game::ServerGame<'_>, block: &str, pos: [i32; 3]) {
     let level = game.level(game.dim.id()).unwrap();
     let state = game.pack.assets.registry.default_state(block).unwrap();
     assert!(
@@ -51,7 +51,7 @@ fn evoker_fangs_stand_on_the_published_collision_top() {
         let entity = place(game, BUS, [2, 64, 2]);
         // From 64.5 down: the stone at 63 is the first sturdy floor, so the fang
         // stands in the block at 64.
-        let fang = |game: &Game<'_>, x: f64| {
+        let fang = |game: &crate::game::ServerGame<'_>, x: f64| {
             illager::fang_floor(&game.mob_world_base(&[]), x, 2.5, 64.0, 64.5)
         };
         assert_eq!((fang(game, 5.5), fang(game, 6.5)), (Some(65.0), Some(64.5)));
@@ -92,7 +92,7 @@ fn the_panic_goal_looks_for_water_in_a_published_empty_shape() {
         let entity = place(game, BUS, [2, 64, 2]);
         let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
         // The goal after `canUse`, which keeps the position it chose.
-        let panic = |game: &Game<'_>| {
+        let panic = |game: &crate::game::ServerGame<'_>| {
             let mut pig = Mob::new(60, kind.clone(), Vec3::new(2.5, 64.0, 2.5), 0.0);
             pig.fire_ticks = 20;
             let mut goal = Panic::new(1.0);
@@ -152,7 +152,7 @@ fn an_iron_golem_stands_only_on_a_full_published_top() {
             .flat_map(|x| (0..16).map(move |z| [x, 64, z]))
             .map(|pos| place(game, BUS, pos))
             .collect();
-        let summon = |game: &Game<'_>| {
+        let summon = |game: &crate::game::ServerGame<'_>| {
             let mut random = sunrise_core::random::LegacyRandom::new(1710);
             villager::summon_golem(
                 &game.mob_world_base(&[]),

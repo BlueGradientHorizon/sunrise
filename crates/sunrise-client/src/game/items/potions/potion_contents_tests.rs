@@ -6,7 +6,7 @@ use crate::game::game_tests::tests::server_game;
 use sunrise_client::motion::PlayerMotion;
 
 /// A server's game with a player standing at the origin's block.
-fn player_game(resources: &mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'_> {
+fn player_game(resources: &mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'_> {
     let mut game = server_game(resources);
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
     // A fixed name: no generated sunrise-player.txt in the working directory.
@@ -58,7 +58,7 @@ fn a_splash_potion_applies_its_custom_effects_and_duration_scale() {
         .potion_extra
         .push(("custom_color".into(), Tag::Int(0x0020_4080)));
     game.start_audio_capture();
-    game.server.lan_events.clear();
+    game.side.lan_events.clear();
     let at = Vec3::new(0.5, 64.0, 0.5);
     game.splash(
         &stack,
@@ -83,7 +83,7 @@ fn a_splash_potion_applies_its_custom_effects_and_duration_scale() {
         "the custom effect, scaled"
     );
     let splash: Vec<_> = game
-        .server
+        .side
         .lan_events
         .iter()
         .filter(|e| e.kind == 2002)
@@ -188,7 +188,7 @@ fn a_water_potion_with_custom_effects_does_not_douse_fire() {
         .default_state("minecraft:campfire")
         .unwrap();
     game.world.set(pos[0], pos[1], pos[2], campfire).unwrap();
-    let lit = |game: &Game<'_>| {
+    let lit = |game: &crate::game::ServerGame<'_>| {
         game.pack
             .assets
             .registry
@@ -201,7 +201,7 @@ fn a_water_potion_with_custom_effects_does_not_douse_fire() {
     // `AbstractThrownPotion.douseFire` looks at first is the campfire's.
     let hit = Some(([2, 3, 3], Direction::Up));
     let at = Vec3::new(2.5, 3.5, 3.5);
-    let throw = |game: &mut Game<'_>, stack: &ItemStack| {
+    let throw = |game: &mut crate::game::ServerGame<'_>, stack: &ItemStack| {
         game.splash(
             stack,
             at,

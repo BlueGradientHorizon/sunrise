@@ -471,7 +471,7 @@ mod tests {
     }
 
     /// A chunk of air with `biome` in every cell: full sky light everywhere.
-    fn chunk_in(game: &super::Game<'_>, x: i32, biome: &str) -> Arc<Chunk> {
+    fn chunk_in(game: &crate::game::ServerGame<'_>, x: i32, biome: &str) -> Arc<Chunk> {
         let id = game.res.biomes().id(biome);
         let mut chunk = Chunk::empty(x, 0);
         for qy in 0..chunk.sections.len() as i32 * 4 {

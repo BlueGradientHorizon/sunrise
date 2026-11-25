@@ -132,7 +132,7 @@ fn build_mod_resources(
     resolved
 }
 fn install_mod_resources(
-    game: &mut crate::game::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     root: &sunrise_assets::resource_source::ResourceRoot,
     package: &Path,
 ) {
@@ -239,7 +239,7 @@ fn reload_command_prepares_world_before_applying_listeners_and_preserves_tables_
                 let old_order = game.items().block_tag_order.clone();
                 let old_sets = game.items().block_tags.clone();
                 let old = game
-                    .world_tables
+                    .side.world_tables
                     .0
                     .as_ref()
                     .map(|tables| tables as *const _);
@@ -252,7 +252,7 @@ fn reload_command_prepares_world_before_applying_listeners_and_preserves_tables_
                 assert_eq!(state.load(Ordering::SeqCst), 1);
                 assert_eq!(
                     old,
-                    game.world_tables
+                    game.side.world_tables
                         .0
                         .as_ref()
                         .map(|tables| tables as *const _)
@@ -409,7 +409,7 @@ fn reload_command_runs_listeners_on_both_sides_of_function_library() {
                         ["apply before", "parse chosen", "apply after"]
                     );
                     assert!(
-                        game.fns
+                        game.side.fns
                             .0
                             .store
                             .functions
@@ -562,8 +562,8 @@ fn missing_original_at_reload_preserves_the_published_data_and_reports_its_owner
     with_game(|game| {
         install_mod_resources(game, &resources, &package);
         game.load_world(request(&world)).unwrap();
-        let previous = game.fns.0.store.functions["reload_test:keep"].clone();
-        let enabled = game.fns.0.enabled().to_vec();
+        let previous = game.side.fns.0.store.functions["reload_test:keep"].clone();
+        let enabled = game.side.fns.0.enabled().to_vec();
         write(&function, "say new");
         std::fs::remove_file(&jar_file).unwrap();
         let error = game
@@ -583,11 +583,11 @@ fn missing_original_at_reload_preserves_the_published_data_and_reports_its_owner
         assert!(reported.contains("reload_test: original 1:"), "{reported}");
         assert!(reported.contains(jar.sha512()), "{reported}");
         assert_eq!(game.options.resources, resources.prepared().to_owned());
-        assert_eq!(game.fns.0.store.functions["reload_test:keep"], previous);
-        assert_eq!(game.fns.0.enabled(), enabled);
+        assert_eq!(game.side.fns.0.store.functions["reload_test:keep"], previous);
+        assert_eq!(game.side.fns.0.enabled(), enabled);
         write(&jar_file, &original);
         assert!(game.run_command("reload"));
-        assert_ne!(game.fns.0.store.functions["reload_test:keep"], previous);
+        assert_ne!(game.side.fns.0.store.functions["reload_test:keep"], previous);
     });
 }
 
@@ -677,16 +677,16 @@ fn server_reload_delivers_mod_files_overrides_and_preserves_all_data_on_failure(
             write(&data, "3");
             assert!(game.run_command("reload"));
             assert_eq!(*live.lock().unwrap(), 8);
-            let old_function = game.fns.0.store.functions["reload_test:keep"].clone();
+            let old_function = game.side.fns.0.store.functions["reload_test:keep"].clone();
             let old_selection = std::fs::read(world.join("datapacks.json")).unwrap();
-            let old_enabled = game.fns.0.enabled().to_vec();
-            let old_vanilla_disabled = game.cmds.0.vanilla_disabled;
+            let old_enabled = game.side.fns.0.enabled().to_vec();
+            let old_vanilla_disabled = game.side.cmds.0.vanilla_disabled;
             write(&data, "4");
             write(&function, "say new");
             reject.store(true, Ordering::Relaxed);
-            game.server.chat_capture = Some(Vec::new());
+            game.side.chat_capture = Some(Vec::new());
             assert!(!game.run_command("reload"));
-            let replies = game.server.chat_capture.take().unwrap();
+            let replies = game.side.chat_capture.take().unwrap();
             let replies: Vec<_> = replies.iter().map(|reply| reply.plain()).collect();
             assert!(
                 replies.iter().any(|reply| {
@@ -700,22 +700,22 @@ fn server_reload_delivers_mod_files_overrides_and_preserves_all_data_on_failure(
                 8,
                 "earlier successful prepare must not publish"
             );
-            assert_eq!(game.fns.0.store.functions["reload_test:keep"], old_function);
+            assert_eq!(game.side.fns.0.store.functions["reload_test:keep"], old_function);
             assert!(!game.run_command("datapack disable \"file/test\""));
             assert_eq!(
                 std::fs::read(world.join("datapacks.json")).unwrap(),
                 old_selection
             );
             assert_eq!(
-                game.fns.0.enabled(),
+                game.side.fns.0.enabled(),
                 old_enabled,
                 "the refused change publishes nothing"
             );
             assert_eq!(
-                game.cmds.0.vanilla_disabled, old_vanilla_disabled,
+                game.side.cmds.0.vanilla_disabled, old_vanilla_disabled,
                 "the refused change flips no command switch"
             );
-            assert!(game.fns.0.store.functions.contains_key("reload_test:keep"));
+            assert!(game.side.fns.0.store.functions.contains_key("reload_test:keep"));
             assert_eq!(*live.lock().unwrap(), 8);
             reject.store(false, Ordering::Relaxed);
             write(&data, "not JSON");
@@ -729,7 +729,7 @@ fn server_reload_delivers_mod_files_overrides_and_preserves_all_data_on_failure(
                 "{error}"
             );
             assert_eq!(*live.lock().unwrap(), 8);
-            assert_eq!(game.fns.0.store.functions["reload_test:keep"], old_function);
+            assert_eq!(game.side.fns.0.store.functions["reload_test:keep"], old_function);
         })
     });
     std::fs::remove_dir_all(root).unwrap();
@@ -949,7 +949,7 @@ fn server_reload_registration_failure_stops_world_open_and_quiet_mods_never_list
                     error.contains("reload listener dependency cycle:"),
                     "{error}"
                 );
-                assert!(game.fns.0.store.functions.is_empty());
+                assert!(game.side.fns.0.store.functions.is_empty());
             })
         },
     );
@@ -1001,7 +1001,7 @@ fn world_open_reports_nested_reload_causes() {
                     .unwrap_err()
                     .to_string();
                 assert!(error.contains("reload listener open_refusal:listener: open_refusal:table: open_refusal:row: invalid world-open fixture row"), "{error}");
-                assert!(game.fns.0.store.functions.is_empty());
+                assert!(game.side.fns.0.store.functions.is_empty());
             })
         },
     );

@@ -180,14 +180,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// integrated-server selection: a test-only convenience over the same two
     /// steps production startup calls separately (`prepare_world_and_rules`,
     /// then `finish_open_world`).
-    #[cfg(test)]
-    pub(in crate::game) fn load_world(
-        &mut self,
-        request: world_loading::WorldRequest,
-    ) -> Result<()> {
-        let prepared = self.prepare_world_and_rules(request)?;
-        self.finish_open_world(prepared).map(|_| ())
-    }
+    
 
     /// Leaving the game with a world open (window closed, Quit, `quit`):
     /// menu items go back (Player.closeContainer), then the world is saved,
@@ -274,5 +267,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return self.leave_server(None);
         }
         self.begin_closing_save(false)
+    }
+}
+
+#[cfg(test)]
+impl crate::game::ServerGame<'_> {
+    #[cfg(test)]
+    pub(in crate::game) fn load_world(
+        &mut self,
+        request: world_loading::WorldRequest,
+    ) -> Result<()> {
+        let prepared = self.prepare_world_and_rules(request)?;
+        self.finish_open_world(prepared).map(|_| ())
     }
 }

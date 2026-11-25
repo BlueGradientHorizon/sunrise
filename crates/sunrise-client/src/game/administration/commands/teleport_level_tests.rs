@@ -104,10 +104,10 @@ fn a_mod_sends_a_minecart_to_another_level_with_its_known_movement() {
 /// it to 3.5 70 -2.5 in the Nether by a mod's `teleport_to_level`: the call is true and the
 /// Overworld holds it no more. The Nether is left in place.
 fn sent_to_the_nether(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     kind: &str,
     nbt: &str,
-    id: impl Fn(&Game<'_>) -> Option<u32>,
+    id: impl Fn(&crate::game::ServerGame<'_>) -> Option<u32>,
 ) {
     game.native_lifecycle.world_open_ready().unwrap();
     game.summon_with_nbt(kind, [0.5, 80.0, 0.5], nbt).unwrap();

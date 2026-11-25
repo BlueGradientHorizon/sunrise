@@ -49,7 +49,7 @@ fn a_special_dropped_item_outlines_only_its_committed_world_vertices() {
                         h: 16,
                     },
                 );
-                game.client.glint_frame = GlintFrame {
+                game.side.glint_frame = GlintFrame {
                     millis: 0,
                     speed: 0.5,
                     alpha: 0.75,
@@ -103,7 +103,7 @@ fn a_special_dropped_item_outlines_only_its_committed_world_vertices() {
                 assert!(drawn.iter().all(|v| v.layer & 0xFFFF == 7)); // solid foil overlay
                 assert_ne!(drawn[1].glint_uv, [0.0; 2]);
 
-                let outline = game.client.glowing_vertices.borrow();
+                let outline = game.side.glowing_vertices.borrow();
                 assert_eq!(outline.len(), 4);
                 for (outline, vertex) in outline.iter().zip(drawn) {
                     assert_eq!(outline.pos, vertex.pos);
@@ -152,7 +152,7 @@ pub(in crate::game) fn asked(count: u32) -> usize {
 
 /// Installs a special renderer for sticks in this game's item definitions. The fixture submits
 /// its own quad and needs no display transforms from a client-only model library.
-pub(in crate::game) fn install_special_stick(game: &mut Game<'_>) {
+pub(in crate::game) fn install_special_stick<S: crate::game::Side>(game: &mut Game<'_, S>) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
     let factories = BTreeMap::from([(
         mod_api::Identifier::parse("test:stick").unwrap(),
         OwnedSpecialModelFactory::new(
@@ -190,7 +190,7 @@ pub(in crate::game) fn install_special_stick(game: &mut Game<'_>) {
 }
 
 /// A stick of `count` resolved as a frame resolves a held item (`ItemModelResolver.updateForTopItem`).
-pub(in crate::game) fn draw_stick(game: &Game<'_>, count: u32) -> ItemRenderState {
+pub(in crate::game) fn draw_stick(game: &crate::game::ClientGame<'_>, count: u32) -> ItemRenderState {
     game.resolve_item(
         &sunrise_client::items::ItemStack::new("minecraft:stick", count),
         DisplayContext::ThirdPersonRightHand,
@@ -219,7 +219,7 @@ fn a_special_renderer_is_never_asked_inside_a_lifted_pass() {
 }
 
 fn a_special_renderer_is_never_asked_inside_a_lifted_pass_isolated() {
-    fn in_pass(_: &mut Game<'_>) {
+    fn in_pass(_: &mut crate::game::ClientGame<'_>) {
         assert!(
             !sunrise_client::join_seq::visibility::passes_settled(),
             "not inside a lifted pass"

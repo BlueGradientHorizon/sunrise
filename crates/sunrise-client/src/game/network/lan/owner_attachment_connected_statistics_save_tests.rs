@@ -21,7 +21,7 @@ mod owner_attachment_save_tests {
     };
 
     /// The live value as the named owner file would hold it.
-    fn saved_value(game: &crate::game::Game<'_>) -> Option<i32> {
+    fn saved_value(game: &crate::game::ServerGame<'_>) -> Option<i32> {
         let Some(Tag::Compound(map)) = game.level.player_extra.as_ref() else {
             return None;
         };
@@ -40,7 +40,7 @@ mod owner_attachment_save_tests {
     }
 
     /// Set `value` in the map of the player `conn`, as a mod's write does.
-    fn set_value(game: &mut crate::game::Game<'_>, conn: u32, value: i32) {
+    fn set_value(game: &mut crate::game::ServerGame<'_>, conn: u32, value: i32) {
         let host = game.lan.as_mut().unwrap();
         PROGRESS
             .set(
@@ -52,7 +52,7 @@ mod owner_attachment_save_tests {
     }
 
     /// An integrated host whose owner is its placed player (conn 1, uuid 1).
-    fn owned_host(game: &mut crate::game::Game<'_>) {
+    fn owned_host(game: &mut crate::game::ServerGame<'_>) {
         let _rx = super::super::world_spawn_sync_tests::host_for(game);
         game.lan.as_mut().unwrap().owner = Some(crate::game::lan::Owner {
             uuid: 1,
@@ -134,14 +134,14 @@ mod connected_statistics_save_tests {
             "stats-missing"
         });
         fs::create_dir_all(&dir).unwrap();
-        game.server.world_root = dir.clone();
-        game.save.0 = Arc::new(sunrise_client::save::SaveDir::new(
+        game.side.world_root = dir.clone();
+        game.side.save.0 = Arc::new(sunrise_client::save::SaveDir::new(
             dir.clone(),
             sunrise_client::save::LevelShape::OVERWORLD,
             Some(Default::default()),
         ));
         use sunrise_client::server::user_lists::{BanList, IpBanList, OpList, WhiteList};
-        game.server_lists.0 = Some(Arc::new(Mutex::new(
+        game.side.server_lists.0 = Some(Arc::new(Mutex::new(
             super::super::super::dedicated::Lists {
                 ops: OpList::new(dir.join("ops.json")),
                 white: WhiteList::new(dir.join("whitelist.json")),
@@ -181,7 +181,7 @@ mod connected_statistics_save_tests {
         assert_eq!(play.stats.get("used", "minecraft:diamond_sword"), expected);
         assert!(play.stats.take_dirty().is_empty());
         for command in ["save-all", "save-all flush"] {
-            game.server.chat_capture = Some(Vec::new());
+            game.side.chat_capture = Some(Vec::new());
             // Match dedicated registration without changing the process-wide
             // tree used by unrelated integrated-server tests.
             let dispatcher = sunrise_client::command::vanilla::build_for(false, true);
@@ -190,7 +190,7 @@ mod connected_statistics_save_tests {
             let (ctx, _) = parsed.executable().expect("registered dedicated command");
             let (root, ctx) = (parsed.context.clone(), ctx.clone());
             assert_eq!(game.run_chain(&root, &ctx).unwrap(), 1);
-            let messages = game.server.chat_capture.take().unwrap();
+            let messages = game.side.chat_capture.take().unwrap();
             assert!(
                 messages
                     .iter()
@@ -237,10 +237,10 @@ mod connected_statistics_save_exclusion_tests {
         let mut resources = None;
         let mut game = crate::game::game_tests::tests::server_game(&mut resources);
         let _rx = super::super::world_spawn_sync_tests::host_for(&mut game);
-        game.server.world_root = std::env::current_dir().unwrap().join("stats-excluded");
-        std::fs::create_dir_all(&game.server.world_root).unwrap();
+        game.side.world_root = std::env::current_dir().unwrap().join("stats-excluded");
+        std::fs::create_dir_all(&game.side.world_root).unwrap();
         let path =
-            super::super::super::stats::player_json(&game.server.world_root, "stats", [0, 0, 0, 1]);
+            super::super::super::stats::player_json(&game.side.world_root, "stats", [0, 0, 0, 1]);
         let mut host = game.lan.take().unwrap();
         host.play
             .entry(1)

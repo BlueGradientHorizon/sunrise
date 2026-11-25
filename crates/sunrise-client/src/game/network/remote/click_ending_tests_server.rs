@@ -38,7 +38,7 @@ fn an_end_crystal_click_on_a_block_ends_there() {
         game.offhand = Some(ItemStack::new("minecraft:shield", 1));
         game.selected = 0;
         while peer.recv().is_ok() {}
-        let aim = |game: &mut crate::game::Game<'_, crate::game::server_side::ServerState>, z: i32| {
+        let aim = |game: &mut crate::game::ClientGame<'_>, z: i32| {
             game.set_test_forced_hit(Some(Hit {
                 pos: [0, 63, z],
                 face: [0, 1, 0],
@@ -48,7 +48,7 @@ fn an_end_crystal_click_on_a_block_ends_there() {
         };
         // The whole click (Minecraft.startUseItem): it ends at the block, so neither the main
         // hand's air use nor the offhand's shield is tried, and nothing is held in use.
-        let mut click = |game: &mut crate::game::Game<'_, crate::game::server_side::ServerState>, z: i32| {
+        let mut click = |game: &mut crate::game::ClientGame<'_>, z: i32| {
             aim(game, z);
             let swings = game.swings_started;
             game.remote_use(mod_api::InteractionAttempt::Press);
@@ -108,7 +108,7 @@ fn flint_and_steel_use_on_ends_the_click() {
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = ExecutionRole::Client;
-    let mut game = Game::new(
+    let mut game = crate::game::ClientGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),

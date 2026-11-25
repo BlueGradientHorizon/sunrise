@@ -1464,7 +1464,7 @@ pub(in crate::game) mod lectern_signal_tests {
     use sunrise_world::registry::BlockStateId;
 
     fn signal(
-        game: &mut super::Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         has_book: bool,
         book: Option<ItemStack>,
         page: i32,
@@ -1507,7 +1507,7 @@ pub(in crate::game) mod lectern_signal_tests {
                 page: 0,
             }),
         );
-        let signal = |game: &mut super::Game<'_>, state| {
+        let signal = |game: &mut crate::game::ServerGame<'_>, state| {
             game.with_level(|_, level, _| {
                 level.block_entity_analog_signal(
                     BlockPos::new(key.0, key.1, key.2),

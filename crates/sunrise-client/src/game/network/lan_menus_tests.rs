@@ -8,7 +8,7 @@ use sunrise_client::menu::{Kind, Menu};
 
 /// Give guest `conn` an inventory menu carrying `count` sticks on its cursor, and some play
 /// state, as a guest who has clicked in their inventory has.
-fn open_inventory(game: &mut Game<'_>, conn: u32, count: u32) {
+fn open_inventory(game: &mut crate::game::ServerGame<'_>, conn: u32, count: u32) {
     let mut menu = Box::new(Menu::new(Kind::Inventory));
     menu.carried = Some(sunrise_client::items::ItemStack::new(
         "minecraft:stick",
@@ -19,7 +19,7 @@ fn open_inventory(game: &mut Game<'_>, conn: u32, count: u32) {
     host.play.entry(conn).or_default().chat_spam = 5;
 }
 
-fn carried(game: &Game<'_>, conn: u32) -> Option<u32> {
+fn carried(game: &crate::game::ServerGame<'_>, conn: u32) -> Option<u32> {
     let menu = game
         .lan
         .as_ref()?
@@ -95,7 +95,7 @@ fn a_panicking_turn_leaves_play_state_and_menus_restored() {
         let host = game.lan.as_ref().unwrap();
         // The swap is undone: the guest's play state is back, and the menu is as the turn left it.
         assert_eq!(host.play[&12].chat_spam, 5);
-        assert!(game.server.lan_guest_swaps.is_empty());
+        assert!(game.side.lan_guest_swaps.is_empty());
         assert_eq!(carried(game, 12), None);
         let after = Target::admit(game, 12).unwrap();
         assert_eq!(after.owner_id(), before.owner_id());
@@ -140,7 +140,7 @@ fn a_lifted_host_comes_back_after_a_panic_and_is_never_lifted_twice() {
 fn removing_a_fake_player_drops_its_menu_owners() {
     with_guests(|game| {
         let _serving = super::integrated::tests::install_serving(game, false);
-        game.server.next_entity = 100;
+        game.side.next_entity = 100;
         let level = game.level(game.dim.id()).unwrap();
         let fake = game.fake_player(level, 1234, "machine").unwrap();
         let conn = game

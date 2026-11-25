@@ -331,7 +331,7 @@ pub(in crate::game) mod tests {
 
     pub(in crate::game::client_side) fn with_panel(
         slots: usize,
-        test: impl FnOnce(&mut Game<'_>, &Mutex<Option<(MenuRef, usize)>>),
+        test: impl FnOnce(&mut crate::game::ClientGame<'_>, &Mutex<Option<(MenuRef, usize)>>),
     ) {
         let opening = Arc::new(Mutex::new(None));
         let panel = Panel {
@@ -370,7 +370,7 @@ pub(in crate::game) mod tests {
         });
     }
 
-    pub(in crate::game::client_side) fn open_panel(game: &mut Game<'_>) {
+    pub(in crate::game::client_side) fn open_panel(game: &mut crate::game::ClientGame<'_>) {
         use sunrise_protocol::packets::play::{Clientbound, OpenScreen};
         game.handle_packet(Clientbound::OpenScreen(OpenScreen {
             container: 1,
@@ -385,7 +385,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn inventory_boxes_follow_menu_indices_and_the_input_layout() {
         with_panel(0, |game, opening| {
-            game.client.screen = super::super::Screen::Inventory;
+            game.side.screen = super::super::Screen::Inventory;
             let batch = super::super::HudBatch::new([800, 600], game.settings.gui_scale_inputs());
             let boxes = game
                 .inventory_menu_slot_boxes(0, "inventory", &batch)
@@ -399,7 +399,7 @@ pub(in crate::game) mod tests {
                 );
             }
             assert!(game.inventory_menu_slot_boxes(1, PANEL, &batch).is_none());
-            game.client.screen = super::super::Screen::Playing;
+            game.side.screen = super::super::Screen::Playing;
             open_panel(game);
             let menu = game
                 .player_container_menu(game.local_player().unwrap())
@@ -421,22 +421,22 @@ pub(in crate::game) mod tests {
     }
 
     pub(in crate::game::client_side) fn creative_tab(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ClientGame<'_>,
         pick: impl Fn(&sunrise_client::creative::Tab) -> bool,
     ) {
-        let tab = game.creative_screen.0.tabs.iter().position(pick).unwrap();
-        game.creative_screen.0.select(tab);
+        let tab = game.side.creative_screen.0.tabs.iter().position(pick).unwrap();
+        game.side.creative_screen.0.select(tab);
     }
 
     /// A hidden window's offscreen renderer over a joined level with the player's body in it,
     /// so the public screen reads have a window to lay the screen out in. The event loop
     /// returned holds the window.
     pub(in crate::game::client_side) fn offscreen_window(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ClientGame<'_>,
     ) -> winit::event_loop::EventLoop<()> {
         let (event_loop, window) = crate::game::native_entity_refs::tests::test_window([320, 240]);
         game.options.offscreen = true;
-        game.renderer.0 = Some(game.new_renderer(window).unwrap());
+        game.side.renderer.0 = Some(game.new_renderer(window).unwrap());
         let remote = game.remote.as_mut().unwrap();
         remote.level_load.finish();
         let mut body = sunrise_client::motion::PlayerMotion::new(
@@ -449,8 +449,8 @@ pub(in crate::game) mod tests {
         event_loop
     }
 
-    pub(in crate::game::client_side) fn window_batch(game: &Game<'_>) -> super::super::HudBatch {
-        let config = &game.renderer.0.as_ref().unwrap().config;
+    pub(in crate::game::client_side) fn window_batch(game: &crate::game::ClientGame<'_>) -> super::super::HudBatch {
+        let config = &game.side.renderer.0.as_ref().unwrap().config;
         super::super::HudBatch::new(
             [config.width, config.height],
             game.settings.gui_scale_inputs(),
@@ -469,10 +469,10 @@ pub(in crate::game) mod tests {
                 with_panel(0, |game, _| {
                     let _window = offscreen_window(game);
                     game.creative = true;
-                    game.client.screen = super::super::Screen::Creative;
+                    game.side.screen = super::super::Screen::Creative;
                     game.refresh_creative_tabs();
                     let batch = window_batch(game);
-                    let (ox, oy) = Game::creative_origin(&batch);
+                    let (ox, oy) = crate::game::ClientGame::creative_origin(&batch);
                     // Menu index, game slot, position on the inventory tab, shown on item tabs.
                     let expected = |index: usize| -> Option<(usize, (f32, f32), bool)> {
                         let row = |i: usize| (9.0 + (i % 9) as f32 * 18.0, (i / 9) as f32 * 18.0);
@@ -576,10 +576,10 @@ pub(in crate::game) mod tests {
                 with_panel(0, |game, _| {
                     let _window = offscreen_window(game);
                     let batch = window_batch(game);
-                    let hover = |game: &mut Game<'_>, slot: usize| {
+                    let hover = |game: &mut crate::game::ClientGame<'_>, slot: usize| {
                         let (ox, oy) = game.inventory_origin(&batch);
                         let (x, y) = game.slot_position(slot);
-                        game.client.cursor = (ox + x + 8.0, oy + y + 8.0);
+                        game.side.cursor = (ox + x + 8.0, oy + y + 8.0);
                         ScreensClientHost::screen_hovered_stack(&*game)
                     };
                     let sword = game
@@ -594,15 +594,15 @@ pub(in crate::game) mod tests {
                     game.inventory[11] = None;
                     game.armor[0] = Some(sword.clone());
 
-                    game.client.screen = super::super::Screen::Inventory;
+                    game.side.screen = super::super::Screen::Inventory;
                     is_potion(hover(game, 9));
                     is_stone(hover(game, 10));
                     assert_eq!(hover(game, 11), None);
-                    game.client.screen = super::super::Screen::Playing;
+                    game.side.screen = super::super::Screen::Playing;
                     assert_eq!(hover(game, 9), None);
 
                     game.creative = true;
-                    game.client.screen = super::super::Screen::Creative;
+                    game.side.screen = super::super::Screen::Creative;
                     game.refresh_creative_tabs();
                     creative_tab(game, |t| t.inventory);
                     is_potion(hover(game, 9));
@@ -610,26 +610,26 @@ pub(in crate::game) mod tests {
                     assert_eq!(hover(game, 11), None);
                     let (ox, oy) = game.inventory_origin(&batch);
                     let (tx, ty) = Creative::TRASH_POSITION;
-                    game.client.cursor = (ox + tx + 8.0, oy + ty + 8.0);
+                    game.side.cursor = (ox + tx + 8.0, oy + ty + 8.0);
                     assert_eq!(ScreensClientHost::screen_hovered_stack(&*game), None);
 
                     // Seven rows: scrolled to the bottom, the first shown row is the third.
                     creative_tab(game, |t| !t.inventory && !t.search && !t.items.is_empty());
-                    let tab = game.creative_screen.0.selected_index();
+                    let tab = game.side.creative_screen.0.selected_index();
                     let mut items = vec![ItemStack::new("minecraft:stone", 17); 63];
                     items[0] = sword.clone();
                     items[1].count = 0;
                     items[18] = potion;
-                    game.creative_screen.0.tabs[tab].items = items;
-                    game.creative_screen.0.forget_items();
+                    game.side.creative_screen.0.tabs[tab].items = items;
+                    game.side.creative_screen.0.forget_items();
                     is_sword(hover(game, Creative::DISPLAY));
                     assert_eq!(hover(game, Creative::DISPLAY + 1), None);
                     is_stone(hover(game, Creative::DISPLAY + 2));
                     is_sword(hover(game, 0));
-                    game.creative_screen.0.scroll = 1.0;
+                    game.side.creative_screen.0.scroll = 1.0;
                     is_potion(hover(game, Creative::DISPLAY));
 
-                    game.creative_screen.0 = Creative::from_json(&serde_json::json!({
+                    game.side.creative_screen.0 = Creative::from_json(&serde_json::json!({
                         "schema": 4, "item_features": {}, "potion_features": {}, "tabs": [{
                             "id": "minecraft:search", "type": "SEARCH", "title": "Search Items",
                             "build": [], "search_metadata": [{

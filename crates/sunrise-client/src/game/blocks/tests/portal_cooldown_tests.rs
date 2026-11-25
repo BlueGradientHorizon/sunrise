@@ -36,15 +36,12 @@ pub(in crate::game::server_side) fn run_portal_contact_and_waiting_handoff_match
     options.headless = true;
     options.game_dir = Some(std::env::current_dir().unwrap());
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -88,7 +85,7 @@ pub(in crate::game::server_side) fn run_portal_contact_and_waiting_handoff_match
             ("PortalCooldown", Tag::Int(5)),
         ]);
         game.load_listed(kind, Some(uuid), None, tag).unwrap();
-        ids.push(game.server.next_entity);
+        ids.push(game.side.next_entity);
     }
     assert_eq!(game.boats.len(), 1);
     assert_eq!(game.carts.len(), 1);
@@ -96,7 +93,7 @@ pub(in crate::game::server_side) fn run_portal_contact_and_waiting_handoff_match
     assert_eq!(game.mobs.len(), 1);
     // Direct handler calls do not refresh the headless world's chunk tickets.
     // Frozen entities retain their counters across every group/phase pass.
-    game.tickets
+    game.side.tickets
         .0
         .update(Some(crate::ticket_levels::Sources::default()));
     game.handle_vehicle_portals();
@@ -105,7 +102,7 @@ pub(in crate::game::server_side) fn run_portal_contact_and_waiting_handoff_match
     for id in &ids {
         assert_eq!(game.portals.entities.get(id).unwrap().cooldown, 5);
     }
-    game.tickets.0.update(Some(crate::ticket_levels::Sources {
+    game.side.tickets.0.update(Some(crate::ticket_levels::Sources {
         forced: vec![(0, 0)],
         ..Default::default()
     }));
@@ -163,7 +160,7 @@ pub(in crate::game::server_side) fn run_portal_contact_and_waiting_handoff_match
         let restored = arrival_from_tag(&arrival_tag(arrival)).unwrap();
         let counter = counter(&restored.tag);
         game.load_listed(kind, None, None, restored.tag).unwrap();
-        let id = game.server.next_entity;
+        let id = game.side.next_entity;
         assert_eq!(
             game.portals.entities.get(&id).map_or(0, |s| s.cooldown),
             counter

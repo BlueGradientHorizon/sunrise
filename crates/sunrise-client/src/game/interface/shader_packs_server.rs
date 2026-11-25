@@ -157,7 +157,7 @@ pub(in crate::game::server_side) use crate::game::client_side::shader_packs::pla
                 crate::game::lan_particles::tests::test_hub("PackStatusTest", Vec::new(), None);
             game.lan = Some(crate::game::lan::LanHost::for_test(hub));
             let at = [0.5, 64.0, 0.5];
-            game.server
+            game.side
                 .pending_particles
                 .push(crate::lan::server_effects::ServerQueuedParticle {
                     dimension: "minecraft:overworld",
@@ -171,7 +171,7 @@ pub(in crate::game::server_side) use crate::game::client_side::shader_packs::pla
                     randomization: 0,
                     except: None,
                 });
-            game.server
+            game.side
                 .pending_native_sounds
                 .push(crate::game::creatures::NativeSound {
                     dimension: "minecraft:overworld",
@@ -185,13 +185,13 @@ pub(in crate::game::server_side) use crate::game::client_side::shader_packs::pla
                     entity: None,
                     skip_hooks: false,
                 });
-            game.spill.0.orbs.push((at, 1, 0));
+            game.side.spill.0.orbs.push((at, 1, 0));
             rain_on_the_player(game, true);
 
             assert!(game.pack_player_status().wet, "rain");
-            assert_eq!(game.server.pending_particles.len(), 1, "particles");
-            assert_eq!(game.server.pending_native_sounds.len(), 1, "sounds");
-            assert_eq!(game.spill.0.orbs.len(), 1, "spill");
+            assert_eq!(game.side.pending_particles.len(), 1, "particles");
+            assert_eq!(game.side.pending_native_sounds.len(), 1, "sounds");
+            assert_eq!(game.side.spill.0.orbs.len(), 1, "spill");
             game.lan = None;
         });
     }

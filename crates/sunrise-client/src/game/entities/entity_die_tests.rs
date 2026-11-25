@@ -25,7 +25,7 @@ fn capture() {
     super::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
 }
 
-fn with_game(f: impl FnOnce(&mut Game<'_>)) {
+fn with_game(f: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -44,15 +44,12 @@ fn with_game(f: impl FnOnce(&mut Game<'_>)) {
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = super::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -207,7 +204,7 @@ fn entity_die_explosions() {
             .unwrap();
             game.summon_with_nbt("minecraft:experience_orb", at, "{Value:1s}")
                 .unwrap();
-            game.combat.0.explosion_owner = source;
+            game.side.combat.0.explosion_owner = source;
             capture();
             game.server_explode(
                 [4.5, 200.5, 4.5],
@@ -244,7 +241,7 @@ fn entity_die_explosions() {
             assert!(events.contains(&("minecraft:entity_die", [3.5, 200.0, 4.5], None)));
         }
         // Explosion attribution must not leak into subsequent unrelated removals.
-        game.combat.0.explosion_owner = None;
+        game.side.combat.0.explosion_owner = None;
         let target = game
             .summon_with_nbt("minecraft:cushion", at, "{}")
             .unwrap()

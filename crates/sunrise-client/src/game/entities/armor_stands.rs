@@ -2409,7 +2409,7 @@ pub(in crate::game) mod postbaseline_lodestone_controls {
     use sunrise_client::{chunk::Chunk, entities::ArmorStand, items::ItemStack};
     use sunrise_core::position::BlockPos;
 
-    fn stack<'g>(game: &'g Game<'_>, id: u32, slot: usize) -> &'g ItemStack {
+    fn stack<'g>(game: &'g crate::game::ServerGame<'_>, id: u32, slot: usize) -> &'g ItemStack {
         game.armor_stands
             .iter()
             .find(|a| a.id == id)
@@ -2491,7 +2491,7 @@ pub(in crate::game) mod postbaseline_lodestone_controls {
         let (all, mixed, inactive) = (id(100), id(101), id(102));
         // Direct class ticks do not refresh the headless fixture's tickets.
         // Use the existing ticket model: only chunk zero is forced to tick.
-        game.tickets.0.update(Some(crate::ticket_levels::Sources {
+        game.side.tickets.0.update(Some(crate::ticket_levels::Sources {
             forced: vec![(0, 0)],
             ..Default::default()
         }));

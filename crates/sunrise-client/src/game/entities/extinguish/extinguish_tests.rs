@@ -20,13 +20,13 @@ use sunrise_world::registry::BlockStateId;
 /// (CI has none: the tests then skip quietly).
 pub(in crate::game::server_side) fn server<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> Option<Game<'a>> {
+) -> Option<crate::game::ServerGame<'a>> {
     std::env::var_os("SUNRISE_TEST_RESOURCES")?;
     Some(server_game(resources))
 }
 
 pub(in crate::game::server_side) fn state(
-    game: &Game<'_>,
+    game: &crate::game::ServerGame<'_>,
     name: &str,
     level: &str,
 ) -> BlockStateId {
@@ -40,7 +40,7 @@ pub(in crate::game::server_side) fn state(
     game.pack.assets.registry.resolve(&state).unwrap()
 }
 
-pub(in crate::game::server_side) fn block(game: &Game<'_>, pos: [i32; 3]) -> String {
+pub(in crate::game::server_side) fn block(game: &crate::game::ServerGame<'_>, pos: [i32; 3]) -> String {
     let state = game.world.block(pos[0], pos[1], pos[2]);
     game.res.facts().get(state).name.to_string()
 }
@@ -51,7 +51,7 @@ pub(in crate::game) use crate::game::client_side::extinguish_client::extinguish_
 /// A server's player standing in the block at `pos` (feet on its floor), on
 /// fire: the tick `guest_server_tick` runs for it, its block effects and the
 /// consumer of their events.
-pub(in crate::game::server_side) fn burn_in(game: &mut Game<'_>, pos: [i32; 3]) {
+pub(in crate::game::server_side) fn burn_in(game: &mut crate::game::ServerGame<'_>, pos: [i32; 3]) {
     let at = Vec3::new(
         f64::from(pos[0]) + 0.5,
         f64::from(pos[1]),
@@ -91,7 +91,7 @@ pub(in crate::game::server_side) fn burn_in(game: &mut Game<'_>, pos: [i32; 3]) 
 
 /// Outside the world border, as `/worldborder center 1000 1000` and
 /// `/worldborder set 100` put the origin.
-pub(in crate::game::server_side) fn outside_the_border(game: &mut Game<'_>) {
+pub(in crate::game::server_side) fn outside_the_border(game: &mut crate::game::ServerGame<'_>) {
     game.border.set_center([1000.0, 1000.0]);
     game.border.set_size(100.0);
 }
@@ -111,7 +111,7 @@ fn powder_snow_puts_a_burning_player_out_with_the_hiss() {
     assert!(game.player.as_ref().unwrap().fire_ticks <= 0, "fire out");
     assert_eq!(block(&game, pos), "minecraft:air", "the snow is destroyed");
     let server_hiss = game
-        .server
+        .side
         .pending_sounds
         .iter()
         .filter(|s| s.event == "minecraft:entity.generic.extinguish_fire")
@@ -145,7 +145,7 @@ fn a_cauldron_puts_a_burning_player_out_with_the_hiss() {
         .and_then(|s| s.properties.get("level").cloned());
     assert_eq!(level.as_deref(), Some("2"), "the water drops a level");
     let server_hiss = game
-        .server
+        .side
         .pending_sounds
         .iter()
         .filter(|s| s.event == "minecraft:entity.generic.extinguish_fire")
@@ -174,7 +174,7 @@ fn outside_the_border_powder_snow_stays_but_the_fire_goes_out() {
     assert!(game.player.as_ref().unwrap().fire_ticks <= 0, "fire out");
     assert_eq!(block(&game, pos), "minecraft:powder_snow", "it stays");
     let server_hiss = game
-        .server
+        .side
         .pending_sounds
         .iter()
         .filter(|s| s.event == "minecraft:entity.generic.extinguish_fire")
@@ -209,7 +209,7 @@ fn outside_the_border_a_cauldron_keeps_its_level_but_the_fire_goes_out() {
         .and_then(|s| s.properties.get("level").cloned());
     assert_eq!(level.as_deref(), Some("3"), "it keeps its level");
     let server_hiss = game
-        .server
+        .side
         .pending_sounds
         .iter()
         .filter(|s| s.event == "minecraft:entity.generic.extinguish_fire")

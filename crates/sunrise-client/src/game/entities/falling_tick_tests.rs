@@ -84,7 +84,7 @@ impl BlockPart for Recorder {
     }
 }
 
-fn sand_at(game: &mut crate::game::Game<'_>, id: u32) {
+fn sand_at(game: &mut crate::game::ServerGame<'_>, id: u32) {
     let sand = game
         .pack
         .assets
@@ -118,7 +118,7 @@ fn sand_at(game: &mut crate::game::Game<'_>, id: u32) {
     });
 }
 
-fn with_recorder(check: impl FnOnce(&mut crate::game::Game<'_>, &Heard)) {
+fn with_recorder(check: impl FnOnce(&mut crate::game::ServerGame<'_>, &Heard)) {
     let heard = Heard::default();
     let mods: mod_api::Mods =
         vec![ModEntry::new("recorder", Box::new(Recorder(heard.clone())))].into();

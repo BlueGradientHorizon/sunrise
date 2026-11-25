@@ -440,10 +440,10 @@ pub(in crate::game) mod lectern_books_tag_tests {
             r#"{"enabled":["file/books"],"disabled":[]}"#,
         )
         .unwrap();
-        game.server.world_root = dir;
+        game.side.world_root = dir;
         let stack = game.reload_datapacks(false, &[]).unwrap();
         let root = game.options.resources.clone();
-        game.world_tables.0 = game
+        game.side.world_tables.0 = game
             .stage_world_tables(&stack, false, &root)
             .unwrap()
             .tables;

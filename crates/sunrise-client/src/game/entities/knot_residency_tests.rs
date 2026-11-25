@@ -3,13 +3,13 @@
 use super::{Dim, Game, commands::Target, native_entity_refs::tests::with_game};
 use sunrise_client::{join_seq::residency::table::EntityLookup, mobs::leash::Holder};
 
-fn tie_player_mob(game: &mut Game<'_>, fence: [i32; 3]) -> (u32, u32) {
+fn tie_player_mob(game: &mut crate::game::ServerGame<'_>, fence: [i32; 3]) -> (u32, u32) {
     game.summon_with_nbt("minecraft:pig", fence.map(f64::from), "{}")
         .unwrap();
     let mob = game.mobs.last().unwrap().id;
     assert!(game.set_leash(Target::Mob(mob), Holder::Player, None));
     assert!(game.use_knot(fence, false));
-    let knot = game.server.knot_ids[&fence];
+    let knot = game.side.knot_ids[&fence];
     assert_ne!(knot, 0);
     // This assertion is also the allocation INSTALL mutant's observable failure.
     assert_eq!(game.natural_knot(knot), Some(fence));
@@ -54,7 +54,7 @@ fn natural_knot_owner_survives_active_parked_reset_and_retires_at_last_holder() 
         assert_eq!(game.resident_entities.knots[0].join, join);
         assert!(game.detach_leash(Target::Mob(second), false));
         assert_eq!(game.server_resident_entity(knot), EntityLookup::Missing);
-        assert!(!game.server.knot_ids.contains_key(&fence));
+        assert!(!game.side.knot_ids.contains_key(&fence));
         assert!(game.resident_entities.knots.is_empty());
         assert!(matches!(
             game.server_resident_entity(nether_knot),

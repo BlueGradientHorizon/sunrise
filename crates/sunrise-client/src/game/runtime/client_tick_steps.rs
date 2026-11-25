@@ -114,7 +114,7 @@ mod tests {
             assert_eq!(game.ticks, 0, "client without remote must not tick a level");
             assert_eq!(game.world.game_time, time_before + 401);
             assert!(
-                game.client.destroying.is_empty(),
+                game.side.destroying.is_empty(),
                 "client-only crack expiry still runs without a remote"
             );
             assert!(game.tick_first_level().is_err());
@@ -144,7 +144,7 @@ mod tests {
     #[ignore = "daily"]
     fn client_redraw_without_title_or_remote_fails_loudly() {
         with_client_game(|game| {
-            game.title.0 = None;
+            game.side.title.0 = None;
             assert!(game.remote.is_none());
             let loop_ctl = NoLoop(std::cell::Cell::new(false));
             game.handle_window_event_inner(&loop_ctl, WindowEvent::RedrawRequested, None, None);
@@ -163,11 +163,11 @@ mod tests {
     #[ignore = "daily"]
     fn startup_menu_handoff_without_title_opens_title_on_disconnected_client() {
         with_client_game(|game| {
-            game.title.0 = None;
+            game.side.title.0 = None;
             assert!(game.remote.is_none());
             StartupMenu::default().handoff(game);
             assert!(
-                game.title.0.is_some(),
+                game.side.title.0.is_some(),
                 "handoff must never leave a disconnected client without a title screen"
             );
         });

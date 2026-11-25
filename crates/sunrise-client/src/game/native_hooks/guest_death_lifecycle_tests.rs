@@ -56,7 +56,7 @@ fn lifecycle(heal: bool) {
         )]
         .into(),
         || {
-            with_game(|game: &mut Game<'_>| {
+            with_game(|game: &mut crate::game::ServerGame<'_>| {
                 game.build_registries();
                 game.load_server_loot();
                 game.world

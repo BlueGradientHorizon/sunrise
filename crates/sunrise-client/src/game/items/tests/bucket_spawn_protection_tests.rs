@@ -111,13 +111,13 @@ fn a_guest_without_build_rights_neither_empties_nor_fills_a_bucket_under_spawn_p
     let registry = game.pack.assets.registry;
     let air = registry.default_state("minecraft:air").unwrap().0;
     let water = registry.default_state("minecraft:water").unwrap().0;
-    let state = |game: &Game<'_>, pos: [i32; 3]| game.world.block(pos[0], pos[1], pos[2]).0;
-    let held = |game: &Game<'_>| {
+    let state = |game: &crate::game::ServerGame<'_>, pos: [i32; 3]| game.world.block(pos[0], pos[1], pos[2]).0;
+    let held = |game: &crate::game::ServerGame<'_>| {
         game.lan.as_ref().unwrap().hub.guests[0].inventory[0]
             .as_ref()
             .map(|s| s.item.to_string())
     };
-    let give = |game: &mut Game<'_>, item: &str| {
+    let give = |game: &mut crate::game::ServerGame<'_>, item: &str| {
         game.lan
             .as_mut()
             .unwrap()
@@ -125,13 +125,13 @@ fn a_guest_without_build_rights_neither_empties_nor_fills_a_bucket_under_spawn_p
             .guests
             .update(0, |g| g.inventory[0] = Some(ItemStack::new(item, 1)));
     };
-    let move_to = |game: &mut Game<'_>, at: [f64; 3]| {
+    let move_to = |game: &mut crate::game::ServerGame<'_>, at: [f64; 3]| {
         game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.position = at;
             g.previous_position = at;
         });
     };
-    let op = |game: &mut Game<'_>, on: bool| {
+    let op = |game: &mut crate::game::ServerGame<'_>, on: bool| {
         let ops = &mut game.lan.as_mut().unwrap().hub.ops;
         if on {
             ops.insert(GUEST_UUID, 4);

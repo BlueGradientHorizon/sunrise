@@ -128,7 +128,7 @@ impl mobs::goals::Goal for Vanilla {
 
 /// A zombie in the game's list, as `Mob::new` builds it.
 pub(in crate::game::server_side) fn zombie(
-    game: &mut super::super::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     id: u32,
     at: [f64; 3],
 ) {
@@ -145,7 +145,7 @@ pub(in crate::game::server_side) fn zombie(
 
 /// The zombie's goal selector ticks once, as `server_ai_step` ticks it: the
 /// world out of the game, the goal host beside it.
-fn tick_goals(game: &mut super::super::Game<'_>, index: usize) {
+fn tick_goals(game: &mut crate::game::ServerGame<'_>, index: usize) {
     tick_goals_as(game, index, None, None);
 }
 
@@ -154,7 +154,7 @@ fn tick_goals(game: &mut super::super::Game<'_>, index: usize) {
 /// (#1077): the real guest's uuid and entity id, never a scan per read. A
 /// lent view with no identity is a fake player's: nothing resolves.
 fn tick_goals_as(
-    game: &mut super::super::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     index: usize,
     player: Option<sunrise_client::mobs::PlayerView>,
     identity: Option<([i32; 4], u32)>,
@@ -547,7 +547,7 @@ fn the_host_answers_without_panicking() {
 }
 
 /// A mob of `kind` in the game's list, as `Mob::new` builds it.
-fn mob_of(game: &mut super::super::Game<'_>, id: u32, kind: &str, at: [f64; 3]) {
+fn mob_of(game: &mut crate::game::ServerGame<'_>, id: u32, kind: &str, at: [f64; 3]) {
     let kind = game.res.mob_types().get(kind).unwrap().clone();
     let mut m = Mob::new(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0);
     m.ground.on_ground = true;

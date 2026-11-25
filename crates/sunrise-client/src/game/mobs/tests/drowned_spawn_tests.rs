@@ -5,7 +5,7 @@
 //! and the count is in the original probe's wide range (1..30), not an exact
 //! random result.
 use crate::game::*;
-fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
+fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::ServerGame<'_> {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);
@@ -90,7 +90,7 @@ fn only_an_empty_offhand_drowned_draws_for_the_shell() {
         assert!(game.run_command(command), "{command}");
     }
     let difficulty = game.local_difficulty([0.5, 100.0, 0.5]);
-    let base = |game: &Game<'_>, kind: &str| {
+    let base = |game: &crate::game::ServerGame<'_>, kind: &str| {
         let m = game.mobs.iter().find(|m| &*m.kind.id == kind).unwrap();
         assert_eq!(
             m.extra.off_hand_id(),
@@ -101,7 +101,7 @@ fn only_an_empty_offhand_drowned_draws_for_the_shell() {
     };
     // The fork's finalize funnel draws from the level's random (`world.random`). `Command` is
     // `/summon`'s reason: a Natural drowned can also roll a zombie nautilus after its shell.
-    let finalize = |game: &mut Game<'_>, mut m: sunrise_client::mobs::Mob, seed: i64| {
+    let finalize = |game: &mut crate::game::ServerGame<'_>, mut m: sunrise_client::mobs::Mob, seed: i64| {
         m.random.set_seed(seed);
         game.world.random = sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(seed));
         game.finalize_plain(

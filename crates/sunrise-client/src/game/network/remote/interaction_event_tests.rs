@@ -45,7 +45,7 @@ use sunrise_core::nbt::Tag;
 #[allow(unused_imports)]
 use sunrise_protocol::{connection::Pipe, packets::configuration::ClientInformation};
 
-impl Game<'_> {
+impl<S: crate::game::Side> Game<'_, S> {
     pub(in crate::game) fn set_sent_sneak_for_test(&mut self) {
         self.remote.as_mut().unwrap().last_input |= super::SHIFT_INPUT;
     }
@@ -290,16 +290,16 @@ impl ItemPart for Observer {
     }
 }
 
-pub(in crate::game) fn with_interaction_client_game(test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_interaction_client_game(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     with_interaction_client_game_at(root, test);
 }
 
 pub(in crate::game) fn with_interaction_client_game_at(
     root: std::path::PathBuf,
-    test: impl FnOnce(&mut Game<'_>),
+    test: impl FnOnce(&mut crate::game::ClientGame<'_>),
 ) {
-    super::super::native_entity_refs::tests::with_game_role(root, ExecutionRole::Client, |game| {
+    super::super::native_entity_refs::tests::with_game_role_client(root, ExecutionRole::Client, |game| {
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "InteractionTest").unwrap();
         game.remote.as_mut().unwrap().logged_in = true;
@@ -313,14 +313,14 @@ pub(in crate::game) fn with_interaction_client_game_at(
     });
 }
 
-pub(in crate::game) fn with_interaction_server_game(test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_interaction_server_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     with_interaction_server_game_at(root, test);
 }
 
 pub(in crate::game) fn with_interaction_server_game_at(
     root: std::path::PathBuf,
-    test: impl FnOnce(&mut Game<'_>),
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>),
 ) {
     super::super::native_entity_refs::tests::with_game_at(root, |game| {
         game.options.dedicated = Some(Vec::new());
@@ -560,13 +560,13 @@ fn a_creative_hand_replaced_by_a_finish_listener_is_not_sent_as_a_creative_slot(
             let offhand = super::super::shield::OFFHAND_SLOT;
             let packets = |observer: &Observer| observer.0.lock().unwrap().creative_slot_packets;
             // Finish the use of `slot`, a listener setting the result's count to `count`.
-            let finish = |game: &mut Game<'_>, slot: usize, count: u32| {
+            let finish = |game: &mut crate::game::ClientGame<'_>, slot: usize, count: u32| {
                 observer.0.lock().unwrap().finish_replacement = Some(Some(count));
                 game.using = Some((slot, 5));
                 game.remote_complete_using();
             };
             // Both senders: the per-tick scan and the one a creative click ends with.
-            let sync = |game: &mut Game<'_>| {
+            let sync = |game: &mut crate::game::ClientGame<'_>| {
                 game.remote_send_state(0);
                 game.send_creative_slots();
             };

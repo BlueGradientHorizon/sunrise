@@ -263,7 +263,7 @@ mod tests {
                 game.read_raids();
                 let current = game.level(game.dim.id()).unwrap();
                 let (id, _) = game
-                    .raiding
+                    .side.raiding
                     .0
                     .raids_mut(current.dimension_id())
                     .unwrap()
@@ -277,7 +277,7 @@ mod tests {
                 assert!(other.is_active(game));
                 game.raid_command_stop(id);
                 let tick_id = game
-                    .raiding
+                    .side.raiding
                     .0
                     .raids_mut(current.dimension_id())
                     .unwrap()
@@ -308,7 +308,7 @@ mod tests {
         });
     }
 
-    fn raider_mob(game: &mut Game<'_>, id: u32, raid: i32, wave: i32, health: f32) {
+    fn raider_mob(game: &mut crate::game::ServerGame<'_>, id: u32, raid: i32, wave: i32, health: f32) {
         let kind = game
             .res
             .mob_types()
@@ -328,11 +328,11 @@ mod tests {
     fn saved_raids_are_found_before_the_first_raid_tick() {
         with_game(|game| {
             let root = std::env::temp_dir().join(format!("raid-early-{}", std::process::id()));
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             assert!(game.raid_command_create([10, 70, 10], 2));
             game.save_raids();
             // The world opens again and reads the raids, as `finish_open_world` does.
-            game.raiding.0 = Default::default();
+            game.side.raiding.0 = Default::default();
             game.read_raids();
             use sunrise_core::random::RandomSource;
             let before = game.world.random.clone().next_long();
@@ -431,7 +431,7 @@ mod tests {
             game.read_raids();
             let current = game.level(game.dim.id()).unwrap();
             let (other_id, _) = game
-                .raiding
+                .side.raiding
                 .0
                 .raids_mut(current.dimension_id())
                 .unwrap()
@@ -475,7 +475,7 @@ mod tests {
             assert_eq!(level.raid_at(game, [10, 70, 10]), None);
             assert_eq!(level.raid(game, raid.id()), Some(raid));
             assert!(
-                game.levels
+                game.side.levels
                     .0
                     .parked_of(level.dimension_id())
                     .unwrap()
@@ -496,7 +496,7 @@ mod tests {
                 game.enter_command_level(super::super::Dim::Nether)
                     .is_some()
             );
-            game.levels.0.clear();
+            game.side.levels.0.clear();
             assert_eq!(raid.center(game), None);
             assert_eq!(raid.raiders(game), None);
             assert!(!raid.set_omen_level(game, 1));

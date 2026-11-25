@@ -132,7 +132,7 @@ pub(in crate::game) mod tests {
         fn resolved<K>(ids: &[&str], resolve: impl Fn(&str) -> Option<K>) -> TagMembers<K> {
             TagMembers::Members(ids.iter().map(|id| resolve(id).unwrap()).collect())
         }
-        let check_host = |game: &Game<'_>, keep: usize| {
+        let check_host = |game: &crate::game::ServerGame<'_>, keep: usize| {
             let probe = key("tag_reload:probe");
             assert_eq!(
                 mod_api::Tags::items(game, probe),
@@ -223,7 +223,7 @@ pub(in crate::game) mod tests {
                     game.adv.progress.revoke("tag_reload:damage_probe", "probe"),
                     !expect_empty
                 );
-                let loot = game.server_loot.0.get().unwrap();
+                let loot = game.side.server_loot.0.get().unwrap();
                 for (registry, values) in members {
                     let expected: Vec<_> = values[..keep].iter().map(|id| id.to_string()).collect();
                     assert_eq!(loot.members(registry, "tag_reload:probe"), Some(expected));

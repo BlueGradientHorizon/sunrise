@@ -126,12 +126,12 @@ fn restricted_level_support_and_sky_reads() {
 #[test]
 #[ignore = "daily"]
 fn a_guests_sprinting_survives_a_turn() {
-    with_guests(|game: &mut Game<'_>| {
+    with_guests(|game: &mut crate::game::ServerGame<'_>| {
         let entity = game.player(13).unwrap().entity();
         // A guest has no body until its first turn.
         assert!(game.as_guest(13, |_| ()).is_some());
         assert_eq!(game.entity_is_sprinting(entity), Some(false));
-        let stored = |game: &mut Game<'_>| {
+        let stored = |game: &mut crate::game::ServerGame<'_>| {
             let lan = game.lan.as_mut().unwrap();
             let flag = lan.hub.update_guest(13, |g| g.sprinting).unwrap();
             let modifier = lan.hub.guests.motion_mut(13).unwrap().has_sprint_modifier();
@@ -412,7 +412,7 @@ fn gui_ticks_follow_unpaused_client_ticks() {
             game.clock.set_frozen(true);
             game.client_tick_steps(1, None).unwrap();
             assert_eq!(game.gui_ticks(), 3);
-            game.client.gui_ticks = i32::MAX;
+            game.side.gui_ticks = i32::MAX;
             game.client_tick_steps(1, None).unwrap();
             assert_eq!(game.gui_ticks(), i32::MIN);
         });

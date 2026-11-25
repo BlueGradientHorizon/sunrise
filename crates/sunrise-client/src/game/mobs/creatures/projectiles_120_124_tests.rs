@@ -204,7 +204,7 @@ pub(in crate::game) fn vec_bits(v: Vec3) -> [String; 3] {
 
 pub(in crate::game) fn setup_game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> Game<'a> {
+) -> crate::game::ServerGame<'a> {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.options.dedicated = None;
     let mut player =
@@ -272,7 +272,7 @@ pub(in crate::game) fn setup_game<'a>(
     game
 }
 
-pub(in crate::game) fn clear_arena(game: &mut Game<'_>, backstop_x: i32) {
+pub(in crate::game) fn clear_arena(game: &mut crate::game::ServerGame<'_>, backstop_x: i32) {
     if game.riding.is_some() {
         game.stop_riding();
     }
@@ -292,9 +292,9 @@ pub(in crate::game) fn clear_arena(game: &mut Game<'_>, backstop_x: i32) {
     game.paintings.clear();
     game.cushions.clear();
     game.crystals.clear();
-    game.others.0.clear();
-    game.server.knot_ids.clear();
-    game.server.broken_knots.clear();
+    game.side.others.0.clear();
+    game.side.knot_ids.clear();
+    game.side.broken_knots.clear();
     game.resident_entities.knots.clear();
     game.reset_entity_residency();
     game.bind_local_player_residency();
@@ -332,12 +332,12 @@ pub(in crate::game) fn clear_arena(game: &mut Game<'_>, backstop_x: i32) {
     game.audio.0.heard.clear();
 }
 
-pub(in crate::game) fn player_uuid_nbt(game: &Game<'_>) -> String {
+pub(in crate::game) fn player_uuid_nbt(game: &crate::game::ServerGame<'_>) -> String {
     let arr = game.level.player_uuid.unwrap_or([0, 0, 0, 1]);
     format!("[I;{},{},{},{}]", arr[0], arr[1], arr[2], arr[3])
 }
 
-pub(in crate::game) fn adv_done(game: &Game<'_>, id: &str) -> bool {
+pub(in crate::game) fn adv_done(game: &crate::game::ServerGame<'_>, id: &str) -> bool {
     game.adv
         .tree
         .find_id(id)
@@ -1168,7 +1168,7 @@ pub(in crate::game) enum ReviewTracked {
     Rocket(u32),
 }
 
-pub(in crate::game) fn summon_mob_seeded(game: &mut Game<'_>, cmd: &str, seed: i64) -> u32 {
+pub(in crate::game) fn summon_mob_seeded(game: &mut crate::game::ServerGame<'_>, cmd: &str, seed: i64) -> u32 {
     assert!(game.run_command(cmd), "{cmd}");
     let idx = game.mobs.len() - 1;
     let id = game.mobs[idx].id;
@@ -1176,7 +1176,7 @@ pub(in crate::game) fn summon_mob_seeded(game: &mut Game<'_>, cmd: &str, seed: i
     id
 }
 
-pub(in crate::game) fn summon_proj_seeded(game: &mut Game<'_>, cmd: &str, seed: i64) -> u32 {
+pub(in crate::game) fn summon_proj_seeded(game: &mut crate::game::ServerGame<'_>, cmd: &str, seed: i64) -> u32 {
     assert!(game.run_command(cmd), "{cmd}");
     let idx = game.creatures.projectiles.len() - 1;
     let id = game.creatures.projectiles[idx].id;
@@ -1186,7 +1186,7 @@ pub(in crate::game) fn summon_proj_seeded(game: &mut Game<'_>, cmd: &str, seed: 
     id
 }
 
-pub(in crate::game) fn summon_trident_seeded(game: &mut Game<'_>, cmd: &str, seed: i64) -> u32 {
+pub(in crate::game) fn summon_trident_seeded(game: &mut crate::game::ServerGame<'_>, cmd: &str, seed: i64) -> u32 {
     assert!(game.run_command(cmd), "{cmd}");
     let idx = game.tridents.len() - 1;
     let id = game.tridents[idx].id;
@@ -1196,7 +1196,7 @@ pub(in crate::game) fn summon_trident_seeded(game: &mut Game<'_>, cmd: &str, see
     id
 }
 
-pub(in crate::game) fn summon_rocket_seeded(game: &mut Game<'_>, cmd: &str, seed: i64) -> u32 {
+pub(in crate::game) fn summon_rocket_seeded(game: &mut crate::game::ServerGame<'_>, cmd: &str, seed: i64) -> u32 {
     assert!(game.run_command(cmd), "{cmd}");
     let idx = game.rockets.len() - 1;
     let id = game.rockets[idx].id;
@@ -1207,7 +1207,7 @@ pub(in crate::game) fn summon_rocket_seeded(game: &mut Game<'_>, cmd: &str, seed
 }
 
 pub(in crate::game) fn check_review_entity(
-    game: &Game<'_>,
+    game: &crate::game::ServerGame<'_>,
     label: &str,
     tick: usize,
     key: &str,

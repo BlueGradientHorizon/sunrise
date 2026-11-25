@@ -24,15 +24,12 @@ fn selectors_reject_criteria_absent_from_the_selected_definition() {
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -45,7 +42,7 @@ fn selectors_reject_criteria_absent_from_the_selected_definition() {
             .as_nanos()
     ));
     std::fs::create_dir_all(&scratch).unwrap();
-    game.server.world_root = scratch.clone();
+    game.side.world_root = scratch.clone();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(10.5, 64.0, 0.5)).unwrap());
 
     const ROOT: &str = "minecraft:story/root";
@@ -60,7 +57,7 @@ fn selectors_reject_criteria_absent_from_the_selected_definition() {
             .iter()
             .any(|c| c.name == "get_stone")
     );
-    let select = |g: &mut Game<'_>, condition: &str| {
+    let select = |g: &mut crate::game::ServerGame<'_>, condition: &str| {
         let text = format!("@a[advancements={{{condition}}}]");
         let selector = sunrise_client::command::selector::parse(
             &mut sunrise_client::command::Reader::new(&text),

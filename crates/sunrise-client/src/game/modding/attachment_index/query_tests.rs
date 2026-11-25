@@ -12,7 +12,7 @@ static VALUE: AttachmentType<u32> = AttachmentType {
     copy_on_death: false,
     sync: false,
 };
-fn values(game: &Game<'_>) -> Vec<u32> {
+fn values(game: &crate::game::ServerGame<'_>) -> Vec<u32> {
     let host: &dyn mod_api::Host = game;
     let query = host.query(&VALUE).unwrap();
     let mut rows = query.iter();

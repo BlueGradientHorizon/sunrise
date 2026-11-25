@@ -87,7 +87,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
 }
 
 #[cfg(test)]
-impl crate::game::Game<'_> {
+impl<S: crate::game::Side> crate::game::Game<'_, S> {
     pub(in crate::game) fn check_dry_fire_odds_view(
         &mut self,
         stage: impl FnOnce(&sunrise_world::level::Behaviours, &mut dyn LevelAccess, &mut Ticks),

@@ -23,7 +23,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
 /// positional sounds it plays recorded.
 pub(in crate::game::server_side) fn standing_game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> Game<'a> {
+) -> crate::game::ServerGame<'a> {
     let mut game = server_game(resources);
     let feet = Vec3::new(8.5, 70.0, 8.5);
     game.player = Some(sunrise_client::motion::PlayerMotion::new(game.motion, feet).unwrap());
@@ -33,7 +33,7 @@ pub(in crate::game::server_side) fn standing_game<'a>(
     game.load_ticking_neighbourhood(0, 0);
     game.update_chunk_tickets();
     assert!(game.entity_ticking_area()(8, 8));
-    game.server.ticked_entities_through = u32::MAX;
+    game.side.ticked_entities_through = u32::MAX;
     game.audio.0.capture = Some(Vec::new());
     game
 }

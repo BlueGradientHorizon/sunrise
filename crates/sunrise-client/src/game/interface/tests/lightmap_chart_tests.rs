@@ -6,7 +6,7 @@ use crate::game::*;
 use sunrise_client::debug_keys::KeyAction;
 
 /// F3+4 pressed: F3 held, 4 pressed and released, F3 released.
-fn f3_and_4(game: &mut Game<'_>) {
+fn f3_and_4(game: &mut crate::game::ClientGame<'_>) {
     game.debug_key(KeyCode::F3, KeyAction::Press);
     game.debug_key(KeyCode::Digit4, KeyAction::Press);
     game.debug_key(KeyCode::Digit4, KeyAction::Release);

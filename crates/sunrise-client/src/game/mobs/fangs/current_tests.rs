@@ -57,7 +57,7 @@ fn motion_bits(v: Vec3) -> [u64; 3] {
 }
 
 fn check_fangs_motion(
-    game: &mut crate::game::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     name: &str,
     uuid: [i32; 4],
     id: u32,
@@ -261,7 +261,7 @@ pub(in crate::game::server_side) fn run_fangs_in_a_current_are_pushed_and_fangs_
         }
 
         // Fangs added during the current mob pass (id > ticked_entities_through) wait for next tick.
-        game.server.ticked_entities_through = game.server.next_entity;
+        game.side.ticked_entities_through = game.side.next_entity;
         game.add_fangs([6.5, 200.0, 3.5], 0.0, 100, 0);
         let late_id = game.fangs.list.last().unwrap().id;
         game.tick_mobs().unwrap();

@@ -37,12 +37,12 @@ fn data(sky: &[(usize, u8)], block: &[(usize, u8)], empty_sky: &[usize]) -> Ligh
     }
 }
 
-fn light(game: &mut Game<'_>, x: i32, light: LightData) {
+fn light(game: &mut crate::game::ClientGame<'_>, x: i32, light: LightData) {
     game.apply_packet(C::LightUpdate(LightUpdate { x, z: 0, light }))
         .unwrap();
 }
 
-fn column(game: &mut Game<'_>, x: i32, light: LightData) {
+fn column(game: &mut crate::game::ClientGame<'_>, x: i32, light: LightData) {
     let air = game.world.air.0 as i32;
     let stone = game
         .pack

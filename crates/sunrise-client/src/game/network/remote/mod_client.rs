@@ -1370,7 +1370,7 @@ impl sunrise_client::interaction_input::TargetUseWorld for RemoteUseWorld<'_, '_
 }
 
 #[cfg(test)]
-impl Game<'_> {
+impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn test_remote_pick_click(&mut self) {
         use sunrise_client::interaction_input::InteractionWorld as _;
         RemoteInputWorld(self).pick();
@@ -1638,13 +1638,13 @@ pub(in crate::game) mod tests {
             point: [3.5, 64.875, 4.5],
             inside: false,
         };
-        let open = |game: &crate::game::Game<'_>| {
+        let open = |game: &crate::game::ClientGame<'_>| {
             let b = game.res.behaviours();
             b.table.bool(game.world.block(x, y, z), b.props.open)
         };
         let blocks = mod_api::SoundSource::Blocks.index();
 
-        crate::game::native_entity_refs::tests::with_game_role(
+        crate::game::native_entity_refs::tests::with_game_role_client(
             root.clone(),
             crate::game::execution_role::ExecutionRole::Client,
             |game| {
@@ -1668,12 +1668,12 @@ pub(in crate::game) mod tests {
                     (gate, use_sound),
                 ] {
                     game.world.set(x, y, z, state).unwrap();
-                    game.audio.0.capture = Some(Vec::new());
+                    game.side.audio.0.capture = Some(Vec::new());
                     let (answer, dry) = game.remote_block_reacts(&hit, None, true);
                     assert!(answer.consumes_action());
                     game.predict_use(&dry, 1);
                     assert!(open(game), "the gate opens without a server round trip");
-                    let capture = game.audio.0.capture.as_mut().unwrap();
+                    let capture = game.side.audio.0.capture.as_mut().unwrap();
                     assert_eq!(capture.len(), 1);
                     let predicted = capture.pop().unwrap();
                     assert_eq!((predicted.event.as_str(), predicted.source), (name, blocks));
@@ -1705,7 +1705,7 @@ pub(in crate::game) mod tests {
                     .unwrap();
                 rx
             });
-            let sounds = |game: &crate::game::Game<'_>, rx: &std::sync::mpsc::Receiver<Out>| {
+            let sounds = |game: &crate::game::ServerGame<'_>, rx: &std::sync::mpsc::Receiver<Out>| {
                 let sync = game.lan.as_ref().unwrap().hub.sync_data();
                 rx.try_iter()
                     .flat_map(|out| match out {
@@ -1791,8 +1791,8 @@ pub(in crate::game) mod tests {
                     [(wire_sound.into(), blocks as i32, 1.0)]
                 );
             }
-            let blast_count = |game: &crate::game::Game<'_>| {
-                game.server
+            let blast_count = |game: &crate::game::ServerGame<'_>| {
+                game.side
                     .pending_sounds
                     .iter()
                     .filter(|s| s.event == blast_sound)

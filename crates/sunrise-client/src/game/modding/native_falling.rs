@@ -280,7 +280,7 @@ mod tests {
         client: bool,
         exercise: impl FnOnce(&mut Game<'_>, &Arc<Mutex<AttachmentIndex<mod_api::EntityRef>>>),
     ) {
-        let test = |game: &mut Game<'_>| {
+        let test = |game: &mut crate::game::ClientGame<'_>| {
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));

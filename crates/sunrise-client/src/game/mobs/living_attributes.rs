@@ -576,7 +576,7 @@ mod tests {
     }
 
     /// A zombie, an armor stand and the dragon, ids 12, 13 and 14.
-    fn spawn(game: &mut Game<'_>) {
+    fn spawn(game: &mut crate::game::ServerGame<'_>) {
         let zombie = game
             .res
             .mob_types()
@@ -590,7 +590,7 @@ mod tests {
         game.dragon.replace(dragon);
     }
 
-    fn read(game: &Game<'_>, id: u32, name: &str) -> (Option<f64>, Option<f64>) {
+    fn read(game: &crate::game::ServerGame<'_>, id: u32, name: &str) -> (Option<f64>, Option<f64>) {
         let living = game.living(game.entity(id).unwrap()).unwrap();
         (
             living.attribute_value(game, name),
@@ -609,7 +609,7 @@ mod tests {
         with_game(|game| {
             spawn(game);
             let zombie = living(game, 12);
-            let attack = |game: &Game<'_>| {
+            let attack = |game: &crate::game::ServerGame<'_>| {
                 gear::attack_damage(
                     game.mobs.iter().find(|m| m.id == 12).unwrap(),
                     Some(game.res.items()),
@@ -799,7 +799,7 @@ mod tests {
         with_game(|game| {
             spawn(game);
             let values =
-                |game: &Game<'_>| armor::values(game.mobs.iter().find(|m| m.id == 12).unwrap());
+                |game: &crate::game::ServerGame<'_>| armor::values(game.mobs.iter().find(|m| m.id == 12).unwrap());
             let zombie = living(game, 12);
             // The zombie's own armor is 2, the diamond chestplate's 8 and 2
             // toughness: the write through the handle collects at once.
@@ -1054,7 +1054,7 @@ mod tests {
         use sunrise_core::nbt::Tag;
         with_game(|game| {
             spawn(game);
-            let read_at = |game: &Game<'_>| {
+            let read_at = |game: &crate::game::ServerGame<'_>| {
                 let m = &game.mobs[0];
                 let gear = m.extra.gear_knockback.as_deref();
                 (
@@ -1094,7 +1094,7 @@ mod tests {
         AttributeModifier::new(Identifier::parse(id).unwrap(), amount, operation)
     }
 
-    fn living(game: &Game<'_>, id: u32) -> mod_api::LivingRef {
+    fn living(game: &crate::game::ServerGame<'_>, id: u32) -> mod_api::LivingRef {
         game.living(game.entity(id).unwrap()).unwrap()
     }
 
@@ -1279,7 +1279,7 @@ mod tests {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             // The dragon owns its multipart IDs above 14; keep the fixture
             // player outside that range and reserve it against later spawns.
-            game.server.next_entity = game.server.next_entity.max(100);
+            game.side.next_entity = game.side.next_entity.max(100);
             crate::game::native_entity_refs::tests::bind_local_player(game, 100, 123);
             let player = living(game, 100);
             assert!(player.add_attribute_modifier(

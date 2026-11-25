@@ -100,7 +100,7 @@ pub(in crate::game) fn prepared_root() -> std::path::PathBuf {
 
 /// Runs the game's streaming until chunk `CHUNK` is resident (`true`) or gone, and
 /// nothing is left on its way (a ticket removed mid-generation is another matter).
-pub(in crate::game) fn pump_until(game: &mut crate::game::Game<'_>, resident: bool) {
+pub(in crate::game) fn pump_until(game: &mut crate::game::ServerGame<'_>, resident: bool) {
     let deadline = Instant::now() + Duration::from_secs(120);
     while game.world.chunks.contains_key(&CHUNK) != resident || game.streaming.busy() {
         assert!(Instant::now() < deadline, "chunk {CHUNK:?} did not change");

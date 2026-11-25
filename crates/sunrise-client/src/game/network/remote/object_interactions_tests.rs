@@ -73,7 +73,7 @@ fn transactional_bucket_hands_reach_the_owning_client() {
             spawn_menu_test(client);
             client.selected = 2;
             // Consume actual server packets through the client's ordinary handler.
-            let deliver = |client: &mut super::Game<'_>| {
+            let deliver = |client: &mut crate::game::ClientGame<'_>| {
                 let mut slots = Vec::new();
                 for out in rx.try_iter() {
                     let bodies = match out {

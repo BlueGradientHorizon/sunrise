@@ -53,7 +53,7 @@ struct Fixture {
     stream: LegacyRandom,
 }
 
-fn fixture(game: &mut super::Game<'_>) -> Fixture {
+fn fixture(game: &mut crate::game::ServerGame<'_>) -> Fixture {
     game.options.dedicated = Some(Vec::new());
     let (tx12, rx12) = mpsc::channel();
     let (tx13, rx13) = mpsc::channel();
@@ -76,7 +76,7 @@ fn fixture(game: &mut super::Game<'_>) -> Fixture {
     }
 }
 
-fn sound_id(game: &super::Game<'_>, name: &str) -> i32 {
+fn sound_id(game: &crate::game::ServerGame<'_>, name: &str) -> i32 {
     game.lan
         .as_ref()
         .unwrap()

@@ -278,7 +278,7 @@ fn a_panicking_cauldron_registrar_leaves_no_exact_tag_or_all_entries() {
 
 pub(in crate::game::server_side) fn fixture_mods(
     mods: mod_api::Mods,
-    test: impl FnOnce(&mut Game<'_>),
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>),
 ) {
     mod_platform::__private::install(mods.clone());
     crate::game::api_values::install_parts(&mods).unwrap();
@@ -289,7 +289,7 @@ pub(in crate::game::server_side) fn fixture_mods(
         .to_path_buf();
     with_game_at(root, test);
 }
-pub(in crate::game) fn fixture(dye: bool, test: impl FnOnce(&mut Game<'_>, &Arc<Seen>)) {
+pub(in crate::game) fn fixture(dye: bool, test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Arc<Seen>)) {
     let seen = Arc::new(Seen::default());
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "test",
@@ -305,7 +305,7 @@ pub(in crate::game) fn fixture(dye: bool, test: impl FnOnce(&mut Game<'_>, &Arc<
     });
 }
 pub(in crate::game) fn setup(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     block: &str,
     level: Option<&str>,
     item: &str,
@@ -330,19 +330,19 @@ pub(in crate::game) fn setup(
     if game.remote.is_none() {
         bind_local_player(game, 7, 123);
     } else {
-        game.server.lan_acting_entity = None;
-        game.server.lan_acting_uuid = None;
+        game.side.lan_acting_entity = None;
+        game.side.lan_acting_uuid = None;
     }
     game.creative = false;
     game.selected = 0;
     game.hand = Hand::Main;
     game.inventory.fill(None);
     game.inventory[0] = Some(ItemStack::new(item, count));
-    game.server.pending_native_sounds.clear();
+    game.side.pending_native_sounds.clear();
     game.audio.0.capture = Some(Vec::new());
     crate::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
 }
-pub(in crate::game::server_side) fn state(game: &Game<'_>) -> (String, Option<String>) {
+pub(in crate::game::server_side) fn state(game: &crate::game::ServerGame<'_>) -> (String, Option<String>) {
     let state = game
         .pack
         .assets
@@ -354,7 +354,7 @@ pub(in crate::game::server_side) fn state(game: &Game<'_>) -> (String, Option<St
 pub(in crate::game) fn events() -> usize {
     crate::game::sculk::TEST_POSTED_EVENTS.with(|events| events.borrow().as_ref().unwrap().len())
 }
-pub(in crate::game) fn unchanged(game: &Game<'_>, seen: &Seen) {
+pub(in crate::game) fn unchanged(game: &crate::game::ServerGame<'_>, seen: &Seen) {
     assert_eq!(state(game), ("minecraft:cauldron".into(), None));
     let held = game.inventory[0].as_ref().unwrap();
     assert_eq!((&*held.item, held.count), ("test:syrup_bottle", 2));
@@ -369,7 +369,7 @@ pub(in crate::game) fn unchanged(game: &Game<'_>, seen: &Seen) {
         0
     );
 }
-pub(in crate::game::server_side) fn bottles(game: &Game<'_>) -> u32 {
+pub(in crate::game::server_side) fn bottles(game: &crate::game::ServerGame<'_>) -> u32 {
     game.inventory
         .iter()
         .flatten()
@@ -401,7 +401,7 @@ fn cauldron_syrup_applies_once() {
         assert_eq!(game.stats.get("custom", "minecraft:use_cauldron"), 1);
         assert_eq!(game.stats.get("used", "test:syrup_bottle"), 1);
         assert_eq!(
-            game.server
+            game.side
                 .pending_native_sounds
                 .iter()
                 .filter(|sound| sound.sound == "minecraft:item.bucket.empty")
@@ -1613,7 +1613,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
     fixture_mods(mods, |game| {
         let server_table = snapshot();
         let (mut peer, _writer) = crate::game::remote::tests::connect_menu_test(game);
-        let mut read_uses = |game: &Game<'_>| {
+        let mut read_uses = |game: &crate::game::ServerGame<'_>| {
             // Use the same writer, outside the actor hold, to fence each burst.
             game.remote.as_ref().unwrap().session.send(S::PingRequest(
                 sunrise_protocol::packets::status::Ping { time: 0 },

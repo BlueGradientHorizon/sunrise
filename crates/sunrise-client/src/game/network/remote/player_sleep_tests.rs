@@ -14,7 +14,7 @@ fn client_sleep_metadata_and_tick_preserve_shape_and_authoritative_positions() {
         packets::play::{self, Clientbound as C},
     };
 
-    let deliver = |game: &mut crate::game::Game<'_>, packet: C| {
+    let deliver = |game: &mut crate::game::ServerGame<'_>, packet: C| {
         let body = packet.encode();
         let mut reader = Reader::new(&body);
         let id = reader.varint().unwrap();

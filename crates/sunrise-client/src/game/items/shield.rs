@@ -365,7 +365,7 @@ mod durability_tests {
         use crate::game::damage_item_tests::{Rule, with_wear_part};
         with_wear_part("minecraft:shield", Rule::Halve, |game, wear| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            let block = |game: &mut Game<'_>| {
+            let block = |game: &mut crate::game::ServerGame<'_>| {
                 game.offhand = Some(ItemStack::new("minecraft:shield", 1));
                 game.using = Some((OFFHAND_SLOT, 20));
                 game.after_block(

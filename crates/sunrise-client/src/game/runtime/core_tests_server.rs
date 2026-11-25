@@ -21,7 +21,7 @@ fn eager_saves_wait_for_an_open_world_and_for_light() {
     let dir = std::env::temp_dir().join(format!("sunrise-eager-game-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    game.save.0 = Arc::new(sunrise_client::save::SaveDir::new(
+    game.side.save.0 = Arc::new(sunrise_client::save::SaveDir::new(
         dir.clone(),
         sunrise_client::save::LevelShape::OVERWORLD,
         Some(Default::default()),
@@ -33,14 +33,14 @@ fn eager_saves_wait_for_an_open_world_and_for_light() {
     game.world.modified.extend([(0, 0), (1, 0)]);
     game.save_chunks_eagerly(); // no world open: nothing to save into
     assert!(game.world.modified.contains(&(0, 0)));
-    game.server.world_root = dir.clone();
+    game.side.world_root = dir.clone();
     game.save_chunks_eagerly();
     assert!(!game.world.modified.contains(&(0, 0)));
     assert!(game.world.modified.contains(&(1, 0))); // not lit yet
     Arc::make_mut(game.world.chunks.get_mut(&(1, 0)).unwrap()).lit = true;
     game.save_chunks_eagerly(); // still queued: no new dirty transition needed
     assert!(!game.world.modified.contains(&(1, 0)));
-    game.save.0.flush().unwrap();
+    game.side.save.0.flush().unwrap();
     assert!(dir.join("region/r.0.0.mca").exists());
     std::fs::remove_dir_all(dir).unwrap();
 }
@@ -81,8 +81,8 @@ fn fence_ties_without_a_lead_only_on_main_hand() {
         );
         mob.extra.leash = Some(Holder::Player);
         game.mobs.push(mob);
-        game.server.forced_hit = Some(hit);
-        game.server.guest_use = Some(GuestUse::on_block(Hand::Off));
+        game.side.forced_hit = Some(hit);
+        game.side.guest_use = Some(GuestUse::on_block(Hand::Off));
         game.with_hand(Hand::Off, |game| game.use_hand(Some(&hit)))
             .unwrap();
         assert_eq!(game.mobs[0].extra.leash, Some(Holder::Player));
@@ -92,7 +92,7 @@ fn fence_ties_without_a_lead_only_on_main_hand() {
         assert_eq!(game.mobs[0].extra.leash, Some(Holder::Knot(hit.pos)));
         game.mobs[0].extra.leash = Some(Holder::Player);
         game.offhand = None;
-        game.server.guest_use = Some(GuestUse::on_block(Hand::Main));
+        game.side.guest_use = Some(GuestUse::on_block(Hand::Main));
         game.with_hand(Hand::Main, |game| game.use_hand(Some(&hit)))
             .unwrap();
         assert_eq!(game.mobs[0].extra.leash, Some(Holder::Knot(hit.pos)));
@@ -133,7 +133,7 @@ fn reload_resolves_parts_against_reloaded_tags() {
         let stone_key = mod_platform::__private::part_tests::block_key("stone");
         let name = stone_key.id(game).expect("stone is registered").to_owned();
         let dir = std::env::temp_dir().join(format!("sunrise-key-tags-{}", std::process::id()));
-        game.session_lock.0 = Some(sunrise_client::save::SessionLock::acquire(&dir).unwrap());
+        game.side.session_lock.0 = Some(sunrise_client::save::SessionLock::acquire(&dir).unwrap());
         assert_eq!(game.block_in_tag(stone_key, "test:reload"), Some(false));
         assert_eq!(
             game.block_in_tag(stone_key, "base_stone_overworld"),
@@ -141,11 +141,11 @@ fn reload_resolves_parts_against_reloaded_tags() {
         );
         game.load_server_loot();
         let stack = super::functions::pack_stack(
-            &game.server.world_root,
+            &game.side.world_root,
             &game.options.resources,
             &game.pack.data_source,
             &game.pack.data_changes,
-            game.cmds.0.vanilla_disabled,
+            game.side.cmds.0.vanilla_disabled,
             &game.level.enabled_features,
             &game.pack.additional_data,
         );
@@ -180,7 +180,7 @@ fn reload_resolves_parts_against_reloaded_tags() {
             mod_api::HookId::AnalogOutput,
             stone
         ));
-        game.session_lock.0 = None;
+        game.side.session_lock.0 = None;
         let _ = std::fs::remove_dir_all(dir);
     });
 }
@@ -301,8 +301,8 @@ fn right_click_block_controls_cauldron_use() {
         mob.extra.leash = Some(sunrise_client::mobs::leash::Holder::Player);
         game.mobs.push(mob);
         game.inventory[game.selected] = Some(ItemStack::new("minecraft:lead", 1));
-        game.server.guest_use = Some(GuestUse::on_block(Hand::Main));
-        game.server.forced_hit = Some(hit);
+        game.side.guest_use = Some(GuestUse::on_block(Hand::Main));
+        game.side.forced_hit = Some(hit);
         cancel.store(true, Ordering::SeqCst);
         let before = calls.load(Ordering::SeqCst);
         game.use_item_as_player().unwrap();
@@ -314,8 +314,8 @@ fn right_click_block_controls_cauldron_use() {
 
         // A spectator's packet reaches the event, even when canceled.
         game.set_mode_id(3);
-        game.server.guest_use = Some(GuestUse::on_block(Hand::Main));
-        game.server.forced_hit = Some(hit);
+        game.side.guest_use = Some(GuestUse::on_block(Hand::Main));
+        game.side.forced_hit = Some(hit);
         cancel.store(true, Ordering::SeqCst);
         let before = calls.load(Ordering::SeqCst);
         game.use_item_as_player().unwrap();

@@ -90,7 +90,7 @@ impl Hooks for Queries {
 }
 
 /// Guests 12 (the sender) and 13 on a LAN host, with what each is sent.
-fn two_guests(game: &mut super::Game<'_>) -> (mpsc::Receiver<Out>, mpsc::Receiver<Out>) {
+fn two_guests(game: &mut crate::game::ServerGame<'_>) -> (mpsc::Receiver<Out>, mpsc::Receiver<Out>) {
     let net = NetConfig {
         listen: false,
         announce: false,
@@ -109,8 +109,8 @@ fn two_guests(game: &mut super::Game<'_>) -> (mpsc::Receiver<Out>, mpsc::Receive
         seed: 0,
         max_players: 3,
         integrated: true,
-        levels: game.server.level_shapes,
-        level_seeds: game.levels.0.runtime.seeds(),
+        levels: game.side.level_shapes,
+        level_seeds: game.side.levels.0.runtime.seeds(),
     };
     let settings = super::lan::LanSettings {
         port: 0,
@@ -207,7 +207,7 @@ fn a_chat_line_hidden_from_one_receiver_reaches_the_others() {
                 ),
                 target: None,
             };
-            let say = |game: &mut super::Game<'_>, content: &str| {
+            let say = |game: &mut crate::game::ServerGame<'_>, content: &str| {
                 let line = format!("<guest12> {content}");
                 game.lan_broadcast_chat(&signed(content), &bound, line, "guest12", content)
                     .unwrap();
@@ -261,7 +261,7 @@ fn say_and_me_are_asked_per_receiver_and_a_whisper_is_not() {
     });
 }
 
-fn place_say_block(game: &mut super::Game<'_>) -> BlockPos {
+fn place_say_block(game: &mut crate::game::ServerGame<'_>) -> BlockPos {
     game.build_registries();
     game.world
         .chunks

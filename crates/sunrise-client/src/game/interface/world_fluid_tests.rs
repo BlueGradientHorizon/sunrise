@@ -80,7 +80,7 @@ fn a_mods_fluid_is_placed_flows_is_collected_and_saved() {
                     game.world.set(x, 63, z, stone).unwrap();
                 }
             }
-            let fluid_at = |game: &super::Game<'_>, x, z| {
+            let fluid_at = |game: &crate::game::ServerGame<'_>, x, z| {
                 game.res.behaviours().fluid(game.world.block(x, 64, z))
             };
 

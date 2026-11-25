@@ -6,7 +6,7 @@ use crate::game::native_projectiles::impact_probe::{Action, point, with_probe};
 #[allow(unused_imports)]
 use sunrise_client::mobs::Mob;
 
-pub(in crate::game) fn launch(game: &mut Game<'_>, lifetime: i32) {
+pub(in crate::game) fn launch(game: &mut crate::game::ServerGame<'_>, lifetime: i32) {
     let mut r = Rocket::remote(71, Vec3::new(0.5, 64.5, 0.5), Vec3::new(4.0, 0.0, 0.0));
     r.angled = true;
     r.owner = Some(Who::Player);

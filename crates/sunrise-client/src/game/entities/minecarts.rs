@@ -1392,7 +1392,7 @@ pub(in crate::game) mod cart_push_tests {
         use sunrise_client::scoreboard::CollisionRule;
 
         /// Puts a cart on a team of its own, as `/team join` would.
-        fn on_a_team(game: &mut Game<'_>, id: u32, rule: CollisionRule) {
+        fn on_a_team(game: &mut crate::game::ServerGame<'_>, id: u32, rule: CollisionRule) {
             let name = game.holder_name(Target::Cart(id)).expect("a cart's UUID");
             let team = format!("cart-{id}");
             game.score.board.add_team(&team).collision_rule = rule;
@@ -1400,7 +1400,7 @@ pub(in crate::game) mod cart_push_tests {
         }
         /// Pushes with cart `pusher` moving at `velocity`, and returns the
         /// target's velocity afterwards.
-        fn push_apart(game: &mut Game<'_>, pusher: usize, target: usize, velocity: Vec3) -> Vec3 {
+        fn push_apart(game: &mut crate::game::ServerGame<'_>, pusher: usize, target: usize, velocity: Vec3) -> Vec3 {
             game.carts.update(target, |cart| cart.velocity = Vec3::ZERO);
             game.carts.update(pusher, |cart| cart.velocity = velocity);
             let mut index = super::CartIndex::default();

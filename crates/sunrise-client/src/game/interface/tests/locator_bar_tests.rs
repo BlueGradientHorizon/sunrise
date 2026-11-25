@@ -14,7 +14,7 @@ use sunrise_protocol::{
     },
 };
 
-fn connect(game: &mut Game<'_>, position: Vec3) -> Pipe {
+fn connect(game: &mut crate::game::ClientGame<'_>, position: Vec3) -> Pipe {
     game.native_lifecycle = NativeLifecycle::default();
     let (client, server) = Pipe::pair();
     game.connect_local(client, "LocatorTest").unwrap();
@@ -43,11 +43,11 @@ fn connect(game: &mut Game<'_>, position: Vec3) -> Pipe {
     server
 }
 
-fn add_armor_stand(game: &mut Game<'_>, id: i32, uuid: u128, position: [f64; 3]) {
+fn add_armor_stand(game: &mut crate::game::ClientGame<'_>, id: i32, uuid: u128, position: [f64; 3]) {
     add_armor_stand_facing(game, id, uuid, position, 0);
 }
 
-fn add_armor_stand_facing(game: &mut Game<'_>, id: i32, uuid: u128, position: [f64; 3], yaw: i8) {
+fn add_armor_stand_facing(game: &mut crate::game::ClientGame<'_>, id: i32, uuid: u128, position: [f64; 3], yaw: i8) {
     let kind = game
         .remote
         .as_ref()
@@ -71,7 +71,7 @@ fn add_armor_stand_facing(game: &mut Game<'_>, id: i32, uuid: u128, position: [f
     .unwrap();
 }
 
-fn track_block(game: &mut Game<'_>, uuid: u128, color: i32, position: [i32; 3]) {
+fn track_block(game: &mut crate::game::ClientGame<'_>, uuid: u128, color: i32, position: [i32; 3]) {
     game.handle_waypoint(&TrackedWaypoint {
         operation: waypoint_operation::TRACK,
         id: WaypointId::Uuid(uuid),
@@ -96,8 +96,8 @@ fn spectated_locator_uses_camera_entity_for_identity_and_distance() {
 
                 // Keep all three witness waypoints visible by placing the render camera
                 // behind them; the entity itself still faces south at x = 100.
-                game.client.locator_camera = Some(([-10.0, 66.0, 0.0], -90.0, 45.0, 70.0));
-                game.client.waypoint_styles = WaypointStyles::load(&ResourceSource::indexed(
+                game.side.locator_camera = Some(([-10.0, 66.0, 0.0], -90.0, 45.0, 70.0));
+                game.side.waypoint_styles = WaypointStyles::load(&ResourceSource::indexed(
                     [(
                         "assets/minecraft/waypoint_style/test.json".into(),
                         Resource::bytes(
@@ -112,7 +112,7 @@ fn spectated_locator_uses_camera_entity_for_identity_and_distance() {
                 track_block(game, local_uuid, 1, [0, 64, 0]);
                 track_block(game, 4, 4, [150, 64, 0]);
 
-                let assert_draws = |game: &Game<'_>| {
+                let assert_draws = |game: &crate::game::ClientGame<'_>| {
                     let draws = game.locator_bar_draws(427, 240);
                     let sprites: Vec<_> = draws
                         .iter()
@@ -171,7 +171,7 @@ fn spectated_locator_uses_camera_entity_for_identity_and_distance() {
                 game.clear_waypoints();
                 track_block(game, 5, 5, [122, 64, 0]);
                 game.ui.hide_gui = false;
-                game.client.locator_camera = Some(([0.0, 65.62, 0.0], 180.0, 0.0, 70.0));
+                game.side.locator_camera = Some(([0.0, 65.62, 0.0], 180.0, 0.0, 70.0));
                 add_armor_stand_facing(game, 25, 25, [100.5, 64.0, 0.5], -64);
                 game.apply_packet(C::SetCamera(play::SetCamera { camera_id: 25 }))
                     .unwrap();
@@ -223,14 +223,14 @@ fn block_waypoints_use_live_non_player_eyes_within_manhattan_three() {
                     .previous = Vec3::new(119.2, 64.0, 5.8);
                 // Offset the witness yaw slightly so the two relevant angles land in
                 // different pixels, without changing the waypoint or entity positions.
-                game.client.locator_camera = Some(([96.0, 66.0, 0.0], -90.25, 0.0, 70.0));
+                game.side.locator_camera = Some(([96.0, 66.0, 0.0], -90.25, 0.0, 70.0));
                 game.clock.reset();
                 game.clock.set_frozen(false);
                 assert!(game.clock.tick_world_runs());
                 game.clock.end_frame(false);
                 assert_eq!(game.clock.advance(Duration::from_millis(25), 50.0), 0);
 
-                let dot_x = |game: &Game<'_>| {
+                let dot_x = |game: &crate::game::ClientGame<'_>| {
                     let draws = game.locator_bar_draws(427, 240);
                     let [GuiDraw::Sprite { x, w: 9, .. }] = draws.as_slice() else {
                         panic!("expected one dot, got {draws:?}");

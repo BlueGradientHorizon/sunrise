@@ -94,11 +94,11 @@ mod tests {
         super::super::native_entity_refs::tests::with_client_game(|game| {
             use winit::keyboard::KeyCode;
 
-            game.client.physical_keys.insert(KeyCode::ShiftLeft);
+            game.side.physical_keys.insert(KeyCode::ShiftLeft);
             assert!(game.is_key_down("key.keyboard.left.shift"));
             assert!(!game.is_key_down("key.keyboard.right.shift"));
             assert!(!game.is_key_down("not-a-key"));
-            game.client.physical_keys.clear();
+            game.side.physical_keys.clear();
             assert!(!game.is_key_down("key.keyboard.left.shift"));
 
             let stack = EngineStack::new("minecraft:diamond", 5);

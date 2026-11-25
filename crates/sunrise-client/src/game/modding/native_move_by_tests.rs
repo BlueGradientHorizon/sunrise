@@ -12,7 +12,7 @@ const PIG: u32 = 913;
 
 /// A server's game with an armor stand at 0.5, 64, 0.5, an item frame at 4, 70, 4 and a painting
 /// at 4, 70, 6 (the frame's and painting's boxes are a block wide, thin in depth).
-fn with_scene(test: impl FnOnce(&mut super::Game<'_>)) {
+fn with_scene(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     with_game(|game| {
         game.options.dedicated = Some(Vec::new());
         game.armor_stands
@@ -47,7 +47,7 @@ fn with_scene(test: impl FnOnce(&mut super::Game<'_>)) {
             check_interval: 0,
             ticks: 0,
         });
-        game.server.next_entity = game.server.next_entity.max(PIG);
+        game.side.next_entity = game.side.next_entity.max(PIG);
         test(game);
     });
 }
@@ -60,7 +60,7 @@ fn an_area_query_lists_the_frames_and_paintings_in_the_box() {
         let frame = game.entity(FRAME).unwrap();
         let painting = game.entity(PAINTING).unwrap();
         let around =
-            |game: &super::Game<'_>, min, max| collect_game_entities_in(game, level, min, max);
+            |game: &crate::game::ServerGame<'_>, min, max| collect_game_entities_in(game, level, min, max);
         let both = around(game, [3.0, 69.0, 3.0], [5.0, 71.0, 7.0]).unwrap();
         assert!(both.contains(&frame) && both.contains(&painting));
         let one = around(game, [3.0, 69.0, 3.0], [5.0, 71.0, 5.0]).unwrap();

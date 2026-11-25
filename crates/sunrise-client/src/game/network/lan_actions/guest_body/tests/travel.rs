@@ -49,7 +49,7 @@ impl Hooks for Reply {
 
 pub(in crate::game) fn with_player(
     integrated: bool,
-    run: impl FnOnce(&mut Game<'_>, mpsc::Receiver<Out>),
+    run: impl FnOnce(&mut crate::game::ServerGame<'_>, mpsc::Receiver<Out>),
 ) {
     let role = if integrated {
         ExecutionRole::IntegratedServer
@@ -117,7 +117,7 @@ pub(in crate::game) fn with_reply(reply: Option<Reply>, run: impl FnOnce()) {
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::server_side::lan_actions_server::guest_body::tests::travel::send;
 
-pub(in crate::game) fn report(game: &mut Game<'_>, [x, y, z]: [f64; 3]) {
+pub(in crate::game) fn report(game: &mut crate::game::ServerGame<'_>, [x, y, z]: [f64; 3]) {
     send(
         game,
         S::MovePlayerPos(play::MovePlayerPos { x, y, z, flags: 0 }),
@@ -149,7 +149,7 @@ fn a_connected_players_report_never_exposes_stale_collision_flags() {
     }
 }
 
-pub(in crate::game) fn guest<'a>(game: &'a Game<'_>) -> &'a Guest {
+pub(in crate::game) fn guest<'a>(game: &'a crate::game::ServerGame<'_>) -> &'a Guest {
     game.lan.as_ref().unwrap().hub.guest(1).unwrap()
 }
 
@@ -181,7 +181,7 @@ pub(in crate::game) fn correction(rx: &mpsc::Receiver<Out>) -> play::PlayerPosit
     packet
 }
 
-pub(in crate::game) fn acknowledge(game: &mut Game<'_>, packet: &play::PlayerPosition) {
+pub(in crate::game) fn acknowledge(game: &mut crate::game::ServerGame<'_>, packet: &play::PlayerPosition) {
     let [x, y, z] = packet.position;
     send(
         game,

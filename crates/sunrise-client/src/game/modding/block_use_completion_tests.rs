@@ -142,9 +142,9 @@ fn consuming_cancellation_has_one_outer_on_local_and_packet_routes() {
                     assert!(g.guest_use_item_on(12, gi, hit, Hand::Main, None).is_ok());
                 } else {
                     g.as_guest(12, |g| {
-                        g.server.forced_hit = Some(hit);
+                        g.side.forced_hit = Some(hit);
                         g.use_hand(Some(&hit)).unwrap();
-                        g.server.forced_hit = None;
+                        g.side.forced_hit = None;
                     })
                     .unwrap();
                 }
@@ -182,9 +182,9 @@ fn consuming_cancellation_has_one_outer_on_local_and_packet_routes() {
                     assert!(g.guest_use_item_on(12, gi, hit, Hand::Main, None).is_ok());
                 } else {
                     g.as_guest(12, |g| {
-                        g.server.forced_hit = Some(hit);
+                        g.side.forced_hit = Some(hit);
                         g.use_hand(Some(&hit)).unwrap();
-                        g.server.forced_hit = None;
+                        g.side.forced_hit = None;
                     })
                     .unwrap();
                 }
@@ -231,9 +231,9 @@ fn consuming_cancellation_has_one_outer_on_local_and_packet_routes() {
                     assert!(g.guest_use_item_on(12, gi, hit, Hand::Main, None).is_ok());
                 } else {
                     g.as_guest(12, |g| {
-                        g.server.forced_hit = Some(hit);
+                        g.side.forced_hit = Some(hit);
                         g.use_hand(Some(&hit)).unwrap();
-                        g.server.forced_hit = None;
+                        g.side.forced_hit = None;
                     })
                     .unwrap();
                 }
@@ -319,9 +319,9 @@ fn resource_gated_block_use_order_and_stacks_on_server_and_guest() {
                 g.set_mode_id(0);
                 g.inventory[g.selected] = Some(before.clone());
                 g.offhand = None;
-                g.server.forced_hit = Some(hit);
+                g.side.forced_hit = Some(hit);
                 assert_eq!(g.use_item_as_player().unwrap(), Some(Hand::Main));
-                g.server.forced_hit = None;
+                g.side.forced_hit = None;
                 assert_eq!(g.held(), Some(&after));
             }
             SEEN.with_borrow(|seen| {
@@ -554,9 +554,9 @@ fn block_use_listener_replacements_keep_original_on_both_routes() {
                         assert!(g.guest_use_item_on(12, gi, hit, Hand::Main, None).is_ok());
                     } else {
                         g.as_guest(12, |g| {
-                            g.server.forced_hit = Some(hit);
+                            g.side.forced_hit = Some(hit);
                             g.use_hand(Some(&hit)).unwrap();
-                            g.server.forced_hit = None;
+                            g.side.forced_hit = None;
                         })
                         .unwrap();
                     }
@@ -620,7 +620,7 @@ fn block_use_nested_originals_and_replacements_are_isolated() {
                 ItemStack::new("minecraft:glowstone", 4)
             ]
         );
-        assert!(g.server.block_use_original.is_empty());
+        assert!(g.side.block_use_original.is_empty());
     });
 }
 
@@ -628,7 +628,7 @@ fn block_use_nested_originals_and_replacements_are_isolated() {
 #[ignore = "daily"]
 fn block_use_registry_guard_final_hand_matches_original() {
     let _recording = Recording::start();
-    let scan_registry = |g: &mut Game<'_>| {
+    let scan_registry = |g: &mut crate::game::ServerGame<'_>| {
         g.build_registries();
         g.set_mode_id(0);
         g.world
@@ -662,9 +662,9 @@ fn block_use_registry_guard_final_hand_matches_original() {
             g.inventory[g.selected] = Some(ItemStack::new(&item, 5));
             g.offhand = None;
             SEEN.with_borrow_mut(Vec::clear);
-            g.server.forced_hit = Some(hit);
+            g.side.forced_hit = Some(hit);
             g.use_hand(Some(&hit)).unwrap();
-            g.server.forced_hit = None;
+            g.side.forced_hit = None;
             for reported in any_block_use_stacks() {
                 reports += 1;
                 let final_stack = g
@@ -687,7 +687,7 @@ fn block_use_registry_guard_final_hand_matches_original() {
     });
 }
 
-fn run_block_use_regression(g: &mut Game<'_>, packet: bool, stack: ItemStack) {
+fn run_block_use_regression(g: &mut crate::game::ServerGame<'_>, packet: bool, stack: ItemStack) {
     let hit = Hit {
         pos: [3, 64, 4],
         face: [0, 1, 0],
@@ -718,9 +718,9 @@ fn run_block_use_regression(g: &mut Game<'_>, packet: bool, stack: ItemStack) {
     } else {
         g.as_guest(12, |g| {
             g.set_mode_id(0);
-            g.server.forced_hit = Some(hit);
+            g.side.forced_hit = Some(hit);
             assert!(g.use_hand(Some(&hit)).unwrap());
-            g.server.forced_hit = None;
+            g.side.forced_hit = None;
         })
         .unwrap();
     }

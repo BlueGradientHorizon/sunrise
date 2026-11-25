@@ -27,7 +27,7 @@ impl Hooks for Missing {
     }
 }
 
-fn memory(game: &crate::game::Game<'_>, mob: &mut Mob) -> Option<Vec<[i32; 3]>> {
+fn memory(game: &crate::game::ServerGame<'_>, mob: &mut Mob) -> Option<Vec<[i32; 3]>> {
     let mut world = game.mob_world_base(&[]);
     world.mob_griefing = false;
     let mut test_level = sunrise_client::health::TestLevel::new(0);
@@ -46,7 +46,7 @@ fn memory(game: &crate::game::Game<'_>, mob: &mut Mob) -> Option<Vec<[i32; 3]>> 
         .value()
 }
 
-fn fixture(run: impl FnOnce(&mut crate::game::Game<'_>, &Arc<AtomicBool>, &mut Mob)) {
+fn fixture(run: impl FnOnce(&mut crate::game::ServerGame<'_>, &Arc<AtomicBool>, &mut Mob)) {
     let enabled = Arc::new(AtomicBool::new(true));
     mod_platform::testing::with_mods(
         vec![ModEntry::new(
@@ -126,7 +126,7 @@ fn failed_reload_preparation_keeps_secondary_tag_entries() {
     fixture(|game, enabled, mob| {
         enabled.store(false, Ordering::SeqCst);
         let old = game
-            .world_tables
+            .side.world_tables
             .0
             .as_ref()
             .map(|tables| tables as *const _);
@@ -138,7 +138,7 @@ fn failed_reload_preparation_keeps_secondary_tag_entries() {
         assert!(!game.run_command("reload"));
         assert_eq!(
             old,
-            game.world_tables
+            game.side.world_tables
                 .0
                 .as_ref()
                 .map(|tables| tables as *const _)

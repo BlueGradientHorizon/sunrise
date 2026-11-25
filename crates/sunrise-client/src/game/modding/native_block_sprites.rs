@@ -444,7 +444,7 @@ mod texture_atlas_stitched_tests {
                 game.spawn_pack_reload(super::super::packs::ReloadKind::Selection)
                     .unwrap();
                 let started = std::time::Instant::now();
-                while game.pack_reload.0.is_some() {
+                while game.side.pack_reload.0.is_some() {
                     assert!(
                         started.elapsed().as_secs() < 300,
                         "the reload never finished"
@@ -580,7 +580,7 @@ mod biome_tint_tests {
     const WATER: u32 = 0xDA_5227;
     const POS: [i32; 3] = [8, 64, 8]; // The whole blend square samples this plains chunk.
 
-    fn with_stock_client_biomes(test: impl FnOnce(&mut Game<'_>)) {
+    fn with_stock_client_biomes(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
         struct Seasons;
         #[mod_api::__subscriptions]
         impl Hooks for Seasons {

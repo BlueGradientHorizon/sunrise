@@ -1590,15 +1590,12 @@ pub(in crate::game) mod order_tests {
             std::env::temp_dir().join(format!("sunrise-piston-order-unit-{}", std::process::id())),
         );
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -1703,15 +1700,12 @@ pub(in crate::game) mod order_tests {
             std::env::temp_dir().join(format!("sunrise-piston-budget-unit-{}", std::process::id())),
         );
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -1801,15 +1795,12 @@ pub(in crate::game) mod order_tests {
             std::process::id()
         )));
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -1888,15 +1879,12 @@ pub(in crate::game) mod order_tests {
             std::env::temp_dir().join(format!("sunrise-piston-slime-unit-{}", std::process::id())),
         );
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -1966,7 +1954,7 @@ pub(in crate::game) mod h255_mob_piston_ground_tests {
     use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
 
-    pub(in crate::game) fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+    pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         with_role_game(
             crate::game::execution_role::ExecutionRole::IntegratedServer,
             test,
@@ -1975,7 +1963,7 @@ pub(in crate::game) mod h255_mob_piston_ground_tests {
 
     pub(in crate::game) fn with_role_game(
         role: crate::game::execution_role::ExecutionRole,
-        test: impl FnOnce(&mut Game<'_>),
+        test: impl FnOnce(&mut crate::game::ServerGame<'_>),
     ) {
         mod_platform::testing::with_mods(Default::default(), || {
             let root =
@@ -2001,15 +1989,12 @@ pub(in crate::game) mod h255_mob_piston_ground_tests {
                     .join(format!("h255-{:?}", std::thread::current().id())),
             );
             options.execution_role = role;
-            let mut game = Game::new(
+            let mut game = crate::game::ServerGame::new(
                 &loaded.resources,
                 loaded.pack,
                 loaded.gui.unwrap(),
                 options,
                 settings,
-                Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                    root.clone(),
-                )),
                 None,
             )
             .unwrap();
@@ -2046,12 +2031,12 @@ pub(in crate::game) mod h255_mob_piston_ground_tests {
             game.world.random.set_seed(255);
             game.update_chunk_tickets();
             assert!(crate::game::ticking_chunk(&game.world, 0, 0));
-            assert!(game.tickets.0.levels().block_ticking(0, 0));
+            assert!(game.side.tickets.0.levels().block_ticking(0, 0));
             test(&mut game);
         });
     }
 
-    pub(in crate::game) fn mob_index(game: &Game<'_>, n: i32) -> usize {
+    pub(in crate::game) fn mob_index(game: &crate::game::ServerGame<'_>, n: i32) -> usize {
         let id = game
             .persist
             .uuids
@@ -2158,7 +2143,7 @@ pub(in crate::game) mod h255_mob_piston_ground_tests {
     }
 
     pub(in crate::game) fn added_mob(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         n: i32,
         kind: &str,
         no_ai: bool,
@@ -2176,7 +2161,7 @@ pub(in crate::game) mod h255_mob_piston_ground_tests {
         i
     }
 
-    pub(in crate::game) fn added_push(game: &mut Game<'_>, i: usize, movement: Vec3) {
+    pub(in crate::game) fn added_push(game: &mut crate::game::ServerGame<'_>, i: usize, movement: Vec3) {
         let m = &game.mobs[i];
         let (bounds, at, step, ground) = (
             m.bounds(),
@@ -2252,7 +2237,7 @@ pub(in crate::game) mod h255_mob_piston_ground_tests {
                     game.run_command("summon tnt 5.5 200.5 5.5 {fuse:80,Motion:[0d,-0.4d,0d]}")
                 );
                 let mut budget = std::collections::HashMap::new();
-                let push = |game: &mut Game<'_>,
+                let push = |game: &mut crate::game::ServerGame<'_>,
                             budget: &mut std::collections::HashMap<_, _>,
                             movement| {
                     let tnt = &game.tnts[0];
@@ -2415,7 +2400,7 @@ pub(in crate::game) mod lid_push_tests {
     use sunrise_client::mobs::{MobEvent, Species};
     use sunrise_core::geometry::{Aabb, Vec3};
 
-    fn shulker(game: &mut Game<'_>) -> u32 {
+    fn shulker(game: &mut crate::game::ServerGame<'_>) -> u32 {
         assert!(game.run_command("summon minecraft:shulker 24 200 24 {NoAI:1b}"));
         game.mobs
             .iter()
@@ -2428,11 +2413,11 @@ pub(in crate::game) mod lid_push_tests {
         Aabb::new(Vec3::new(x0, 200.0, z0), Vec3::new(x1, 201.0, z1))
     }
 
-    fn item_y(game: &Game<'_>) -> f64 {
+    fn item_y(game: &crate::game::ServerGame<'_>) -> f64 {
         game.dropped.iter().next().expect("the item").position.y
     }
 
-    fn arrow_y(game: &Game<'_>) -> f64 {
+    fn arrow_y(game: &crate::game::ServerGame<'_>) -> f64 {
         let arrow = game
             .creatures
             .projectiles
@@ -2587,7 +2572,7 @@ pub(in crate::game) mod lid_push_tests {
         });
     }
 
-    fn dropped(game: &Game<'_>, item: &str) -> usize {
+    fn dropped(game: &crate::game::ServerGame<'_>, item: &str) -> usize {
         game.dropped
             .iter()
             .filter(|d| &*d.stack.item == item)
@@ -2648,7 +2633,7 @@ pub(in crate::game) mod lid_push_tests {
                 game.boats[0].position.y, 200.0,
                 "the shulker's vehicle stays"
             );
-            let player_y = |game: &Game<'_>| game.player.as_ref().unwrap().position.y;
+            let player_y = |game: &crate::game::ServerGame<'_>| game.player.as_ref().unwrap().position.y;
             assert_eq!(player_y(game), 200.0, "its fellow passenger stays");
         });
     }

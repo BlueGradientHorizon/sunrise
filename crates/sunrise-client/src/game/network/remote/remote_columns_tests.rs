@@ -1,4 +1,4 @@
-use crate::game::native_entity_refs::tests::with_game;
+use crate::game::native_entity_refs::tests::{with_game, with_client_game};
 use sunrise_client::{chunk::Chunk, containers::BlockEntity};
 
 #[test]
@@ -7,7 +7,7 @@ fn forgetting_and_closing_remote_columns_clear_their_data() {
     crate::game::in_own_process(
         "game::remote::tests::remote_columns_tests::forgetting_and_closing_remote_columns_clear_their_data",
         || {
-            with_game(|game| {
+            with_client_game(|game| {
                 for x in 0..2 {
                     game.streaming
                         .insert_remote(&mut game.world, Chunk::empty(x, 0));
@@ -44,7 +44,7 @@ fn every_free_route_returns_the_columns_it_freed_once() {
     crate::game::in_own_process(
         "game::remote::tests::remote_columns_tests::every_free_route_returns_the_columns_it_freed_once",
         || {
-            with_game(|game| {
+            with_client_game(|game| {
                 for x in [0, 1] {
                     game.streaming
                         .insert_remote(&mut game.world, Chunk::empty(x, 0));
@@ -68,7 +68,7 @@ fn every_free_route_returns_the_columns_it_freed_once() {
 #[test]
 #[ignore = "daily"]
 fn streaming_adoption_and_resend_stay_resident_until_the_forget() {
-    with_game(|game| {
+    with_client_game(|game| {
         game.streaming
             .insert_remote(&mut game.world, Chunk::empty(0, 0));
         // A re-send of a resident, lit column takes replace_remote.
@@ -84,7 +84,7 @@ fn streaming_adoption_and_resend_stay_resident_until_the_forget() {
 #[ignore = "daily"]
 fn a_forget_packet_keeps_published_light_beside_a_loaded_column() {
     use sunrise_protocol::packets::play::{Clientbound, ForgetLevelChunk};
-    with_game(|game| {
+    with_client_game(|game| {
         use sunrise_client::chunk::SECTIONS;
         for x in 0..2 {
             let mut chunk = Chunk::empty(x, 0);

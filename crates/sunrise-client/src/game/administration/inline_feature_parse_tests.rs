@@ -6,7 +6,7 @@
 use super::*;
 use std::sync::Arc;
 
-fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
+fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -29,15 +29,12 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
         None,
     )
     .unwrap();
@@ -66,16 +63,16 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
 }
 
 /// Runs `command`: whether it succeeded and what it said first.
-fn run(game: &mut Game<'_>, command: &str) -> (bool, Option<String>) {
-    game.server.chat_capture = Some(Vec::new());
+fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Option<String>) {
+    game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.server.chat_capture.take().unwrap_or_default();
+    let said = game.side.chat_capture.take().unwrap_or_default();
     (ok, said.first().map(sunrise_client::text::Text::plain))
 }
 
 /// The stored result and success of `execute store … run place feature
 /// <feature> 7 100 8`, from -1, and whether the target is still air.
-fn stored(game: &mut Game<'_>, feature: &str) -> (i32, i32, bool) {
+fn stored(game: &mut crate::game::ServerGame<'_>, feature: &str) -> (i32, i32, bool) {
     assert!(game.run_command("scoreboard players set r h171 -1"));
     assert!(game.run_command("scoreboard players set s h171 -1"));
     let _ = game.run_command("setblock 7 100 8 air");
@@ -85,7 +82,7 @@ fn stored(game: &mut Game<'_>, feature: &str) -> (i32, i32, bool) {
             "execute store result score r h171 store success score s h171 run place feature {feature} 7 100 8"
         ),
     );
-    let score = |g: &Game<'_>, name: &str| {
+    let score = |g: &crate::game::ServerGame<'_>, name: &str| {
         g.score
             .board
             .score(name, "h171")

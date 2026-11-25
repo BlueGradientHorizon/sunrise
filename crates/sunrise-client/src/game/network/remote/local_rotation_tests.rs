@@ -17,7 +17,7 @@ use sunrise_protocol::packets::play::Serverbound as S;
 
 /// The move packets the client sent before a fence, as (kind, yaw, pitch).
 pub(in crate::game) fn sent_moves(
-    game: &crate::game::Game<'_>,
+    game: &crate::game::ClientGame<'_>,
     server: &mut Connection,
 ) -> Vec<(&'static str, f32, f32)> {
     game.send(S::Punch(sunrise_protocol::packets::Empty));
@@ -37,7 +37,7 @@ pub(in crate::game) fn sent_moves(
 
 /// How many packets of any kind the client sent before a fence.
 pub(in crate::game) fn sent_packets(
-    game: &crate::game::Game<'_>,
+    game: &crate::game::ClientGame<'_>,
     server: &mut Connection,
 ) -> usize {
     game.send(S::Punch(sunrise_protocol::packets::Empty));

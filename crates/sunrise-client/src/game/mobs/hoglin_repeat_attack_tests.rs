@@ -14,7 +14,7 @@ const NEAR_PIG: &str = "00006093-0000-0000-0000-00000000000d";
 const HOGLIN: &str = "00006093-0000-0000-0000-000000000001";
 const PIG: &str = "00006093-0000-0000-0000-00000000000b";
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -37,15 +37,12 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -89,7 +86,7 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     game
 }
 
-fn health(game: &mut Game<'_>, uuid: &str) -> f32 {
+fn health(game: &mut crate::game::ServerGame<'_>, uuid: &str) -> f32 {
     let target = game
         .target_with_uuid(sunrise_client::save::uuid_from_text(uuid).unwrap())
         .expect("the entity is in the level");
@@ -99,7 +96,7 @@ fn health(game: &mut Game<'_>, uuid: &str) -> f32 {
     }
 }
 
-fn step(game: &mut Game<'_>, ticks: u32) {
+fn step(game: &mut crate::game::ServerGame<'_>, ticks: u32) {
     for _ in 0..ticks {
         assert!(game.run_command("tick step 1"));
         game.tick_server(false).unwrap();
@@ -142,7 +139,7 @@ fn a_hoglin_keeps_attacking_its_attacker_beside_another_hit_hoglin() {
     );
 }
 
-fn hurt_time(game: &mut Game<'_>, uuid: &str) -> i32 {
+fn hurt_time(game: &mut crate::game::ServerGame<'_>, uuid: &str) -> i32 {
     let id = mob_id(game, uuid);
     game.mobs.iter().find(|m| m.id == id).unwrap().hurt_time
 }
@@ -197,7 +194,7 @@ fn deferred_stronger_hits_do_not_count_hurt_timers_down_twice() {
 }
 
 /// Added controls (after the frozen baseline above).
-fn mob_id(game: &mut Game<'_>, uuid: &str) -> u32 {
+fn mob_id(game: &mut crate::game::ServerGame<'_>, uuid: &str) -> u32 {
     match game.target_with_uuid(sunrise_client::save::uuid_from_text(uuid).unwrap()) {
         Some(Target::Mob(id)) => id,
         other => panic!("{other:?}"),
@@ -216,7 +213,7 @@ fn a_broadcast_target_replaces_only_a_farther_one() {
     let mut game = game(&mut resources);
     let receiver = mob_id(&mut game, HOGLIN);
     let (near, far) = (mob_id(&mut game, PIG), mob_id(&mut game, NEAR_PIG));
-    let place = |game: &Game<'_>, id: u32| game.mobs.iter().find(|m| m.id == id).unwrap().position;
+    let place = |game: &crate::game::ServerGame<'_>, id: u32| game.mobs.iter().find(|m| m.id == id).unwrap().position;
     let (near_at, far_at) = (place(&game, near), place(&game, far));
     let position = |who: Who, _current| match who {
         Who::Mob(id) if id == near => Some(near_at),
@@ -472,7 +469,7 @@ fn hoglin_broadcast_obeys_target_cancellation_and_redirection() {
 }
 
 /// The broadcast as the flush applies it (`MobEvent::HoglinAttackTarget`).
-fn broadcast(game: &mut Game<'_>, mob: u32, from: u32, target: sunrise_client::mobs::Who) {
+fn broadcast(game: &mut crate::game::ServerGame<'_>, mob: u32, from: u32, target: sunrise_client::mobs::Who) {
     let player = game
         .lan
         .as_ref()
@@ -485,20 +482,20 @@ fn broadcast(game: &mut Game<'_>, mob: u32, from: u32, target: sunrise_client::m
     game.handle_mob_events(vec![event]).unwrap();
 }
 
-fn target_of(game: &Game<'_>, id: u32) -> Option<sunrise_client::mobs::Who> {
+fn target_of(game: &crate::game::ServerGame<'_>, id: u32) -> Option<sunrise_client::mobs::Who> {
     game.mobs.iter().find(|m| m.id == id).unwrap().ai.target
 }
 
-fn set_target(game: &mut Game<'_>, id: u32, target: Option<sunrise_client::mobs::Who>) {
+fn set_target(game: &mut crate::game::ServerGame<'_>, id: u32, target: Option<sunrise_client::mobs::Who>) {
     game.mobs.iter_mut().find(|m| m.id == id).unwrap().ai.target = target;
 }
 
-fn place_player(game: &mut Game<'_>, x: f64, z: f64) {
+fn place_player(game: &mut crate::game::ServerGame<'_>, x: f64, z: f64) {
     if let Some(player) = game.player.as_mut() {
         player.position = Vec3::new(x, 100.0, z);
     } else {
-        game.server.next_entity += 1;
-        let id = game.server.next_entity;
+        game.side.next_entity += 1;
+        let id = game.side.next_entity;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(x, 100.0, z)).unwrap());
         super::native_entity_refs::tests::bind_local_player(game, id, 1);
     }
@@ -549,7 +546,7 @@ fn a_broadcast_player_is_compared_by_distance() {
 }
 
 /// A host on LAN with one placed guest (conn 2) at `guest_at`.
-fn host_with_guest(game: &mut Game<'_>, guest_at: [f64; 3]) {
+fn host_with_guest(game: &mut crate::game::ServerGame<'_>, guest_at: [f64; 3]) {
     use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
     use sunrise_protocol::packets::configuration::ClientInformation;
     let net = NetConfig {
@@ -590,10 +587,10 @@ fn host_with_guest(game: &mut Game<'_>, guest_at: [f64; 3]) {
         address: "127.0.0.1:25565".parse().unwrap(),
         expected: false,
     };
-    game.server.next_entity += 1;
+    game.side.next_entity += 1;
     let mut guest = Guest::new(
         joined,
-        i32::try_from(game.server.next_entity).expect("fixture entity ID fits the protocol"),
+        i32::try_from(game.side.next_entity).expect("fixture entity ID fits the protocol"),
         guest_at,
         0,
     );
@@ -617,7 +614,7 @@ fn a_guest_broadcast_is_placed_as_the_guest() {
     let receiver = mob_id(&mut game, HOGLIN);
     let from = mob_id(&mut game, NEAR_HOGLIN);
     let other_pig = mob_id(&mut game, NEAR_PIG);
-    let bound = |game: &Game<'_>| {
+    let bound = |game: &crate::game::ServerGame<'_>| {
         let host = game.lan.as_ref().unwrap();
         host.mob_players.get(&receiver).copied()
     };

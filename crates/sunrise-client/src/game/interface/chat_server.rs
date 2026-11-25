@@ -296,15 +296,12 @@ pub(in crate::game::server_side) use crate::game::client_side::chat::enchantment
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -326,15 +323,15 @@ pub(in crate::game::server_side) use crate::game::client_side::chat::enchantment
             r#"{"enabled":["file/model"],"disabled":[]}"#,
         )
         .unwrap();
-        game.server.world_root = dir;
+        game.side.world_root = dir;
         let stack = game.reload_datapacks(false, &[]).unwrap();
         let root = game.options.resources.clone();
-        game.world_tables.0 = game
+        game.side.world_tables.0 = game
             .stage_world_tables(&stack, false, &root)
             .unwrap()
             .tables;
         assert!(
-            game.world_tables.0.is_some(),
+            game.side.world_tables.0.is_some(),
             "the real active table container must be available"
         );
         let base = game.stations().enchantments.clone();
@@ -349,8 +346,8 @@ pub(in crate::game::server_side) use crate::game::client_side::chat::enchantment
                 .unwrap()
                 .unwrap(),
         );
-        game.world_tables.0.as_mut().unwrap().stations.enchantments = synced.clone();
-        std::sync::Arc::make_mut(&mut game.world_tables.0.as_mut().unwrap().items).enchantments =
+        game.side.world_tables.0.as_mut().unwrap().stations.enchantments = synced.clone();
+        std::sync::Arc::make_mut(&mut game.side.world_tables.0.as_mut().unwrap().items).enchantments =
             synced;
         assert!(
             game.active_enchantment_definitions()
@@ -394,8 +391,8 @@ pub(in crate::game::server_side) use crate::game::client_side::chat::enchantment
             assert_eq!(reg.ids("minecraft:item"), item_ids);
             assert_eq!(reg.effects, effects);
         }
-        game.world_tables.0.as_mut().unwrap().stations.enchantments = base.clone();
-        std::sync::Arc::make_mut(&mut game.world_tables.0.as_mut().unwrap().items).enchantments =
+        game.side.world_tables.0.as_mut().unwrap().stations.enchantments = base.clone();
+        std::sync::Arc::make_mut(&mut game.side.world_tables.0.as_mut().unwrap().items).enchantments =
             base;
         assert!(
             game.active_enchantment_definitions()
@@ -452,15 +449,12 @@ pub(in crate::game::server_side) use crate::game::client_side::chat::damage_type
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -485,10 +479,10 @@ pub(in crate::game::server_side) use crate::game::client_side::chat::damage_type
             r#"{"enabled":["file/model"],"disabled":[]}"#,
         )
         .unwrap();
-        game.server.world_root = dir;
+        game.side.world_root = dir;
         let stack = game.reload_datapacks(false, &[]).unwrap();
         let staged = game.stage_world_tables(&stack, false, &root).unwrap();
-        game.world_tables.0 = staged.tables;
+        game.side.world_tables.0 = staged.tables;
         game.health_resources = staged.health;
         game.level.allow_commands = Some(true);
         game.build_registries();

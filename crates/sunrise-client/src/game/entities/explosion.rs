@@ -2146,7 +2146,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 }
 
 #[cfg(test)]
-impl Game<'_> {
+impl crate::game::ServerGame<'_> {
     /// Exercise the real explosion entity walk on an empty, headless world.
     pub(in crate::game::server_side) fn run_explosion_items_fixture(
         &mut self,
@@ -2560,7 +2560,7 @@ pub(in crate::game) mod tests {
     /// `exploded_positions` before rays reused their last block's lookup:
     /// every step looked its block up.
     fn exploded_positions_stepwise(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         center: [f64; 3],
         radius: f32,
         resists: Option<([i32; 3], f32)>,
@@ -3213,7 +3213,7 @@ mod explicit_source_tests {
             game.build_registries();
             for mode in 0..5 {
                 let nested = mode == 4;
-                game.combat.0 = Default::default();
+                game.side.combat.0 = Default::default();
                 game.mobs.clear();
                 game.orbs.clear();
                 game.dropped.clear();
@@ -3226,8 +3226,8 @@ mod explicit_source_tests {
                         .push(Mob::new(43, kind, Vec3::new(40.0, 64.0, 40.0), 0.0));
                 }
                 // An enclosing blast must not leak its owner into an explicit source.
-                game.combat.0.explosion_owner = Some(99);
-                game.combat.0.exploded.push((99, Text::literal("Outer")));
+                game.side.combat.0.explosion_owner = Some(99);
+                game.side.combat.0.exploded.push((99, Text::literal("Outer")));
                 let cause = (mode != 0).then(|| ExplosionCause {
                     entity: (43, Text::literal("Igniter")),
                     player: false,
@@ -3236,10 +3236,10 @@ mod explicit_source_tests {
                 });
                 if nested {
                     game.options.dedicated = Some(Vec::new());
-                    game.combat.0.explicit_explosion_cause = Some(cause);
-                    game.combat.0.explicit_explosion_direct = Some(Text::literal("Outer"));
-                    game.combat.0.blast_owner = Some((99, Text::literal("Outer")));
-                    game.combat.0.blast_guest = Some(17);
+                    game.side.combat.0.explicit_explosion_cause = Some(cause);
+                    game.side.combat.0.explicit_explosion_direct = Some(Text::literal("Outer"));
+                    game.side.combat.0.blast_owner = Some((99, Text::literal("Outer")));
+                    game.side.combat.0.blast_guest = Some(17);
                     let center = [8.5, 64.0, 8.5];
                     let level = game.level("minecraft:overworld").unwrap();
                     assert_eq!(
@@ -3255,15 +3255,15 @@ mod explicit_source_tests {
                         Ok(())
                     );
                     assert!(matches!(
-                        game.combat.0.explicit_explosion_cause,
+                        game.side.combat.0.explicit_explosion_cause,
                         Some(Some(_))
                     ));
-                    assert!(game.combat.0.explicit_explosion_direct.is_some());
+                    assert!(game.side.combat.0.explicit_explosion_direct.is_some());
                     assert_eq!(
-                        game.combat.0.blast_owner.as_ref().map(|owner| owner.0),
+                        game.side.combat.0.blast_owner.as_ref().map(|owner| owner.0),
                         Some(99)
                     );
-                    assert_eq!(game.combat.0.blast_guest, Some(17));
+                    assert_eq!(game.side.combat.0.blast_guest, Some(17));
                 } else {
                     game.server_explode_from_cause(
                         [8.5, 64.0, 8.5],
@@ -3291,7 +3291,7 @@ mod explicit_source_tests {
                 let events = std::mem::take(&mut game.player.as_mut().unwrap().events);
                 game.record_combat(&events);
                 assert_eq!(
-                    game.combat
+                    game.side.combat
                         .0
                         .last_blow()
                         .map(|(kind, id)| (kind.to_owned(), id)),
@@ -3306,7 +3306,7 @@ mod explicit_source_tests {
                     ))
                 );
                 assert_eq!(
-                    game.combat.0.kill_credit(game.world.game_time),
+                    game.side.combat.0.kill_credit(game.world.game_time),
                     (mode == 2).then_some(43)
                 );
                 if mode == 1 || mode == 3 || nested {
@@ -3319,8 +3319,8 @@ mod explicit_source_tests {
                         assert_eq!(death["with"][1]["text"].as_str(), Some("Igniter"));
                     }
                 }
-                assert_eq!(game.combat.0.explosion_owner, Some(99));
-                assert_eq!(game.combat.0.explicit_explosion_cause.is_some(), nested);
+                assert_eq!(game.side.combat.0.explosion_owner, Some(99));
+                assert_eq!(game.side.combat.0.explicit_explosion_cause.is_some(), nested);
             }
         });
     }

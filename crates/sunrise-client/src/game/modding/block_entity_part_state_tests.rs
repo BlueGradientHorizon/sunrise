@@ -94,7 +94,7 @@ impl Hooks for StateMod {
 
 /// Run the test `name` with `StateMod` installed, in a fresh process: its content root
 /// freezes the process's block entity types, which another test may already have frozen.
-fn with_state_mod(name: &str, test: impl FnOnce(&mut Game<'_>)) {
+fn with_state_mod(name: &str, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     if super::native_entity_refs::tests::run_fresh_cases(
         name,
         "SUNRISE_PART_STATE_GAME_CHILD",
@@ -120,7 +120,7 @@ fn with_state_mod(name: &str, test: impl FnOnce(&mut Game<'_>)) {
 }
 
 /// A fresh press at `pos` in the level the game is in, and its handle.
-fn press(game: &mut Game<'_>, pos: (i32, i32, i32)) -> BlockEntityRef {
+fn press(game: &mut crate::game::ServerGame<'_>, pos: (i32, i32, i32)) -> BlockEntityRef {
     let block = game
         .pack
         .assets
@@ -136,14 +136,14 @@ fn press(game: &mut Game<'_>, pos: (i32, i32, i32)) -> BlockEntityRef {
     game.block_entity(level, [pos.0, pos.1, pos.2]).unwrap()
 }
 
-fn press_with_item_slot(game: &mut Game<'_>, pos: (i32, i32, i32)) -> BlockEntityRef {
+fn press_with_item_slot(game: &mut crate::game::ServerGame<'_>, pos: (i32, i32, i32)) -> BlockEntityRef {
     // The save fixture never runs the block-entity tick that binds these declarations.
     let containers = game.native_containers();
     game.world.block_entities.set_mod_containers(containers);
     press(game, pos)
 }
 
-fn stored(game: &mut Game<'_>, entity: BlockEntityRef) -> Option<i32> {
+fn stored(game: &mut crate::game::ServerGame<'_>, entity: BlockEntityRef) -> Option<i32> {
     Press::state_existing(game, entity).unwrap()
 }
 
@@ -359,7 +359,7 @@ fn part_state_saves_with_its_chunk_and_reloads_under_a_fresh_handle() {
         // Loaded back from the region file it was saved to, as streaming installs a column.
         game.save_level(true).unwrap();
         let mut chunk = game
-            .save
+            .side.save
             .0
             .load(key.0, key.1, game.pack.assets.registry, world_biomes!(game))
             .unwrap();
@@ -416,7 +416,7 @@ fn item_slot_writes_save_but_menu_data_is_transient() {
             );
             game.save_level(true).unwrap();
             let chunk = game
-                .save
+                .side.save
                 .0
                 .load(0, 0, game.pack.assets.registry, world_biomes!(game))
                 .unwrap();
@@ -476,7 +476,7 @@ fn an_item_write_commits_in_its_own_level_despite_an_unrelated_transaction() {
         assert!(game.transactions.is_empty());
         assert!(!game.world.modified.contains(&chunk));
         assert!(
-            game.levels
+            game.side.levels
                 .0
                 .parked_world(Dim::Nether)
                 .unwrap()
@@ -487,7 +487,7 @@ fn an_item_write_commits_in_its_own_level_despite_an_unrelated_transaction() {
         game.save_parked_levels(true).unwrap();
         game.enter_level(Dim::Nether).unwrap();
         let reloaded = game
-            .save
+            .side.save
             .0
             .load(
                 chunk.0,
@@ -510,7 +510,7 @@ fn an_item_write_commits_in_its_own_level_despite_an_unrelated_transaction() {
 }
 
 /// What the attachment index answers for `entity`'s `PROGRESS`, without the handle check.
-fn indexed(game: &Game<'_>, entity: BlockEntityRef) -> Option<i32> {
+fn indexed(game: &crate::game::ServerGame<'_>, entity: BlockEntityRef) -> Option<i32> {
     use mod_api::AttachmentQueries;
     let host: &dyn mod_api::Host = game;
     host.query(&PROGRESS)
@@ -582,9 +582,9 @@ fn a_save_or_unload_during_a_transaction_writes_only_committed_state() {
         game.side_update_world();
         let entity = press(game, pos);
         assert_eq!(Press::edit_state(game, entity, |_, n| *n = 7), Ok(()));
-        let reload = |game: &mut Game<'_>| {
+        let reload = |game: &mut crate::game::ServerGame<'_>| {
             let chunk = game
-                .save
+                .side.save
                 .0
                 .load(key.0, key.1, game.pack.assets.registry, world_biomes!(game))
                 .unwrap();
@@ -676,7 +676,7 @@ impl Hooks for NativeFixture {
 }
 
 /// The fixture's value at `pos`, read from its saved form.
-fn saved_value(game: &Game<'_>, pos: (i32, i32, i32), name: &str) -> Option<i32> {
+fn saved_value(game: &crate::game::ServerGame<'_>, pos: (i32, i32, i32), name: &str) -> Option<i32> {
     let saved = game.world.block_entities.attachments(pos)?.to_nbt();
     let Some(Tag::Compound(names)) = saved.get(&"part_state_fixture".into()) else {
         return None;
@@ -695,7 +695,7 @@ fn saved_value(game: &Game<'_>, pos: (i32, i32, i32), name: &str) -> Option<i32>
 
 /// Ticks the fixture's block entity at `pos` once in `mode`, its only data slot (data slots are
 /// not saved, so a reloaded one has none).
-fn tick_in(game: &mut Game<'_>, pos: (i32, i32, i32), mode: i32) {
+fn tick_in(game: &mut crate::game::ServerGame<'_>, pos: (i32, i32, i32), mode: i32) {
     let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&pos) else {
         panic!("no fixture block entity at {pos:?}")
     };
@@ -769,7 +769,7 @@ fn part_state_counts_ticks_across_chunk_reload() {
                 assert!(game.world.block_entities.attachments(pos).is_none());
                 game.save_level(true).unwrap();
                 let mut chunk = game
-                    .save
+                    .side.save
                     .0
                     .load(key.0, key.1, game.pack.assets.registry, world_biomes!(game))
                     .unwrap();

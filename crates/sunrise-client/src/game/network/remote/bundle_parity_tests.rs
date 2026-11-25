@@ -209,7 +209,7 @@ pub(in crate::game) fn hex_bytes(hex: &str) -> Vec<u8> {
 }
 
 pub(in crate::game) fn wait_pong_in_game(
-    game: &mut crate::game::Game<'_>,
+    game: &mut crate::game::ClientGame<'_>,
     peer: &mut sunrise_protocol::connection::Connection,
     ping_id: i32,
 ) {

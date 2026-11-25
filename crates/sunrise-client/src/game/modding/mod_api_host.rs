@@ -1531,7 +1531,7 @@ mod attachment_membership_tests {
     use sunrise_client::{join_seq::Joined, mobs::Mob};
     use sunrise_core::geometry::Vec3;
 
-    fn old_membership(game: &Game<'_>, id: u32) -> bool {
+    fn old_membership(game: &crate::game::ServerGame<'_>, id: u32) -> bool {
         use crate::game::entity::{Entity as _, entity_lists_of, for_each_entity};
         let mut found = false;
         for_each_entity!(entity_lists_of!(game), entity => {
@@ -1539,7 +1539,7 @@ mod attachment_membership_tests {
         });
         found || game.entity_ids_off_walk().any(|e| e == id) || game.level_dragon_part(id).is_some()
     }
-    fn assert_membership(game: &mut Game<'_>, id: u32) {
+    fn assert_membership(game: &mut crate::game::ServerGame<'_>, id: u32) {
         assert_eq!(
             game.attachment_entity_exists(id),
             old_membership(game, id),
@@ -1595,7 +1595,7 @@ mod attachment_membership_tests {
                 None
             ));
             assert!(game.use_knot(natural_fence, false));
-            let id = game.server.knot_ids[&natural_fence];
+            let id = game.side.knot_ids[&natural_fence];
             assert_membership(game, id);
             let mut player =
                 sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
@@ -1657,7 +1657,7 @@ mod attachment_membership_tests {
             game.reset_entity_residency();
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             game.mobs.push(Mob::new(410, kind, Vec3::ZERO, 0.0));
-            let check = |game: &Game<'_>| {
+            let check = |game: &crate::game::ServerGame<'_>| {
                 for id in [0, 410, 999] {
                     assert_eq!(
                         game.attachment_entity_exists(id),

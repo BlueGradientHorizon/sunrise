@@ -825,7 +825,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         Dim::add_extra(id);
         let dim = Dim::extra(id).ok_or("the level was not added")?;
         #[cfg(test)]
-        if self.levels.0.runtime.fail_open_after_publication {
+        if self.side.levels.0.runtime.fail_open_after_publication {
             return Err("injected level construction failure".into());
         }
         let mut parked = self.open_runtime_level(dim)?;
@@ -901,7 +901,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     fn erase_runtime_files(&self, id: &str) -> std::io::Result<()> {
         #[cfg(test)]
-        if self.levels.0.runtime.fail_erase {
+        if self.side.levels.0.runtime.fail_erase {
             return Err(std::io::Error::other("injected removal failure"));
         }
         erase_level_files(

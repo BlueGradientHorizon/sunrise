@@ -2,6 +2,11 @@
 use super::*;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
+    
+}
+
+#[cfg(test)]
+impl crate::game::ServerGame<'_> {
     #[cfg(test)]
     pub(in crate::game) fn tick_guests(&mut self) {
         building_cache(self.lan.as_ref());

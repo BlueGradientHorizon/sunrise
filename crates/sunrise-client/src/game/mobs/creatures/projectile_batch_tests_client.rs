@@ -92,7 +92,7 @@ fn an_arrow_does_not_stick_when_the_impact_listener_clears_its_block() {
         assert_eq!(arrow.in_ground, !clear);
         assert_eq!(observed.lands.load(Ordering::Relaxed), usize::from(!clear));
         assert_eq!(
-            game.server
+            game.side
                 .pending_sounds
                 .iter()
                 .any(|sound| { sound.event == "minecraft:entity.arrow.hit" }),

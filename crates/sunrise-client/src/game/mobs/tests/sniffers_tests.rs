@@ -9,7 +9,7 @@ use crate::game::{Game, PlayerMotion};
 use sunrise_client::mobs::Who;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 
-fn game(test: impl FnOnce(&mut Game<'_>)) {
+fn game(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     sculk_game(|game| {
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 100.0, 8.5)).unwrap());
         game.mobs.clear();
@@ -18,7 +18,7 @@ fn game(test: impl FnOnce(&mut Game<'_>)) {
 }
 
 /// A digging sniffer at `(8.5, 100, 8.5)`, facing +z, its head above the stone.
-fn digging_sniffer(game: &mut Game<'_>) -> (u32, [i32; 3]) {
+fn digging_sniffer(game: &mut crate::game::ClientGame<'_>) -> (u32, [i32; 3]) {
     let kind = game
         .res
         .mob_types()
@@ -82,19 +82,19 @@ fn a_silent_sniffer_still_plays_the_local_searching_and_hit_sounds() {
         game.mobs[0].silent = true;
         game.mobs[0].age = 20;
         sniffer::set_state(&mut game.mobs[0], sniffer::SEARCHING);
-        game.audio.0.heard.clear();
+        game.side.audio.0.heard.clear();
         game.tick_sniffer_client();
         assert_eq!(
-            game.audio.0.heard.get("minecraft:entity.sniffer.searching"),
+            game.side.audio.0.heard.get("minecraft:entity.sniffer.searching"),
             Some(&1)
         );
         sniffer::set_state(&mut game.mobs[0], sniffer::DIGGING);
         game.mobs[0].age = 40;
         game.mobs[0].anim.states[3].start(0.0);
-        game.audio.0.heard.clear();
+        game.side.audio.0.heard.clear();
         game.tick_sniffer_client();
         assert_eq!(
-            game.audio.0.heard.get("minecraft:block.stone.hit"),
+            game.side.audio.0.heard.get("minecraft:block.stone.hit"),
             Some(&1)
         );
     });

@@ -12,7 +12,7 @@ use sunrise_core::geometry::Vec3;
 use winit::keyboard::KeyCode;
 
 /// The block name at `pos`.
-pub(in crate::game) fn name(game: &Game<'_>, pos: [i32; 3]) -> String {
+pub(in crate::game) fn name(game: &crate::game::ServerGame<'_>, pos: [i32; 3]) -> String {
     let state = game.world.block(pos[0], pos[1], pos[2]);
     game.res.facts().get(state).name.to_string()
 }

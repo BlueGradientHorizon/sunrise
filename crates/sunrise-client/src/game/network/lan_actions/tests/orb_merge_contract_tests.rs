@@ -32,7 +32,7 @@ fn orb(id: u32, x: f64, value: i32, count: u32) -> ExperienceOrb {
     }
 }
 
-fn open(game: &mut crate::game::Game<'_>) {
+fn open(game: &mut crate::game::ServerGame<'_>) {
     open_to_lan(game);
     let mut g = guest(1);
     g.loaded = true;

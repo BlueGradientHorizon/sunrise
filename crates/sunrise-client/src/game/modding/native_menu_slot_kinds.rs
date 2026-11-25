@@ -303,10 +303,10 @@ mod tests {
             let player = game.local_player().unwrap();
             let menu = game.player_container_menu(player).unwrap();
             assert_eq!(game.menu_slot_kinds(menu), None);
-            game.client.screen = Screen::Inventory;
+            game.side.screen = Screen::Inventory;
             let inventory = game.menu_slot_kinds(menu).unwrap();
             assert_eq!(inventory.len(), game.menu_slot_count(menu).unwrap());
-            game.client.screen = Screen::Creative;
+            game.side.screen = Screen::Creative;
             assert_eq!(game.menu_slot_kinds(menu), Some(inventory));
             let fields = menu.fields();
             let stale =

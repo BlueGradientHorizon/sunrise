@@ -9,7 +9,7 @@ use sunrise_client::items::ItemStack;
 use sunrise_client::mobs::Who;
 use sunrise_core::geometry::Vec3;
 
-fn credited_push(hit: impl FnOnce(&mut super::Game<'_>)) {
+fn credited_push(hit: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let mut pushed = Vec3::ZERO;
     let heard = heard(|game, log| {
         log.lock().unwrap().reduce_sword_credit = true;

@@ -16,7 +16,7 @@ pub(in crate::game) const GUEST: &str = "H274Guest";
 /// A host on a stone floor with one connected, placed guest (conn 2).
 pub(in crate::game::server_side) fn game(
     resources: &mut Option<std::sync::Arc<Resources>>,
-) -> Game<'_> {
+) -> crate::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -39,15 +39,12 @@ pub(in crate::game::server_side) fn game(
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -115,10 +112,10 @@ pub(in crate::game::server_side) fn game(
 }
 
 /// Runs `command`: whether it succeeded and what the issuer was told.
-fn run(game: &mut Game<'_>, command: &str) -> (bool, Vec<String>) {
-    game.server.chat_capture = Some(Vec::new());
+fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Vec<String>) {
+    game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.server.chat_capture.take().unwrap_or_default();
+    let said = game.side.chat_capture.take().unwrap_or_default();
     (
         ok,
         said.iter().map(sunrise_client::text::Text::plain).collect(),

@@ -21,7 +21,7 @@ fn selector_reads_independent_host_and_guest_progress() {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&scratch).unwrap();
-        game.server.world_root = scratch.clone();
+        game.side.world_root = scratch.clone();
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(10.5, 64.0, 0.5)).unwrap());
         let net = NetConfig {
             announce: false,
@@ -90,7 +90,7 @@ fn selector_reads_independent_host_and_guest_progress() {
                     "2026-11-05 00:00:00 +0000"
                 ))
         );
-        let select = |g: &mut Game<'_>, condition: &str| {
+        let select = |g: &mut crate::game::ServerGame<'_>, condition: &str| {
             let text = format!("@a[advancements={{{ROOT}={condition}}}]");
             let s = sunrise_client::command::selector::parse(
                 &mut sunrise_client::command::Reader::new(&text),

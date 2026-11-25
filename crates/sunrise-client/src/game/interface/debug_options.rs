@@ -641,7 +641,7 @@ pub(in crate::game) mod tests {
 
     fn title_game<'a>(
         resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-    ) -> Game<'a> {
+    ) -> crate::game::ClientGame<'a> {
         use super::super::*;
         let root = std::path::PathBuf::from(
             std::env::var_os("SUNRISE_TEST_RESOURCES").expect("prepared resources required"),
@@ -664,7 +664,7 @@ pub(in crate::game) mod tests {
         options.resources = root.clone();
         options.execution_role = execution_role::ExecutionRole::Client;
         let res = resources.insert(loaded.resources);
-        let mut game = Game::new(
+        let mut game = crate::game::ClientGame::new(
             res,
             loaded.pack,
             loaded.gui.unwrap(),
@@ -676,7 +676,7 @@ pub(in crate::game) mod tests {
             None,
         )
         .unwrap();
-        game.title.0 = Some(game.new_title(std::path::PathBuf::from("saves")));
+        game.side.title.0 = Some(game.new_title(std::path::PathBuf::from("saves")));
         game
     }
 
@@ -691,11 +691,11 @@ pub(in crate::game) mod tests {
         use sunrise_client::debug_keys::KeyAction;
         let mut resources = None;
         let mut game = title_game(&mut resources);
-        assert!(game.player.is_none() && game.renderer.0.is_none() && game.integrated.is_none());
+        assert!(game.player.is_none() && game.side.renderer.0.is_none() && game.integrated.is_none());
         game.debug_key(KeyCode::F3, KeyAction::Press);
         game.debug_key(KeyCode::F3, KeyAction::Release);
         assert!(
-            game.client.debug,
+            game.side.debug,
             "the ordinary F3 toggle already reaches the title"
         );
         assert!(ScreensClientHost::debug_overlay_visible(&game));
@@ -705,7 +705,7 @@ pub(in crate::game) mod tests {
             !overlay.vertices.is_empty(),
             "F3 must paint even without a level"
         );
-        assert!(game.title.0.is_some());
+        assert!(game.side.title.0.is_some());
         // Gui treats the title as an open screen even when F1 hides the HUD.
         game.ui.hide_gui = true;
         let mut hidden_hud = HudBatch::new([1280, 720], game.settings.gui_scale_inputs());
@@ -713,13 +713,13 @@ pub(in crate::game) mod tests {
         assert!(!hidden_hud.vertices.is_empty());
         game.debug_key(KeyCode::F3, KeyAction::Press);
         game.debug_key(KeyCode::F3, KeyAction::Release);
-        assert!(!game.client.debug);
-        game.debug_entries.0.set_status("fps", Status::AlwaysOn);
+        assert!(!game.side.debug);
+        game.side.debug_entries.0.set_status("fps", Status::AlwaysOn);
         assert!(ScreensClientHost::debug_overlay_visible(&game));
 
         // With no screen open, the hidden HUD suppresses even an always-on entry.
-        game.title.0 = None;
-        game.client.screen = Screen::Playing;
+        game.side.title.0 = None;
+        game.side.screen = Screen::Playing;
         assert!(!ScreensClientHost::debug_overlay_visible(&game));
         game.ui.hide_gui = false;
         assert!(ScreensClientHost::debug_overlay_visible(&game));
@@ -736,19 +736,19 @@ pub(in crate::game) mod tests {
         use sunrise_client::debug_keys::KeyAction;
         let mut resources = None;
         let mut game = title_game(&mut resources);
-        let original_title = game.title.0.as_ref().unwrap().screen_key();
-        assert!(!game.client.captured);
+        let original_title = game.side.title.0.as_ref().unwrap().screen_key();
+        assert!(!game.side.captured);
         game.debug_key(KeyCode::F3, KeyAction::Press);
         game.debug_key(KeyCode::F6, KeyAction::Press);
         assert!(
-            game.client.screen == Screen::DebugOptions,
+            game.side.screen == Screen::DebugOptions,
             "F3+F6 must open over the title"
         );
-        assert!(game.client.debug_options.is_some());
+        assert!(game.side.debug_options.is_some());
         // RedrawRequested only updates the world, spawns a player and ticks
         // gameplay when title.is_none(). Keep that no-level sentinel intact.
         assert!(
-            game.title.0.is_some(),
+            game.side.title.0.is_some(),
             "F6 must not enable the world-entry gates"
         );
         assert!(
@@ -759,14 +759,14 @@ pub(in crate::game) mod tests {
             game.shows_panorama(),
             "the level-less options retain the panorama"
         );
-        assert!(game.player.is_none() && game.renderer.0.is_none() && game.integrated.is_none());
+        assert!(game.player.is_none() && game.side.renderer.0.is_none() && game.integrated.is_none());
         let frame = game.hud([1280, 720]);
         assert!(
             !frame.vertices.is_empty(),
             "the actual debug options screen must paint"
         );
         assert!(
-            game.title.0.is_some(),
+            game.side.title.0.is_some(),
             "drawing options must keep world entry disabled"
         );
         sunrise_client::widgets::end_frame(1);
@@ -776,52 +776,52 @@ pub(in crate::game) mod tests {
             }),
             "debug options buttons, rather than title buttons, must be visible"
         );
-        game.client.debug_options.as_mut().unwrap().search.focused = true;
+        game.side.debug_options.as_mut().unwrap().search.focused = true;
         assert!(
             game.text_field_focused(),
             "the covered title must not hide search focus"
         );
         game.ime_commit("fps");
         assert_eq!(
-            game.client.debug_options.as_ref().unwrap().search.value,
+            game.side.debug_options.as_ref().unwrap().search.value,
             "fps"
         );
-        game.client.debug_options.as_mut().unwrap().search.focused = false;
+        game.side.debug_options.as_mut().unwrap().search.focused = false;
         game.debug_key(KeyCode::F6, KeyAction::Release);
         game.debug_key(KeyCode::F6, KeyAction::Press);
-        assert!(game.client.screen == Screen::Playing);
-        assert!(game.title.0.is_some() && game.client.debug_options.is_none());
-        assert_eq!(game.title.0.as_ref().unwrap().screen_key(), original_title);
+        assert!(game.side.screen == Screen::Playing);
+        assert!(game.side.title.0.is_some() && game.side.debug_options.is_none());
+        assert_eq!(game.side.title.0.as_ref().unwrap().screen_key(), original_title);
         assert!(
-            !game.client.captured,
+            !game.side.captured,
             "closing a title screen must not capture the pointer"
         );
         game.debug_key(KeyCode::F6, KeyAction::Release);
         game.debug_key(KeyCode::F3, KeyAction::Release);
         assert!(
-            !game.client.debug,
+            !game.side.debug,
             "a used debug combination does not toggle the overlay"
         );
         game.debug_key(KeyCode::F3, KeyAction::Press);
         game.debug_key(KeyCode::F6, KeyAction::Press);
         let (w, h) = game.gui_size();
         let (xs, y) = footer(w, h);
-        game.client.cursor = (xs[3] + 1.0, y + 1.0);
+        game.side.cursor = (xs[3] + 1.0, y + 1.0);
         game.debug_options_click();
-        assert!(game.title.0.is_some() && game.client.debug_options.is_none());
+        assert!(game.side.title.0.is_some() && game.side.debug_options.is_none());
         assert!(
-            !game.client.captured,
+            !game.side.captured,
             "Done also returns without grabbing the pointer"
         );
-        assert!(game.client.screen == Screen::Playing);
-        game.title.0.as_mut().unwrap().mode = sunrise_client::title::Mode::Select {
+        assert!(game.side.screen == Screen::Playing);
+        game.side.title.0.as_mut().unwrap().mode = sunrise_client::title::Mode::Select {
             worlds: Vec::new(),
             selected: None,
         };
-        let selection = game.title.0.as_ref().unwrap().screen_key();
+        let selection = game.side.title.0.as_ref().unwrap().screen_key();
         game.debug_key(KeyCode::F6, KeyAction::Release);
         game.debug_key(KeyCode::F6, KeyAction::Press);
-        assert!(game.client.debug_options.is_none());
-        assert_eq!(game.title.0.as_ref().unwrap().screen_key(), selection);
+        assert!(game.side.debug_options.is_none());
+        assert_eq!(game.side.title.0.as_ref().unwrap().screen_key(), selection);
     }
 }

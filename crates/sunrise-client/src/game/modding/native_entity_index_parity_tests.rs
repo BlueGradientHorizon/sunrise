@@ -9,7 +9,7 @@ use super::{
 use std::collections::HashSet;
 use sunrise_client::join_seq::residency::table::EntityLookup;
 
-fn live_mob_ids(game: &Game<'_>, expected: usize) -> HashSet<u32> {
+fn live_mob_ids(game: &crate::game::ServerGame<'_>, expected: usize) -> HashSet<u32> {
     let mut ids = Vec::new();
     ids.extend(game.mobs.iter().map(|mob| mob.id));
     for dimension in [
@@ -17,7 +17,7 @@ fn live_mob_ids(game: &Game<'_>, expected: usize) -> HashSet<u32> {
         "minecraft:the_nether",
         "minecraft:the_end",
     ] {
-        if let Some(parked) = game.levels.0.parked_of(dimension) {
+        if let Some(parked) = game.side.levels.0.parked_of(dimension) {
             ids.extend(parked.mobs.iter().map(|mob| mob.id));
         }
     }

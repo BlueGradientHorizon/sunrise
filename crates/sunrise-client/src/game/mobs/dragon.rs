@@ -5490,7 +5490,7 @@ pub(in crate::game) mod tests {
             super::super::native_entity_refs::tests::with_game(|game| {
                 game.dragon.replace(dragon(Phase::Scanning { time: 0 }));
                 let arrow = ProjectileKind::Trident;
-                let hit = |game: &mut Game<'_>, counts, direct| {
+                let hit = |game: &mut crate::game::ServerGame<'_>, counts, direct| {
                     game.hurt_dragon_part_at(
                         0,
                         2.0,

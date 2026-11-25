@@ -5,7 +5,7 @@ use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
 use sunrise_client::mobs::{Damage, MobEvent, Who};
 
-fn game<'a>(resources: &'a mut Option<Arc<Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<Arc<Resources>>) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -28,15 +28,12 @@ fn game<'a>(resources: &'a mut Option<Arc<Resources>>) -> Game<'a> {
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -61,7 +58,7 @@ fn a_shield_halves_the_push_of_a_ram() {
     let mut game = game(&mut resources);
     let goat = game.mobs[0].id;
     let from = [0.5, 64.0, 1.5];
-    let ram = |game: &mut Game<'_>| {
+    let ram = |game: &mut crate::game::ServerGame<'_>| {
         game.handle_mob_events(vec![MobEvent::Knockback {
             target: Who::Player,
             power: 7.5,

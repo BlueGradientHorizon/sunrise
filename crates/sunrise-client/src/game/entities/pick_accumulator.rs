@@ -167,12 +167,12 @@ mod tests {
             let eye = game.aim().unwrap().0[1] - 64.0;
             // Yaw 0 looks along +z.
             (game.yaw, game.pitch) = (0.0, 0.0);
-            let eyes_at = |game: &mut Game<'_>, at: Vec3| {
+            let eyes_at = |game: &mut crate::game::ServerGame<'_>, at: Vec3| {
                 game.player = Some(
                     PlayerMotion::new(game.motion, Vec3::new(at.x, at.y - eye, at.z)).unwrap(),
                 );
             };
-            let picked = |game: &Game<'_>| game.mob_hit().map(|(i, _, _)| game.mobs[i].id);
+            let picked = |game: &crate::game::ServerGame<'_>| game.mob_hit().map(|(i, _, _)| game.mobs[i].id);
             eyes_at(game, centre);
             assert_eq!(
                 picked(game),

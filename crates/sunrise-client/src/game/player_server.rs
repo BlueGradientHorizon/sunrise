@@ -642,7 +642,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     #[cfg(test)]
     pub(in crate::game) fn server_set_test_forced_hit(&mut self, hit: Option<Hit>) {
-        self.server.forced_hit = hit;
+        self.side.forced_hit = hit;
     }
 
     // Client item-use hooks (no-ops on server).

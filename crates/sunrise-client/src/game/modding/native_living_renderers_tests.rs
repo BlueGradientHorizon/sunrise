@@ -165,7 +165,7 @@ fn quads(out: &[Vertex]) -> Vec<f32> {
 }
 
 /// One frame of the level's mobs with only a mob of `kind`, id `id`, its body turned 30 degrees.
-fn frame(game: &mut Game<'_>, kind: &str, id: u32) -> Vec<Vertex> {
+fn frame(game: &mut crate::game::ClientGame<'_>, kind: &str, id: u32) -> Vec<Vertex> {
     let kind = game.res.mob_types().get(kind).unwrap().clone();
     let at = sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5);
     let mut mob = Mob::new(id, kind, at, 30.0);
@@ -185,7 +185,7 @@ fn events(heard: &Shared) -> Vec<String> {
 /// Runs `check` on a client game with prepared resources and the [`Scene`] mod, resolved as the
 /// first load does. In a child process running only `test`: the registrations are kept once per
 /// process.
-fn in_scene(test: &str, check: impl FnOnce(&mut Game<'_>, &Shared, &Flaky)) {
+fn in_scene(test: &str, check: impl FnOnce(&mut crate::game::ClientGame<'_>, &Shared, &Flaky)) {
     if std::env::var_os("SUNRISE_LIVING_RENDERERS_CHILD").is_none() {
         let status = std::process::Command::new(std::env::current_exe().unwrap())
             .args([

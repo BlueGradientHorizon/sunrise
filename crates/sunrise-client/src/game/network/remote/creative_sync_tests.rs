@@ -105,7 +105,7 @@ mod give_stack {
     }
 
     /// `name`'s network id in `registry`, from the tables the server gave the client.
-    fn net_id<__Side: crate::game::Side>(game: &Game<'_, __Side>, registry: &str, name: &str) -> i32 {
+    fn net_id(game: &crate::game::ClientGame<'_>, registry: &str, name: &str) -> i32 {
         let r = game.remote.as_ref().unwrap();
         r.builtin
             .get(registry)
@@ -137,8 +137,8 @@ mod give_stack {
     }
 
     /// The tick's sync, with no menu open, sends no creative slot after a give.
-    fn tick_sends_nothing<__Side: crate::game::Side>(
-        game: &mut Game<'_, __Side>,
+    fn tick_sends_nothing(
+        game: &mut crate::game::ClientGame<'_>,
         reader: &mut sunrise_protocol::connection::ConnReader,
     ) {
         game.remote_send_state(0);
@@ -146,7 +146,7 @@ mod give_stack {
         assert!(again.is_empty(), "{again:?}");
     }
 
-    fn component<'a, __Side: crate::game::Side>(game: &Game<'_, __Side>, stack: &'a Stack, name: &str) -> &'a Component {
+    fn component<'a>(game: &crate::game::ClientGame<'_>, stack: &'a Stack, name: &str) -> &'a Component {
         let id = net_id(game, "minecraft:data_component_type", name);
         stack
             .added
@@ -370,7 +370,7 @@ mod give_stack {
                     game.remote_send_state(0);
                     sent(&mut reader);
                     let stone = net_id(game, "minecraft:item", "minecraft:stone");
-                    let mut give = |game: &mut Game<'_>, count| {
+                    let mut give = |game: &mut crate::game::ClientGame<'_>, count| {
                         assert_eq!(
                             game.give_stack(&api("minecraft:stone", count, &[])),
                             Ok(None)

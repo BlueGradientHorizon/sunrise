@@ -99,7 +99,7 @@ pub(in crate::game) fn dependent_entity_bundle_body() {
         while Instant::now() < hold_until {
             game.poll_remote().unwrap();
             assert_eq!(
-                game.client.interactions.contains_key(&expected_cam_after),
+                game.side.interactions.contains_key(&expected_cam_after),
                 expected_exists_before,
                 "unclosed bundle spawned entity before closing delimiter"
             );
@@ -137,11 +137,11 @@ pub(in crate::game) fn dependent_entity_bundle_body() {
         let mut applied = false;
         while Instant::now() < deadline {
             game.poll_remote().unwrap();
-            let exists = game.client.interactions.contains_key(&expected_cam_after);
+            let exists = game.side.interactions.contains_key(&expected_cam_after);
             let cam = game.remote_camera_id().map(|id| id as i32);
             if exists || cam.is_some() {
                 assert!(exists && expected_exists_after);
-                let interaction = game.client.interactions.get(&expected_cam_after).unwrap();
+                let interaction = game.side.interactions.get(&expected_cam_after).unwrap();
                 assert_eq!(interaction.width.to_bits(), expected_width_bits);
                 assert_eq!(interaction.height.to_bits(), expected_height_bits);
                 assert_eq!(cam, Some(expected_cam_after));
@@ -192,8 +192,8 @@ pub(in crate::game) fn dependent_entity_bundle_body() {
             std::thread::yield_now();
         }
         assert_eq!(game.remote_camera_id(), Some(creeper_id as u32));
-        assert_eq!(game.client.spectated_post_effect, Some("minecraft:creeper"));
-        assert!(game.client.spectated_post_effect_active);
+        assert_eq!(game.side.spectated_post_effect, Some("minecraft:creeper"));
+        assert!(game.side.spectated_post_effect_active);
 
         peer.send(
             &C::SetCamera(play::SetCamera {
@@ -211,8 +211,8 @@ pub(in crate::game) fn dependent_entity_bundle_body() {
             std::thread::yield_now();
         }
         assert_eq!(game.remote_camera_id(), Some(expected_cam_after as u32));
-        assert_eq!(game.client.spectated_post_effect, None);
-        assert!(!game.client.spectated_post_effect_active);
+        assert_eq!(game.side.spectated_post_effect, None);
+        assert!(!game.side.spectated_post_effect_active);
     });
 }
 
@@ -227,7 +227,7 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
         "before_login_metadata" => {
             // 1. SetEntityData before Login disconnects with disconnect.packetError.
             with_client_game(|game| {
-                game.title.0 = None;
+                game.side.title.0 = None;
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "MetadataBeforeLogin").unwrap();
                 let (session, mut peer) = Session::play_loop_probe();
@@ -256,7 +256,7 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
                     "SetEntityData before Login must disconnect"
                 );
                 let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
-                    game.title.0.as_ref().map(|t| &t.mode)
+                    game.side.title.0.as_ref().map(|t| &t.mode)
                 else {
                     panic!("missing Disconnected screen for SetEntityData before Login");
                 };
@@ -269,7 +269,7 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
         "metadata_validation_and_inline_painting" => {
             // 2. Absent entity, repeated valid flags, valid prefix before invalid entry, bundle failure, and inline painting.
             with_client_game(|game| {
-                game.title.0 = None;
+                game.side.title.0 = None;
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "MetadataValidation").unwrap();
                 let spawn = SpawnInfo {
@@ -462,7 +462,7 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
                 );
                 assert!(!saw_pong, "bundle must stop before trailing Ping(55)");
                 let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
-                    game.title.0.as_ref().map(|t| &t.mode)
+                    game.side.title.0.as_ref().map(|t| &t.mode)
                 else {
                     panic!("missing Disconnected screen after bundle metadata error");
                 };
@@ -493,7 +493,7 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
             );
             let registries = std::sync::Arc::new(reg);
             with_client_game(|game| {
-                game.title.0 = None;
+                game.side.title.0 = None;
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "SyncedPaintingOverride")
                     .unwrap();
@@ -607,8 +607,8 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
         "pre_login_disconnect_bundle" => {
             // 4. Pre-Login bundle [Disconnect("server kick"), PostEffects, Ping(88)] preserves first reason and stops.
             with_client_game(|game| {
-                game.title.0 = None;
-                game.client.post_effects.clear();
+                game.side.title.0 = None;
+                game.side.post_effects.clear();
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "PreLoginDisconnectBundle")
                     .unwrap();
@@ -646,9 +646,9 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
                 }
                 assert!(game.remote.is_none());
                 assert!(!saw_pong, "bundle must stop before Ping(88)");
-                assert!(game.client.post_effects.is_empty());
+                assert!(game.side.post_effects.is_empty());
                 let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
-                    game.title.0.as_ref().map(|t| &t.mode)
+                    game.side.title.0.as_ref().map(|t| &t.mode)
                 else {
                     panic!("missing Disconnected screen");
                 };
@@ -662,8 +662,8 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
         "pre_login_post_effects_bundle" => {
             // 5. Pre-Login bundle [PostEffects, Ping(89)] stops before Ping(89) with disconnect.packetError.
             with_client_game(|game| {
-                game.title.0 = None;
-                game.client.post_effects.clear();
+                game.side.title.0 = None;
+                game.side.post_effects.clear();
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "PreLoginPostEffectsBundle")
                     .unwrap();
@@ -698,9 +698,9 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
                 }
                 assert!(game.remote.is_none());
                 assert!(!saw_pong, "bundle must stop before Ping(89)");
-                assert!(game.client.post_effects.is_empty());
+                assert!(game.side.post_effects.is_empty());
                 let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
-                    game.title.0.as_ref().map(|t| &t.mode)
+                    game.side.title.0.as_ref().map(|t| &t.mode)
                 else {
                     panic!("missing Disconnected screen");
                 };
@@ -751,7 +751,7 @@ pub(in crate::game) fn entity_data_validation_inline_painting_and_pre_login_bund
             let expected = &bundle["disconnect_notify_after_shutdown"];
             let expected_reason = expected["reason_text"].as_str().unwrap();
             with_client_game(|game| {
-                game.title.0 = None;
+                game.side.title.0 = None;
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "ShutdownOrder").unwrap();
                 game.connection_starts("play.example.test", "ShutdownOrder", false);

@@ -35,7 +35,7 @@ fn chats(receiver: &mpsc::Receiver<sunrise_client::lan::Out>) -> Vec<serde_json:
 /// The host's queued `broadcastToAdmins` lines, sent as `tick_lan` does for
 /// the host's own commands, then what the operator received.
 fn flush_to_operator(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     receiver: &mpsc::Receiver<sunrise_client::lan::Out>,
 ) -> Vec<serde_json::Value> {
     game.send_admin_feedback();
@@ -58,7 +58,7 @@ fn admin_line(message: serde_json::Value) -> serde_json::Value {
 /// A LAN world the host opened, with one other operator (conn 7) connected.
 fn lan_game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> (Game<'a>, mpsc::Receiver<sunrise_client::lan::Out>) {
+) -> (crate::game::ServerGame<'a>, mpsc::Receiver<sunrise_client::lan::Out>) {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);

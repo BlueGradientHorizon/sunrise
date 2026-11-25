@@ -74,8 +74,8 @@ fn rewritten_awards_update_counts_criteria_and_dirty_values_atomically() {
                     .iter()
                     .any(|id| id == "rewrite:steps")
             );
-            game.server.lan_acting_uuid = Some(12);
-            game.server.lan_acting_name = Some("player".into());
+            game.side.lan_acting_uuid = Some(12);
+            game.side.lan_acting_name = Some("player".into());
             game.award_stat("mined", "minecraft:stone", 1);
             assert_eq!(game.stats.get("mined", "minecraft:stone"), 2);
             assert_eq!(
@@ -244,7 +244,7 @@ fn deferred_award_rewrites_only_after_outer_commit_and_abort_emits_nothing() {
 }
 
 // Same survival/tool/chunk setup as native_player_destroyed_block_tests.
-fn prepare_breaker(game: &mut Game<'_>) {
+fn prepare_breaker(game: &mut crate::game::ServerGame<'_>) {
     use sunrise_client::{command::args::GameMode, items::ItemStack, motion::PlayerMotion};
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
     let _ = game.block_ticks.add_empty_chunk(ChunkPos::new(0, 0));
@@ -256,7 +256,7 @@ fn prepare_breaker(game: &mut Game<'_>) {
     game.inventory[game.selected] = Some(ItemStack::new("minecraft:diamond_pickaxe", 1));
 }
 
-fn break_stone(game: &mut Game<'_>) {
+fn break_stone(game: &mut crate::game::ServerGame<'_>) {
     let stone = game
         .pack
         .assets
@@ -290,9 +290,9 @@ fn real_integrated_stone_break_updates_counter_score_and_dirty_award() {
             game.build_registries();
             game.set_allow_commands(true);
             prepare_breaker(game);
-            game.server.lan_acting_uuid = Some(123);
-            game.server.lan_acting_entity = Some(20);
-            game.server.lan_acting_name = Some("Breaker".into());
+            game.side.lan_acting_uuid = Some(123);
+            game.side.lan_acting_entity = Some(20);
+            game.side.lan_acting_name = Some("Breaker".into());
             assert!(
                 game.run_command("scoreboard objectives add mined minecraft.mined:minecraft.stone")
             );
@@ -530,7 +530,7 @@ fn lan_noncanonical_rewrite_keeps_the_entire_original_award() {
 }
 
 fn assert_dirty_packet(
-    game: &Game<'_>,
+    game: &crate::game::ServerGame<'_>,
     rx: &std::sync::mpsc::Receiver<sunrise_client::lan::Out>,
     ty: &str,
     registry: &str,

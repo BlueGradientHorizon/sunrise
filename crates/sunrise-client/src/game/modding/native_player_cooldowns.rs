@@ -249,8 +249,8 @@ mod tests {
                 ]),
             )]))
         };
-        let warns = |game: &mut super::super::Game<'_>| {
-            WardenSpawnTracker::try_warn(&mut [game.server.sculk.tracker], false)
+        let warns = |game: &mut crate::game::ServerGame<'_>| {
+            WardenSpawnTracker::try_warn(&mut [game.side.sculk.tracker], false)
         };
         super::super::native_guest_turn_tests::with_guests(|game| {
             // Guest 12 owns the world: their data is the level's, and 13 has
@@ -285,15 +285,15 @@ mod tests {
             })
             .unwrap();
             assert!(!game.player_set_warden_warning_cooldown(stale(a), 40));
-            assert!(!game.server.sculk.tracker_loaded);
-            assert_eq!(game.server.sculk.tracker, WardenSpawnTracker::default());
+            assert!(!game.side.sculk.tracker_loaded);
+            assert_eq!(game.side.sculk.tracker, WardenSpawnTracker::default());
             game.tick_sculk_entities();
-            assert_eq!(game.server.sculk.tracker.warning_level, 2);
+            assert_eq!(game.side.sculk.tracker.warning_level, 2);
 
             // The owner's write keeps the shrieker from warning until it has
             // run out, over the level's saved tracker.
-            game.server.sculk.tracker = WardenSpawnTracker::default();
-            game.server.sculk.tracker_loaded = false;
+            game.side.sculk.tracker = WardenSpawnTracker::default();
+            game.side.sculk.tracker_loaded = false;
             assert!(game.player_set_warden_warning_cooldown(a, 40));
             for _ in 0..39 {
                 game.tick_sculk_entities();
@@ -306,7 +306,7 @@ mod tests {
                 assert!(game.player_set_warden_warning_cooldown(a, 5));
             })
             .unwrap();
-            assert_eq!(game.server.sculk.tracker.cooldown_ticks, 5);
+            assert_eq!(game.side.sculk.tracker.cooldown_ticks, 5);
         });
     }
 }

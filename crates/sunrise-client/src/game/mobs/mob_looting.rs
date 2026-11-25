@@ -175,7 +175,7 @@ mod tests {
                     game.mobs
                         .push(Mob::new(id, kind, Vec3::new(0.5, y, 0.5), 0.0));
                 }
-                let worn = |game: &Game<'_>, index: usize, slot: Slot| {
+                let worn = |game: &crate::game::ServerGame<'_>, index: usize, slot: Slot| {
                     finalize::item(&game.mobs[index], slot.index()).map(|item| item.to_string())
                 };
                 let helmet = ItemStack::new("minecraft:iron_helmet", 1);
@@ -254,7 +254,7 @@ mod tests {
                 let at = Vec3::new(0.5 + f64::from(id) * 4.0, 64.0, 0.5);
                 game.mobs.push(Mob::new(id, kind.clone(), at, 0.0));
             }
-            let worn = |game: &Game<'_>, index: usize| {
+            let worn = |game: &crate::game::ServerGame<'_>, index: usize| {
                 [Slot::MainHand, Slot::Head, Slot::Feet]
                     .into_iter()
                     .find(|slot| finalize::item(&game.mobs[index], slot.index()).is_some())

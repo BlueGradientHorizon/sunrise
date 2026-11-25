@@ -594,10 +594,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         entries: Vec<play::GameRuleEntry>,
     ) -> bool {
-        self.world_options.0 = Some(tests::options(true, false));
-        self.world_options.0.as_mut().unwrap().view = View::GameRules;
+        self.side.world_options.0 = Some(tests::options(true, false));
+        self.side.world_options.0.as_mut().unwrap().view = View::GameRules;
         self.remote_world_options_rules(entries);
-        self.world_options.0.as_ref().unwrap().rules.is_some()
+        self.side.world_options.0.as_ref().unwrap().rules.is_some()
     }
 
     pub(in crate::game::client_side) fn remote_world_options_rules(
@@ -716,7 +716,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     #[cfg(test)]
     pub(in crate::game) fn world_options_personal_state(&self) -> Option<(i32, i32, u8)> {
-        self.world_options
+        self.side.world_options
             .0
             .as_ref()
             .map(|o| (o.personal_mode, o.initial.personal_mode, o.difficulty))
@@ -724,7 +724,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     #[cfg(test)]
     pub(in crate::game) fn set_world_options_difficulty_for_test(&mut self, difficulty: u8) {
-        if let Some(o) = self.world_options.0.as_mut() {
+        if let Some(o) = self.side.world_options.0.as_mut() {
             o.difficulty = difficulty;
         }
     }

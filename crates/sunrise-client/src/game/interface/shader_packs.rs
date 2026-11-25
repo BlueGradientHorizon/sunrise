@@ -1458,7 +1458,7 @@ fn projectile_body_uses_its_own_shader_entity_id() {
     use sunrise_client::projectiles::{Projectile, ProjectileKind};
 
     super::native_entity_refs::tests::with_client_game(|game| {
-        game.client.pack_ids = Some(PackIds::with_entity_ids([
+        game.side.pack_ids = Some(PackIds::with_entity_ids([
             ("minecraft:snowball", 41),
             ("minecraft:ominous_item_spawner", 42),
             ("minecraft:arrow", 43),
@@ -1488,7 +1488,7 @@ fn projectile_body_uses_its_own_shader_entity_id() {
             &mut Vec::new(),
         );
         let ids: Vec<_> = game
-            .client
+            .side
             .entity_spans
             .borrow()
             .windows(2)
@@ -1608,7 +1608,7 @@ pub(in crate::game) mod player_status_tests {
 
     /// The window's player standing at (0.5, 64, 0.5) on the empty chunks around it
     /// (`EntityFluidInteraction.update` needs the chunks around the box loaded as well).
-    pub(in crate::game) fn stand_player(game: &mut Game<'_>) {
+    pub(in crate::game) fn stand_player<S: crate::game::Side>(game: &mut Game<'_, S>) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
         for chunk in [(-1, -1), (-1, 0), (0, -1), (0, 0)] {
             game.world
                 .chunks
@@ -1621,7 +1621,7 @@ pub(in crate::game) mod player_status_tests {
     /// blocks, (0, 64, 0) and (0, 65, 0): the eight corners of the quart around (block - 2),
     /// (-1, 15, -1), which reach into the three neighbouring chunks. Then rain starts (`true`)
     /// or stops.
-    pub(in crate::game) fn rain_on_the_player(game: &mut Game<'_>, raining: bool) {
+    pub(in crate::game) fn rain_on_the_player<S: crate::game::Side>(game: &mut Game<'_, S>, raining: bool) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
         let plains = game.res.biomes().id("minecraft:plains");
         let bottom = game.world.bottom_y() >> 2;
         for x in [-1, 0] {
@@ -1655,7 +1655,7 @@ pub(in crate::game) mod player_status_tests {
             let _server = logged_client(game);
             let own = game.remote.as_ref().unwrap().entity_id;
             stand_player(game);
-            let flags = |game: &mut Game<'_>, flags: i8| {
+            let flags = |game: &mut crate::game::ClientGame<'_>, flags: i8| {
                 game.handle_packet(C::SetEntityData(play::SetEntityData {
                     id: own,
                     values: vec![(0, serializer::BYTE, Value::Byte(flags))],
@@ -1678,7 +1678,7 @@ pub(in crate::game) mod player_status_tests {
             flags(game, 0);
             assert!(!game.pack_player_status().glowing, "flag 6 cleared");
 
-            let kind = |game: &Game<'_>, name: &str| {
+            let kind = |game: &crate::game::ClientGame<'_>, name: &str| {
                 let remote = game.remote.as_ref().unwrap();
                 let types = remote.builtin.get("minecraft:entity_type").unwrap();
                 types.id(name).unwrap()
@@ -1751,7 +1751,7 @@ pub(in crate::game) mod player_status_tests {
             portal_cooldown: 0,
             sea_level: 63,
         };
-        let login = |game: &mut Game<'_>| {
+        let login = |game: &mut crate::game::ServerGame<'_>| {
             game.handle_packet(C::Login(play::Login {
                 player_id: 7,
                 hardcore: false,
@@ -1769,7 +1769,7 @@ pub(in crate::game) mod player_status_tests {
             .unwrap();
         };
         let mut teleport = 0;
-        let mut place = |game: &mut Game<'_>| {
+        let mut place = |game: &mut crate::game::ServerGame<'_>| {
             teleport += 1;
             game.handle_packet(C::PlayerPosition(play::PlayerPosition {
                 teleport,
@@ -1781,14 +1781,14 @@ pub(in crate::game) mod player_status_tests {
             }))
             .unwrap();
         };
-        let glow = |game: &mut Game<'_>| {
+        let glow = |game: &mut crate::game::ServerGame<'_>| {
             game.handle_packet(C::SetEntityData(play::SetEntityData {
                 id: 7,
                 values: vec![(0, serializer::BYTE, Value::Byte(0x40))],
             }))
             .unwrap();
         };
-        let respawn = |game: &mut Game<'_>, keep| {
+        let respawn = |game: &mut crate::game::ServerGame<'_>, keep| {
             game.handle_packet(C::Respawn(play::Respawn {
                 spawn: spawn(),
                 keep,

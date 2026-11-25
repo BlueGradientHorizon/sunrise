@@ -96,7 +96,7 @@ pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
 pub(in crate::game::client_side) use sunrise_core::random::{LegacyRandom, RandomSource};
 
 pub(in crate::game) fn step_recording(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
 ) -> (
     Vec<(&'static str, [f64; 3], Option<Who>)>,
     BTreeMap<String, usize>,

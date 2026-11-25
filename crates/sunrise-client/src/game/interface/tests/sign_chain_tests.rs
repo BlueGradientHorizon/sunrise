@@ -93,11 +93,11 @@ fn click_sign(
         .unwrap();
     let events = crate::game::sculk::TEST_POSTED_EVENTS
         .with(|events| events.borrow_mut().take().unwrap_or_default());
-    let name = |game: &Game<'_>, pos: [i32; 3]| {
+    let name = |game: &crate::game::ServerGame<'_>, pos: [i32; 3]| {
         let state = game.world.block(pos[0], pos[1], pos[2]);
         game.res.facts().get(state).name.to_string()
     };
-    let sounds = std::mem::take(&mut game.server.pending_sounds)
+    let sounds = std::mem::take(&mut game.side.pending_sounds)
         .into_iter()
         .map(|sound| sound.event)
         .collect();

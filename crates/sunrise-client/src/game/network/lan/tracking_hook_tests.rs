@@ -122,7 +122,7 @@ pub(in crate::game::server_side) fn read(packets: Vec<Vec<u8>>) -> Vec<Sent> {
 /// them that never come within pickup reach: `run` gets the game, each guest's packet reader and
 /// the items' ids.
 pub(in crate::game) fn with_two_items(
-    run: impl FnOnce(&mut Game<'_>, &dyn Fn() -> Vec<Heard>, [&dyn Fn() -> Vec<Sent>; 2], [u32; 2]),
+    run: impl FnOnce(&mut crate::game::ServerGame<'_>, &dyn Fn() -> Vec<Heard>, [&dyn Fn() -> Vec<Sent>; 2], [u32; 2]),
 ) {
     let log = Arc::new(Mutex::new(Vec::new()));
     let heard = || std::mem::take(&mut *log.lock().unwrap());
@@ -175,7 +175,7 @@ pub(in crate::game) fn with_two_items(
 /// Run server ticks until a mod hears something, at most 20: a new guest is sent its chunks,
 /// and pairs the entities in them, over its first ticks.
 pub(in crate::game) fn tick_until_heard(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     heard: &dyn Fn() -> Vec<Heard>,
 ) -> Vec<Heard> {
     for _ in 0..20 {

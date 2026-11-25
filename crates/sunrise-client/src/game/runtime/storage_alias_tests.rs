@@ -6,7 +6,7 @@
 use super::*;
 use sunrise_core::nbt::{Tag, parse_snbt};
 
-fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
+fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -29,15 +29,12 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -46,14 +43,14 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
     game
 }
 
-fn stored(game: &Game<'_>, id: &str) -> Tag {
+fn stored(game: &crate::game::ServerGame<'_>, id: &str) -> Tag {
     game.score.storage.get(id)
 }
 fn snbt(text: &str) -> Tag {
     parse_snbt(text).unwrap().0
 }
 /// Whether saving the storage now writes a file (it is dirty).
-fn writes(game: &mut Game<'_>, name: &str) -> bool {
+fn writes(game: &mut crate::game::ServerGame<'_>, name: &str) -> bool {
     let dir = std::env::temp_dir().join(format!("h246-{}-{name}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     game.score.storage.save(&dir);
@@ -97,10 +94,10 @@ fn a_rejected_wildcard_set_keeps_the_storage_s_cleared_array() {
 }
 
 /// Runs `command`, which must fail because nothing changed.
-fn fails_unchanged(game: &mut Game<'_>, command: &str) {
-    game.server.chat_capture = Some(Vec::new());
+fn fails_unchanged(game: &mut crate::game::ServerGame<'_>, command: &str) {
+    game.side.chat_capture = Some(Vec::new());
     assert!(!game.run_command(command), "{command}");
-    let said = game.server.chat_capture.take().unwrap_or_default();
+    let said = game.side.chat_capture.take().unwrap_or_default();
     assert_eq!(
         said.first()
             .map(sunrise_client::text::Text::plain)
@@ -112,7 +109,7 @@ fn fails_unchanged(game: &mut Game<'_>, command: &str) {
 
 /// The storage file a save writes under `dir`, read back.
 fn saved(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     name: &str,
 ) -> Option<sunrise_client::command_storage::CommandStorage> {
     let dir = std::env::temp_dir().join(format!("h246-{}-{name}", std::process::id()));

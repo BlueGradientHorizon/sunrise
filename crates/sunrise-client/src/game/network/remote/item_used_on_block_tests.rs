@@ -7,7 +7,7 @@ use serde_json::json;
 use sunrise_client::advancements as a;
 
 /// One `item_used_on_block` advancement per stick count the tool must have.
-pub(in crate::game) fn install_criteria(game: &mut Game<'_>, counts: &[u32], item: &str) {
+pub(in crate::game) fn install_criteria(game: &mut crate::game::ServerGame<'_>, counts: &[u32], item: &str) {
     let mut tree = a::Tree::default();
     for count in counts {
         let trigger = "minecraft:item_used_on_block".to_owned();

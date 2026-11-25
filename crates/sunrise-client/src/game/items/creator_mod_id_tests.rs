@@ -44,7 +44,7 @@ fn a_part_names_the_mod_that_made_the_stack() {
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
         with_game(|game| {
-            let creator = |game: &super::Game<'_>, item, count| {
+            let creator = |game: &crate::game::ServerGame<'_>, item, count| {
                 game.item_resource_creator_mod_id(&ItemStack::new(item, count))
             };
             assert_eq!(

@@ -91,7 +91,7 @@ fn request(root: &std::path::Path) -> world_loading::WorldRequest {
     value.save_root = root.into();
     value
 }
-fn fixture(mods: mod_api::Mods, run: impl FnOnce(&mut Game<'_>)) {
+fn fixture(mods: mod_api::Mods, run: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let scratch = tempfile::tempdir().unwrap();
     let root = resource_root(scratch.path());
     mod_platform::testing::with_mods(mods, || {
@@ -299,7 +299,7 @@ impl Hooks for TradeFiles {
         event.files.push(("villager_trade/test:engineer_offer".into(), br#"{"gives":{"id":"minecraft:iron_ingot","count":2},"wants":{"id":"minecraft:emerald","count":3},"max_uses":12,"xp":7}"#.to_vec()));
     }
 }
-fn assert_engineer_acquisition(game: &mut Game<'_>) {
+fn assert_engineer_acquisition(game: &mut crate::game::ServerGame<'_>) {
     let table = game.stations().professions.clone();
     assert_eq!(table.entries().len(), 16);
     assert_eq!(table.resolve("test:engineer"), Some(15));
@@ -570,17 +570,17 @@ fn villager_load_world_save_dir_preserves_custom_workstation() {
                         .unwrap(),
                 )
                 .unwrap();
-            game.save
+            game.side.save
                 .0
                 .tables
                 .get_or_init(|| Arc::new(sunrise_client::save::SaveTables::new(&game.pack.assets)));
             let chunks = vec![game.world.chunks[&(0, 0)].clone()];
-            game.save
+            game.side.save
                 .0
                 .save(&chunks, game.pack.assets.registry, world_biomes!(game))
                 .unwrap();
             let mut region =
-                sunrise_world::region::RegionFile::open(game.save.0.root.join("poi/r.0.0.mca"))
+                sunrise_world::region::RegionFile::open(game.side.save.0.root.join("poi/r.0.0.mca"))
                     .unwrap();
             let record = region
                 .read(sunrise_core::position::ChunkPos { x: 0, z: 0 })

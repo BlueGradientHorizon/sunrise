@@ -60,7 +60,7 @@ fn with_filter(test: impl FnOnce(&[ModEntry])) {
     mod_platform::testing::with_mods(mods.clone(), || test(&mods));
 }
 
-fn fixture(test: impl FnOnce(&mut Game<'_>)) {
+fn fixture(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     with_filter(|_| {
         with_game(|game| {
             game.world
@@ -105,7 +105,7 @@ fn fixture(test: impl FnOnce(&mut Game<'_>)) {
     });
 }
 
-fn source(game: &mut Game<'_>, block: &str, slots: usize) -> BlockStateId {
+fn source(game: &mut crate::game::ServerGame<'_>, block: &str, slots: usize) -> BlockStateId {
     let state = game
         .pack
         .assets
@@ -126,7 +126,7 @@ fn source(game: &mut Game<'_>, block: &str, slots: usize) -> BlockStateId {
     state
 }
 
-fn target<'a>(game: &'a Game<'_>) -> &'a ModBlockEntity {
+fn target<'a>(game: &'a crate::game::ServerGame<'_>) -> &'a ModBlockEntity {
     let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&TARGET) else {
         panic!("expected mod block entity");
     };
@@ -155,7 +155,7 @@ fn hopper_skips_a_refused_slot_and_preserves_the_stack_if_all_refuse() {
             .unwrap()
             .slots()
             .to_vec();
-        game.server.hoppers.get_mut(&ABOVE).unwrap().cooldown = 0;
+        game.side.hoppers.get_mut(&ABOVE).unwrap().cooldown = 0;
         game.tick_hopper(ABOVE);
         assert_eq!(
             game.world.block_entities.get(&ABOVE).unwrap().slots(),
@@ -307,7 +307,7 @@ fn refusing_a_capability_insert_does_not_journal_the_slot() {
     });
 }
 
-fn prepare_counted_admission(game: &mut Game<'_>, mode: i32, counts: [u32; 3]) -> ItemResource {
+fn prepare_counted_admission(game: &mut crate::game::ServerGame<'_>, mode: i32, counts: [u32; 3]) -> ItemResource {
     let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&TARGET) else {
         unreachable!();
     };
@@ -347,7 +347,7 @@ fn admission_checks_the_offer_before_clamping_to_room() {
     });
 }
 
-fn transfer_to_filtered_container(game: &mut Game<'_>, resource: &ItemResource, amount: u64) {
+fn transfer_to_filtered_container(game: &mut crate::game::ServerGame<'_>, resource: &ItemResource, amount: u64) {
     source(game, "minecraft:hopper", HOPPER_SLOTS);
     let level = game.level("minecraft:overworld").unwrap();
     let from = level
@@ -456,7 +456,7 @@ fn storage_rechecks_the_entity_after_an_accepted_write_in_the_same_attempt() {
 fn loot_replace_block_uses_the_container_rule_for_each_slot() {
     fixture(|game| {
         game.build_registries();
-        let result = |game: &mut Game<'_>, slot| {
+        let result = |game: &mut crate::game::ServerGame<'_>, slot| {
             game.as_console(|game| game.run_command(&format!(
             r#"loot replace block 8 64 8 container.{slot} 1 loot {{"pools":[{{"rolls":1,"entries":[{{"type":"minecraft:item","name":"minecraft:stone"}}]}}]}}"#
         )))

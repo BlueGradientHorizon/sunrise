@@ -282,7 +282,7 @@ pub(in crate::game) mod tests {
             assert_eq!(white_outline(game), (min, max));
             // Aimed over a vanilla cart (y 70.7) but into the answered box: the crosshair
             // picks the cart.
-            game.title.0 = None;
+            game.side.title.0 = None;
             game.player = Some(
                 sunrise_client::motion::PlayerMotion::new(
                     game.motion,
@@ -300,10 +300,10 @@ pub(in crate::game) mod tests {
     }
 
     /// The F3+B outline's white edges: their lowest and highest corner.
-    pub(in crate::game) fn white_outline(game: &mut crate::game::Game<'_>) -> ([f64; 3], [f64; 3]) {
+    pub(in crate::game) fn white_outline(game: &mut crate::game::ClientGame<'_>) -> ([f64; 3], [f64; 3]) {
         // F3+B, on entries with no file behind them: nothing is saved.
-        game.debug_entries.0 = sunrise_client::debug_entries::DebugEntries::default();
-        game.debug_entries.0.toggle_status("entity_hitboxes", false);
+        game.side.debug_entries.0 = sunrise_client::debug_entries::DebugEntries::default();
+        game.side.debug_entries.0.toggle_status("entity_hitboxes", false);
         let gizmos = game.debug_gizmos(1.0, [0.0; 3]);
         let ends: Vec<[f64; 3]> = gizmos
             .lines

@@ -482,20 +482,20 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_edit_screen_is_laid_out_by_the_build() {
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.title.0 = None;
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            game.side.title.0 = None;
             // 1280x720 at GUI scale 3 is 427x240.
             game.settings.gui_scale = 3;
             let block = CommandBlock::default;
             game.open_edit_screen((0, 0, 0), None, block(), Mode::Redstone, false);
-            assert_eq!(game.client.screen, Screen::CommandBlock);
+            assert_eq!(game.side.screen, Screen::CommandBlock);
             game.build_screen();
-            let boxes = |game: &Game<'_>| {
-                let s = game.command_block_screen.0.as_ref().unwrap();
+            let boxes = |game: &crate::game::ClientGame<'_>| {
+                let s = game.side.command_block_screen.0.as_ref().unwrap();
                 let (i, p) = (&s.command.input, &s.previous);
                 ([i.x, i.y, i.width, i.height], [p.x, p.y, p.width, p.height])
             };
-            let buttons = |game: &Game<'_>, w, h| {
+            let buttons = |game: &crate::game::ClientGame<'_>, w, h| {
                 game.built_command_block(w, h)
                     .map(|layout| layout.buttons.clone())
             };

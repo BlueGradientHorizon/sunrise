@@ -46,7 +46,7 @@ impl Hooks for Counter {
     }
 }
 
-fn with_counter(listens: bool, test: impl FnOnce(&mut crate::game::Game<'_>, &Mutex<Heard>)) {
+fn with_counter(listens: bool, test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Mutex<Heard>)) {
     let heard = Arc::new(Mutex::new(Heard::new()));
     let counter = Counter {
         heard: heard.clone(),

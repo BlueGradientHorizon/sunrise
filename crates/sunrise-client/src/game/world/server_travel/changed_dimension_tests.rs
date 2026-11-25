@@ -77,7 +77,7 @@ impl Hooks for CrossLevelRespawn {
 
 /// A server of `role` with one survival player at (3.5, 64, 5.5) in the Overworld, its options as
 /// `integrated.rs`'s server Game and a dedicated server set them.
-fn with_server(role: ExecutionRole, test: impl FnOnce(&mut Game<'_>)) {
+fn with_server(role: ExecutionRole, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     with_game_role(root, role, |game| {
         game.options.dedicated = Some(Vec::new());
@@ -93,8 +93,8 @@ fn with_server(role: ExecutionRole, test: impl FnOnce(&mut Game<'_>)) {
             seed: 0,
             max_players: 2,
             integrated: role == ExecutionRole::IntegratedServer,
-            levels: game.server.level_shapes,
-            level_seeds: game.levels.0.runtime.seeds(),
+            levels: game.side.level_shapes,
+            level_seeds: game.side.levels.0.runtime.seeds(),
         };
         game.lan_host(
             LanSettings {
@@ -145,7 +145,7 @@ fn with_server(role: ExecutionRole, test: impl FnOnce(&mut Game<'_>)) {
 
 /// Lights the 5x5 chunks around chunk (`cx`, `cz`) of the level in place, as its
 /// streaming does once they have loaded.
-fn light(game: &mut Game<'_>, cx: i32, cz: i32) {
+fn light(game: &mut crate::game::ServerGame<'_>, cx: i32, cz: i32) {
     for x in cx - 2..=cx + 2 {
         for z in cz - 2..=cz + 2 {
             game.streaming
@@ -156,11 +156,11 @@ fn light(game: &mut Game<'_>, cx: i32, cz: i32) {
 
 /// Runs the server's travel until the player's trip has ended in `dim`, loading
 /// the destination around the trip's target.
-fn finish_trip(game: &mut Game<'_>, dim: Dim) {
+fn finish_trip(game: &mut crate::game::ServerGame<'_>, dim: Dim) {
     let home = game.dim;
     for _ in 0..20 {
         let Some(trip) = game
-            .server
+            .side
             .server_trips
             .iter()
             .find(|trip| trip.conn == CONN)
@@ -189,7 +189,7 @@ fn finish_trip(game: &mut Game<'_>, dim: Dim) {
         !game.has_pending_travel(CONN),
         "the trip into {dim:?} never ended (current {:?}, trips {:?})",
         game.dim,
-        game.server
+        game.side
             .server_trips
             .iter()
             .map(|trip| (
@@ -203,7 +203,7 @@ fn finish_trip(game: &mut Game<'_>, dim: Dim) {
     game.enter_level(home).unwrap();
 }
 
-fn place_anchor(game: &mut Game<'_>, pos: [i32; 3]) {
+fn place_anchor(game: &mut crate::game::ServerGame<'_>, pos: [i32; 3]) {
     light(game, pos[0] >> 4, pos[2] >> 4);
     let registry = game.pack.assets.registry;
     let id = registry.default_state("minecraft:respawn_anchor").unwrap();
@@ -213,7 +213,7 @@ fn place_anchor(game: &mut Game<'_>, pos: [i32; 3]) {
     game.world.set(pos[0], pos[1], pos[2], charged).unwrap();
 }
 
-fn run_as_player(game: &mut Game<'_>, role: ExecutionRole, command: &str) {
+fn run_as_player(game: &mut crate::game::ServerGame<'_>, role: ExecutionRole, command: &str) {
     assert!(game.run_guest_command(GuestCommand {
         conn: CONN,
         command: command.into(),
@@ -225,7 +225,7 @@ fn run_as_player(game: &mut Game<'_>, role: ExecutionRole, command: &str) {
     game.run_level_teleports();
 }
 
-fn prepare_end_exit(game: &mut Game<'_>, credits: bool) {
+fn prepare_end_exit(game: &mut crate::game::ServerGame<'_>, credits: bool) {
     game.enter_level(Dim::End).unwrap();
     game.streaming
         .insert_remote(&mut game.world, Chunk::empty(0, 0));
@@ -240,7 +240,7 @@ fn prepare_end_exit(game: &mut Game<'_>, credits: bool) {
     });
 }
 
-fn heard_on(role: ExecutionRole, test: impl FnOnce(&mut Game<'_>, &Heard)) {
+fn heard_on(role: ExecutionRole, test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Heard)) {
     let heard = Heard::default();
     let mods: mod_api::Mods = vec![ModEntry::new(
         "dimension-recorder",
@@ -281,7 +281,7 @@ fn a_cross_level_teleport_returns_both_cursors_before_arrival() {
         .unwrap();
         hub.guests
             .update(0, |g| g.carried = Some(open_cursor.clone()));
-        game.server.level_teleports.push(super::LevelTeleport {
+        game.side.level_teleports.push(super::LevelTeleport {
             conn: CONN,
             dim: Dim::Nether,
             at: [8.5, 70.0, 8.5],
@@ -413,7 +413,7 @@ fn a_failed_cross_level_trip_closes_the_retired_client_window() {
             // Opening an unloaded destination refuses an unreadable saved biome layout.
             // Set a world path: the constructor-only fixture otherwise reads the process's cwd.
             let world = tempfile::tempdir().unwrap();
-            game.server.world_root = world.path().to_path_buf();
+            game.side.world_root = world.path().to_path_buf();
             let record = world.path().join("data/sunrise/biome_regions.dat");
             std::fs::create_dir_all(record.parent().unwrap()).unwrap();
             std::fs::write(record, b"not a biome layout").unwrap();

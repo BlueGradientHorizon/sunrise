@@ -52,10 +52,10 @@ pub(in crate::game) mod tests {
                     game.fire_client_tick_pre();
                     assert_eq!(game.hud_mode(), mode);
                 }
-                game.server.lan_acting = Some(17);
+                game.side.lan_acting = Some(17);
                 game.fire_client_tick_pre();
                 assert_eq!(game.hud_mode(), HudMode::AllVisible);
-                game.server.lan_acting = None;
+                game.side.lan_acting = None;
                 game.fire_client_tick_pre();
                 assert_eq!(game.hud_mode(), HudMode::NoHud);
                 assert!(game.ui.hands_drawn(false, false, true, true, false));

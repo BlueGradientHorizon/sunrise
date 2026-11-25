@@ -25,7 +25,7 @@ mod tick_target_millis_tests {
         }
     }
 
-    fn with_timer(answer: fn(f32) -> f32, check: impl FnOnce(&mut super::Game<'_>)) -> Vec<f32> {
+    fn with_timer(answer: fn(f32) -> f32, check: impl FnOnce(&mut crate::game::ServerGame<'_>)) -> Vec<f32> {
         let seen = Arc::default();
         let mods: mod_api::Mods = vec![ModEntry::new(
             "timer",

@@ -45,7 +45,7 @@ mod tests {
             with_client_game(|game| {
                 let _event_loop = frame_scene(game);
                 let elapsed = Duration::from_millis(16);
-                let frame = |game: &mut super::Game<'_>, shown, moments: &[&str]| {
+                let frame = |game: &mut crate::game::ClientGame<'_>, shown, moments: &[&str]| {
                     game.extras_frame(elapsed);
                     assert_eq!(game.render_and_flip(elapsed).unwrap(), shown);
                     assert_eq!(*heard.lock().unwrap(), moments);
@@ -54,7 +54,7 @@ mod tests {
 
                 frame(game, true, &["pre", "post", "flip"]);
 
-                game.title.0 = Some(game.new_title(game.save.0.root.clone()));
+                game.side.title.0 = Some(game.new_title(game.save.0.root.clone()));
                 game.render_with(|_, frame| {
                     assert!(frame.title);
                     Ok(false)
@@ -63,9 +63,9 @@ mod tests {
                 frame(game, true, &["pre", "post", "flip"]);
 
                 // A minimized window: the frame is prepared, never drawn.
-                game.renderer.0.as_mut().unwrap().suspended = true;
+                game.side.renderer.0.as_mut().unwrap().suspended = true;
                 frame(game, false, &["pre", "post"]);
-                game.title.0 = None;
+                game.side.title.0 = None;
                 frame(game, false, &["pre", "post"]);
             });
         });

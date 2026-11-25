@@ -376,7 +376,7 @@ mod tests {
     }
 
     /// Runs `test` as a helmeted server player, with the probe's log.
-    fn with_player(test: impl FnOnce(&mut Game<'_>, &Mutex<Log>)) {
+    fn with_player(test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Mutex<Log>)) {
         let log = Arc::new(Mutex::new(Log::default()));
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
             "probe",
@@ -386,23 +386,23 @@ mod tests {
         mod_platform::testing::with_mods(mods.clone(), || {
             crate::game::api_values::install_parts(&mods).unwrap();
             with_game(|game| {
-                game.server.lan_acting_uuid = Some(123);
-                game.server.lan_acting_entity = Some(20);
-                game.server.lan_acting_name = Some("Steve".into());
-                game.server.lan_acting_permission = Some(0);
+                game.side.lan_acting_uuid = Some(123);
+                game.side.lan_acting_entity = Some(20);
+                game.side.lan_acting_name = Some("Steve".into());
+                game.side.lan_acting_permission = Some(0);
                 test(game, &log);
             })
         });
     }
     /// A new player in `helmet`, and a log with no answers: a hit of 8 wears 2 points.
-    fn start(game: &mut Game<'_>, log: &Mutex<Log>, helmet: Option<ItemStack>) {
+    fn start(game: &mut crate::game::ServerGame<'_>, log: &Mutex<Log>, helmet: Option<ItemStack>) {
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
         game.armor[0] = helmet;
         game.apply_equipment();
         game.refresh_armor_protection();
         *log.lock().unwrap() = Log::default();
     }
-    fn hit(game: &mut Game<'_>) {
+    fn hit(game: &mut crate::game::ServerGame<'_>) {
         game.falling_hurt_player(
             241,
             Vec3::ZERO,
@@ -411,7 +411,7 @@ mod tests {
             ANVIL,
         );
     }
-    fn health(game: &Game<'_>) -> f32 {
+    fn health(game: &crate::game::ServerGame<'_>) -> f32 {
         game.player.as_ref().unwrap().health.health()
     }
     fn iron_helmet() -> ItemStack {

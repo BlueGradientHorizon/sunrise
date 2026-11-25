@@ -1021,7 +1021,7 @@ pub(in crate::game) mod attach_tests {
 
     /// A game with resources but no level: a test pushes the mobs it needs
     /// and drives the lead code alone.
-    fn game(resources: &mut Option<std::sync::Arc<crate::game::Resources>>) -> super::Game<'_> {
+    fn game(resources: &mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'_> {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -1041,15 +1041,12 @@ pub(in crate::game) mod attach_tests {
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
         let res = resources.insert(loaded.resources);
-        let mut game = super::Game::new(
+        let mut game = crate::game::ServerGame::new(
             res,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();

@@ -163,7 +163,7 @@ fn load_witness_26_3() -> (i32, i32, Vec<WitnessCase>) {
     (x0, z0, cases)
 }
 
-fn collect_projectile_uuids(game: &Game<'_>) -> HashMap<String, (usize, u32)> {
+fn collect_projectile_uuids(game: &crate::game::ServerGame<'_>) -> HashMap<String, (usize, u32)> {
     let mut by_uuid = HashMap::new();
     for (idx, p) in game.creatures.projectiles.iter().enumerate() {
         let ints = game
@@ -213,7 +213,7 @@ pub(in crate::game::server_side) fn run_a_moved_thrown_item_projectile_saves_its
         }
 
         // Run one real projectile tick so moving projectiles actually advance.
-        game.server.ticked_entities_through = game.server.next_entity;
+        game.side.ticked_entities_through = game.side.next_entity;
         game.tick_projectiles().unwrap();
 
         let live_by_uuid = collect_projectile_uuids(game);
@@ -263,7 +263,7 @@ pub(in crate::game::server_side) fn run_a_moved_thrown_item_projectile_saves_its
         // Unload the chunk through the real chunk entity unload/save path and confirm removal.
         let chunk = game.world.chunks.remove(&key).unwrap();
         game.unload_entities(std::slice::from_ref(&chunk));
-        game.save.0.flush().unwrap();
+        game.side.save.0.flush().unwrap();
         assert!(
             game.creatures.projectiles.is_empty(),
             "chunk unload failed to remove resident projectiles"
@@ -278,7 +278,7 @@ pub(in crate::game::server_side) fn run_a_moved_thrown_item_projectile_saves_its
         }
 
         // Reload the chunk from disk and compare the full typed Item by UUID.
-        let records = game.save.0.load_entities(key.0, key.1).unwrap();
+        let records = game.side.save.0.load_entities(key.0, key.1).unwrap();
         assert_eq!(
             records.len(),
             cases.len(),

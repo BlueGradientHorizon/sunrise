@@ -19,7 +19,7 @@ pub(in crate::game) mod tests {
         packets::configuration::{RegistryTags, TagEntry, UpdateTags},
     };
 
-    fn client<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+    fn client<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ClientGame<'a> {
         let root = std::path::PathBuf::from(
             std::env::var_os("SUNRISE_TEST_RESOURCES")
                 .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -42,7 +42,7 @@ pub(in crate::game) mod tests {
         options.resources = root.clone();
         options.execution_role = ExecutionRole::Client;
         let res = &*resources.insert(loaded.resources);
-        let mut game = Game::new(
+        let mut game = crate::game::ClientGame::new(
             res,
             loaded.pack,
             loaded.gui.unwrap(),
@@ -90,7 +90,7 @@ pub(in crate::game) mod tests {
                         ("allowed_entities", Tag::String("#can_equip_saddle".into())),
                     ])),
                 );
-                let assert_equips = |game: &Game<'_>, allowed, denied| {
+                let assert_equips = |game: &crate::game::ClientGame<'_>, allowed, denied| {
                     for stack in [&saddle, &patched] {
                         assert!(equippable_in_slot(game.items(), stack, "saddle", allowed));
                         assert!(!equippable_in_slot(game.items(), stack, "saddle", denied));

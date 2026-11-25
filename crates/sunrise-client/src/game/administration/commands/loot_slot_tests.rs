@@ -3,7 +3,7 @@ use crate::game::commands::items::Slot;
 #[allow(unused_imports)]
 use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
 
-pub(in crate::game) fn with_game(check: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_game(check: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let scratch = tempfile::tempdir().unwrap();
     let settings = Settings::default();
@@ -24,15 +24,12 @@ pub(in crate::game) fn with_game(check: impl FnOnce(&mut Game<'_>)) {
     options.resources = root.clone();
     options.game_dir = Some(scratch.path().to_path_buf());
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -194,7 +191,7 @@ fn empty_loot_preserves_restricted_slots_but_clears_chest() {
 #[ignore = "daily"]
 fn loot_replace_mine_fills_an_accepting_slot_and_leaves_a_refusing_one() {
     with_game(|game| {
-        let slot = |game: &mut Game<'_>, n| {
+        let slot = |game: &mut crate::game::ServerGame<'_>, n| {
             game.slot_get(&Slot::Block([4, 200, 4], n))
                 .map(|s| (s.item.to_string(), s.count))
         };
@@ -225,7 +222,7 @@ fn loot_replace_mine_fills_an_accepting_slot_and_leaves_a_refusing_one() {
 #[ignore = "daily"]
 fn loot_replace_kill_fills_an_accepting_slot_and_leaves_a_refusing_one() {
     with_game(|game| {
-        let slot = |game: &mut Game<'_>, n| {
+        let slot = |game: &mut crate::game::ServerGame<'_>, n| {
             game.slot_get(&Slot::Block([4, 200, 4], n))
                 .map(|s| (s.item.to_string(), s.count))
         };

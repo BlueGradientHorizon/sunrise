@@ -18,7 +18,7 @@ const GUEST: &str = "RecipeGuest";
 /// A host on a stone floor with one connected, placed guest (conn 2).
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> (Game<'a>, mpsc::Receiver<sunrise_client::lan::Out>) {
+) -> (crate::game::ServerGame<'a>, mpsc::Receiver<sunrise_client::lan::Out>) {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -41,15 +41,12 @@ fn game<'a>(
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -117,10 +114,10 @@ fn game<'a>(
 }
 
 /// Runs `command`: whether it succeeded and what the issuer was told.
-fn run(game: &mut Game<'_>, command: &str) -> (bool, Vec<String>) {
-    game.server.chat_capture = Some(Vec::new());
+fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Vec<String>) {
+    game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.server.chat_capture.take().unwrap_or_default();
+    let said = game.side.chat_capture.take().unwrap_or_default();
     (
         ok,
         said.iter().map(sunrise_client::text::Text::plain).collect(),
@@ -148,7 +145,7 @@ fn added(rx: &mpsc::Receiver<sunrise_client::lan::Out>) -> Vec<Vec<i32>> {
     result
 }
 
-fn step(game: &mut Game<'_>, ticks: usize) {
+fn step(game: &mut crate::game::ServerGame<'_>, ticks: usize) {
     for _ in 0..ticks {
         assert!(game.run_command("tick step 1"));
         game.tick_server(false).unwrap();
@@ -156,7 +153,7 @@ fn step(game: &mut Game<'_>, ticks: usize) {
 }
 
 fn grant(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     rx: &mpsc::Receiver<sunrise_client::lan::Out>,
     recipe: &str,
 ) -> Vec<Vec<i32>> {

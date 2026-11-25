@@ -52,7 +52,7 @@ pub(in crate::game) fn spawn(dimension_type: i32, dimension: &str) -> play::Spaw
 
 /// The registry data a server sends in its configuration: `types` as its dimension types (ids
 /// in order).
-pub(in crate::game) fn send_types<__Side: crate::game::Side>(game: &mut Game<'_, __Side>, types: &[(&str, serde_json::Value)]) {
+pub(in crate::game) fn send_types(game: &mut crate::game::ClientGame<'_>, types: &[(&str, serde_json::Value)]) {
     let mut registries = (*game.remote.as_ref().unwrap().registries).clone();
     registries.registries.insert(
         "minecraft:dimension_type".into(),
@@ -70,7 +70,7 @@ pub(in crate::game) fn send_types<__Side: crate::game::Side>(game: &mut Game<'_,
 }
 
 /// The `Login` packet a server sends, into `entered`.
-pub(in crate::game) fn login<__Side: crate::game::Side>(game: &mut Game<'_, __Side>, entered: play::SpawnInfo) {
+pub(in crate::game) fn login(game: &mut crate::game::ClientGame<'_>, entered: play::SpawnInfo) {
     game.handle_packet(C::Login(play::Login {
         player_id: 7,
         hardcore: false,
@@ -93,7 +93,7 @@ pub(in crate::game) fn login<__Side: crate::game::Side>(game: &mut Game<'_, __Si
 }
 
 /// Connects to a server whose dimension types are [`server_types`] and joins `entered`.
-pub(in crate::game) fn join<__Side: crate::game::Side>(game: &mut Game<'_, __Side>, entered: play::SpawnInfo) -> Pipe {
+pub(in crate::game) fn join(game: &mut crate::game::ClientGame<'_>, entered: play::SpawnInfo) -> Pipe {
     let (client, server) = Pipe::pair();
     game.connect_local(client, "SyncedEnvironmentTest").unwrap();
     send_types(game, &server_types());
@@ -101,7 +101,7 @@ pub(in crate::game) fn join<__Side: crate::game::Side>(game: &mut Game<'_, __Sid
     server
 }
 
-pub(in crate::game) fn respawn<__Side: crate::game::Side>(game: &mut Game<'_, __Side>, spawn: play::SpawnInfo) {
+pub(in crate::game) fn respawn(game: &mut crate::game::ClientGame<'_>, spawn: play::SpawnInfo) {
     game.handle_packet(C::Respawn(play::Respawn { spawn, keep: 0 }))
         .unwrap();
 }
@@ -155,7 +155,7 @@ impl Drop for CloudPack {
 
 /// The client's resources reloaded with `server` as the server's packs, through the reload's
 /// own staging and its render-thread apply.
-pub(in crate::game) fn reload<__Side: crate::game::Side>(game: &mut Game<'_, __Side>, server: &[sunrise_client::packs::Pack]) {
+pub(in crate::game) fn reload(game: &mut crate::game::ClientGame<'_>, server: &[sunrise_client::packs::Pack]) {
     let staged = stage_pack(
         &game.vanilla_root(),
         &[],
@@ -175,12 +175,12 @@ pub(in crate::game) fn reload<__Side: crate::game::Side>(game: &mut Game<'_, __S
 }
 
 /// The frame's sample at the camera: the dimension's value, as no biome sets the height.
-pub(in crate::game) fn drawn<__Side: crate::game::Side>(game: &Game<'_, __Side>) -> sunrise_client::environment::Sky {
+pub(in crate::game) fn drawn(game: &crate::game::ClientGame<'_>) -> sunrise_client::environment::Sky {
     game.view_environment().sample(&Sample::default())
 }
 
 /// Gameplay's sample at the camera.
-pub(in crate::game) fn gameplay<__Side: crate::game::Side>(game: &Game<'_, __Side>) -> sunrise_client::environment::Sky {
+pub(in crate::game) fn gameplay(game: &crate::game::ClientGame<'_>) -> sunrise_client::environment::Sky {
     game.dim_environment().sample(&Sample::default())
 }
 
@@ -190,7 +190,7 @@ pub(in crate::game) type Built = (
     Option<Arc<sunrise_client::environment::Environment>>,
 );
 
-pub(in crate::game) fn built<__Side: crate::game::Side>(game: &Game<'_, __Side>) -> Built {
+pub(in crate::game) fn built(game: &crate::game::ClientGame<'_>) -> Built {
     let remote = game.remote.as_ref().unwrap();
     (
         remote.level_environment.clone().unwrap(),

@@ -113,7 +113,7 @@ impl BlockScreenEffectRenderer for PlannedRenderer {
 }
 
 /// A player on fire in first person, with their eye in block (0, 65, 0).
-pub(in crate::game::client_side) fn burning_player(game: &mut Game<'_>) {
+pub(in crate::game::client_side) fn burning_player(game: &mut crate::game::ClientGame<'_>) {
     game.world.chunks.insert(
         (0, 0),
         Arc::new(Chunk::with_layout(0, 0, game.world.layout())),
@@ -127,7 +127,7 @@ pub(in crate::game::client_side) fn burning_player(game: &mut Game<'_>) {
 pub(in crate::game) use crate::game::server_side::block_screen_effect_draw_tests_server::sample_eye_in_water;
 
 /// The frame's quads at 2:1 with the hand's usual 70 degrees.
-pub(in crate::game::client_side) fn quads(game: &Game<'_>) -> Vec<ScreenQuad> {
+pub(in crate::game::client_side) fn quads(game: &crate::game::ClientGame<'_>) -> Vec<ScreenQuad> {
     let projection = hand_projection(70.0, 1000.0, 500.0, 1000.0);
     game.screen_quads(0.25, [1000, 500], 1.0, projection)
 }
@@ -189,7 +189,7 @@ fn a_mod_draws_prepends_replaces_and_cancels_overlays() {
         };
         let mods: Mods = vec![ModEntry::new("screen-effect", Box::new(Planned))].into();
         mod_platform::testing::with_mods(mods, || {
-            let frame = |game: &Game<'_>, plan: Plan| {
+            let frame = |game: &crate::game::ClientGame<'_>, plan: Plan| {
                 *PLAN.lock().unwrap() = plan;
                 let quads = quads(game);
                 (quads, asked())
@@ -534,7 +534,7 @@ pub(in crate::game::client_side) fn observe_overlay(
 fn underwater_third_person_neither_extracts_nor_draws_the_overlay() {
     with_client_game(|game| {
         burning_player(game);
-        game.client.camera_type = CameraType::ThirdPersonBack;
+        game.side.camera_type = CameraType::ThirdPersonBack;
         let water = game
             .pack
             .assets
@@ -627,8 +627,8 @@ fn a_dead_players_water_overlay_uses_the_last_sample_after_removal() {
         remote.joined = true;
         remote.entity_id = 42;
         remote.level_load.finish();
-        game.client.screen = Screen::Playing;
-        game.client.camera_type = CameraType::FirstPerson;
+        game.side.screen = Screen::Playing;
+        game.side.camera_type = CameraType::FirstPerson;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5)).unwrap());
         let chunk = Chunk::with_layout(0, 0, game.world.layout());
         game.streaming.insert_remote(&mut game.world, chunk);
@@ -642,7 +642,7 @@ fn a_dead_players_water_overlay_uses_the_last_sample_after_removal() {
         game.world.set(8, 65, 8, water).unwrap();
         game.tick_remote().unwrap();
 
-        game.client.screen = Screen::Dead;
+        game.side.screen = Screen::Dead;
         use sunrise_protocol::packets::play::{Clientbound, SetHealth};
         game.apply_packet(Clientbound::SetHealth(SetHealth {
             health: 0.0,
@@ -897,8 +897,8 @@ fn only_the_last_eligible_renderer_submits() {
 }
 
 /// A frame's pixels, RGBA.
-pub(in crate::game::client_side) fn drawn_frame(game: &mut Game<'_>) -> (Vec<u8>, usize) {
-    game.renderer.0.as_mut().unwrap().screenshot = Some(ScreenshotRequest {
+pub(in crate::game::client_side) fn drawn_frame(game: &mut crate::game::ClientGame<'_>) -> (Vec<u8>, usize) {
+    game.side.renderer.0.as_mut().unwrap().screenshot = Some(ScreenshotRequest {
         path: "unused.png".into(),
         size: None,
         scaled: false,
@@ -906,7 +906,7 @@ pub(in crate::game::client_side) fn drawn_frame(game: &mut Game<'_>) -> (Vec<u8>
     });
     game.render_with(|renderer, frame| renderer.render(frame))
         .unwrap();
-    let result = game.renderer.0.as_mut().unwrap().screenshot_result.take();
+    let result = game.side.renderer.0.as_mut().unwrap().screenshot_result.take();
     let mut pending = result.unwrap().unwrap();
     let image = pending.image_mut();
     (std::mem::take(&mut image.rgba), image.width as usize)
@@ -994,12 +994,12 @@ fn screen_effect_quads_draw_over_the_level_and_under_the_gui() {
                     .unwrap(),
             );
             game.options.offscreen = true;
-            game.renderer.0 = Some(game.new_renderer(window).unwrap());
-            game.title.0 = None;
+            game.side.renderer.0 = Some(game.new_renderer(window).unwrap());
+            game.side.title.0 = None;
             burning_player(game);
             game.previous_position = game.player.as_ref().unwrap().position;
             // A black vignette is no quad: the HUD's camera overlays would darken the colours.
-            game.client.screen_fx.vignette_brightness = 0.0;
+            game.side.screen_fx.vignette_brightness = 0.0;
             game.player.as_mut().unwrap().fire_ticks = 0;
             let (level, width) = drawn_frame(game);
             game.player.as_mut().unwrap().fire_ticks = 100;

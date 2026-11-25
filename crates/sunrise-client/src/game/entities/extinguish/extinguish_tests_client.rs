@@ -15,8 +15,8 @@ pub(in crate::game::client_side) use sunrise_world::entity_move::MovementRecord;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::registry::BlockStateId;
 
-pub(in crate::game) fn heard(game: &Game<'_>) -> u32 {
-    game.audio
+pub(in crate::game) fn heard(game: &crate::game::ClientGame<'_>) -> u32 {
+    game.side.audio
         .0
         .heard
         .get("minecraft:entity.generic.extinguish_fire")

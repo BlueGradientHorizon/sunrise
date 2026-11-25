@@ -30,7 +30,7 @@ pub(in crate::game) fn in_two_levels(lines: &[(&str, &str, &[u32])]) {
                 game.build_registries();
                 game.register_native_commands();
                 game.ui.registries.permission = 4;
-                let before_cows = game.server.next_entity;
+                let before_cows = game.side.next_entity;
                 assert!(game.run_command(r#"summon minecraft:cow 4 64 5 {Tags:["over"]}"#));
                 assert!(game.run_command(
                     r#"execute in minecraft:the_nether run summon minecraft:cow 4 64 5 {Tags:["under"]}"#
@@ -137,13 +137,13 @@ fn native_selectors_deliver_ordered_handles_once_and_refuse_invalid_selections()
                             for line in
                                 ["heal @a", "selectone @r", "selectall @e", "selectplayer @s"]
                             {
-                                game.server.chat_capture = Some(Vec::new());
+                                game.side.chat_capture = Some(Vec::new());
                                 assert_eq!(
                                     game.perform_native_command(12, 0, line, false),
                                     Some(false),
                                     "{line}"
                                 );
-                                let output = game.server.chat_capture.take().unwrap();
+                                let output = game.side.chat_capture.take().unwrap();
                                 assert_eq!(
                                     output[0].plain(),
                                     Text::translate("argument.entity.selector.not_allowed", &[])
@@ -240,9 +240,9 @@ fn native_selectors_deliver_ordered_handles_once_and_refuse_invalid_selections()
                                 "argument.entity.notfound.entity",
                             ),
                         ] {
-                            game.server.chat_capture = Some(Vec::new());
+                            game.side.chat_capture = Some(Vec::new());
                             assert!(game.perform_native_console_command(line), "{line}");
-                            let output = game.server.chat_capture.take().unwrap();
+                            let output = game.side.chat_capture.take().unwrap();
                             assert_eq!(
                                 output[0].plain(),
                                 Text::translate(key, &[]).plain(),
@@ -257,15 +257,15 @@ fn native_selectors_deliver_ordered_handles_once_and_refuse_invalid_selections()
 
                         // Resident mobs remain selector candidates while their native handle
                         // is temporarily held out during a mutation.
-                        game.server.held_out.push(103);
+                        game.side.held_out.push(103);
                         assert!(game.entity(103).is_none());
                         for line in [
                             "selectall @e[type=minecraft:cow,x=3,y=64,z=5,distance=..2]",
                             "selectone @e[type=minecraft:cow,x=3,y=64,z=5,limit=1,sort=nearest]",
                         ] {
-                            game.server.chat_capture = Some(Vec::new());
+                            game.side.chat_capture = Some(Vec::new());
                             assert!(game.perform_native_console_command(line));
-                            let output = game.server.chat_capture.take().unwrap();
+                            let output = game.side.chat_capture.take().unwrap();
                             assert_eq!(
                                 output[0].plain(),
                                 Text::translate("argument.entity.notfound.entity", &[]).plain()
@@ -285,7 +285,7 @@ fn native_selectors_deliver_ordered_handles_once_and_refuse_invalid_selections()
                             );
                         })
                         .unwrap();
-                        game.server.held_out.pop();
+                        game.side.held_out.pop();
                         let calls = heard.lock().unwrap();
                         assert_eq!(calls.len(), 15);
                         assert_eq!(

@@ -2769,22 +2769,19 @@ pub(in crate::game) mod held_break_slot_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.0, 70.0, 0.0)).unwrap());
         game.set_mode_id(0);
         // Stage an acting guest: break events are queued instead of rendering local crumbs.
-        game.server.lan_acting = Some(1);
+        game.side.lan_acting = Some(1);
         game.hand = Hand::Off;
         let main = ItemStack::new("minecraft:stick", 3);
         game.inventory[game.selected] = Some(main.clone());
@@ -2796,7 +2793,7 @@ pub(in crate::game) mod held_break_slot_tests {
         game.offhand = Some(ItemStack::new("minecraft:flint_and_steel", 1));
         game.damage_held_in_slot(1, EquipmentSlot::OffHand);
         assert_eq!(game.offhand.as_ref().unwrap().damage, 1);
-        assert!(game.server.guest_equipment_breaks.is_empty());
+        assert!(game.side.guest_equipment_breaks.is_empty());
         for (explicit, event) in [(true, 48), (false, 47)] {
             let mut tool = ItemStack::new("minecraft:flint_and_steel", 1);
             tool.damage = max - 1;
@@ -2808,7 +2805,7 @@ pub(in crate::game) mod held_break_slot_tests {
             }
             assert!(game.offhand.is_none());
             assert_eq!(game.inventory[game.selected], Some(main.clone()));
-            assert_eq!(*game.server.guest_equipment_breaks.last().unwrap(), event);
+            assert_eq!(*game.side.guest_equipment_breaks.last().unwrap(), event);
         }
         game.set_mode_id(1);
         game.offhand = Some(ItemStack::new("minecraft:flint_and_steel", 1));

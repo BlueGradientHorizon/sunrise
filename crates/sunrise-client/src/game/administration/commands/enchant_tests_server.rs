@@ -37,7 +37,7 @@ pub(in crate::game::server_side) use sunrise_protocol::{
 };
 
 pub(in crate::game) fn enchant_outcome(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     target: &str,
     level: u32,
     success: bool,
@@ -46,10 +46,10 @@ pub(in crate::game) fn enchant_outcome(
     first_arg: Option<&str>,
 ) {
     let command = format!("enchant {target} {RIPTIDE} {level}");
-    game.server.chat_capture = Some(Vec::new());
+    game.side.chat_capture = Some(Vec::new());
     let (ok, outcome) =
         game.recording_command_outcome(|g| g.as_console(|g| g.run_command(&command)));
-    let feedback = game.server.chat_capture.take().unwrap();
+    let feedback = game.side.chat_capture.take().unwrap();
     assert_eq!(
         (ok, outcome),
         (success, Some((success, count))),

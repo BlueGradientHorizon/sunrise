@@ -45,7 +45,7 @@ fn rows(index: &Arc<Mutex<AttachmentIndex<AttachmentHolder>>>, name: &str) -> Ve
     values
 }
 
-fn write_player_storage(game: &mut Game<'_>, player: PlayerRef, count: u32) {
+fn write_player_storage(game: &mut crate::game::ServerGame<'_>, player: PlayerRef, count: u32) {
     let host: &dyn Host = game;
     let stack = host
         .item_from_snbt(&format!(r#"{{id:"minecraft:stone",count:{count}}}"#))

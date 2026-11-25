@@ -138,7 +138,7 @@ pub(in crate::game) mod tests {
     use sunrise_core::geometry::Vec3;
 
     /// Runs a line of the dev tree (`/raid` is registered only there).
-    fn run_dev(game: &mut Game<'_>, line: &str) -> i32 {
+    fn run_dev(game: &mut crate::game::ServerGame<'_>, line: &str) -> i32 {
         let d = vanilla::build_with(true);
         let parse = d.parse(line, &game.ui.registries);
         let (ctx, _) = parse.executable().expect(line);
@@ -153,17 +153,17 @@ pub(in crate::game) mod tests {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
             // RaidCommand needs the owner's permission level (3).
             game.ui.registries.permission = 4;
-            game.server.chat_capture = Some(Vec::new());
+            game.side.chat_capture = Some(Vec::new());
             let (id, _) = game
-                .raiding
+                .side.raiding
                 .0
                 .raids
                 .create_or_extend([0, 64, 0], 2, None, 3);
-            assert!(!game.raiding.0.raids.get(id).unwrap().started);
+            assert!(!game.side.raiding.0.raids.get(id).unwrap().started);
 
             assert_eq!(run_dev(game, "raid check"), 1);
             let lines: Vec<String> = game
-                .server
+                .side
                 .chat_capture
                 .take()
                 .unwrap()
@@ -180,10 +180,10 @@ pub(in crate::game) mod tests {
 
             game.start_audio_capture();
             run_dev(game, "raid sound global");
-            assert!(game.server.pending_sounds.is_empty());
+            assert!(game.side.pending_sounds.is_empty());
             run_dev(game, "raid sound local");
-            assert_eq!(game.server.pending_sounds.len(), 1);
-            let sound = &game.server.pending_sounds[0];
+            assert_eq!(game.side.pending_sounds.len(), 1);
+            let sound = &game.side.pending_sounds[0];
             assert_eq!(sound.event, "minecraft:event.raid.horn");
             assert_eq!(sound.position, [5.5, 64.0, 0.5]);
             assert_eq!(sound.volume, 2.0);

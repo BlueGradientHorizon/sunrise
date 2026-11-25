@@ -364,7 +364,7 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) fn spawn(game: &mut Game<'_>, id: u32, kind: &str) -> MerchantRef {
+    pub(in crate::game) fn spawn(game: &mut crate::game::ServerGame<'_>, id: u32, kind: &str) -> MerchantRef {
         let kind = game.res.mob_types().get(kind).unwrap().clone();
         game.mobs.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
         let entity = game.entity(id).unwrap();

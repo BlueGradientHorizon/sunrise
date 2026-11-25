@@ -55,7 +55,7 @@ mod tests {
                     )
                 );
                 let stack = ItemStack::new("minecraft:emerald", 1);
-                let accepts = |game: &crate::game::Game<'_>, stack: &ItemStack| {
+                let accepts = |game: &crate::game::ClientGame<'_>, stack: &ItemStack| {
                     sunrise_client::menu::apply_menu_slot_rules(
                         Some(game as &dyn sunrise_client::menu::SlotRules),
                         "pot:menu",

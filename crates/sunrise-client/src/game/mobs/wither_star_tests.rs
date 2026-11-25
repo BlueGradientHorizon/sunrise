@@ -69,7 +69,7 @@ fn a_withers_nether_star_lives_12000_ticks() {
             .expect("the wither mob");
         // `Entity.kill` through `/kill`: the hit runs LivingEntity.die now.
         game.kill_target(wither);
-        let star = |game: &Game<'_>| {
+        let star = |game: &crate::game::ServerGame<'_>| {
             game.dropped
                 .iter()
                 .find(|i| &*i.stack.item == "minecraft:nether_star")
@@ -82,15 +82,15 @@ fn a_withers_nether_star_lives_12000_ticks() {
             [wither_at.x, wither_at.y + 0.5, wither_at.z],
             "spawnAtLocation at the death drop's position"
         );
-        let ordinary = |game: &Game<'_>| {
+        let ordinary = |game: &crate::game::ServerGame<'_>| {
             game.dropped
                 .iter()
                 .any(|i| &*i.stack.item == "minecraft:stone")
         };
         assert!(ordinary(game), "the ordinary drop is in the world");
         // Both drops joined after the last tick's entity pass: they tick from now.
-        game.server.ticked_entities_through = game.server.next_entity;
-        let tick = |game: &mut Game<'_>, n: u32| {
+        game.side.ticked_entities_through = game.side.next_entity;
+        let tick = |game: &mut crate::game::ServerGame<'_>, n: u32| {
             for _ in 0..n {
                 game.tick_items();
             }

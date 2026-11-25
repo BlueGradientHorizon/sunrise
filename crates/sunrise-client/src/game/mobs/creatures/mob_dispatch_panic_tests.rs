@@ -67,7 +67,7 @@ impl mod_api::Hooks for PanicOnDespawn {
 
 /// Resolve the real carrier through the journal consumer, not a parallel test index.
 pub(in crate::game) fn assert_resident_mobs(
-    game: &Game<'_>,
+    game: &crate::game::ServerGame<'_>,
     table: &mut EntityTable,
     owner: &Owner,
     expected: &[(u32, JoinSeq)],

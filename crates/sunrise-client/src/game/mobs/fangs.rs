@@ -347,7 +347,7 @@ pub(in crate::game) mod tests {
             game.add_fangs([1.0, 80.0, 0.0], 0.0, 30, 0);
             let first = game.fangs.list[0].id;
             let second = game.fangs.list[1].id;
-            let next = game.server.next_entity;
+            let next = game.side.next_entity;
             super::super::entity::taken_pass_tests::with_spawn(
                 |game| {
                     assert!(game.fangs.list.is_empty());

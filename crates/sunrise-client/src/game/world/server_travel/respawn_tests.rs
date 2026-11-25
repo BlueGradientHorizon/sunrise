@@ -21,7 +21,7 @@ use sunrise_client::{
 use sunrise_core::{dimension::Dimension, random::LegacyRandom};
 use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
 
-fn put_guest_in_end_exit(game: &mut Game<'_>) {
+fn put_guest_in_end_exit(game: &mut crate::game::ServerGame<'_>) {
     game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
         g.dimension = Dim::End.id().into();
         g.seen_credits = true;
@@ -129,7 +129,7 @@ impl Hooks for EndTravel {
 
 fn with_end_travel(
     veto: Option<Dim>,
-    test: impl FnOnce(&mut Game<'_>, &mpsc::Receiver<Out>, &Heard) + Send + 'static,
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, &mpsc::Receiver<Out>, &Heard) + Send + 'static,
 ) {
     run_with_game_stack(move || {
         let heard = Heard::default();
@@ -328,7 +328,7 @@ fn a_cold_end_exit_keeps_ticking_the_source_player_before_the_fallback_veto() {
                 *g.stack_in_mut(slot) = Some(crate::items::ItemStack::new("minecraft:bow", 1));
                 assert!(g.start_using_item());
                 g.add_cooldown(Arc::from("minecraft:ender_pearl"), 1);
-                g.server.destroy_delay = 2;
+                g.side.destroy_delay = 2;
                 g.player.as_mut().unwrap().health.tick_count = 10;
                 slot
             })
@@ -341,7 +341,7 @@ fn a_cold_end_exit_keeps_ticking_the_source_player_before_the_fallback_veto() {
             game.as_guest(2, |g| {
                 (
                     g.player.as_ref().unwrap().health.tick_count,
-                    g.server.destroy_delay,
+                    g.side.destroy_delay,
                     g.using,
                     g.cooldowns.is_on_cooldown("minecraft:ender_pearl"),
                 )
@@ -562,7 +562,7 @@ impl Hooks for AnchorRules {
 
 fn with_anchor_death(
     rules: AnchorRules,
-    test: impl FnOnce(&Game<'_>, &mpsc::Receiver<Out>, &mpsc::Receiver<Out>) + Send + 'static,
+    test: impl FnOnce(&crate::game::ServerGame<'_>, &mpsc::Receiver<Out>, &mpsc::Receiver<Out>) + Send + 'static,
 ) {
     run_with_game_stack(move || {
         let mods = vec![ModEntry::new("anchor-rules", Box::new(rules))].into();
@@ -578,7 +578,7 @@ fn with_anchor_death(
                 let anchor = registry.default_state("minecraft:respawn_anchor").unwrap();
                 let mut chunk = Chunk::with_layout(x >> 4, z >> 4, game.world.layout());
                 chunk.set(x & 15, y, z & 15, anchor.0);
-                game.save
+                game.side.save
                     .0
                     .save(&[Arc::new(chunk)], registry, world_biomes!(game))
                     .unwrap();
@@ -612,7 +612,7 @@ fn with_anchor_death(
     });
 }
 
-fn anchor_sounds(game: &Game<'_>, rx: &mpsc::Receiver<Out>) -> Vec<play::Sound> {
+fn anchor_sounds(game: &crate::game::ServerGame<'_>, rx: &mpsc::Receiver<Out>) -> Vec<play::Sound> {
     let registry_id = game
         .lan
         .as_ref()

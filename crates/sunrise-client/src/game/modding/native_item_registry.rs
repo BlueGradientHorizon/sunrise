@@ -48,7 +48,7 @@ mod tests {
         mod_platform::testing::with_mods(mods.clone(), || {
             crate::game::api_values::install_parts(&mods).unwrap();
             let root = super::super::mods::content_root(&base, &Default::default()).unwrap();
-            fixture::with_game_role(root.prepared().to_owned(), ExecutionRole::Client, |game| {
+            fixture::with_game_role_client(root.prepared().to_owned(), ExecutionRole::Client, |game| {
                 for (id, expected) in [
                     (
                         "minecraft:stone",

@@ -301,7 +301,7 @@ mod tests {
 
     /// A pig seated on a guest, then `case` run on the game: afterwards the pig rides nothing
     /// and `entity_mount` heard it get off the guest, a listener that cancels it or not.
-    fn ejected(case: impl Fn(&mut super::Game<'_>, u32)) {
+    fn ejected(case: impl Fn(&mut crate::game::ServerGame<'_>, u32)) {
         for keep in [false, true] {
             let heard = Heard::default();
             let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
@@ -322,7 +322,7 @@ mod tests {
                     let conn = game.lan.as_ref().unwrap().hub.guests[0].conn;
                     case(game, conn);
                     // The unload save takes the pig away with its chunk; every other case keeps it.
-                    let mount = |game: &super::Game<'_>| {
+                    let mount = |game: &crate::game::ServerGame<'_>| {
                         game.mobs
                             .iter()
                             .find(|m| m.id == 80 && !m.removed)

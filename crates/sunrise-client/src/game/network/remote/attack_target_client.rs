@@ -162,7 +162,7 @@ pub(in crate::game) mod tests {
                 (104, true),
                 (101, false),
             ] {
-                game.client.hand_strength.ticker = 100;
+                game.side.hand_strength.ticker = 100;
                 let p = game.player.as_mut().unwrap();
                 let _ = p.set_sprinting(sprinting);
                 p.velocity = start;

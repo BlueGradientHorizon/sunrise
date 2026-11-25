@@ -62,7 +62,7 @@ fn game_events_ask_client_level_before_playback() {
                 ]
             );
             assert!(
-                game.audio.0.heard.is_empty(),
+                game.side.audio.0.heard.is_empty(),
                 "all three canceled requests stop before Audio"
             );
             game.handle_packet(C::GameEvent(play::GameEvent {
@@ -82,9 +82,9 @@ fn game_events_ask_client_level_before_playback() {
                 player: None,
                 cached_chunk: std::cell::Cell::new(None),
             };
-            game.particles.0.tick(&level);
+            game.side.particles.0.tick(&level);
             assert_eq!(
-                game.particles.0.elder_guardians().len(),
+                game.side.particles.0.elder_guardians().len(),
                 2,
                 "neither silent nor canceled sound suppresses the apparition"
             );
@@ -157,7 +157,7 @@ fn local_level_requests_can_mute_sound_without_undoing_prediction() {
             game.emit_consume(&consumable, &stack, 16);
             game.play_player_bound_sound("minecraft:item.goat_horn.sound.0", 2, 8.0, 1.0, true);
             assert!(
-                game.audio.0.heard.is_empty(),
+                game.side.audio.0.heard.is_empty(),
                 "all four canceled requests stop before Audio"
             );
             let expected = [
@@ -187,14 +187,14 @@ fn local_level_requests_can_mute_sound_without_undoing_prediction() {
                 },
             ];
             assert_eq!(*requests.lock().unwrap(), expected);
-            game.audio.0.engine.loaded = true;
+            game.side.audio.0.engine.loaded = true;
             game.play_client_player_sound("minecraft:block.honey_block.slide", 1.0, 1.0);
             assert_eq!(
-                game.audio.0.heard.get("minecraft:block.honey_block.slide"),
+                game.side.audio.0.heard.get("minecraft:block.honey_block.slide"),
                 Some(&1)
             );
             assert!(
-                game.audio.0.engine.bound_entities().is_empty(),
+                game.side.audio.0.engine.bound_entities().is_empty(),
                 "LocalPlayer.playSound stays positional"
             );
         });

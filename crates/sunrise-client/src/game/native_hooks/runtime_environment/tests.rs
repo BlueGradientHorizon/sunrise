@@ -201,10 +201,10 @@ fn native_process_environment_in_registration_and_game_hosts() {
             ExecutionRole::Client
         };
         if role.is_client() {
-            crate::game::native_entity_refs::tests::with_game_role(
+            crate::game::native_entity_refs::tests::with_game_role_client(
                 crate::game::native_entity_refs::tests::fixture_root(),
                 ExecutionRole::Client,
-                |game: &mut Game<'_>| {
+                |game: &mut crate::game::ClientGame<'_>| {
                     game.native_client_tick_pre();
                 },
             );
@@ -218,7 +218,7 @@ fn native_process_environment_in_registration_and_game_hosts() {
         crate::game::native_entity_refs::tests::with_game_role(
             crate::game::native_entity_refs::tests::fixture_root(),
             server_role,
-            |game: &mut Game<'_>| {
+            |game: &mut crate::game::ClientGame<'_>| {
                 game.native_server_started(dedicated);
                 game.native_register_game_tests(&mut mod_api::GameTestFunctions::default());
             },

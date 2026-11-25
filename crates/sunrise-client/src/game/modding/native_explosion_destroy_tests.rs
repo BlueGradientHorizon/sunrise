@@ -36,7 +36,7 @@ fn blast(interaction: ExplosionInteraction) -> Blast {
 
 /// Destroys `positions` with `blast` in the overworld and checks the answer.
 fn destroy(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     positions: &[[i32; 3]],
     blast: Blast,
     expected: Result<u32, ExplosionDestroyError>,
@@ -103,7 +103,7 @@ impl mod_api::Hooks for Watch {
 
 /// Runs `test` on a fresh server game with the watching mod and a loaded, empty overworld chunk
 /// (0, 0).
-fn with_watch(test: impl Fn(&mut Game<'_>, &Watch) + Send + Sync + 'static) {
+fn with_watch(test: impl Fn(&mut crate::game::ServerGame<'_>, &Watch) + Send + Sync + 'static) {
     run_with_game_stack(move || {
         let watch = Watch::default();
         let mods: mod_api::Mods = vec![ModEntry::new("watch", Box::new(watch.clone()))].into();
@@ -126,12 +126,12 @@ fn with_watch(test: impl Fn(&mut Game<'_>, &Watch) + Send + Sync + 'static) {
     });
 }
 
-fn name(game: &Game<'_>, pos: [i32; 3]) -> String {
+fn name(game: &crate::game::ServerGame<'_>, pos: [i32; 3]) -> String {
     let state = game.world.block(pos[0], pos[1], pos[2]);
     game.res.facts().get(state).name.to_string()
 }
 
-fn set(game: &mut Game<'_>, pos: [i32; 3], block: &str) {
+fn set(game: &mut crate::game::ServerGame<'_>, pos: [i32; 3], block: &str) {
     assert!(game.run_command(&format!(
         "setblock {} {} {} minecraft:{block}",
         pos[0], pos[1], pos[2]
@@ -139,7 +139,7 @@ fn set(game: &mut Game<'_>, pos: [i32; 3], block: &str) {
 }
 
 /// How many of `item` lie dropped.
-fn dropped(game: &Game<'_>, item: &str) -> u32 {
+fn dropped(game: &crate::game::ServerGame<'_>, item: &str) -> u32 {
     game.dropped
         .iter()
         .filter(|e| &*e.stack.item == item)

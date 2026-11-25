@@ -208,7 +208,7 @@ mod dispatch_tests {
         let mods: mod_api::Mods = vec![ModEntry::new("clipper", Box::new(Clipper))].into();
         let mut batch = HudBatch::scratch([320, 240]);
         with_mods(mods, || {
-            crate::game::native_entity_refs::tests::with_game(|game| {
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
                 game.component_hover_effect(&mut batch, &style, (40.0, 30.0));
             });
         });

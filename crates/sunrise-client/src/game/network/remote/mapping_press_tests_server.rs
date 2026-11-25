@@ -128,7 +128,7 @@ fn clicking_attack_on_nothing_punches_and_waits_out_the_miss_cooldown() {
     });
 }
 
-pub(in crate::game) fn stone_under_the_crosshair(game: &mut Game<'_>) {
+pub(in crate::game) fn stone_under_the_crosshair(game: &mut crate::game::ClientGame<'_>) {
     let stone = game
         .pack
         .assets

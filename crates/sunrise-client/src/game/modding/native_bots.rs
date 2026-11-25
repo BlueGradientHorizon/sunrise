@@ -271,7 +271,7 @@ mod tests {
             game.lan.as_mut().unwrap().hub.guests.push(guest);
             let player = game.player(uuid).unwrap();
 
-            let run = |game: &mut Game<'_>| {
+            let run = |game: &mut crate::game::ServerGame<'_>| {
                 let mut forward = input(1.0, 0.0);
                 forward.sprint = true;
                 game.player_simulate_move(player, forward).unwrap()
@@ -293,7 +293,7 @@ mod tests {
                     guest.on_ground = false;
                 })
                 .unwrap();
-            let jump = |game: &mut Game<'_>| {
+            let jump = |game: &mut crate::game::ServerGame<'_>| {
                 let mut jump = input(0.0, 0.0);
                 jump.jump = true;
                 jump.velocity = Some([0.0, -0.4, 0.0]);
@@ -364,7 +364,7 @@ mod tests {
                         post: Some(|_, _, _| HITS.with(|hits| hits.set(hits.get() + 1))),
                         ..DamageHooks::NONE
                     };
-                    let preview = |game: &mut Game<'_>| {
+                    let preview = |game: &mut crate::game::ServerGame<'_>| {
                         let mut falling = input(0.0, 0.0);
                         falling.velocity = Some([0.0, -0.08, 0.0]);
                         let preview = game.player_simulate_move(player, falling).unwrap();
@@ -381,7 +381,7 @@ mod tests {
                         .hub
                         .update_guest(1, |guest| guest.armor[3] = Some(boots))
                         .unwrap();
-                    assert_eq!(game.server.lan_acting, None);
+                    assert_eq!(game.side.lan_acting, None);
                     assert_eq!(
                         preview(game),
                         0,

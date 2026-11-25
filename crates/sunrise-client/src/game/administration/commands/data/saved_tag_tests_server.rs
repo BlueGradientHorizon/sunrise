@@ -22,10 +22,10 @@ pub(in crate::game::server_side) use sunrise_client::motion::PlayerMotion;
 pub(in crate::game::server_side) use sunrise_core::geometry::Vec3;
 
 /// What `command` told the player.
-pub(in crate::game) fn say(game: &mut Game<'_>, command: &str) -> Vec<Text> {
-    game.server.chat_capture = Some(Vec::new());
+pub(in crate::game) fn say(game: &mut crate::game::ServerGame<'_>, command: &str) -> Vec<Text> {
+    game.side.chat_capture = Some(Vec::new());
     assert!(game.run_command(command), "{command}");
-    game.server.chat_capture.take().unwrap_or_default()
+    game.side.chat_capture.take().unwrap_or_default()
 }
 
 /// `TagCommand.listTags` sends through `sendFeedback(source, false, …)`,
@@ -39,20 +39,20 @@ fn tag_list_is_not_repeated_to_the_operators() {
             "summon pig 4.5 200 4.5 {UUID:[I;329,0,0,4],NoAI:1b,Silent:1b,NoGravity:1b}"
         ));
         // The summon's own line (a player informs the operators), sent on a tick.
-        game.server.admin_feedback.clear();
+        game.side.admin_feedback.clear();
         // A source that informs the operators (`shouldInformAdmins`).
-        game.server.console_broadcast = Some(true);
+        game.side.console_broadcast = Some(true);
         assert!(game.run_command("tag 00000149-0000-0000-0000-000000000004 add audit"));
-        assert_eq!(game.server.admin_feedback.len(), 1);
-        game.server.admin_feedback.clear();
+        assert_eq!(game.side.admin_feedback.len(), 1);
+        game.side.admin_feedback.clear();
         let said = say(game, "tag @e[type=minecraft:pig] list");
         assert_eq!(said.len(), 1);
-        assert_eq!(game.server.admin_feedback.len(), 0);
+        assert_eq!(game.side.admin_feedback.len(), 0);
     });
 }
 
 /// A server-side game that runs commands, its world in a scratch folder.
-pub(in crate::game) fn with_command_game(name: &str, test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_command_game(name: &str, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -71,15 +71,12 @@ pub(in crate::game) fn with_command_game(name: &str, test: impl FnOnce(&mut Game
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -92,7 +89,7 @@ pub(in crate::game) fn with_command_game(name: &str, test: impl FnOnce(&mut Game
             .as_nanos()
     ));
     std::fs::create_dir_all(&scratch).unwrap();
-    game.server.world_root = scratch.clone();
+    game.side.world_root = scratch.clone();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(10.5, 200.0, 0.5)).unwrap());
     game.reset_entity_residency();
     game.native_lifecycle

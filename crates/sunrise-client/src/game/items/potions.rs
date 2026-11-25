@@ -1221,7 +1221,7 @@ pub(in crate::game) mod tests {
         ] {
             let named = NamedDamage::registered(&catalog, id).unwrap();
             assert_eq!((named.name, named.tags), (id, tags));
-            let kind = Game::damage_kind(&catalog, id);
+            let kind = crate::game::ServerGame::damage_kind(&catalog, id);
             assert_eq!(
                 super::super::creatures::source_damage_type(Damage::of(kind)),
                 id
@@ -1705,7 +1705,7 @@ pub(in crate::game) mod tests {
                 (Screen::Inventory, "inventory", 176),
                 (Screen::Creative, "creative", 195),
             ] {
-                game.client.screen = screen;
+                game.side.screen = screen;
                 // Fixed panel position; right-side room selects wide or compact.
                 // The longer effect name also clips in the smallest wide layout.
                 for case in [
@@ -1732,7 +1732,7 @@ pub(in crate::game) mod tests {
                     let left = 102 + image_width;
                     let origin = (100.0, 50.0);
                     let mut batch = HudBatch::scratch([(left + case.room) as u32, 480]);
-                    game.client.cursor = ((left + 7) as f32, 57.0);
+                    game.side.cursor = ((left + 7) as f32, 57.0);
                     let vanilla = if case.default_tooltip {
                         vec![
                             (case.name.to_owned(), u32::MAX),
@@ -1757,8 +1757,8 @@ pub(in crate::game) mod tests {
                     game.draw_tooltip_lines(
                         &mut batch,
                         &lines,
-                        game.client.cursor.0,
-                        game.client.cursor.1,
+                        game.side.cursor.0,
+                        game.side.cursor.1,
                     );
                     assert_eq!(batch.vertices.len() > painted, case.default_tooltip);
 
@@ -1792,19 +1792,19 @@ pub(in crate::game) mod tests {
                             game.draw_tooltip_lines(
                                 &mut batch,
                                 &lines,
-                                game.client.cursor.0,
-                                game.client.cursor.1,
+                                game.side.cursor.0,
+                                game.side.cursor.1,
                             );
                             assert_eq!(batch.vertices.len() > painted, !suppress);
 
                             // A miss, a hidden layout and too little room must
                             // never gather tooltips, even with a subscriber.
-                            game.client.cursor = (0.0, 0.0);
+                            game.side.cursor = (0.0, 0.0);
                             assert!(
                                 game.draw_inventory_effects(&mut batch, origin, image_width)
                                     .is_none()
                             );
-                            game.client.cursor = ((left + 7) as f32, 57.0);
+                            game.side.cursor = ((left + 7) as f32, 57.0);
                             let hidden: Mods = vec![
                                 ModEntry::new("effect-tips", Box::new(listener.clone())),
                                 ModEntry::new("hide-panels", Box::new(HidePanels)),
@@ -1812,8 +1812,8 @@ pub(in crate::game) mod tests {
                             .into();
                             mod_platform::testing::with_mods(hidden, || {
                                 // Layout hooks run at screen construction, not painting.
-                                game.client.frames += 1;
-                                let space = Game::effects_space(
+                                game.side.frames += 1;
+                                let space = crate::game::ClientGame::effects_space(
                                     &batch,
                                     [origin.0, origin.1],
                                     image_width as f32,
@@ -1828,7 +1828,7 @@ pub(in crate::game) mod tests {
                                         &mut batch,
                                         &game.gui.atlas,
                                         &panels,
-                                        [game.client.cursor.0 as i32, game.client.cursor.1 as i32],
+                                        [game.side.cursor.0 as i32, game.side.cursor.1 as i32],
                                     )
                                     .is_none()
                                 );

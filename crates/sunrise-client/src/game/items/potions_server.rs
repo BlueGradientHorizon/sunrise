@@ -2111,7 +2111,7 @@ pub(in crate::game) mod tests {
             }
             let first = game.breath_clouds[0].id;
             let second = game.breath_clouds[1].id;
-            let next = game.server.next_entity;
+            let next = game.side.next_entity;
             super::super::entity::taken_pass_tests::with_spawn(
                 |game| {
                     assert!(game.breath_clouds.is_empty());
@@ -2172,7 +2172,7 @@ pub(in crate::game) mod tests {
                 });
             }
             game.add_remote_ominous_item_spawner(0, [0.0, 80.0, 0.0]);
-            let before = game.server.next_entity;
+            let before = game.side.next_entity;
             assert_eq!(game.breath_clouds[1].id, 0);
             game.lan_assign_ids();
             assert_eq!(game.ominous_spawners[0].id, before + 1);
@@ -2669,7 +2669,7 @@ pub(in crate::game) mod sound_on_added_tests {
             ] {
                 game.add_player_effect(EffectInstance::new(id, 2400, amplifier));
             }
-            let played: Vec<(String, [f64; 3])> = std::mem::take(&mut game.server.pending_sounds)
+            let played: Vec<(String, [f64; 3])> = std::mem::take(&mut game.side.pending_sounds)
                 .into_iter()
                 .map(|s| (s.event, s.position))
                 .collect();
@@ -2744,7 +2744,7 @@ pub(in crate::game) mod mob_absorption_max_tests {
     use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
 
-    fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+    fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -2767,15 +2767,12 @@ pub(in crate::game) mod mob_absorption_max_tests {
                 .join(format!("h203-{:?}", std::thread::current().id())),
         );
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -2794,7 +2791,7 @@ pub(in crate::game) mod mob_absorption_max_tests {
         game.load_ticking_neighbourhood(0, 0);
         test(&mut game);
     }
-    fn pig(game: &Game<'_>, n: i32) -> usize {
+    fn pig(game: &crate::game::ServerGame<'_>, n: i32) -> usize {
         let i: Vec<usize> = (0..game.mobs.len())
             .filter(|&i| game.persist.uuid_of(game.mobs[i].id) == Some([203, 0, 0, n]))
             .collect();
@@ -2802,7 +2799,7 @@ pub(in crate::game) mod mob_absorption_max_tests {
         i[0]
     }
     /// `/attribute ... max_absorption get`, read back through a score.
-    fn max_absorption(game: &mut Game<'_>, tag: &str) -> i32 {
+    fn max_absorption(game: &mut crate::game::ServerGame<'_>, tag: &str) -> i32 {
         assert!(game.run_command(&format!(
             "execute store result score #max h203 run attribute @e[tag={tag},limit=1] minecraft:max_absorption get"
         )));
@@ -2848,7 +2845,7 @@ pub(in crate::game) mod mob_absorption_max_tests {
             ));
             let mut failures = Vec::new();
             let mut expect =
-                |game: &mut Game<'_>, phase: &str, rows: [(&str, i32, f32, i32); 5]| {
+                |game: &mut crate::game::ServerGame<'_>, phase: &str, rows: [(&str, i32, f32, i32); 5]| {
                     for (name, n, amount, max) in rows {
                         let i = pig(game, n);
                         if game.mobs[i].absorption != amount {
@@ -2918,7 +2915,7 @@ pub(in crate::game) mod mob_health_boost_tests {
     use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
 
-    fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+    fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -2941,15 +2938,12 @@ pub(in crate::game) mod mob_health_boost_tests {
                 .join(format!("h205-{:?}", std::thread::current().id())),
         );
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -2967,17 +2961,17 @@ pub(in crate::game) mod mob_health_boost_tests {
         game.load_ticking_neighbourhood(0, 0);
         test(&mut game);
     }
-    fn pig(game: &Game<'_>, n: i32) -> usize {
+    fn pig(game: &crate::game::ServerGame<'_>, n: i32) -> usize {
         let i: Vec<usize> = (0..game.mobs.len())
             .filter(|&i| game.persist.uuid_of(game.mobs[i].id) == Some([205, 0, 0, n]))
             .collect();
         assert_eq!(i.len(), 1, "one live pig with UUID {n}");
         i[0]
     }
-    fn health(game: &Game<'_>, n: i32) -> f32 {
+    fn health(game: &crate::game::ServerGame<'_>, n: i32) -> f32 {
         game.mobs[pig(game, n)].health
     }
-    fn boost(game: &Game<'_>, n: i32) -> Option<(i32, i32)> {
+    fn boost(game: &crate::game::ServerGame<'_>, n: i32) -> Option<(i32, i32)> {
         let i = pig(game, n);
         game.mobs[i]
             .extra
@@ -3045,7 +3039,7 @@ pub(in crate::game) mod mob_health_boost_tests {
             // The one tick: the boosts counted down once.
             assert_eq!(boost(game, 1), Some((1999, 1)), "the mobs ticked once");
             let mut failures = Vec::new();
-            let check = |game: &Game<'_>,
+            let check = |game: &crate::game::ServerGame<'_>,
                          failures: &mut Vec<String>,
                          phase: &str,
                          expected: [(i32, f32); 5]| {
@@ -3120,7 +3114,7 @@ pub(in crate::game) mod mob_health_boost_tests {
                 }
                 ids.push(i);
             }
-            let state = |game: &Game<'_>| -> Vec<(f32, f32)> {
+            let state = |game: &crate::game::ServerGame<'_>| -> Vec<(f32, f32)> {
                 ids.iter()
                     .map(|&i| (game.mobs[i].attrs.max_health, game.mobs[i].health))
                     .collect()
@@ -3172,7 +3166,7 @@ pub(in crate::game) mod depleted_absorption_tests {
     use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
 
-    fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+    fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -3195,15 +3189,12 @@ pub(in crate::game) mod depleted_absorption_tests {
                 .join(format!("h204-{:?}", std::thread::current().id())),
         );
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -3222,7 +3213,7 @@ pub(in crate::game) mod depleted_absorption_tests {
         test(&mut game);
     }
     /// The mob in the level with UUID word `n`.
-    fn pig(game: &Game<'_>, n: i32) -> usize {
+    fn pig(game: &crate::game::ServerGame<'_>, n: i32) -> usize {
         let i: Vec<usize> = (0..game.mobs.len())
             .filter(|&i| game.persist.uuid_of(game.mobs[i].id) == Some([204, 0, 0, n]))
             .collect();
@@ -3230,7 +3221,7 @@ pub(in crate::game) mod depleted_absorption_tests {
         i[0]
     }
     /// Absorption's remaining ticks on the mob, if it has the effect.
-    fn absorption(game: &Game<'_>, i: usize) -> Option<i32> {
+    fn absorption(game: &crate::game::ServerGame<'_>, i: usize) -> Option<i32> {
         game.mobs[i]
             .extra
             .effects
@@ -3377,7 +3368,7 @@ pub(in crate::game) mod depleted_absorption_tests {
                     )));
                 }
             }
-            let effect = |game: &Game<'_>, i: usize, id: &str| {
+            let effect = |game: &crate::game::ServerGame<'_>, i: usize, id: &str| {
                 game.mobs[i]
                     .extra
                     .effects
@@ -3526,15 +3517,12 @@ pub(in crate::game) mod arrow_contents {
         options.resources = root.clone();
         options.game_dir = Some(std::env::current_dir().unwrap());
         options.execution_role = execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();

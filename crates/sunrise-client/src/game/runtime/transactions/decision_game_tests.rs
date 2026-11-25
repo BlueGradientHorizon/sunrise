@@ -8,7 +8,7 @@ use std::sync::Arc;
 use sunrise_client::{chunk::Chunk, entities::ArmorStand};
 use sunrise_core::geometry::Vec3;
 
-fn identity(game: &mut Game<'_>) -> Identity {
+fn identity(game: &mut crate::game::ServerGame<'_>) -> Identity {
     game.armor_stands.push(ArmorStand::new(13, Vec3::ZERO, 0.0));
     let holder = game.entity(13).expect("fixture holder");
     Identity {
@@ -189,7 +189,7 @@ fn real_save_gate_and_save_all_refuse_action_savepoint() {
                     &menu,
                     |_, s| tests::placement(s),
                     |host| {
-                        assert!(Game::admit_entity_save().is_err());
+                        assert!(crate::game::ServerGame::admit_entity_save().is_err());
                         assert_eq!(
                             host.game.save_all_reply().translation_key(),
                             Some("commands.save.failed")
@@ -253,7 +253,7 @@ fn a_save_is_refused_in_an_action_savepoint_a_special_item_is_drawn_in_isolated(
         let identity = identity(game);
         // The world's folder, where a save would land: the fixture's world has none.
         let folder = tempfile::tempdir().unwrap();
-        game.server.world_root = folder.path().to_path_buf();
+        game.side.world_root = folder.path().to_path_buf();
         let saved = persisted(folder.path());
         let menu = Menu::new(tests::state());
         game.storage_scope(|game, _| {
@@ -276,7 +276,7 @@ fn a_save_is_refused_in_an_action_savepoint_a_special_item_is_drawn_in_isolated(
                         };
                         assert_eq!(quad.material.sprite, "minecraft:block/stone");
                         assert_eq!(asked(7), 1);
-                        assert!(Game::admit_entity_save().is_err());
+                        assert!(crate::game::ServerGame::admit_entity_save().is_err());
                         assert_eq!(
                             host.game.save_all_reply().translation_key(),
                             Some("commands.save.failed")
@@ -366,7 +366,7 @@ fn abandoned_token_releases_real_save_gate_and_publishes_nothing() {
         let identity = identity(game);
         let menu = Menu::new(tests::state());
         let drops = game.dropped.len();
-        assert!(Game::admit_entity_save().is_ok());
+        assert!(crate::game::ServerGame::admit_entity_save().is_ok());
         game.storage_scope(|game, _| {
             let mut host = GameHost { game, identity };
             assert_eq!(
@@ -375,7 +375,7 @@ fn abandoned_token_releases_real_save_gate_and_publishes_nothing() {
                     &menu,
                     |_, view| tests::placement(view),
                     |host| {
-                        assert!(Game::admit_entity_save().is_err());
+                        assert!(crate::game::ServerGame::admit_entity_save().is_err());
                         host.game
                             .drop_after_commit(1, ItemStack::new("minecraft:dirt", 2));
                         panic!("listener trap with a live decision");
@@ -383,7 +383,7 @@ fn abandoned_token_releases_real_save_gate_and_publishes_nothing() {
                 ),
                 Ok(Outcome::ListenerFailed)
             );
-            assert!(Game::admit_entity_save().is_ok());
+            assert!(crate::game::ServerGame::admit_entity_save().is_ok());
             assert!(!host.menu_busy(menu.id));
             assert_eq!(host.game.transactions.len(), 1);
             assert_eq!(menu.read(Clone::clone), tests::state());

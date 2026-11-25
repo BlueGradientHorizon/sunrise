@@ -471,15 +471,12 @@ pub(in crate::game::server_side) use crate::game::commands::terrain_cmds::loot_m
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -494,7 +491,7 @@ pub(in crate::game::server_side) use crate::game::commands::terrain_cmds::loot_m
         assert!(game.run_command("forceload add 0 0"));
         assert!(game.run_command("fill 0 199 0 15 199 15 stone"));
 
-        game.server.command_source = Some(crate::game::commands::execute::Source {
+        game.side.command_source = Some(crate::game::commands::execute::Source {
             silent: false,
             ..game.server_source()
         });
@@ -614,10 +611,10 @@ pub(in crate::game::server_side) use crate::game::commands::terrain_cmds::loot_m
                     .add_empty_chunk(ChunkPos::new(x, z))
                     .unwrap();
             }
-            game.server.world_root =
+            game.side.world_root =
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                     .join("h079-world");
-            let pack = game.server.world_root.join("datapacks/h079");
+            let pack = game.side.world_root.join("datapacks/h079");
             std::fs::create_dir_all(pack.join("data/minecraft/loot_table/blocks")).unwrap();
             std::fs::create_dir_all(pack.join("data/h079/function")).unwrap();
             std::fs::write(
@@ -636,16 +633,16 @@ pub(in crate::game::server_side) use crate::game::commands::terrain_cmds::loot_m
             )
             .unwrap();
             std::fs::write(
-                game.server.world_root.join("datapacks.json"),
+                game.side.world_root.join("datapacks.json"),
                 r#"{"enabled":["vanilla","file/h079"],"disabled":[]}"#,
             )
             .unwrap();
             let stack = game.reload_datapacks(false, &[]).unwrap();
-            game.world_tables.0 = game
+            game.side.world_tables.0 = game
                 .stage_world_tables(&stack, false, &game.options.resources.clone())
                 .unwrap()
                 .tables;
-            assert!(game.world_tables.0.is_some());
+            assert!(game.side.world_tables.0.is_some());
             game.ensure_datapacks();
             assert!(game.run_command("scoreboard objectives add h079 dummy"));
             game.run_command("function h079:admit");

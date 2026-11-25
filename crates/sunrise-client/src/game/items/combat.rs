@@ -1291,14 +1291,14 @@ pub(in crate::game) mod pet_credit_tests {
                 (Arc::new(hound.clone()), true, Some(12)),
                 (Arc::new(hound), false, None),
             ] {
-                game.combat.0.last_hurt_by_player = None;
+                game.side.combat.0.last_hurt_by_player = None;
                 game.mobs.clear();
                 let mut pet = Mob::new(7, kind, Vec3::ZERO, 0.0);
                 pet.extra.tame = tame;
                 pet.extra.owner = Some(uuid_ints(12));
                 game.mobs.push(pet);
                 game.resolve_player_responsible_for_player(7, None);
-                assert_eq!(game.combat.0.last_hurt_by_player.map(|(c, _)| c.0), credit);
+                assert_eq!(game.side.combat.0.last_hurt_by_player.map(|(c, _)| c.0), credit);
             }
         });
     }
@@ -1348,13 +1348,13 @@ pub(in crate::game) mod guest_hit_tests {
                 },
             ];
             for hit in hits {
-                game.combat.0.pending.clear();
+                game.side.combat.0.pending.clear();
                 game.guest_mob_event(5, hit);
-                let noted: Vec<u32> = (game.combat.0.pending.iter())
+                let noted: Vec<u32> = (game.side.combat.0.pending.iter())
                     .map(|p| p.attacker.0)
                     .collect();
                 assert_eq!(noted, [5]);
-                assert_eq!(game.combat.0.melee_mob, None, "the hit used it up");
+                assert_eq!(game.side.combat.0.melee_mob, None, "the hit used it up");
             }
         });
     }

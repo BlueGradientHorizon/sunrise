@@ -211,7 +211,7 @@ fn spawn(id: i32, key: &str, at: [f64; 3]) -> C {
 }
 
 /// The server's snapshot of row `id`'s synced fuel.
-fn snapshot(game: &mut Game<'_>, id: u32, fuel: i32) {
+fn snapshot(game: &mut crate::game::ClientGame<'_>, id: u32, fuel: i32) {
     use sunrise_mod_runtime::attachments::AttachmentSync;
     apply_attachment_snapshot(
         game,
@@ -225,7 +225,7 @@ fn snapshot(game: &mut Game<'_>, id: u32, fuel: i32) {
 }
 
 fn apply_attachment_snapshot(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ClientGame<'_>,
     id: u32,
     changes: Vec<sunrise_mod_runtime::attachments::AttachmentSync>,
 ) {
@@ -245,7 +245,7 @@ fn apply_attachment_snapshot(
 }
 
 /// One frame of the entity pass at `alpha`.
-fn frame(game: &mut Game<'_>, alpha: f64) -> Vec<Vertex> {
+fn frame(game: &mut crate::game::ClientGame<'_>, alpha: f64) -> Vec<Vertex> {
     game.entity_geometry(CAMERA, alpha, None, Vec::new(), &mut Vec::new())
         .0
 }
@@ -254,7 +254,7 @@ fn frame(game: &mut Game<'_>, alpha: f64) -> Vec<Vertex> {
 /// rows shown: `test:missile`
 /// (id 5) going from (0, 321, 0) to (4, 321, 0) with fuel 7, `test:bomb` (6) and `test:plain` (7).
 /// In a child process running only `test`: the registrations are kept once per process.
-fn in_scene(test: &str, check: impl FnOnce(&mut Game<'_>, &Scene)) {
+fn in_scene(test: &str, check: impl FnOnce(&mut crate::game::ClientGame<'_>, &Scene)) {
     if super::native_entity_refs::tests::run_fresh_cases(
         &format!("game::client_side::native_general_renderers_tests::{test}"),
         "SUNRISE_GENERAL_RENDERERS_CHILD",
@@ -345,7 +345,7 @@ fn a_row_is_drawn_by_its_types_renderer_at_the_frames_pose_reading_its_synced_fi
         "a_row_is_drawn_by_its_types_renderer_at_the_frames_pose_reading_its_synced_fields",
         |game, scene| {
             // A one-plane test frustum: +Z in camera space is in front.
-            game.client.view_frustum = Some(sunrise_client::gfx::test_frustum([glam::Vec4::Z; 6]));
+            game.side.view_frustum = Some(sunrise_client::gfx::test_frustum([glam::Vec4::Z; 6]));
             for (id, at) in [
                 (8, [0.0, 321.0, -8.0]),  // behind the camera
                 (9, [0.0, 321.0, 300.0]), // beyond the draw range
@@ -429,7 +429,7 @@ fn general_submission_keeps_lookup_order_across_removal_and_reentry() {
                     data: 0,
                 })
             };
-            game.client.pack_ids = Some(super::shader_packs::PackIds::with_entity_ids([(
+            game.side.pack_ids = Some(super::shader_packs::PackIds::with_entity_ids([(
                 "test:missile",
                 77,
             )]));
@@ -442,7 +442,7 @@ fn general_submission_keeps_lookup_order_across_removal_and_reentry() {
                 game.handle_packet(packet).unwrap();
             }
             snapshot(game, 8, 1);
-            let submitted = |game: &mut Game<'_>| {
+            let submitted = |game: &mut crate::game::ClientGame<'_>| {
                 super::native_render_pair_tests::submitted_bodies(game, |game| frame(game, 1.0)).1
             };
             assert_eq!(submitted(game), [5, 71, 12, 42, 8]);
@@ -450,7 +450,7 @@ fn general_submission_keeps_lookup_order_across_removal_and_reentry() {
             snapshot(game, 12, 1);
             assert_eq!(submitted(game), [5, 71, 12, 42, 8]);
             let own_type_spans = game
-                .client
+                .side
                 .entity_spans
                 .borrow()
                 .windows(2)
@@ -548,7 +548,7 @@ impl mod_api::Hooks for NativeProbe {
 }
 
 /// Loads a saved row of the fixture's type at `position` with fuel 7: the chunk-load route.
-fn load_saved_row(server: &mut Game<'_>, position: [f64; 3]) -> u32 {
+fn load_saved_row(server: &mut crate::game::ServerGame<'_>, position: [f64; 3]) -> u32 {
     use mod_api::{Holder, Host};
     let uuid = [380, 39, 9, 57];
     let saved = Tag::Compound(
@@ -590,7 +590,7 @@ fn load_saved_row(server: &mut Game<'_>, position: [f64; 3]) -> u32 {
 /// Spawns a row of the fixture's type at `position` through `LevelRef::spawn_entity`, writing
 /// its fuel of 7 on the returned handle in the same transaction: the route a mod's own code
 /// takes, so the row's first tracking snapshot holds the field.
-fn spawn_row(server: &mut Game<'_>, position: [f64; 3]) -> u32 {
+fn spawn_row(server: &mut crate::game::ServerGame<'_>, position: [f64; 3]) -> u32 {
     use mod_api::{EntitySpawn, Holder, Host, SpawnBody};
     server.storage_scope(|server, _| {
         let level = (server as &mut dyn Host)
@@ -619,7 +619,7 @@ fn spawn_row(server: &mut Game<'_>, position: [f64; 3]) -> u32 {
 /// build height, and checks that the window shows it: the tracker syncs the row and its field
 /// with no injected client packets, and the renderer's quad, whose width is the fuel, is in the
 /// frame's entity pass, before and after a resource reload that leaves the row in place.
-fn integrated_scene(test: &str, place: fn(&mut Game<'_>, [f64; 3]) -> u32) {
+fn integrated_scene(test: &str, place: fn(&mut crate::game::ServerGame<'_>, [f64; 3]) -> u32) {
     const CASE: &str = "SUNRISE_GENERAL_RENDERER_TARGET";
     if super::native_entity_refs::tests::run_fresh_cases(
         &format!("game::client_side::native_general_renderers_tests::{test}"),
@@ -671,7 +671,7 @@ fn integrated_scene(test: &str, place: fn(&mut Game<'_>, [f64; 3]) -> u32) {
                     })
                     .unwrap();
                 let camera = glam::DVec3::from_array(at) - glam::DVec3::Z * 5.0;
-                let ready = |g: &Game<'_>| {
+                let ready = |g: &crate::game::ClientGame<'_>| {
                     g.remote
                         .as_ref()
                         .unwrap()
@@ -680,7 +680,7 @@ fn integrated_scene(test: &str, place: fn(&mut Game<'_>, [f64; 3]) -> u32) {
                         .contains_key(&(id as i32))
                 };
                 poll_until(game, ready);
-                let check_quad = |g: &mut Game<'_>| {
+                let check_quad = |g: &mut crate::game::ClientGame<'_>| {
                     let ((frame, ..), witnesses) =
                         super::native_render_pair_tests::capture_body_witnesses(|| {
                             g.entity_geometry(camera, 1.0, None, Vec::new(), &mut Vec::new())
@@ -724,7 +724,7 @@ fn a_spawned_general_row_is_drawn_in_its_window() {
     integrated_scene("a_spawned_general_row_is_drawn_in_its_window", spawn_row);
 }
 
-fn poll_until(game: &mut Game<'_>, ready: impl Fn(&Game<'_>) -> bool) {
+fn poll_until(game: &mut crate::game::ClientGame<'_>, ready: impl Fn(&crate::game::ClientGame<'_>) -> bool) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
     while !ready(game) {
         game.poll_remote().unwrap();

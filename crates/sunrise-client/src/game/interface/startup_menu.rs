@@ -1677,7 +1677,7 @@ mod tests {
                 let Some(PendingWorldEntry::Local {
                     create: Some(options),
                     ..
-                }) = &game.pending_entry.0
+                }) = &game.side.pending_entry.0
                 else {
                     panic!("pending")
                 };
@@ -1719,7 +1719,7 @@ mod tests {
         };
         assert_eq!(view(&first), (3.0, 320.0, 240.0));
         assert_eq!(view(&second), (4.0, 240.0, 180.0));
-        super::super::native_entity_refs::tests::with_game(|server| {
+        super::super::native_entity_refs::tests::with_client_game(|server| {
             server.settings.gui_scale = 1;
             server.apply_ui_settings();
             assert_eq!(view(&first), (3.0, 320.0, 240.0));
@@ -1820,7 +1820,7 @@ mod tests {
         assert!(loading.settings.resource_packs.is_empty());
 
         super::super::native_entity_refs::tests::with_client_game(|game| {
-            game.title.0 = Some(game.new_title(PathBuf::from("saves")));
+            game.side.title.0 = Some(game.new_title(PathBuf::from("saves")));
             game.open_options_at(true, Page::Packs);
             game.handle_window_event_inner(
                 &Loop,

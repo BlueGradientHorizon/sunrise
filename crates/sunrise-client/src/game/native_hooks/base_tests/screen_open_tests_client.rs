@@ -44,12 +44,12 @@ fn a_cancelled_mapping_press_is_dropped_and_its_release_is_not() {
     )]
     .into();
     with_mods(mods, || {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            game.title.0 = None;
-            game.client.screen = Screen::Playing;
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
+            game.side.title.0 = None;
+            game.side.screen = Screen::Playing;
             assert!(game.key_mapping_canceled(Some("key.keyboard.space"), true));
             assert!(!game.key_mapping_canceled(Some("key.keyboard.space"), false));
-            game.client.screen = Screen::Inventory;
+            game.side.screen = Screen::Inventory;
             assert!(!game.key_mapping_canceled(Some("key.keyboard.space"), true));
         });
     });
@@ -69,17 +69,17 @@ fn a_cancelled_repeat_keeps_the_hold_and_a_cancelled_first_press_is_never_held()
     )]
     .into();
     with_mods(mods, || {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            game.title.0 = None;
-            game.client.screen = Screen::Playing;
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
+            game.side.title.0 = None;
+            game.side.screen = Screen::Playing;
             let space = KeyCode::Space;
             // The first down is allowed and held; its repeat is cancelled but the hold stays.
-            game.client.physical_keys.insert(space);
+            game.side.physical_keys.insert(space);
             assert!(!game.key_press_canceled(space, true, false));
-            game.client.physical_keys.insert(space);
+            game.side.physical_keys.insert(space);
             assert!(game.key_press_canceled(space, true, true));
-            assert!(game.client.physical_keys.contains(&space));
-            assert!(!game.client.rejected_keys.contains(&space));
+            assert!(game.side.physical_keys.contains(&space));
+            assert!(!game.side.rejected_keys.contains(&space));
         });
     });
     let mods = vec![ModEntry::new(
@@ -88,20 +88,20 @@ fn a_cancelled_repeat_keeps_the_hold_and_a_cancelled_first_press_is_never_held()
     )]
     .into();
     with_mods(mods, || {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            game.title.0 = None;
-            game.client.screen = Screen::Playing;
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
+            game.side.title.0 = None;
+            game.side.screen = Screen::Playing;
             let space = KeyCode::Space;
             // A cancelled first press is not held, and neither is its repeat.
-            game.client.physical_keys.insert(space);
+            game.side.physical_keys.insert(space);
             assert!(game.key_press_canceled(space, true, false));
-            assert!(!game.client.physical_keys.contains(&space));
-            game.client.physical_keys.insert(space);
+            assert!(!game.side.physical_keys.contains(&space));
+            game.side.physical_keys.insert(space);
             assert!(game.key_press_canceled(space, true, true));
-            assert!(!game.client.physical_keys.contains(&space));
+            assert!(!game.side.physical_keys.contains(&space));
             // Its release clears the rejection.
             assert!(!game.key_press_canceled(space, false, false));
-            assert!(!game.client.rejected_keys.contains(&space));
+            assert!(!game.side.rejected_keys.contains(&space));
         });
     });
 }
@@ -289,14 +289,14 @@ fn client_gui_state_matches_screen_init_hook() {
     let mods = vec![ModEntry::new("observe", Box::new(Observe(seen.clone())))].into();
     with_mods(mods, || {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
-            game.client.focused = false;
+            game.side.focused = false;
             assert!(!mod_api::prelude::ScreensClientHost::window_focused(game));
-            game.client.focused = true;
+            game.side.focused = true;
             assert!(mod_api::prelude::ScreensClientHost::window_focused(game));
-            game.title.0 = None;
-            game.client.screen = Screen::Playing;
+            game.side.title.0 = None;
+            game.side.screen = Screen::Playing;
             assert!(mod_api::prelude::ScreensClientHost::observed_screen_id(game).is_none());
-            game.client.screen = Screen::Inventory;
+            game.side.screen = Screen::Inventory;
             assert!(mod_api::prelude::ScreensClientHost::observed_screen_id(game).is_none());
             let mut builder = winit::event_loop::EventLoop::builder();
             #[cfg(target_os = "linux")]
@@ -316,8 +316,8 @@ fn client_gui_state_matches_screen_init_hook() {
                     .unwrap(),
             );
             game.options.offscreen = true;
-            game.renderer.0 = Some(game.new_renderer(window).unwrap());
-            game.client.screen = Screen::Playing;
+            game.side.renderer.0 = Some(game.new_renderer(window).unwrap());
+            game.side.screen = Screen::Playing;
             assert!(mod_api::prelude::ScreensClientHost::observed_screen_id(game).is_none());
             game.set_screen(Screen::Inventory);
             game.observe_screen();
@@ -328,7 +328,7 @@ fn client_gui_state_matches_screen_init_hook() {
                 "inventory"
             );
             game.open_screen_overlay("link_prompt", |game| {
-                game.client.link_prompt = Some("https://example.com".into());
+                game.side.link_prompt = Some("https://example.com".into());
             });
             assert_eq!(
                 mod_api::prelude::ScreensClientHost::observed_screen_id(game)
@@ -373,7 +373,7 @@ fn replacing_a_title_screen_opens_the_mods_screen_over_the_title() {
         game.player = None;
         game.title.0 = Some(game.new_title(saves));
         game.settle_title_mode();
-        let back: [fn(&mut Game<'_>); 2] = [
+        let back: [fn(&mut crate::game::ServerGame<'_>); 2] = [
             |game| game.key_pressed(KeyCode::Escape, KeyCode::Escape).unwrap(),
             |game| game.pad_back().unwrap(),
         ];
@@ -473,8 +473,8 @@ fn replacing_opening_opens_the_mods_screen_instead() {
 #[ignore = "daily"]
 fn the_creative_screen_excludes_its_two_tab_rows() {
     with_mods(Vec::new().into(), || {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            game.client.screen = Screen::Creative;
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
+            game.side.screen = Screen::Creative;
             let batch = HudBatch::scratch([854, 480]);
             let image = game.container_image(&batch);
             let (x, y) = (image.left as f32, image.top as f32);

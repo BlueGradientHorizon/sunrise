@@ -8,7 +8,7 @@ use sunrise_protocol::connection::Pipe;
 /// game's own table doesn't have: the registry sync sent its definition.
 fn client_on_a_server_with_a_custom_enchantment<'a>(
     resources: &'a mut Option<Arc<super::super::super::Resources>>,
-) -> Game<'a> {
+) -> crate::game::ClientGame<'a> {
     let mut game = server_game(resources);
     game.options.execution_role = ExecutionRole::Client;
     let (client, _server) = Pipe::pair();

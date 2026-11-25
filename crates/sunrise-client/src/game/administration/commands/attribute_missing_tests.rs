@@ -13,7 +13,7 @@ use sunrise_client::motion::PlayerMotion;
 
 pub(in crate::game) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> Game<'a> {
+) -> crate::game::ServerGame<'a> {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);

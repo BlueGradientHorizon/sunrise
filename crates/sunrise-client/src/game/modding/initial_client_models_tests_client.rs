@@ -24,7 +24,7 @@ fn a_client_start_joins_the_world_rest_worker_before_it_resolves_the_renderers()
     });
 }
 
-pub(in crate::game) fn with_loading_client(run: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_loading_client(run: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let mut gui = None;
@@ -51,7 +51,7 @@ pub(in crate::game) fn with_loading_client(run: impl FnOnce(&mut Game<'_>)) {
     options.execution_role = ExecutionRole::Client;
     let saves = tempfile::tempdir().unwrap();
     options.game_dir = Some(saves.path().to_path_buf());
-    let mut game = Game::new(
+    let mut game = crate::game::ClientGame::new(
         &loaded.resources,
         loaded.pack,
         gui.or(loaded.gui).unwrap(),

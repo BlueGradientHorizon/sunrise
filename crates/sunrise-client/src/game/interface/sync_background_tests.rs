@@ -39,7 +39,7 @@ fn cancelled_background_keeps_custom_geometry_and_one_blur_request() {
                     6,
                     "custom quad only, no vanilla gradient"
                 );
-                assert!(game.client.screen_blur_requested.get());
+                assert!(game.side.screen_blur_requested.get());
                 batch.vertices.clear();
                 game.render_transparent_background("chest", &mut batch);
                 assert_eq!(
@@ -47,7 +47,7 @@ fn cancelled_background_keeps_custom_geometry_and_one_blur_request() {
                     6,
                     "uncancelled screen keeps its gradient"
                 );
-                game.client.screen_blur_requested.set(false);
+                game.side.screen_blur_requested.set(false);
                 game.render_transparent_background("inventory", &mut batch);
                 assert_eq!(
                     batch.vertices.len(),

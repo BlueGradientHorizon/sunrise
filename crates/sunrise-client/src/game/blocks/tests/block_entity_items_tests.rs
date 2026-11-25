@@ -14,7 +14,7 @@ fn stack(item: &serde_json::Value) -> ItemStack {
 }
 
 /// One case's block, its block entity and its light (sky, block) over every column around it.
-fn place(game: &mut Game<'_>, case: &serde_json::Value) {
+fn place(game: &mut crate::game::ClientGame<'_>, case: &serde_json::Value) {
     let int = |v: &serde_json::Value| v.as_i64().unwrap() as i32;
     let key = (
         int(&case["pos"][0]),
@@ -123,7 +123,7 @@ fn row(d: BlockItemDraw) -> serde_json::Value {
     })
 }
 
-fn case_rows(game: &mut Game<'_>, case: &serde_json::Value) -> serde_json::Value {
+fn case_rows(game: &mut crate::game::ClientGame<'_>, case: &serde_json::Value) -> serde_json::Value {
     place(game, case);
     let c = &case["camera"];
     let camera = glam::DVec3::new(

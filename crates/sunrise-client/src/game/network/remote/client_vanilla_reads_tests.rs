@@ -34,7 +34,7 @@ pub(in crate::game) fn spawn() -> play::SpawnInfo {
 pub(in crate::game) use crate::game::client_side::remote_client::tests::client_vanilla_reads_tests::stand;
 
 /// Joins as entity [`PLAYER`] in the overworld.
-pub(in crate::game) fn join<__Side: crate::game::Side>(game: &mut Game<'_, __Side>) -> (ConnReader, ConnWriter) {
+pub(in crate::game) fn join(game: &mut crate::game::ClientGame<'_>) -> (ConnReader, ConnWriter) {
     let connection = super::connect_menu_test(game);
     game.handle_packet(C::Login(play::Login {
         player_id: PLAYER as i32,
@@ -56,7 +56,7 @@ pub(in crate::game) fn join<__Side: crate::game::Side>(game: &mut Game<'_, __Sid
 }
 
 /// The server adds entity `id` of `kind` beside the player.
-pub(in crate::game) fn add<__Side: crate::game::Side>(game: &mut Game<'_, __Side>, id: u32, kind: &str) {
+pub(in crate::game) fn add(game: &mut crate::game::ClientGame<'_>, id: u32, kind: &str) {
     let kind = game
         .remote
         .as_ref()
@@ -81,7 +81,7 @@ pub(in crate::game) fn add<__Side: crate::game::Side>(game: &mut Game<'_, __Side
 }
 
 /// `EntityRef::tick_count` of entity `id`, read through a client host.
-pub(in crate::game) fn tick_count<__Side: crate::game::Side>(game: &Game<'_, __Side>, id: u32) -> Option<i32> {
+pub(in crate::game) fn tick_count(game: &crate::game::ClientGame<'_>, id: u32) -> Option<i32> {
     game.entity(id)?.tick_count(game as &dyn ClientHost)
 }
 
@@ -108,7 +108,7 @@ fn a_client_counts_its_copies_ticks_and_a_respawned_player_starts_at_zero() {
                 for (id, kind) in kinds {
                     add(game, id, kind);
                 }
-                let counts = |game: &Game<'_>| {
+                let counts = |game: &crate::game::ClientGame<'_>| {
                     [PLAYER, 20, 21, 22, 23, 24, 25].map(|id| tick_count(game, id))
                 };
                 assert_eq!(counts(game), [Some(0); 7]);
@@ -186,7 +186,7 @@ fn the_client_count_follows_the_entity_tick_not_the_motion() {
                     let _connection = join(game);
                     add(game, 20, "minecraft:pig");
                     add(game, 21, "minecraft:minecart");
-                    let counts = |game: &Game<'_>| [PLAYER, 20, 21].map(|id| tick_count(game, id));
+                    let counts = |game: &crate::game::ClientGame<'_>| [PLAYER, 20, 21].map(|id| tick_count(game, id));
                     // Before the client has loaded: the player counts, its tick does not run.
                     game.remote.as_mut().unwrap().loaded_sent = false;
                     game.tick_remote().unwrap();
@@ -408,12 +408,12 @@ fn the_contextual_bar_facts_read_the_jumpable_mount_and_the_tracked_waypoints() 
         || {
             with_client_game(|game| {
                 let _connection = join(game);
-                let facts = |game: &Game<'_>| {
+                let facts = |game: &crate::game::ClientGame<'_>| {
                     let host: &dyn ClientHost = game;
                     (host.jumpable_vehicle(), host.has_waypoints())
                 };
                 assert_eq!(facts(game), (None, false));
-                let ride = |game: &mut Game<'_>, vehicle: u32, passengers: Vec<i32>| {
+                let ride = |game: &mut crate::game::ClientGame<'_>, vehicle: u32, passengers: Vec<i32>| {
                     game.handle_packet(C::SetPassengers(play::SetPassengers {
                         vehicle: vehicle as i32,
                         passengers,
@@ -499,7 +499,7 @@ fn a_respawned_player_counts_from_its_admission() {
                 .unwrap();
                 assert!(game.player.is_none());
                 let me = mod_api::EntityRef::new(game.native_lifecycle.epoch().unwrap(), PLAYER);
-                let count = |game: &Game<'_>| me.tick_count(game as &dyn ClientHost);
+                let count = |game: &crate::game::ClientGame<'_>| me.tick_count(game as &dyn ClientHost);
                 assert_eq!(count(game), Some(0));
                 game.tick_remote().unwrap();
                 assert_eq!(count(game), Some(1));

@@ -16,13 +16,13 @@ const POS: [i32; 3] = [2, 64, 2];
 const BLOCK: &str = "fixture:machine";
 const ENTITY: &str = "fixture:machine_entity";
 
-fn entity<'a>(game: &'a Game<'_>) -> &'a ModBlockEntity {
+fn entity<'a>(game: &'a crate::game::ServerGame<'_>) -> &'a ModBlockEntity {
     let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&KEY) else {
         panic!("fixture mod block entity missing");
     };
     entity
 }
-fn changed(game: &Game<'_>, before: ModRevision) {
+fn changed(game: &crate::game::ServerGame<'_>, before: ModRevision) {
     let entity = entity(game);
     assert_ne!(
         entity.revision(),
@@ -40,7 +40,7 @@ fn changed(game: &Game<'_>, before: ModRevision) {
         "normal update must be queued"
     );
 }
-fn run(game: &mut Game<'_>, command: &str) -> ModRevision {
+fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> ModRevision {
     let before = entity(game).revision();
     game.world.modified.clear();
     game.world.block_log.as_mut().unwrap().clear();
@@ -139,15 +139,12 @@ fn actual_data_commands_preserve_same_mod_entity_runtime_state() {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();

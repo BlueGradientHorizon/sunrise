@@ -70,7 +70,7 @@ impl Hooks for Meddler {
 /// listens to fires once the gate is armed.
 pub(in crate::game) fn with_meddler(
     act: impl Fn(&mut dyn ServerHost) + Send + Sync + 'static,
-    test: impl FnOnce(&mut Game<'_>, &Gate),
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Gate),
 ) {
     let gate = Arc::new(Gate::default());
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
@@ -110,8 +110,8 @@ pub(in crate::game) fn with_meddler(
                     seed: 0,
                     max_players: 2,
                     integrated: true,
-                    levels: game.server.level_shapes,
-                    level_seeds: game.levels.0.runtime.seeds(),
+                    levels: game.side.level_shapes,
+                    level_seeds: game.side.levels.0.runtime.seeds(),
                 },
             )
             .unwrap();

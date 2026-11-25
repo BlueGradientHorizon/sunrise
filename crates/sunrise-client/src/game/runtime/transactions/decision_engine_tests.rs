@@ -7,7 +7,7 @@ use crate::game::{
 };
 use sunrise_client::menu::{Input, Kind};
 
-fn fixture(game: &mut Game<'_>) -> (Target, Identity) {
+fn fixture(game: &mut crate::game::ServerGame<'_>) -> (Target, Identity) {
     let mut menu = Box::new(EngineMenu::new(Kind::Inventory));
     menu.carried = Some(ItemStack::new("minecraft:stone", 3));
     *game
@@ -31,7 +31,7 @@ fn fixture(game: &mut Game<'_>) -> (Target, Identity) {
     )
 }
 
-fn placement(host: &GameHost<'_, '_>, menu: &EngineMenu) -> EnginePlan {
+fn placement(host: &GameHost<'_, '_, crate::game::server_side::ServerState>, menu: &EngineMenu) -> EnginePlan {
     let mut preview = menu.clone();
     preview
         .click(&host.game.menu_env(), 9, 0, Input::Pickup)
@@ -39,7 +39,7 @@ fn placement(host: &GameHost<'_, '_>, menu: &EngineMenu) -> EnginePlan {
     EnginePlan(Some(preview.snapshot()))
 }
 
-fn initial(target: Target, game: &Game<'_>) {
+fn initial(target: Target, game: &crate::game::ServerGame<'_>) {
     let (_, menu) = target.read(game).unwrap();
     assert_eq!(menu.carried, Some(ItemStack::new("minecraft:stone", 3)));
     assert_eq!(menu.slot(9), None);

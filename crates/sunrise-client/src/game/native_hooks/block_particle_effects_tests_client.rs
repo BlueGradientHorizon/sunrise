@@ -13,7 +13,7 @@ pub(in crate::game::client_side) use crate::game::{
     Game,
     execution_role::ExecutionRole,
     native_client_session::tests::logged_client,
-    native_entity_refs::tests::{fixture_root, run_fresh_cases, with_game_role_and_facts},
+    native_entity_refs::tests::{fixture_root, run_fresh_cases, with_game_role_and_facts, with_game_role_and_facts_client},
 };
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use mod_api::{
@@ -34,15 +34,15 @@ pub(in crate::game::client_side) use sunrise_core::{
     random::{LegacyRandom, RandomSource as _},
 };
 
-pub(in crate::game::client_side) fn admit(game: &mut Game<'_>) -> usize {
-    game.particles.0.tick(&ParticleLevel {
+pub(in crate::game::client_side) fn admit(game: &mut crate::game::ClientGame<'_>) -> usize {
+    game.side.particles.0.tick(&ParticleLevel {
         world: &game.world,
         facts: game.res.facts(),
         collision: game.collision,
         player: None,
         cached_chunk: std::cell::Cell::new(None),
     });
-    game.particles.0.len()
+    game.side.particles.0.len()
 }
 
 #[test]
@@ -79,12 +79,12 @@ fn break_event_uses_the_destroyed_state_and_keeps_its_sound() {
         assert!(game.res.facts().get(stone).spawn_terrain_particles);
         assert!(!game.res.facts().get(barrier).spawn_terrain_particles);
         game.world.set(4, 64, 4, air).unwrap();
-        game.particles.0.requested = Some(Vec::new());
+        game.side.particles.0.requested = Some(Vec::new());
         let before_part = requested_count();
         game.client_level_event_at(2001, [4, 64, 4], glass.0 as i32);
-        assert_eq!(game.particles.0.requested.take().unwrap().len(), 1);
+        assert_eq!(game.side.particles.0.requested.take().unwrap().len(), 1);
         assert_eq!(admit(game), 1, "the part replaces the entire vanilla burst");
-        let [sound] = game.audio.0.capture.as_deref().unwrap() else {
+        let [sound] = game.side.audio.0.capture.as_deref().unwrap() else {
             panic!("expected exactly one break sound");
         };
         assert_eq!(sound.event, "minecraft:block.glass.break");
@@ -93,14 +93,14 @@ fn break_event_uses_the_destroyed_state_and_keeps_its_sound() {
             "the sound precedes the Part's request"
         );
         assert_eq!(game.world.block(4, 64, 4), air);
-        game.particles.0.clear();
+        game.side.particles.0.clear();
         game.client_level_event_at(2001, [4, 64, 4], stone.0 as i32);
         assert_eq!(
             admit(game),
             64,
             "an unhandled full block gives the vanilla burst"
         );
-        game.particles.0.clear();
+        game.side.particles.0.clear();
         let cobblestone = game
             .pack
             .assets
@@ -163,15 +163,15 @@ fn hit_effect_replaces_the_crumb_but_not_the_sound_or_level_random() {
                 .default_state(&format!("minecraft:{name}"))
                 .unwrap();
             game.world.set(4, 64, 4, state).unwrap();
-            game.particles.0.clear();
-            game.audio.0.heard.clear();
-            game.particles.0.seed_randoms(10, 11, 12);
+            game.side.particles.0.clear();
+            game.side.audio.0.heard.clear();
+            game.side.particles.0.seed_randoms(10, 11, 12);
             game.breaking_block_effects([4, 64, 4], [-1, 0, 0], true);
             assert_eq!(admit(game), expected, "{name}");
             if name == "glass" {
                 // The client-only hit sound intentionally bypasses the server's effect capture.
                 assert_eq!(
-                    game.audio.0.heard,
+                    game.side.audio.0.heard,
                     [("minecraft:block.glass.hit".into(), 1)].into()
                 );
                 let mut expected_random = LegacyRandom::new(11);
@@ -180,11 +180,11 @@ fn hit_effect_replaces_the_crumb_but_not_the_sound_or_level_random() {
                     expected_random.next_double();
                 }
                 assert_eq!(
-                    game.particles.0.level_random().next_long(),
+                    game.side.particles.0.level_random().next_long(),
                     expected_random.next_long()
                 );
                 let mut quads = Vec::new();
-                game.particles.0.render(
+                game.side.particles.0.render(
                     glam::DVec3::ZERO,
                     glam::Quat::IDENTITY,
                     0.0,
@@ -194,7 +194,7 @@ fn hit_effect_replaces_the_crumb_but_not_the_sound_or_level_random() {
                 assert_eq!(quads.len(), 4);
                 assert!(quads.iter().all(|vertex| vertex.pos[0] > 7.0));
             } else if name == "air" {
-                assert!(game.audio.0.heard.is_empty());
+                assert!(game.side.audio.0.heard.is_empty());
             }
         }
         let pos = BlockPos::new(4, 64, 4);
@@ -218,7 +218,7 @@ fn hit_effect_replaces_the_crumb_but_not_the_sound_or_level_random() {
         let tint = biomes.grass(biomes.id("minecraft:plains"), 0.0, 0.0);
         let c = |shift: u32| 0.6 * ((tint >> shift) & 255) as f32 / 255.0;
         for edge in [[i32::MIN, 64, i32::MAX], [i32::MAX, 64, i32::MIN]] {
-            game.particles.0.clear();
+            game.side.particles.0.clear();
             assert_eq!(
                 game.level_add_breaking_particles(
                     level,
@@ -233,18 +233,18 @@ fn hit_effect_replaces_the_crumb_but_not_the_sound_or_level_random() {
                 Ok(true)
             );
             assert_eq!(admit(game), 2);
-            for particle in game.particles.0.live() {
+            for particle in game.side.particles.0.live() {
                 assert_eq!(particle.rgba, [c(16), c(8), c(0), 1.0]);
             }
         }
     });
 }
 
-pub(in crate::game::client_side) fn with_effects(test: impl FnOnce(&mut Game<'_>, &Calls)) {
+pub(in crate::game::client_side) fn with_effects(test: impl FnOnce(&mut crate::game::ClientGame<'_>, &Calls)) {
     let calls = Calls::default();
     let mods = vec![ModEntry::new("debris", Box::new(Register(calls.clone())))];
     mod_platform::testing::with_mods(mods.into(), || {
-        with_game_role_and_facts(
+        with_game_role_and_facts_client(
             fixture_root(),
             ExecutionRole::Client,
             Some(|registry, facts| {
@@ -259,7 +259,7 @@ pub(in crate::game::client_side) fn with_effects(test: impl FnOnce(&mut Game<'_>
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
                 game.player =
                     Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 63.0, 4.5)).unwrap());
-                game.audio.0.capture = Some(Vec::new());
+                game.side.audio.0.capture = Some(Vec::new());
                 test(game, &calls);
             },
         );

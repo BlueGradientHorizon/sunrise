@@ -15,7 +15,7 @@ fn cauldron_game<'a>(
     state: &str,
     level: Option<u8>,
     held: ItemStack,
-) -> Game<'a> {
+) -> crate::game::ServerGame<'a> {
     let mut game = server_game(resources);
     game.creative = false;
     game.player = Some(
@@ -39,7 +39,7 @@ fn cauldron_game<'a>(
         .unwrap();
     game.world.set(POS[0], POS[1], POS[2], block).unwrap();
     *game.held_mut() = Some(held);
-    game.server.forced_hit = Some(Hit {
+    game.side.forced_hit = Some(Hit {
         pos: POS,
         inside: false,
         face: [0, 1, 0],
@@ -53,7 +53,7 @@ fn cauldron_game<'a>(
 }
 
 /// The held item's id.
-fn hand<'a>(game: &'a Game<'_>) -> &'a str {
+fn hand<'a>(game: &'a crate::game::ServerGame<'_>) -> &'a str {
     game.held().map_or("", |stack| &stack.item)
 }
 
@@ -69,7 +69,7 @@ fn emptying_a_filled_bucket_counts_as_used() {
         None,
         ItemStack::new("minecraft:water_bucket", 1),
     );
-    let hit = game.server.forced_hit.unwrap();
+    let hit = game.side.forced_hit.unwrap();
     assert!(game.use_hand(Some(&hit)).unwrap(), "the bucket empties");
     let poured = game
         .pack
@@ -98,7 +98,7 @@ fn pouring_a_bucket_into_a_cauldron_counts_both() {
         None,
         ItemStack::new("minecraft:water_bucket", 1),
     );
-    let hit = game.server.forced_hit.unwrap();
+    let hit = game.side.forced_hit.unwrap();
     assert!(game.use_hand(Some(&hit)).unwrap(), "the cauldron takes it");
     assert_eq!(hand(&game), "minecraft:bucket", "the bucket came back");
     assert_eq!(game.stats.get("custom", "minecraft:fill_cauldron"), 1);
@@ -117,7 +117,7 @@ fn filling_a_bucket_from_a_cauldron_counts_both() {
         Some(3),
         ItemStack::new("minecraft:bucket", 1),
     );
-    let hit = game.server.forced_hit.unwrap();
+    let hit = game.side.forced_hit.unwrap();
     assert!(game.use_hand(Some(&hit)).unwrap(), "the cauldron takes it");
     assert_eq!(hand(&game), "minecraft:water_bucket", "the bucket filled");
     assert_eq!(game.stats.get("custom", "minecraft:use_cauldron"), 1);
@@ -135,7 +135,7 @@ fn a_glass_bottle_used_on_a_cauldron_counts_as_used() {
         Some(3),
         ItemStack::new("minecraft:glass_bottle", 1),
     );
-    let hit = game.server.forced_hit.unwrap();
+    let hit = game.side.forced_hit.unwrap();
     assert!(game.use_hand(Some(&hit)).unwrap(), "the cauldron takes it");
     assert_eq!(hand(&game), "minecraft:potion", "the bottle filled");
     assert_eq!(game.stats.get("custom", "minecraft:use_cauldron"), 1);
@@ -153,7 +153,7 @@ fn a_water_potion_used_on_a_cauldron_counts_as_used() {
         None,
         ItemStack::new("minecraft:potion", 1).with_potion("minecraft:water"),
     );
-    let hit = game.server.forced_hit.unwrap();
+    let hit = game.side.forced_hit.unwrap();
     assert!(game.use_hand(Some(&hit)).unwrap(), "the cauldron takes it");
     assert_eq!(hand(&game), "minecraft:glass_bottle", "the potion emptied");
     assert_eq!(game.stats.get("custom", "minecraft:use_cauldron"), 1);
@@ -171,7 +171,7 @@ fn washing_a_shulker_box_is_not_an_item_used() {
         Some(3),
         ItemStack::new("minecraft:white_shulker_box", 1),
     );
-    let hit = game.server.forced_hit.unwrap();
+    let hit = game.side.forced_hit.unwrap();
     assert!(game.use_hand(Some(&hit)).unwrap(), "the cauldron takes it");
     assert_eq!(hand(&game), "minecraft:shulker_box", "the box washed");
     assert_eq!(game.stats.get("custom", "minecraft:clean_shulker_box"), 1);

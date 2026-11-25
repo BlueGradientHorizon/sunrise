@@ -9,7 +9,7 @@ use sunrise_core::nbt::{Tag, parse_snbt};
 
 const EDITED: &str = "00000042-0000-0000-0000-000000000001";
 
-fn game(test: impl FnOnce(&mut Game<'_>)) {
+fn game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     crate::game::native_entity_refs::tests::with_game(|game| {
         game.build_registries();
         game.set_allow_commands(true);
@@ -24,10 +24,10 @@ fn game(test: impl FnOnce(&mut Game<'_>)) {
 }
 
 /// Runs `command`: whether it succeeded and what it said first.
-fn run(game: &mut Game<'_>, command: &str) -> (bool, Option<String>) {
-    game.server.chat_capture = Some(Vec::new());
+fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Option<String>) {
+    game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.server.chat_capture.take().unwrap_or_default();
+    let said = game.side.chat_capture.take().unwrap_or_default();
     (ok, said.first().map(sunrise_client::text::Text::plain))
 }
 
@@ -36,8 +36,8 @@ fn run(game: &mut Game<'_>, command: &str) -> (bool, Option<String>) {
 fn data_edits_reach_the_same_live_interaction() {
     game(|game| {
         assert!(game.run_command("summon interaction 4.5 100 4.5 {UUID:[I;66,0,0,1]}"));
-        assert_eq!(game.others.0.len(), 1);
-        let id = game.others.0[0].id;
+        assert_eq!(game.side.others.0.len(), 1);
+        let id = game.side.others.0[0].id;
         let modified = Some("Modified entity data of Interaction".to_owned());
         assert_eq!(
             run(
@@ -75,9 +75,9 @@ fn data_edits_reach_the_same_live_interaction() {
             .unwrap();
         assert_eq!(tag.get("width"), Some(&Tag::Float(1.0f32.to_bits())));
         // The same entity: its id, UUID and place.
-        assert_eq!((game.others.0.len(), game.others.0[0].id), (1, id));
+        assert_eq!((game.side.others.0.len(), game.side.others.0[0].id), (1, id));
         assert_eq!(tag.get("UUID"), Some(&Tag::IntArray(vec![66, 0, 0, 1])));
-        assert_eq!(game.others.0[0].position, Vec3::new(4.5, 100.0, 4.5));
+        assert_eq!(game.side.others.0[0].position, Vec3::new(4.5, 100.0, 4.5));
     });
 }
 
@@ -95,8 +95,8 @@ fn the_live_settings_are_what_the_interaction_saves() {
         assert!(game.run_command(
         "summon item_display 12.5 100 4.5 {UUID:[I;66,0,0,4],transformation:[1f,0f,0f,0f,0f,1f,0f,0f,0f,0f,1f,0f,0f,0f,0f,1f]}"
     ));
-        let find = |g: &Game<'_>, uuid: [i32; 4]| {
-            g.others
+        let find = |g: &crate::game::ServerGame<'_>, uuid: [i32; 4]| {
+            g.side.others
                 .0
                 .iter()
                 .find(|o| g.persist.uuids.get(&o.id) == Some(&uuid))
@@ -185,7 +185,7 @@ fn the_live_settings_are_what_the_interaction_saves() {
                 format!("{:?}", display.item_transformation)
             )
         );
-        assert_eq!(game.others.0.len(), 3);
+        assert_eq!(game.side.others.0.len(), 3);
         assert_eq!(find(game, [66, 0, 0, 1]).id, interaction.id);
     });
 }

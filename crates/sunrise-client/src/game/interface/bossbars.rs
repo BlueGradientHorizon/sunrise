@@ -822,7 +822,7 @@ pub(in crate::game) mod audience_tests {
     use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
     use sunrise_protocol::packets::configuration::ClientInformation;
 
-    pub(in crate::game) fn add_real_and_fake(game: &mut super::super::Game<'_>) {
+    pub(in crate::game) fn add_real_and_fake(game: &mut crate::game::ServerGame<'_>) {
         game.player = None;
         let config = HubConfig {
             default_game_mode: 0,
@@ -875,7 +875,7 @@ pub(in crate::game) mod audience_tests {
         real.placed = true;
         host.hub.guests.push(real);
         // The real guest took entity id 1: the fake made next takes the one after it.
-        game.server.next_entity = game.server.next_entity.max(1);
+        game.side.next_entity = game.side.next_entity.max(1);
         let level = game.level(game.dim.id()).unwrap();
         game.fake_player(level, 2, "fake").unwrap();
         let guests = &mut game.lan.as_mut().unwrap().hub.guests;

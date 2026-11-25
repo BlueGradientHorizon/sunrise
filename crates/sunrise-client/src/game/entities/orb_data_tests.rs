@@ -8,7 +8,7 @@ use sunrise_core::nbt::{Tag, parse_snbt};
 
 const ORB: &str = "00000009-0000-0000-0000-000000000001";
 
-fn game(test: impl FnOnce(&mut Game<'_>)) {
+fn game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     crate::game::native_entity_refs::tests::with_game(|game| {
         game.build_registries();
         game.set_allow_commands(true);
@@ -20,10 +20,10 @@ fn game(test: impl FnOnce(&mut Game<'_>)) {
 }
 
 /// Runs `command`: whether it succeeded and what it said first.
-fn run(game: &mut Game<'_>, command: &str) -> (bool, Option<String>) {
-    game.server.chat_capture = Some(Vec::new());
+fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Option<String>) {
+    game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.server.chat_capture.take().unwrap_or_default();
+    let said = game.side.chat_capture.take().unwrap_or_default();
     (ok, said.first().map(sunrise_client::text::Text::plain))
 }
 
@@ -86,11 +86,11 @@ fn a_merged_age_reaches_the_same_live_orb() {
 }
 
 /// Loads an orb from `snbt` with the UUID `[9, 0, 0, n]`; returns its id.
-fn load(game: &mut Game<'_>, snbt: &str, n: i32) -> u32 {
+fn load(game: &mut crate::game::ServerGame<'_>, snbt: &str, n: i32) -> u32 {
     game.load_orb(parse_snbt(snbt).unwrap().0, Some([9, 0, 0, n]));
     game.orbs.last().unwrap().id
 }
-fn orb<'a>(game: &'a Game<'_>, id: u32) -> &'a sunrise_client::entities::ExperienceOrb {
+fn orb<'a>(game: &'a crate::game::ServerGame<'_>, id: u32) -> &'a sunrise_client::entities::ExperienceOrb {
     game.orbs.iter().find(|o| o.id == id).unwrap()
 }
 

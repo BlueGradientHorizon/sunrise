@@ -1468,7 +1468,7 @@ pub(in crate::game) mod datapack_damage_tests {
     /// The world's registry with the `dmgtest` pack: `zap` untagged, `boom` in
     /// `#is_explosion` and `#no_knockback`, `rush` in `#bypasses_cooldown`, `calm` in
     /// `#no_anger`.
-    pub(in crate::game) fn with_pack(game: &mut crate::game::Game<'_>) {
+    pub(in crate::game) fn with_pack(game: &mut crate::game::ServerGame<'_>) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let ty = |name: &str| {
             (
@@ -1561,7 +1561,7 @@ pub(in crate::game) use crate::game::server_side::commands_server::world_cmds::d
                 None
             ));
             assert!(game.hurt_target(Target::Mob(3), 1.0, "dmgtest:zap", attacker, attacker, None));
-            let last_hurt_by = |game: &crate::game::Game<'_>, id: u32| {
+            let last_hurt_by = |game: &crate::game::ServerGame<'_>, id: u32| {
                 game.mobs
                     .iter()
                     .find(|m| m.id == id)
@@ -1711,7 +1711,7 @@ pub(in crate::game) mod vehicle_damage_command_tests {
     use sunrise_client::chunk::Chunk;
     #[allow(unused_imports)]
     use sunrise_core::position::ChunkPos;
-    pub(in crate::game) fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+    pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -1734,15 +1734,12 @@ pub(in crate::game) mod vehicle_damage_command_tests {
                 .join(format!("h050-{:?}", std::thread::current().id())),
         );
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -1903,7 +1900,7 @@ pub(in crate::game) mod attribute_modifier_command_tests {
     use sunrise_core::nbt::Tag;
     use sunrise_core::position::ChunkPos;
 
-    fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+    fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -1928,15 +1925,12 @@ pub(in crate::game) mod attribute_modifier_command_tests {
             )),
         );
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();

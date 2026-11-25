@@ -277,7 +277,7 @@ mod tests {
                 })
                 .unwrap();
             let player = game.player(12).unwrap();
-            let check = |game: &Game<'_>| {
+            let check = |game: &crate::game::ServerGame<'_>| {
                 let profile = player.profile(game).unwrap();
                 assert_eq!(profile.uuid, 12);
                 assert_eq!(profile.name, "guest12");

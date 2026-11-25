@@ -22,13 +22,13 @@ fn item_replace_asks_the_slot_predicate_of_a_stand_and_the_dragon() {
         game.dragon.replace(dragon);
         let stand = "@e[type=minecraft:armor_stand,limit=1]";
         let dragon_sel = "@e[type=minecraft:ender_dragon,limit=1]";
-        let replace = |game: &mut super::Game<'_>, who: &str, slot: &str, item: &str| {
+        let replace = |game: &mut crate::game::ServerGame<'_>, who: &str, slot: &str, item: &str| {
             game.run_command(&format!("item replace entity {who} {slot} with {item}"));
         };
         let stand_slot =
-            |game: &super::Game<'_>, slot| game.armor_stands[0].equipment[slot].clone();
+            |game: &crate::game::ServerGame<'_>, slot| game.armor_stands[0].equipment[slot].clone();
         let dragon_slot =
-            |game: &super::Game<'_>, slot| game.dragon.as_ref().unwrap().equipment[slot].clone();
+            |game: &crate::game::ServerGame<'_>, slot| game.dragon.as_ref().unwrap().equipment[slot].clone();
 
         // A stand refuses body and saddle items and a chestplate in the wrong slot.
         replace(game, stand, "armor.body", "minecraft:diamond_horse_armor");

@@ -45,7 +45,7 @@ fn change(pos: [i32; 3], old: &str, new: &str, predicted: bool) -> Heard {
     (id("overworld"), pos, id(old), id(new), predicted, id(new))
 }
 
-fn with_client<__Side: crate::game::Side>(name: &str, test: impl FnOnce(&mut Game<'_, __Side>, BlockStateId)) {
+fn with_client(name: &str, test: impl FnOnce(&mut crate::game::ClientGame<'_>, BlockStateId)) {
     let selector = format!("game::remote::tests::client_block_changed_tests::{name}");
     if run_fresh_cases(&selector, "SUNRISE_CLIENT_BLOCK_CHANGED_CHILD", &["map"]) {
         return;
@@ -89,7 +89,7 @@ fn with_client<__Side: crate::game::Side>(name: &str, test: impl FnOnce(&mut Gam
     });
 }
 
-fn update<__Side: crate::game::Side>(game: &mut Game<'_, __Side>, pos: [i32; 3], state: BlockStateId) {
+fn update(game: &mut crate::game::ClientGame<'_>, pos: [i32; 3], state: BlockStateId) {
     game.handle_packet(C::BlockUpdate(play::BlockUpdate {
         pos,
         state: state.0 as i32,

@@ -107,14 +107,14 @@ pub(in crate::game::client_side) use crate::game::native_hooks::camera_type::cam
         with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_client_game(|game| {
                 game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-                game.title.0 = None;
-                game.client.spectated_post_effect = Some("minecraft:creeper");
+                game.side.title.0 = None;
+                game.side.spectated_post_effect = Some("minecraft:creeper");
                 let vanilla = game.camera_view(1.0).unwrap();
                 assert_eq!(vanilla.0.z, 0.0);
                 let posed = game.native_camera_pose_now(1.0, vanilla);
-                assert_eq!(game.client.camera_type, CameraType::ThirdPersonBack);
+                assert_eq!(game.side.camera_type, CameraType::ThirdPersonBack);
                 assert_eq!(game.camera_type(), CameraType::ThirdPersonBack);
-                assert_eq!(game.client.spectated_post_effect, None);
+                assert_eq!(game.side.spectated_post_effect, None);
                 assert!((posed.0.z + 4.0).abs() < 1e-6, "refresh unchanged position");
                 assert_eq!(posed.1, 15.0, "preserve the explicit yaw override");
                 assert_eq!(posed.2, vanilla.2);

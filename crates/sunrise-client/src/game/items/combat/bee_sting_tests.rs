@@ -14,14 +14,14 @@ use sunrise_core::geometry::Vec3;
 #[allow(unused_imports)]
 use sunrise_world::food::Difficulty;
 
-pub(in crate::game) fn spawn(game: &mut Game<'_>, id: u32, kind: &str, position: Vec3) -> u32 {
+pub(in crate::game) fn spawn(game: &mut crate::game::ServerGame<'_>, id: u32, kind: &str, position: Vec3) -> u32 {
     let kind = game.res.mob_types().get(kind).unwrap().clone();
     game.mobs.push(Mob::new(id, kind, position, 0.0));
     id
 }
 
 /// One `Bee.doHurtTarget` from the bee, then the game's event handling.
-pub(in crate::game) fn sting(game: &mut Game<'_>, bee_id: u32, who: Who) {
+pub(in crate::game) fn sting(game: &mut crate::game::ServerGame<'_>, bee_id: u32, who: Who) {
     let mut mobs = game.mobs.lift();
     let i = mobs.iter().position(|m| m.id == bee_id).unwrap();
     let mut test_level = sunrise_client::health::TestLevel::new(0);

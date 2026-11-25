@@ -4,7 +4,7 @@
 use super::native_entity_refs::tests::with_game;
 use mod_api::BlockUpdateFlags;
 
-fn loaded(game: &mut super::Game<'_>) {
+fn loaded(game: &mut crate::game::ServerGame<'_>) {
     // The writes are `level_set_block`'s, which an authoritative server only takes.
     game.options.dedicated = Some(Vec::new());
     game.world.chunks.insert(
@@ -13,7 +13,7 @@ fn loaded(game: &mut super::Game<'_>) {
     );
 }
 
-fn state(game: &super::Game<'_>, name: &str) -> sunrise_world::registry::BlockStateId {
+fn state(game: &crate::game::ServerGame<'_>, name: &str) -> sunrise_world::registry::BlockStateId {
     game.pack.assets.registry.default_state(name).unwrap()
 }
 
@@ -385,7 +385,7 @@ fn placement_previews_shape_updates_before_the_tripwire_callback() {
             Err(PlayerWorldRefusal::Fenced)
         );
         let read =
-            |game: &super::Game<'_>| [origin, near, far].map(|[x, y, z]| game.world.block(x, y, z));
+            |game: &crate::game::ServerGame<'_>| [origin, near, far].map(|[x, y, z]| game.world.block(x, y, z));
         assert_eq!(read(game), [stone, east, west_attached]);
         game.world.carrier_fences.unlock_cell(far);
         assert_eq!(game.level_place_block(level, origin, east, true), Ok(true));
@@ -530,10 +530,10 @@ fn a_break_effect_is_played_for_a_state() {
         game.audio.0.capture = Some(Vec::new());
         let level = game.level(game.dim.id()).unwrap();
         let stone = state(game, "minecraft:stone");
-        game.server.lan_events.clear();
+        game.side.lan_events.clear();
         assert!(game.level_block_break_effect(level, [1, 70, 1], stone));
         assert!(
-            game.server
+            game.side
                 .lan_events
                 .iter()
                 .any(|e| e.kind == 2001 && e.pos == [1, 70, 1] && e.data == stone.0 as i32)
@@ -542,8 +542,8 @@ fn a_break_effect_is_played_for_a_state() {
             mod_api::WorldEpoch::new(level.epoch().get() + 1),
             level.dimension(),
         );
-        game.server.lan_events.clear();
+        game.side.lan_events.clear();
         assert!(!game.level_block_break_effect(stale, [1, 70, 1], stone));
-        assert!(game.server.lan_events.is_empty());
+        assert!(game.side.lan_events.is_empty());
     });
 }

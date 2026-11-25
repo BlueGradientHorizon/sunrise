@@ -239,7 +239,7 @@ pub(in crate::game) fn flow(cancel: bool) -> Flow {
     if cancel { Flow::Cancel } else { Flow::Continue }
 }
 
-pub(in crate::game) fn with_input_game(test: impl FnOnce(&mut Game<'_>, WindowId, &Mutex<State>)) {
+pub(in crate::game) fn with_input_game(test: impl FnOnce(&mut crate::game::ClientGame<'_>, WindowId, &Mutex<State>)) {
     let state = Arc::new(Mutex::new(State::default()));
     let mods = vec![ModEntry::new(
         "input_route",
@@ -263,13 +263,13 @@ pub(in crate::game) fn take(state: &Mutex<State>) -> Vec<Seen> {
     std::mem::take(&mut state.lock().unwrap().seen)
 }
 
-pub(in crate::game) fn send(game: &mut Game<'_>, id: WindowId, event: WindowEvent) {
+pub(in crate::game) fn send(game: &mut crate::game::ClientGame<'_>, id: WindowId, event: WindowEvent) {
     game.handle_window_event(&NoLoop, id, event, InputOrigin::User);
 }
 
 /// Winit's KeyEvent platform field is private. Feed its normalized input to
 /// the production window-key adapter, not directly to the screen hooks.
-pub(in crate::game) fn key(game: &mut Game<'_>, key: KeyCode, state: ElementState) {
+pub(in crate::game) fn key(game: &mut crate::game::ClientGame<'_>, key: KeyCode, state: ElementState) {
     game.dispatch_window_key(
         &NoLoop,
         WindowKeyInput {

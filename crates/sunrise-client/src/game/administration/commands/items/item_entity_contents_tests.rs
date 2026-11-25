@@ -20,7 +20,7 @@ fn a_dropped_item_entity_holds_its_stack_in_contents() {
         [0.0, 0.0, 0.0],
         0,
     );
-    let held = |game: &Game<'_>| {
+    let held = |game: &crate::game::ServerGame<'_>| {
         game.score
             .board
             .score("#seen", "held")

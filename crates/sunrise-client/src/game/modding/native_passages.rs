@@ -598,7 +598,7 @@ pub(in crate::game) mod tests {
 
     /// Guests 12 and 13 with senders to read and the given brands.
     pub(in crate::game) fn listen(
-        game: &mut crate::game::Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         brands: [&str; 2],
     ) -> Vec<mpsc::Receiver<sunrise_client::lan::Out>> {
         let mut receivers = Vec::new();
@@ -986,8 +986,8 @@ pub(in crate::game) mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.server.level_shapes,
-                level_seeds: game.levels.0.runtime.seeds(),
+                levels: game.side.level_shapes,
+                level_seeds: game.side.levels.0.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
             assert!(game.lan.as_ref().unwrap().hub.chunk_watches.recording());
@@ -1165,7 +1165,7 @@ pub(in crate::game) mod tests {
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            let send = |game: &mut crate::game::Game<'_>, message: Message| {
+            let send = |game: &mut crate::game::ClientGame<'_>, message: Message| {
                 game.remote_passage_sync(&encode(&message).unwrap())
             };
             let bad = PassageForm {
@@ -1241,7 +1241,7 @@ mod cross_tests {
     /// Guests 12 and 13 on Sunrise clients on a stone floor (y 64) over chunks x 0 to 1,
     /// tracking them; 12 stands loaded at `at`. The doorway is passage 1.
     fn scene(
-        game: &mut crate::game::Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         at: [f64; 3],
     ) -> mpsc::Receiver<sunrise_client::lan::Out> {
         game.native_lifecycle.world_open_ready().unwrap();
@@ -1285,7 +1285,7 @@ mod cross_tests {
     }
 
     /// Guest 12's next tick: `inbox`, then the rest of the server's tick.
-    fn tick(game: &mut crate::game::Game<'_>, inbox: Vec<S>) {
+    fn tick(game: &mut crate::game::ServerGame<'_>, inbox: Vec<S>) {
         game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.inbox
                 .extend(inbox.into_iter().map(|p| InboxItem::Packet(p, None)));
@@ -1317,7 +1317,7 @@ mod cross_tests {
             .collect()
     }
 
-    fn guest<'a>(game: &'a crate::game::Game<'_>) -> &'a sunrise_client::lan::guest::Guest {
+    fn guest<'a>(game: &'a crate::game::ServerGame<'_>) -> &'a sunrise_client::lan::guest::Guest {
         &game.lan.as_ref().unwrap().hub.guests[0]
     }
 
@@ -1468,7 +1468,7 @@ mod cross_tests {
                 Ok(PassageId::from_raw(2))
             );
             let refused =
-                |game: &mut crate::game::Game<'_>, id: u64, why: Refusal, at: [f64; 3]| {
+                |game: &mut crate::game::ServerGame<'_>, id: u64, why: Refusal, at: [f64; 3]| {
                     let sent = packets(&rx);
                     let reason = refusal_code(why);
                     assert_eq!(

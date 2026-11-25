@@ -193,17 +193,16 @@ pub(in crate::game) mod tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&ResourceSource::directory(root)),
             None,
         )
         .unwrap();
-        game.fns.0.store.predicates.insert(
+        game.side.fns.0.store.predicates.insert(
             "minecraft:nested/true".into(),
             json!({"condition": "minecraft:all_of", "terms": []}),
         );
@@ -261,7 +260,7 @@ pub(in crate::game) mod tests {
         assert!(game.run_command("scoreboard players set @s points 5"));
         let mut source = game.player_source();
         source.entity = None;
-        game.server.command_source = Some(source);
+        game.side.command_source = Some(source);
         let on_target = |kind: &str| {
             json!({
                 "type": "minecraft:conditional",

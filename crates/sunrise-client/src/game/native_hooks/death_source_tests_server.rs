@@ -59,7 +59,7 @@ fn guest_player_bow_death_keeps_the_connected_shooter_without_a_local_player() {
             observed(false, false, |game, seen| {
                 game.player = None;
                 crate::game::native_player_death::tests::add_guest(game);
-                game.server.next_entity = 100;
+                game.side.next_entity = 100;
                 game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
                     guest.position = [4.5, 80.0, 4.5];
                     guest.loaded = true;
@@ -93,11 +93,11 @@ fn guest_player_bow_death_keeps_the_connected_shooter_without_a_local_player() {
     );
 }
 
-pub(in crate::game) fn player(game: &mut Game<'_>) {
+pub(in crate::game) fn player(game: &mut crate::game::ServerGame<'_>) {
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 80.0, 4.5)).unwrap());
     bind_local_player(game, 11, 123);
     game.set_mode_id(0);
-    game.server.next_entity = 100;
+    game.side.next_entity = 100;
 }
 
 #[test]
@@ -113,7 +113,7 @@ fn zombie_ai_melee_armor_hurt_retains_the_real_source() {
                 assert!(game.run_command("difficulty normal"));
                 assert!(game.run_command("forceload add 0 0"));
                 game.update_chunk_tickets();
-                assert!(game.tickets.0.levels().entity_ticking_at(5, 4));
+                assert!(game.side.tickets.0.levels().entity_ticking_at(5, 4));
                 assert!(game.player.as_ref().unwrap().client_loaded);
                 game.armor[1] = Some(ItemStack::new("minecraft:iron_chestplate", 1));
                 game.apply_equipment();

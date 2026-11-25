@@ -189,7 +189,7 @@ pub(in crate::game) fn rpm(rpm: i32) -> Compound {
 
 /// One frame: what the server sent is handled (`update_world`, which a frame runs before its
 /// ticks), then `steps` client ticks. Returns what the probe heard.
-pub(in crate::game) fn frame(game: &mut crate::game::Game<'_>, steps: u32) -> Vec<String> {
+pub(in crate::game) fn frame(game: &mut crate::game::ClientGame<'_>, steps: u32) -> Vec<String> {
     game.side_update_world();
     game.client_tick_steps(steps, None).unwrap();
     take_events()

@@ -98,15 +98,15 @@ pub(in crate::game) fn vec_bits(v: Vec3) -> [String; 3] {
     [bits(v.x), bits(v.y), bits(v.z)]
 }
 
-pub(in crate::game) fn align_next_entity_mod4(game: &mut Game<'_>, want_mod4: u32) {
-    while ((game.server.next_entity + 1) & 3) != (want_mod4 & 3) {
-        game.server.next_entity += 1;
+pub(in crate::game) fn align_next_entity_mod4(game: &mut crate::game::ServerGame<'_>, want_mod4: u32) {
+    while ((game.side.next_entity + 1) & 3) != (want_mod4 & 3) {
+        game.side.next_entity += 1;
     }
 }
 
 pub(in crate::game::server_side) fn setup_game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> Game<'a> {
+) -> crate::game::ServerGame<'a> {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);
@@ -127,11 +127,11 @@ pub(in crate::game::server_side) fn setup_game<'a>(
         sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 4.5)).unwrap(),
     );
     crate::game::native_entity_refs::tests::bind_local_player(&mut game, 7, 7);
-    game.server.next_entity = game.server.next_entity.max(100);
+    game.side.next_entity = game.side.next_entity.max(100);
     game
 }
 
-pub(in crate::game) fn clear_entities(game: &mut Game<'_>) {
+pub(in crate::game) fn clear_entities(game: &mut crate::game::ServerGame<'_>) {
     game.hook.discard();
     game.mobs.clear();
     game.dropped.clear();
@@ -149,9 +149,9 @@ pub(in crate::game) fn clear_entities(game: &mut Game<'_>) {
     game.cushions.clear();
     game.crystals.clear();
     game.discard_resident_dragon();
-    game.others.0.clear();
-    game.server.knot_ids.clear();
-    game.server.broken_knots.clear();
+    game.side.others.0.clear();
+    game.side.knot_ids.clear();
+    game.side.broken_knots.clear();
     game.resident_entities.knots.clear();
     game.reset_entity_residency();
     game.bind_local_player_residency();
@@ -188,7 +188,7 @@ impl TrackedTarget {
     }
 }
 
-pub(in crate::game) fn summon_target(game: &mut Game<'_>, target: &str) -> TrackedTarget {
+pub(in crate::game) fn summon_target(game: &mut crate::game::ServerGame<'_>, target: &str) -> TrackedTarget {
     match target {
         "item_frame" => {
             assert!(game.run_command(
@@ -255,7 +255,7 @@ pub(in crate::game) fn summon_target(game: &mut Game<'_>, target: &str) -> Track
         }
         "leash_knot" => {
             assert!(game.run_command("summon minecraft:leash_knot 3.5 64.375 4.5 {}"));
-            TrackedTarget::ExplicitKnot(game.others.0.last().unwrap().id)
+            TrackedTarget::ExplicitKnot(game.side.others.0.last().unwrap().id)
         }
         "leash_knot_tied" => {
             assert!(game.run_command(
@@ -263,7 +263,7 @@ pub(in crate::game) fn summon_target(game: &mut Game<'_>, target: &str) -> Track
             ));
             game.tick_server(false).unwrap();
             let id = *game
-                .server
+                .side
                 .knot_ids
                 .get(&[3, 64, 4])
                 .expect("natural leash knot created on fence");
@@ -286,7 +286,7 @@ pub(in crate::game) fn summon_target(game: &mut Game<'_>, target: &str) -> Track
 }
 
 pub(in crate::game) fn target_kinematics(
-    game: &Game<'_>,
+    game: &crate::game::ServerGame<'_>,
     target: TrackedTarget,
 ) -> Option<(Vec3, Vec3)> {
     match target {
@@ -310,7 +310,7 @@ pub(in crate::game) fn target_kinematics(
 }
 
 pub(in crate::game) fn check_hook_tick(
-    game: &Game<'_>,
+    game: &crate::game::ServerGame<'_>,
     label: &str,
     expected: &FishingTick,
     expected_hooked_id: Option<u32>,
@@ -392,9 +392,9 @@ pub(in crate::game) fn check_hook_tick(
     }
 }
 
-pub(in crate::game) fn spawn_test_hook(game: &mut Game<'_>, pos: Vec3, vel: Vec3, hook_seed: i64) {
-    game.server.next_entity += 1;
-    let id = game.server.next_entity;
+pub(in crate::game) fn spawn_test_hook(game: &mut crate::game::ServerGame<'_>, pos: Vec3, vel: Vec3, hook_seed: i64) {
+    game.side.next_entity += 1;
+    let id = game.side.next_entity;
     let mut hook = Hook::remote(id, pos, [0, 0, 0, id as i32]);
     hook.yaw = -90.0;
     hook.velocity = vel;

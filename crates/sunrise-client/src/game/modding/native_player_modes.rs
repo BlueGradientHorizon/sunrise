@@ -121,7 +121,7 @@ mod tests {
     use sunrise_client::{chunk::Chunk, items::ItemStack};
     use sunrise_core::nbt::Tag;
 
-    fn set_mode(game: &mut Game<'_>, uuid: u128, mode: i32) {
+    fn set_mode(game: &mut crate::game::ServerGame<'_>, uuid: u128, mode: i32) {
         game.lan.as_mut().unwrap().hub.guests.update_all(|g| {
             if g.uuid == uuid {
                 g.game_mode = mode;
@@ -162,7 +162,7 @@ mod tests {
             let plain = test_snapshot(&ItemStack::new("minecraft:stone", 1));
             let on_stone = test_snapshot(&placing_on("minecraft:stone"));
             let on_dirt = test_snapshot(&placing_on("minecraft:dirt"));
-            let up = |player: mod_api::PlayerRef, game: &Game<'_>, stack| {
+            let up = |player: mod_api::PlayerRef, game: &crate::game::ServerGame<'_>, stack| {
                 player.may_use_item_at(game, [5, 64, 5], BlockFace::Up, stack)
             };
 

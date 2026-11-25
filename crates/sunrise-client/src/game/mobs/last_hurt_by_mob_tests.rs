@@ -13,7 +13,7 @@ const A: &str = "00006094-0000-0000-0000-000000000002";
 const B: &str = "00006094-0000-0000-0000-000000000003";
 const ECHO: &str = "00006094-0000-0000-0000-000000000004";
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -36,15 +36,12 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -76,7 +73,7 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     game
 }
 
-fn step(game: &mut Game<'_>, ticks: u32) {
+fn step(game: &mut crate::game::ServerGame<'_>, ticks: u32) {
     for _ in 0..ticks {
         assert!(game.run_command("tick step 1"));
         game.tick_server(false).unwrap();
@@ -84,8 +81,8 @@ fn step(game: &mut Game<'_>, ticks: u32) {
 }
 
 /// The saved `last_hurt_by_mob` and `ticks_since_last_hurt_by_mob` of `who`.
-fn saved(game: &mut Game<'_>, who: &str) -> (bool, bool, bool) {
-    let has = |game: &mut Game<'_>, path: &str| {
+fn saved(game: &mut crate::game::ServerGame<'_>, who: &str) -> (bool, bool, bool) {
+    let has = |game: &mut crate::game::ServerGame<'_>, path: &str| {
         game.run_command(&format!("execute if data entity {who} {path}"))
     };
     let a = has(game, "{last_hurt_by_mob:[I;24724,0,0,2]}");
@@ -136,7 +133,7 @@ fn a_mob_saves_the_mob_that_hurt_it_for_100_ticks() {
 // Added controls (after the frozen baseline above): the save-time projection.
 use sunrise_core::nbt::Tag;
 
-fn index(game: &mut Game<'_>, uuid: &str) -> usize {
+fn index(game: &mut crate::game::ServerGame<'_>, uuid: &str) -> usize {
     match game.target_with_uuid(sunrise_client::save::uuid_from_text(uuid).unwrap()) {
         Some(super::commands::Target::Mob(id)) => {
             game.mobs.iter().position(|m| m.id == id).unwrap()
@@ -145,7 +142,7 @@ fn index(game: &mut Game<'_>, uuid: &str) -> usize {
     }
 }
 
-fn fields(game: &mut Game<'_>, i: usize) -> (Option<Tag>, Option<Tag>) {
+fn fields(game: &mut crate::game::ServerGame<'_>, i: usize) -> (Option<Tag>, Option<Tag>) {
     let tag = game.mob_tree_nbt(i);
     (
         tag.get("last_hurt_by_mob").cloned(),

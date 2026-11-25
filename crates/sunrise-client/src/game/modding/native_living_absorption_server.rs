@@ -61,7 +61,7 @@ mod tests {
     use sunrise_core::geometry::Vec3;
 
     /// A zombie whose `minecraft:max_absorption` is 4.
-    fn absorbing_zombie(game: &super::Game<'_>) -> Mob {
+    fn absorbing_zombie(game: &crate::game::ServerGame<'_>) -> Mob {
         let mut kind = game
             .res
             .mob_types()

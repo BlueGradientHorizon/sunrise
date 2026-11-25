@@ -15,7 +15,7 @@ const OVERWORLD: &str = "minecraft:overworld";
 const NETHER: &str = "minecraft:the_nether";
 const END: &str = "minecraft:the_end";
 
-fn receive(game: &mut Game<'_>, packet: C) {
+fn receive(game: &mut crate::game::ClientGame<'_>, packet: C) {
     let bytes = packet.try_encode().unwrap();
     let mut reader = sunrise_protocol::buf::Reader::new(&bytes);
     let id = reader.varint().unwrap();
@@ -24,7 +24,7 @@ fn receive(game: &mut Game<'_>, packet: C) {
 }
 
 /// Join a local pipe as a client of the three vanilla dimensions.
-fn login(game: &mut Game<'_>) {
+fn login(game: &mut crate::game::ClientGame<'_>) {
     let (client, _server) = Pipe::pair();
     game.connect_local(client, "spawn-compass").unwrap();
     receive(
@@ -65,7 +65,7 @@ impl Compass {
     /// `ClientLevel.setRespawnData` for `pos` when given, then the target the client holds.
     fn observe(
         &mut self,
-        game: &mut Game<'_>,
+        game: &mut crate::game::ClientGame<'_>,
         label: &str,
         dimension: &'static str,
         pos: Option<[i32; 3]>,
@@ -96,14 +96,14 @@ impl Compass {
 }
 
 /// The default state ids of stone, water and a torch.
-fn states(game: &Game<'_>) -> [BlockStateId; 3] {
+fn states(game: &crate::game::ClientGame<'_>) -> [BlockStateId; 3] {
     let registry = game.pack.assets.registry;
     ["stone", "water", "torch"]
         .map(|id| registry.default_state(&format!("minecraft:{id}")).unwrap())
 }
 
 /// Column (-1, -1) with the given blocks at x = z = -1: `(y, state, fluid)`.
-fn send_column(game: &mut Game<'_>, words: Option<Vec<i64>>, blocks: &[(i32, BlockStateId, bool)]) {
+fn send_column(game: &mut crate::game::ClientGame<'_>, words: Option<Vec<i64>>, blocks: &[(i32, BlockStateId, bool)]) {
     let shape = DimensionType::vanilla(OVERWORLD);
     let sections: Vec<_> = (0..shape.sections())
         .map(|s| {
@@ -149,7 +149,7 @@ fn send_column(game: &mut Game<'_>, words: Option<Vec<i64>>, blocks: &[(i32, Blo
 }
 
 /// A server block update at (-1, y, -1).
-fn update(game: &mut Game<'_>, y: i32, state: i32) {
+fn update(game: &mut crate::game::ClientGame<'_>, y: i32, state: i32) {
     receive(
         game,
         C::BlockUpdate(play::BlockUpdate {
@@ -160,7 +160,7 @@ fn update(game: &mut Game<'_>, y: i32, state: i32) {
 }
 
 /// A world border of size 8 about (-0.25, -0.75).
-fn border(game: &mut Game<'_>) {
+fn border(game: &mut crate::game::ClientGame<'_>) {
     receive(game, C::SetBorderSize(play::SetBorderSize { size: 8.0 }));
     receive(
         game,

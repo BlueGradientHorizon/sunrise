@@ -250,9 +250,9 @@ pub(in crate::game::server_side) use crate::game::native_hooks::on_entity_item_u
 pub(in crate::game::server_side) use crate::game::native_hooks::on_entity_item_update::on_entity_item_update_tests::a_canceling_part_holds_its_own_item_and_nothing_else_isolated;
 
     /// One stack of `item` at rest on the floor, a pickup delay of 20 ticks.
-    pub(in crate::game) fn rest(game: &mut Game<'_>, item: &str, x: f64, z: f64) -> u32 {
+    pub(in crate::game) fn rest(game: &mut crate::game::ServerGame<'_>, item: &str, x: f64, z: f64) -> u32 {
         game.spawn_item(ItemStack::new(item, 1), [x, 64.0, z], [0.0; 3], 20);
-        game.server.ticked_entities_through = game.server.next_entity;
+        game.side.ticked_entities_through = game.side.next_entity;
         game.dropped.last().unwrap().id
     }
 }

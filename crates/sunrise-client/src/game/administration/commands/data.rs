@@ -1117,15 +1117,12 @@ pub(in crate::game) mod wolf_live_anger_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
             None,
         )
         .unwrap();
@@ -1382,7 +1379,7 @@ pub(in crate::game) mod loot_table_tests {
     const TABLE: &str = "minecraft:chests/simple_dungeon";
 
     /// The chest as a chunk save writes it, and its slots when that save loads.
-    fn saved_and_reloaded(game: &Game<'_>, pos: (i32, i32, i32)) -> (Tag, Vec<Option<ItemStack>>) {
+    fn saved_and_reloaded(game: &crate::game::ServerGame<'_>, pos: (i32, i32, i32)) -> (Tag, Vec<Option<ItemStack>>) {
         let live = game.world.chunks.get(&(0, 0)).unwrap().clone();
         let chunk = game.with_entities([&live]).remove(0);
         let registry = game.pack.assets.registry;
@@ -1430,15 +1427,12 @@ pub(in crate::game) mod loot_table_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
             None,
         )
         .unwrap();
@@ -1567,15 +1561,12 @@ pub(in crate::game) mod arrow_owner_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -1668,7 +1659,7 @@ pub(in crate::game) mod bell_command_identity_tests {
     use std::sync::Arc;
     use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
-    fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+    fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.build_registries();
             game.set_allow_commands(true);
@@ -1778,7 +1769,7 @@ pub(in crate::game) mod falling_live_adoption_tests {
         geometry::Vec3,
         position::{BlockPos, ChunkPos},
     };
-    pub(in crate::game) fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+    pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -1801,15 +1792,12 @@ pub(in crate::game) mod falling_live_adoption_tests {
                 .join(format!("h098-{:?}", std::thread::current().id())),
         );
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();

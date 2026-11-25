@@ -8,7 +8,7 @@ use std::sync::Arc;
 use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
 #[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
-pub(in crate::game) fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     with_role_game(
         crate::game::execution_role::ExecutionRole::IntegratedServer,
         test,

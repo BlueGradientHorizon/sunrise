@@ -30,7 +30,7 @@ fn identical_instant_stacks_report_the_selected_interaction_hand() {
                 };
                 game.swing = Default::default();
                 assert!(game.using.is_none());
-                game.server.guest_use = Some(super::super::super::GuestUse::Item(hand));
+                game.side.guest_use = Some(super::super::super::GuestUse::Item(hand));
                 assert_eq!(game.use_item_as_player().unwrap(), Some(hand));
                 assert_eq!(game.swing.attack_hand(), hand);
                 assert!(game.using.is_none());
@@ -44,7 +44,7 @@ fn identical_instant_stacks_report_the_selected_interaction_hand() {
                 expected_hand: Some(Hand::Main),
                 ..Controls::default()
             };
-            game.server.guest_use = None;
+            game.side.guest_use = None;
             assert_eq!(game.use_item_as_player().unwrap(), Some(Hand::Main));
         });
     });
@@ -59,7 +59,7 @@ fn the_item_event_names_the_guest_who_clicked_not_the_host() {
         with_interaction_server_game(|game| {
             game.offhand = Some(ItemStack::new("minecraft:stick", 1));
             for hand in [Hand::Main, Hand::Off] {
-                game.server.guest_use = Some(super::super::super::GuestUse::Item(hand));
+                game.side.guest_use = Some(super::super::super::GuestUse::Item(hand));
                 game.use_item_as_player().unwrap();
                 assert_eq!(
                     item_users(&observer),
@@ -89,7 +89,7 @@ fn the_item_event_names_the_host_player_on_its_own_click() {
             let _guest = setup_interaction_guest(game);
             observer.0.lock().unwrap().host_click = true;
             game.inventory[game.selected] = Some(ItemStack::new("minecraft:stick", 1));
-            game.server.guest_use = Some(super::super::super::GuestUse::Item(Hand::Main));
+            game.side.guest_use = Some(super::super::super::GuestUse::Item(Hand::Main));
             game.use_item_as_player().unwrap();
             assert_eq!(
                 item_users(&observer),

@@ -1044,7 +1044,7 @@ mod tests {
     use sunrise_client::gamerules::Value;
 
     /// A fresh survival body for guest `conn` (entity `conn`), where `with_guests` stands it.
-    fn fresh_body(game: &mut Game<'_>, conn: u32) {
+    fn fresh_body(game: &mut crate::game::ServerGame<'_>, conn: u32) {
         let mut body =
             sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(3.0, 64.0, 5.0))
                 .unwrap();
@@ -1067,7 +1067,7 @@ mod tests {
         .unwrap();
     }
 
-    fn health(game: &Game<'_>, conn: u32) -> f32 {
+    fn health(game: &crate::game::ServerGame<'_>, conn: u32) -> f32 {
         let host = game.lan.as_ref().unwrap();
         host.hub
             .guest(conn)
@@ -1084,7 +1084,7 @@ mod tests {
     /// projectile or a trident (the victim's hurt), a spear's stab, a melee blow, its sweep
     /// (which also spares allies, `doSweepAttack`'s `isAlliedTo`) and a blast of guest 12's
     /// primed TNT.
-    fn every_site(game: &mut Game<'_>) -> [bool; 7] {
+    fn every_site(game: &mut crate::game::ServerGame<'_>) -> [bool; 7] {
         let (a, b) = (game.player(12).unwrap(), game.player(13).unwrap());
         fresh_body(game, 13);
         let read = a.can_harm(&*game, b) == Some(true);
@@ -1114,9 +1114,9 @@ mod tests {
         let swept = health(game, 13) < before;
 
         fresh_body(game, 13);
-        game.combat.0.blast_owner = Some((12, sunrise_client::text::Text::literal("guest12")));
-        game.combat.0.blast_owner_player = true;
-        game.combat.0.blast_guest = Some(12);
+        game.side.combat.0.blast_owner = Some((12, sunrise_client::text::Text::literal("guest12")));
+        game.side.combat.0.blast_owner_player = true;
+        game.side.combat.0.blast_guest = Some(12);
         let before = health(game, 13);
         game.server_explode(
             [3.0, 64.0, 8.0],
@@ -1126,14 +1126,14 @@ mod tests {
         )
         .unwrap();
         let blasted = health(game, 13) < before;
-        game.combat.0.blast_owner = None;
-        game.combat.0.blast_owner_player = false;
-        game.combat.0.blast_guest = None;
+        game.side.combat.0.blast_owner = None;
+        game.side.combat.0.blast_owner_player = false;
+        game.side.combat.0.blast_guest = None;
         [read, arrow, projectile, spear, melee, swept, blasted]
     }
 
     /// The guests of `with_guests`, in an empty chunk the blasts see through.
-    fn with_two_guests(test: impl FnOnce(&mut Game<'_>)) {
+    fn with_two_guests(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         super::super::native_guest_turn_tests::with_guests(|game| {
             game.world.chunks.insert(
                 (0, 0),

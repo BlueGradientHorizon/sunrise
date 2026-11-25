@@ -1653,7 +1653,7 @@ mod tests {
             }
             game.lan.as_mut().unwrap().hub.guests.push(guest);
         }
-        let full = |game: &Game, x: f64, range: f64| {
+        let full = |game: &crate::game::ServerGame<'_>, x: f64, range: f64| {
             game.level_players()
                 .iter()
                 .any(|p| p.alive_near(x, 64.0, 0.5, range))
@@ -1768,7 +1768,7 @@ mod tests {
                     game.world.chunks.insert((x, z), Arc::new(chunk));
                 }
             }
-            game.tickets.0.update(None);
+            game.side.tickets.0.update(None);
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5)).unwrap());
             game.border.set_center([8.0, 8.0]);
             game.border.set_size(2.0);
@@ -2233,7 +2233,7 @@ mod tests {
         (out, heard)
     }
     /// A survival player standing at `at`, and empty lit chunks around the origin.
-    fn spawn_check_world(game: &mut Game<'_>, at: Vec3) {
+    fn spawn_check_world(game: &mut crate::game::ServerGame<'_>, at: Vec3) {
         use std::sync::Arc;
         use sunrise_client::chunk::Chunk;
         game.player = Some(sunrise_client::motion::PlayerMotion::new(game.motion, at).unwrap());
@@ -2245,7 +2245,7 @@ mod tests {
             }
         }
     }
-    fn level_of(game: &Game<'_>) -> mod_api::LevelRef {
+    fn level_of(game: &crate::game::ServerGame<'_>) -> mod_api::LevelRef {
         game.level(game.dim.id()).unwrap()
     }
 
@@ -2266,7 +2266,7 @@ mod tests {
                 }
             }
             let level = level_of(game);
-            let attempt = |game: &mut Game<'_>| {
+            let attempt = |game: &mut crate::game::ServerGame<'_>| {
                 let mut random = LegacyRandom::new(42);
                 let natural = game.natural_level();
                 let players = natural
@@ -2295,7 +2295,7 @@ mod tests {
                 assert!(natural.checked.borrow().is_none(), "no created mob is left");
                 let used = natural.provisional.get();
                 drop(natural);
-                assert!(game.lent_mobs.0.borrow().is_empty(), "every lend ended");
+                assert!(game.side.lent_mobs.0.borrow().is_empty(), "every lend ended");
                 (
                     pending.iter().map(snap).collect::<Vec<_>>(),
                     used,
@@ -2361,10 +2361,10 @@ mod tests {
             let block = mod_api::Spawner::Block {
                 pos: mod_api::BlockPos::new(2, 70, 2),
             };
-            let tick = |game: &mut Game<'_>, extra: Option<(&str, Tag)>| {
+            let tick = |game: &mut crate::game::ServerGame<'_>, extra: Option<(&str, Tag)>| {
                 let (mobs, entities, tracked) = (
                     game.mobs.len(),
-                    game.server.next_entity,
+                    game.side.next_entity,
                     game.persist.uuids.len(),
                 );
                 game.world.random.set_seed(7);
@@ -2380,18 +2380,18 @@ mod tests {
                 };
                 game.server_tick_spawner_of(key, &mut spawner, None)
                     .unwrap();
-                assert!(game.lent_mobs.0.borrow().is_empty(), "every lend ended");
+                assert!(game.side.lent_mobs.0.borrow().is_empty(), "every lend ended");
                 let added: Vec<Snap> = game.mobs[mobs..].iter().map(snap).collect();
                 let out = (
                     added,
-                    game.server.next_entity - entities,
+                    game.side.next_entity - entities,
                     game.persist.uuids.len() - tracked,
                     game.world.random.next_int(),
                 );
                 for m in game.mobs.drain(mobs..) {
                     game.persist.uuids.remove(&m.id);
                 }
-                game.server.next_entity = entities;
+                game.side.next_entity = entities;
                 out
             };
             let (unlistened, _) = with_checks(None, Vec::new, || tick(game, None));
@@ -2454,10 +2454,10 @@ mod tests {
             let trial = mod_api::Spawner::Trial {
                 pos: mod_api::BlockPos::new(2, 70, 2),
             };
-            let tick = |game: &mut Game<'_>| {
+            let tick = |game: &mut crate::game::ServerGame<'_>| {
                 let (mobs, entities, tracked) = (
                     game.mobs.len(),
-                    game.server.next_entity,
+                    game.side.next_entity,
                     game.persist.uuids.len(),
                 );
                 game.world.random.set_seed(9);
@@ -2469,18 +2469,18 @@ mod tests {
                 };
                 game.server_tick_trial_spawner(key, &mut spawner, TrialState::Active, false)
                     .unwrap();
-                assert!(game.lent_mobs.0.borrow().is_empty(), "every lend ended");
+                assert!(game.side.lent_mobs.0.borrow().is_empty(), "every lend ended");
                 let added: Vec<Snap> = game.mobs[mobs..].iter().map(snap).collect();
                 let out = (
                     added,
-                    game.server.next_entity - entities,
+                    game.side.next_entity - entities,
                     game.persist.uuids.len() - tracked,
                     game.world.random.next_int(),
                 );
                 for m in game.mobs.drain(mobs..) {
                     game.persist.uuids.remove(&m.id);
                 }
-                game.server.next_entity = entities;
+                game.side.next_entity = entities;
                 out
             };
             let (unlistened, _) = with_checks(None, Vec::new, || tick(game));
@@ -2548,10 +2548,10 @@ mod tests {
                 .get("minecraft:zombie")
                 .cloned()
                 .unwrap();
-            let run = |game: &mut Game<'_>, answer: Option<FinalizeAnswer>| {
+            let run = |game: &mut crate::game::ServerGame<'_>, answer: Option<FinalizeAnswer>| {
                 game.world.random.set_seed(5);
                 let mut mob = Mob::new(1, kind.clone(), Vec3::new(8.5, 64.0, 8.5), 0.0);
-                let go = |game: &mut Game<'_>, mob: &mut Mob| {
+                let go = |game: &mut crate::game::ServerGame<'_>, mob: &mut Mob| {
                     game.finalize_with(mob, Reason::Natural, None)
                 };
                 let outcome = match answer {
@@ -2731,7 +2731,7 @@ mod tests {
                 // Asks the hook, then runs `despawn_check` for an idle zombie 40
                 // blocks from the player. Returns whether it stayed and whether
                 // its random is where an untouched copy of it is.
-                let ask = |game: &mut super::Game<'_>, said, peaceful: bool| {
+                let ask = |game: &mut crate::game::ServerGame<'_>, said, peaceful: bool| {
                     *answer.lock().unwrap() = said;
                     let mut mob = game.mobs.iter().find(|m| m.id == id).unwrap().clone();
                     mob.ai.no_action_time = 601;

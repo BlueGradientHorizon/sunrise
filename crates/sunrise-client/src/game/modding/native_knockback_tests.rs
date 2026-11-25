@@ -88,11 +88,11 @@ impl Hooks for Probe {
     }
 }
 
-pub(in crate::game) fn heard(test: impl FnOnce(&mut super::Game<'_>, &Mutex<Heard>)) -> Heard {
+pub(in crate::game) fn heard(test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Mutex<Heard>)) -> Heard {
     hear(|log| with_game(|game| test(game, log)))
 }
 
-fn guest_heard(test: impl FnOnce(&mut super::Game<'_>, &Mutex<Heard>)) -> Heard {
+fn guest_heard(test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Mutex<Heard>)) -> Heard {
     hear(|log| super::native_guest_turn_tests::with_guests(|game| test(game, log)))
 }
 
@@ -154,8 +154,8 @@ fn the_bridge_names_the_attacker_and_what_it_holds() {
                 Hurting::Mob(mob, _) => mob.id as i32,
                 _ => 12,
             };
-            let plan = game.prepare_knockback_credit(victim, None, game.combat.0.attack());
-            let mut credit = plan.lend(&mut game.server.last_hurt_by_player);
+            let plan = game.prepare_knockback_credit(victim, None, game.side.combat.0.attack());
+            let mut credit = plan.lend(&mut game.side.last_hurt_by_player);
             let mut knock = PUSH;
             let canceled = super::native_hooks::knockback(
                 damage_level_of!(game, attack, &mut credit, None).reborrow(),
@@ -214,8 +214,8 @@ fn the_bridge_names_the_attacker_and_what_it_holds() {
 #[ignore = "daily"]
 fn a_canceled_push_is_reported() {
     let heard = heard(|game, log| {
-        let plan = game.prepare_knockback_credit(12, None, game.combat.0.attack());
-        let mut credit = plan.lend(&mut game.server.last_hurt_by_player);
+        let plan = game.prepare_knockback_credit(12, None, game.side.combat.0.attack());
+        let mut credit = plan.lend(&mut game.side.last_hurt_by_player);
         let level = damage_level_of!(game, &NO_ATTACK, &mut credit, None);
         log.lock().unwrap().cancel = true;
         let mut knock = PUSH;
@@ -257,7 +257,7 @@ fn thorns_name_the_wearer_not_the_incoming_attacker() {
     assert_eq!(heard.incoming_causing, [7]);
 }
 
-fn player_with_sword(game: &mut super::Game<'_>) {
+fn player_with_sword(game: &mut crate::game::ServerGame<'_>) {
     use sunrise_client::motion::PlayerMotion;
     let mut player = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
     player.entity_id = 7;
@@ -265,7 +265,7 @@ fn player_with_sword(game: &mut super::Game<'_>) {
     game.inventory[game.selected] = Some(ItemStack::new("minecraft:iron_sword", 1));
 }
 
-fn zombie_at(game: &mut super::Game<'_>, id: u32, at: Vec3) {
+fn zombie_at(game: &mut crate::game::ServerGame<'_>, id: u32, at: Vec3) {
     let kind = game
         .res
         .mob_types()
@@ -368,7 +368,7 @@ fn the_attack_scope_nests_restores_and_a_guest_swap_hides_it() {
 /// random one, after the hook): with or without a listening mod, and with the push canceled.
 fn next_draw_after_a_directionless_push(cancel: Option<bool>) -> i32 {
     let drawn = Mutex::new(0);
-    let draw = |game: &mut super::Game<'_>| {
+    let draw = |game: &mut crate::game::ServerGame<'_>| {
         zombie_at(game, 42, Vec3::ZERO);
         let hit = Damage::of(DamageKind::Generic);
         let mut mob = game.mobs.pop().unwrap();
@@ -577,12 +577,12 @@ fn the_hook_names_the_entry_a_push_came_through_once_per_full_entry_call() {
 }
 
 fn with_detached_credit<R>(
-    game: &mut super::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     victim: i32,
     push: impl FnOnce(&mut sunrise_client::health::DamageLevel<'_>) -> R,
 ) -> R {
     let plan = game.prepare_knockback_credit(victim, None, &NO_ATTACK);
-    let mut credit = plan.lend(&mut game.server.last_hurt_by_player);
+    let mut credit = plan.lend(&mut game.side.last_hurt_by_player);
     push(damage_level_of!(game, &NO_ATTACK, &mut credit, None))
 }
 
@@ -668,12 +668,12 @@ fn callable_knockback_reads_resistance_written_this_tick() {
     });
 }
 
-pub(in crate::game) fn credit_pig(game: &mut super::Game<'_>) {
+pub(in crate::game) fn credit_pig(game: &mut crate::game::ServerGame<'_>) {
     game.world.health_rules.difficulty = sunrise_world::food::Difficulty::Normal;
     game.world
         .chunks
         .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-    game.tickets
+    game.side.tickets
         .0
         .update(Some(sunrise_client::ticket_levels::Sources {
             players: vec![(0, 0)],
@@ -693,9 +693,9 @@ pub(in crate::game) fn credit_pig(game: &mut super::Game<'_>) {
     game.mobs.push(pig);
 }
 
-fn credit_push(game: &mut super::Game<'_>) {
-    let plan = game.prepare_knockback_credit(100, None, game.combat.0.attack());
-    let mut credit = plan.lend(&mut game.server.last_hurt_by_player);
+fn credit_push(game: &mut crate::game::ServerGame<'_>) {
+    let plan = game.prepare_knockback_credit(100, None, game.side.combat.0.attack());
+    let mut credit = plan.lend(&mut game.side.last_hurt_by_player);
     let mob = &mut game.mobs[0];
     mob.velocity = Vec3::ZERO;
     mob.ground.on_ground = false;
@@ -741,7 +741,7 @@ fn accepted_wolf_hits_commit_owner_replacement_clearing_and_unresolved_precedenc
             if owner == Some(12) {
                 game.mobs[1].extra.owner = Some(sunrise_client::lan::playerdata::uuid_ints(999));
                 assert!(!game.mob_hits_mob(100, 0.5, Damage::mob(101, [1.0, 0.0, 0.0])));
-                let credit = game.server.last_hurt_by_player[&100];
+                let credit = game.side.last_hurt_by_player[&100];
                 assert_eq!(
                     game.resolve_player_credit(credit),
                     Some(Some(12)),
@@ -875,7 +875,7 @@ fn borrowed_rider_environmental_damage_never_dispatches_a_living_push() {
 
 /// An evoker (id 50) holding an iron sword, the owner the credit tests name; with the probe's
 /// `reduce_sword_credit`, a push credited to it is halved.
-pub(in crate::game) fn sword_evoker(game: &mut super::Game<'_>) {
+pub(in crate::game) fn sword_evoker(game: &mut crate::game::ServerGame<'_>) {
     let kind = game
         .res
         .mob_types()

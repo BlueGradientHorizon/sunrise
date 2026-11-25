@@ -26,9 +26,9 @@ fn empty_slot_draws_icon_but_a_filled_slot_does_not() {
                 panic!("the shield icon must resolve to a real GUI sprite");
             };
             let generation = seed_native_menu(game, 1, "test:menu");
-            game.client.screen = Screen::Inventory;
+            game.side.screen = Screen::Inventory;
             game.container = Some((1, 2, 3));
-            game.mod_screen.0 = Some(OpenNativeScreen {
+            game.side.mod_screen.0 = Some(OpenNativeScreen {
                 menu: OpenNativeMenu {
                     key: (1, 2, 3),
                     window: 1,
@@ -78,7 +78,7 @@ fn empty_slot_draws_icon_but_a_filled_slot_does_not() {
             });
             let mut with_icon = HudBatch::scratch([128, 128]);
             game.draw_slot_item(&mut with_icon, None, 300, &filled, 8.0, 18.0);
-            game.mod_screen.0.as_mut().unwrap().layout_mut().slots[0]
+            game.side.mod_screen.0.as_mut().unwrap().layout_mut().slots[0]
                 .as_mut()
                 .unwrap()
                 .no_item_icon = None;
@@ -125,7 +125,7 @@ fn unknown_slot_icon_opens_screen_and_draws_missing_sprite() {
                 None,
             )],
             || {
-                crate::game::native_entity_refs::tests::with_game_role(
+                crate::game::native_entity_refs::tests::with_game_role_client(
                     root.prepared().to_owned(),
                     crate::game::execution_role::ExecutionRole::Client,
                     |game| {
@@ -143,7 +143,7 @@ fn unknown_slot_icon_opens_screen_and_draws_missing_sprite() {
                         game.world.set(pos.0, pos.1, pos.2, block).unwrap();
                         assert!(game.open_native_screen(pos, Some(pos), 9, None));
                         assert!(
-                            game.mod_screen.0.is_some(),
+                            game.side.mod_screen.0.is_some(),
                             "valid icon must open the screen"
                         );
                         unknown.store(true, Ordering::Relaxed);

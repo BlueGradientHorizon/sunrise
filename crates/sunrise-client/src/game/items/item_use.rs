@@ -959,7 +959,7 @@ pub(in crate::game) mod interact_vibration_tests {
     /// `None` without the resources.
     pub(in crate::game) fn with_game(
         held: &str,
-        f: impl FnOnce(&mut Game<'_>),
+        f: impl FnOnce(&mut crate::game::ServerGame<'_>),
     ) -> Option<Vec<String>> {
         use crate::game::{Audio, Options, Progress, Settings, load_resources};
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES")?);
@@ -980,15 +980,12 @@ pub(in crate::game) mod interact_vibration_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -1090,7 +1087,7 @@ pub(in crate::game) mod interact_vibration_tests {
         .into();
         mod_platform::testing::with_mods(mods, || {
             with_game("minecraft:rotten_flesh", |game| {
-                let use_block = |game: &mut Game<'_>, name: &str| {
+                let use_block = |game: &mut crate::game::ServerGame<'_>, name: &str| {
                     let player = game.use_context();
                     game.with_block_use_level(|b, level, ticks| {
                         let state = b.table.default_state(b.table.block_by_name(name).unwrap());
@@ -1231,7 +1228,7 @@ pub(in crate::game) mod interact_vibration_tests {
                 let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(client, "Eater").unwrap();
                 // Replace the server fixture's identity and the body removed on join.
-                game.server.lan_acting_uuid = None;
+                game.side.lan_acting_uuid = None;
                 game.level.player_uuid = None;
                 let remote = game.remote.as_mut().unwrap();
                 remote.logged_in = true;
@@ -1312,15 +1309,15 @@ pub(in crate::game) mod interact_vibration_tests {
                 r#"{"enabled":["file/rods"],"disabled":[]}"#,
             )
             .unwrap();
-            game.server.world_root = dir.clone();
+            game.side.world_root = dir.clone();
             let stack = game.reload_datapacks(false, &[]).unwrap();
             let root = game.options.resources.clone();
-            game.world_tables.0 = game
+            game.side.world_tables.0 = game
                 .stage_world_tables(&stack, false, &root)
                 .unwrap()
                 .tables;
             let items =
-                &mut std::sync::Arc::make_mut(&mut game.world_tables.0.as_mut().unwrap().items)
+                &mut std::sync::Arc::make_mut(&mut game.side.world_tables.0.as_mut().unwrap().items)
                     .items;
             let mut info = items["minecraft:fishing_rod"].clone();
             info.id = std::sync::Arc::from("ruby:rod");
@@ -1332,7 +1329,7 @@ pub(in crate::game) mod interact_vibration_tests {
             items.insert(info.id.clone(), info);
 
             let items =
-                &mut std::sync::Arc::make_mut(&mut game.world_tables.0.as_mut().unwrap().items)
+                &mut std::sync::Arc::make_mut(&mut game.side.world_tables.0.as_mut().unwrap().items)
                     .items;
             let mut stick_info = items["minecraft:stick"].clone();
             stick_info.id = std::sync::Arc::from("ruby:stick");

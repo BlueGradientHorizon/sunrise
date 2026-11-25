@@ -7,13 +7,13 @@ use sunrise_client::lan::{Out, PlayerSender};
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::text::translatable;
 
-fn left_reason(game: &super::Game<'_>, conn: u32) -> String {
+fn left_reason(game: &crate::game::ServerGame<'_>, conn: u32) -> String {
     let hub = &game.lan.as_ref().unwrap().hub;
     hub.guest(conn).unwrap().left_reason.clone()
 }
 
 /// Gives guest `conn` a test channel, to read what its connection is sent.
-fn listen(game: &mut super::Game<'_>, conn: u32) -> Receiver<Out> {
+fn listen(game: &mut crate::game::ServerGame<'_>, conn: u32) -> Receiver<Out> {
     let (tx, rx) = std::sync::mpsc::channel();
     let hub = &mut game.lan.as_mut().unwrap().hub;
     hub.update_guest(conn, |g| g.sender = PlayerSender::new(tx, Arc::default()));

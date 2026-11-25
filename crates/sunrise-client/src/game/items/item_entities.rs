@@ -1143,7 +1143,7 @@ pub(in crate::game) mod destroyed_contents_tests {
     use sunrise_core::random::RandomSource;
 
     /// The motion of each spilled stack, in the order the spill made them.
-    fn spilled_motions(game: &Game<'_>) -> Vec<[f64; 3]> {
+    fn spilled_motions(game: &crate::game::ServerGame<'_>) -> Vec<[f64; 3]> {
         game.dropped
             .iter()
             .map(|item| [item.velocity.x, item.velocity.y, item.velocity.z])
@@ -1264,7 +1264,7 @@ pub(in crate::game) mod escape_tests {
         let item = game.dropped.last_mut().unwrap();
         item.random = sunrise_core::random::LegacyRandom::new(12345);
         let mut level = game.world.random.clone();
-        game.server.ticked_entities_through = u32::MAX;
+        game.side.ticked_entities_through = u32::MAX;
         game.tick_items();
         let item = game.dropped.last().unwrap();
         // Up is the nearest open side. Independent Java Random(12345):

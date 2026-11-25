@@ -44,7 +44,7 @@ impl Hooks for MutatesQuery {
     }
 }
 
-fn water_column(game: &mut Game<'_>) {
+fn water_column<S: crate::game::Side>(game: &mut Game<'_, S>) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
     let water = game
         .pack
         .assets
@@ -102,7 +102,7 @@ fn local_swim_eligibility_replaces_entry_and_the_shallow_sprint_query() {
                     player.entity_id = 42;
                     game.player = Some(player);
                     game.bind_local_player_residency();
-                    let tick = |game: &mut Game<'_>| {
+                    let tick = |game: &mut crate::game::ClientGame<'_>| {
                         game.tick_local_player(Vec::new(), 7, None).unwrap();
                     };
                     // Seed the previous eye sample without asking the entry predicate.

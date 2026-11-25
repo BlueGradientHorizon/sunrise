@@ -15,7 +15,7 @@ use winit::keyboard::KeyCode;
 /// A game at play with no world: input reaches the mappings, as in `Screen::Playing`.
 use crate::game::execution_role::ExecutionRole;
 
-fn playing(test: impl FnOnce(&mut Game)) {
+fn playing(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -34,15 +34,12 @@ fn playing(test: impl FnOnce(&mut Game)) {
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
         None,
     )
     .unwrap();
@@ -65,14 +62,14 @@ impl crate::game::event_loop::EventLoopCtl for NoEventLoop {
 }
 
 /// Hold `button` through the real press dispatcher, including its action ownership.
-fn pad_press(game: &mut Game, button: Button, action: &str) {
+fn pad_press(game: &mut crate::game::ClientGame<'_>, button: Button, action: &str) {
     assert!(
         game.settings
             .controller
             .actions_of(button)
             .contains(&action)
     );
-    game.pad.0.virtual_input = true;
+    game.side.pad.0.virtual_input = true;
     let mut state = PadState::default();
     // A trigger is held by how far it's pulled, not by a button bit.
     match button {
@@ -80,13 +77,13 @@ fn pad_press(game: &mut Game, button: Button, action: &str) {
         Button::RightTrigger => state.triggers[1] = 1.0,
         _ => state.set(button, true),
     }
-    game.pad.0.edges.update(&state, 0.4);
+    game.side.pad.0.edges.update(&state, 0.4);
     game.pad_button(&NoEventLoop, button, true).unwrap();
 }
 
 /// Release the sole held test button through the same dispatcher as its press.
-fn pad_release(game: &mut Game, button: Button) {
-    game.pad.0.edges.update(&PadState::default(), 0.4);
+fn pad_release(game: &mut crate::game::ClientGame<'_>, button: Button) {
+    game.side.pad.0.edges.update(&PadState::default(), 0.4);
     game.pad_button(&NoEventLoop, button, false).unwrap();
 }
 
@@ -150,7 +147,7 @@ fn pad_smooth_camera_binding_toggles_the_cinematic_camera() {
 }
 
 /// A player at the origin: the wheel's gates ask for one.
-fn with_player(game: &mut Game) {
+fn with_player(game: &mut crate::game::ServerGame<'_>) {
     game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
 }
 

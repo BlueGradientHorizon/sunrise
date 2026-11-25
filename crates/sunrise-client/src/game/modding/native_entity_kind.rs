@@ -153,7 +153,7 @@ mod tests {
     fn piston_reaction_and_hanging_class_follow_server_and_client_entities() {
         use mod_api::PushReaction::{IgnoreEntity, PushPull};
 
-        let read = |game: &Game<'_>, id| {
+        let read = |game: &crate::game::ServerGame<'_>, id| {
             let entity = game.entity(id).unwrap();
             (
                 entity.piston_push_reaction(game).unwrap().unwrap(),

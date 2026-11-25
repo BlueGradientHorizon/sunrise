@@ -645,7 +645,7 @@ pub(in crate::game) mod tests {
             assert_eq!(entity.position(game), Some([2.0, 64.0, 0.0]));
 
             let (record, calls) = std::sync::mpsc::channel();
-            let executor = game.client_tasks.0.executor("producer").unwrap();
+            let executor = game.side.client_tasks.0.executor("producer").unwrap();
             executor.execute(Box::new(move |host| {
                 record.send(entity.position(host)).unwrap()
             }));

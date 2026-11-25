@@ -29,7 +29,7 @@ impl Hooks for SmokeMod {
 }
 
 /// Whether the campfire at (0, 65, 0) is a signal fire.
-fn signal_fire(game: &super::Game<'_>) -> bool {
+fn signal_fire(game: &crate::game::ServerGame<'_>) -> bool {
     let state = game
         .pack
         .assets

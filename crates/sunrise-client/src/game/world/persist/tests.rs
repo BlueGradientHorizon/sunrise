@@ -8,7 +8,7 @@ mod transient_entities {
     use crate::game::native_entity_refs::tests::{bind_local_player, with_game};
     use mod_api::EntityRef;
 
-    fn with_server(test: impl FnOnce(&mut Game<'_>)) {
+    fn with_server(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         mod_platform::testing::with_mods(Default::default(), || {
             with_game(|game| {
                 game.world
@@ -19,7 +19,7 @@ mod transient_entities {
         });
     }
 
-    fn display(game: &mut Game<'_>) -> EntityRef {
+    fn display(game: &mut crate::game::ServerGame<'_>) -> EntityRef {
         let target = game
             .summon_with_nbt("minecraft:text_display", [4.0, 64.0, 4.0], "{}")
             .unwrap()
@@ -57,24 +57,24 @@ mod transient_entities {
         with_server(|game| {
             let display = display(game);
             game.save_entities(true).unwrap();
-            assert_eq!(game.save.0.load_entities(0, 0).unwrap().len(), 1);
+            assert_eq!(game.side.save.0.load_entities(0, 0).unwrap().len(), 1);
             assert_eq!(display.set_persistent(game, false), Ok(true));
             assert_eq!(
-                game.save.0.load_entities(0, 0).unwrap().len(),
+                game.side.save.0.load_entities(0, 0).unwrap().len(),
                 1,
                 "setting the flag does not rewrite an old snapshot"
             );
 
             let chunk = game.world.chunks.remove(&(0, 0)).unwrap();
             game.unload_entities(std::slice::from_ref(&chunk));
-            game.save.0.flush().unwrap();
+            game.side.save.0.flush().unwrap();
             assert_eq!(game.entity(display.id()), None);
-            let records = game.save.0.load_entities(0, 0).unwrap();
+            let records = game.side.save.0.load_entities(0, 0).unwrap();
             assert!(records.is_empty());
             game.world.chunks.insert((0, 0), chunk);
             game.world.queue_entity_nbt((0, 0), records);
             game.spawn_loaded_entities();
-            assert!(game.others.0.is_empty());
+            assert!(game.side.others.0.is_empty());
         });
     }
 
@@ -162,7 +162,7 @@ fn neutral_load_restores_only_the_saved_live_target_with_or_without_listeners() 
         }
     }
 
-    fn check(game: &mut Game<'_>, observed: Option<&Mutex<Vec<(u32, Option<u32>)>>>) {
+    fn check(game: &mut crate::game::ServerGame<'_>, observed: Option<&Mutex<Vec<(u32, Option<u32>)>>>) {
         let uuid = [274, 0, 0, 1];
         let entity_at_origin = |kind: &str| {
             let mut mob = entity(kind);
@@ -253,7 +253,7 @@ fn neutral_load_restores_only_the_saved_live_target_with_or_without_listeners() 
 #[ignore = "daily"]
 fn resident_other_and_fangs_load_tick_and_reset() {
     super::super::native_entity_refs::tests::with_game(|game| {
-        game.others.0.clear();
+        game.side.others.0.clear();
         game.fangs.list.clear();
         let tag = |kind| {
             let mut tag = entity(kind);
@@ -273,9 +273,9 @@ fn resident_other_and_fangs_load_tick_and_reset() {
         let id = game
             .load_other(tag("minecraft:marker"), "minecraft:marker")
             .unwrap();
-        assert_eq!(game.others.0[0].id, id);
-        let snapshot = game.others.0.to_vec();
-        game.others.0.update(0, |o| o.yaw = 90.0);
+        assert_eq!(game.side.others.0[0].id, id);
+        let snapshot = game.side.others.0.to_vec();
+        game.side.others.0.update(0, |o| o.yaw = 90.0);
         assert_eq!(snapshot[0].yaw, 0.0);
         game.load_unlisted(
             (0, 0),
@@ -294,9 +294,9 @@ fn resident_other_and_fangs_load_tick_and_reset() {
         assert_eq!(game.fangs.list.len(), 1);
         assert_eq!(game.fangs.list[0].id, survivor);
         assert_eq!(game.fangs.list[0].warmup, 39);
-        game.others.0.clear();
+        game.side.others.0.clear();
         game.fangs.list.clear();
-        assert!(game.others.0.is_empty() && game.fangs.list.is_empty());
+        assert!(game.side.others.0.is_empty() && game.fangs.list.is_empty());
     });
 }
 
@@ -309,7 +309,7 @@ fn comparator_and_hopper_live_state_survives_chunk_reload() {
 pub(in crate::game::server_side) fn run_comparator_and_hopper_live_state_survives_chunk_reload() {
     use super::super::{Audio, Options, Progress, Settings, load_resources};
     use sunrise_client::{containers::BlockEntity, items::ItemStack, save};
-    fn cooldown(game: &Game<'_>) -> i32 {
+    fn cooldown(game: &crate::game::ServerGame<'_>) -> i32 {
         match game
             .block_entity_nbt([3, 64, 3])
             .unwrap()
@@ -338,15 +338,12 @@ pub(in crate::game::server_side) fn run_comparator_and_hopper_live_state_survive
     options.resources = root.clone();
     options.headless = true;
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -534,9 +531,9 @@ pub(in crate::game::server_side) fn run_comparator_and_hopper_live_state_survive
         game.world.block_entities.insert(*p, entity.clone());
     }
     game.world.chunks.insert((0, 0), Arc::new(restored));
-    game.server.hoppers.clear();
+    game.side.hoppers.clear();
     game.block_ticks = sunrise_world::level::Ticks::new(0);
-    game.server.tick_chunks.clear();
+    game.side.tick_chunks.clear();
     // Frozen: data must already show the saved values before any tick.
     assert_eq!(
         game.block_entity_nbt([1, 64, 1])
@@ -573,7 +570,7 @@ pub(in crate::game::server_side) fn run_comparator_and_hopper_live_state_survive
     }
     game.world.chunks.clear();
     game.sync_tick_chunks();
-    assert!(!game.server.hoppers.contains_key(&hopper));
+    assert!(!game.side.hoppers.contains_key(&hopper));
     assert!(
         !game
             .block_ticks
@@ -837,15 +834,12 @@ fn an_older_save_loads_its_entities_attachments_back_onto_them() {
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
         None,
     )
     .unwrap();
@@ -984,15 +978,12 @@ fn a_lingering_cloud_leaves_with_its_chunk() {
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -1013,7 +1004,7 @@ fn a_lingering_cloud_leaves_with_its_chunk() {
             Tag::compound([("potion", Tag::String("minecraft:poison".into()))]),
         ),
     ]);
-    let clouds = |game: &Game| {
+    let clouds = |game: &crate::game::ServerGame<'_>| {
         game.breath_clouds
             .iter()
             .filter(|c| c.potion.is_some())
@@ -1118,15 +1109,12 @@ fn anger_at_a_mob_not_saved_yet_names_it() {
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -1212,8 +1200,8 @@ fn an_orb_saves_its_live_portal_cooldown() {
         let id = game.orbs[0].id;
         // One tick: the orb's own (ordered) tick, then Entity.handlePortal's
         // pass over the entities.
-        game.server.ordered.announced = sunrise_client::join_seq::JoinSeq::MAX;
-        game.tickets.0.update(None);
+        game.side.ordered.announced = sunrise_client::join_seq::JoinSeq::MAX;
+        game.side.tickets.0.update(None);
         game.begin_ordered_ticks();
         game.run_ordered_ticks(sunrise_client::join_seq::JoinSeq::MAX, false)
             .unwrap();

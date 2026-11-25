@@ -637,7 +637,7 @@ mod tests {
         }
     }
 
-    fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+    fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
             "backpack_fixture",
             Box::new(Backpack),
@@ -649,7 +649,7 @@ mod tests {
 
     /// Guest 1 (UUID 123) holding a shulker box in hotbar slot 0 with 64 stone in inventory
     /// slot 9.
-    fn backpack_guest(game: &mut Game<'_>) {
+    fn backpack_guest(game: &mut crate::game::ServerGame<'_>) {
         open_to_lan(game);
         let mut player = guest(1);
         player.selected = 0;
@@ -659,7 +659,7 @@ mod tests {
     }
 
     /// A 27-slot mod chest menu opened for guest 1: its window.
-    fn open_pack(game: &mut Game<'_>) -> i32 {
+    fn open_pack(game: &mut crate::game::ServerGame<'_>) -> i32 {
         let host: &mut dyn ServerHost = game;
         host.open_menu(
             123,
@@ -673,7 +673,7 @@ mod tests {
     }
 
     /// [`backpack_guest`] with the menu open: its window.
-    fn backpack_menu(game: &mut Game<'_>) -> i32 {
+    fn backpack_menu(game: &mut crate::game::ServerGame<'_>) -> i32 {
         backpack_guest(game);
         open_pack(game)
     }
@@ -754,7 +754,7 @@ mod tests {
     }
 
     /// The guest's record, to change their hands as a packet or a command would.
-    fn edit_guest(game: &mut Game<'_>, edit: impl FnOnce(&mut sunrise_client::lan::guest::Guest)) {
+    fn edit_guest(game: &mut crate::game::ServerGame<'_>, edit: impl FnOnce(&mut sunrise_client::lan::guest::Guest)) {
         let guests = &mut game.lan.as_mut().unwrap().hub.guests;
         let index = guests.connection_index(1).unwrap();
         guests.update(index, edit);
@@ -767,7 +767,7 @@ mod tests {
     }
 
     /// Stone in the box, inventory slot 9 and the menu's own slots: un-backing keeps it at 64.
-    fn stone(game: &mut Game<'_>, menu: MenuRef) -> u32 {
+    fn stone(game: &mut crate::game::ServerGame<'_>, menu: MenuRef) -> u32 {
         let host: &mut dyn ServerHost = game;
         let boxed: u32 = (0..27).map(|n| held_slot(n).amount(host)).sum();
         let own: u32 = (0..27)
@@ -833,7 +833,7 @@ mod tests {
             let host: &mut dyn ServerHost = game;
             let menu = host.menu(123, window).unwrap();
             let player = menu.fields().player;
-            let back = |game: &mut Game<'_>, places| {
+            let back = |game: &mut crate::game::ServerGame<'_>, places| {
                 game.player_back_mod_menu_slots(player, window, places)
             };
             assert_eq!(
@@ -875,7 +875,7 @@ mod tests {
             );
             // A window the player does not have open names no handle, in its own turn too.
             let refused = Err(MenuSlotBackRefusal::NoPlayerOrWindow);
-            let stale = |game: &mut Game<'_>| {
+            let stale = |game: &mut crate::game::ServerGame<'_>| {
                 game.player_back_mod_menu_slots(player, window + 1, held_places(Hand::Main, 0..1))
             };
             assert_eq!(stale(game), refused);
@@ -913,7 +913,7 @@ mod tests {
             .unwrap();
             let put = host.transaction(|host, tx| held_slot(4).insert(host, tx, &stone, 5));
             assert_eq!(put, Ok(5));
-            let shown = |game: &Game<'_>| {
+            let shown = |game: &crate::game::ServerGame<'_>| {
                 let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
                 guest.native_menu[4].as_ref().map(|s| s.count)
             };
@@ -969,7 +969,7 @@ mod tests {
                 })
                 .unwrap();
             assert_eq!(backed, Ok(()));
-            let shown = |game: &Game<'_>| {
+            let shown = |game: &crate::game::ServerGame<'_>| {
                 let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
                 guest.native_menu[4].as_ref().map(|s| s.count)
             };
@@ -1190,7 +1190,7 @@ mod tests {
         });
     }
 
-    fn open_back_and_shift_click(game: &mut Game<'_>) {
+    fn open_back_and_shift_click(game: &mut crate::game::ServerGame<'_>) {
         let pos = [1, 64, 2];
         game.world.chunks.insert(
             (0, 0),
@@ -1254,7 +1254,7 @@ mod tests {
             host.transaction(|host, tx| hidden.extract(host, tx, &stone, 5)),
             Ok(0)
         );
-        let contents = |game: &mut Game<'_>| {
+        let contents = |game: &mut crate::game::ServerGame<'_>| {
             (0..45)
                 .map(|slot| {
                     ItemPlace::MenuSlot { menu, slot }

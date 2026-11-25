@@ -13,7 +13,7 @@ use sunrise_core::geometry::Vec3;
 #[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
 
-pub(in crate::game) fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     crate::game::native_entity_refs::tests::with_game(|game| {
         game.build_registries();
         game.set_allow_commands(true);
@@ -25,7 +25,7 @@ pub(in crate::game) fn with_game(test: impl FnOnce(&mut Game<'_>)) {
 pub(in crate::game) use crate::game::server_side::commands_server::world_cmds::attribute_tests::say;
 
 /// The `attributes` list the next save writes for the player.
-pub(in crate::game) fn saved_attributes(game: &mut Game<'_>) -> Tag {
+pub(in crate::game) fn saved_attributes(game: &mut crate::game::ServerGame<'_>) -> Tag {
     game.sync_level();
     game.level
         .player_extra

@@ -363,15 +363,12 @@ pub(in crate::game) mod jukebox_play_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -544,7 +541,7 @@ pub(in crate::game) mod jukebox_component_tests {
     use sunrise_core::nbt::Tag;
     use sunrise_core::position::BlockPos;
 
-    fn comparator(game: &mut super::Game<'_>, stack: ItemStack) -> i32 {
+    fn comparator(game: &mut crate::game::ServerGame<'_>, stack: ItemStack) -> i32 {
         let key = (8, 64, 8);
         game.world.block_entities.insert(
             key,
@@ -613,7 +610,7 @@ pub(in crate::game) mod jukebox_component_tests {
             .unwrap();
         game.world.set(8, 64, 8, state).unwrap();
         let takes =
-            |game: &super::Game<'_>, stack: ItemStack| game.jukebox_takes([8, 64, 8], Some(&stack));
+            |game: &crate::game::ServerGame<'_>, stack: ItemStack| game.jukebox_takes([8, 64, 8], Some(&stack));
         assert!(takes(&game, ItemStack::new("minecraft:music_disc_cat", 1)));
         assert!(!takes(&game, ItemStack::new("minecraft:stone", 1)));
         let mut removed = ItemStack::new("minecraft:music_disc_cat", 1);
@@ -669,15 +666,12 @@ pub(in crate::game) mod block_change_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();

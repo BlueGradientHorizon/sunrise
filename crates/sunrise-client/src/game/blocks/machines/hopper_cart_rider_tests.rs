@@ -12,7 +12,7 @@ use super::super::{
 use sunrise_client::{containers::BlockEntity, items::ItemStack};
 use sunrise_core::geometry::Vec3;
 
-fn chest(game: &mut Game<'_>, x: i32) {
+fn chest(game: &mut crate::game::ServerGame<'_>, x: i32) {
     let registry = game.pack.assets.registry;
     let rail = registry.default_state("minecraft:rail").unwrap();
     let chest = registry.default_state("minecraft:chest").unwrap();
@@ -26,7 +26,7 @@ fn chest(game: &mut Game<'_>, x: i32) {
     );
 }
 
-fn counts(game: &Game<'_>, x: i32, id: u32) -> (u32, u32) {
+fn counts(game: &crate::game::ServerGame<'_>, x: i32, id: u32) -> (u32, u32) {
     let in_chest: u32 = match game.world.block_entities.get(&(x, 65, 8)) {
         Some(BlockEntity::Chest(s)) => s.iter().flatten().map(|s| s.count).sum(),
         _ => 0,

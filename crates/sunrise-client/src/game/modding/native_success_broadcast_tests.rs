@@ -70,7 +70,7 @@ impl mod_api::Hooks for Announce {
 
 /// A dedicated server with the `announce` commands and the four players of `PLAYERS`, whose
 /// chat each test reads (by conn).
-fn with_operators(test: impl FnOnce(&mut Game<'_>, &[(u32, mpsc::Receiver<Out>)])) {
+fn with_operators(test: impl FnOnce(&mut crate::game::ServerGame<'_>, &[(u32, mpsc::Receiver<Out>)])) {
     mod_platform::testing::with_mods(
         vec![mod_api::ModEntry::new("announce", Box::new(Announce))].into(),
         || {
@@ -115,7 +115,7 @@ fn with_operators(test: impl FnOnce(&mut Game<'_>, &[(u32, mpsc::Receiver<Out>)]
                     hub.guests.push(guest);
                     receivers.push((conn, rx));
                 }
-                game.server.next_entity = game.server.next_entity.max(NON_OP);
+                game.side.next_entity = game.side.next_entity.max(NON_OP);
                 game.ensure_datapacks();
                 game.build_registries();
                 // A dedicated server's command tree (`save-off`), as `run_dedicated` selects it
@@ -147,7 +147,7 @@ fn with_operators(test: impl FnOnce(&mut Game<'_>, &[(u32, mpsc::Receiver<Out>)]
 }
 
 /// The chat components each player was sent since the last read, by conn.
-fn chats(game: &Game<'_>, receivers: &[(u32, mpsc::Receiver<Out>)]) -> Vec<(u32, Vec<Value>)> {
+fn chats(game: &crate::game::ServerGame<'_>, receivers: &[(u32, mpsc::Receiver<Out>)]) -> Vec<(u32, Vec<Value>)> {
     for g in &game.lan.as_ref().unwrap().hub.guests {
         g.sender.flush();
     }
@@ -207,7 +207,7 @@ fn shape(line: &Value) -> Value {
     })
 }
 
-fn set_rules(game: &mut Game<'_>, send_command_feedback: bool, log_admin_commands: bool) {
+fn set_rules(game: &mut crate::game::ServerGame<'_>, send_command_feedback: bool, log_admin_commands: bool) {
     assert!(
         game.ui
             .rules
@@ -361,14 +361,14 @@ fn a_tracking_command_block_is_logged_while_feedback_is_off() {
                     .default_state("minecraft:command_block")
                     .unwrap();
                 game.world.set(1, 64, 1, state).unwrap();
-                let last_output = |game: &Game<'_>| match game.world.block_entities.get(&(1, 64, 1))
+                let last_output = |game: &crate::game::ServerGame<'_>| match game.world.block_entities.get(&(1, 64, 1))
                 {
                     Some(BlockEntity::CommandBlock(block)) => {
                         block.last_output.as_ref().map(|line| line.plain())
                     }
                     _ => panic!("the command block is gone"),
                 };
-                let run = |game: &mut Game<'_>, command: &str| {
+                let run = |game: &mut crate::game::ServerGame<'_>, command: &str| {
                     game.world.block_entities.insert(
                         (1, 64, 1),
                         BlockEntity::CommandBlock(Box::new(CommandBlock {
@@ -447,7 +447,7 @@ fn a_tracking_command_block_is_logged_while_feedback_is_off() {
 
 /// The queued ops lines, sent (`send_admin_feedback`) and shaped, by conn.
 fn admin_lines(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     receivers: &[(u32, mpsc::Receiver<Out>)],
 ) -> Vec<(u32, Vec<Value>)> {
     game.send_admin_feedback();
@@ -512,13 +512,13 @@ fn console_output_is_logged_and_broadcast_once() {
             with_operators(|game, receivers| {
                 chats(game, receivers);
                 set_rules(game, true, true);
-                let console = |game: &mut Game<'_>, rcon: bool, line: &str| {
-                    game.server.console_broadcast = Some(true);
-                    game.server.rcon_source = rcon;
+                let console = |game: &mut crate::game::ServerGame<'_>, rcon: bool, line: &str| {
+                    game.side.console_broadcast = Some(true);
+                    game.side.rcon_source = rcon;
                     let logged =
                         crate::game::dedicated::capture_log(|| game.console_dispatch(line));
-                    game.server.console_broadcast = None;
-                    game.server.rcon_source = false;
+                    game.side.console_broadcast = None;
+                    game.side.rcon_source = false;
                     logged
                 };
                 let nobody = vec![
@@ -557,7 +557,7 @@ fn console_output_is_logged_and_broadcast_once() {
                 // A vanilla reply the console broadcasts, through the dispatcher: once. `save-off`
                 // reads the dedicated server's lists.
                 let home = tempfile::tempdir().unwrap();
-                game.server_lists.0 = Some(Arc::new(std::sync::Mutex::new(
+                game.side.server_lists.0 = Some(Arc::new(std::sync::Mutex::new(
                     crate::game::dedicated::Lists {
                         ops: OpList::new(home.path().join("ops.json")),
                         white: WhiteList::new(home.path().join("whitelist.json")),

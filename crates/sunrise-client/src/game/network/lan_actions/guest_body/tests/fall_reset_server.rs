@@ -38,13 +38,13 @@ pub(in crate::game::server_side) use sunrise_protocol::packets::{
 pub(in crate::game) fn scene<'a>(
     resources: &'a mut Option<Arc<crate::game::Resources>>,
     scratch: &Path,
-) -> Game<'a> {
+) -> crate::game::ServerGame<'a> {
     let mut g = crate::game::game_tests::tests::server_game(resources);
     g.build_registries();
     g.set_allow_commands(true);
     let folder = scratch.join("data/fall/advancement");
     std::fs::create_dir_all(&folder).unwrap();
-    g.server.world_root = scratch.to_path_buf();
+    g.side.world_root = scratch.to_path_buf();
     for (name, distance) in CRITERIA.into_iter().zip([
         serde_json::Value::Null,
         serde_json::json!({"max": 1.0}),
@@ -108,6 +108,6 @@ pub(in crate::game) fn scene<'a>(
     guest.load_timeout = 0;
     g.lan.as_mut().unwrap().hub.guests.push(guest);
     g.sync_tick_chunks();
-    g.server.ticked_entities_through = g.server.next_entity;
+    g.side.ticked_entities_through = g.side.next_entity;
     g
 }

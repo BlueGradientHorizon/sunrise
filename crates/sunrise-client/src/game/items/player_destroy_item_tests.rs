@@ -159,7 +159,7 @@ fn original_stack_and_hand_reach_used_up_and_broken_item_notices() {
     );
 }
 
-fn refused_use_preserves_the_moved_stack(game: &mut Game<'_>, observer: &Observer) {
+fn refused_use_preserves_the_moved_stack(game: &mut crate::game::ServerGame<'_>, observer: &Observer) {
     let book = named_stack("minecraft:knowledge_book", 1);
     game.inventory[game.selected] = Some(book.clone());
     game.offhand = None;
@@ -175,7 +175,7 @@ fn refused_use_preserves_the_moved_stack(game: &mut Game<'_>, observer: &Observe
     game.offhand = None;
 }
 
-fn mining_reports_after_the_drop_hook(game: &mut Game<'_>, observer: &Observer) {
+fn mining_reports_after_the_drop_hook(game: &mut crate::game::ServerGame<'_>, observer: &Observer) {
     use sunrise_core::position::ChunkPos;
     game.block_ticks
         .add_empty_chunk(ChunkPos::new(0, 0))
@@ -207,7 +207,7 @@ fn mining_reports_after_the_drop_hook(game: &mut Game<'_>, observer: &Observer) 
     take_notice(observer, Some(Hand::Main), "minecraft:iron_pickaxe", 249);
 }
 
-fn continuations_preserve_listener_hand_writes(game: &mut Game<'_>, observer: &Observer) {
+fn continuations_preserve_listener_hand_writes(game: &mut crate::game::ServerGame<'_>, observer: &Observer) {
     // A broken steering stick must not install its fishing rod over the new stack.
     let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
     game.mobs
@@ -250,7 +250,7 @@ fn continuations_preserve_listener_hand_writes(game: &mut Game<'_>, observer: &O
     game.inventory[slot] = Some(bow.clone());
     game.offhand = Some(named_stack("minecraft:arrow", 1));
     observer.0.lock().unwrap().hand_write = Some(HandWrite::MoveBowAndReplace(replacement));
-    game.tick_crossbow(slot, Game::charge_ticks(&bow), &bow);
+    game.tick_crossbow(slot, crate::game::ServerGame::charge_ticks(&bow), &bow);
     let notice = take_notice(observer, Some(Hand::Off), "minecraft:arrow", 0);
     assert!(
         notice.in_hand.is_none(),
@@ -284,7 +284,7 @@ fn continuations_preserve_listener_hand_writes(game: &mut Game<'_>, observer: &O
     game.inventory[slot] = Some(bow.clone());
     game.offhand = None;
     game.using = None;
-    game.tick_crossbow(slot, Game::charge_ticks(&bow), &bow);
+    game.tick_crossbow(slot, crate::game::ServerGame::charge_ticks(&bow), &bow);
     assert!(game.stack_in(slot).is_none());
     let notice = take_notice(observer, Some(Hand::Main), "minecraft:crossbow", 0);
     assert_eq!(notice.original, bow.try_into_api().unwrap());
@@ -400,15 +400,15 @@ fn run_isolated() {
                     continuations_preserve_listener_hand_writes(game, &observer);
 
                     // The same notice identifies a swapped-in guest rather than the local host.
-                    game.server.lan_acting_uuid = Some(0x1111_2222_3333_4444_5555_6666_7777_8888);
-                    game.server.lan_acting_entity = Some(123);
+                    game.side.lan_acting_uuid = Some(0x1111_2222_3333_4444_5555_6666_7777_8888);
+                    game.side.lan_acting_entity = Some(123);
                     game.offhand = Some(named_stack("minecraft:apple", 1));
                     game.with_hand(Hand::Off, Game::consume_held);
                     let guest = take_notice(&observer, Some(Hand::Off), "minecraft:apple", 0);
                     assert_eq!(guest.player, 0x1111_2222_3333_4444_5555_6666_7777_8888);
                     assert_eq!(guest.entity, 123);
-                    game.server.lan_acting_uuid = None;
-                    game.server.lan_acting_entity = None;
+                    game.side.lan_acting_uuid = None;
+                    game.side.lan_acting_entity = None;
 
                     // Native entity interaction: the last wheat is eaten by an adult cow.
                     let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();

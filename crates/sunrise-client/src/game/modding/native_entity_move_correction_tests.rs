@@ -47,7 +47,7 @@ fn hosted_guest<R>(
     net: &str,
     boat: bool,
     mods: mod_api::Mods,
-    body: impl FnOnce(&mut crate::game::Game<'_>, std::sync::mpsc::Receiver<Out>, [f64; 3]) -> R,
+    body: impl FnOnce(&mut crate::game::ServerGame<'_>, std::sync::mpsc::Receiver<Out>, [f64; 3]) -> R,
 ) -> R {
     hosted_guest_starting(net, [0.5, 100.0, 0.5], SURVIVAL, boat, mods, body)
 }
@@ -61,7 +61,7 @@ fn hosted_guest_starting<R>(
     mode: i32,
     boat: bool,
     mods: mod_api::Mods,
-    body: impl FnOnce(&mut crate::game::Game<'_>, std::sync::mpsc::Receiver<Out>, [f64; 3]) -> R,
+    body: impl FnOnce(&mut crate::game::ServerGame<'_>, std::sync::mpsc::Receiver<Out>, [f64; 3]) -> R,
 ) -> R {
     mod_platform::testing::with_mods(mods, || {
         let mut resources = None;
@@ -162,14 +162,14 @@ fn hosted_guest_starting<R>(
             .guests
             .update(0, |g| g.game_mode = mode);
         game.sync_tick_chunks();
-        game.server.ticked_entities_through = game.server.next_entity;
+        game.side.ticked_entities_through = game.side.next_entity;
         body(&mut game, rx, at)
     })
 }
 
 /// The guest's client walks `by` blocks east: one `MovePlayerPos` in its
 /// inbox, through the hub's own packet tick.
-fn guest_walks(game: &mut crate::game::Game<'_>, by: f64) {
+fn guest_walks(game: &mut crate::game::ServerGame<'_>, by: f64) {
     let from = game.lan.as_ref().unwrap().hub.guests[0].position;
     game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
         g.inbox.push_back(InboxItem::Packet(
@@ -187,7 +187,7 @@ fn guest_walks(game: &mut crate::game::Game<'_>, by: f64) {
 
 /// The driver's client moves its vehicle `by` blocks east: one
 /// `MoveVehicle` in its inbox, through the hub's own packet tick.
-fn driver_moves_vehicle(game: &mut crate::game::Game<'_>, by: f64) {
+fn driver_moves_vehicle(game: &mut crate::game::ServerGame<'_>, by: f64) {
     let from = game.lan.as_ref().unwrap().hub.guests[0].position;
     game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
         g.inbox.push_back(InboxItem::Packet(
@@ -205,7 +205,7 @@ fn driver_moves_vehicle(game: &mut crate::game::Game<'_>, by: f64) {
 
 /// Whether the guest's client was sent a correction: the teleport the client
 /// must acknowledge (`awaiting_teleport`), for the guest's own packet.
-fn guest_corrected(game: &crate::game::Game<'_>) -> bool {
+fn guest_corrected(game: &crate::game::ServerGame<'_>) -> bool {
     game.lan.as_ref().unwrap().hub.guests[0]
         .awaiting_teleport
         .is_some()
@@ -215,7 +215,7 @@ fn guest_corrected(game: &crate::game::Game<'_>) -> bool {
 /// (`MoveVehicle` back to where the vehicle was). The tick holds what it
 /// sends a guest until its end, so the flush hands the batch over first —
 /// one packet or the batch, whichever form it takes.
-fn vehicle_put_back(game: &crate::game::Game<'_>, rx: &std::sync::mpsc::Receiver<Out>) -> bool {
+fn vehicle_put_back(game: &crate::game::ServerGame<'_>, rx: &std::sync::mpsc::Receiver<Out>) -> bool {
     sunrise_client::lan::flush_all(
         game.lan
             .as_ref()

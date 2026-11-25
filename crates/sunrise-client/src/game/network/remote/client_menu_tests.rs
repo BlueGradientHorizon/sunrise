@@ -4,14 +4,14 @@ use super::*;
 #[test]
 #[ignore = "daily"]
 fn inventory_repair_does_not_replace_an_open_menus_predicted_cursor() {
-    use crate::game::native_entity_refs::tests::with_game;
+    use crate::game::native_entity_refs::tests::{with_game, with_client_game};
     use sunrise_core::nbt::Tag;
     use sunrise_protocol::{
         item::Stack,
         packets::play::{self, Clientbound as C},
     };
 
-    with_game(|game| {
+    with_client_game(|game| {
         let (mut reader, _writer) = connect_menu_test(game);
         spawn_menu_test(game);
         let table = game
@@ -95,7 +95,7 @@ fn inventory_repair_does_not_replace_an_open_menus_predicted_cursor() {
 #[test]
 #[ignore = "daily"]
 fn retained_effects_rebind_on_reconfiguration_and_refusals_do_not_block_clicks() {
-    use crate::game::native_entity_refs::tests::with_game;
+    use crate::game::native_entity_refs::tests::{with_game, with_client_game};
     use std::sync::Arc;
     use sunrise_core::{nbt::Tag, vanilla_bytes::Writer};
     use sunrise_protocol::{
@@ -156,7 +156,7 @@ fn retained_effects_rebind_on_reconfiguration_and_refusals_do_not_block_clicks()
                 .unwrap();
             Arc::new(registry)
         };
-        with_game(|game| {
+        with_client_game(|game| {
             let (mut reader, _writer) = connect_menu_test(game);
             spawn_menu_test(game);
             let item = game.item_id("minecraft:stone");
@@ -183,7 +183,7 @@ fn retained_effects_rebind_on_reconfiguration_and_refusals_do_not_block_clicks()
                 sent.component(component::DEATH_PROTECTION),
                 Some(&Component::Raw(vec![1, 6, 7]))
             );
-            let expected_hash = |stack, game: &crate::game::Game<'_>| {
+            let expected_hash = |stack, game: &crate::game::ClientGame<'_>| {
                 let names = SyncedNames {
                     builtin: &game.remote.as_ref().unwrap().builtin,
                     dynamic: &new,
@@ -239,14 +239,14 @@ fn client_menu_kind_names_the_server_menu_type() {
     crate::game::in_own_process(
         "game::remote::tests::client_menu_tests::client_menu_kind_names_the_server_menu_type",
         || {
-            use crate::game::native_entity_refs::tests::with_game;
+            use crate::game::native_entity_refs::tests::{with_game, with_client_game};
             use sunrise_core::nbt::Tag;
             use sunrise_protocol::packets::play::{self, Clientbound as C};
 
-            with_game(|game| {
+            with_client_game(|game| {
                 let (_reader, _writer) = connect_menu_test(game);
                 spawn_menu_test(game);
-                let live = |game: &super::Game<'_>| {
+                let live = |game: &crate::game::ClientGame<'_>| {
                     game.local_player()
                         .and_then(|player| game.player_container_menu(player))
                         .unwrap()

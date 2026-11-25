@@ -72,25 +72,25 @@ fn mods(probes: &[(&'static str, &Arc<Mutex<Probe>>)]) -> mod_api::Mods {
 
 /// A server's caster (UUID 7, entity 20) at `FEET` over an empty chunk of air, rod in hand,
 /// with the server's loot tables loaded.
-fn caster(game: &mut Game<'_>) {
+fn caster(game: &mut crate::game::ServerGame<'_>) {
     game.world
         .chunks
         .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
     game.player =
         Some(PlayerMotion::new(game.motion, Vec3::new(FEET[0], FEET[1], FEET[2])).unwrap());
     game.inventory[game.selected] = Some(ItemStack::new("minecraft:fishing_rod", 1));
-    game.server.lan_acting_uuid = Some(7);
-    game.server.lan_acting_entity = Some(20);
+    game.side.lan_acting_uuid = Some(7);
+    game.side.lan_acting_entity = Some(20);
     let loot = sunrise_world::loot::LootData::load(
         &game.options.resources,
         &Default::default(),
         game.res.item_defaults(),
     )
     .unwrap();
-    game.server_loot.0.set(Some(Arc::new(loot)));
+    game.side.server_loot.0.set(Some(Arc::new(loot)));
 }
 /// Cast a bobber at (5.5, 66, 0.5), over the air, and tick it `ticks` times: its id.
-fn cast(game: &mut Game<'_>, ticks: usize) -> u32 {
+fn cast(game: &mut crate::game::ServerGame<'_>, ticks: usize) -> u32 {
     let id = game.take_entity_id();
     let mut bobber = Hook::remote(id, Vec3::new(5.5, 66.0, 0.5), [0; 4]);
     bobber.random = LegacyRandom::new(1);
@@ -100,7 +100,7 @@ fn cast(game: &mut Game<'_>, ticks: usize) -> u32 {
     }
     id
 }
-fn bobber_y(game: &mut Game<'_>) -> f64 {
+fn bobber_y(game: &mut crate::game::ServerGame<'_>) -> f64 {
     game.hook.as_mut().expect("the bobber stays out").position.y
 }
 
@@ -134,7 +134,7 @@ fn a_mods_medium_floats_the_bobber_and_its_catch_rolls_the_checked_table() {
     mod_platform::testing::with_mods(mods(&[("medium", &medium)]), || {
         with_game(|game| {
             let scratch = tempfile::tempdir().unwrap();
-            game.server.world_root = scratch.path().into();
+            game.side.world_root = scratch.path().into();
             caster(game);
 
             // Answered None: asked, and the bobber falls as vanilla's.

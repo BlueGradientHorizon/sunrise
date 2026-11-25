@@ -29,14 +29,14 @@ fn remote_clicks_find_slots_past_the_old_large_chest_cutoff() {
         ("inventory", 504, 45),
     ] {
         assert_eq!(
-            Game::menu_slot_index(menu, internal),
+            crate::game::ClientGame::menu_slot_index(menu, internal),
             Some(index),
             "{menu}, game slot {internal}"
         );
     }
-    assert_eq!(Game::menu_slot_index("minecraft:generic_9x6", 354), None);
-    assert_eq!(Game::menu_slot_index("minecraft:generic_9x6", 504), None);
-    assert_eq!(Game::menu_slot_index("unknown", 0), None);
+    assert_eq!(crate::game::ClientGame::menu_slot_index("minecraft:generic_9x6", 354), None);
+    assert_eq!(crate::game::ClientGame::menu_slot_index("minecraft:generic_9x6", 504), None);
+    assert_eq!(crate::game::ClientGame::menu_slot_index("unknown", 0), None);
 }
 
 #[test]

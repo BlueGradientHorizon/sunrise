@@ -4,7 +4,7 @@
 //! view centre moving away hides slots untold.
 use crate::game::Game;
 use crate::game::execution_role::ExecutionRole;
-use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_role};
+use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_role, with_game_role_client};
 use crate::game::remote::RemoteDimensionEntry;
 use mod_api::{ClientChunkLoadEvent, ClientChunkUnloadEvent, ClientHost, Hooks};
 use std::sync::Mutex;
@@ -53,15 +53,15 @@ fn take_calls() -> Vec<Call> {
     std::mem::take(&mut *CALLS.lock().unwrap())
 }
 
-fn with_client(f: impl FnOnce(&mut Game<'_>)) {
+fn with_client(f: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("chunk_probe", Box::new(Probe))].into();
     mod_platform::testing::with_mods(mods, || with_loopback(f));
 }
 
-fn with_loopback(f: impl FnOnce(&mut Game<'_>)) {
+fn with_loopback(f: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let root = crate::game::mods::content_root(&base, &Default::default()).unwrap();
-    with_game_role(
+    with_game_role_client(
         root.prepared().to_path_buf(),
         ExecutionRole::Client,
         |game| {
@@ -96,7 +96,7 @@ fn overworld() -> SpawnInfo {
 }
 
 /// A chunk packet for column `(x, z)` with stone at its local `(0, 64, 0)`.
-fn stone_column(game: &Game<'_>, x: i32, z: i32) -> LevelChunkWithLight {
+fn stone_column(game: &crate::game::ClientGame<'_>, x: i32, z: i32) -> LevelChunkWithLight {
     let air = game.res.facts().air.0 as i32;
     let stone = game
         .pack

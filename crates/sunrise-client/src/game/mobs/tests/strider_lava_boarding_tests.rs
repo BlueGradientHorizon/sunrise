@@ -9,7 +9,7 @@ use sunrise_core::geometry::Vec3;
 
 /// Runs the fluid scan `Entity.updateFluidInteraction` would do on the mob's
 /// next tick, over the game's current world.
-fn scan_fluids(game: &mut Game<'_>) {
+fn scan_fluids(game: &mut crate::game::ServerGame<'_>) {
     let fluids = {
         let w = game.mob_world_base(&[]);
         let m = &game.mobs[0];

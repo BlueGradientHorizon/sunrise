@@ -23,15 +23,12 @@ fn warning_dispatch_uses_neutral_at_tick_four() {
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -44,7 +41,7 @@ fn warning_dispatch_uses_neutral_at_tick_four() {
             .as_nanos()
     ));
     std::fs::create_dir_all(&scratch).unwrap();
-    game.server.world_root = scratch.clone();
+    game.side.world_root = scratch.clone();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 100.0, 4.5)).unwrap());
 
     const WARNING: &str = "minecraft:block.trial_spawner.about_to_spawn_item";
@@ -174,7 +171,7 @@ fn taken_spawner_tick_keeps_survivors_before_both_spawns() {
         }
         let first = game.ominous_spawners[0].id;
         let second = game.ominous_spawners[1].id;
-        let next = game.server.next_entity;
+        let next = game.side.next_entity;
         crate::game::entity::taken_pass_tests::with_spawn(
             |game| {
                 assert!(game.ominous_spawners.is_empty());

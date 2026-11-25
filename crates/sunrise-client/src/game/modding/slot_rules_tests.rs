@@ -71,7 +71,7 @@ fn chest(carried: (&str, u32)) -> Menu {
     menu
 }
 /// What a pickup click on slot 0 leaves: the slot and the cursor.
-fn pickup(game: &crate::game::Game<'_>, menu: &mut Menu) -> (u32, u32) {
+fn pickup(game: &crate::game::ServerGame<'_>, menu: &mut Menu) -> (u32, u32) {
     menu.click(&game.menu_env(), 0, 0, Input::Pickup).unwrap();
     (
         menu.slot(0).map_or(0, |s| s.count),
@@ -298,7 +298,7 @@ fn a_failing_slot_rule_does_not_override_or_disable_the_other_parts() {
 fn without_a_part_nothing_is_asked_and_the_click_is_the_same() {
     // The same click with no mod installed, with a mod that has no part, and with a part on
     // another menu type: the final state is identical and the part is never asked.
-    let run = |game: &crate::game::Game<'_>, registry: &str| {
+    let run = |game: &crate::game::ServerGame<'_>, registry: &str| {
         let mut menu = chest(("minecraft:stone", 8));
         menu.set_registry_id(Some(registry));
         pickup(game, &mut menu)

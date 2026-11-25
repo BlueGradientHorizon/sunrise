@@ -15,7 +15,7 @@ const CASES: [(&str, &str); 3] = [
     ("radius 12", ",home_pos:[I;{x},200,4],home_radius:12"),
 ];
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);
@@ -62,14 +62,14 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     game
 }
 
-fn id(game: &Game<'_>, n: usize) -> u32 {
+fn id(game: &crate::game::ServerGame<'_>, n: usize) -> u32 {
     match game.target_with_uuid([24732, 0, 0, n as i32]) {
         Some(crate::game::commands::Target::Mob(id)) => id,
         other => panic!("{other:?}"),
     }
 }
 
-fn step(game: &mut Game<'_>, ticks: u32) {
+fn step(game: &mut crate::game::ServerGame<'_>, ticks: u32) {
     assert!(game.run_command(&format!("tick step {ticks}")));
     for _ in 0..ticks {
         game.tick_server(false).unwrap();

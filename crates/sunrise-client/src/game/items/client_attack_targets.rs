@@ -164,7 +164,7 @@ mod tests {
     }
 
     fn finish_login(
-        game: &mut crate::game::Game<'_>,
+        game: &mut crate::game::ClientGame<'_>,
         server: &mut sunrise_protocol::connection::Connection,
     ) {
         use sunrise_protocol::packets::{Empty, configuration as cfg, login};
@@ -203,7 +203,7 @@ mod tests {
 
     /// A FIFO swing packet fences the real connection's outgoing attack packets.
     fn sent_attacks(
-        game: &Game<'_>,
+        game: &crate::game::ClientGame<'_>,
         server: &mut sunrise_protocol::connection::Connection,
     ) -> Vec<i32> {
         use sunrise_protocol::packets::{Empty, play::Serverbound as S};
@@ -251,7 +251,7 @@ mod tests {
                 finish_login(game, &mut server);
                 game.native_lifecycle
                     .begin_open(mod_api::Authority::RemoteClient);
-                game.title.0 = None;
+                game.side.title.0 = None;
                 game.player =
                     Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 1.0, 0.5)).unwrap());
                 game.entity_reach = 3.0;

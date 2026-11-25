@@ -87,7 +87,7 @@ impl Hooks for Probe {
 /// Runs `hit` in a game with the probe installed: the attacker (a player or a mob) is the one
 /// the listener draws on. Checks the two queued sounds, the seeds against a stream seeded
 /// independently, the attacker's stream and the level's random.
-fn check(attacker: i32, expected_at: [f64; 3], hit: impl FnOnce(&mut super::Game<'_>)) {
+fn check(attacker: i32, expected_at: [f64; 3], hit: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let handles = Arc::new(Mutex::new(Handles::default()));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "probe",
@@ -122,8 +122,8 @@ fn check(attacker: i32, expected_at: [f64; 3], hit: impl FnOnce(&mut super::Game
                     seed: 0,
                     max_players: 2,
                     integrated: true,
-                    levels: game.server.level_shapes,
-                    level_seeds: game.levels.0.runtime.seeds(),
+                    levels: game.side.level_shapes,
+                    level_seeds: game.side.levels.0.runtime.seeds(),
                 },
             )
             .unwrap();
@@ -161,11 +161,11 @@ fn check(attacker: i32, expected_at: [f64; 3], hit: impl FnOnce(&mut super::Game
                 .hub
                 .set_sound_seeds(LegacyRandom::new(0x5eed));
             let mut level_random = game.world.random.clone();
-            game.server.pending_native_sounds.clear();
+            game.side.pending_native_sounds.clear();
 
             hit(game);
 
-            let sounds = &game.server.pending_native_sounds;
+            let sounds = &game.side.pending_native_sounds;
             assert_eq!(sounds.len(), 2);
             assert_eq!(sounds[0].sound, "minecraft:entity.player.attack.strong");
             assert_eq!(sounds[0].at, [1.0, 64.0, 2.0]);

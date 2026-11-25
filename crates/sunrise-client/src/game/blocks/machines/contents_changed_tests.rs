@@ -183,7 +183,7 @@ impl Hooks for Observed {
 fn with_changes(
     name: &str,
     action: NoticeAction,
-    test: impl FnOnce(&mut Game<'_>, LevelRef, Changes),
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, LevelRef, Changes),
 ) {
     if run_fresh_cases(name, "SUNRISE_CONTENTS_CHANGED_CHILD", &["game"]) {
         return;
@@ -214,7 +214,7 @@ fn with_changes(
     });
 }
 
-fn place(game: &mut Game<'_>, level: LevelRef, pos: [i32; 3], block: &str) {
+fn place(game: &mut crate::game::ServerGame<'_>, level: LevelRef, pos: [i32; 3], block: &str) {
     let state = game.pack.assets.registry.default_state(block).unwrap();
     assert_eq!(
         game.level_set_block(level, pos, state, BlockUpdateFlags::NONE),
@@ -432,7 +432,7 @@ fn a_panicking_part_does_not_leave_its_contents_notice_guarded() {
                 }],
                 "the same-position notice does not re-enter, and the Part stays disabled"
             );
-            assert!(game.server.contents_changing.is_empty());
+            assert!(game.side.contents_changing.is_empty());
             assert_eq!(
                 mod_api::__private::take_hook_panics(),
                 [mod_api::__private::HookPanicReport {
@@ -922,7 +922,7 @@ fn a_panicking_root_commit_notice_leaves_the_phase_none() {
                 }],
                 "the Part is skipped at the next root commit"
             );
-            assert!(game.server.contents_changing.is_empty());
+            assert!(game.side.contents_changing.is_empty());
             assert!(game.world.modified.contains(&chunk));
             assert_eq!(
                 mod_api::__private::take_hook_panics(),

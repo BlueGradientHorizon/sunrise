@@ -4,7 +4,7 @@ use super::native_guest_turn_tests::with_guests;
 use mod_api::{Hooks, PlayerRespawnedEvent, RespawnRefusal, ServerHost, prelude::*};
 use std::sync::{Arc, Mutex};
 
-fn set_dead(game: &mut super::Game<'_>, conn: u32, dead: bool) {
+fn set_dead(game: &mut crate::game::ServerGame<'_>, conn: u32, dead: bool) {
     game.lan
         .as_mut()
         .unwrap()
@@ -16,7 +16,7 @@ fn set_dead(game: &mut super::Game<'_>, conn: u32, dead: bool) {
         });
 }
 
-fn is_dead(game: &super::Game<'_>, conn: u32) -> bool {
+fn is_dead(game: &crate::game::ServerGame<'_>, conn: u32) -> bool {
     game.lan.as_ref().unwrap().hub.guest(conn).unwrap().dead
 }
 

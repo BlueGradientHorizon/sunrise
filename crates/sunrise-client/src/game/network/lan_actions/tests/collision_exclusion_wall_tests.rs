@@ -6,7 +6,7 @@ use sunrise_core::geometry::Vec3;
 
 /// A player-sized body at (3.5, 64, 5.5): stone in its column (3, 64..=65, 5) and on its west,
 /// north and south sides, so east is the one free side.
-fn walled(game: &mut Game<'_>) {
+fn walled(game: &mut crate::game::ServerGame<'_>) {
     let mut chunk = sunrise_client::chunk::Chunk::empty(0, 0);
     chunk.lit = true;
     game.world.chunks.insert((0, 0), Arc::new(chunk));
@@ -23,7 +23,7 @@ fn walled(game: &mut Game<'_>) {
     }
 }
 
-fn exclude(game: &mut Game<'_>, boxes: &[[f64; 6]]) {
+fn exclude(game: &mut crate::game::ServerGame<'_>, boxes: &[[f64; 6]]) {
     let hub = &mut game.lan.as_mut().unwrap().hub;
     hub.update_guest(12, |g| g.collision_exclusions.set(boxes))
         .unwrap()
@@ -69,7 +69,7 @@ fn a_block_in_a_players_exclusions_does_not_push_it_out() {
         let mut body =
             sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(3.5, 64.0, 5.5))
                 .unwrap();
-        let nudge = |game: &Game<'_>, body: &sunrise_client::motion::PlayerMotion| {
+        let nudge = |game: &crate::game::ServerGame<'_>, body: &sunrise_client::motion::PlayerMotion| {
             crate::game::closest_space_nudge(
                 body,
                 &game.world,

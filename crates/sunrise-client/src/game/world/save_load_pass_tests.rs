@@ -80,8 +80,8 @@ fn loaded_queue_join_save_refuses_without_losing_remaining_rows() {
             "both loaded rows must notify"
         );
         assert_eq!(game.dropped.len(), 2, "both rows remain live");
-        game.save.0.flush().unwrap();
-        let disk = game.save.0.load_entities(0, 0).unwrap();
+        game.side.save.0.flush().unwrap();
+        let disk = game.side.save.0.load_entities(0, 0).unwrap();
         assert!(
             succeeded.load(Ordering::SeqCst) == 0 && disk.is_empty(),
             "nested save result {}; disk contains {} rows while both rows remain live",
@@ -90,7 +90,7 @@ fn loaded_queue_join_save_refuses_without_losing_remaining_rows() {
         );
         game.save_game().unwrap();
         assert_eq!(
-            game.save.0.load_entities(0, 0).unwrap().len(),
+            game.side.save.0.load_entities(0, 0).unwrap().len(),
             2,
             "settled save must keep both rows"
         );

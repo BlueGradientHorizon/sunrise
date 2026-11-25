@@ -33,7 +33,7 @@ fn terrain_sources_are_kept_only_while_a_pack_is_loaded() {
         let _event_loop = frame_scene(game);
         let sky = sunrise_client::environment::Sky::default();
         let camera = glam::DVec3::new(0.5, 65.5, 0.5);
-        let renderer = game.renderer.0.as_mut().expect("a renderer");
+        let renderer = game.side.renderer.0.as_mut().expect("a renderer");
         // Flat draws are what read the sources: a device without them keeps none, and has
         // nothing for this case to check.
         if renderer.set_flat_draws(true).is_err() {
@@ -41,11 +41,11 @@ fn terrain_sources_are_kept_only_while_a_pack_is_loaded() {
             return;
         }
         assert!(!renderer.keeps_pack_sources(), "no pack yet");
-        let kept_after = |game: &mut crate::game::Game<'_>, frames: usize| {
+        let kept_after = |game: &mut crate::game::ClientGame<'_>, frames: usize| {
             for _ in 0..frames {
                 game.shader_pack_inputs(camera, camera, 0.0, &sky);
             }
-            game.renderer.0.as_ref().unwrap().keeps_pack_sources()
+            game.side.renderer.0.as_ref().unwrap().keeps_pack_sources()
         };
         // The first frame turns the resource packs' material maps on and reloads them, the
         // next loads the pack, and the one after meshes with its sources.

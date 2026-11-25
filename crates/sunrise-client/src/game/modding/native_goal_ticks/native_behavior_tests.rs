@@ -109,7 +109,7 @@ fn wrapped(min: i32, max: i32, behavior: Box<dyn Behavior>) -> mobs::mod_behavio
 /// lifted out of the game, the world with the goal host beside it, and a
 /// level random the test owns, all handed to `drive` together.
 fn with_mob_world(
-    game: &mut super::super::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     drive: impl FnOnce(&mut Mob, &MobWorld<'_>, &mut DamageLevel<'_>),
 ) {
     game.options.dedicated = Some(Vec::new());
@@ -359,7 +359,7 @@ impl Behavior for WalkWriter {
 
 /// `with_game` over a phase that answers its random states.
 fn with_game_states(
-    phase: fn(&mut super::super::Game<'_>) -> ((u64, Option<f64>), (u64, Option<f64>)),
+    phase: fn(&mut crate::game::ServerGame<'_>) -> ((u64, Option<f64>), (u64, Option<f64>)),
 ) -> ((u64, Option<f64>), (u64, Option<f64>)) {
     let mut states = None;
     with_game(|game| states = Some(phase(game)));
@@ -367,7 +367,7 @@ fn with_game_states(
 }
 
 /// A villager in the game's list, as `Mob::new` builds it.
-fn villager(game: &mut super::super::Game<'_>, id: u32, at: [f64; 3]) {
+fn villager(game: &mut crate::game::ServerGame<'_>, id: u32, at: [f64; 3]) {
     use sunrise_core::geometry::Vec3;
     let kind = game
         .res
@@ -385,7 +385,7 @@ fn villager(game: &mut super::super::Game<'_>, id: u32, at: [f64; 3]) {
 /// level random, all handed to `f` together. `level` is the caller's, so a
 /// run of ticks draws one stream.
 fn with_villager_tick(
-    game: &mut super::super::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     id: u32,
     game_time: i64,
     day_time: i64,
@@ -410,7 +410,7 @@ fn with_villager_tick(
 
 /// `villager_brain::tick` once at this time, on the caller's level random.
 fn villager_tick(
-    game: &mut super::super::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     id: u32,
     game_time: i64,
     day_time: i64,
@@ -431,7 +431,7 @@ fn villager_tick(
 /// The mob's own random and the level random after a run of ticks: what the
 /// zero-cost test compares.
 fn random_states(
-    game: &mut super::super::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     id: u32,
     level: &mut DamageLevel<'_>,
 ) -> ((u64, Option<f64>), (u64, Option<f64>)) {
@@ -670,7 +670,7 @@ fn a_villager_without_mod_behaviors_draws_what_a_parts_free_one_does() {
     let _test = TEST.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     // The 50-tick run of one phase: the same villager spot, the same game
     // times, one level random of the test's own.
-    fn fifty_ticks(game: &mut super::super::Game<'_>) -> ((u64, Option<f64>), (u64, Option<f64>)) {
+    fn fifty_ticks(game: &mut crate::game::ServerGame<'_>) -> ((u64, Option<f64>), (u64, Option<f64>)) {
         villager(game, 8, [3.5, 65.0, 3.5]);
         let mut test_level = sunrise_client::health::TestLevel::new(0);
         let mut level = test_level.level();
@@ -705,7 +705,7 @@ fn a_villager_without_mod_behaviors_draws_what_a_parts_free_one_does() {
 // ---- The animal brain (the second wiring) --------------------------------
 
 /// A mob of `kind` in the game's list, as `Mob::new` builds it.
-fn mob_of(game: &mut super::super::Game<'_>, kind: &str, id: u32, at: [f64; 3]) {
+fn mob_of(game: &mut crate::game::ServerGame<'_>, kind: &str, id: u32, at: [f64; 3]) {
     use sunrise_core::geometry::Vec3;
     let kind = game.res.mob_types().get(kind).unwrap().clone();
     let mut m = Mob::new(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0);
@@ -715,7 +715,7 @@ fn mob_of(game: &mut super::super::Game<'_>, kind: &str, id: u32, at: [f64; 3]) 
 
 /// `animal_brain::tick` once at this time, on the caller's level random.
 fn animal_tick(
-    game: &mut super::super::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     id: u32,
     game_time: i64,
     day_time: i64,
@@ -889,7 +889,7 @@ fn grown_up_stops_a_running_ghastling_behavior() {
 
 /// `monster_brain::tick` once at this time, on the caller's level random.
 fn monster_tick(
-    game: &mut super::super::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     id: u32,
     game_time: i64,
     day_time: i64,
@@ -909,7 +909,7 @@ fn monster_tick(
 
 /// `warden_brain::tick` once at this time, on the caller's level random.
 fn warden_tick(
-    game: &mut super::super::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     id: u32,
     game_time: i64,
     day_time: i64,

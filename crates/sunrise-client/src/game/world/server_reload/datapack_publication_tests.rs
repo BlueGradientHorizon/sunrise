@@ -76,7 +76,7 @@ fn recipe_priority_layer_is_named_and_applied_through_reload() {
     let path = pack.join(RECIPE_PRIORITIES_PATH);
     write(&path, r#"{"entries":{"priority_fixture:b":5}}"#);
     with_game(|game| {
-        let order = |game: &Game<'_>| {
+        let order = |game: &crate::game::ServerGame<'_>| {
             game.recipes().by_type["minecraft:crafting"]
                 .iter()
                 .filter(|row| row.id.starts_with("priority_fixture:"))
@@ -109,7 +109,7 @@ fn recipe_priority_layer_is_named_and_applied_through_reload() {
     });
 }
 
-fn power(game: &crate::game::Game<'_>) -> DatapackValue {
+fn power(game: &crate::game::ServerGame<'_>) -> DatapackValue {
     let set = game.mods.datapack_registries.as_ref().unwrap();
     set.get("registry_test:spell", "registry_test:fire")
         .unwrap()
@@ -161,11 +161,11 @@ fn datapack_game_open_reload_and_exhaustion_are_atomic() {
                 game.pack.data_changes = source;
                 game.load_world(request(root)).unwrap();
                 assert_eq!(
-                    game.fns.0.store.predicates["registry_test:native"]["chance"],
+                    game.side.fns.0.store.predicates["registry_test:native"]["chance"],
                     1
                 );
                 assert_eq!(
-                    game.fns.0.store.item_modifiers["registry_test:native"]["count"],
+                    game.side.fns.0.store.item_modifiers["registry_test:native"]["count"],
                     3
                 );
                 assert_eq!(power(game), DatapackValue::Int(7));
@@ -229,7 +229,7 @@ fn datapack_game_open_reload_and_exhaustion_are_atomic() {
                 ));
                 assert_eq!(power(game), DatapackValue::Int(7));
                 let old_files = game
-                    .world_tables
+                    .side.world_tables
                     .0
                     .as_ref()
                     .map(|tables| tables.files.clone());
@@ -242,7 +242,7 @@ fn datapack_game_open_reload_and_exhaustion_are_atomic() {
                     &old
                 ));
                 assert_eq!(
-                    game.world_tables
+                    game.side.world_tables
                         .0
                         .as_ref()
                         .map(|tables| tables.files.clone()),
@@ -345,7 +345,7 @@ fn world_open_and_wire_use_the_pack_biome_instead_of_the_bundled_file() {
         game.load_world(request(&world)).unwrap();
         let sync = crate::game::lan::sync::cached_reload_sync().unwrap();
         let biome = sync
-            .registry_packets(true, &game.server.level_shapes)
+            .registry_packets(true, &game.side.level_shapes)
             .into_iter()
             .find(|registry| registry.registry == BIOME_REGISTRY)
             .unwrap()
@@ -458,7 +458,7 @@ mod datapack_host_read_tests;
 mod datapack_game_delivery_tests;
 
 // Each case uses real world open/reload, not a preloaded membership predicate.
-fn with_membership_fixture(run: impl FnOnce(&mut crate::game::Game<'_>, &Path)) {
+fn with_membership_fixture(run: impl FnOnce(&mut crate::game::ServerGame<'_>, &Path)) {
     let _publication = sunrise_client::datapack_net::isolate_server_publication();
     let scratch = tempfile::tempdir().unwrap();
     let root = scratch.path();
@@ -494,8 +494,8 @@ fn with_membership_fixture(run: impl FnOnce(&mut crate::game::Game<'_>, &Path)) 
         },
     );
 }
-fn weights<'game>(game: &'game crate::game::Game<'_>) -> &'game [(String, Tag)] {
-    game.world_tables
+fn weights<'game>(game: &'game crate::game::ServerGame<'_>) -> &'game [(String, Tag)] {
+    game.side.world_tables
         .0
         .as_ref()
         .unwrap()

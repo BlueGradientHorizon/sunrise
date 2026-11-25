@@ -12,7 +12,7 @@ const EMPTY: &str = "0000609b-0000-0000-0000-000000000001";
 const CHANCES: &str = "0000609b-0000-0000-0000-000000000002";
 const OCCUPIED: &str = "0000609b-0000-0000-0000-000000000003";
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);
@@ -36,7 +36,7 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     game
 }
 
-fn id(game: &Game<'_>, uuid: &str) -> u32 {
+fn id(game: &crate::game::ServerGame<'_>, uuid: &str) -> u32 {
     match game.target_with_uuid(sunrise_client::save::uuid_from_text(uuid).unwrap()) {
         Some(crate::game::commands::Target::Mob(id)) => id,
         other => panic!("{other:?}"),
@@ -44,17 +44,17 @@ fn id(game: &Game<'_>, uuid: &str) -> u32 {
 }
 
 /// `OfferFlowerGoal.stop` for the golem whose UUID is `uuid`.
-fn gift(game: &mut Game<'_>, uuid: &str) {
+fn gift(game: &mut crate::game::ServerGame<'_>, uuid: &str) {
     gift_item(game, uuid, "minecraft:poppy");
 }
 
-fn gift_item(game: &mut Game<'_>, uuid: &str, item: &'static str) {
+fn gift_item(game: &mut crate::game::ServerGame<'_>, uuid: &str, item: &'static str) {
     let target = id(game, uuid);
     game.handle_mob_events(vec![MobEvent::Gift { target, item }])
         .unwrap();
 }
 
-fn holds(game: &mut Game<'_>, uuid: &str, nbt: &str) -> bool {
+fn holds(game: &mut crate::game::ServerGame<'_>, uuid: &str, nbt: &str) -> bool {
     game.run_command(&format!(
         "execute if entity @e[nbt={{UUID:{}}},nbt={nbt}]",
         ints(uuid)
@@ -160,7 +160,7 @@ fn an_antenna_that_holds_an_item_keeps_it_and_its_chance() {
 
 /// The effective chance of each slot (`Mob.dropChances.byEquipment`), as a
 /// death drop reads it, in `EquipmentSlot.VALUES` order.
-fn effective(game: &Game<'_>, uuid: &str) -> Vec<f32> {
+fn effective(game: &crate::game::ServerGame<'_>, uuid: &str) -> Vec<f32> {
     let m = game.mobs.iter().find(|m| m.id == id(game, uuid)).unwrap();
     sunrise_client::mobs::drops::SLOTS
         .iter()

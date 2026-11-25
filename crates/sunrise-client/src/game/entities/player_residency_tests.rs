@@ -161,7 +161,7 @@ fn refused_body_construction_does_not_begin_guest_or_hook_loans() {
         assert!(game.as_guest(12, |_| panic!("refused turn ran")).is_none());
         game.motion = original;
         assert_eq!(game.ui.registries.permission, permission);
-        assert!(game.server.lan_guest_swaps.is_empty());
+        assert!(game.side.lan_guest_swaps.is_empty());
         assert!(matches!(
             game.server_resident_entity(12),
             EntityLookup::Found {
@@ -182,7 +182,7 @@ fn refused_body_construction_does_not_begin_guest_or_hook_loans() {
                 .unwrap();
         })
         .expect("same connection can enter after refusal");
-        assert!(game.server.lan_guest_swaps.is_empty());
+        assert!(game.side.lan_guest_swaps.is_empty());
         assert!(matches!(
             game.server_resident_entity(900),
             EntityLookup::Found { .. }

@@ -59,7 +59,7 @@ pub(in crate::game::server_side) use sunrise_core::geometry::{Aabb, Vec3};
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_core::random::{LegacyRandom, RandomSource};
 
-pub(in crate::game) fn clear_entities(game: &mut Game<'_>) {
+pub(in crate::game) fn clear_entities(game: &mut crate::game::ServerGame<'_>) {
     game.mobs.clear();
     game.dropped.clear();
     game.boats.clear();
@@ -74,15 +74,15 @@ pub(in crate::game) fn clear_entities(game: &mut Game<'_>) {
     game.item_frames.clear();
     game.paintings.clear();
     game.cushions.clear();
-    game.others.0.clear();
-    game.server.knot_ids.clear();
-    game.server.broken_knots.clear();
+    game.side.others.0.clear();
+    game.side.knot_ids.clear();
+    game.side.broken_knots.clear();
     game.resident_entities.knots.clear();
     game.reset_entity_residency();
     game.bind_local_player_residency();
 }
 
-pub(in crate::game) fn summon_target(game: &mut Game<'_>, target: &str) -> TrackedTarget {
+pub(in crate::game) fn summon_target(game: &mut crate::game::ServerGame<'_>, target: &str) -> TrackedTarget {
     match target {
         "armor_stand" => {
             assert!(game.run_command("summon minecraft:armor_stand 3.5 64.0 4.5 {}"));
@@ -148,7 +148,7 @@ pub(in crate::game) fn summon_target(game: &mut Game<'_>, target: &str) -> Track
         }
         "leash_knot" => {
             assert!(game.run_command("summon minecraft:leash_knot 3.5 64.375 4.5 {}"));
-            TrackedTarget::ExplicitKnot(game.others.0.last().unwrap().id)
+            TrackedTarget::ExplicitKnot(game.side.others.0.last().unwrap().id)
         }
         "leash_knot_tied" => {
             assert!(game.run_command(
@@ -157,7 +157,7 @@ pub(in crate::game) fn summon_target(game: &mut Game<'_>, target: &str) -> Track
             let pig_id = game.mobs.last().unwrap().id;
             game.tick_server(false).unwrap();
             let id = *game
-                .server
+                .side
                 .knot_ids
                 .get(&[3, 64, 4])
                 .expect("natural leash knot created on fence");
@@ -179,21 +179,21 @@ pub(in crate::game) fn summon_target(game: &mut Game<'_>, target: &str) -> Track
     }
 }
 
-pub(in crate::game) fn target_alive(game: &Game<'_>, target: TrackedTarget) -> bool {
+pub(in crate::game) fn target_alive(game: &crate::game::ServerGame<'_>, target: TrackedTarget) -> bool {
     match target {
         TrackedTarget::Stand(id) => game.armor_stands.iter().any(|a| a.id == id),
         TrackedTarget::Painting(id) => game.paintings.iter().any(|p| p.id == id),
         TrackedTarget::Frame(id) => game.item_frames.iter().any(|f| f.id == id),
         TrackedTarget::Cushion(id) => game.cushions.iter().any(|c| c.id == id),
         TrackedTarget::Falling(id) => game.falling.iter().any(|f| f.id == id),
-        TrackedTarget::ExplicitKnot(id) => game.others.0.iter().any(|o| o.id == id),
+        TrackedTarget::ExplicitKnot(id) => game.side.others.0.iter().any(|o| o.id == id),
         TrackedTarget::NaturalKnot { id, .. } => {
             game.resident_entities.knots.iter().any(|k| k.id == id)
         }
     }
 }
 
-pub(in crate::game) fn target_bounds(game: &Game<'_>, target: TrackedTarget) -> Aabb {
+pub(in crate::game) fn target_bounds(game: &crate::game::ServerGame<'_>, target: TrackedTarget) -> Aabb {
     match target {
         TrackedTarget::Stand(id) => {
             let a = game.armor_stands.iter().find(|a| a.id == id).unwrap();
@@ -216,7 +216,7 @@ pub(in crate::game) fn target_bounds(game: &Game<'_>, target: TrackedTarget) -> 
             .selector_target_bounds(Target::Falling(id))
             .expect("falling block bounds"),
         TrackedTarget::ExplicitKnot(id) => {
-            let o = game.others.0.iter().find(|o| o.id == id).unwrap();
+            let o = game.side.others.0.iter().find(|o| o.id == id).unwrap();
             let b = sunrise_core::position::BlockPos::containing(o.position);
             let k = sunrise_client::mobs::leash::knot_state([b.x, b.y, b.z]);
             let half = k.width / 2.0;

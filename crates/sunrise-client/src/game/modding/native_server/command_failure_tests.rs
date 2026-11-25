@@ -88,7 +88,7 @@ impl mod_api::Hooks for FailingCommand {
     }
 }
 
-pub(in crate::game) fn with_failure_sources(test: impl FnOnce(&mut crate::game::Game<'_>)) {
+pub(in crate::game) fn with_failure_sources(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     mod_platform::testing::with_mods(
         vec![mod_api::ModEntry::new(
             "failure_test",

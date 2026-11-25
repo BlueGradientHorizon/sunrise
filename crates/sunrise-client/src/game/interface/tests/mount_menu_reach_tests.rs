@@ -21,7 +21,7 @@ const DONKEY: u32 = 7;
 fn game_with_open_donkey<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
     gap: f64,
-) -> Game<'a> {
+) -> crate::game::ClientGame<'a> {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.player =
         Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5)).expect("a player"));
@@ -56,19 +56,19 @@ fn a_mount_moved_five_blocks_away_keeps_its_menu_open() {
     let mut game = game_with_open_donkey(&mut resources, 5.0);
     game.tick_mount_menu();
     assert_eq!(
-        game.client.mount_menu.opened_mob(),
+        game.side.mount_menu.opened_mob(),
         Some(DONKEY),
         "the menu closed 5 blocks from the donkey's box"
     );
     game.mobs[0].position.x += 1.5;
     game.tick_mount_menu();
     assert_eq!(
-        game.client.mount_menu.opened_mob(),
+        game.side.mount_menu.opened_mob(),
         Some(DONKEY),
         "the menu closed 6.5 blocks from the donkey's box"
     );
     assert!(
-        game.client.screen == Screen::Inventory,
+        game.side.screen == Screen::Inventory,
         "the screen left the menu"
     );
 }
@@ -82,12 +82,12 @@ fn a_mount_past_seven_blocks_closes_its_menu() {
     let mut game = game_with_open_donkey(&mut resources, 7.5);
     game.tick_mount_menu();
     assert_eq!(
-        game.client.mount_menu.opened_mob(),
+        game.side.mount_menu.opened_mob(),
         None,
         "the menu stayed open 7.5 blocks from the donkey's box"
     );
     assert!(
-        game.client.screen == Screen::Playing,
+        game.side.screen == Screen::Playing,
         "the menu's screen stayed"
     );
 }
@@ -98,7 +98,7 @@ fn a_mount_past_seven_blocks_closes_its_menu() {
 fn guest_beside_a_donkey<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
     gap: f64,
-) -> (Game<'a>, Guest) {
+) -> (crate::game::ServerGame<'a>, Guest) {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     let kind = game
         .res
@@ -136,7 +136,7 @@ fn guest_beside_a_donkey<'a>(
 }
 
 /// The east face of the donkey's box at `(8.5, 64, 8.5)`.
-fn box_face(game: &Game<'_>) -> f64 {
+fn box_face(game: &crate::game::ServerGame<'_>) -> f64 {
     8.5 + f64::from(game.mobs[0].width()) / 2.0
 }
 

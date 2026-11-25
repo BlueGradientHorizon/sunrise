@@ -8,14 +8,14 @@ use sunrise_world::level::LevelAccess;
 
 /// `getRedstoneSignalFromBlockEntity` for the block at `pos`, the path a
 /// comparator's `getAnalogOutputSignal` takes.
-fn signal(game: &mut Game<'_>, pos: Pos) -> i32 {
+fn signal(game: &mut crate::game::ServerGame<'_>, pos: Pos) -> i32 {
     let state = game.world.block(pos.0, pos.1, pos.2);
     game.with_level(|_, level, _| {
         level.block_entity_analog_signal(BlockPos::new(pos.0, pos.1, pos.2), state, Direction::West)
     })
 }
 
-fn saved_count(game: &Game<'_>, pos: Pos) -> u32 {
+fn saved_count(game: &crate::game::ServerGame<'_>, pos: Pos) -> u32 {
     let tag = spill::saved_entity(&game.world, [pos.0, pos.1, pos.2]).expect("a saved pot");
     save::item_from_nbt(tag.get("item").expect("the pot's item"))
         .expect("a decodable pot item")
@@ -77,7 +77,7 @@ fn a_hopper_inserted_item_updates_the_comparator_beside_the_pot() {
         "setblock 8 200 8 minecraft:decorated_pot{item:{id:\"minecraft:stone\",count:63}}"
     ));
     assert!(game.run_command("setblock 9 200 8 minecraft:comparator[facing=west]"));
-    let output = |game: &Game<'_>| {
+    let output = |game: &crate::game::ServerGame<'_>| {
         game.block_ticks
             .comparator_outputs
             .get(&comparator)
@@ -85,7 +85,7 @@ fn a_hopper_inserted_item_updates_the_comparator_beside_the_pot() {
             .unwrap_or(0)
     };
     // `ComparatorBlock.tick` on the read side of the comparator.
-    let tick = |game: &mut Game<'_>| {
+    let tick = |game: &mut crate::game::ServerGame<'_>| {
         game.with_level(|b, level, ticks| b.scheduled_block_tick(level, ticks, comparator));
     };
     tick(&mut game);

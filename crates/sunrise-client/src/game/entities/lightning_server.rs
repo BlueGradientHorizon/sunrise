@@ -1167,9 +1167,9 @@ pub(in crate::game) mod tests {
                 .get("minecraft:piglin")
                 .unwrap()
                 .clone();
-            game.server.next_entity += 1;
+            game.side.next_entity += 1;
             let mut old = Mob::new(
-                game.server.next_entity,
+                game.side.next_entity,
                 piglin_type,
                 Vec3::new(100.0, 64.0, 100.0),
                 0.0,
@@ -1194,8 +1194,8 @@ pub(in crate::game) mod tests {
             );
 
             let pig_type = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-            game.server.next_entity += 1;
-            let pig_id = game.server.next_entity;
+            game.side.next_entity += 1;
+            let pig_id = game.side.next_entity;
             game.mobs.push(Mob::new(
                 pig_id,
                 pig_type.clone(),
@@ -1213,8 +1213,8 @@ pub(in crate::game) mod tests {
                 .unwrap()
                 .clone();
             for (x, player) in [(5, true), (10, false)] {
-                game.server.next_entity += 1;
-                let id = game.server.next_entity;
+                game.side.next_entity += 1;
+                let id = game.side.next_entity;
                 game.mobs.push(Mob::new(
                     id,
                     mushroom_type.clone(),
@@ -1243,12 +1243,12 @@ pub(in crate::game) mod tests {
                 assert_eq!(seen[3].mushrooms, 10);
             }
             cancel_cow.store(true, Ordering::SeqCst);
-            game.server.next_entity += 1;
-            let old_id = game.server.next_entity;
+            game.side.next_entity += 1;
+            let old_id = game.side.next_entity;
             let old = Mob::new(old_id, mushroom_type, Vec3::new(15.0, 64.0, 0.0), 0.0);
             game.mobs.push(old.clone());
-            game.server.next_entity += 1;
-            let rider_id = game.server.next_entity;
+            game.side.next_entity += 1;
+            let rider_id = game.side.next_entity;
             let mut rider = Mob::new(rider_id, pig_type, Vec3::new(15.0, 64.0, 0.0), 0.0);
             rider.extra.mount = Some(old_id);
             game.mobs.push(rider);

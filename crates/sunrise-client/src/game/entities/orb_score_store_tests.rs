@@ -9,7 +9,7 @@ use sunrise_core::position::ChunkPos;
 const ORB: &str = "00000000-0000-0000-0000-0000000000a7";
 const STAND: &str = "00000000-0000-0000-0000-0000000000a8";
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -32,15 +32,12 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -66,13 +63,13 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     game
 }
 
-fn score(game: &Game<'_>, name: &str) -> Option<i32> {
+fn score(game: &crate::game::ServerGame<'_>, name: &str) -> Option<i32> {
     game.score.board.score(name, "os").map(|s| s.value)
 }
 
 /// `execute as <subject> store <kind> score @s os run data get entity @s <getter>`
 /// from 31: whether it ran and the subject's score after it.
-fn store(game: &mut Game<'_>, subject: &str, kind: &str, getter: &str) -> (bool, Option<i32>) {
+fn store(game: &mut crate::game::ServerGame<'_>, subject: &str, kind: &str, getter: &str) -> (bool, Option<i32>) {
     assert!(game.run_command(&format!("scoreboard players set {subject} os 31")));
     let ok = game.run_command(&format!(
         "execute as {subject} store {kind} score @s os run data get entity @s {getter}"

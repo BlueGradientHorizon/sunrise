@@ -30,7 +30,7 @@ fn unregistered_serializer_failed_reload_preserves_previous_recipes() {
     mod_platform::testing::with_mods(mods, || {
         super::native_entity_refs::tests::with_game(|game| {
             let scratch = tempfile::tempdir().unwrap();
-            game.server.world_root = scratch.path().to_path_buf();
+            game.side.world_root = scratch.path().to_path_buf();
             let recipes = sunrise_client::crafting::Recipes::from_sources(
                 &game.options.resources,
                 game.items(),
@@ -43,7 +43,7 @@ fn unregistered_serializer_failed_reload_preserves_previous_recipes() {
             )
             .unwrap();
             game.reload_datapacks(false, &[]).unwrap();
-            game.world_tables.0.as_mut().unwrap().recipes = recipes;
+            game.side.world_tables.0.as_mut().unwrap().recipes = recipes;
             assert!(game.recipes().recipe("recipe_probe:literal").is_some());
             bad_recipe.store(true, Ordering::Relaxed);
             let error = game

@@ -146,7 +146,7 @@ impl Hooks for Probe {
 pub(in crate::game) fn observed(
     cancel: bool,
     heal: bool,
-    check: impl FnOnce(&mut Game<'_>, &Arc<Mutex<Seen>>),
+    check: impl FnOnce(&mut crate::game::ServerGame<'_>, &Arc<Mutex<Seen>>),
 ) {
     crate::entry::install_client_hooks();
     let seen = Arc::new(Mutex::new(Seen::default()));
@@ -181,7 +181,7 @@ pub(in crate::game) fn observed(
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::server_side::native_hooks_server::death_source_tests::player;
 
-pub(in crate::game) fn mob(game: &mut Game<'_>, id: u32, name: &str, position: Vec3) {
+pub(in crate::game) fn mob(game: &mut crate::game::ServerGame<'_>, id: u32, name: &str, position: Vec3) {
     let kind = game.res.mob_types().get(name).unwrap().clone();
     let mut mob = Mob::new(id, kind, position, 0.0);
     mob.persistent = true;
@@ -207,7 +207,7 @@ pub(in crate::game) fn bow() -> ItemStack {
 }
 
 /// Reuse BowItem.releaseUsing, then make its collision deterministic (not its random spread).
-pub(in crate::game) fn player_arrow(game: &mut Game<'_>, weapon: &ItemStack) -> u32 {
+pub(in crate::game) fn player_arrow(game: &mut crate::game::ServerGame<'_>, weapon: &ItemStack) -> u32 {
     game.inventory[game.selected] = Some(weapon.clone());
     game.inventory[9] = Some(ItemStack::new("minecraft:arrow", 8));
     game.release_bow(weapon, 20);
@@ -224,7 +224,7 @@ pub(in crate::game) fn player_arrow(game: &mut Game<'_>, weapon: &ItemStack) -> 
     })
 }
 
-pub(in crate::game) fn finish_projectile_death(game: &mut Game<'_>, id: u32) {
+pub(in crate::game) fn finish_projectile_death(game: &mut crate::game::ServerGame<'_>, id: u32) {
     game.tick_projectiles().unwrap();
     assert!(game.mobs.iter().find(|mob| mob.id == id).unwrap().health <= 0.0);
     game.tick_creature_entities().unwrap();
@@ -727,7 +727,7 @@ fn a_killed_guest_with_no_combat_entry_reports_its_drops() {
 }
 
 /// A loaded guest at `position` with `health` and a diamond to drop.
-pub(in crate::game) fn standing_guest(game: &mut Game<'_>, position: [f64; 3], health: f32) -> u32 {
+pub(in crate::game) fn standing_guest(game: &mut crate::game::ServerGame<'_>, position: [f64; 3], health: f32) -> u32 {
     crate::game::native_player_death::tests::add_guest(game);
     game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
         guest.loaded = true;
@@ -741,7 +741,7 @@ pub(in crate::game) fn standing_guest(game: &mut Game<'_>, position: [f64; 3], h
 
 /// A skeleton (42) at x 2.5 and its arrow from x 4.5 flying east along z 4.5, through a
 /// guest standing at x 6.
-pub(in crate::game) fn skeleton_shot_at_guest(game: &mut Game<'_>) -> u32 {
+pub(in crate::game) fn skeleton_shot_at_guest(game: &mut crate::game::ServerGame<'_>) -> u32 {
     mob(game, 42, "minecraft:skeleton", Vec3::new(2.5, 80.0, 4.5));
     let mut shot = Projectile::new(
         ProjectileKind::Arrow {

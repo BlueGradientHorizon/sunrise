@@ -18,7 +18,7 @@ static VALUE: AttachmentType<i32> = AttachmentType {
     copy_on_death: false,
     sync: true,
 };
-fn values(game: &Game<'_>) -> Vec<i32> {
+fn values(game: &crate::game::ClientGame<'_>) -> Vec<i32> {
     let host: &dyn Host = game;
     let query = host
         .attachment_query("mirror", "value")
@@ -33,10 +33,10 @@ fn values(game: &Game<'_>) -> Vec<i32> {
         })
         .collect()
 }
-fn client<'a>(game: &'a mut Game<'_>) -> &'a mut Remote {
+fn client<'a>(game: &'a mut crate::game::ClientGame<'_>) -> &'a mut Remote {
     game.remote.as_mut().unwrap()
 }
-fn sync(game: &mut Game<'_>, holder: Holder, value: i32) {
+fn sync(game: &mut crate::game::ClientGame<'_>, holder: Holder, value: i32) {
     game.remote_attachment_sync(Message {
         holder,
         replace: true,

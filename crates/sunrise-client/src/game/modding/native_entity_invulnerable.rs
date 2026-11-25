@@ -914,7 +914,7 @@ mod tests {
     }
 
     /// A lit stone floor under the origin, so a mob's tick survives it.
-    fn floor(game: &mut super::Game<'_>) {
+    fn floor(game: &mut crate::game::ServerGame<'_>) {
         for (x, z) in (-1..=1).flat_map(|x| (-1..=1).map(move |z| (x, z))) {
             let mut chunk = sunrise_client::chunk::Chunk::empty(x, z);
             chunk.lit = true;
@@ -1032,7 +1032,7 @@ mod tests {
             floor(game);
             let victim = game.entity(12).unwrap();
             let enemy = game.entity(13).unwrap();
-            let keep = |game: &mut super::Game<'_>| {
+            let keep = |game: &mut crate::game::ServerGame<'_>| {
                 let m = game.mob(game.entity(12).unwrap()).unwrap();
                 m.set_persistence_required(game);
                 m.set_no_action_time(game, 650);

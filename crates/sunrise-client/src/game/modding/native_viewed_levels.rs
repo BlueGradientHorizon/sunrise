@@ -119,7 +119,7 @@ mod tests {
     /// A client in the Overworld whose own column (0, 0) is air with stone at `POCKET`, and
     /// which views the Nether (level 1): its column (0, 0) stone below y 80 and air above, with
     /// air at `POCKET`.
-    fn viewing(game: &mut Game) -> (LevelRef, LevelRef) {
+    fn viewing(game: &mut crate::game::ClientGame<'_>) -> (LevelRef, LevelRef) {
         game.handle_packet(layered(0, 0, 0)).unwrap();
         game.handle_packet(set(POCKET, 1)).unwrap();
         game.handle_packet(open(1, NETHER)).unwrap();

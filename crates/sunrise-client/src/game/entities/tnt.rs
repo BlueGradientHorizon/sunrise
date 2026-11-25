@@ -1539,7 +1539,7 @@ pub(in crate::game) mod tests {
     /// loaded, as `native_machines`' tests make one; None without them.
     pub(in crate::game) fn server_game<'a>(
         resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-    ) -> Option<Box<Game<'a>>> {
+    ) -> Option<Box<crate::game::ServerGame<'a>>> {
         use crate::game::*;
         let root = std::env::var_os("SUNRISE_TEST_RESOURCES")
             .map(std::path::PathBuf::from)
@@ -1572,15 +1572,12 @@ pub(in crate::game) mod tests {
         // Keep nested fixture helpers from copying the large Game value
         // through several test-thread stack frames.
         let mut game = Box::new(
-            Game::new(
+            crate::game::ServerGame::new(
                 res,
                 loaded.pack,
                 loaded.gui.unwrap(),
                 options,
                 settings,
-                Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                    root.clone(),
-                )),
                 None,
             )
             .unwrap(),
@@ -1666,17 +1663,17 @@ pub(in crate::game) mod tests {
         run_portal_blast_sulfur_cube_uses_only_positive_cooldown();
     }
 
-    pub(in crate::game::server_side) fn particle_count(game: &Game<'_>) -> usize {
-        game.particles.0.requested.as_ref().unwrap().len()
+    pub(in crate::game::server_side) fn particle_count(game: &crate::game::ClientGame<'_>) -> usize {
+        game.side.particles.0.requested.as_ref().unwrap().len()
     }
 
-    pub(in crate::game::server_side) fn sound_count(game: &Game<'_>, event: &str) -> u32 {
-        game.audio.0.heard.get(event).copied().unwrap_or(0)
+    pub(in crate::game::server_side) fn sound_count(game: &crate::game::ClientGame<'_>, event: &str) -> u32 {
+        game.side.audio.0.heard.get(event).copied().unwrap_or(0)
     }
 
     pub(in crate::game) fn source_silence_game(
         resources: &mut Option<std::sync::Arc<crate::game::Resources>>,
-    ) -> Option<Box<Game<'_>>> {
+    ) -> Option<Box<crate::game::ClientGame<'_>>> {
         let mut game = server_game(resources)?;
         // Observe the server's real emission requests without a camera or render tick.
         game.particles.0.requested = Some(Vec::new());
@@ -1881,7 +1878,7 @@ pub(in crate::game) mod tests {
         // Preserve a live owner referencing an actually registered mob.
         game.tnts[0].owner = Some(Who::Mob(pig));
         let before = game.tnts[0].clone();
-        let next_id = game.server.next_entity;
+        let next_id = game.side.next_entity;
         let clock = game.world.game_time;
         assert!(before.join.is_joined());
         let reference = Target::Tnt(id);
@@ -1896,7 +1893,7 @@ pub(in crate::game) mod tests {
         );
         assert!(game.run_command("data merge entity 00000059-0000-0000-0000-000000000001 {fuse:60s,Motion:[0.125d,0d,-0.25d],Tags:[adopted]}"), "valid TNT data must reach the existing live instance");
         assert_eq!(
-            game.server.next_entity, next_id,
+            game.side.next_entity, next_id,
             "adoption must not spawn another entity"
         );
         assert_eq!(game.tnts.len(), 1);
@@ -1962,7 +1959,7 @@ pub(in crate::game) mod tests {
                     .default_state("minecraft:glass")
                     .unwrap();
                 game.world.set(8, 64, 8, glass).unwrap();
-                game.audio.0.heard.clear();
+                game.side.audio.0.heard.clear();
                 game.add_primed_tnt(BlockPos::new(8, 64, 8), 0.0, 1, None, None);
                 game.tnts[0].no_gravity = true;
                 game.tnts[0].velocity = Vec3::ZERO;
@@ -1986,7 +1983,7 @@ pub(in crate::game) mod tests {
                     u32::from(!silent),
                     "direct source Silent={silent}"
                 );
-                game.audio.0.heard.clear();
+                game.side.audio.0.heard.clear();
                 game.server_explode(
                     [8.5, 64.0, 8.5],
                     0.0,
@@ -1995,7 +1992,7 @@ pub(in crate::game) mod tests {
                 )
                 .unwrap();
                 assert_eq!(
-                    game.audio.0.heard.get("minecraft:entity.generic.explode"),
+                    game.side.audio.0.heard.get("minecraft:entity.generic.explode"),
                     Some(&1),
                     "a source-free blast stays audible"
                 );
@@ -2021,7 +2018,7 @@ pub(in crate::game) mod tests {
             for kind in ["splash_potion", "lingering_potion"] {
                 for potion in ["awkward", "swiftness", "healing"] {
                     for silent in [false, true] {
-                        game.audio.0.heard.clear();
+                        game.side.audio.0.heard.clear();
                         let stack = ItemStack::new(&format!("minecraft:{kind}"), 1)
                             .with_potion(&format!("minecraft:{potion}"));
                         let mut projectile = Projectile::new(
@@ -2107,7 +2104,7 @@ pub(in crate::game) mod tests {
                 sunrise_client::mobs::hostile::creeper_tick(mob, &mut events);
                 assert!(mob.removed);
                 game.mobs.retain(|m| m.id != id);
-                game.audio.0.heard.clear();
+                game.side.audio.0.heard.clear();
                 let particles = particle_count(&game);
                 game.handle_mob_events(events).unwrap();
                 assert!(particle_count(&game) > particles);
@@ -2150,7 +2147,7 @@ pub(in crate::game) mod tests {
                     game.add_projectile(shot);
                     let id = game.creatures.projectiles.last().unwrap().id;
                     set_silent(&mut game, id, silent);
-                    game.audio.0.heard.clear();
+                    game.side.audio.0.heard.clear();
                     let particles = particle_count(&game);
                     let clouds = game.breath_clouds.len();
                     let xp: u32 = game.orbs.iter().map(|o| o.points() * o.count).sum();
@@ -2218,7 +2215,7 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) fn set_silent(game: &mut Game<'_>, id: u32, silent: bool) {
+    pub(in crate::game) fn set_silent(game: &mut crate::game::ServerGame<'_>, id: u32, silent: bool) {
         game.remember_tags(
             id,
             &sunrise_core::nbt::Tag::Compound(

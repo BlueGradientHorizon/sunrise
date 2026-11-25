@@ -9,12 +9,12 @@ use sunrise_core::geometry::Vec3;
 const STAND: i32 = 21;
 
 /// A stand with arms at the origin and a guest acting on it, holding an iron helmet.
-fn set_up(game: &mut Game<'_>) {
+fn set_up(game: &mut crate::game::ServerGame<'_>) {
     let mut stand = ArmorStand::new(STAND as u32, Vec3::new(0.5, 64.0, 0.5), 0.0);
     stand.show_arms = true;
     game.armor_stands.push(stand);
-    game.server.lan_acting_uuid = Some(7);
-    game.server.lan_acting_name = Some("Alex".into());
+    game.side.lan_acting_uuid = Some(7);
+    game.side.lan_acting_name = Some("Alex".into());
     game.inventory[game.selected] = Some(ItemStack::new("minecraft:iron_helmet", 1));
 }
 

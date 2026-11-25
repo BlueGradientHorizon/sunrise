@@ -10,8 +10,8 @@ pub(in crate::game::client_side) use sunrise_client::chunk::Chunk;
 pub(in crate::game::client_side) use sunrise_core::{geometry::Vec3, position::ChunkPos};
 
 /// The red, ten-notched bars on this client's overlay: the raid's.
-pub(in crate::game) fn raid_bars(game: &Game<'_>) -> usize {
-    game.client
+pub(in crate::game) fn raid_bars(game: &crate::game::ClientGame<'_>) -> usize {
+    game.side
         .boss_overlay
         .bars(sunrise_client::boss_overlay::now_millis())
         .into_iter()

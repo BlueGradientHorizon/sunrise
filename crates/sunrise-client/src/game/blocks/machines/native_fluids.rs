@@ -551,7 +551,7 @@ mod tests {
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             let level = game.level("minecraft:overworld").unwrap();
-            let water = |game: &Game<'_>, n: u32| {
+            let water = |game: &crate::game::ServerGame<'_>, n: u32| {
                 let state = sunrise_world::chunk::BlockState {
                     name: "minecraft:water_cauldron".to_owned(),
                     properties: [("level".to_owned(), n.to_string())].into_iter().collect(),
@@ -688,7 +688,7 @@ mod tests {
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
                 let level = game.level("minecraft:overworld").unwrap();
                 let flags = BlockUpdateFlags::NEIGHBORS;
-                let block = |game: &Game<'_>, name: &str, level: Option<u32>| {
+                let block = |game: &crate::game::ServerGame<'_>, name: &str, level: Option<u32>| {
                     let state = sunrise_world::chunk::BlockState {
                         name: name.to_owned(),
                         properties: level
@@ -772,19 +772,19 @@ mod tests {
                     assert_eq!(handler.capacity(game, 0, Some(&water)), 1000);
                 }
                 let handler = handler.unwrap();
-                let extract = |game: &mut Game<'_>, resource: &FluidResource, amount| {
+                let extract = |game: &mut crate::game::ServerGame<'_>, resource: &FluidResource, amount| {
                     game.storage_transaction(|host, tx| {
                         handler.extract_at(host, tx, 0, resource, amount)
                     })
                     .unwrap()
                 };
-                let insert = |game: &mut Game<'_>, resource: &FluidResource, amount| {
+                let insert = |game: &mut crate::game::ServerGame<'_>, resource: &FluidResource, amount| {
                     game.storage_transaction(|host, tx| {
                         handler.insert_at(host, tx, 0, resource, amount)
                     })
                     .unwrap()
                 };
-                let at = |game: &Game<'_>| game.world.block(pos[0], pos[1], pos[2]);
+                let at = |game: &crate::game::ServerGame<'_>| game.world.block(pos[0], pos[1], pos[2]);
                 // A drain takes whole levels: 1500 mB asked takes one level, 999 none, and the
                 // last level leaves an empty cauldron.
                 assert_eq!(extract(game, &syrup, 1500), 1000);

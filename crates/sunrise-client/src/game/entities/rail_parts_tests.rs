@@ -9,7 +9,7 @@ use sunrise_core::{geometry::Vec3, position::ChunkPos};
 
 /// A serving world with commands, a stone floor at y 63 and its chunk ticking. Returns the
 /// scratch world folder to remove.
-fn rail_world(game: &mut Game<'_>) -> std::path::PathBuf {
+fn rail_world(game: &mut crate::game::ServerGame<'_>) -> std::path::PathBuf {
     game.options.dedicated = Some(Vec::new());
     let scratch = std::env::temp_dir().join(format!(
         "sunrise-rail-parts-{}-{:?}",
@@ -17,7 +17,7 @@ fn rail_world(game: &mut Game<'_>) -> std::path::PathBuf {
         std::thread::current().id()
     ));
     std::fs::create_dir_all(&scratch).unwrap();
-    game.server.world_root = scratch.clone();
+    game.side.world_root = scratch.clone();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 12.5)).unwrap());
     game.build_registries();
     game.set_allow_commands(true);
@@ -31,7 +31,7 @@ fn rail_world(game: &mut Game<'_>) -> std::path::PathBuf {
     scratch
 }
 
-fn shape(game: &Game<'_>, [x, y, z]: [i32; 3]) -> String {
+fn shape(game: &crate::game::ServerGame<'_>, [x, y, z]: [i32; 3]) -> String {
     let state = game.world.block(x, y, z);
     let state = game.pack.assets.registry.state(state).unwrap();
     state.properties["shape"].clone()

@@ -134,7 +134,7 @@ fn block_parts_xp_and_explosion_contract() {
             let stone = registry.default_state("minecraft:stone").unwrap();
             let spawner = registry.default_state("minecraft:spawner").unwrap();
             let pos = BlockPos::new(1, 64, 1);
-            let drop = |game: &mut Game<'_>,
+            let drop = |game: &mut crate::game::ServerGame<'_>,
                         state,
                         tool: Option<&sunrise_client::items::ItemStack>,
                         override_xp| {
@@ -382,7 +382,7 @@ impl Hooks for Answers {
 }
 
 /// Runs `test` in a serving game with the `Answers` parts and an empty chunk at the origin.
-fn with_answers(answers: &Answers, test: impl FnOnce(&mut Game<'_>)) {
+fn with_answers(answers: &Answers, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "explosion_answers",
         Box::new(answers.clone()),
@@ -423,7 +423,7 @@ fn block_parts_answer_explosion_resistance() {
         let [dirt, obsidian, rail] = ["minecraft:dirt", "minecraft:obsidian", "minecraft:rail"]
             .map(|name| registry.default_state(name).unwrap());
         let start = blast();
-        let explode = |game: &mut Game<'_>, resists| {
+        let explode = |game: &mut crate::game::ServerGame<'_>, resists| {
             game.server_explode_as(
                 start.center,
                 4.0,
@@ -434,7 +434,7 @@ fn block_parts_answer_explosion_resistance() {
             )
             .unwrap();
         };
-        let cube = |game: &mut Game<'_>| {
+        let cube = |game: &mut crate::game::ServerGame<'_>| {
             for x in 2..=4 {
                 for y in 64..=66 {
                     for z in 2..=4 {
@@ -443,7 +443,7 @@ fn block_parts_answer_explosion_resistance() {
                 }
             }
         };
-        let dirt_left = |game: &Game<'_>| {
+        let dirt_left = |game: &crate::game::ServerGame<'_>| {
             (2..=4)
                 .flat_map(|x| (64..=66).flat_map(move |y| (2..=4).map(move |z| (x, y, z))))
                 .filter(|&(x, y, z)| game.world.block(x, y, z) == dirt)
@@ -463,9 +463,9 @@ fn block_parts_answer_explosion_resistance() {
         // A dangerous wither skull's cap still wins: (0.8 + 0.3) × 0.3 = 0.33 a step.
         *answers.dirt.0.lock().unwrap() = Some(1200.0);
         cube(game);
-        game.combat.0.blast_resistance_cap = Some(0.8);
+        game.side.combat.0.blast_resistance_cap = Some(0.8);
         explode(game, None);
-        game.combat.0.blast_resistance_cap = None;
+        game.side.combat.0.blast_resistance_cap = None;
         assert_eq!(game.world.block(2, 65, 3), game.world.air);
         // A negative or non-finite answer is refused for the block's own value.
         let pos = [2, 65, 3];
@@ -499,9 +499,9 @@ fn block_parts_answer_explosion_resistance() {
         // A TNT minecart's rails are spared without asking their parts.
         *answers.rail.0.lock().unwrap() = Some(0.0);
         game.world.set(2, 65, 3, rail).unwrap();
-        game.combat.0.rail_proof_blast = true;
+        game.side.combat.0.rail_proof_blast = true;
         explode(game, None);
-        game.combat.0.rail_proof_blast = false;
+        game.side.combat.0.rail_proof_blast = false;
         assert_eq!(game.world.block(2, 65, 3), rail);
         assert_eq!(answers.rail.1.load(Ordering::Relaxed), 0);
     });
@@ -526,7 +526,7 @@ fn block_parts_answer_drops_from_explosions() {
         .map(|name| registry.default_state(name).unwrap());
         let start = blast();
         // Each row: the block at x 2 (its part answers) and x 3 (unanswered).
-        let hit = |game: &mut Game<'_>, state, z| {
+        let hit = |game: &mut crate::game::ServerGame<'_>, state, z| {
             let mut drops = Vec::new();
             for x in 2..=3 {
                 game.world.set(x, 64, z, state).unwrap();
@@ -581,7 +581,7 @@ fn block_parts_answer_drops_from_explosions() {
         assert_eq!(tnt_drops, [([2, 64, 3], 1)]);
         assert_eq!(game.tnts.len(), primed + 2);
         // Refused infested stone lets no silverfish out; the one beside it does.
-        let silverfish = |game: &Game<'_>| {
+        let silverfish = |game: &crate::game::ServerGame<'_>| {
             game.mobs
                 .iter()
                 .filter(|m| m.kind.id == "minecraft:silverfish")
@@ -654,7 +654,7 @@ fn a_block_part_keeps_its_block_from_a_dangerous_skull_cap() {
                 .unwrap();
             // A dangerous skull flying east into a stone block at (2, 64, 0): its impact
             // blasts at radius 1 and keeps it readable while the stone's part is asked.
-            let survives = |game: &mut Game<'_>| {
+            let survives = |game: &mut crate::game::ServerGame<'_>| {
                 game.world.set(2, 64, 0, stone).unwrap();
                 let mut skull = sunrise_client::projectiles::Projectile::new(
                     sunrise_client::projectiles::ProjectileKind::WitherSkull { dangerous: true },

@@ -54,17 +54,17 @@ fn a_draw_made_during_loot_kill_stays_in_the_level_random() {
             game.load_server_loot();
             game.set_allow_commands(true);
             game.ui.registries.permission = 4;
-            game.server.next_entity = 1000;
+            game.side.next_entity = 1000;
             zombie(game, Damage::mob(0, [0.0; 3]));
             game.mobs.last_mut().unwrap().health = 20.0;
             game.world.random.set_seed(7);
             let source = game.player_source();
-            game.server.command_source = Some(super::super::commands::execute::Source {
+            game.side.command_source = Some(super::super::commands::execute::Source {
                 entity: None,
                 ..source
             });
             assert!(game.run_command("loot spawn 0 64 0 kill @e[type=minecraft:zombie,limit=1]"));
-            game.server.command_source = None;
+            game.side.command_source = None;
             let mut expected = LegacyRandom::new(7);
             expected.next_int();
             assert_eq!(game.world.random.next_long(), expected.next_long());
@@ -92,7 +92,7 @@ fn a_kills_loot_uses_the_level_a_mod_answers() {
             open_to_lan(game);
             game.lan.as_mut().unwrap().hub.guests.push(guest(5));
             // The mobs' ids, clear of the guest's.
-            game.server.next_entity = 1000;
+            game.side.next_entity = 1000;
             game.as_guest(5, |g| {
                 let mut sword = sunrise_client::items::ItemStack::new("minecraft:iron_sword", 1);
                 sword.enchant("minecraft:looting", 2);
@@ -107,7 +107,7 @@ fn a_kills_loot_uses_the_level_a_mod_answers() {
             };
             let mut victim = zombie(game, by_player);
             victim.ai.last_hurt_by_player = 100;
-            game.server
+            game.side
                 .last_hurt_by_player
                 .insert(victim.id, PlayerCredit(127));
             game.mob_die(&victim);
@@ -137,7 +137,7 @@ fn a_kills_loot_uses_the_level_a_mod_answers() {
             seen.lock().unwrap().clear();
             let mut victim = zombie(game, by_player);
             victim.ai.last_hurt_by_player = 100;
-            game.server
+            game.side
                 .last_hurt_by_player
                 .insert(victim.id, PlayerCredit(127));
             game.as_guest(5, |g| g.mob_die(&victim)).unwrap();
@@ -177,13 +177,13 @@ fn loot_kill_asks_with_a_non_living_source_and_with_none() {
             game.load_server_loot();
             game.set_allow_commands(true);
             game.ui.registries.permission = 4;
-            game.server.next_entity = 1000;
+            game.side.next_entity = 1000;
             zombie(game, Damage::mob(0, [0.0; 3]));
             game.mobs.last_mut().unwrap().health = 20.0;
             let kill = "loot spawn 0 64 0 kill @e[type=minecraft:zombie,limit=1]";
 
             let source = game.player_source();
-            game.server.command_source = Some(super::super::commands::execute::Source {
+            game.side.command_source = Some(super::super::commands::execute::Source {
                 entity: None,
                 ..source
             });
@@ -197,7 +197,7 @@ fn loot_kill_asks_with_a_non_living_source_and_with_none() {
             );
             seen.lock().unwrap().clear();
 
-            game.server.command_source = None;
+            game.side.command_source = None;
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
@@ -205,12 +205,12 @@ fn loot_kill_asks_with_a_non_living_source_and_with_none() {
             game.spawn_item(stick, [0.5, 64.0, 0.5], [0.0; 3], 0);
             let item = game.dropped.iter().last().unwrap().id;
             let item = super::super::commands::Target::Item(item);
-            game.server.command_source = Some(super::super::commands::execute::Source {
+            game.side.command_source = Some(super::super::commands::execute::Source {
                 entity: Some(item),
                 ..source
             });
             assert!(game.run_command(kill));
-            game.server.command_source = None;
+            game.side.command_source = None;
             assert_eq!(
                 *seen.lock().unwrap(),
                 [heard(
@@ -238,7 +238,7 @@ fn loot_kill_asks_with_the_commands_source_as_the_attacker() {
             game.set_allow_commands(true);
             open_to_lan(game);
             game.lan.as_mut().unwrap().hub.guests.push(guest(5));
-            game.server.next_entity = 1000;
+            game.side.next_entity = 1000;
             let victim = zombie(game, Damage::mob(0, [0.0; 3]));
             game.mobs.last_mut().unwrap().health = 20.0;
             let looted = |level| {
@@ -293,8 +293,8 @@ fn the_hosts_kill_hands_the_host_as_the_attacker() {
             game.player.as_mut().unwrap().entity_id = 9000;
             // The host's own turn: the uuid is acting, no guest connection.
             crate::game::native_entity_refs::tests::bind_local_player(game, 9000, 99);
-            game.server.lan_acting_uuid = Some(99);
-            game.server.lan_acting_entity = Some(9000);
+            game.side.lan_acting_uuid = Some(99);
+            game.side.lan_acting_entity = Some(9000);
             let by_player = Damage {
                 kind: DamageKind::PlayerAttack,
                 attacker: Some(Who::Player),
@@ -303,7 +303,7 @@ fn the_hosts_kill_hands_the_host_as_the_attacker() {
             };
             let mut victim = zombie(game, by_player);
             victim.ai.last_hurt_by_player = 100;
-            game.server
+            game.side
                 .last_hurt_by_player
                 .insert(victim.id, PlayerCredit(99));
             game.mob_die(&victim);
@@ -320,8 +320,8 @@ fn the_hosts_kill_hands_the_host_as_the_attacker() {
     });
 }
 
-pub(in crate::game) fn zombie(game: &mut super::Game<'_>, damage: Damage) -> Mob {
-    game.server.next_entity += 1;
+pub(in crate::game) fn zombie(game: &mut crate::game::ServerGame<'_>, damage: Damage) -> Mob {
+    game.side.next_entity += 1;
     let kind = game
         .res
         .mob_types()
@@ -329,7 +329,7 @@ pub(in crate::game) fn zombie(game: &mut super::Game<'_>, damage: Damage) -> Mob
         .unwrap()
         .clone();
     let mut mob = Mob::new(
-        game.server.next_entity,
+        game.side.next_entity,
         kind,
         Vec3::new(0.5, 64.0, 0.5),
         0.0,

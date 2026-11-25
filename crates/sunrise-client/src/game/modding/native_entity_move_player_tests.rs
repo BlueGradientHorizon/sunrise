@@ -112,7 +112,7 @@ fn a_cancelled_player_packet_sends_the_guest_a_correction() {
         guest.dimension = "minecraft:overworld".into();
         game.lan.as_mut().unwrap().hub.guests.push(guest);
         game.sync_tick_chunks();
-        game.server.ticked_entities_through = game.server.next_entity;
+        game.side.ticked_entities_through = game.side.next_entity;
         // The guest walks two blocks east; the listener cancels every move.
         let before = game.lan.as_ref().unwrap().hub.guests[0].position;
         game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
@@ -254,7 +254,7 @@ fn a_cancelled_vehicle_packet_sends_the_guest_a_correction() {
         guest.vehicle_good = Some([start.x, start.y, start.z]);
         game.lan.as_mut().unwrap().hub.guests.push(guest);
         game.sync_tick_chunks();
-        game.server.ticked_entities_through = game.server.next_entity;
+        game.side.ticked_entities_through = game.side.next_entity;
         // The driver's client sends the boat two blocks east; the listener
         // cancels every move.
         game.lan.as_mut().unwrap().hub.guests.update(0, |g| {

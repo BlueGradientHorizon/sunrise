@@ -33,7 +33,7 @@ fn fresh(name: &str, cases: &[&str]) -> bool {
 
 /// A host on a dirt floor, its own player at (4.5, 100, 6.5), and one
 /// connected, placed guest standing on the floor at (22.5, 100, 9.5).
-fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);
@@ -120,7 +120,7 @@ enum Attacker {
 }
 
 /// Hurts the guest to death and checks that `ServerPlayer.die` ran inside the hit.
-fn kill(game: &mut Game<'_>, attacker: Attacker, ty: &str) {
+fn kill(game: &mut crate::game::ServerGame<'_>, attacker: Attacker, ty: &str) {
     game.as_guest(CONN, |g| {
         let known = match attacker {
             Attacker::Player(id, name) => {
@@ -141,11 +141,11 @@ fn kill(game: &mut Game<'_>, attacker: Attacker, ty: &str) {
 }
 
 /// The score `holder` has on the objective `objective`, if any.
-fn score(game: &Game<'_>, holder: &str, objective: &str) -> Option<i32> {
+fn score(game: &crate::game::ServerGame<'_>, holder: &str, objective: &str) -> Option<i32> {
     game.score.board.score(holder, objective).map(|s| s.value)
 }
 
-fn add_objectives(game: &mut Game<'_>) {
+fn add_objectives(game: &mut crate::game::ServerGame<'_>) {
     let player_kills = stat_criteria("minecraft:custom", "minecraft:player_kills");
     for (name, criteria) in [
         ("kills", "totalKillCount"),
@@ -165,11 +165,11 @@ fn add_objectives(game: &mut Game<'_>) {
     }
 }
 
-fn guest_stats<'a>(game: &'a Game<'_>, conn: u32) -> &'a super::stats::Stats {
+fn guest_stats<'a>(game: &'a crate::game::ServerGame<'_>, conn: u32) -> &'a super::stats::Stats {
     &game.lan.as_ref().unwrap().play[&conn].stats
 }
 
-fn assert_player_kill(game: &Game<'_>, killer: &str) {
+fn assert_player_kill(game: &crate::game::ServerGame<'_>, killer: &str) {
     assert_eq!(score(game, killer, "kills"), Some(1));
     assert_eq!(score(game, killer, "pvp"), Some(1));
     assert_eq!(score(game, VICTIM, "kills"), None);
@@ -300,7 +300,7 @@ fn a_guest_killing_another_guest_credits_the_kill() {
     assert_eq!(game.stats.get("custom", "minecraft:player_kills"), 0);
 }
 
-fn add_guest_killer(game: &mut Game<'_>) {
+fn add_guest_killer(game: &mut crate::game::ServerGame<'_>) {
     game.lan.as_mut().unwrap().hub.guests.push(guest(
         KILLER_CONN,
         KILLER_ID as i32,
@@ -545,7 +545,7 @@ fn a_stat_award_listener_reads_the_killers_pre_award_count() {
         add_objectives(&mut game);
         game.as_guest(KILLER_CONN, |g| g.stats.custom("player_kills", 7))
             .unwrap();
-        let hit = |g: &mut Game<'_>| {
+        let hit = |g: &mut crate::game::ServerGame<'_>| {
             kill(
                 g,
                 Attacker::Player(KILLER_ID, KILLER),
@@ -621,7 +621,7 @@ fn a_victim_advancement_matches_the_displaced_killers_facts() {
     tree.index_player_facts();
     game.adv.tree = Arc::new(tree);
 
-    let hit = |g: &mut Game<'_>, id, name| {
+    let hit = |g: &mut crate::game::ServerGame<'_>, id, name| {
         g.selected = 4;
         g.inventory[4] = Some(ItemStack::new("minecraft:iron_sword", 1));
         g.offhand = Some(ItemStack::new("minecraft:shield", 1));

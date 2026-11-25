@@ -11,7 +11,7 @@ const POS: [i32; 3] = [5, 63, 4];
 /// A survival player standing in an empty chunk of a serving world (the parts' writes need a
 /// server), with the destroy fixture's parts installed on this thread. Returns the scratch
 /// world folder to remove.
-fn breaking_player(game: &mut Game<'_>) -> PathBuf {
+fn breaking_player(game: &mut crate::game::ServerGame<'_>) -> PathBuf {
     game.options.dedicated = Some(Vec::new());
     let scratch = std::env::temp_dir().join(format!(
         "sunrise-destroyed-part-{}-{:?}",
@@ -19,7 +19,7 @@ fn breaking_player(game: &mut Game<'_>) -> PathBuf {
         std::thread::current().id()
     ));
     std::fs::create_dir_all(&scratch).unwrap();
-    game.server.world_root = scratch.clone();
+    game.side.world_root = scratch.clone();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 62.0, 4.5)).unwrap());
     game.player.as_mut().unwrap().ground.on_ground = true;
     game.creative = false;
@@ -35,17 +35,17 @@ fn breaking_player(game: &mut Game<'_>) -> PathBuf {
     scratch
 }
 
-fn place(game: &mut Game<'_>, block: &str) -> BlockStateId {
+fn place(game: &mut crate::game::ServerGame<'_>, block: &str) -> BlockStateId {
     let state = game.pack.assets.registry.default_state(block).unwrap();
     game.world.set(POS[0], POS[1], POS[2], state).unwrap();
     state
 }
 
-fn at(game: &Game<'_>) -> BlockStateId {
+fn at(game: &crate::game::ServerGame<'_>) -> BlockStateId {
     game.world.block(POS[0], POS[1], POS[2])
 }
 
-fn dropped(game: &Game<'_>, item: &str) -> u32 {
+fn dropped(game: &crate::game::ServerGame<'_>, item: &str) -> u32 {
     game.dropped
         .iter()
         .filter(|dropped| &*dropped.stack.item == item)

@@ -536,8 +536,8 @@ pub(in crate::game) mod tests {
                 seed: 0,
                 max_players: 10,
                 integrated: true,
-                levels: game.server.level_shapes,
-                level_seeds: game.levels.0.runtime.seeds(),
+                levels: game.side.level_shapes,
+                level_seeds: game.side.levels.0.runtime.seeds(),
             };
             let mut net = NetConfig::lan(0, "test".into(), 10);
             net.listen = false;
@@ -631,8 +631,8 @@ pub(in crate::game) mod tests {
                 seed: 0,
                 max_players: 10,
                 integrated: true,
-                levels: game.server.level_shapes,
-                level_seeds: game.levels.0.runtime.seeds(),
+                levels: game.side.level_shapes,
+                level_seeds: game.side.levels.0.runtime.seeds(),
             };
             let mut net = NetConfig::lan(0, "test".into(), 10);
             net.listen = false;

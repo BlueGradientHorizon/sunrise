@@ -286,7 +286,7 @@ mod tests {
     use sunrise_core::geometry::Vec3;
     use sunrise_core::nbt::{JavaString, Tag};
 
-    fn push_mob(game: &mut super::Game<'_>, id: u32, kind: &str) -> EntityRef {
+    fn push_mob(game: &mut crate::game::ServerGame<'_>, id: u32, kind: &str) -> EntityRef {
         let kind = game.res.mob_types().get(kind).unwrap().clone();
         game.mobs
             .push(Mob::new(id, kind, Vec3::new(0.5, 70.0, 0.5), 0.0));
@@ -460,8 +460,8 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
                 game.native_joins_skip();
-                game.server.next_entity += 1;
-                let id = game.server.next_entity;
+                game.side.next_entity += 1;
+                let id = game.side.next_entity;
                 let cow = push_mob(game, id, "minecraft:cow");
                 // In the lists, but not yet let in.
                 assert!(!cow.added_to_level(game));

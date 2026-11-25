@@ -71,15 +71,15 @@ fn formerly_aliased_types_keep_their_id_and_registry_tags() {
     let catalog = Catalog::from_json(&types, &tags).unwrap();
 
     for (id, expected_tags) in named {
-        let kind = Game::damage_kind(&catalog, id);
+        let kind = crate::game::ServerGame::damage_kind(&catalog, id);
         assert_eq!(kind, DamageKind::Named(Tags::new(id, expected_tags)));
         assert_eq!(damage_type(kind, false), id);
         assert_eq!(damage_type(kind, true), id);
     }
-    let collision = Damage::of(Game::damage_kind(&catalog, "minecraft:fly_into_wall"));
+    let collision = Damage::of(crate::game::ServerGame::damage_kind(&catalog, "minecraft:fly_into_wall"));
     assert!(collision.bypasses_armor() && collision.no_knockback());
     assert!(!collision.causes_panic());
-    let magic = Damage::of(Game::damage_kind(&catalog, "minecraft:indirect_magic"));
+    let magic = Damage::of(crate::game::ServerGame::damage_kind(&catalog, "minecraft:indirect_magic"));
     assert!(magic.bypasses_armor() && magic.kind.witch_resistant_to());
     assert!(!magic.no_knockback());
 
@@ -89,7 +89,7 @@ fn formerly_aliased_types_keep_their_id_and_registry_tags() {
         r#"{"values":["fly_into_wall","indirect_magic"]}"#.into();
     let overridden = Catalog::from_json(&types, &tags).unwrap();
     for id in registry_backed {
-        let kind = Game::damage_kind(&overridden, id);
+        let kind = crate::game::ServerGame::damage_kind(&overridden, id);
         assert_eq!(damage_type(kind, false), id);
         assert_eq!(damage_type(kind, true), id);
         assert!(kind.bypasses_invulnerability(), "{id}");
@@ -103,7 +103,7 @@ fn every_world_damage_type_round_trips_with_or_without_an_attacker() {
     with_game(|game| {
         let catalog = &game.health_resources.damage;
         for (_, definition) in catalog.entries() {
-            let kind = Game::damage_kind(catalog, &definition.name);
+            let kind = crate::game::ServerGame::damage_kind(catalog, &definition.name);
             assert_eq!(damage_type(kind, false), definition.name);
             assert_eq!(damage_type(kind, true), definition.name);
         }
@@ -197,12 +197,12 @@ fn projectile_and_command_targets_classify_actual_direct_entity_families() {
         attacker: 7,
         ..Default::default()
     };
-    Game::set_projectile_attack(&mut large_attack, &large);
+    crate::game::ServerGame::set_projectile_attack(&mut large_attack, &large);
     let mut small_attack = Attack {
         attacker: 7,
         ..Default::default()
     };
-    Game::set_projectile_attack(&mut small_attack, &small);
+    crate::game::ServerGame::set_projectile_attack(&mut small_attack, &small);
     let fireball = Damage {
         kind: DamageKind::Fireball,
         attacker: Some(Who::Player),
@@ -220,51 +220,51 @@ fn projectile_and_command_targets_classify_actual_direct_entity_families() {
     // `/damage` target classification matches vanilla entity class families.
     let projectiles = [large, small, arrow, trident, snowball];
     assert_eq!(
-        Game::target_direct_entity(Some(Target::Player), &projectiles),
+        crate::game::ServerGame::target_direct_entity(Some(Target::Player), &projectiles),
         DirectEntity::Living
     );
     assert_eq!(
-        Game::target_direct_entity(Some(Target::Mob(5)), &projectiles),
+        crate::game::ServerGame::target_direct_entity(Some(Target::Mob(5)), &projectiles),
         DirectEntity::Living
     );
     assert_eq!(
-        Game::target_direct_entity(Some(Target::Stand(6)), &projectiles),
+        crate::game::ServerGame::target_direct_entity(Some(Target::Stand(6)), &projectiles),
         DirectEntity::Living
     );
     assert_eq!(
-        Game::target_direct_entity(Some(Target::Dragon(7)), &projectiles),
+        crate::game::ServerGame::target_direct_entity(Some(Target::Dragon(7)), &projectiles),
         DirectEntity::Living
     );
     assert_eq!(
-        Game::target_direct_entity(Some(Target::Projectile(10)), &projectiles),
+        crate::game::ServerGame::target_direct_entity(Some(Target::Projectile(10)), &projectiles),
         DirectEntity::LargeFireball
     );
     assert_eq!(
-        Game::target_direct_entity(Some(Target::Projectile(11)), &projectiles),
+        crate::game::ServerGame::target_direct_entity(Some(Target::Projectile(11)), &projectiles),
         DirectEntity::Projectile
     );
     assert_eq!(
-        Game::target_direct_entity(Some(Target::Projectile(12)), &projectiles),
+        crate::game::ServerGame::target_direct_entity(Some(Target::Projectile(12)), &projectiles),
         DirectEntity::Arrow
     );
     assert_eq!(
-        Game::target_direct_entity(Some(Target::Projectile(13)), &projectiles),
+        crate::game::ServerGame::target_direct_entity(Some(Target::Projectile(13)), &projectiles),
         DirectEntity::Arrow
     );
     assert_eq!(
-        Game::target_direct_entity(Some(Target::Projectile(14)), &projectiles),
+        crate::game::ServerGame::target_direct_entity(Some(Target::Projectile(14)), &projectiles),
         DirectEntity::Projectile
     );
     assert_eq!(
-        Game::target_direct_entity(Some(Target::Trident(20)), &projectiles),
+        crate::game::ServerGame::target_direct_entity(Some(Target::Trident(20)), &projectiles),
         DirectEntity::Arrow
     );
     assert_eq!(
-        Game::target_direct_entity(Some(Target::Rocket(21)), &projectiles),
+        crate::game::ServerGame::target_direct_entity(Some(Target::Rocket(21)), &projectiles),
         DirectEntity::Projectile
     );
     assert_eq!(
-        Game::target_direct_entity(Some(Target::Hook(22)), &projectiles),
+        crate::game::ServerGame::target_direct_entity(Some(Target::Hook(22)), &projectiles),
         DirectEntity::Projectile
     );
     for other in [
@@ -277,7 +277,7 @@ fn projectile_and_command_targets_classify_actual_direct_entity_families() {
         Some(Target::Crystal(35)),
     ] {
         assert_eq!(
-            Game::target_direct_entity(other, &projectiles),
+            crate::game::ServerGame::target_direct_entity(other, &projectiles),
             DirectEntity::Other,
             "{other:?}"
         );
@@ -336,12 +336,12 @@ pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_pl
         );
         // `CreakingHeartBlockEntity.creakingHurt` from its protector starts the 100-tick emitter.
         use sunrise_client::containers::BlockEntity::CreakingHeart;
-        let heart_emitter = |game: &Game<'_>| match game.world.block_entities.get(&(8, 64, 8)) {
+        let heart_emitter = |game: &crate::game::ServerGame<'_>| match game.world.block_entities.get(&(8, 64, 8)) {
             Some(CreakingHeart(heart)) => heart.emitter,
             _ => panic!("the protecting heart is gone"),
         };
         let clear_emitter =
-            |game: &mut Game<'_>| match game.world.block_entities.get_mut(&(8, 64, 8)) {
+            |game: &mut crate::game::ServerGame<'_>| match game.world.block_entities.get_mut(&(8, 64, 8)) {
                 Some(CreakingHeart(heart)) => heart.emitter = 0,
                 _ => panic!("the protecting heart is gone"),
             };
@@ -379,11 +379,11 @@ pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_pl
             wolf.extra.owner = None;
         }
 
-        let clear_anim = |game: &mut Game<'_>| {
+        let clear_anim = |game: &mut crate::game::ServerGame<'_>| {
             let c = game.mobs.iter_mut().find(|m| m.id == creaking_id).unwrap();
             c.extra.ints[0] = 0;
         };
-        let creaking_state = |game: &Game<'_>| {
+        let creaking_state = |game: &crate::game::ServerGame<'_>| {
             let c = game.mobs.iter().find(|m| m.id == creaking_id).unwrap();
             (c.health, c.extra.ints[0], c.ai.last_hurt_by_player)
         };
@@ -447,7 +447,7 @@ pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_pl
         );
         assert_eq!(creaking_state(game), (start_health, 8, 100));
         assert_eq!(heart_emitter(game), 100);
-        assert_eq!(game.server.lan_entity_events, [(creaking_id as i32, 66)]);
+        assert_eq!(game.side.lan_entity_events, [(creaking_id as i32, 66)]);
         let events = TEST_POSTED_EVENTS.with(|events| events.borrow_mut().take().unwrap());
         assert_eq!(
             events.first(),
@@ -463,7 +463,7 @@ pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_pl
                 .iter()
                 .all(|(event, _, source)| *event == "minecraft:block_place" && source.is_none())
         );
-        let sounds = &game.server.pending_sounds;
+        let sounds = &game.side.pending_sounds;
         assert_eq!(
             sounds.last().unwrap().event,
             "minecraft:entity.creaking.sway"
@@ -489,7 +489,7 @@ pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_pl
             .unwrap()
             .ai
             .last_hurt_by_player = 0;
-        game.server.last_hurt_by_player.remove(&creaking_id);
+        game.side.last_hurt_by_player.remove(&creaking_id);
         assert!(
             !game.run_command("damage 00000055-0000-0000-0000-000000000001 1 minecraft:generic")
         );
@@ -512,7 +512,7 @@ pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_pl
         // remembered player credit, and player-lit TNT replaces stale offline player credit.
         clear_anim(game);
         clear_emitter(game);
-        game.server.last_hurt_by_player.remove(&creaking_id);
+        game.side.last_hurt_by_player.remove(&creaking_id);
         game.native_explode(
             Some((unowned_tnt_id, Target::Tnt(unowned_tnt_id))),
             [4.5, 64.0, 4.5],
@@ -552,7 +552,7 @@ pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_pl
             .unwrap()
             .ai
             .last_hurt_by_player = 50;
-        game.server
+        game.side
             .last_hurt_by_player
             .insert(creaking_id, PlayerCredit(777));
         game.add_primed_tnt(BlockPos::new(4, 64, 4), 0.0, 80, Some(Who::Player), None);
@@ -581,18 +581,18 @@ pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_pl
                 p.velocity = Vec3::new(-1.0, 0.0, 0.0);
             }
         });
-        game.server.pending_sounds.clear();
-        game.server.lan_entity_events.clear();
+        game.side.pending_sounds.clear();
+        game.side.lan_entity_events.clear();
         TEST_POSTED_EVENT_ORDER.with(|order| *order.borrow_mut() = Some(Vec::new()));
-        let reaction = |game: &Game<'_>| {
-            let sounds = &game.server.pending_sounds;
+        let reaction = |game: &crate::game::ServerGame<'_>| {
+            let sounds = &game.side.pending_sounds;
             let is_hit_sound = |event: &str| {
                 matches!(
                     event,
                     "minecraft:entity.creaking.sway" | "minecraft:entity.arrow.hit"
                 )
             };
-            let flashes = game.server.lan_entity_events.as_slice();
+            let flashes = game.side.lan_entity_events.as_slice();
             let is_flash = |event: &(i32, i8)| *event == (creaking_id as i32, 66);
             let action = TEST_POSTED_EVENT_ORDER.with(|order| {
                 order
@@ -692,7 +692,7 @@ fn live_damage_and_blast_ghast_reflected_fireball() {
             [86, 0, 0, 4],
         );
 
-        let spawn_ghast = |game: &mut Game<'_>, n: u32, health: f32| -> (u32, String) {
+        let spawn_ghast = |game: &mut crate::game::ServerGame<'_>, n: u32, health: f32| -> (u32, String) {
             assert!(game.run_command(&format!(
                 "summon ghast 4.5 64 4.5 {{UUID:[I;86,0,0,{n}],NoAI:1b,NoGravity:1b}}"
             )));

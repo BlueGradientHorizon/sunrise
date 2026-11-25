@@ -79,7 +79,7 @@ impl ItemPart for Jar {
 
 /// A dedicated server with a chunk at the origin and the Jar installed, running `test` with the
 /// overworld.
-fn with_jar(jar: &Jar, test: impl FnOnce(&mut super::Game<'_>, LevelRef)) {
+fn with_jar(jar: &Jar, test: impl FnOnce(&mut crate::game::ServerGame<'_>, LevelRef)) {
     let mods: Mods = vec![ModEntry::new("jar", Box::new(jar.clone()))].into();
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
@@ -94,7 +94,7 @@ fn with_jar(jar: &Jar, test: impl FnOnce(&mut super::Game<'_>, LevelRef)) {
     });
 }
 
-fn dispense(game: &mut super::Game<'_>) -> Option<ItemStack> {
+fn dispense(game: &mut crate::game::ServerGame<'_>) -> Option<ItemStack> {
     game.dispense_item(
         (DISPENSER[0], DISPENSER[1], DISPENSER[2]),
         Direction::East,
@@ -105,7 +105,7 @@ fn dispense(game: &mut super::Game<'_>) -> Option<ItemStack> {
     .unwrap()
 }
 
-fn honey_at_target(game: &super::Game<'_>) -> bool {
+fn honey_at_target(game: &crate::game::ServerGame<'_>) -> bool {
     let honey = game
         .pack
         .assets
@@ -170,7 +170,7 @@ fn a_part_that_changes_the_dispensers_slots_is_refused_and_undone() {
             game.level_set_block(level, DISPENSER, dispenser.unwrap(), BlockUpdateFlags::NONE);
         assert_eq!(placed, Ok(true));
         let at = (DISPENSER[0], DISPENSER[1], DISPENSER[2]);
-        let slots = |game: &super::Game<'_>| game.world.block_entities[&at].slots().to_vec();
+        let slots = |game: &crate::game::ServerGame<'_>| game.world.block_entities[&at].slots().to_vec();
         game.world.block_entities.get_mut(&at).unwrap().slots_mut()[0] =
             Some(ItemStack::new("minecraft:stick", 1));
         let before = slots(game);

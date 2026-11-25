@@ -18,7 +18,7 @@ fn count_equality_uses_live_stack_bounds_and_command_flow() {
     assert!(game.run_command("setblock 4 200 4 chest{Items:[{Slot:0b,id:\"minecraft:diamond\",count:1},{Slot:1b,id:\"minecraft:diamond\",count:3},{Slot:2b,id:\"minecraft:diamond\",count:4},{Slot:3b,id:\"minecraft:dirt\",count:3},{Slot:5b,id:\"minecraft:stone\",count:2,components:{\"minecraft:custom_data\":{h194:1}}}]}"));
     assert!(game.run_command("scoreboard objectives add h194 dummy"));
     let clock = game.world.game_time;
-    let counts = |g: &Game<'_>| {
+    let counts = |g: &crate::game::ServerGame<'_>| {
         let sunrise_client::containers::BlockEntity::Chest(slots) =
             g.world.block_entities.get(&(4, 200, 4)).unwrap()
         else {

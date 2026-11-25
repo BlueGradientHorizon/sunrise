@@ -7,7 +7,7 @@ use sunrise_core::position::BlockPos;
 
 /// The result of `/data get block <hopper> TransferCooldown`
 /// (`DataCommands.getData`'s numeric value), or `None` when it failed.
-fn cooldown_shown(game: &mut Game<'_>) -> Option<i32> {
+fn cooldown_shown(game: &mut crate::game::ServerGame<'_>) -> Option<i32> {
     let (ok, outcome) = game.recording_command_outcome(|game| {
         game.run_command("data get block 4 200 4 TransferCooldown")
     });

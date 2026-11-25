@@ -30,7 +30,7 @@ fn world_with_pack(tag: &str) -> std::path::PathBuf {
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
     world: &std::path::Path,
-) -> Game<'a> {
+) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -53,19 +53,16 @@ fn game<'a>(
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
-    game.server.world_root = world.to_path_buf();
+    game.side.world_root = world.to_path_buf();
     game.build_registries();
     game.set_allow_commands(true);
     game
@@ -104,10 +101,10 @@ fn a_test_instance_from_an_enabled_world_pack_is_found_and_runs() {
         sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(24.5, 100.0, 8.5))
             .unwrap(),
     );
-    game.server.chat_capture = Some(Vec::new());
+    game.side.chat_capture = Some(Vec::new());
     assert!(game.run_command("test run h275:broken"));
     let said: Vec<String> = game
-        .server
+        .side
         .chat_capture
         .take()
         .unwrap()
@@ -172,7 +169,7 @@ fn a_world_keeps_the_test_instances_it_opened_with() {
     game.reload_datapacks(false, &game.level.enabled_features.clone())
         .unwrap();
     game.load_world_state().unwrap();
-    let ids = |game: &Game<'_>| game.ui.registries.ids("minecraft:test_instance").to_vec();
+    let ids = |game: &crate::game::ServerGame<'_>| game.ui.registries.ids("minecraft:test_instance").to_vec();
     assert_eq!(ids(&game), ["h275:broken", "minecraft:always_pass"]);
     assert!(
         game.test_def("minecraft:always_pass").unwrap().block_based,
@@ -199,7 +196,7 @@ fn a_world_keeps_the_test_instances_it_opened_with() {
     );
     assert_eq!(ids(&game), ["h275:broken", "minecraft:always_pass"]);
     // World B.
-    game.server.world_root = b.clone();
+    game.side.world_root = b.clone();
     game.reload_datapacks(false, &game.level.enabled_features.clone())
         .unwrap();
     game.load_world_state().unwrap();

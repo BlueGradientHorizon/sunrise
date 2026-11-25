@@ -20,9 +20,9 @@ pub(in crate::game::server_side) use sunrise_client::chunk::Chunk;
 pub(in crate::game::server_side) use sunrise_core::position::ChunkPos;
 
 /// Runs `command`: whether it succeeded and what it said first.
-pub(in crate::game) fn run(game: &mut Game<'_>, command: &str) -> (bool, Option<String>) {
-    game.server.chat_capture = Some(Vec::new());
+pub(in crate::game) fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Option<String>) {
+    game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.server.chat_capture.take().unwrap_or_default();
+    let said = game.side.chat_capture.take().unwrap_or_default();
     (ok, said.first().map(sunrise_client::text::Text::plain))
 }

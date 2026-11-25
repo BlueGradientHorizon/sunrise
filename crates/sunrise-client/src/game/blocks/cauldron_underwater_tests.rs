@@ -7,7 +7,7 @@ use super::*;
 use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);
@@ -24,7 +24,7 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     game
 }
 
-fn name(game: &Game<'_>, at: [i32; 3]) -> String {
+fn name(game: &crate::game::ServerGame<'_>, at: [i32; 3]) -> String {
     let state = game.world.block(at[0], at[1], at[2]);
     game.pack
         .assets
@@ -35,15 +35,15 @@ fn name(game: &Game<'_>, at: [i32; 3]) -> String {
         .to_string()
 }
 
-fn held(game: &Game<'_>) -> Option<String> {
+fn held(game: &crate::game::ServerGame<'_>) -> Option<String> {
     game.inventory[0].as_ref().map(|s| s.item.to_string())
 }
 
 /// Run `command`, reporting what it said when it failed.
-fn command(game: &mut Game<'_>, command: &str) {
-    game.server.chat_capture = Some(Vec::new());
+fn command(game: &mut crate::game::ServerGame<'_>, command: &str) {
+    game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.server.chat_capture.take().unwrap_or_default();
+    let said = game.side.chat_capture.take().unwrap_or_default();
     assert!(
         ok,
         "{command}: {}",
@@ -55,7 +55,7 @@ fn command(game: &mut Game<'_>, command: &str) {
 
 /// `setblock`, skipped when the cell already holds a block of that name
 /// (`setblock` reports failure when the state would not change).
-fn set(game: &mut Game<'_>, at: [i32; 3], block: &str) {
+fn set(game: &mut crate::game::ServerGame<'_>, at: [i32; 3], block: &str) {
     let want = block.split('[').next().unwrap();
     if name(game, at) != want {
         command(
@@ -68,7 +68,7 @@ fn set(game: &mut Game<'_>, at: [i32; 3], block: &str) {
 /// Empty `bucket` onto the empty cauldron at 8 100 8, with `above` in the cell
 /// over it; the outcome and cauldron's state afterwards.
 fn click_under(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     above: &str,
     bucket: &str,
 ) -> (sunrise_client::cauldron::Outcome, String) {

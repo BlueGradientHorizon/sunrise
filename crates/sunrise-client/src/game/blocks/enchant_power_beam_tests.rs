@@ -3,7 +3,7 @@
 use crate::game::{
     Dim, Game,
     execution_role::ExecutionRole,
-    native_entity_refs::tests::{fixture_root, run_fresh_cases, with_game, with_game_role},
+    native_entity_refs::tests::{fixture_root, run_fresh_cases, with_game, with_game_role, with_game_role_client},
 };
 use mod_api::{
     BlockPart, EnchantPowerBonusEvent, Hooks, Host, LevelReadError, ModEntry, Mods, Registrar,
@@ -94,7 +94,7 @@ fn with_query_probe(
     name: &str,
     role: ExecutionRole,
     cycles: bool,
-    test: impl FnOnce(&mut Game<'_>, &AtomicUsize),
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, &AtomicUsize),
 ) {
     if run_fresh_cases(name, "SUNRISE_ENCHANT_QUERY_CHILD", &["query"]) {
         return;
@@ -108,6 +108,32 @@ fn with_query_probe(
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
         with_game_role(fixture_root(), role, |game| {
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            test(game, &calls);
+        });
+    });
+}
+
+fn with_query_probe_client(
+    name: &str,
+    role: ExecutionRole,
+    cycles: bool,
+    test: impl FnOnce(&mut crate::game::ClientGame<'_>, &AtomicUsize),
+) {
+    if run_fresh_cases(name, "SUNRISE_ENCHANT_QUERY_CHILD", &["query"]) {
+        return;
+    }
+    let probe = QueryProbe {
+        cycles,
+        ..Default::default()
+    };
+    let calls = probe.calls.clone();
+    let mods: Mods = vec![ModEntry::new("power_query", Box::new(probe))].into();
+    mod_platform::testing::with_mods(mods.clone(), || {
+        crate::game::api_values::install_parts(&mods).unwrap();
+        with_game_role_client(fixture_root(), role, |game| {
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -203,7 +229,7 @@ fn enchant_power_query_reads_the_named_server_level_and_refuses_cycles() {
 #[test]
 #[ignore = "daily"]
 fn enchant_power_query_reads_the_logged_in_client_level() {
-    with_query_probe(
+    with_query_probe_client(
         "game::client_side::enchant_power_beam_tests::enchant_power_query_reads_the_logged_in_client_level",
         ExecutionRole::Client,
         false,
@@ -227,7 +253,7 @@ fn enchant_power_query_reads_the_logged_in_client_level() {
     );
 }
 
-pub(in crate::game::client_side) fn place(game: &mut Game<'_>, offset: [i32; 3], block: &str) {
+pub(in crate::game::client_side) fn place<S: crate::game::Side>(game: &mut Game<'_, S>, offset: [i32; 3], block: &str) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
     let state = game.pack.assets.registry.default_state(block).unwrap();
     let [x, y, z] = [0, 1, 2].map(|i| TABLE[i] + offset[i]);
     game.world.set(x, y, z, state).unwrap();
@@ -261,7 +287,7 @@ fn block_parts_answer_the_enchanting_power_and_the_beam_colour() {
         assert_eq!(game.count_bookshelves(TABLE), 0);
 
         let registry = game.pack.assets.registry;
-        let color = |game: &Game<'_>, block: &str| {
+        let color = |game: &crate::game::ServerGame<'_>, block: &str| {
             let state = registry.default_state(block).unwrap();
             game.beacon_color(state, block, [8, 65, 8], [8, 64, 8])
         };
@@ -274,7 +300,7 @@ fn block_parts_answer_the_enchanting_power_and_the_beam_colour() {
 }
 
 /// Drive the public worker entry, observing real particle requests rather than cache bits.
-pub(in crate::game::client_side) fn enchant_particles(game: &Game<'_>) -> usize {
+pub(in crate::game::client_side) fn enchant_particles(game: &crate::game::ClientGame<'_>) -> usize {
     use sunrise_client::{
         animate_tick::{AnimateContext, animate_tick},
         particles::{ParticleEngine, ParticleType},
@@ -288,7 +314,7 @@ pub(in crate::game::client_side) fn enchant_particles(game: &Game<'_>) -> usize 
     engine.camera = [8.5, 65.0, 8.5];
     engine.created_requests = Some(Vec::new());
     let ctx = AnimateContext {
-        enchant_power: &game.client.ambience.enchant_power,
+        enchant_power: &game.side.ambience.enchant_power,
         world: &game.world,
         facts: game.res.facts(),
         collision: game.res.collision(),
@@ -394,7 +420,7 @@ fn enchant_particles_share_native_power_and_rebuild_only_on_parts_reload() {
         .unwrap()
         .prepared()
         .to_path_buf();
-    with_game_role(
+    with_game_role_client(
         root,
         crate::game::execution_role::ExecutionRole::Client,
         |game| {

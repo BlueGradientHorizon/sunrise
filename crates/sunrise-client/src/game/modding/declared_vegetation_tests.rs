@@ -176,7 +176,7 @@ fn declared_vegetation_places_and_breaks_independently_of_its_template() {
             });
             assert_ne!(game.world.block(5, 65, 5), air);
         });
-        super::native_entity_refs::tests::with_game_role(
+        super::native_entity_refs::tests::with_game_role_client(
             root.prepared().to_path_buf(),
             super::execution_role::ExecutionRole::Client,
             |game| {

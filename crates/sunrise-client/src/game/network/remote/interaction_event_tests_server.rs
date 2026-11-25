@@ -409,7 +409,7 @@ fn an_item_used_from_the_off_hand_reaches_the_use_hooks_on_the_server() {
             // A guest's use packet names the off hand alone.
             game.inventory[game.selected] = None;
             *observer.0.lock().unwrap() = Controls::default();
-            game.server.guest_use = Some(super::super::GuestUse::Item(Hand::Off));
+            game.side.guest_use = Some(super::super::GuestUse::Item(Hand::Off));
             assert_eq!(game.use_item_as_player().unwrap(), Some(Hand::Off));
             assert_eq!(
                 observer.0.lock().unwrap().steps,
@@ -429,7 +429,7 @@ fn an_item_used_from_the_off_hand_reaches_the_use_hooks_on_the_server() {
                     hands: Some(Vec::new()),
                     ..Controls::default()
                 };
-                game.server.guest_use = guest;
+                game.side.guest_use = guest;
                 assert_eq!(game.use_item_as_player().unwrap(), Some(Hand::Off));
                 let state = observer.0.lock().unwrap();
                 assert!(
@@ -719,7 +719,7 @@ fn item_use_overlap_matrix_on_the_server() {
                                                 Answer::Success | Answer::Fail | Answer::Consume
                                             )
                                     };
-                                    game.server.guest_use =
+                                    game.side.guest_use =
                                         Some(super::super::GuestUse::on_block(hand));
                                     game.adv.progress = Default::default();
                                     let swings = game.swings_started;
@@ -1283,7 +1283,7 @@ fn right_click_block_forced_item_use_reaches_empty_hand_on_both_sides() {
 }
 
 pub(in crate::game) fn setup_interaction_guest(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
 ) -> std::sync::mpsc::Receiver<sunrise_client::lan::Out> {
     game.lan_host(
         LanSettings {
@@ -1309,8 +1309,8 @@ pub(in crate::game) fn setup_interaction_guest(
             seed: 0,
             max_players: 2,
             integrated: true,
-            levels: game.server.level_shapes,
-            level_seeds: game.levels.0.runtime.seeds(),
+            levels: game.side.level_shapes,
+            level_seeds: game.side.levels.0.runtime.seeds(),
         },
     )
     .unwrap();
@@ -1338,11 +1338,11 @@ pub(in crate::game) fn setup_interaction_guest(
     rx
 }
 
-pub(in crate::game::server_side) fn use_block(game: &mut Game<'_>, client: bool) -> bool {
+pub(in crate::game::server_side) fn use_block(game: &mut crate::game::ServerGame<'_>, client: bool) -> bool {
     if client {
         game.remote_use_item_on(Hand::Main, mod_api::InteractionAttempt::Press, None)
     } else {
-        game.server.guest_use = Some(super::super::GuestUse::on_block(Hand::Main));
+        game.side.guest_use = Some(super::super::GuestUse::on_block(Hand::Main));
         game.use_hand(Some(&hit())).unwrap()
     }
 }

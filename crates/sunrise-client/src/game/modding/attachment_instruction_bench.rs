@@ -59,7 +59,7 @@ fn attachment_instruction_count() {
 
 #[inline(never)]
 fn attachment_measured_passes(
-    game: &mut crate::game::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     holders: &[mod_api::Holder],
     passes: usize,
 ) {

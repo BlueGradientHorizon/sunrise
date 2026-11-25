@@ -333,7 +333,7 @@ pub(super) fn configuration_peer(
     (c, local, known.unwrap())
 }
 
-fn controlled_peer(port: u16, expected: &[u8], game: &super::super::Game<'_>, network: bool) {
+fn controlled_peer(port: u16, expected: &[u8], game: &crate::game::ClientGame<'_>, network: bool) {
     use sunrise_protocol::packets::{Empty, configuration as cfg, play};
     let (mut c, local, known) = configuration_peer(port, "ConfigPeer");
     struct Release(std::sync::mpsc::Sender<()>);

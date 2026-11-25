@@ -1024,10 +1024,10 @@ pub(in crate::game::server_side) use crate::game::commands::items::mob_equipment
         use sunrise_core::random::LegacyRandom;
         with_game(|game| {
             let clock = game.world.game_time;
-            game.server.world_root =
+            game.side.world_root =
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                     .join("enchantment-catalog-world");
-            let pack = game.server.world_root.join("datapacks/catalog");
+            let pack = game.side.world_root.join("datapacks/catalog");
             let definitions = pack.join("data/wpenchant/enchantment");
             std::fs::create_dir_all(&definitions).unwrap();
             std::fs::write(
@@ -1049,7 +1049,7 @@ pub(in crate::game::server_side) use crate::game::commands::items::mob_equipment
             )
             .unwrap();
             std::fs::write(
-                game.server.world_root.join("datapacks.json"),
+                game.side.world_root.join("datapacks.json"),
                 r#"{"enabled":["file/catalog"]}"#,
             )
             .unwrap();
@@ -1058,7 +1058,7 @@ pub(in crate::game::server_side) use crate::game::commands::items::mob_equipment
             std::fs::write(functions.join("ready.mcfunction"), "return 1\n").unwrap();
             let features = game.level.enabled_features.clone();
             let stack = game.reload_datapacks(false, &features).unwrap();
-            assert!(game.fns.0.store.functions.contains_key("wpenchant:ready"));
+            assert!(game.side.fns.0.store.functions.contains_key("wpenchant:ready"));
             let root = game.options.resources.clone();
             let prepared = game.prepare_world_reload(&stack, &root).unwrap();
             game.install_world_tables(prepared);
@@ -1154,10 +1154,10 @@ pub(in crate::game::server_side) use crate::game::commands::items::registered_sl
             definition,
         )
         .unwrap();
-        game.server.world_root = root;
+        game.side.world_root = root;
         game.ensure_datapacks();
         assert_eq!(
-            game.fns
+            game.side.fns
                 .0
                 .data_resource("data/parity/slot_source/first_three.json")
                 .unwrap()
@@ -1255,7 +1255,7 @@ pub(in crate::game::server_side) use crate::game::commands::items::registered_sl
             )
             .unwrap(),
         );
-        assert!(game.server.command_source.is_none());
+        assert!(game.side.command_source.is_none());
         assert!(game.run_command(
             r#"item replace entity @s {type:"slot_range",source:"this",slots:"weapon.mainhand"} with minecraft:stone"#
         ));
@@ -1269,7 +1269,7 @@ pub(in crate::game::server_side) use crate::game::commands::items::registered_sl
         let mut resources = None;
         let (mut game, _) = scene(&mut resources, "slot-source-unsupported-world");
         let path = game
-            .server
+            .side
             .world_root
             .join("datapacks/parity/data/parity/slot_source/this.json");
         std::fs::write(
@@ -1321,7 +1321,7 @@ pub(in crate::game::server_side) use crate::game::commands::items::registered_sl
     pub(in crate::game) fn scene<'a>(
         resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
         name: &str,
-    ) -> (Game<'a>, std::path::PathBuf) {
+    ) -> (crate::game::ServerGame<'a>, std::path::PathBuf) {
         let mut game = crate::game::game_tests::tests::server_game(resources);
         game.build_registries();
         game.set_allow_commands(true);
@@ -1336,7 +1336,7 @@ pub(in crate::game::server_side) use crate::game::commands::items::registered_sl
             std::fs::write(&path, serde_json::json!({"type":"minecraft:limit_slots","limit":limit,"slot_source":{"type":"minecraft:slot_range","slots":"container.*"}}).to_string()).unwrap();
             high = path;
         }
-        game.server.world_root = root;
+        game.side.world_root = root;
         game.ensure_datapacks();
         assert!(game.run_command("setblock 0 100 0 chest{Items:[{Slot:0b,id:\"stone\",count:5},{Slot:1b,id:\"dirt\",count:2},{Slot:3b,id:\"stone\",count:7}]}"));
         assert!(game.run_command("scoreboard objectives add slotprobe dummy"));

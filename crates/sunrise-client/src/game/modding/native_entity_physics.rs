@@ -337,7 +337,7 @@ mod tests {
             }
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
-            game.others.0.push(OtherEntity {
+            game.side.others.0.push(OtherEntity {
                 size_answer: None,
                 attachment_lifetime: Default::default(),
                 join: Default::default(),
@@ -501,7 +501,7 @@ mod tests {
         use sunrise_client::projectiles::Projectile;
         use sunrise_core::geometry::{Aabb, Vec3};
 
-        let bullet = |game: &mut Game<'_>, at: Vec3| {
+        let bullet = |game: &mut crate::game::ServerGame<'_>, at: Vec3| {
             let mut bullet = Projectile::new(
                 ProjectileKind::ShulkerBullet {
                     target: None,

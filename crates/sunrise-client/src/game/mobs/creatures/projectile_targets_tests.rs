@@ -100,7 +100,7 @@ pub(in crate::game) fn vec_bits(v: Vec3) -> [String; 3] {
 
 pub(in crate::game) fn setup_game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> Game<'a> {
+) -> crate::game::ServerGame<'a> {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);
@@ -129,7 +129,7 @@ pub(in crate::game) fn setup_game<'a>(
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::server_side::creatures_server::projectile_targets_tests::clear_entities;
 
-pub(in crate::game) fn reset_arena(game: &mut Game<'_>, target: &str) {
+pub(in crate::game) fn reset_arena(game: &mut crate::game::ServerGame<'_>, target: &str) {
     clear_entities(game);
     let _ = game.run_command("fill 0 63 0 9 63 9 minecraft:stone");
     let _ = game.run_command("fill 0 64 0 9 70 9 minecraft:air");
@@ -175,7 +175,7 @@ pub(in crate::game) use crate::game::server_side::creatures_server::projectile_t
 pub(in crate::game) use crate::game::server_side::creatures_server::projectile_targets_tests::target_bounds;
 
 pub(in crate::game) fn summon_projectile(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     proj: &str,
     y0: f64,
     proj_seed: i64,
@@ -263,7 +263,7 @@ pub(in crate::game) fn summon_projectile(
 pub(in crate::game) use crate::game::server_side::creatures_server::projectile_targets_tests::target_alive;
 
 pub(in crate::game) fn check_case(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     case: &Case,
     proj_seed: i64,
     level_seed: i64,

@@ -30,7 +30,7 @@ fn a_named_mob_the_server_camera_is_attached_to_shows_no_name_tag() {
 #[ignore = "daily"]
 fn client_camera_entity_returns_to_player_after_removal() {
     with_client_game(|game| {
-        let camera = |game: &Game<'_>| (game as &dyn ClientHost).camera_entity();
+        let camera = |game: &crate::game::ClientGame<'_>| (game as &dyn ClientHost).camera_entity();
         assert!(camera(game).is_none(), "the fixture has no player");
         game.native_lifecycle = NativeLifecycle::default();
         let (client, _server) = Pipe::pair();
@@ -85,7 +85,7 @@ fn client_camera_entity_returns_to_player_after_removal() {
         game.remote_set_camera(31);
         assert!(!game.controls_camera());
         assert!(game.hides_as_camera(31));
-        assert!(game.client.spectated_post_effect.is_some());
+        assert!(game.side.spectated_post_effect.is_some());
         let attached = camera(game).unwrap();
         game.handle_packet(C::RemoveEntities(play::RemoveEntities { ids: vec![99] }))
             .unwrap();
@@ -113,7 +113,7 @@ fn client_camera_entity_returns_to_player_after_removal() {
             "movement stays paused while camera remains detached"
         );
         assert!(!game.hides_as_camera(31));
-        assert!(game.client.spectated_post_effect.is_some());
+        assert!(game.side.spectated_post_effect.is_some());
         game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 7 }))
             .unwrap();
         assert_eq!(camera(game), Some(local));
@@ -121,14 +121,14 @@ fn client_camera_entity_returns_to_player_after_removal() {
             game.controls_camera(),
             "movement input and position packets are enabled after SetCamera restores player"
         );
-        assert!(game.client.spectated_post_effect.is_none());
+        assert!(game.side.spectated_post_effect.is_none());
 
-        game.title.0 = Some(game.new_title(game.save.0.root.clone()));
+        game.side.title.0 = Some(game.new_title(game.save.0.root.clone()));
         assert!(
             camera(game).is_none(),
             "the title screen has no camera entity"
         );
-        game.title.0 = None;
+        game.side.title.0 = None;
         assert_eq!(camera(game), Some(local));
 
         spawn.dimension = "test:other_overworld".into();
@@ -225,7 +225,7 @@ pub(in crate::game) fn run_a_named_mob_the_server_camera_is_attached_to_shows_no
             expected.push("Other".to_owned());
         }
         expected.sort();
-        let tags = |game: &Game<'_>| {
+        let tags = |game: &crate::game::ClientGame<'_>| {
             let mut names = game.shown_name_tags(eye);
             names.sort();
             names

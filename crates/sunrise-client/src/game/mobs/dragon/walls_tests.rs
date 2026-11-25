@@ -87,7 +87,7 @@ fn block_parts_answer_what_the_dragon_and_the_wither_may_destroy() {
             .map(|name| registry.default_state(name).unwrap());
             // The chunk around the dragon, all of `state`; how many cells still are, after
             // `checkWalls`, and whether the dragon is in a wall.
-            let walls = |game: &mut Game<'_>, state| {
+            let walls = |game: &mut crate::game::ServerGame<'_>, state| {
                 for x in 0..16 {
                     for y in 60..82 {
                         for z in 0..16 {
@@ -102,7 +102,7 @@ fn block_parts_answer_what_the_dragon_and_the_wither_may_destroy() {
                     .count();
                 (16 * 22 * 16 - left, game.dragon.as_ref().unwrap().in_wall)
             };
-            let griefing = |game: &mut Game<'_>, on: bool| {
+            let griefing = |game: &mut crate::game::ServerGame<'_>, on: bool| {
                 assert!(
                     game.ui
                         .rules

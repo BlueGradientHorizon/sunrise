@@ -219,11 +219,11 @@ impl Hooks for Probe {
     }
 }
 
-pub(in crate::game) fn wait_for_bundle<__Side: crate::game::Side>(game: &mut crate::game::Game<'_, __Side>) {
+pub(in crate::game) fn wait_for_bundle(game: &mut crate::game::ClientGame<'_>) {
     game.wait_for_test_remote_event(|event| matches!(event, Event::Bundle(_)));
 }
 
-pub(in crate::game) fn with_probe<__Side: crate::game::Side>(test: impl FnOnce(&mut crate::game::Game<'_, __Side>, Arc<Witness>)) {
+pub(in crate::game) fn with_probe(test: impl FnOnce(&mut crate::game::ClientGame<'_>, Arc<Witness>)) {
     let witness = Arc::new(Witness {
         main: thread::current().id(),
         order: Mutex::new(Vec::new()),
@@ -241,8 +241,8 @@ pub(in crate::game) fn with_probe<__Side: crate::game::Side>(test: impl FnOnce(&
     );
 }
 
-pub(in crate::game) fn connect_probe<__Side: crate::game::Side>(
-    game: &mut crate::game::Game<'_, __Side>,
+pub(in crate::game) fn connect_probe(
+    game: &mut crate::game::ClientGame<'_>,
 ) -> (
     Arc<raw_payloads::Local>,
     sunrise_protocol::connection::ConnReader,

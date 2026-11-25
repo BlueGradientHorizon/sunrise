@@ -1002,14 +1002,14 @@ pub(in crate::game) mod passenger_relation_tests {
                     }
                 }
                 let nested = if depth == 2 { " on passengers" } else { "" };
-                game.cmds.0.results = Some(Vec::new());
-                game.server.chat_capture = Some(Vec::new());
+                game.side.cmds.0.results = Some(Vec::new());
+                game.side.chat_capture = Some(Vec::new());
                 assert!(game.run_command(&format!(
                 "execute as {} on passengers{nested} store result score @s h150ur store success score @s h150us run scoreboard players add @s h150u 1", actor(parent)
             )));
-                let callbacks = game.cmds.0.results.take().unwrap();
+                let callbacks = game.side.cmds.0.results.take().unwrap();
                 let messages: Vec<_> = game
-                    .server
+                    .side
                     .chat_capture
                     .take()
                     .unwrap()
@@ -1118,21 +1118,21 @@ pub(in crate::game) mod terminal_fork_tests {
     pub(in crate::game::server_side) use sunrise_core::position::ChunkPos;
 
     pub(in crate::game) fn capture(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         command: &str,
     ) -> (Vec<String>, Vec<(bool, i32)>) {
-        game.server.chat_capture = Some(Vec::new());
-        game.cmds.0.results = Some(Vec::new());
+        game.side.chat_capture = Some(Vec::new());
+        game.side.cmds.0.results = Some(Vec::new());
         game.as_console(|g| g.run_command(command));
         let messages = game
-            .server
+            .side
             .chat_capture
             .take()
             .unwrap()
             .iter()
             .map(|t| t.plain())
             .collect();
-        (messages, game.cmds.0.results.take().unwrap())
+        (messages, game.side.cmds.0.results.take().unwrap())
     }
 }
 
@@ -1149,10 +1149,10 @@ pub(in crate::game) mod score_condition_tests {
     #[allow(unused_imports)]
     pub(in crate::game::server_side) use crate::game::game_tests::tests::server_game;
 
-    pub(in crate::game) fn say(game: &mut Game<'_>, command: &str) -> (bool, Vec<String>) {
-        game.server.chat_capture = Some(Vec::new());
+    pub(in crate::game) fn say(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Vec<String>) {
+        game.side.chat_capture = Some(Vec::new());
         let ok = game.run_command(command);
-        let said = game.server.chat_capture.take().unwrap_or_default();
+        let said = game.side.chat_capture.take().unwrap_or_default();
         (
             ok,
             said.iter().map(sunrise_client::text::Text::plain).collect(),

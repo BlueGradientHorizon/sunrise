@@ -55,7 +55,7 @@ pub(in crate::game) struct Active<'a> {
 pub(in crate::game) use crate::game::server_side::commands_server::data::fire_tests::target_exists;
 
 pub(in crate::game) fn summon_target_at(
-    game: &mut crate::game::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     kind: &str,
     pos: [f64; 3],
     nbt: &str,
@@ -506,7 +506,7 @@ pub(in crate::game) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullet
                 .synced_fire
         );
         assert!(
-            game.others
+            game.side.others
                 .0
                 .iter()
                 .find(|o| o.id == eid)
@@ -543,7 +543,7 @@ pub(in crate::game) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullet
         );
         assert!(
             !game
-                .others
+                .side.others
                 .0
                 .iter()
                 .find(|o| o.id == eid)

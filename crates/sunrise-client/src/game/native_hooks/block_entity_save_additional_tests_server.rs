@@ -75,10 +75,10 @@ pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_sav
                         .unwrap();
                     game.player =
                         Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 64.0, 4.5)).unwrap());
-                    game.server.lan_acting_uuid = Some(123);
-                    game.server.lan_acting_entity = Some(20);
-                    game.server.lan_acting_permission = Some(0);
-                    let place = |game: &mut crate::game::Game<'_>, name| {
+                    game.side.lan_acting_uuid = Some(123);
+                    game.side.lan_acting_entity = Some(20);
+                    game.side.lan_acting_permission = Some(0);
+                    let place = |game: &mut crate::game::ServerGame<'_>, name| {
                         let pos = (7, 64, 4);
                         let state = game.pack.assets.registry.default_state(name).unwrap();
                         game.world.set(pos.0, pos.1, pos.2, state).unwrap();
@@ -164,11 +164,11 @@ pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_sav
                         ))),
                     ));
                 }
-                game.save
+                game.side.save
                     .0
                     .save(&[Arc::new(chunk)], registry, game.res.biomes())
                     .unwrap();
-                let mut chunk = game.save.0.load(0, 0, registry, game.res.biomes()).unwrap();
+                let mut chunk = game.side.save.0.load(0, 0, registry, game.res.biomes()).unwrap();
                 game.world.install_chunk_block_entities(&mut chunk);
                 game.world.chunks.insert((0, 0), Arc::new(chunk));
                 assert!(game.streaming.set_forced(0, 0, true));
@@ -209,12 +209,12 @@ pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_sav
                 }
 
                 let capture = game.with_entities([&game.world.chunks[&(0, 0)]]);
-                game.save
+                game.side.save
                     .0
                     .save_later(&capture, registry, game.res.biomes())
                     .unwrap();
-                game.save.0.flush().unwrap();
-                let reloaded = game.save.0.load(0, 0, registry, game.res.biomes()).unwrap();
+                game.side.save.0.flush().unwrap();
+                let reloaded = game.side.save.0.load(0, 0, registry, game.res.biomes()).unwrap();
                 for (x, items) in (1..=3).zip(&expected) {
                     let (_, BlockEntity::Mod(row)) = reloaded
                         .block_entities
@@ -252,7 +252,7 @@ pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_sav
                 )
                 .unwrap();
                 let scratch = tempfile::tempdir().unwrap();
-                game.server.world_root = scratch.path().to_path_buf();
+                game.side.world_root = scratch.path().to_path_buf();
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

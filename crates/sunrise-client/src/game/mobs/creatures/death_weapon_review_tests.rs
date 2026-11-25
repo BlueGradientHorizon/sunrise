@@ -5,13 +5,13 @@ use super::*;
 #[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
 
-pub(in crate::game) fn fixture(expected: Option<ItemStack>, run: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn fixture(expected: Option<ItemStack>, run: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     fixture_with_source(expected, None, run);
 }
 
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::server_side::creatures_server::death_weapon::review_tests::fixture_with_source;
-pub(in crate::game) fn victim(game: &Game<'_>) -> Mob {
+pub(in crate::game) fn victim(game: &crate::game::ServerGame<'_>) -> Mob {
     Mob::new(
         70,
         game.res.mob_types().get("minecraft:pig").unwrap().clone(),
@@ -33,7 +33,7 @@ pub(in crate::game) fn arrow(weapon: Option<ItemStack>) -> Projectile {
     shot.id = 912;
     shot
 }
-pub(in crate::game) fn hit(game: &mut Game<'_>, shot: &Projectile, amount: f32) -> bool {
+pub(in crate::game) fn hit(game: &mut crate::game::ServerGame<'_>, shot: &Projectile, amount: f32) -> bool {
     let mut damage = Damage::of(DamageKind::Arrow);
     damage.from = Some([shot.position.x, shot.position.y, shot.position.z]);
     game.damage_projectile_with_weapon(shot, 70, amount, damage, None)
@@ -130,7 +130,7 @@ fn death_weapon_dispenser_arrow_without_recorded_weapon_is_none() {
     });
 }
 
-pub(in crate::game) fn player(game: &mut Game<'_>) {
+pub(in crate::game) fn player(game: &mut crate::game::ServerGame<'_>) {
     game.player = Some(sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
     crate::game::native_entity_refs::tests::bind_local_player(game, 11, 123);
 }

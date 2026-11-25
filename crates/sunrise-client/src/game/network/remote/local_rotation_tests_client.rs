@@ -34,7 +34,7 @@ fn a_mod_set_look_is_clamped_and_sent_once_by_the_tick() {
                 .set_read_timeout(Some(std::time::Duration::from_secs(5)))
                 .unwrap();
             finish_login(game, &mut server);
-            game.title.0 = None;
+            game.side.title.0 = None;
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
             // The baseline: the first sync sends the position.
             game.remote_send_state(0);
@@ -95,12 +95,12 @@ fn a_player_dead_for_twenty_ticks_sends_nothing_until_it_respawns() {
                 .set_read_timeout(Some(std::time::Duration::from_secs(5)))
                 .unwrap();
             finish_login(game, &mut server);
-            game.title.0 = None;
+            game.side.title.0 = None;
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
             game.remote_send_state(0);
             sent_packets(game, &mut server);
 
-            game.client.screen = crate::game::Screen::Dead;
+            game.side.screen = crate::game::Screen::Dead;
             game.ui.death_time = 19;
             game.yaw = 10.0;
             game.remote_send_state(1);
@@ -114,7 +114,7 @@ fn a_player_dead_for_twenty_ticks_sends_nothing_until_it_respawns() {
             }
 
             // The respawn's new player starts its death clock again.
-            game.client.screen = crate::game::Screen::Playing;
+            game.side.screen = crate::game::Screen::Playing;
             game.ui.death_time = 0;
             game.yaw = 90.0;
             game.remote_send_state(1);

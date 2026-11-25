@@ -68,7 +68,7 @@ pub(in crate::game) mod tests {
     pub(in crate::game) fn game_with_player<'a>(
         resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
         root: &std::path::Path,
-    ) -> (Game<'a>, [f64; 3]) {
+    ) -> (crate::game::ServerGame<'a>, [f64; 3]) {
         use crate::game::{Audio, Options, Progress, Settings, load_resources};
         let settings = Settings::default();
         let loaded = load_resources(
@@ -88,15 +88,12 @@ pub(in crate::game) mod tests {
         options.resources = root.to_path_buf();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
         let res = resources.insert(loaded.resources);
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             res,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                (root).to_path_buf(),
-            )),
             None,
         )
         .unwrap();

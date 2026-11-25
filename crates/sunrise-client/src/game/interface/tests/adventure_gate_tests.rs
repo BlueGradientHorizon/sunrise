@@ -12,7 +12,7 @@ type Posted = (&'static str, [f64; 3], Option<Who>);
 /// A server's game with nobody playing, or `None` without prepared resources.
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> Option<crate::game::Game<'a>> {
+) -> Option<crate::game::ServerGame<'a>> {
     std::env::var_os("SUNRISE_TEST_RESOURCES")?;
     let mut game = server_game(resources);
     game.build_registries();
@@ -51,12 +51,12 @@ fn hit(pos: [i32; 3]) -> Hit {
 /// An adventure player right-clicks the block at `pos` with what is in hand,
 /// as `Minecraft.startUseItem` does; whether the click consumed the action and
 /// the game events the click posted.
-fn click(game: &mut crate::game::Game<'_>, pos: [i32; 3]) -> (bool, Vec<Posted>) {
+fn click(game: &mut crate::game::ServerGame<'_>, pos: [i32; 3]) -> (bool, Vec<Posted>) {
     let hit = hit(pos);
-    game.server.forced_hit = Some(hit);
+    game.side.forced_hit = Some(hit);
     crate::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
     let consumed = game.with_player_actor(|g| g.use_hand(Some(&hit))).unwrap();
-    game.server.forced_hit = None;
+    game.side.forced_hit = None;
     let events =
         crate::game::sculk::TEST_POSTED_EVENTS.with(|events| events.borrow_mut().take().unwrap());
     (consumed, events)

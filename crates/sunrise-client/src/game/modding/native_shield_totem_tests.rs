@@ -60,7 +60,7 @@ impl Hooks for Probe {
     }
 }
 
-fn heard(setup: Heard, test: impl FnOnce(&mut super::Game<'_>)) -> Heard {
+fn heard(setup: Heard, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) -> Heard {
     let log = Arc::new(Mutex::new(setup));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "probe",
@@ -71,7 +71,7 @@ fn heard(setup: Heard, test: impl FnOnce(&mut super::Game<'_>)) -> Heard {
     std::mem::take(&mut *log.lock().unwrap())
 }
 
-fn zombie(game: &super::Game<'_>, id: u32) -> Mob {
+fn zombie(game: &crate::game::ServerGame<'_>, id: u32) -> Mob {
     let kind = game
         .res
         .mob_types()

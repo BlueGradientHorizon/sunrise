@@ -526,14 +526,14 @@ fn entity_quads(verts: &[Vertex], quads: &mut Vec<SceneQuad>) {
 }
 
 #[cfg(test)]
-impl Game<'_> {
+impl crate::game::ClientGame<'_> {
     /// The live particles of the mod's scene `id`: positions, previous positions and ages.
     pub(in crate::game::client_side) fn scene_particles(
         &self,
         owner: &str,
         id: u32,
     ) -> Vec<([f64; 3], [f64; 3], i32)> {
-        let scenes = self.live_scenes.0.borrow();
+        let scenes = self.side.live_scenes.0.borrow();
         scenes
             .live
             .iter()
@@ -548,7 +548,7 @@ impl Game<'_> {
     }
     /// The tick the mod's scene `id` last ran, when it is kept.
     pub(in crate::game::client_side) fn scene_tick(&self, owner: &str, id: u32) -> Option<u64> {
-        let scenes = self.live_scenes.0.borrow();
+        let scenes = self.side.live_scenes.0.borrow();
         scenes
             .live
             .iter()

@@ -37,7 +37,7 @@ impl EventLoopCtl for NoLoop {
 }
 
 /// The server's side of the handshake up to play, as `client_pick`'s tests drive it.
-fn finish_login(game: &mut crate::game::Game<'_>, server: &mut Connection) {
+fn finish_login(game: &mut crate::game::ClientGame<'_>, server: &mut Connection) {
     use sunrise_protocol::packets::{Empty, configuration as cfg, login};
     server.recv().unwrap(); // Intention.
     server.recv().unwrap(); // Hello.
@@ -66,12 +66,12 @@ fn finish_login(game: &mut crate::game::Game<'_>, server: &mut Connection) {
 
 /// A guest at (0.5, 1, 0.5) looking west (yaw 90), its stored pick taken that way, with a pig
 /// (entity 31) 1.5 blocks east of it, behind its back. The listener's count starts at zero.
-fn with_pig_behind(run: impl FnOnce(&mut Game<'_>, &Mutex<Listener>)) {
+fn with_pig_behind(run: impl FnOnce(&mut crate::game::ClientGame<'_>, &Mutex<Listener>)) {
     with_pig_and_server(|game, listener, _| run(game, listener));
 }
 
 /// [`with_pig_behind`], with the server's end of the connection.
-fn with_pig_and_server(run: impl FnOnce(&mut Game<'_>, &Mutex<Listener>, &mut Connection)) {
+fn with_pig_and_server(run: impl FnOnce(&mut crate::game::ClientGame<'_>, &Mutex<Listener>, &mut Connection)) {
     let listener = Arc::new(Mutex::new(Listener::default()));
     let mods = vec![mod_api::ModEntry::new(
         "agent_picks",
@@ -88,7 +88,7 @@ fn with_pig_and_server(run: impl FnOnce(&mut Game<'_>, &Mutex<Listener>, &mut Co
             finish_login(game, &mut server);
             game.native_lifecycle
                 .begin_open(mod_api::Authority::RemoteClient);
-            game.title.0 = None;
+            game.side.title.0 = None;
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 1.0, 0.5)).unwrap());
             game.previous_position = Vec3::new(0.5, 1.0, 0.5);
             game.yaw = 90.0;
@@ -129,7 +129,7 @@ fn with_pig_and_server(run: impl FnOnce(&mut Game<'_>, &Mutex<Listener>, &mut Co
     });
 }
 
-fn command(game: &mut Game<'_>, line: &str) -> (Result<Handled>, mpsc::Receiver<String>) {
+fn command(game: &mut crate::game::ClientGame<'_>, line: &str) -> (Result<Handled>, mpsc::Receiver<String>) {
     let (reply, replies) = mpsc::channel();
     let words: Vec<&str> = line.split_whitespace().collect();
     (game.agent_command(&words, line, &reply, &NoLoop), replies)
@@ -140,16 +140,16 @@ fn calls(listener: &Mutex<Listener>) -> usize {
 }
 
 /// A drawn frame: its pick, then the control poll's agent step.
-fn frame(game: &mut Game<'_>) {
+fn frame(game: &mut crate::game::ClientGame<'_>) {
     game.refresh_client_pick(1.0);
-    game.client.frames += 1;
+    game.side.frames += 1;
     game.advance_agent();
 }
 
 /// A game tick's keybinds as in play (`remote_handle_input`): its pick, then the clicks the
 /// remote input queue holds, behind the same readiness checks; then the control poll's agent
 /// step.
-fn tick(game: &mut Game<'_>) {
+fn tick(game: &mut crate::game::ClientGame<'_>) {
     game.ticks += 1;
     game.remote_handle_input();
     game.advance_agent();
@@ -157,7 +157,7 @@ fn tick(game: &mut Game<'_>) {
 
 /// What the client's attack clicks sent since the last call: `attack ID` and `punch` (the
 /// swing).
-fn clicks_sent(game: &Game<'_>, server: &mut Connection) -> Vec<String> {
+fn clicks_sent(game: &crate::game::ClientGame<'_>, server: &mut Connection) -> Vec<String> {
     use sunrise_protocol::packets::{configuration::Ping, play::Serverbound as S};
     // A fence: everything before it was sent before this call.
     game.send(S::Pong(Ping { id: i32::MIN }));
@@ -174,7 +174,7 @@ fn clicks_sent(game: &Game<'_>, server: &mut Connection) -> Vec<String> {
 }
 
 /// A second pig, entity 32, 1.5 blocks east and 1 south of the player.
-fn add_second_pig(game: &mut Game<'_>) {
+fn add_second_pig(game: &mut crate::game::ClientGame<'_>) {
     let pig = game
         .remote
         .as_ref()
@@ -199,7 +199,7 @@ fn add_second_pig(game: &mut Game<'_>) {
 }
 
 /// The listener makes every later pick pig 32.
-fn pick_second_pig(game: &Game<'_>, listener: &Mutex<Listener>) {
+fn pick_second_pig(game: &crate::game::ClientGame<'_>, listener: &Mutex<Listener>) {
     listener.lock().unwrap().result = Some(Some(CrosshairTarget::Entity {
         entity: game.entity(32).unwrap(),
         point: [1.55, 1.45, 1.5],
@@ -239,7 +239,7 @@ fn look_at_entity_replies_after_a_tick_pick_with_no_frame() {
     with_pig_behind(|game, listener| {
         let (_, replies) = command(game, "look-at entity 31");
         tick(game);
-        assert_eq!(game.client.frames, 0, "no frame was drawn");
+        assert_eq!(game.side.frames, 0, "no frame was drawn");
         assert_eq!(calls(listener), 1, "the tick's own pick");
         let reply = reply(&replies);
         assert_eq!(reply["target"]["entity"]["id"], json!(31), "{reply}");
@@ -435,14 +435,14 @@ fn attack_by_id_expiry_retires_only_its_queued_click() {
 }
 
 /// A player's left click through the same mouse mapping, queued for the next tick.
-fn player_click(game: &mut Game<'_>) {
+fn player_click(game: &mut crate::game::ClientGame<'_>) {
     game.agent_mouse(MouseButton::Left, true).unwrap();
     game.agent_mouse(MouseButton::Left, false).unwrap();
 }
 
 /// A tick whose keybinds run, then `clicks` player clicks, then the control poll's agent step
 /// (where `attack ID` queues its click, behind them).
-fn tick_with_player_clicks(game: &mut Game<'_>, clicks: usize) {
+fn tick_with_player_clicks(game: &mut crate::game::ClientGame<'_>, clicks: usize) {
     game.ticks += 1;
     game.remote_handle_input();
     for _ in 0..clicks {
@@ -552,10 +552,10 @@ fn an_ordinary_click_attacks_what_the_pick_holds() {
 fn attack_by_id_ends_without_a_click_on_death_or_without_ticks() {
     with_pig_and_server(|game, _, server| {
         let (_, replies) = command(game, "attack 31");
-        game.client.screen = Screen::Dead;
+        game.side.screen = Screen::Dead;
         game.advance_agent();
         assert_eq!(reply(&replies)["error"], json!("the player died"));
-        game.client.screen = Screen::Playing;
+        game.side.screen = Screen::Playing;
         let (_, replies) = command(game, "attack 31");
         game.agent.task.as_mut().unwrap().deadline = Instant::now();
         game.advance_agent();
@@ -565,11 +565,11 @@ fn attack_by_id_ends_without_a_click_on_death_or_without_ticks() {
         );
         // A screen opened over the world before the tick: the click would land on it.
         let (_, replies) = command(game, "attack 31");
-        game.client.screen = Screen::GameModeSwitcher;
+        game.side.screen = Screen::GameModeSwitcher;
         tick(game);
         let error = reply(&replies)["error"].as_str().unwrap().to_owned();
         assert!(error.ends_with("screen is open; close it first (close, or click-button)"));
-        game.client.screen = Screen::Playing;
+        game.side.screen = Screen::Playing;
         tick(game);
         assert_eq!(clicks_sent(game, server), Vec::<String>::new());
     });

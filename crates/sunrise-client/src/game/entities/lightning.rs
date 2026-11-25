@@ -593,7 +593,7 @@ pub(in crate::game) mod tests {
                 }
                 let mut bolt = Bolt::struck_at(77, [0.5, 64.0, 0.5]);
                 game.thunder_hit(&mut bolt);
-                let kind = |game: &Game<'_>, id| {
+                let kind = |game: &crate::game::ServerGame<'_>, id| {
                     game.mobs
                         .iter()
                         .find(|m| m.id == id && !m.removed)

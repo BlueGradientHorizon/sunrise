@@ -50,7 +50,7 @@ impl Blast {
 type Answer = Result<(), ExplodeError>;
 
 /// Runs `blast` in the overworld and checks its answer.
-fn explode(game: &mut Game<'_>, blast: Blast, expected: Answer) {
+fn explode(game: &mut crate::game::ServerGame<'_>, blast: Blast, expected: Answer) {
     let level = game.level("minecraft:overworld").unwrap();
     assert_eq!(
         level.explode(
@@ -67,7 +67,7 @@ fn explode(game: &mut Game<'_>, blast: Blast, expected: Answer) {
 }
 
 /// A server's overworld chunk (0, 0) with a stone floor at y 79.
-fn floor(game: &mut Game<'_>) {
+fn floor(game: &mut crate::game::ServerGame<'_>) {
     game.build_registries();
     game.load_server_loot();
     game.set_allow_commands(true);
@@ -81,20 +81,20 @@ fn floor(game: &mut Game<'_>) {
     assert!(game.run_command("fill 0 79 0 15 79 15 stone"));
 }
 
-fn name(game: &Game<'_>, pos: [i32; 3]) -> String {
+fn name(game: &crate::game::ServerGame<'_>, pos: [i32; 3]) -> String {
     let state = game.world.block(pos[0], pos[1], pos[2]);
     game.res.facts().get(state).name.to_string()
 }
 
 /// How many floor blocks are still stone.
-fn stone(game: &Game<'_>) -> usize {
+fn stone(game: &crate::game::ServerGame<'_>) -> usize {
     (0..16)
         .flat_map(|x| (0..16).map(move |z| [x, 79, z]))
         .filter(|&p| name(game, p) == "minecraft:stone")
         .count()
 }
 
-fn mob(game: &mut Game<'_>, id: u32, kind: &str, at: Vec3, health: f32) {
+fn mob(game: &mut crate::game::ServerGame<'_>, id: u32, kind: &str, at: Vec3, health: f32) {
     let kind = game.res.mob_types().get(kind).unwrap().clone();
     let mut mob = Mob::new(id, kind, at, 0.0);
     mob.persistent = true;
@@ -148,19 +148,19 @@ impl Hooks for Deathwatch {
 }
 
 /// A loaded arena with the player clear of the blast.
-fn credit_arena(game: &mut Game<'_>) {
+fn credit_arena(game: &mut crate::game::ServerGame<'_>) {
     floor(game);
     assert!(game.run_command("difficulty normal"));
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(14.5, 80.0, 14.5)).unwrap());
     bind_local_player(game, 11, 123);
     game.set_mode_id(0);
-    game.server.next_entity = 100;
+    game.side.next_entity = 100;
     game.load_ticking_neighbourhood(0, 0);
     game.update_chunk_tickets();
 }
 
 /// A blast kills a zombie on one health; check its source and rewards at the hit boundary.
-fn kill(source: fn(&mut Game<'_>) -> u32, (causing, damage_type, credited): (i32, &str, bool)) {
+fn kill(source: fn(&mut crate::game::ServerGame<'_>) -> u32, (causing, damage_type, credited): (i32, &str, bool)) {
     crate::entry::install_client_hooks();
     let deaths = Arc::new(Mutex::new(DeathObservations::default()));
     mod_platform::testing::with_mods(
@@ -184,7 +184,7 @@ fn kill(source: fn(&mut Game<'_>) -> u32, (causing, damage_type, credited): (i32
                     interaction: ExplosionInteraction::None,
                     settings: ExplosionSettings::default(),
                 };
-                let mob_kills = |game: &Game<'_>| game.stats.get("custom", "minecraft:mob_kills");
+                let mob_kills = |game: &crate::game::ServerGame<'_>| game.stats.get("custom", "minecraft:mob_kills");
                 let expected_kills = mob_kills(game) + if credited { 1 } else { 0 };
                 let expected_credit = credited.then(|| game.entity(11).unwrap());
                 explode(game, blast, Ok(()));
@@ -209,7 +209,7 @@ fn kill(source: fn(&mut Game<'_>) -> u32, (causing, damage_type, credited): (i32
                     game.tick_creature_entities().unwrap();
                 }
                 assert!(game.entity(41).is_none());
-                assert!(!game.server.last_hurt_by_player.contains_key(&41));
+                assert!(!game.side.last_hurt_by_player.contains_key(&41));
                 assert_eq!(mob_kills(game), expected_kills);
             })
         },
@@ -223,7 +223,7 @@ fn kill(source: fn(&mut Game<'_>) -> u32, (causing, damage_type, credited): (i32
     );
 }
 
-fn kills(name: &str, source: fn(&mut Game<'_>) -> u32, expected: (i32, &'static str, bool)) {
+fn kills(name: &str, source: fn(&mut crate::game::ServerGame<'_>) -> u32, expected: (i32, &'static str, bool)) {
     if run_fresh_cases(
         &format!("game::server_side::native_explosions_tests::{name}"),
         "SUNRISE_EXPLOSION_DEATH_CHILD",
@@ -263,23 +263,23 @@ fn a_player_hit_expires_on_a_living_mob_after_the_last_memory_tick() {
                 game.tick_creature_entities().unwrap();
             }
             assert_eq!(living.kill_credit(game).map(|killer| killer.id()), Some(11));
-            assert!(game.server.last_hurt_by_player.contains_key(&41));
+            assert!(game.side.last_hurt_by_player.contains_key(&41));
             game.tick_creature_entities().unwrap();
             assert_eq!(living.alive(game), Some(true));
             assert_eq!(living.kill_credit(game), None);
-            assert!(!game.server.last_hurt_by_player.contains_key(&41));
+            assert!(!game.side.last_hurt_by_player.contains_key(&41));
         });
     });
 }
 
 /// Primed TNT lit by `owner` beside the zombie.
-fn tnt(game: &mut Game<'_>, owner: Option<Who>) -> u32 {
+fn tnt(game: &mut crate::game::ServerGame<'_>, owner: Option<Who>) -> u32 {
     game.add_primed_tnt(BlockPos::new(4, 80, 4), 0.0, 80, owner, None);
     game.tnts.last().unwrap().id
 }
 
 /// A summoned entity's id.
-fn summoned(game: &mut Game<'_>, kind: &str, nbt: &str) -> u32 {
+fn summoned(game: &mut crate::game::ServerGame<'_>, kind: &str, nbt: &str) -> u32 {
     let target = game
         .summon_with_nbt(kind, [4.5, 80.5, 4.5], nbt)
         .unwrap()
@@ -531,7 +531,7 @@ impl Hooks for Listener {
 
 /// Runs `test` on a fresh game with a stone floor, the
 /// [`Listener`] hearing it, and hands it what was heard.
-fn heard(test: impl Fn(&mut Game<'_>, &Arc<Mutex<Heard>>) + Send + Sync + 'static) {
+fn heard(test: impl Fn(&mut crate::game::ServerGame<'_>, &Arc<Mutex<Heard>>) + Send + Sync + 'static) {
     crate::entry::install_client_hooks();
     run_with_game_stack(move || {
         let heard = Arc::new(Mutex::new(Heard::default()));
@@ -550,7 +550,7 @@ fn heard(test: impl Fn(&mut Game<'_>, &Arc<Mutex<Heard>>) + Send + Sync + 'stati
 
 /// The game's damage types plus `test:fuel_tank`, whose death message is
 /// `death.attack.fuelTank` and which is in `#minecraft:is_explosion`.
-fn register_fuel_tank(game: &mut Game<'_>) {
+fn register_fuel_tank(game: &mut crate::game::ServerGame<'_>) {
     use serde_json::{Value, json};
     let old = &game.health_resources.damage;
     let mut types: Vec<Value> = old
@@ -845,7 +845,7 @@ fn block_particle_weights_whose_total_is_past_an_int_explode_nothing() {
 
 /// A nether portal block at (8, 80, 10) between obsidian on its axis (x) and
 /// above and below, which nothing around it changes.
-fn portal(game: &mut Game<'_>) {
+fn portal(game: &mut crate::game::ServerGame<'_>) {
     for pos in ["7 80 10", "9 80 10", "8 81 10", "8 79 10"] {
         assert!(game.run_command(&format!("setblock {pos} minecraft:obsidian")));
     }
@@ -953,11 +953,11 @@ fn a_non_finite_radius_is_refused_and_one_of_zero_finds_no_blocks() {
 /// A still zombie at (11.5, 80, 8.5) and the survival player, flying or not,
 /// at (5.5, 80, 8.5): on either side of a [`wind_blast`]. The player is not
 /// bound to an entity id, so no detonate list leaves them out.
-fn targets(game: &mut Game<'_>, flying: bool) {
+fn targets(game: &mut crate::game::ServerGame<'_>, flying: bool) {
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(5.5, 80.0, 8.5)).unwrap());
     game.set_mode_id(0);
     game.player.as_mut().unwrap().flying = flying;
-    game.server.next_entity = 100;
+    game.side.next_entity = 100;
     mob(
         game,
         48,
@@ -968,7 +968,7 @@ fn targets(game: &mut Game<'_>, flying: bool) {
 }
 
 /// A wind charge of `kind` above the blast, as its source.
-fn wind_charge(game: &mut Game<'_>, kind: ProjectileKind) -> Option<EntityRef> {
+fn wind_charge(game: &mut crate::game::ServerGame<'_>, kind: ProjectileKind) -> Option<EntityRef> {
     let charge = Projectile::new(kind, Vec3::new(8.5, 86.5, 8.5), None);
     let id = game.add_projectile(charge);
     game.entity(id)
@@ -996,7 +996,7 @@ fn unhurt() -> Option<ExplosionCalculator> {
 }
 
 /// The zombie's and the player's velocity, both stilled again.
-fn pushes(game: &mut Game<'_>) -> (Vec3, Vec3) {
+fn pushes(game: &mut crate::game::ServerGame<'_>) -> (Vec3, Vec3) {
     let still = Vec3::new(0.0, 0.0, 0.0);
     let zombie = std::mem::replace(&mut game.mobs[0].velocity, still);
     let player = &mut game.player.as_mut().unwrap().velocity;

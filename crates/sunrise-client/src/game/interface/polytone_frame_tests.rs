@@ -11,7 +11,7 @@ use sunrise_client::particles::{ParticleEngine, ParticleOptions};
 
 /// A game over the prepared resources that registers no mod tables of the process (the
 /// particles here are the pack's): `server_game`, not the mod fixture's `with_game`.
-fn with_game(test: impl FnOnce(&mut crate::game::Game<'_>)) {
+fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let mut resources = None;
     let mut game = crate::game::game_tests::tests::server_game(&mut resources);
     test(&mut game);
@@ -37,7 +37,7 @@ fn rain_pack(dies_under: bool) -> ResourceSource {
 
 /// `game`'s particles reading `pack`, with the rain's sprite in their atlas (as a resource load
 /// puts it there) and their camera at `camera`.
-fn rain_particles(game: &mut crate::game::Game<'_>, pack: &ResourceSource, camera: [f64; 3]) {
+fn rain_particles(game: &mut crate::game::ClientGame<'_>, pack: &ResourceSource, camera: [f64; 3]) {
     let registry = Registry::read(pack, Default::default(), game.pack.assets.registry);
     let rect = Rect {
         u0: 0.0,
@@ -47,13 +47,13 @@ fn rain_particles(game: &mut crate::game::Game<'_>, pack: &ResourceSource, camer
         w: 16,
         h: 16,
     };
-    game.particles.0 = ParticleEngine::new(
+    game.side.particles.0 = ParticleEngine::new(
         pack,
         &HashMap::from([("particle/generic_0".to_owned(), rect)]),
         &HashSet::new(),
     );
-    game.particles.0.set_polytone(Some(Arc::new(registry)));
-    game.particles.0.camera = camera;
+    game.side.particles.0.set_polytone(Some(Arc::new(registry)));
+    game.side.particles.0.camera = camera;
 }
 
 #[test]

@@ -287,8 +287,8 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
             .into(),
         );
         mods::register_gui_layers(ExecutionRole::Client);
-        game.title.0 = None;
-        game.client.screen = super::Screen::Playing;
+        game.side.title.0 = None;
+        game.side.screen = super::Screen::Playing;
         game.ui.hide_gui = false;
         game.set_mode_id(0);
         let mut player = PlayerMotion::new(game.motion, Vec3::new(2.0, 64.0, 2.0)).unwrap();
@@ -353,9 +353,9 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
                 &[(true, false), (true, true), (false, false), (false, true)]
             };
             for &(cancel_health, cancel_air) in vetoes {
-                game.client.health_hud.last_health = 17;
-                game.client.health_hud.last_bubble_pop_sound = 3;
-                game.audio.0.heard.remove(BUBBLE_POP);
+                game.side.health_hud.last_health = 17;
+                game.side.health_hud.last_bubble_pop_sound = 3;
+                game.side.audio.0.heard.remove(BUBBLE_POP);
                 *trace.lock().unwrap() = HealthTrace {
                     cancel_health,
                     cancel_air,
@@ -402,7 +402,7 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
                     assert!(game.ui.room.bottom() > 100.0);
                 }
                 assert_eq!(
-                    game.client.health_hud.last_health,
+                    game.side.health_hud.last_health,
                     if cancel_health || replace || !vanilla_eligible {
                         17
                     } else {
@@ -412,7 +412,7 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
                 let draws_air = !cancel_air && vanilla_eligible;
                 let pops = draws_air && under_water;
                 assert_eq!(
-                    game.client.health_hud.last_bubble_pop_sound,
+                    game.side.health_hud.last_bubble_pop_sound,
                     if !draws_air {
                         3
                     } else if pops {
@@ -423,7 +423,7 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
                 );
                 // The sound is local-only; `heard` counts it even with the device disabled.
                 assert_eq!(
-                    game.audio.0.heard.get(BUBBLE_POP).copied(),
+                    game.side.audio.0.heard.get(BUBBLE_POP).copied(),
                     pops.then_some(1)
                 );
             }
@@ -464,7 +464,7 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
 
         // Simulate the HUD paint sites with the crosshair skipped (third person).
         // Its wrapper doesn't draw, but both neighboring layers still do.
-        game.client.hud_layer_next = Some(0);
+        game.side.hud_layer_next = Some(0);
         for (layer, paint) in [
             (VanillaGuiLayer::Hotbar, "hotbar paint"),
             (VanillaGuiLayer::Effects, "effects paint"),
@@ -475,7 +475,7 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
             game.gui_layer(layer, &mut batch, &mut |_, _| log(paint));
         }
         game.draw_mod_gui_layers(None, &mut batch);
-        game.client.hud_layer_next = None;
+        game.side.hud_layer_next = None;
         assert_eq!(current_native_mod(), None);
         assert_eq!(
             take(),
@@ -653,8 +653,8 @@ fn a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal() {
     });
 }
 
-fn enter_test_world(game: &mut Game<'_>) {
-    game.title.0 = None;
+fn enter_test_world(game: &mut crate::game::ClientGame<'_>) {
+    game.side.title.0 = None;
     game.set_screen(Screen::Playing);
     game.player = Some(
         sunrise_client::motion::PlayerMotion::new(
@@ -978,7 +978,7 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
                 Variant::Crosshair => 1,
                 _ => 2,
             };
-            game.client.hand_strength.ticker = frame.ticker;
+            game.side.hand_strength.ticker = frame.ticker;
             let cancel = frame.variant == Variant::Veto;
             *trace.lock().unwrap() = Trace {
                 cancel,
@@ -1018,7 +1018,7 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
                 frame.name
             );
             assert_eq!(
-                game.client.hand_strength.ticker, frame.ticker,
+                game.side.hand_strength.ticker, frame.ticker,
                 "paint must not change attack charge"
             );
 
@@ -1182,7 +1182,7 @@ fn f1_hides_vanilla_paint_without_skipping_the_hud_walk() {
             mods::register_gui_layers(ExecutionRole::Client);
             let size = [640, 480];
             let screen_events = ["screen pre", "screen background", "screen post"];
-            game.title.0 = Some(game.new_title(game.save.0.root.clone()));
+            game.side.title.0 = Some(game.new_title(game.save.0.root.clone()));
             game.open_options(true);
             game.hud_layers(size);
             assert_eq!(take(), screen_events, "title Options has no HUD walk");
@@ -1346,10 +1346,10 @@ fn f1_subtitles_paint_in_the_container_background_without_redispatch() {
                 let size = [640, 480];
                 game.hud(size); // Start listening before the sound plays.
                 assert_eq!(take(), ["subtitle pre", "subtitle post"]);
-                game.audio.0.engine.notifications.push(Notification {
+                game.side.audio.0.engine.notifications.push(Notification {
                     identifier: "minecraft:entity.player.levelup".into(),
                     subtitle: Some("subtitles.entity.player.levelup".into()),
-                    position: game.client.view.position,
+                    position: game.side.view.position,
                     relative: false,
                     looping: false,
                     range: 16.0,
@@ -1430,7 +1430,7 @@ fn options_controller_notice_paints_after_screen_post_despite_hud_cancel() {
                 game.toggle_hide_gui();
                 game.set_screen(Screen::Paused);
                 game.open_options(false);
-                game.client
+                game.side
                     .controller_notice
                     .raise(Notice::new("Controller disconnected", "Use the keyboard"));
                 let frame = game.hud([640, 480]);
@@ -1534,7 +1534,7 @@ fn panicking_hud_listeners_under_f1_disable_only_themselves_and_report_their_own
                         "same mod hud post"
                     ]
                 );
-                let [whole, layer] = game.client.toast_manager.visible.as_mut_slice() else {
+                let [whole, layer] = game.side.toast_manager.visible.as_mut_slice() else {
                     panic!("one shared error toast per panicking listener");
                 };
                 let rect = *game
@@ -1585,7 +1585,7 @@ fn panicking_hud_listeners_under_f1_disable_only_themselves_and_report_their_own
                         "same mod hud post"
                     ]
                 );
-                assert_eq!(game.client.toast_manager.visible.len(), 2);
+                assert_eq!(game.side.toast_manager.visible.len(), 2);
             });
         },
     );
@@ -1638,7 +1638,7 @@ fn a_panicking_hud_painter_shows_its_error_toast_under_f1() {
             // Backdate the slide to test fully visible toasts without waiting for animation.
             let slide_started = Instant::now() - Duration::from_millis(700);
             let _ = game.hud(size); // Start both slides after promotion.
-            let [ordinary, error] = game.client.toast_manager.visible.as_mut_slice() else {
+            let [ordinary, error] = game.side.toast_manager.visible.as_mut_slice() else {
                 panic!("expected an ordinary toast and one panic diagnostic");
             };
             let Toast::Diagnostic { toast, .. } = &mut error.toast else {

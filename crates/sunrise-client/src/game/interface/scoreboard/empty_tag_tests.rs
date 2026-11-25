@@ -24,15 +24,12 @@ fn empty_tag_selectors_follow_actual_tag_edits() {
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -45,7 +42,7 @@ fn empty_tag_selectors_follow_actual_tag_edits() {
             .as_nanos()
     ));
     std::fs::create_dir_all(&scratch).unwrap();
-    game.server.world_root = scratch.clone();
+    game.side.world_root = scratch.clone();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(10.5, 64.0, 0.5)).unwrap());
 
     game.build_registries();
@@ -58,7 +55,7 @@ fn empty_tag_selectors_follow_actual_tag_edits() {
     let a = game.target_with_uuid([267, 0, 0, 1]).unwrap();
     let b = game.target_with_uuid([267, 0, 0, 2]).unwrap();
     assert_ne!(a, b);
-    let select = |g: &mut Game<'_>, tag: &str| {
+    let select = |g: &mut crate::game::ServerGame<'_>, tag: &str| {
         let text = format!("@e[type=minecraft:pig,tag={tag}]");
         let selector = sunrise_client::command::selector::parse(
             &mut sunrise_client::command::Reader::new(&text),

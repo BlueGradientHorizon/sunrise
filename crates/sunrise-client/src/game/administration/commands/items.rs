@@ -916,7 +916,7 @@ pub(in crate::game) mod stand_equip_event_tests {
     use sunrise_client::{chunk::Chunk, containers::BlockEntity, mobs::Who, sculk::Info};
     use sunrise_core::position::ChunkPos;
 
-    fn candidate(game: &Game<'_>) -> Option<Info> {
+    fn candidate(game: &crate::game::ServerGame<'_>) -> Option<Info> {
         let Some(BlockEntity::Sculk(sensor)) = game.world.block_entities.get(&(9, 200, 10)) else {
             panic!("actual sensor must be registered")
         };
@@ -946,15 +946,12 @@ pub(in crate::game) mod stand_equip_event_tests {
         options.game_dir =
             Some(std::env::temp_dir().join(format!("sunrise-h130-unit-{}", std::process::id())));
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -1027,7 +1024,7 @@ pub(in crate::game) mod mob_equipment_command_tests {
     #[allow(unused_imports)]
     use sunrise_core::position::ChunkPos;
 
-    pub(in crate::game) fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+    pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -1050,15 +1047,12 @@ pub(in crate::game) mod mob_equipment_command_tests {
                 .join(format!("h025-{:?}", std::thread::current().id())),
         );
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -1076,7 +1070,7 @@ pub(in crate::game) mod mob_equipment_command_tests {
         test(&mut game);
     }
 
-    pub(in crate::game) fn actor(game: &mut Game<'_>, kind: &str, n: i32) -> (String, u32) {
+    pub(in crate::game) fn actor(game: &mut crate::game::ServerGame<'_>, kind: &str, n: i32) -> (String, u32) {
         let uuid = format!("00000019-0000-0000-0000-{n:012x}");
         assert!(game.run_command(&format!("summon {kind} 4.5 200 5.5 {{UUID:[I;25,0,0,{n}],NoAI:1b,NoGravity:1b,Silent:1b,h025_raw:7,Tags:[h025]}}")), "{kind}/{n}: {:?}", game.ui.chat.recent_lines(3));
         let mob = game
@@ -1216,7 +1210,7 @@ pub(in crate::game) mod mob_equipment_command_tests {
     fn a_sulfur_cubes_body_takes_a_swallowable_block() {
         with_game(|game| {
             assert!(game.run_command("summon sulfur_cube 4.5 200 4.5 {NoAI:1b,Tags:[\"cube\"]}"));
-            let body = |game: &Game<'_>| {
+            let body = |game: &crate::game::ServerGame<'_>| {
                 let m = game
                     .mobs
                     .iter()
@@ -1332,7 +1326,7 @@ pub(in crate::game) mod mob_equipment_stack_tests {
     use sunrise_client::{chunk::Chunk, mobs::finalize};
     use sunrise_core::nbt::Tag;
     use sunrise_core::position::ChunkPos;
-    fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+    fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -1355,15 +1349,12 @@ pub(in crate::game) mod mob_equipment_stack_tests {
                 .join(format!("h023-{:?}", std::thread::current().id())),
         );
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -1381,7 +1372,7 @@ pub(in crate::game) mod mob_equipment_stack_tests {
         test(&mut game);
     }
 
-    fn actor(game: &mut Game<'_>, kind: &str, n: i32) -> (String, u32) {
+    fn actor(game: &mut crate::game::ServerGame<'_>, kind: &str, n: i32) -> (String, u32) {
         let uuid = format!("00000017-0000-0000-0000-{n:012x}");
         assert!(game.run_command(&format!("summon {kind} 4.5 200 5.5 {{UUID:[I;23,0,0,{n}],NoAI:1b,NoGravity:1b,Silent:1b,h023_raw:7,Tags:[h023]}}")), "{kind}/{n}: {:?}", game.ui.chat.recent_lines(3));
         let mob = game
@@ -1393,7 +1384,7 @@ pub(in crate::game) mod mob_equipment_stack_tests {
         (uuid, mob.id)
     }
 
-    fn saved(game: &mut Game<'_>, id: u32) -> Tag {
+    fn saved(game: &mut crate::game::ServerGame<'_>, id: u32) -> Tag {
         game.data_of(&DataRef::Entity(Target::Mob(id))).unwrap()
     }
     fn audit(stack: &sunrise_client::items::ItemStack, value: i32) {
@@ -1610,7 +1601,7 @@ pub(in crate::game) mod builtin_component_delivery_tests {
                     .as_i64()
                     .unwrap() as i32
             };
-            let command = |game: &mut Game<'_>, input: &str| {
+            let command = |game: &mut crate::game::ServerGame<'_>, input: &str| {
                 assert!(
                     game.as_guest(2, |g| g.run_command(input)).unwrap(),
                     "{input}"
@@ -1790,7 +1781,7 @@ pub(in crate::game) mod registered_slot_source_preservation_tests {
     #[allow(unused_imports)]
 pub(in crate::game) use crate::game::server_side::commands_server::items::registered_slot_source_preservation_tests::scene;
 
-    pub(in crate::game) fn count(game: &mut Game<'_>, expected: i32) {
+    pub(in crate::game) fn count(game: &mut crate::game::ServerGame<'_>, expected: i32) {
         assert!(game.run_command("execute store result score #r slotprobe run execute if slots block 0 100 0 parity:first_three"));
         assert_eq!(
             game.score.board.score("#r", "slotprobe").unwrap().value,
@@ -1890,7 +1881,7 @@ pub(in crate::game) use crate::game::server_side::commands_server::items::regist
         }
         // `/item override` writes the stack over the selected slots and no further:
         // one slot for `1b`, two for `2.5d`, the stone in the fourth slot never.
-        let held = |game: &mut Game<'_>| {
+        let held = |game: &mut crate::game::ServerGame<'_>| {
             [0, 1, 3].map(|slot| {
                 game.slot_get(&Slot::Block([0, 100, 0], slot))
                     .map(|stack| (stack.item.to_string(), stack.count))
@@ -1934,13 +1925,13 @@ pub(in crate::game) mod transient_modifier_tests {
     use super::*;
     #[test]
     fn inline_command_modifier_refuses_whole_sequence_before_execution() {
-        let error = Game::parse_inline_item_modifier(
+        let error = crate::game::ServerGame::parse_inline_item_modifier(
             r#"[{type:"minecraft:set_count",count:2},{type:"minecraft:set_components",components:{"!minecraft:creative_slot_lock":{}}}]"#,
         ).unwrap_err();
         let message = format!("{error:?}");
         assert!(message.contains("minecraft:creative_slot_lock"));
         assert!(message.contains("not a persistent component"));
-        let accepted = Game::parse_inline_item_modifier(
+        let accepted = crate::game::ServerGame::parse_inline_item_modifier(
             r#"[{type:"minecraft:copy_components",source:"block_entity",include:["minecraft:additional_trade_cost"]},{type:"minecraft:set_custom_data",tag:{components:{"minecraft:map_post_processing":"opaque"}}}]"#,
         ).unwrap();
         assert_eq!(accepted.as_array().unwrap().len(), 2);

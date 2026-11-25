@@ -101,7 +101,7 @@ macro_rules! test_name {
 
 /// Runs the test `name` in a fresh process (installed mods are process-wide) with `StateMod`
 /// installed, on a dedicated server's overworld with chunk 0 0 loaded.
-fn with_state_mod(name: &str, test: impl FnOnce(&mut Game<'_>)) {
+fn with_state_mod(name: &str, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     if super::native_entity_refs::tests::run_fresh_cases(
         name,
         "SUNRISE_ENTITY_PART_STATE_CHILD",
@@ -124,7 +124,7 @@ fn with_state_mod(name: &str, test: impl FnOnce(&mut Game<'_>)) {
 /// `test` on a game with `state_mod` installed. The registration phase is scoped around the
 /// whole fixture, since the game fixture registers the installed mods again and a general type
 /// is only declared while that phase is current.
-fn with_mod(state_mod: StateMod, test: impl FnOnce(&mut Game<'_>)) {
+fn with_mod(state_mod: StateMod, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     mod_platform::__private::initialize().expect("test registration requires the mod API runtime");
     let _phase = mod_platform::__private::RegistrationGuard::open();
     let mods: mod_api::Mods =
@@ -151,7 +151,7 @@ fn mob_tag(kind: &str, uuid: i32) -> Tag {
 }
 
 /// A fresh mob of `kind` in the level the game is in, and its handle.
-fn mob(game: &mut Game<'_>, kind: &str, uuid: i32) -> EntityRef {
+fn mob(game: &mut crate::game::ServerGame<'_>, kind: &str, uuid: i32) -> EntityRef {
     let id = game.load_mob(mob_tag(kind, uuid), None).unwrap();
     game.entity(id).unwrap()
 }
@@ -174,12 +174,12 @@ fn robot_tag(uuid: i32) -> Tag {
     .to_tag()
 }
 
-fn stored(game: &mut Game<'_>, entity: EntityRef) -> Option<i32> {
+fn stored(game: &mut crate::game::ServerGame<'_>, entity: EntityRef) -> Option<i32> {
     Charge::state_existing(game, entity).unwrap()
 }
 
 /// What `level`'s attachment index holds for `CHARGE`, by entity id.
-fn indexed(game: &Game<'_>, level: Dim) -> Vec<(u32, i32)> {
+fn indexed(game: &crate::game::ServerGame<'_>, level: Dim) -> Vec<(u32, i32)> {
     let Some(index) = game.attachment_indexes.get(&level) else {
         return Vec::new();
     };
@@ -332,7 +332,7 @@ fn a_removed_or_unloaded_entity_is_stale_and_a_reloaded_one_reads_its_saved_valu
         // No declaration means no allocation: a mob type no Part keeps state on gets no
         // attachment map and no index row from its spawn, a tick and a save.
         let sheep = mob(game, "minecraft:sheep", 20);
-        game.tickets.0.update(None);
+        game.side.tickets.0.update(None);
         game.tick_creature_entities().unwrap();
         let saved = game.entity_chunks(&HashSet::from([(0, 0)]), false);
         assert!(
@@ -449,7 +449,7 @@ fn a_spawn_or_removal_inside_an_aborted_action_keeps_the_bindings() {
         assert_eq!(Charge::state(game, cow), Err(PartStateError::Stale));
         // The removal ran at the root commit; its row goes when the mob does, at the sweep.
         game.native_removals_flush();
-        game.tickets.0.update(None);
+        game.side.tickets.0.update(None);
         game.tick_creature_entities().unwrap();
         assert!(game.mobs.iter().all(|m| m.id != cow.id()));
         assert!(indexed(game, Dim::Overworld).is_empty());
@@ -490,7 +490,7 @@ fn a_lone_mob_or_general_row_moves_under_a_new_id_and_a_ridden_pig_keeps_its_han
         game.enter_level(Dim::Overworld).unwrap();
 
         // A general row: bound at its first store, then moved with its binding.
-        let next = game.server.next_entity;
+        let next = game.side.next_entity;
         game.spawn_loaded_entity((0, 0), robot_tag(42), None);
         let robot = game.resident_entities.general.rows[0].id;
         assert!(robot > next);
@@ -553,7 +553,7 @@ fn a_lone_mob_or_general_row_moves_under_a_new_id_and_a_ridden_pig_keeps_its_han
             game,
             sunrise_core::position::ChunkPos::new(0, 0),
         );
-        game.tickets.0.add_portal((0, 0));
+        game.side.tickets.0.add_portal((0, 0));
         game.update_chunk_tickets();
         game.portals
             .entities

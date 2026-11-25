@@ -30,7 +30,7 @@ fn name(tag: &Tag) -> i32 {
 }
 
 /// Every lookup member's name, in lookup order.
-fn lookup_order(game: &mut Game<'_>) -> Vec<i32> {
+fn lookup_order(game: &mut crate::game::ServerGame<'_>) -> Vec<i32> {
     let level = game.level(game.dim.id()).unwrap();
     let members = collect_game_all_entities(game, level).unwrap();
     members
@@ -53,7 +53,7 @@ fn saved_order(chunks: &[(ChunkKey, Vec<Tag>)]) -> Vec<Vec<i32>> {
         .collect()
 }
 
-fn snapshot(game: &mut Game<'_>) -> Vec<i32> {
+fn snapshot(game: &mut crate::game::ServerGame<'_>) -> Vec<i32> {
     let order = lookup_order(game);
     println!("load-order: {order:?}");
     order
@@ -150,7 +150,7 @@ pub(in crate::game::server_side) fn run_chunk_loaded_families_keep_vanilla_looku
         crate::game::entity_residency::assign_resident_ids!(
             game.creatures.projectiles,
             p,
-            &mut game.server.next_entity,
+            &mut game.side.next_entity,
             Some(&p.attachment_lifetime)
         );
         let arrow = game.creatures.projectiles.last().unwrap().id;
@@ -224,7 +224,7 @@ pub(in crate::game::server_side) fn run_a_crossing_without_a_listener_saves_afte
         );
         game.spawn_loaded_entities();
         let save =
-            |game: &mut Game<'_>| saved_order(&game.entity_chunks(&HashSet::from([key]), false));
+            |game: &mut crate::game::ServerGame<'_>| saved_order(&game.entity_chunks(&HashSet::from([key]), false));
         assert_eq!(save(game), vec![vec![0, 0, 1, 2]]);
         // The pig walks up into section 4, which already holds the zombie.
         let id = game.mob_by_uuid([2703, 0, 0, 1]).unwrap();

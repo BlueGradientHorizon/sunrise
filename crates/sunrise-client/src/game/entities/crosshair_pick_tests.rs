@@ -70,7 +70,7 @@ fn face_from_name(name: &str) -> [i32; 3] {
     }
 }
 
-fn entity_type_id(game: &Game<'_>, kind: &str) -> i32 {
+fn entity_type_id(game: &crate::game::ClientGame<'_>, kind: &str) -> i32 {
     game.remote
         .as_ref()
         .unwrap()
@@ -82,7 +82,7 @@ fn entity_type_id(game: &Game<'_>, kind: &str) -> i32 {
 }
 
 #[must_use]
-fn setup_remote_overworld(game: &mut Game<'_>, player_id: i32, player_pos: [f64; 3]) -> Pipe {
+fn setup_remote_overworld(game: &mut crate::game::ClientGame<'_>, player_id: i32, player_pos: [f64; 3]) -> Pipe {
     game.native_lifecycle = NativeLifecycle::default();
     let (client, server) = Pipe::pair();
     game.connect_local(client, "CrosshairPickTest").unwrap();
@@ -104,11 +104,11 @@ fn setup_remote_overworld(game: &mut Game<'_>, player_id: i32, player_pos: [f64;
     remote.entity_id = player_id;
     remote.view_distance = 8;
     remote.level_load.finish();
-    game.title.0 = None;
+    game.side.title.0 = None;
     let pos = Vec3::new(player_pos[0], player_pos[1], player_pos[2]);
     game.player = Some(PlayerMotion::new(game.motion, pos).unwrap());
     game.previous_position = pos;
-    game.client.camera_type = CameraType::FirstPerson;
+    game.side.camera_type = CameraType::FirstPerson;
     game.settings.fov = 70.0;
     game.settings.render_distance = 8;
     server
@@ -120,7 +120,7 @@ fn fixture_entity_uuid(id: i32) -> u128 {
 }
 
 fn add_entity_with_data(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ClientGame<'_>,
     id: i32,
     kind: &str,
     position: [f64; 3],
@@ -146,7 +146,7 @@ fn add_entity_with_data(
     .unwrap();
 }
 
-fn sync_interaction_size(game: &mut Game<'_>, id: i32, width: f32, height: f32) {
+fn sync_interaction_size(game: &mut crate::game::ClientGame<'_>, id: i32, width: f32, height: f32) {
     game.handle_packet(C::SetEntityData(play::SetEntityData {
         id,
         values: vec![
@@ -157,7 +157,7 @@ fn sync_interaction_size(game: &mut Game<'_>, id: i32, width: f32, height: f32) 
     .unwrap();
 }
 
-fn ensure_chunk(game: &mut Game<'_>, cx: i32, cz: i32) {
+fn ensure_chunk(game: &mut crate::game::ClientGame<'_>, cx: i32, cz: i32) {
     if !game.world.chunks.contains_key(&(cx, cz)) {
         game.world
             .chunks
@@ -166,7 +166,7 @@ fn ensure_chunk(game: &mut Game<'_>, cx: i32, cz: i32) {
 }
 
 fn pin_entity_pose(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ClientGame<'_>,
     player_id: i32,
     id: i32,
     pos_arr: [f64; 3],
@@ -210,7 +210,7 @@ fn pin_entity_pose(
             (c.yaw, c.previous_yaw, c.pitch, c.previous_pitch) = (yaw, yaw, pitch, pitch);
         }
     });
-    if let Some(inter) = game.client.interactions.get_mut(&id) {
+    if let Some(inter) = game.side.interactions.get_mut(&id) {
         (inter.position, inter.previous) = (pos, pos);
         (
             inter.yaw,
@@ -241,7 +241,7 @@ fn pin_entity_pose(
     }
 }
 
-fn replay_witness_case(game: &mut Game<'_>, tc: &Value) -> Pipe {
+fn replay_witness_case(game: &mut crate::game::ClientGame<'_>, tc: &Value) -> Pipe {
     let player_id = tc["player_id"].as_i64().unwrap() as i32;
     let camera_id = tc["camera_id"].as_i64().unwrap() as i32;
     let entities = tc["entities"].as_array().unwrap();
@@ -426,7 +426,7 @@ fn replay_witness_case(game: &mut Game<'_>, tc: &Value) -> Pipe {
     server
 }
 
-fn check_case_hit(game: &Game<'_>, tc: &Value, failures: &mut Vec<String>) {
+fn check_case_hit(game: &crate::game::ClientGame<'_>, tc: &Value, failures: &mut Vec<String>) {
     let name = tc["name"].as_str().unwrap();
     let hit = &tc["hit"];
     let want_type = hit["type"].as_str().unwrap();
@@ -880,7 +880,7 @@ pub(in crate::game::client_side) fn run_singleplayer_and_unstored_pick_share_uni
                 let sand = registry.default_state("minecraft:sand").unwrap();
                 let air = registry.default_state("minecraft:air").unwrap();
 
-                let place_player = |game: &mut Game<'_>, pos: [f64; 3], yaw: f32, pitch: f32| {
+                let place_player = |game: &mut crate::game::ServerGame<'_>, pos: [f64; 3], yaw: f32, pitch: f32| {
                     let v = Vec3::new(pos[0], pos[1], pos[2]);
                     let mut p = PlayerMotion::new(game.motion, v).unwrap();
                     p.entity_id = 1;

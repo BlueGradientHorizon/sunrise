@@ -132,7 +132,7 @@ pub(in crate::game) fn player_info_mode(uuid: u128, game_mode: i32) -> C {
     })
 }
 
-pub(in crate::game) fn install_stone_floor(game: &mut Game<'_>) {
+pub(in crate::game) fn install_stone_floor(game: &mut crate::game::ClientGame<'_>) {
     game.streaming
         .insert_remote(&mut game.world, Chunk::empty(0, 0));
     let stone = game
@@ -153,7 +153,7 @@ pub(in crate::game) fn install_stone_floor(game: &mut Game<'_>) {
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::client_side::remote_client::abilities::gamemode_split_tests::setup_client;
 
-pub(in crate::game) fn drain_sent_abilities(game: &Game<'_>, peer: &mut ConnReader) -> Vec<bool> {
+pub(in crate::game) fn drain_sent_abilities(game: &crate::game::ClientGame<'_>, peer: &mut ConnReader) -> Vec<bool> {
     game.send(S::ClientTickEnd(Empty));
     let mut sent = Vec::new();
     while let Ok((id, bytes)) = peer.recv() {
@@ -166,18 +166,18 @@ pub(in crate::game) fn drain_sent_abilities(game: &Game<'_>, peer: &mut ConnRead
     sent
 }
 
-pub(in crate::game) fn run_local_tick(game: &mut Game<'_>) {
+pub(in crate::game) fn run_local_tick(game: &mut crate::game::ClientGame<'_>) {
     game.tick_local_player(Vec::new(), 7, None).unwrap();
 }
 
-pub(in crate::game) fn player_info_mode_name(game: &Game<'_>) -> Option<&'static str> {
+pub(in crate::game) fn player_info_mode_name(game: &crate::game::ClientGame<'_>) -> Option<&'static str> {
     let r = game.remote.as_ref()?;
     let t = r.tab_players.get(&r.profile)?;
     Some(mode_from_id(t.game_mode).name())
 }
 
 pub(in crate::game) fn assert_row_core(
-    game: &Game<'_>,
+    game: &crate::game::ClientGame<'_>,
     row: &JsonValue,
     check_pos_vel: bool,
     sent_abilities: Option<&[bool]>,
@@ -870,7 +870,7 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
                     .registry
                     .default_state("minecraft:air")
                     .unwrap();
-                game.client.fog.water_vision_time = 0;
+                game.side.fog.water_vision_time = 0;
                 game.handle_packet(abilities_packet(0x06, 0.05, 0.10))
                     .unwrap();
                 for y in 64..=66 {
@@ -886,7 +886,7 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
                 // stays false even while `camera_fog_type` is Water.
                 game.tick_remote_level().unwrap();
                 assert!(!game.player.as_ref().unwrap().is_eye_in_fluid(WATER));
-                assert_eq!(game.client.fog.water_vision_time, 0);
+                assert_eq!(game.side.fog.water_vision_time, 0);
 
                 // Load the neighbor chunks required by `EntityFluidInteraction.hasFluidAndLoaded`
                 // (`x0 - 1 ..= x1 + 1`, `z0 - 1 ..= z1 + 1`), then attach the camera to entity 99
@@ -905,7 +905,7 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
                 game.tick_remote_level().unwrap();
                 assert!(game.player.as_ref().unwrap().is_eye_in_fluid(WATER));
                 assert_eq!(
-                    game.client.fog.water_vision_time,
+                    game.side.fog.water_vision_time,
                     water_rows[0]["water_vision_time"].as_i64().unwrap() as i32
                 );
                 game.handle_packet(change_mode_packet(2.0)).unwrap();
@@ -913,7 +913,7 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
                 game.tick_remote_level().unwrap();
                 assert!(game.player.as_ref().unwrap().is_eye_in_fluid(WATER));
                 assert_eq!(
-                    game.client.fog.water_vision_time,
+                    game.side.fog.water_vision_time,
                     water_rows[1]["water_vision_time"].as_i64().unwrap() as i32
                 );
 
@@ -927,14 +927,14 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
                 game.tick_remote_level().unwrap();
                 assert!(!game.player.as_ref().unwrap().is_eye_in_fluid(WATER));
                 assert_eq!(
-                    game.client.fog.water_vision_time,
+                    game.side.fog.water_vision_time,
                     water_rows[2]["water_vision_time"].as_i64().unwrap() as i32
                 );
                 game.handle_packet(change_mode_packet(3.0)).unwrap();
                 game.tick_remote_level().unwrap();
                 assert!(!game.player.as_ref().unwrap().is_eye_in_fluid(WATER));
                 assert_eq!(
-                    game.client.fog.water_vision_time,
+                    game.side.fog.water_vision_time,
                     water_rows[3]["water_vision_time"].as_i64().unwrap() as i32
                 );
                 game.remote.as_mut().unwrap().camera = None;
@@ -1012,11 +1012,11 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
                     title: Tag::String("Chest".into()),
                 }))
                 .unwrap();
-                assert_eq!(game.client.screen, Screen::Inventory);
+                assert_eq!(game.side.screen, Screen::Inventory);
                 assert_eq!(game.remote_menu_type(), Some("minecraft:generic_9x3"));
                 assert!(!game.is_player_inventory_screen());
                 game.tick_remote_level().unwrap();
-                assert_eq!(game.client.screen, Screen::Inventory);
+                assert_eq!(game.side.screen, Screen::Inventory);
                 assert_eq!(game.remote_menu_type(), Some("minecraft:generic_9x3"));
                 assert!(game.container.is_some());
 
@@ -1035,10 +1035,10 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
                     title: Tag::String("Crafting".into()),
                 }))
                 .unwrap();
-                assert_eq!(game.client.screen, Screen::Inventory);
+                assert_eq!(game.side.screen, Screen::Inventory);
                 assert!(!game.is_player_inventory_screen());
                 game.tick_remote_level().unwrap();
-                assert_eq!(game.client.screen, Screen::Inventory);
+                assert_eq!(game.side.screen, Screen::Inventory);
                 assert_eq!(game.remote_menu_type(), Some("minecraft:crafting"));
                 assert_eq!(game.craft_size, 3);
 
@@ -1050,7 +1050,7 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
                 game.handle_packet(abilities_packet(0x00, 0.05, 0.10))
                     .unwrap();
                 game.tick_remote_level().unwrap();
-                assert_eq!(game.client.screen, Screen::Inventory);
+                assert_eq!(game.side.screen, Screen::Inventory);
                 assert_eq!(
                     game.carried.as_ref().map(|s| (&*s.item, s.count)),
                     Some(("minecraft:diamond", 5))
@@ -1058,7 +1058,7 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
                 game.handle_packet(abilities_packet(0x08, 0.05, 0.10))
                     .unwrap();
                 game.tick_remote_level().unwrap();
-                assert_eq!(game.client.screen, Screen::Creative);
+                assert_eq!(game.side.screen, Screen::Creative);
                 assert_eq!(
                     game.carried.as_ref().map(|s| (&*s.item, s.count)),
                     Some(("minecraft:diamond", 5))
@@ -1066,7 +1066,7 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
                 game.handle_packet(abilities_packet(0x00, 0.05, 0.10))
                     .unwrap();
                 game.tick_remote_level().unwrap();
-                assert_eq!(game.client.screen, Screen::Inventory);
+                assert_eq!(game.side.screen, Screen::Inventory);
                 assert_eq!(
                     game.carried.as_ref().map(|s| (&*s.item, s.count)),
                     Some(("minecraft:diamond", 5))
@@ -1202,7 +1202,7 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
 }
 
 pub(in crate::game) fn add_entity_packet(
-    game: &Game<'_>,
+    game: &crate::game::ClientGame<'_>,
     id: i32,
     uuid: u128,
     kind_name: &str,
@@ -1230,7 +1230,7 @@ pub(in crate::game) fn add_entity_packet(
 }
 
 pub(in crate::game) fn spawn_mob(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ClientGame<'_>,
     id: i32,
     uuid: u128,
     kind: &str,

@@ -39,7 +39,7 @@ impl Hooks for ProbeMod {
     }
 }
 
-fn porkchops(game: &Game<'_>) -> usize {
+fn porkchops(game: &crate::game::ServerGame<'_>) -> usize {
     game.dropped
         .iter()
         .filter(|i| &*i.stack.item == "minecraft:porkchop")

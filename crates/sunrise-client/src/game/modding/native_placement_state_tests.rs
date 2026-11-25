@@ -90,7 +90,7 @@ impl Hooks for PlacementReadMod {
     }
 }
 
-fn with_game(name: &str, test: impl FnOnce(&mut Game<'_>)) {
+fn with_game(name: &str, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     if run_fresh_cases(
         &format!("game::server_side::native_placement_state_tests::{name}"),
         "SUNRISE_PLACEMENT_STATE_CHILD",
@@ -144,7 +144,7 @@ fn vanilla_candidates_use_the_resolved_context_without_placing() {
                     registry.default_state("minecraft:stone").unwrap(),
                 )
                 .unwrap();
-            let blocks = |game: &Game<'_>| {
+            let blocks = |game: &crate::game::ServerGame<'_>| {
                 std::iter::once(POS)
                     .chain(Direction::ALL.map(|face| {
                         let [x, y, z] = face.normal();
@@ -195,7 +195,7 @@ fn placement_read_leaves_queued_spill_untouched() {
         let pos = [8.5, 70.5, 8.5];
         let motion = Some([0.0, 0.25, 0.0]);
         let delay = 10;
-        game.spill.0.spawns.push(crate::game::spill::Spawn {
+        game.side.spill.0.spawns.push(crate::game::spill::Spawn {
             random: None,
             stack: stack.clone(),
             pos,
@@ -208,7 +208,7 @@ fn placement_read_leaves_queued_spill_untouched() {
             Ok(Some(_))
         ));
         assert_eq!(game.dropped.len(), dropped);
-        let [queued] = game.spill.0.spawns.as_slice() else {
+        let [queued] = game.side.spill.0.spawns.as_slice() else {
             panic!("the spill must still contain the original item");
         };
         assert_eq!(queued.stack, stack);

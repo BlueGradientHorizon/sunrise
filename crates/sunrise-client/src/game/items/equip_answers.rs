@@ -211,7 +211,7 @@ mod tests {
     }
 
     /// Runs `test` on a game with the cobbler's part installed, given what it counted.
-    fn with_cobbler(test: impl FnOnce(&mut Game<'_>, &AtomicUsize)) {
+    fn with_cobbler(test: impl FnOnce(&mut crate::game::ServerGame<'_>, &AtomicUsize)) {
         installed(|asked| {
             crate::game::native_entity_refs::tests::with_game(|game| {
                 // The player in place, admitted as a joined one is, so its handle resolves.
@@ -285,7 +285,7 @@ mod tests {
                 let mut helmet = ItemStack::new("minecraft:iron_helmet", 1);
                 assert_eq!(contents.try_insert(game.items(), &mut helmet, true), 1);
                 contents.store(&mut bundle);
-                let held = |game: &Game<'_>| {
+                let held = |game: &crate::game::ServerGame<'_>| {
                     let guest = &game.lan.as_ref().unwrap().hub.guests[0];
                     let name = |s: &Option<ItemStack>| s.as_ref().map(|s| s.item.to_string());
                     let inside = (guest.carried.as_ref())
@@ -300,7 +300,7 @@ mod tests {
                     (guest.armor.each_ref().map(name), inside, inventory)
                 };
                 // Right clicks (button 1) of the pickup mode on menu slots 5 (head) and 8 (feet).
-                let click = |game: &mut Game<'_>, slot: i16| {
+                let click = |game: &mut crate::game::ServerGame<'_>, slot: i16| {
                     game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
                         guest.carried = Some(bundle.clone());
                     });

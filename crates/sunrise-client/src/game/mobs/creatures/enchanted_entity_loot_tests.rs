@@ -63,7 +63,7 @@ pub(in crate::game) fn listening(seen: &Arc<Mutex<Vec<Heard>>>, level: u32) -> m
 }
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::server_side::creatures_server::enchanted_entity_loot_tests::zombie;
-pub(in crate::game) fn dropped(game: &super::Game<'_>, item: &str) -> u32 {
+pub(in crate::game) fn dropped(game: &crate::game::ServerGame<'_>, item: &str) -> u32 {
     let drops = game.dropped.iter().filter(|d| &*d.stack.item == item);
     drops.map(|d| d.stack.count).sum()
 }

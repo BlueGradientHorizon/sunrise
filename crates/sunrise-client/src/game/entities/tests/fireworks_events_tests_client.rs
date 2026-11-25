@@ -76,7 +76,7 @@ fn a_falling_rocket_hits_the_ground_and_one_in_water_splashes() {
             [("minecraft:splash", 20), ("minecraft:hit_ground", 6)]
         );
         assert_eq!(
-            game.server
+            game.side
                 .pending_sounds
                 .iter()
                 .filter(|s| s.event == "minecraft:entity.generic.splash")
@@ -105,7 +105,7 @@ fn a_silent_rocket_bursts_without_blast_or_twinkle() {
         game.rockets.push(launching);
         game.start_audio_capture();
         game.tick_rockets();
-        let heard = std::mem::take(&mut game.server.pending_sounds);
+        let heard = std::mem::take(&mut game.side.pending_sounds);
         game.stop_audio_capture();
         assert!(
             heard
@@ -143,12 +143,12 @@ fn a_silent_rocket_bursts_without_blast_or_twinkle() {
             }))
             .unwrap();
         }
-        game.particles.0.sounds.clear();
+        game.side.particles.0.sounds.clear();
         for _ in 0..20 {
             tick_particles(game);
         }
         let bursts: Vec<(&str, [f64; 3])> = game
-            .particles
+            .side.particles
             .0
             .sounds
             .iter()
@@ -164,13 +164,13 @@ fn a_silent_rocket_bursts_without_blast_or_twinkle() {
             "only the loud rocket bangs and twinkles, both at its own position"
         );
         assert!(
-            !game.particles.0.is_empty(),
+            !game.side.particles.0.is_empty(),
             "the silent rocket still drew its sparks and flash"
         );
     });
 }
 
-pub(in crate::game::server_side) fn tick_particles(game: &mut Game<'_>) {
+pub(in crate::game::server_side) fn tick_particles(game: &mut crate::game::ClientGame<'_>) {
     let level = ParticleLevel {
         world: &game.world,
         facts: game.res.facts(),
@@ -178,5 +178,5 @@ pub(in crate::game::server_side) fn tick_particles(game: &mut Game<'_>) {
         player: None,
         cached_chunk: std::cell::Cell::new(None),
     };
-    game.particles.0.tick(&level);
+    game.side.particles.0.tick(&level);
 }

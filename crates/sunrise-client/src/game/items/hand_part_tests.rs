@@ -66,7 +66,7 @@ impl Hooks for Parts {
 }
 
 /// Runs `body` on a game whose stick has the part.
-pub(in crate::game) fn with_stick_part(body: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_stick_part(body: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("hands", Box::new(Parts))].into();
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
@@ -76,27 +76,27 @@ pub(in crate::game) fn with_stick_part(body: impl FnOnce(&mut Game<'_>)) {
 
 /// Puts `main` in slot 0, selects it, and ticks until the attack strength is
 /// full and the hand is up.
-pub(in crate::game::client_side) fn settle(game: &mut Game<'_>, main: ItemStack) {
+pub(in crate::game::client_side) fn settle(game: &mut crate::game::ClientGame<'_>, main: ItemStack) {
     game.inventory[0] = Some(main);
     game.selected = 0;
     for _ in 0..20 {
         game.tick_hand();
     }
-    assert_eq!(game.client.heights.main, 1.0);
+    assert_eq!(game.side.heights.main, 1.0);
     REEQUIP_ASKED.lock().unwrap().clear();
 }
 
 /// The main hand's height over the next six ticks, and the stick count it
 /// shows after each.
-pub(in crate::game::client_side) fn dip(game: &mut Game<'_>) -> Vec<(f32, u32)> {
+pub(in crate::game::client_side) fn dip(game: &mut crate::game::ClientGame<'_>) -> Vec<(f32, u32)> {
     (0..6)
         .map(|_| {
             game.tick_hand();
-            let shown = game.client.visible_hands[0]
+            let shown = game.side.visible_hands[0]
                 .1
                 .as_ref()
                 .map_or(0, |s| s.count);
-            (game.client.heights.main, shown)
+            (game.side.heights.main, shown)
         })
         .collect()
 }
@@ -206,7 +206,7 @@ fn a_part_decides_whether_a_changed_stick_restarts_the_break() {
 #[test]
 #[ignore = "daily"]
 fn without_a_part_the_break_compares_item_and_components() {
-    crate::game::native_entity_refs::tests::with_game(|game| {
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
         game.inventory[0] = Some(ItemStack::new("minecraft:stick", 1));
         game.selected = 0;
         let began = game.main_hand_key();

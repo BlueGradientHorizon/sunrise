@@ -155,7 +155,7 @@ pub(in crate::game) fn with_mod(test: impl FnOnce()) {
 
 /// A local game with a player, the inventory screen open, stone 3 on the cursor and nothing in
 /// slot 9 (the first slot of the main inventory, menu slot 9).
-pub(in crate::game) fn with_local(test: impl FnOnce(&mut crate::game::Game<'_>)) {
+pub(in crate::game) fn with_local(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     with_game(|game| {
         let _serving = crate::game::integrated::tests::install_serving(game, false);
         game.level.player_uuid = Some([0, 0, 0, 99]);
@@ -167,13 +167,13 @@ pub(in crate::game) fn with_local(test: impl FnOnce(&mut crate::game::Game<'_>))
         .unwrap();
         body.entity_id = 99;
         game.player = Some(body);
-        game.server.next_entity = 100;
+        game.side.next_entity = 100;
         game.client.screen = crate::game::Screen::Inventory;
         reset_local(game);
         test(game);
     });
 }
-pub(in crate::game) fn reset_local(game: &mut crate::game::Game<'_>) {
+pub(in crate::game) fn reset_local(game: &mut crate::game::ServerGame<'_>) {
     game.inventory = vec![None; game.inventory.len()];
     game.carried = Some(ItemStack::new("minecraft:stone", 3));
 }
@@ -181,7 +181,7 @@ pub(in crate::game) fn count(stack: &Option<ItemStack>) -> u32 {
     stack.as_ref().map_or(0, |s| s.count)
 }
 /// The click: pickup on the first main-inventory slot. What is left: (slot 9, cursor, slot 20).
-pub(in crate::game) fn click(game: &mut crate::game::Game<'_>) -> (u32, u32, u32) {
+pub(in crate::game) fn click(game: &mut crate::game::ClientGame<'_>) -> (u32, u32, u32) {
     assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
     (
         count(&game.inventory[9]),
@@ -361,7 +361,7 @@ fn a_lan_inventory_click_is_decided_the_same_way() {
     with_mod(|| {
         with_guests(|game| {
             PLAYER.set(12);
-            let click = |game: &mut crate::game::Game<'_>| {
+            let click = |game: &mut crate::game::ServerGame<'_>| {
                 game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
                     guest.inventory = vec![None; guest.inventory.len()];
                     guest.carried = Some(ItemStack::new("minecraft:stone", 3));
@@ -426,7 +426,7 @@ pub(in crate::game) mod families {
         }
     }
 
-    fn cursor(game: &Game<'_>) -> Option<(String, u32)> {
+    fn cursor<S: crate::game::Side>(game: &Game<'_, S>) -> Option<(String, u32)> where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
         let guest = &game.lan.as_ref().unwrap().hub.guests[0];
         guest
             .carried
@@ -450,8 +450,8 @@ pub(in crate::game) mod families {
     /// frozen cursor and the set cursor applies; then with a listener that only allows, the hook
     /// fires again and the plain click follows (`plain_cursor` is what it leaves on the cursor).
     fn family(
-        open: impl FnOnce(&mut Game<'_>),
-        click: impl Fn(&mut Game<'_>),
+        open: impl FnOnce(&mut crate::game::ClientGame<'_>),
+        click: impl Fn(&mut crate::game::ClientGame<'_>),
         plain_cursor: Option<(&str, u32)>,
     ) {
         with_mod(|| {
@@ -462,7 +462,7 @@ pub(in crate::game) mod families {
                 );
                 PLAYER.set(12);
                 open(game);
-                let give = |game: &mut Game<'_>| {
+                let give = |game: &mut crate::game::ServerGame<'_>| {
                     game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
                         guest.carried = Some(ItemStack::new("minecraft:stone", 3));
                     });
@@ -486,7 +486,7 @@ pub(in crate::game) mod families {
         });
     }
 
-    fn block(game: &mut Game<'_>, name: &str, pos: (i32, i32, i32)) {
+    fn block<S: crate::game::Side>(game: &mut Game<'_, S>, name: &str, pos: (i32, i32, i32)) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
         let state = game.pack.assets.registry.default_state(name).unwrap();
         game.world.set(pos.0, pos.1, pos.2, state).unwrap();
     }
@@ -580,7 +580,7 @@ pub(in crate::game) mod families {
     }
 
     /// A furnace at (1, 64, 1) holding `items` (input, fuel, output), open as guest 12's menu.
-    fn open_furnace(game: &mut Game<'_>, items: [Option<ItemStack>; 3]) -> i32 {
+    fn open_furnace(game: &mut crate::game::ServerGame<'_>, items: [Option<ItemStack>; 3]) -> i32 {
         use sunrise_client::containers::{BlockEntity, Furnace, FurnaceKind};
         block(game, "minecraft:furnace", (1, 64, 1));
         game.world.block_entities.insert(
@@ -604,7 +604,7 @@ pub(in crate::game) mod families {
             .window
     }
 
-    fn furnace_items(game: &Game<'_>) -> [Option<(String, u32)>; 3] {
+    fn furnace_items(game: &crate::game::ServerGame<'_>) -> [Option<(String, u32)>; 3] {
         use sunrise_client::containers::BlockEntity;
         let Some(BlockEntity::Furnace(f)) = game.world.block_entities.get(&(1, 64, 1)) else {
             panic!("the furnace is gone");
@@ -627,7 +627,7 @@ pub(in crate::game) mod families {
                 );
                 PLAYER.set(12);
                 let stone = |count| Some(ItemStack::new("minecraft:stone", count));
-                let held = |game: &Game<'_>| cursor(game);
+                let held = |game: &crate::game::ServerGame<'_>| cursor(game);
                 // Place: stone 3 from the cursor into the input slot.
                 let window = open_furnace(game, [None, None, None]);
                 game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
@@ -794,13 +794,13 @@ pub(in crate::game) mod families {
                     item_id("minecraft:stone"),
                     item_id("minecraft:emerald"),
                 );
-                let mount = |game: &Game<'_>, id, name: &str| {
+                let mount = |game: &crate::game::ServerGame<'_>, id, name: &str| {
                     let kind = game.res.mob_types().get(name).unwrap().clone();
                     let mut mob = Mob::new(id, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
                     mob.extra.tame = true;
                     mob
                 };
-                let open = |game: &mut Game<'_>, id| {
+                let open = |game: &mut crate::game::ServerGame<'_>, id| {
                     game.lan_open_mount(12, id);
                     let _ = menu_packets();
                     game.lan.as_ref().unwrap().play[&12]
@@ -809,7 +809,7 @@ pub(in crate::game) mod families {
                         .unwrap()
                         .window
                 };
-                let guest_items = |game: &Game<'_>| {
+                let guest_items = |game: &crate::game::ServerGame<'_>| {
                     let g = &game.lan.as_ref().unwrap().hub.guests[0];
                     (g.inventory[9].clone(), g.carried.clone())
                 };
@@ -938,7 +938,7 @@ pub(in crate::game) mod families {
                 horse.extra.set_body_stack(Some(armor.clone()));
                 game.mobs.push(horse);
                 let window = open(game, 61);
-                let equipment = |game: &Game<'_>| {
+                let equipment = |game: &crate::game::ServerGame<'_>| {
                     let horse = &game.mobs[1];
                     (horse.saddle_item(), horse.extra.body_stack().cloned())
                 };
@@ -1088,13 +1088,13 @@ fn an_outer_abort_after_an_applied_lan_click_restores_the_guest_and_the_containe
                     carried: None,
                 })
             };
-            let give = |game: &mut crate::game::Game<'_>| {
+            let give = |game: &mut crate::game::ServerGame<'_>| {
                 game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
                     guest.inventory = vec![None; guest.inventory.len()];
                     guest.carried = Some(ItemStack::new("minecraft:stone", 3));
                 });
             };
-            let state = |game: &crate::game::Game<'_>| {
+            let state = |game: &crate::game::ServerGame<'_>| {
                 let guest = &game.lan.as_ref().unwrap().hub.guests[0];
                 (
                     game.world.block_entities.get(&pos).unwrap().slots()[0]
@@ -2467,7 +2467,7 @@ pub(in crate::game) mod item_part_tests {
                     game.res.recipes().cooking_experience(recipe) > 0.0,
                     "expected positive smelting experience for {recipe}"
                 );
-                let seed_furnace = |game: &mut crate::game::Game<'_>, pos: (i32, i32, i32)| {
+                let seed_furnace = |game: &mut crate::game::ServerGame<'_>, pos: (i32, i32, i32)| {
                     let mut recipes_used = std::collections::HashMap::new();
                     recipes_used.insert(recipe.to_owned(), 10);
                     game.world.block_entities.insert(
@@ -2654,7 +2654,7 @@ pub(in crate::game) mod item_part_tests {
                     .unwrap();
                 game.world.set(pos.0, pos.1, pos.2, furnace_state).unwrap();
                 let recipe = "minecraft:iron_ingot_from_smelting_raw_iron";
-                let seed_furnace = |game: &mut crate::game::Game<'_>| {
+                let seed_furnace = |game: &mut crate::game::ServerGame<'_>| {
                     let mut recipes_used = std::collections::HashMap::new();
                     recipes_used.insert(recipe.to_owned(), 10);
                     game.world.block_entities.insert(
@@ -2977,7 +2977,7 @@ pub(in crate::game) mod item_part_tests {
             bundle
         };
         let install_default_bundle_contents_non_bundle_items =
-            |game: &mut crate::game::Game<'_>| {
+            |game: &mut crate::game::ServerGame<'_>| {
                 let mut items = game.items().clone();
                 // Simulate mod/custom non-BundleItem items whose default component prototype
                 // includes `minecraft:bundle_contents` (`info.bundle == true`) without a

@@ -136,16 +136,16 @@ fn with_marker(test: impl FnOnce(&Arc<AtomicU8>)) {
 }
 
 /// A copper golem holding a diamond dies at `at`: the item entities its death added.
-fn golem_dies(game: &mut super::Game<'_>, at: [f64; 3]) -> Vec<ItemEntity> {
+fn golem_dies(game: &mut crate::game::ServerGame<'_>, at: [f64; 3]) -> Vec<ItemEntity> {
     let kind = game
         .res
         .mob_types()
         .get("minecraft:copper_golem")
         .unwrap()
         .clone();
-    game.server.next_entity += 1;
+    game.side.next_entity += 1;
     let position = Vec3::new(at[0], at[1], at[2]);
-    let mut golem = sunrise_client::mobs::Mob::new(game.server.next_entity, kind, position, 0.0);
+    let mut golem = sunrise_client::mobs::Mob::new(game.side.next_entity, kind, position, 0.0);
     sunrise_client::mobs::transport_items::set_held(
         &mut golem,
         Some(ItemStack::new("minecraft:diamond", 1)),
@@ -161,7 +161,7 @@ fn ids(items: &[ItemEntity]) -> Vec<u32> {
     items.iter().map(|d| d.id).collect()
 }
 
-fn on_ground(game: &super::Game<'_>, ids: &[u32]) -> usize {
+fn on_ground(game: &crate::game::ServerGame<'_>, ids: &[u32]) -> usize {
     game.dropped.iter().filter(|d| ids.contains(&d.id)).count()
 }
 
@@ -219,7 +219,7 @@ fn a_targeted_drop_is_picked_up_only_by_its_target() {
 }
 
 /// A world of one empty column (0, 0) for item ticks.
-fn item_world(game: &mut super::Game<'_>) {
+fn item_world(game: &mut crate::game::ServerGame<'_>) {
     game.load_server_loot();
     game.native_lifecycle
         .begin_open(mod_api::Authority::IntegratedServer);
@@ -243,7 +243,7 @@ fn an_unlimited_lifetime_drop_outlives_an_ordinary_one() {
             mode.store(FLOAT_FOREVER, Ordering::SeqCst);
             let forever = ids(&golem_dies(game, CENTRE));
             assert!(!ordinary.is_empty() && !forever.is_empty());
-            game.server.ticked_entities_through = game.server.next_entity;
+            game.side.ticked_entities_through = game.side.next_entity;
             for _ in 0..5999 {
                 game.tick_items();
             }
@@ -274,7 +274,7 @@ fn the_largest_age_wraps_on_its_first_tick() {
             mode.store(FLOAT_OLDEST, Ordering::SeqCst);
             let oldest = ids(&golem_dies(game, CENTRE));
             assert!(!oldest.is_empty());
-            game.server.ticked_entities_through = game.server.next_entity;
+            game.side.ticked_entities_through = game.side.next_entity;
             game.tick_items();
             let ages: Vec<i32> = game
                 .dropped

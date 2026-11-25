@@ -31,10 +31,10 @@ fn witness(rows: &mut Map<String, Value>, name: &str, actual: Value, expected: V
     rows.insert(name.into(), actual);
 }
 
-fn join(game: &mut Game<'_>, conn: u32, loaded: bool) -> mpsc::Receiver<Out> {
+fn join(game: &mut crate::game::ServerGame<'_>, conn: u32, loaded: bool) -> mpsc::Receiver<Out> {
     let (tx, rx) = mpsc::channel();
     let id = 1000 + conn as i32;
-    game.server.next_entity = game.server.next_entity.max(id as u32 + 1);
+    game.side.next_entity = game.side.next_entity.max(id as u32 + 1);
     let mut guest = Guest::new(
         Joined {
             conn,
@@ -62,7 +62,7 @@ fn join(game: &mut Game<'_>, conn: u32, loaded: bool) -> mpsc::Receiver<Out> {
     rx
 }
 
-fn packet_tick(game: &mut Game<'_>, conn: u32, packets: impl IntoIterator<Item = S>) {
+fn packet_tick(game: &mut crate::game::ServerGame<'_>, conn: u32, packets: impl IntoIterator<Item = S>) {
     let back = game.dim;
     let level = Dim::from_id(&guest(game, conn).dimension);
     game.enter_level(level).unwrap();
@@ -74,7 +74,7 @@ fn packet_tick(game: &mut Game<'_>, conn: u32, packets: impl IntoIterator<Item =
             InboxItem::Packet(S::decode(id, reader.rest()).unwrap(), None)
         }));
     });
-    game.server.level_pass = Default::default();
+    game.side.level_pass = Default::default();
     game.tick_lan_packets();
     assert_eq!(
         game.dim, level,
@@ -84,7 +84,7 @@ fn packet_tick(game: &mut Game<'_>, conn: u32, packets: impl IntoIterator<Item =
     game.enter_level(back).unwrap();
 }
 
-fn guest<'a>(game: &'a Game<'_>, conn: u32) -> &'a Guest {
+fn guest<'a>(game: &'a crate::game::ServerGame<'_>, conn: u32) -> &'a Guest {
     game.lan.as_ref().unwrap().hub.guest(conn).unwrap()
 }
 
@@ -114,7 +114,7 @@ fn receive(rx: &mpsc::Receiver<Out>) -> Vec<C> {
         .collect()
 }
 
-fn credits(game: &mut Game<'_>, rows: &mut Map<String, Value>) {
+fn credits(game: &mut crate::game::ServerGame<'_>, rows: &mut Map<String, Value>) {
     game.enter_level(Dim::End).unwrap();
     game.streaming
         .insert_remote(&mut game.world, Chunk::empty(0, 0));
@@ -207,7 +207,7 @@ fn credits(game: &mut Game<'_>, rows: &mut Map<String, Value>) {
     );
 }
 
-fn use_item(game: &mut Game<'_>, rows: &mut Map<String, Value>) {
+fn use_item(game: &mut crate::game::ServerGame<'_>, rows: &mut Map<String, Value>) {
     for kind in ["empty", "disabled", "survival", "spectator"] {
         game.lan.as_mut().unwrap().hub.update_guest(VIEWER, |g| {
             (g.yaw, g.pitch) = (17.0, -12.0);
@@ -257,7 +257,7 @@ fn input(shift: bool) -> S {
     })
 }
 
-fn interact(game: &mut Game<'_>, rows: &mut Map<String, Value>) {
+fn interact(game: &mut crate::game::ServerGame<'_>, rows: &mut Map<String, Value>) {
     let interact = |id, secondary| {
         S::Interact(play::Interact {
             id,
@@ -292,7 +292,7 @@ fn interact(game: &mut Game<'_>, rows: &mut Map<String, Value>) {
     }
 }
 
-fn spectate(game: &mut Game<'_>, rx: &mpsc::Receiver<Out>, rows: &mut Map<String, Value>) {
+fn spectate(game: &mut crate::game::ServerGame<'_>, rx: &mpsc::Receiver<Out>, rows: &mut Map<String, Value>) {
     let shoot = |uuid| S::TeleportToEntity(play::TeleportToEntity { uuid });
     let _peer = join(game, 2, true);
     let host = game.lan.as_mut().unwrap();
@@ -358,7 +358,7 @@ fn spectate(game: &mut Game<'_>, rx: &mpsc::Receiver<Out>, rows: &mut Map<String
             json!([
                 packets,
                 viewer.vehicle.is_none(),
-                !viewer.watching && !game.cmds.0.guest_cameras.contains_key(&VIEWER),
+                !viewer.watching && !game.side.cmds.0.guest_cameras.contains_key(&VIEWER),
                 body.fall_distance.to_bits() as i64,
                 vector_bits(body.velocity),
                 viewer.first_good == viewer.position,
@@ -568,7 +568,7 @@ fn correction_sample(packets: &[C], guest: &Guest) -> Value {
     ])
 }
 
-fn resend(game: &mut Game<'_>, rows: &mut Map<String, Value>) {
+fn resend(game: &mut crate::game::ServerGame<'_>, rows: &mut Map<String, Value>) {
     for (n, route) in ["vehicle", "player", "loading_vehicle", "loading_player"]
         .into_iter()
         .enumerate()
@@ -668,7 +668,7 @@ fn resend(game: &mut Game<'_>, rows: &mut Map<String, Value>) {
     }
 }
 
-fn crystal_round_trip(game: &mut Game<'_>, rows: &mut Map<String, Value>) {
+fn crystal_round_trip(game: &mut crate::game::ServerGame<'_>, rows: &mut Map<String, Value>) {
     let key = (1, 0);
     game.streaming
         .insert_remote(&mut game.world, Chunk::empty(key.0, key.1));
@@ -794,8 +794,8 @@ fn run_witness() {
                     seed: 0,
                     max_players: 16,
                     integrated: false,
-                    levels: game.server.level_shapes,
-                    level_seeds: game.levels.0.runtime.seeds(),
+                    levels: game.side.level_shapes,
+                    level_seeds: game.side.levels.0.runtime.seeds(),
                 },
             )
             .unwrap();

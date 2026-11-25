@@ -260,7 +260,7 @@ pub(in crate::game) mod tests {
             (55, "minecraft:pig", [14.5, 65.5, 3.0]),
             (11, "minecraft:text_display", [13.5, 65.5, 3.0]),
         ];
-        let chunks = |game: &mut Game<'_>| {
+        let chunks = |game: &mut crate::game::ClientGame<'_>| {
             for x in 0..=1 {
                 game.world
                     .chunks
@@ -330,7 +330,7 @@ pub(in crate::game) mod tests {
                 assert_eq!(seen, [92, 55, 11, 31]);
 
                 let block = game.entity(92).unwrap();
-                game.text_displays.0.get_mut(&92).unwrap().metadata(&[
+                game.side.text_displays.0.get_mut(&92).unwrap().metadata(&[
                     (10, 1, Value::Int(3)),
                     (20, 2, Value::Float(4.0)),
                     (21, 2, Value::Float(4.0)),
@@ -365,7 +365,7 @@ pub(in crate::game) mod tests {
                 let culling_only_lo = [16.5, 67.0, 2.5];
                 let culling_only_hi = [16.75, 68.0, 3.5];
                 assert!(ids(game, level, culling_only_lo, culling_only_hi).is_empty());
-                let (lo, hi) = game.text_displays.0[&92].interpolated_bounding_box(1.0);
+                let (lo, hi) = game.side.text_displays.0[&92].interpolated_bounding_box(1.0);
                 let culling = super::aabb_extents((lo.to_array(), hi.to_array()));
                 let culling_only = super::aabb_extents((culling_only_lo, culling_only_hi));
                 assert!(culling.intersects(culling_only));
@@ -455,7 +455,7 @@ pub(in crate::game) mod tests {
                 .map(|e| e.id())
                 .collect::<Vec<_>>()
         };
-        let connect = |game: &mut Game<'_>| {
+        let connect = |game: &mut crate::game::ClientGame<'_>| {
             let (client, server) = Pipe::pair();
             std::mem::forget(server);
             game.connect_local(client, "CrossingTest").unwrap();
@@ -468,7 +468,7 @@ pub(in crate::game) mod tests {
                     .insert((x, 0), Arc::new(Chunk::empty(x, 0)));
             }
         };
-        let add = |game: &mut Game<'_>, id: i32, name: &str, position: [f64; 3]| {
+        let add = |game: &mut crate::game::ClientGame<'_>, id: i32, name: &str, position: [f64; 3]| {
             let kind = game
                 .remote
                 .as_ref()
@@ -491,7 +491,7 @@ pub(in crate::game) mod tests {
             }))
             .unwrap();
         };
-        let sync = |game: &mut Game<'_>, id: i32, to: [f64; 3]| {
+        let sync = |game: &mut crate::game::ClientGame<'_>, id: i32, to: [f64; 3]| {
             game.handle_packet(C::EntityPositionSync(play::EntityPositionSync {
                 id,
                 path: play::PositionPath::Linear(to),
@@ -517,7 +517,7 @@ pub(in crate::game) mod tests {
                         // on this tick, the pig ahead of the display the display loop moved.
                         add(game, 70, "minecraft:pig", [14.5, 65.5, 3.0]);
                         add(game, 71, "minecraft:block_display", [13.5, 65.5, 3.0]);
-                        game.text_displays.0.get_mut(&71).unwrap().metadata(&[(
+                        game.side.text_displays.0.get_mut(&71).unwrap().metadata(&[(
                             10,
                             1,
                             Value::Int(3),
@@ -584,7 +584,7 @@ pub(in crate::game) mod tests {
                         }))
                         .unwrap();
                         let near =
-                            |game: &Game<'_>| ids(game, [39.5, 60.0, 2.0], [41.5, 70.0, 4.0]);
+                            |game: &crate::game::ClientGame<'_>| ids(game, [39.5, 60.0, 2.0], [41.5, 70.0, 4.0]);
                         assert!(near(game).is_empty());
                         // No teleport duration: the display snaps, and its rider with it.
                         sync(game, 92, [40.5, 65.5, 3.0]);

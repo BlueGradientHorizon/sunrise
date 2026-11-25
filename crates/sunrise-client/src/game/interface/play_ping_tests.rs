@@ -34,7 +34,7 @@ pub(in crate::game::server_side) fn output(rx: &mpsc::Receiver<Out>) -> Vec<C> {
         .collect()
 }
 
-fn pass(game: &mut Game<'_>, conn: u32, packet: S) {
+fn pass(game: &mut crate::game::ServerGame<'_>, conn: u32, packet: S) {
     let (packet, _bytes) = decode(packet);
     if let S::PingRequest(p) = &packet {
         println!(
@@ -78,10 +78,10 @@ fn pass(game: &mut Game<'_>, conn: u32, packet: S) {
     );
 }
 
-fn complete_sender_tick(game: &mut Game<'_>) {
+fn complete_sender_tick(game: &mut crate::game::ServerGame<'_>) {
     // Already registered connections: this is a second level pass, without polling sockets.
-    game.server.level_pass.first = false;
-    game.server.level_pass.packets_drained = false;
+    game.side.level_pass.first = false;
+    game.side.level_pass.packets_drained = false;
     let clock_before = game.world.game_time;
     game.tick_lan_packets();
     // tick_lan_packets has ended its Holding scope; production flushes these senders later.
@@ -99,7 +99,7 @@ fn complete_sender_tick(game: &mut Game<'_>) {
         "sender completion adds no world tick"
     );
     assert!(
-        game.server.level_pass.packets_drained,
+        game.side.level_pass.packets_drained,
         "real Game packet phase completed"
     );
 }
@@ -108,7 +108,7 @@ fn complete_sender_tick(game: &mut Game<'_>) {
 /// outbound packets.
 pub(in crate::game::server_side) fn fixture(
     resources: &mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> (Game<'_>, [mpsc::Receiver<Out>; 2]) {
+) -> (crate::game::ServerGame<'_>, [mpsc::Receiver<Out>; 2]) {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.build_registries();
     game.lan_host(

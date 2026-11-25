@@ -99,13 +99,13 @@ fn cauldron_outer_abort_discards_effects_and_drops() {
         game.storage_scope(|game, _| {
             assert_eq!(game.use_on_cauldron(POS).unwrap(), Outcome::Success);
             assert_eq!(events(), 0);
-            assert!(game.server.pending_native_sounds.is_empty());
+            assert!(game.side.pending_native_sounds.is_empty());
             assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
             ((), false)
         });
         unchanged(game, seen);
         assert_eq!(events(), 0);
-        assert!(game.server.pending_native_sounds.is_empty());
+        assert!(game.side.pending_native_sounds.is_empty());
         assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
     });
 }

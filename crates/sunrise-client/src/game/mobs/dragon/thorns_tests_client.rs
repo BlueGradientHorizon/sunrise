@@ -12,7 +12,7 @@ pub(in crate::game::client_side) use sunrise_client::{
     projectiles::{Hit, Projectile, ProjectileKind},
 };
 
-pub(in crate::game) fn check_answer(g: &Game<'_>, slot: usize, answers: bool) {
+pub(in crate::game) fn check_answer(g: &crate::game::ClientGame<'_>, slot: usize, answers: bool) {
     let health = g.mobs[0].health;
     assert_eq!(health < 100.0, answers, "attacker health: {health}");
     assert_eq!(
@@ -21,7 +21,7 @@ pub(in crate::game) fn check_answer(g: &Game<'_>, slot: usize, answers: bool) {
     );
     assert_eq!(f::item_stack(&g.mobs[0], f::MAINHAND).unwrap().damage, 0);
     let sounds: Vec<_> = g
-        .audio
+        .side.audio
         .0
         .capture
         .as_ref()
@@ -141,9 +141,9 @@ fn dragon_takes_player_thorns_through_its_body() {
     });
 }
 
-pub(in crate::game) fn pair(g: &mut Game<'_>, slot: usize) -> Damage {
+pub(in crate::game) fn pair(g: &mut crate::game::ClientGame<'_>, slot: usize) -> Damage {
     g.mobs.clear();
-    g.audio.0.capture.as_mut().unwrap().clear();
+    g.side.audio.0.capture.as_mut().unwrap().clear();
     let kind = g.res.mob_types().get("minecraft:husk").unwrap().clone();
     for (id, x) in [(41, 10.5), (42, 0.5)] {
         let mut m = Mob::new(id, kind.clone(), Vec3::new(x, 64.0, 0.5), 0.0);
@@ -156,7 +156,7 @@ pub(in crate::game) fn pair(g: &mut Game<'_>, slot: usize) -> Damage {
     Damage::mob(41, [10.5, 64.0, 0.5])
 }
 
-pub(in crate::game) fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let root = PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -175,15 +175,12 @@ pub(in crate::game) fn with_game(test: impl FnOnce(&mut Game<'_>)) {
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
-    let mut g = Game::new(
+    let mut g = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();

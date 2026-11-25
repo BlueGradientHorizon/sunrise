@@ -6,7 +6,7 @@ use crate::game::*;
 use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
     let root = PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -29,15 +29,12 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     options.resources = root.clone();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -61,7 +58,7 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
 
 /// A bobber at `from` flying east at 0.5 a tick, ticked until the custom
 /// statistic `stat` counts its first hit (or 20 ticks).
-fn cast_east(game: &mut Game<'_>, from: Vec3, stat: &str) {
+fn cast_east(game: &mut crate::game::ServerGame<'_>, from: Vec3, stat: &str) {
     let mut hook = Hook::remote(7, from, [0, 0, 0, 7]);
     hook.velocity = Vec3::new(0.5, 0.0, 0.0);
     game.install_fishing_hook(hook);
@@ -73,7 +70,7 @@ fn cast_east(game: &mut Game<'_>, from: Vec3, stat: &str) {
     }
 }
 
-fn property(game: &Game<'_>, at: [i32; 3], key: &str) -> Option<String> {
+fn property(game: &crate::game::ServerGame<'_>, at: [i32; 3], key: &str) -> Option<String> {
     let state = game.world.block(at[0], at[1], at[2]);
     game.pack
         .assets

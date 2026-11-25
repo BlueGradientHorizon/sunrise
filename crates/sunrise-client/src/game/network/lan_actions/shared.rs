@@ -881,18 +881,18 @@ pub(in crate::game) mod tests {
                 face: [0, 1, 0],
                 point: [3.5, 65.0, 4.5],
             };
-            let use_menu = |game: &mut Game<'_>| {
+            let use_menu = |game: &mut crate::game::ServerGame<'_>| {
                 assert_eq!(
                     game.as_guest(12, |game| game.use_hand(Some(&hit)).unwrap()),
                     Some(true)
                 );
             };
-            let take_signals = |game: &mut Game<'_>| {
-                let lids = std::mem::take(&mut game.server.lan_block_events)
+            let take_signals = |game: &mut crate::game::ServerGame<'_>| {
+                let lids = std::mem::take(&mut game.side.lan_block_events)
                     .into_iter()
                     .filter_map(|(p, id, count, _)| (p == at && id == 1).then_some(count))
                     .collect::<Vec<_>>();
-                let sounds = std::mem::take(&mut game.server.pending_sounds)
+                let sounds = std::mem::take(&mut game.side.pending_sounds)
                     .into_iter()
                     .map(|sound| sound.event)
                     .collect::<Vec<_>>();
@@ -918,11 +918,11 @@ pub(in crate::game) mod tests {
                 );
                 game.start_audio_capture();
                 TEST_POSTED_EVENTS.with(|posted| *posted.borrow_mut() = Some(Vec::new()));
-                let count = |game: &Game<'_>| {
+                let count = |game: &crate::game::ServerGame<'_>| {
                     if block == "shulker_box" {
                         game.be_anims.shulkers.get(&at).map_or(0, |s| s.open_count)
                     } else {
-                        game.server.lid_openers.get(&pos).copied().unwrap_or(0)
+                        game.side.lid_openers.get(&pos).copied().unwrap_or(0)
                     }
                 };
                 // A shulker's veto can change the acting player to spectator, but
@@ -1343,7 +1343,7 @@ pub(in crate::game) mod hotbar_tests {
             with_game(|game| {
                 open_to_lan(game);
                 game.lan.as_mut().unwrap().hub.guests.push(guest(1));
-                let switch = |game: &mut super::Game<'_>, slot| {
+                let switch = |game: &mut crate::game::ServerGame<'_>, slot| {
                     game.lan_guest_packet(
                         1,
                         play::Serverbound::SetCarriedItem(play::SetCarriedItem { slot }),
@@ -1624,15 +1624,12 @@ pub(in crate::game) mod swing_echo_tests {
             std::env::temp_dir().join(format!("sunrise-swing-echo-unit-{}", std::process::id())),
         );
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -1805,20 +1802,20 @@ pub(in crate::game) mod guest_close_listener_tests {
     #[allow(unused_imports)]
     use sunrise_protocol::packets::configuration::ClientInformation;
 
-    pub(in crate::game) fn selected(game: &Game<'_>) -> Option<Info> {
+    pub(in crate::game) fn selected(game: &crate::game::ServerGame<'_>) -> Option<Info> {
         let Some(BlockEntity::Sculk(sensor)) = game.world.block_entities.get(&(9, 100, 4)) else {
             panic!("actual command-created sensor must exist");
         };
         sensor.vibration.selector.current.map(|(info, _)| info)
     }
-    pub(in crate::game) fn reset_listener(game: &mut Game<'_>) {
+    pub(in crate::game) fn reset_listener(game: &mut crate::game::ServerGame<'_>) {
         assert!(game.run_command("setblock 9 100 4 air strict"));
         assert!(game.run_command("setblock 9 100 4 sculk_sensor strict"));
         game.sculk_prepare();
         game.sculk_sync_index();
         assert!(selected(game).is_none());
     }
-    pub(in crate::game) fn open(game: &mut Game<'_>, conn: u32, sequence: i32) -> i32 {
+    pub(in crate::game) fn open(game: &mut crate::game::ServerGame<'_>, conn: u32, sequence: i32) -> i32 {
         game.lan_guest_packet(
             conn,
             S::UseItemOn(play::UseItemOn {
@@ -1843,7 +1840,7 @@ pub(in crate::game) mod guest_close_listener_tests {
         assert_eq!(menu.size, 27);
         menu.window
     }
-    pub(in crate::game) fn close(game: &mut Game<'_>, conn: u32, window: i32) {
+    pub(in crate::game) fn close(game: &mut crate::game::ServerGame<'_>, conn: u32, window: i32) {
         game.lan_guest_packet(
             conn,
             S::ContainerClose(play::ContainerClose { container: window }),
@@ -1912,15 +1909,12 @@ pub(in crate::game) mod item_on_block_cooldown_tests {
             std::env::temp_dir().join(format!("sunrise-use-cooldown-unit-{}", std::process::id())),
         );
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();

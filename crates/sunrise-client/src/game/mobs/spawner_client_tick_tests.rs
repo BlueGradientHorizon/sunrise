@@ -108,7 +108,7 @@ fn run_in_child(test: &str) -> bool {
 }
 
 /// A client of a server with the block entity types of `TYPES`, for `test`.
-fn with_remote_game(test: impl FnOnce(&mut Game<'_>)) {
+fn with_remote_game(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     crate::game::native_entity_refs::tests::with_client_game(|game| {
         game.settings.render_distance = 32;
         let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
@@ -144,7 +144,7 @@ fn column(k: Pos) -> (i32, i32) {
 }
 
 /// One case's block entity as the server holds it, with its block state and packet type id.
-fn client_tick_entity(game: &Game<'_>, e: &serde_json::Value) -> (BlockStateId, i32, BlockEntity) {
+fn client_tick_entity(game: &crate::game::ClientGame<'_>, e: &serde_json::Value) -> (BlockStateId, i32, BlockEntity) {
     let text = |k: &str| e[k].as_str().unwrap().to_owned();
     let flag = |k: &str| e[k].as_bool().unwrap().to_string();
     let (name, kind, properties, entity) = match e["kind"].as_str().unwrap() {
@@ -282,7 +282,7 @@ fn client_tick_entity(game: &Game<'_>, e: &serde_json::Value) -> (BlockStateId, 
 /// (`BlockEntity.getUpdateTag`, as a server sends it). Whether that order differs from the order
 /// the client's block entity map walks them.
 fn send_column(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ClientGame<'_>,
     entities: &[(Pos, BlockStateId, i32, BlockEntity)],
     at: (i32, i32),
     listed: &[usize],
@@ -357,9 +357,9 @@ fn send_column(
 /// The particle and sound requests captured since the tick began, as one stream in the order
 /// they were made: a sound sits after the particles requested before it
 /// (`CapturedSound::particles_before`).
-fn event_stream(game: &mut Game<'_>, particles_at_start: u64) -> Vec<serde_json::Value> {
-    let particles = game.particles.0.requested.replace(Vec::new()).unwrap();
-    let sounds = game.audio.0.capture.replace(Vec::new()).unwrap();
+fn event_stream(game: &mut crate::game::ClientGame<'_>, particles_at_start: u64) -> Vec<serde_json::Value> {
+    let particles = game.side.particles.0.requested.replace(Vec::new()).unwrap();
+    let sounds = game.side.audio.0.capture.replace(Vec::new()).unwrap();
     let mut out = Vec::new();
     let mut particles = particles.into_iter();
     let mut taken = 0;
@@ -394,7 +394,7 @@ fn event_stream(game: &mut Game<'_>, particles_at_start: u64) -> Vec<serde_json:
 /// A case's start: the level fresh, its player and time set, and its columns sent as chunk
 /// packets. Returns its block entities.
 fn start_case(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ClientGame<'_>,
     case: &serde_json::Value,
     reordered: &mut bool,
 ) -> Vec<(Pos, BlockStateId, i32, BlockEntity)> {
@@ -424,7 +424,7 @@ fn start_case(
     };
     game.remote.as_mut().unwrap().profile = sunrise_client::lan::playerdata::ints_uuid(PLAYER);
     game.level.player_uuid = Some(PLAYER);
-    game.particles
+    game.side.particles
         .0
         .seed_randoms(0, case["seed"].as_i64().unwrap(), 0);
     // `EnchantingTableBlockEntity.RANDOM`, shared by every table: one stream per case.
@@ -443,14 +443,14 @@ fn start_case(
     for (at, listed) in &columns {
         *reordered |= send_column(game, &entities, *at, listed, &case["fills"]);
     }
-    game.particles.0.requested = Some(Vec::new());
-    game.audio.0.capture = Some(Vec::new());
+    game.side.particles.0.requested = Some(Vec::new());
+    game.side.audio.0.capture = Some(Vec::new());
     entities
 }
 
 /// What the ticks left of each beacon and animated block entity, in the oracle's rows: ints as
 /// numbers, floats as raw bits, sorted as `Vec3i.compareTo` does.
-fn animation_states(game: &Game<'_>) -> Vec<serde_json::Value> {
+fn animation_states(game: &crate::game::ClientGame<'_>) -> Vec<serde_json::Value> {
     use serde_json::json;
     let mut rows: Vec<_> = (&game.world.block_entities)
         .into_iter()
@@ -544,7 +544,7 @@ fn animation_states(game: &Game<'_>) -> Vec<serde_json::Value> {
 }
 
 fn client_tick_case(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ClientGame<'_>,
     case: &serde_json::Value,
     reordered: &mut bool,
 ) -> serde_json::Value {
@@ -620,14 +620,14 @@ fn client_tick_case(
         // Keys in their sorted order, as the harness hashes vanilla's log.
         ticks.push(serde_json::json!({
             "events": events,
-            "random": format!("{:x}", game.particles.0.level_random().state()),
+            "random": format!("{:x}", game.side.particles.0.level_random().state()),
             "states": states,
             "spins": spins.into_iter().map(|(_, s)| s).collect::<Vec<_>>(),
         }));
         game.world.game_time += 1;
     }
-    game.particles.0.requested = None;
-    game.audio.0.capture = None;
+    game.side.particles.0.requested = None;
+    game.side.audio.0.capture = None;
     serde_json::json!({ "ticks": ticks })
 }
 
@@ -661,7 +661,7 @@ fn spawner_json(pos: [i32; 3]) -> serde_json::Value {
 
 /// One tick of a client's whole block entity phase (`tick_remote_block_entities`), then the
 /// particle engine as `tick_remote_player` runs it: what it requested, and the game time moves on.
-fn tick_phase(game: &mut Game<'_>) -> Vec<serde_json::Value> {
+fn tick_phase(game: &mut crate::game::ClientGame<'_>) -> Vec<serde_json::Value> {
     let start = sunrise_client::particles::requested_count();
     game.tick_remote_block_entities();
     game.tick_particle_engine();
@@ -928,16 +928,16 @@ fn a_campfires_smoke_joins_the_engine_in_the_tick_that_made_it() {
         );
         start_case(game, &case, &mut false);
         // The engine makes the particles, not the harness's log.
-        game.particles.0.requested = None;
+        game.side.particles.0.requested = None;
         game.remote.as_mut().unwrap().loaded_sent = true;
         for _ in 0..40 {
             game.tick_remote().unwrap();
             assert_eq!(
-                game.particles.0.pending_len(),
+                game.side.particles.0.pending_len(),
                 0,
                 "particles wait a tick to join the engine"
             );
         }
-        assert!(!game.particles.0.is_empty(), "the campfire made no smoke");
+        assert!(!game.side.particles.0.is_empty(), "the campfire made no smoke");
     });
 }

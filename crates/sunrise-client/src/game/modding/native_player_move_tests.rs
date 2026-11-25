@@ -28,7 +28,7 @@ impl Hooks for Wall {
     }
 }
 
-fn hold(game: &mut super::Game<'_>, conn: u32, to: [f64; 3], yaw: f32) {
+fn hold(game: &mut crate::game::ServerGame<'_>, conn: u32, to: [f64; 3], yaw: f32) {
     let hub = &mut game.lan.as_mut().unwrap().hub;
     let i = hub.guests.iter().position(|g| g.conn == conn).unwrap();
     let (teleports, dimension) = (
@@ -118,7 +118,7 @@ impl Hooks for Ruling {
 
 /// Guest 13 stands where it was placed, loaded, long past its first tick, with two turns of its
 /// head (yaw 10, then 20) in its inbox, both in the one client tick.
-fn two_turns_waiting(game: &mut super::Game<'_>) {
+fn two_turns_waiting(game: &mut crate::game::ServerGame<'_>) {
     use sunrise_client::lan::guest::InboxItem;
     use sunrise_protocol::packets::play::{self, Serverbound as S};
     let hub = &mut game.lan.as_mut().unwrap().hub;
@@ -142,13 +142,13 @@ fn two_turns_waiting(game: &mut super::Game<'_>) {
 
 /// One server tick of the real game: the poll, the guests' packets, and the events the hub tells
 /// the game, with the mods' ruling in them.
-fn game_tick(game: &mut super::Game<'_>) {
-    game.server.level_pass.packets_drained = false;
+fn game_tick(game: &mut crate::game::ServerGame<'_>) {
+    game.side.level_pass.packets_drained = false;
     game.tick_lan_packets();
 }
 
 /// The accepted look of guest 13, its inbox length, and whether a correction waits for it.
-fn state(game: &super::Game<'_>) -> ([f32; 2], usize, bool) {
+fn state(game: &crate::game::ServerGame<'_>) -> ([f32; 2], usize, bool) {
     let g = game.lan.as_ref().unwrap().hub.guest(13).unwrap();
     (
         [g.yaw, g.pitch],

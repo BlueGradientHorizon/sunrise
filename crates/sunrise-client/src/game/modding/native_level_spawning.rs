@@ -372,12 +372,12 @@ mod tests {
                         "{spawn:?}"
                     );
                 }
-                let next_id = game.server.next_entity;
+                let next_id = game.side.next_entity;
                 assert_eq!(
                     game.level_spawn_mob(level, TRADER, at, mod_api::SpawnReason::Command),
                     None
                 );
-                assert_eq!(game.server.next_entity, next_id);
+                assert_eq!(game.side.next_entity, next_id);
                 assert_eq!(game.mobs.len(), mobs);
                 assert_eq!(heard.lock().unwrap().len(), 3, "no refusal told a mod");
             });
@@ -392,7 +392,7 @@ mod tests {
     }
 
     /// `count` snowballs as a mod's stack.
-    fn snowballs(game: &Game<'_>, count: u32) -> mod_api::ItemStack {
+    fn snowballs(game: &crate::game::ServerGame<'_>, count: u32) -> mod_api::ItemStack {
         let snowball = mod_api::Identifier::parse("minecraft:snowball").unwrap();
         mod_api::ItemStack::new(game.item_key(&snowball).unwrap(), count).unwrap()
     }
@@ -528,7 +528,7 @@ mod tests {
 
     /// The state and categories the level's next spawn pass reads over vanilla's 289
     /// spawnable chunks, with one loose zombie counted in chunk (0, 0).
-    fn next_pass(game: &Game<'_>) -> (SpawnState, Vec<Category>) {
+    fn next_pass(game: &crate::game::ServerGame<'_>) -> (SpawnState, Vec<Category>) {
         let zombie = [Counted {
             entity: "minecraft:zombie",
             category: Category::Monster,

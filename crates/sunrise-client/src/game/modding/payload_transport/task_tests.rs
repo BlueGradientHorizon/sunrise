@@ -391,7 +391,7 @@ fn vanilla_peer(
     }
 }
 
-fn publish_task_server(game: &mut super::super::Game<'_>) -> u16 {
+fn publish_task_server(game: &mut crate::game::ClientGame<'_>) -> u16 {
     game.settings.render_distance = 2;
     game.settings.simulation_distance = 2;
     let options = sunrise_client::title::WorldOptions {

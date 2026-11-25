@@ -12,7 +12,7 @@ use sunrise_protocol::packets::configuration::ClientInformation;
 const CONN: u32 = 7;
 const FAR: f64 = 96_000.5;
 
-fn light(game: &mut Game<'_>, around: i32) {
+fn light(game: &mut crate::game::ServerGame<'_>, around: i32) {
     for x in around - 2..=around + 2 {
         for z in around - 2..=around + 2 {
             game.streaming
@@ -24,7 +24,7 @@ fn light(game: &mut Game<'_>, around: i32) {
 /// A server with one guest standing on lit land at the origin.
 fn server<'a>(
     resources: &'a mut Option<Arc<crate::game::Resources>>,
-) -> (Game<'a>, mpsc::Receiver<Out>) {
+) -> (crate::game::ServerGame<'a>, mpsc::Receiver<Out>) {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     light(&mut game, 0);
     game.lan_host(
@@ -134,7 +134,7 @@ fn a_hold_ended_by_a_trip_elsewhere_hears_the_client_again() {
     game.tick_server_travel();
     assert!(landing(game.lan.as_ref().unwrap()));
     // What a death, a respawn or a `tp` to another level does to the trip waiting for the player.
-    game.server.server_trips.retain(|t| !t.is(CONN));
+    game.side.server_trips.retain(|t| !t.is(CONN));
     game.tick_server_travel();
     assert!(!landing(game.lan.as_ref().unwrap()));
 }
@@ -194,7 +194,7 @@ fn a_hold_follows_the_destination_a_mod_chose() {
         .update(0, |g| g.position = [-FAR, 150.0, 0.5]);
     game.tick_server_travel();
     let trips: Vec<_> = game
-        .server
+        .side
         .server_trips
         .iter()
         .filter(|t| t.is(CONN))
@@ -215,7 +215,7 @@ fn a_hold_follows_the_destination_a_mod_chose() {
 }
 
 /// The hub reads the packets the guests queued, as the network tick does.
-fn drain_packets(game: &mut Game<'_>) {
+fn drain_packets(game: &mut crate::game::ServerGame<'_>) {
     let mut host = game.lan.take().unwrap();
     host.hub.drain_packets(&mut game.server_ctx());
     game.lan = Some(host);
@@ -240,7 +240,7 @@ fn a_command_arrival_holds_movement_until_lit_then_ticks_damage_again() {
         }
     }
     // Exercise the queued command arrival without opening a second saved level.
-    game.server.level_teleports.push(LevelTeleport {
+    game.side.level_teleports.push(LevelTeleport {
         conn: CONN,
         dim: game.dim,
         at,
@@ -326,7 +326,7 @@ fn a_command_arrival_holds_movement_until_lit_then_ticks_damage_again() {
         [at[0] + 1.0, at[1], at[2]]
     );
 
-    let hit = |game: &mut Game<'_>| game.mob_hits_player(6.0, at, "minecraft:player_attack");
+    let hit = |game: &mut crate::game::ServerGame<'_>| game.mob_hits_player(6.0, at, "minecraft:player_attack");
     assert_eq!(game.as_guest(CONN, hit), Some(true));
     let health = game.lan.as_ref().unwrap().hub.guests[0].health;
     for _ in 0..20 {
@@ -436,7 +436,7 @@ fn respawn_arrivals_hold_movement_then_resume_damage_and_pickups() {
             assert!(guest.awaiting_teleport.is_none());
             assert!(guest.client_loaded());
             let hit =
-                |game: &mut Game<'_>| game.mob_hits_player(6.0, at, "minecraft:player_attack");
+                |game: &mut crate::game::ServerGame<'_>| game.mob_hits_player(6.0, at, "minecraft:player_attack");
             assert_eq!(game.as_guest(CONN, hit), Some(true));
             let health = game.lan.as_ref().unwrap().hub.guests[0].health;
             game.add_item_entity(ItemStack::new("minecraft:stick", 1), at, Some([0.0; 3]), 0);
@@ -479,7 +479,7 @@ fn a_world_spawn_search_keeps_movement_held_between_candidate_chunks() {
         game.guest_respawn(CONN);
         // A deterministic search starts at (-48, -48), outside the newly lit square.
         // This is the search state an arrival pass keeps when a candidate is missing.
-        game.server.server_trips[0].finder = Some(PlayerSpawnFinder::new(spawn, 64, |_| 0));
+        game.side.server_trips[0].finder = Some(PlayerSpawnFinder::new(spawn, 64, |_| 0));
         light(&mut game, 1);
         for _ in 0..2 {
             game.tick_server_travel();

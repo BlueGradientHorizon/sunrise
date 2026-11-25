@@ -557,7 +557,7 @@ mod tests {
         assert_eq!(types, ["minecraft:smelting"]);
     }
 
-    use super::super::native_entity_refs::tests::{with_client_game, with_game_at};
+    use super::super::native_entity_refs::tests::{with_client_game, with_game_at, with_game_role_client};
 
     /// With the server's crafting recipes synced, the book still holds the
     /// vanilla ones under their own display ids (a viewer's "+" reads them,
@@ -565,7 +565,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn synced_vanilla_recipes_keep_their_book_ids() {
-        fn book_ids(game: &mut crate::game::Game<'_>, id: &str) -> Vec<i32> {
+        fn book_ids(game: &mut crate::game::ClientGame<'_>, id: &str) -> Vec<i32> {
             (game.recipe_book_entries().into_iter())
                 .filter(|e| e.id == id && e.display_id >= 0)
                 .map(|e| e.display_id)
@@ -618,7 +618,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_synced_vanilla_recipe_has_one_book_id_the_servers() {
         use std::path::{Path, PathBuf};
-        fn book_ids(game: &mut crate::game::Game<'_>, id: &str) -> Vec<i32> {
+        fn book_ids(game: &mut crate::game::ClientGame<'_>, id: &str) -> Vec<i32> {
             (game.recipe_book_entries().into_iter())
                 .filter(|e| e.id == id && e.display_id >= 0)
                 .map(|e| e.display_id)
@@ -657,7 +657,7 @@ mod tests {
         sunrise_client::mod_content::build(&base, Path::new(""), &[tagger], &root, &inventory)
             .unwrap();
         assert_eq!(sunrise_client::mod_content::namespaces(&root), ["tagger"]);
-        with_game_at(root, |game| {
+        with_game_role_client(root,crate::game::execution_role::ExecutionRole::Client,  |game| {
             let ids = [
                 "minecraft:stick",
                 "minecraft:stick_from_bamboo_item",

@@ -45,7 +45,7 @@ fn advancement_criteria_straddle_the_player_body_even_with_entity_cancel() {
         .into(),
         || {
             with_game(|game| {
-                game.server.world_root = game.options.game_dir.clone().unwrap();
+                game.side.world_root = game.options.game_dir.clone().unwrap();
                 // Load the world's tables before installing the test trees. Otherwise
                 // the first tick's scheduled functions replace the game's tree.
                 game.open_world_datapacks(&[]).unwrap();
@@ -152,7 +152,7 @@ fn player_tick_hooks_observe_advanced_dig_progress_and_skipped_body_still_ticks_
         .into(),
         || {
             with_game(|game| {
-                game.server.world_root = game.options.game_dir.clone().unwrap();
+                game.side.world_root = game.options.game_dir.clone().unwrap();
                 open_to_lan(game);
                 game.build_registries();
                 let stone = game

@@ -28,15 +28,12 @@ pub(in crate::game) fn run_discarded_mob_leaves_selectors_and_saves_while_frozen
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -62,7 +59,7 @@ pub(in crate::game) fn run_discarded_mob_leaves_selectors_and_saves_while_frozen
     game.mobs[1].death_time = 1;
     let removed_uuid = game.uuid_for(42);
     let dying_uuid = game.uuid_for(43);
-    let selector = |game: &Game<'_>, text: &str| {
+    let selector = |game: &crate::game::ServerGame<'_>, text: &str| {
         sunrise_client::command::selector::parse(
             &mut sunrise_client::command::Reader::new(text),
             &game.ui.registries,
@@ -255,7 +252,7 @@ fn dead_guest_leaves_at_e_but_reaches_a_registered_selector() {
                     limit: usize::MAX,
                     ..Default::default()
                 };
-                let guests = |game: &mut Game<'_>, token| {
+                let guests = |game: &mut crate::game::ServerGame<'_>, token| {
                     let mut found: Vec<_> = game
                         .select(&selector(token))
                         .into_iter()

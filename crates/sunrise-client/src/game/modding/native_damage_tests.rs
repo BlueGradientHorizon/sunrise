@@ -245,7 +245,7 @@ impl Hooks for Probe {
 }
 
 /// Runs `test` in a game with the probe installed, and returns what it heard.
-fn heard(test: impl FnOnce(&mut super::Game<'_>)) -> Heard {
+fn heard(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) -> Heard {
     let log = Arc::new(Mutex::new(Heard::default()));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "probe",
@@ -256,7 +256,7 @@ fn heard(test: impl FnOnce(&mut super::Game<'_>)) -> Heard {
     std::mem::take(&mut *log.lock().unwrap())
 }
 
-fn mob(game: &super::Game<'_>, id: u32, kind: &str) -> Mob {
+fn mob(game: &crate::game::ServerGame<'_>, id: u32, kind: &str) -> Mob {
     let kind = game.res.mob_types().get(kind).unwrap().clone();
     Mob::new(id, kind, Vec3::ZERO, 0.0)
 }
@@ -392,7 +392,7 @@ fn mob_and_dragon_post_records_fresh_hit_decision() {
     );
 }
 
-fn survival_player(game: &mut super::Game<'_>, id: u32) {
+fn survival_player(game: &mut crate::game::ServerGame<'_>, id: u32) {
     game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
     bind_local_player(game, id, u128::from(id));
     game.set_game_mode(GameMode::Survival);

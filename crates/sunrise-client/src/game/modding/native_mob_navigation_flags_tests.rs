@@ -3,7 +3,7 @@ use mod_api::{EntityRef, MobRef, WorldEpoch};
 use sunrise_client::mobs::{Mob, nav::NavKind};
 use sunrise_core::geometry::Vec3;
 
-fn zombie(game: &mut crate::game::Game<'_>) -> MobRef {
+fn zombie(game: &mut crate::game::ServerGame<'_>) -> MobRef {
     let kind = game
         .res
         .mob_types()
@@ -14,7 +14,7 @@ fn zombie(game: &mut crate::game::Game<'_>) -> MobRef {
         .push(Mob::new(99, kind, Vec3::new(3.5, 65.0, 3.5), 0.0));
     game.mob(game.entity(99).unwrap()).unwrap()
 }
-fn refused(game: &mut crate::game::Game<'_>, mob: MobRef) {
+fn refused<S: crate::game::Side>(game: &mut crate::game::Game<'_, S>, mob: MobRef) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
     assert_eq!(mob.can_open_doors(game), None);
     assert!(!mob.set_can_open_doors(game, true));
     assert_eq!(mob.can_pass_doors(game), None);
@@ -111,7 +111,7 @@ fn navigation_flags_refuse_client() {
 
 // Ask for exact reach (0) so this fixture can assert the literal goal block;
 // the public coordinate move_to normally allows a path within one block.
-fn path_to_exact_goal(game: &mut crate::game::Game<'_>, id: u32) -> bool {
+fn path_to_exact_goal(game: &mut crate::game::ServerGame<'_>, id: u32) -> bool {
     let mut mobs = game.mobs.lift();
     let index = mobs.iter().position(|m| m.id == id).unwrap();
     let started = {

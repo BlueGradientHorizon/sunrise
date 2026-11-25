@@ -10,7 +10,7 @@ use sunrise_client::chunk::Chunk;
 use sunrise_client::mobs::{Species, Who};
 use sunrise_core::position::ChunkPos;
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 200.0, 4.5)).unwrap());
     game.build_registries();
@@ -41,8 +41,8 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
 
 /// The game events posted while `f` runs, as `(event, position, source)`.
 fn posted(
-    game: &mut Game<'_>,
-    f: impl FnOnce(&mut Game<'_>),
+    game: &mut crate::game::ServerGame<'_>,
+    f: impl FnOnce(&mut crate::game::ServerGame<'_>),
 ) -> Vec<(&'static str, [f64; 3], Option<Who>)> {
     crate::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
     f(game);
@@ -50,7 +50,7 @@ fn posted(
 }
 
 /// A heart between pale oak logs, its ticker run until it spawns its creaking.
-fn heart_with_a_creaking(game: &mut Game<'_>) -> (u32, [f64; 3]) {
+fn heart_with_a_creaking(game: &mut crate::game::ServerGame<'_>) -> (u32, [f64; 3]) {
     for command in [
         "setblock 0 201 0 minecraft:pale_oak_log[axis=y]",
         // The state a neighbour update leaves it in at night (awake), not the
@@ -89,7 +89,7 @@ fn a_heart_spawn_posts_entity_place_and_the_poof() {
         "the creaking's ENTITY_PLACE: {events:?}"
     );
     let poofs: Vec<_> = game
-        .server
+        .side
         .lan_entity_events
         .iter()
         .filter(|(mob, event)| *mob == id as i32 && *event == 60)
@@ -108,7 +108,7 @@ fn a_heart_spawn_posts_entity_place_and_the_poof() {
         poofs,
         vec![(id as i32, 60, at)],
         "{:?}",
-        game.server.lan_entity_events
+        game.side.lan_entity_events
     );
 }
 

@@ -90,7 +90,7 @@ mod tests {
             assert_eq!(game.options.execution_role, ExecutionRole::IntegratedServer);
             game.options.dedicated = Some(Vec::new());
             game.serving = Some(super::super::integrated::Serving::fixture(0));
-            let published = |game: &mut super::super::Game<'_>| {
+            let published = |game: &mut crate::game::ServerGame<'_>| {
                 let host: &dyn mod_api::ServerHost = game;
                 host.server_is_published()
             };

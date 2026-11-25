@@ -1201,7 +1201,7 @@ pub(in crate::game) mod tests {
     }
 
     /// Resolve a fixture after registration or a late Parts reinstall from its loaded table.
-    pub(in crate::game) fn resolve_parts(game: &super::Game<'_>) -> Result<(), String> {
+    pub(in crate::game) fn resolve_parts<S: crate::game::Side>(game: &super::Game<'_, S>) -> Result<(), String> where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
         crate::game::api_values::resolve_block_definitions(game.pack.assets.registry)?;
         mod_api::__private::resolve_items(game.items().registry_order.iter().map(|id| &**id))
             .map_err(|errors| format!("fixture item keys refused: {errors:?}"))?;
@@ -1244,7 +1244,7 @@ pub(in crate::game) mod tests {
     }
 
     pub(in crate::game::server_side) fn collect_game_all_entities(
-        game: &super::Game<'_>,
+        game: &crate::game::ServerGame<'_>,
         level: LevelRef,
     ) -> Result<Vec<EntityRef>, LevelReadError> {
         let mut entities = Vec::new();
@@ -1256,7 +1256,7 @@ pub(in crate::game) mod tests {
     }
 
     pub(in crate::game::server_side) fn collect_game_entities_in(
-        game: &super::Game<'_>,
+        game: &crate::game::ServerGame<'_>,
         level: LevelRef,
         min: [f64; 3],
         max: [f64; 3],
@@ -1452,7 +1452,7 @@ pub(in crate::game) mod tests {
     }
 
     pub(in crate::game) fn prepare_entity_ticking_neighborhood(
-        game: &mut super::Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         center: sunrise_core::position::ChunkPos,
     ) {
         for z in center.z - 2..=center.z + 2 {
@@ -1471,30 +1471,30 @@ pub(in crate::game) mod tests {
     }
 
     /// Bind the fixture body's canonical identity before configuring its acting context.
-    pub(in crate::game) fn bind_local_player(game: &mut super::Game<'_>, id: u32, uuid: u128) {
-        game.server.next_entity = game.server.next_entity.max(id);
+    pub(in crate::game) fn bind_local_player(game: &mut crate::game::ServerGame<'_>, id: u32, uuid: u128) {
+        game.side.next_entity = game.side.next_entity.max(id);
         game.player.as_mut().expect("fixture player body").entity_id =
             i32::try_from(id).expect("fixture entity ID fits the protocol");
         game.level.player_uuid = Some(sunrise_client::lan::playerdata::uuid_ints(uuid));
         game.bind_local_player_residency();
-        game.server.lan_acting_entity = Some(id);
-        game.server.lan_acting_uuid = Some(uuid);
+        game.side.lan_acting_entity = Some(id);
+        game.side.lan_acting_uuid = Some(uuid);
     }
 
     /// Install the server record backing a fixture's already configured acting body.
-    pub(in crate::game) fn bind_acting_guest(game: &mut super::Game<'_>) {
+    pub(in crate::game) fn bind_acting_guest(game: &mut crate::game::ServerGame<'_>) {
         use std::sync::{
             Arc,
             atomic::{AtomicI32, AtomicUsize},
         };
         use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
         use sunrise_protocol::packets::configuration::ClientInformation;
-        let conn = game.server.lan_acting.unwrap();
-        let id = game.server.lan_acting_entity.unwrap();
-        let uuid = game.server.lan_acting_uuid.unwrap();
-        let name = game.server.lan_acting_name.clone().unwrap();
+        let conn = game.side.lan_acting.unwrap();
+        let id = game.side.lan_acting_entity.unwrap();
+        let uuid = game.side.lan_acting_uuid.unwrap();
+        let name = game.side.lan_acting_name.clone().unwrap();
         let at = game.player.as_ref().unwrap().position;
-        game.server.next_entity = game.server.next_entity.max(id);
+        game.side.next_entity = game.side.next_entity.max(id);
         game.lan_host(
             super::super::lan::LanSettings {
                 port: 0,
@@ -1519,8 +1519,8 @@ pub(in crate::game) mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.server.level_shapes,
-                level_seeds: game.levels.0.runtime.seeds(),
+                levels: game.side.level_shapes,
+                level_seeds: game.side.levels.0.runtime.seeds(),
             },
         )
         .unwrap();
@@ -1547,7 +1547,7 @@ pub(in crate::game) mod tests {
         game.reset_entity_residency();
     }
 
-    pub(in crate::game) fn with_game(test: impl FnOnce(&mut super::Game<'_>)) {
+    pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         with_game_at(fixture_root(), test);
     }
 
@@ -1557,7 +1557,7 @@ pub(in crate::game) mod tests {
 
     pub(in crate::game) fn with_game_at(
         root: std::path::PathBuf,
-        test: impl FnOnce(&mut super::Game<'_>),
+        test: impl FnOnce(&mut crate::game::ServerGame<'_>),
     ) {
         with_game_role(
             root,
@@ -1637,15 +1637,15 @@ pub(in crate::game) mod tests {
         (event_loop, std::sync::Arc::new(window))
     }
 
-    pub(in crate::game) fn with_client_game(test: impl FnOnce(&mut super::Game<'_>)) {
-        with_game_role(
+    pub(in crate::game) fn with_client_game(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
+        with_game_role_client(
             fixture_root(),
             super::super::execution_role::ExecutionRole::Client,
             test,
         );
     }
 
-    pub(in crate::game) fn with_uncached_game(test: impl FnOnce(&mut super::Game<'_>)) {
+    pub(in crate::game) fn with_uncached_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         with_game_role_and_facts_with(
             fixture_root(),
             super::super::execution_role::ExecutionRole::IntegratedServer,
@@ -1655,8 +1655,8 @@ pub(in crate::game) mod tests {
         );
     }
 
-    pub(in crate::game) fn with_uncached_client_game(test: impl FnOnce(&mut super::Game<'_>)) {
-        with_game_role_and_facts_with(
+    pub(in crate::game) fn with_uncached_client_game(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
+        with_game_role_and_facts_with_client(
             fixture_root(),
             super::super::execution_role::ExecutionRole::Client,
             None,
@@ -1668,9 +1668,17 @@ pub(in crate::game) mod tests {
     pub(in crate::game) fn with_game_role(
         root: std::path::PathBuf,
         role: super::super::execution_role::ExecutionRole,
-        test: impl FnOnce(&mut super::Game<'_>),
+        test: impl FnOnce(&mut crate::game::ServerGame<'_>),
     ) {
         with_game_role_and_facts(root, role, None, test);
+    }
+
+    pub(in crate::game) fn with_game_role_client(
+        root: std::path::PathBuf,
+        role: super::super::execution_role::ExecutionRole,
+        test: impl FnOnce(&mut crate::game::ClientGame<'_>),
+    ) {
+        with_game_role_and_facts_client(root, role, None, test);
     }
 
     /// Cached unique block names of `root`'s `facts.json` so `with_game` skips re-parsing 9.7 MB.
@@ -1726,9 +1734,20 @@ pub(in crate::game) mod tests {
         configure: Option<
             fn(&sunrise_world::registry::BlockRegistry, &mut sunrise_client::blocks::BlockFacts),
         >,
-        test: impl FnOnce(&mut super::Game<'_>),
+        test: impl FnOnce(&mut crate::game::ServerGame<'_>),
     ) {
         with_game_role_and_facts_with(root, role, configure, configure.is_none(), test);
+    }
+
+    pub(in crate::game) fn with_game_role_and_facts_client(
+        root: std::path::PathBuf,
+        role: super::super::execution_role::ExecutionRole,
+        configure: Option<
+            fn(&sunrise_world::registry::BlockRegistry, &mut sunrise_client::blocks::BlockFacts),
+        >,
+        test: impl FnOnce(&mut crate::game::ClientGame<'_>),
+    ) {
+        with_game_role_and_facts_with_client(root, role, configure, configure.is_none(), test);
     }
 
     fn with_game_role_and_facts_with(
@@ -1738,7 +1757,7 @@ pub(in crate::game) mod tests {
             fn(&sunrise_world::registry::BlockRegistry, &mut sunrise_client::blocks::BlockFacts),
         >,
         cached: bool,
-        test: impl FnOnce(&mut super::Game<'_>),
+        test: impl FnOnce(&mut crate::game::ServerGame<'_>),
     ) {
         use super::super::{
             Audio, Game, Options, Progress, Settings, load_resources, load_resources_uncached,
@@ -1799,15 +1818,12 @@ pub(in crate::game) mod tests {
         options.resources = root.clone();
         options.execution_role = role;
         options.game_dir = Some(saves.path().to_path_buf());
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
             None,
         )
         .unwrap();
@@ -1820,11 +1836,104 @@ pub(in crate::game) mod tests {
         resolve_parts(&game).unwrap();
         // The title's save folder is under the working directory: give each test its own, so a
         // test that saves leaves the checkout clean and parallel tests don't share files.
-        game.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+        game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
             saves.path().to_path_buf(),
             sunrise_client::save::LevelShape::OVERWORLD,
             Some(Default::default()),
         ));
+        test(&mut game);
+    }
+
+    fn with_game_role_and_facts_with_client(
+        root: std::path::PathBuf,
+        role: super::super::execution_role::ExecutionRole,
+        configure: Option<
+            fn(&sunrise_world::registry::BlockRegistry, &mut sunrise_client::blocks::BlockFacts),
+        >,
+        cached: bool,
+        test: impl FnOnce(&mut crate::game::ClientGame<'_>),
+    ) {
+        use super::super::{
+            Audio, Game, Options, Progress, Settings, load_resources, load_resources_uncached,
+        };
+        use mod_api::Authority;
+
+        // Parts registration replaces its metadata snapshot. Finish registration before
+        // loading the resource graph, whose registry retains one immutable worker snapshot.
+        let ids = fixture_block_names(&root);
+        crate::game::api_values::register_game_keys(ids.iter().cloned());
+        // Parts registration also clears particle keys. Restore the load-owned
+        // providers as content_root does, rather than relying on a prior test.
+        super::super::mods::resolve_particle_providers(
+            &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
+        )
+        .unwrap();
+        let saves = tempfile::tempdir().unwrap();
+        let settings = Settings::default();
+        let mut loaded = if cached {
+            load_resources(
+                sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+                Vec::new(),
+                None,
+                &root,
+                &settings,
+                std::time::Instant::now(),
+                false,
+                role,
+                &Progress::new(),
+                &mut |_, _| unreachable!(),
+            )
+            .unwrap()
+        } else {
+            load_resources_uncached(
+                sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+                Vec::new(),
+                None,
+                &root,
+                &settings,
+                std::time::Instant::now(),
+                false,
+                role,
+                &Progress::new(),
+                &mut |_, _| unreachable!(),
+            )
+            .unwrap()
+        };
+        if let Some(configure) = configure {
+            configure(
+                loaded.pack.assets.registry,
+                &mut std::sync::Arc::get_mut(&mut loaded.resources)
+                    .unwrap()
+                    .core
+                    .facts,
+            );
+        }
+        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+        options.resources = root.clone();
+        options.execution_role = role;
+        options.game_dir = Some(saves.path().to_path_buf());
+        let mut game = crate::game::ClientGame::new(
+            &loaded.resources,
+            loaded.pack,
+            loaded.gui.unwrap(),
+            options,
+            settings,
+            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
+                root.to_path_buf(),
+            )),
+            None,
+        )
+        .unwrap();
+        
+        game.native_lifecycle
+            .begin_open(Authority::IntegratedServer);
+
+        // A game that opened its world resolves its parts; the harness stops
+        // short of the open, so do it here for the by-state part table.
+        resolve_parts(&game).unwrap();
+        // The title's save folder is under the working directory: give each test its own, so a
+        // test that saves leaves the checkout clean and parallel tests don't share files.
+        
         test(&mut game);
     }
 
@@ -1970,7 +2079,7 @@ pub(in crate::game) mod tests {
             let registry = game.pack.assets.registry;
             let state = |name: &str| registry.default_state(name).unwrap();
             let dandelion = state("minecraft:dandelion");
-            let survives = |game: &mut super::super::Game<'_>, soil: &str| {
+            let survives = |game: &mut crate::game::ServerGame<'_>, soil: &str| {
                 game.world.set(5, 64, 5, state(soil)).unwrap();
                 game.with_level(|b, level, ticks| {
                     b.can_survive(level, ticks, BlockPos::new(5, 65, 5), dandelion)
@@ -2008,7 +2117,7 @@ pub(in crate::game) mod tests {
                 std::thread::current().id()
             ));
             std::fs::create_dir_all(&scratch).unwrap();
-            game.server.world_root = scratch.clone();
+            game.side.world_root = scratch.clone();
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 62.0, 4.5)).unwrap());
             game.player.as_mut().unwrap().ground.on_ground = true;
             game.creative = false;
@@ -2066,7 +2175,7 @@ pub(in crate::game) mod tests {
     }
 
     /// A world with block `support` at (5, 64, 5) and a powered lever on its east face.
-    pub(in crate::game::server_side) fn lever_on(game: &mut super::super::Game<'_>, support: &str) {
+    pub(in crate::game::server_side) fn lever_on(game: &mut crate::game::ServerGame<'_>, support: &str) {
         use std::sync::Arc;
         use sunrise_client::chunk::Chunk;
 
@@ -2171,11 +2280,11 @@ pub(in crate::game) mod tests {
         use mod_api::NeighbourUpdate::{Neighbours, NeighboursExcept, OutputSignal};
         use sunrise_core::geometry::Direction::East;
 
-        let lit = |game: &super::super::Game<'_>, [x, y, z]: [i32; 3]| {
+        let lit = |game: &crate::game::ServerGame<'_>, [x, y, z]: [i32; 3]| {
             let state = game.world.block(x, y, z);
             game.block_state_property(state, "lit") == Some("true")
         };
-        let set = |game: &mut super::super::Game<'_>, [x, y, z]: [i32; 3], name: &str| {
+        let set = |game: &mut crate::game::ServerGame<'_>, [x, y, z]: [i32; 3], name: &str| {
             let state = game.pack.assets.registry.default_state(name).unwrap();
             game.world.set(x, y, z, state).unwrap();
         };
@@ -2599,7 +2708,7 @@ pub(in crate::game) mod tests {
     /// its old cell is air once the push started. Each scenario has its own `y`, so none meets
     /// the moving blocks of another.
     pub(in crate::game::server_side) fn piston_pulls_above(
-        game: &mut super::Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         y: i32,
         block: &str,
         above: &str,
@@ -2828,7 +2937,7 @@ pub(in crate::game) mod tests {
             let torch = state("minecraft:torch");
             let pos = BlockPos::new(5, 64, 5);
             let neighbour = BlockPos::new(6, 64, 5);
-            let side = |game: &mut crate::game::Game<'_>, block, beside| {
+            let side = |game: &mut crate::game::ServerGame<'_>, block, beside| {
                 game.world.set(6, 64, 5, beside).unwrap();
                 let shaped = game.with_level(|b, level, ticks| {
                     b.update_shape(level, ticks, block, pos, Direction::East, neighbour, beside)
@@ -3122,8 +3231,8 @@ pub(in crate::game) mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.server.level_shapes,
-                level_seeds: game.levels.0.runtime.seeds(),
+                levels: game.side.level_shapes,
+                level_seeds: game.side.levels.0.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
             let host = game.lan.as_mut().unwrap();
@@ -3371,7 +3480,7 @@ pub(in crate::game) mod tests {
                 assert_eq!(player.game_mode(game), Some(GameMode::Survival));
                 assert!(game.player_set_game_mode(player, GameMode::Creative));
                 assert_eq!(player.game_mode(game), Some(GameMode::Creative));
-                assert_eq!(game.server.lan_acting, Some(12));
+                assert_eq!(game.side.lan_acting, Some(12));
                 let acting = game.player(12).unwrap();
                 assert!(game.player_set_game_mode(acting, GameMode::Adventure));
                 assert_eq!(game.player_game_mode(acting), Some(GameMode::Adventure));
@@ -3380,7 +3489,7 @@ pub(in crate::game) mod tests {
                         game.with_guest_swap(12, game.dim, |_| panic!("active guest re-entered"))
                             .is_none()
                     );
-                    assert_eq!(game.server.lan_acting, Some(13));
+                    assert_eq!(game.side.lan_acting, Some(13));
                     assert!(game.entity(12).is_none());
                     assert!(game.player(12).is_none());
                     assert!(
@@ -3390,15 +3499,15 @@ pub(in crate::game) mod tests {
                     assert!(game.entity(13).is_some());
                 })
                 .unwrap();
-                assert_eq!(game.server.lan_acting, Some(12));
+                assert_eq!(game.side.lan_acting, Some(12));
             })
             .unwrap();
-            assert!(game.server.lan_guest_swaps.is_empty());
+            assert!(game.side.lan_guest_swaps.is_empty());
             // A player saved in creative (game mode 1, mayfly and instabuild)
             // joins again: without force they stay creative; forced into the
             // default mode (survival) they get its abilities.
             let root = std::env::temp_dir().join(format!("abilities-force-{}", std::process::id()));
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             game.lan
                 .as_mut()
                 .unwrap()
@@ -3410,7 +3519,7 @@ pub(in crate::game) mod tests {
                     sunrise_client::lan::playerdata::save(g, &root, &Default::default());
                 })
                 .unwrap();
-            let joined = |game: &mut super::super::Game<'_>, force| {
+            let joined = |game: &mut crate::game::ServerGame<'_>, force| {
                 let host = game.lan.as_mut().unwrap();
                 host.hub.config.default_game_mode = 0;
                 host.hub.config.force_game_mode = force;
@@ -3632,7 +3741,7 @@ pub(in crate::game) mod tests {
                     .iter()
                     .any(|(chunk, _)| *chunk == (100, 0))
             );
-            game.server.next_entity = 100;
+            game.side.next_entity = 100;
             game.lan.as_ref().unwrap().hub.lan.shared.next_id();
             game.lan.as_ref().unwrap().hub.lan.shared.next_id();
             let level = game.level(game.dim.id()).unwrap();
@@ -3665,19 +3774,19 @@ pub(in crate::game) mod tests {
             assert_eq!(game.player_is_fake(made), None);
             let replacement = game.fake_player(level, 1234, "machine").unwrap();
             assert_ne!(made, replacement);
-            let saved_root = game.server.world_root.clone();
+            let saved_root = game.side.world_root.clone();
             let scratch = std::env::current_dir()
                 .unwrap()
                 .join("target/fake-player-save-test");
             let _ = std::fs::remove_dir_all(&scratch);
-            game.server.world_root = scratch.clone();
+            game.side.world_root = scratch.clone();
             let host = game.lan.as_mut().unwrap();
             let i = host.hub.guests.iter().position(|g| g.uuid == 1234).unwrap();
             let mut actor = host.hub.guests.remove(i);
             game.save_guest(&mut actor);
             game.lan.as_mut().unwrap().hub.guests.insert(i, actor);
             assert!(!scratch.exists());
-            game.server.world_root = saved_root;
+            game.side.world_root = saved_root;
             let conn = game
                 .lan
                 .as_ref()
@@ -3877,7 +3986,7 @@ pub(in crate::game) mod tests {
                     .guests
                     .update(0, |guest| guest.dimension = value);
             }
-            game.server.lan_acting = Some(real_id);
+            game.side.lan_acting = Some(real_id);
             let selector = sunrise_client::command::args::Selector {
                 kind: 'a',
                 limit: usize::MAX,
@@ -3891,7 +4000,7 @@ pub(in crate::game) mod tests {
             assert!(game.select(&named).is_empty());
             assert!(game.run_command_quietly("list"));
             assert!(!game.run_command_quietly("tp fake 0 64 0"));
-            game.server.lan_acting = None;
+            game.side.lan_acting = None;
             for (conn, learns) in [(fake_id, false), (real_id, true)] {
                 game.as_guest(conn, |game| {
                     let mut book =
@@ -3910,11 +4019,11 @@ pub(in crate::game) mod tests {
                 })
                 .unwrap();
             }
-            game.server
+            game.side
                 .guest_packets
                 .push(Clientbound::SetSimulationDistance(Distance { distance: 4 }));
             game.as_guest(fake_id, |game| {
-                assert!(game.server.lan_acting_fake);
+                assert!(game.side.lan_acting_fake);
                 assert!(game.player.as_ref().is_some_and(|p| p.client_loaded));
                 assert!(game.player_view().is_none());
                 let mut visited = 0;
@@ -3944,21 +4053,21 @@ pub(in crate::game) mod tests {
                     ..Default::default()
                 };
                 assert!(game.select(&uuid).is_empty());
-                game.server
+                game.side
                     .guest_packets
                     .push(Clientbound::SetSimulationDistance(Distance {
                         distance: 12,
                     }));
-                game.server.guest_entity_events.push(3);
-                game.server
+                game.side.guest_entity_events.push(3);
+                game.side
                     .guest_cooldowns
                     .push(("minecraft:test".into(), 20));
             })
             .unwrap();
-            assert_eq!(game.server.guest_packets.len(), 1);
+            assert_eq!(game.side.guest_packets.len(), 1);
             assert!(
-                game.server.guest_entity_events.is_empty()
-                    && game.server.guest_cooldowns.is_empty()
+                game.side.guest_entity_events.is_empty()
+                    && game.side.guest_cooldowns.is_empty()
             );
             assert_eq!(
                 game.lan.as_ref().unwrap().hub.guests[1]
@@ -3969,25 +4078,25 @@ pub(in crate::game) mod tests {
             );
             assert!(rx.try_recv().is_err());
             game.with_guest_swap(real_id, game.dim, |game| {
-                assert!(!game.server.lan_acting_fake);
-                game.server
+                assert!(!game.side.lan_acting_fake);
+                game.side
                     .guest_cooldowns
                     .push(("minecraft:real".into(), 7));
-                game.server
+                game.side
                     .guest_player_sounds
                     .push(("outer".into(), [0.0; 3], 1.0, 1.0));
                 game.as_guest(fake_id, |game| {
-                    assert!(game.server.lan_acting_fake);
-                    game.server
+                    assert!(game.side.lan_acting_fake);
+                    game.side
                         .guest_cooldowns
                         .push(("minecraft:fake".into(), 20));
                 })
                 .unwrap();
-                assert!(!game.server.lan_acting_fake);
-                assert_eq!(game.server.guest_cooldowns.len(), 1);
-                assert_eq!(&*game.server.guest_cooldowns[0].0, "minecraft:real");
-                assert_eq!(game.server.guest_player_sounds[0].0, "outer");
-                game.server.guest_player_sounds.clear();
+                assert!(!game.side.lan_acting_fake);
+                assert_eq!(game.side.guest_cooldowns.len(), 1);
+                assert_eq!(&*game.side.guest_cooldowns[0].0, "minecraft:real");
+                assert_eq!(game.side.guest_player_sounds[0].0, "outer");
+                game.side.guest_player_sounds.clear();
             })
             .unwrap();
             let out = rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
@@ -4006,27 +4115,27 @@ pub(in crate::game) mod tests {
 
             // A real turn nested in a fake must not receive the fake's cooldown.
             game.with_guest_swap(fake_id, game.dim, |game| {
-                assert!(game.server.lan_acting_fake);
-                game.server
+                assert!(game.side.lan_acting_fake);
+                game.side
                     .guest_cooldowns
                     .push(("minecraft:fake_outer".into(), 8));
-                game.server
+                game.side
                     .guest_player_sounds
                     .push(("fake_outer".into(), [0.0; 3], 1.0, 1.0));
                 game.as_guest(real_id, |game| {
-                    assert!(!game.server.lan_acting_fake);
+                    assert!(!game.side.lan_acting_fake);
                     let before = game.stats.get("custom", "minecraft:jump");
                     game.award_stat("custom", "minecraft:jump", 1);
                     assert_eq!(game.stats.get("custom", "minecraft:jump"), before + 1);
-                    game.server
+                    game.side
                         .guest_cooldowns
                         .push(("minecraft:real_inner".into(), 9));
                 })
                 .unwrap();
-                assert!(game.server.lan_acting_fake);
-                assert_eq!(&*game.server.guest_cooldowns[0].0, "minecraft:fake_outer");
-                assert_eq!(game.server.guest_player_sounds[0].0, "fake_outer");
-                game.server.guest_player_sounds.clear();
+                assert!(game.side.lan_acting_fake);
+                assert_eq!(&*game.side.guest_cooldowns[0].0, "minecraft:fake_outer");
+                assert_eq!(game.side.guest_player_sounds[0].0, "fake_outer");
+                game.side.guest_player_sounds.clear();
             })
             .unwrap();
             let sunrise_client::lan::Out::Packet(body) =
@@ -4065,27 +4174,27 @@ pub(in crate::game) mod tests {
             second.placed = true;
             game.lan.as_mut().unwrap().hub.guests.push(second);
             game.with_guest_swap(real_id, game.dim, |game| {
-                game.server
+                game.side
                     .guest_cooldowns
                     .push(("minecraft:real_outer".into(), 10));
-                game.server
+                game.side
                     .guest_player_sounds
                     .push(("real_outer".into(), [0.0; 3], 1.0, 1.0));
                 game.as_guest(3, |game| {
-                    assert_eq!(game.server.lan_acting, Some(3));
+                    assert_eq!(game.side.lan_acting, Some(3));
                     assert!(
                         game.as_guest(real_id, |_| panic!("active guest re-entered"))
                             .is_none()
                     );
-                    assert_eq!(game.server.lan_acting, Some(3));
-                    game.server
+                    assert_eq!(game.side.lan_acting, Some(3));
+                    game.side
                         .guest_cooldowns
                         .push(("minecraft:real_second".into(), 11))
                 })
                 .unwrap();
-                assert_eq!(&*game.server.guest_cooldowns[0].0, "minecraft:real_outer");
-                assert_eq!(game.server.guest_player_sounds[0].0, "real_outer");
-                game.server.guest_player_sounds.clear();
+                assert_eq!(&*game.side.guest_cooldowns[0].0, "minecraft:real_outer");
+                assert_eq!(game.side.guest_player_sounds[0].0, "real_outer");
+                game.side.guest_player_sounds.clear();
             })
             .unwrap();
             for (receiver, expected) in [
@@ -4114,12 +4223,12 @@ pub(in crate::game) mod tests {
             let other_fake = game.fake_player(nether, 5678, "joiner").unwrap();
             game.enter_command_level(super::super::Dim::Overworld)
                 .unwrap();
-            let saved_root = game.server.world_root.clone();
+            let saved_root = game.side.world_root.clone();
             let scratch = std::env::current_dir()
                 .unwrap()
                 .join("target/fake-login-save-test");
             let _ = std::fs::remove_dir_all(&scratch);
-            game.server.world_root = scratch.clone();
+            game.side.world_root = scratch.clone();
             let shared = &game.lan.as_ref().unwrap().hub.lan.shared;
             let conn = shared.next_id().unwrap();
             let (tx, _rx) = std::sync::mpsc::channel();
@@ -4171,7 +4280,7 @@ pub(in crate::game) mod tests {
                 !sunrise_client::lan::playerdata::path(&scratch, 5678).exists(),
                 "fake login replacement saved player data"
             );
-            game.server.world_root = saved_root;
+            game.side.world_root = saved_root;
             let matching: Vec<_> = game
                 .lan
                 .as_ref()
@@ -4666,15 +4775,12 @@ pub(in crate::game) mod tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = super::super::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
             None,
         )
         .unwrap();
@@ -4715,7 +4821,7 @@ pub(in crate::game) mod tests {
             game.level_block_shape(nether, stone, [0, 64, 0], BlockShapeKind::Collision),
             Some(cube)
         );
-        let shape = |game: &mut Game<'_>, name: &str, kind| {
+        let shape = |game: &mut crate::game::ServerGame<'_>, name: &str, kind| {
             let state = game.pack.assets.registry.default_state(name).unwrap();
             game.world.set(0, 64, 0, state).unwrap();
             game.level_block_shape(level, state, [0, 64, 0], kind)
@@ -4808,15 +4914,12 @@ pub(in crate::game) mod tests {
         options.resources = root.clone();
         options.execution_role = super::super::execution_role::ExecutionRole::IntegratedServer;
         options.dedicated = Some(Vec::new());
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
             None,
         )
         .unwrap();
@@ -5016,7 +5119,7 @@ pub(in crate::game) mod tests {
             game.level_destroy_block(stale, [0, 64, 0], true, None, false)
                 .is_none()
         );
-        let fill_chest = |game: &mut Game<'_>| {
+        let fill_chest = |game: &mut crate::game::ServerGame<'_>| {
             let Some(super::super::BlockEntity::Chest(items)) =
                 game.world.block_entities.get_mut(&(0, 64, 0))
             else {
@@ -5272,7 +5375,7 @@ pub(in crate::game) mod tests {
             game.player = Some(local);
             game.spawn_entity(15, "minecraft:pig", [2.0, 0.0, 0.0], [0.0; 3]);
             game.pick_section_sync_id(15);
-            let add_player = |game: &mut crate::game::Game<'_>, id, uuid, x| {
+            let add_player = |game: &mut crate::game::ServerGame<'_>, id, uuid, x| {
                 game.handle_packet(C::PlayerInfoUpdate(PlayerInfoUpdate {
                     actions: 1,
                     entries: vec![PlayerInfo {

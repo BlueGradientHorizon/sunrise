@@ -14,7 +14,7 @@ use sunrise_protocol::packets::configuration::ClientInformation;
 /// A host game with a window player and two other online players.
 fn game_with_two_guests<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> Game<'a> {
+) -> crate::game::ServerGame<'a> {
     use crate::game::{Audio, Options, Progress, Settings, load_resources};
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES").expect("set SUNRISE_TEST_RESOURCES"),
@@ -37,15 +37,12 @@ fn game_with_two_guests<'a>(
     options.resources = root.clone();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
     let res = &*resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
         None,
     )
     .unwrap();
@@ -112,7 +109,7 @@ fn game_with_two_guests<'a>(
 }
 
 /// A command typed by guest 2, as `LanHub` queues it: the feedback it got.
-fn guest_2_command(game: &mut Game<'_>, command: &str) -> Vec<Text> {
+fn guest_2_command(game: &mut crate::game::ServerGame<'_>, command: &str) -> Vec<Text> {
     let (ok, lines) = game
         .run_guest_command_told(GuestCommand {
             conn: 2,

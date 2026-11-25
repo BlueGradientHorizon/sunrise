@@ -79,7 +79,7 @@ impl Wear {
 pub(in crate::game::server_side) fn with_wear_part(
     item: &'static str,
     rule: Rule,
-    test: impl FnOnce(&mut Game<'_>, &Wear),
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Wear),
 ) {
     let wear = Wear {
         item,
@@ -95,7 +95,7 @@ pub(in crate::game::server_side) fn with_wear_part(
 }
 
 /// Uses `tool` once for `points` on the player, and the damage it has afterwards.
-fn used(game: &mut Game<'_>, tool: &str, points: u32) -> u32 {
+fn used(game: &mut crate::game::ServerGame<'_>, tool: &str, points: u32) -> u32 {
     game.creative = false;
     game.selected = 0;
     game.inventory[0] = Some(ItemStack::new(tool, 1));
@@ -152,21 +152,21 @@ fn part_amount_boundaries_and_threshold_crossing() {
             )
             .unwrap(),
         );
-        game.server.lan_acting = Some(1);
+        game.side.lan_acting = Some(1);
         for amount in [250, i32::MAX] {
-            game.server.guest_equipment_breaks.clear();
+            game.side.guest_equipment_breaks.clear();
             let broken_before = game.stats.get("broken", "minecraft:iron_pickaxe");
             wear.set(Rule::Set(amount));
             assert_eq!(used(game, "minecraft:iron_pickaxe", 1), u32::MAX);
             assert_eq!(wear.take_asked(), [1]);
-            assert_eq!(game.server.guest_equipment_breaks, [47]);
+            assert_eq!(game.side.guest_equipment_breaks, [47]);
             assert_eq!(
                 game.stats.get("broken", "minecraft:iron_pickaxe"),
                 broken_before + 1
             );
             game.damage_held(1);
             assert!(wear.take_asked().is_empty());
-            assert_eq!(game.server.guest_equipment_breaks, [47]);
+            assert_eq!(game.side.guest_equipment_breaks, [47]);
             assert_eq!(
                 game.stats.get("broken", "minecraft:iron_pickaxe"),
                 broken_before + 1
@@ -235,12 +235,12 @@ fn a_part_breaks_its_tool_now() {
             )
             .unwrap(),
         );
-        game.server.lan_acting = Some(1);
-        game.server.guest_equipment_breaks.clear();
+        game.side.lan_acting = Some(1);
+        game.side.guest_equipment_breaks.clear();
         let broken_before = game.stats.get("broken", "minecraft:iron_pickaxe");
         assert_eq!(used(game, "minecraft:iron_pickaxe", 1), u32::MAX);
         assert_eq!(wear.take_asked(), [1]);
-        assert_eq!(game.server.guest_equipment_breaks, [47]);
+        assert_eq!(game.side.guest_equipment_breaks, [47]);
         assert_eq!(
             game.stats.get("broken", "minecraft:iron_pickaxe"),
             broken_before + 1

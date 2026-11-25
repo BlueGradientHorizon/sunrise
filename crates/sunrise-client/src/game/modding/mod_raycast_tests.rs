@@ -9,7 +9,7 @@ use std::sync::Arc;
 use sunrise_client::{audio::Audio, chunk::Chunk, motion::PlayerMotion, settings::Settings};
 use sunrise_core::geometry::Vec3;
 
-fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -32,15 +32,12 @@ fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> Game<'a> 
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = &*resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
         None,
     )
     .unwrap();
@@ -63,7 +60,7 @@ fn mod_raycasts_hit_loaded_blocks_only_with_far_terrain_on_or_off() {
     let mut game = game(&mut resources);
     // Looking straight down at the stone under the player.
     game.pitch = 90.0;
-    let at = |game: &mut Game<'_>, x: f64| {
+    let at = |game: &mut crate::game::ServerGame<'_>, x: f64| {
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(x, 100.0, 0.5)).unwrap());
     };
     at(&mut game, 0.5);

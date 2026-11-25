@@ -183,13 +183,13 @@ mod tests {
     }
 
     /// The player's columns, sorted.
-    fn own(game: &Game) -> Vec<(i32, i32)> {
+    fn own(game: &crate::game::ClientGame<'_>) -> Vec<(i32, i32)> {
         let mut keys: Vec<_> = game.world.chunks.keys().copied().collect();
         keys.sort_unstable();
         keys
     }
 
-    fn loading(game: &Game) -> bool {
+    fn loading(game: &crate::game::ClientGame<'_>) -> bool {
         game.remote.as_ref().unwrap().level_load.is_active()
     }
 
@@ -288,7 +288,7 @@ mod tests {
     }
 
     /// A column of stone at `x, z` with a chest at (3, 70, 5) in it, which its packet lists.
-    fn column_with_a_chest(game: &Game, x: i32, z: i32) -> C {
+    fn column_with_a_chest(game: &crate::game::ClientGame<'_>, x: i32, z: i32) -> C {
         let chest = game
             .pack
             .assets
@@ -398,7 +398,7 @@ mod tests {
     }
 
     /// The client's server names the chest's block entity type 0: the chest's state.
-    fn with_chests(game: &mut Game) -> sunrise_world::registry::BlockStateId {
+    fn with_chests(game: &mut crate::game::ClientGame<'_>) -> sunrise_world::registry::BlockStateId {
         std::sync::Arc::make_mut(&mut game.remote.as_mut().unwrap().builtin)
             .registries
             .insert(
@@ -422,7 +422,7 @@ mod tests {
     }
 
     /// The diamonds of the chest at `pos` in the player's world, if it has them.
-    fn diamonds_at(game: &Game, pos: (i32, i32, i32)) -> Option<u32> {
+    fn diamonds_at(game: &crate::game::ClientGame<'_>, pos: (i32, i32, i32)) -> Option<u32> {
         let chest = game.world.block_entities.get(&pos).expect("a chest");
         let item = chest.slots()[3].as_ref()?;
         assert_eq!(item.item.as_ref(), "minecraft:diamond");

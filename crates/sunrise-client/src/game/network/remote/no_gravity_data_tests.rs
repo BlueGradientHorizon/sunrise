@@ -77,14 +77,14 @@ fn a_client_follows_an_items_and_a_mobs_no_gravity() {
             .unwrap();
         game.handle_packet(data(31, vec![no_gravity(true)]))
             .unwrap();
-        let item = |game: &crate::game::Game<'_>| {
+        let item = |game: &crate::game::ClientGame<'_>| {
             game.dropped
                 .iter()
                 .find(|d| d.id == 30)
                 .expect("the item was made")
                 .no_gravity
         };
-        let pig = |game: &crate::game::Game<'_>| {
+        let pig = |game: &crate::game::ClientGame<'_>| {
             game.mobs
                 .iter()
                 .find(|m| m.id == 31)

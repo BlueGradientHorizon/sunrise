@@ -3,7 +3,7 @@
 use super::native_guest_turn_tests::with_guests;
 use mod_api::{Compound, JavaString, PlayerPersistentDataError, Tag, prelude::*};
 
-fn saved_data<'a>(game: &'a super::Game<'_>, conn: u32) -> Option<&'a Compound> {
+fn saved_data<'a>(game: &'a crate::game::ServerGame<'_>, conn: u32) -> Option<&'a Compound> {
     let hub = &game.lan.as_ref().unwrap().hub;
     match hub.guest(conn)?.saved.as_ref()?.get("NeoForgeData")? {
         Tag::Compound(data) => Some(data),

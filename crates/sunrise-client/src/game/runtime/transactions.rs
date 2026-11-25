@@ -1982,7 +1982,7 @@ pub(in crate::game) mod tests {
                 })
                 .unwrap();
             game.as_guest(12, |game| {
-                let setup = |game: &mut Game<'_>| {
+                let setup = |game: &mut crate::game::ServerGame<'_>| {
                     game.world.set(pos[0], pos[1], pos[2], full).unwrap();
                     game.inventory
                         .iter_mut()
@@ -2143,7 +2143,7 @@ pub(in crate::game) mod tests {
         (taken > 0).then(|| resource.to_stack(taken))
     }
 
-    pub(in crate::game) fn chest_items(game: &Game<'_>) -> Vec<(usize, u32)> {
+    pub(in crate::game) fn chest_items(game: &crate::game::ServerGame<'_>) -> Vec<(usize, u32)> {
         let Some(BlockEntity::Chest(items)) = game.world.block_entities.get(&(0, 64, 0)) else {
             panic!("chest block entity missing")
         };
@@ -2286,7 +2286,7 @@ pub(in crate::game) mod tests {
                 items[0] = Some(ItemStack::new("minecraft:stick", 2));
             }
             let sticks = |count| ItemStack::new("minecraft:stick", count);
-            let slots = |game: &Game<'_>, pos| match game.world.block_entities.get(&pos) {
+            let slots = |game: &crate::game::ServerGame<'_>, pos| match game.world.block_entities.get(&pos) {
                 Some(BlockEntity::Chest(items)) => {
                     items.iter().flatten().map(|s| s.count).sum::<u32>()
                 }
@@ -2363,15 +2363,12 @@ pub(in crate::game) mod tests {
         options.resources = root.clone();
         options.execution_role = super::super::execution_role::ExecutionRole::IntegratedServer;
         options.dedicated = Some(Vec::new());
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
             None,
         )
         .unwrap();
@@ -2571,7 +2568,7 @@ pub(in crate::game) mod tests {
         );
         game.world.block_log = Some(Vec::new());
         game.world.path_writes = Some(Vec::new());
-        let queues = |game: &Game<'_>| {
+        let queues = |game: &crate::game::ServerGame<'_>| {
             let world = &game.world;
             (
                 world.block_log.as_ref().map(Vec::len),
@@ -2710,7 +2707,7 @@ pub(in crate::game) mod tests {
                 },
             )
             .unwrap();
-        let len = |game: &Game<'_>| {
+        let len = |game: &crate::game::ServerGame<'_>| {
             game.mobs
                 .iter()
                 .find(|m| m.id == id)
@@ -2795,7 +2792,7 @@ pub(in crate::game) mod tests {
         game.spawn_item(sticks(4), [0.5, 70.0, 6.5], [0.0; 3], 10);
         let id = game.dropped.last().unwrap().id;
         let entity = mod_api::ItemPlace::ItemEntity { id };
-        let count = |game: &Game<'_>| game.dropped.len();
+        let count = |game: &crate::game::ServerGame<'_>| game.dropped.len();
         let items = count(&game);
         let host: &mut dyn ServerHost = &mut game;
         let _ = host.transaction(|host, tx| {
@@ -2844,7 +2841,7 @@ pub(in crate::game) mod tests {
             game.level_set_block(level, [2, 64, 4], chest, flags),
             Ok(true)
         );
-        let slots = |game: &Game<'_>, pos| match game.world.block_entities.get(&pos) {
+        let slots = |game: &crate::game::ServerGame<'_>, pos| match game.world.block_entities.get(&pos) {
             Some(BlockEntity::Chest(items)) => items.iter().flatten().map(|s| s.count).sum::<u32>(),
             _ => panic!("no container at {pos:?}"),
         };
@@ -3065,7 +3062,7 @@ pub(in crate::game) mod mod_capability_tests {
             // Written while the guest's state is swapped in for their turn, aborted after it
             // is swapped back out: the guest's own map is put back.
             game.open_storage_transaction();
-            game.server.lan_acting_uuid = Some(guest);
+            game.side.lan_acting_uuid = Some(guest);
             std::mem::swap(
                 &mut game.player_state.attachments,
                 game.lan
@@ -3088,7 +3085,7 @@ pub(in crate::game) mod mod_capability_tests {
                     .attachments_mut(conn)
                     .unwrap(),
             );
-            game.server.lan_acting_uuid = None;
+            game.side.lan_acting_uuid = None;
             game.close_storage_transaction(false);
             let host: &mut dyn ServerHost = game;
             assert_eq!(energy(host, player), Some(40));
@@ -3132,7 +3129,7 @@ pub(in crate::game) mod mod_capability_tests {
                 sunrise_client::cauldron::Outcome::Success
             );
             assert_eq!(game.stats.get("custom", "minecraft:fill_cauldron"), before);
-            assert!(game.server.pending_sounds.is_empty());
+            assert!(game.side.pending_sounds.is_empty());
             game.close_storage_transaction(false);
             assert_eq!(game.world.block(pos[0], pos[1], pos[2]), empty);
             assert_eq!(
@@ -3140,7 +3137,7 @@ pub(in crate::game) mod mod_capability_tests {
                 "minecraft:water_bucket"
             );
             assert_eq!(game.stats.get("custom", "minecraft:fill_cauldron"), before);
-            assert!(game.server.pending_sounds.is_empty());
+            assert!(game.side.pending_sounds.is_empty());
             game.open_storage_transaction();
             game.open_storage_transaction();
             assert_eq!(
@@ -3155,7 +3152,7 @@ pub(in crate::game) mod mod_capability_tests {
             );
             game.close_storage_transaction(true);
             assert_eq!(game.stats.get("custom", "minecraft:fill_cauldron"), before);
-            assert!(game.server.pending_sounds.is_empty());
+            assert!(game.side.pending_sounds.is_empty());
             assert_eq!(
                 game.use_on_cauldron(pos).unwrap(),
                 sunrise_client::cauldron::Outcome::Success
@@ -3170,7 +3167,7 @@ pub(in crate::game) mod mod_capability_tests {
                 before + 1
             );
             assert_eq!(
-                game.server
+                game.side
                     .pending_sounds
                     .iter()
                     .map(|s| s.event.as_str())

@@ -1342,7 +1342,7 @@ mod tests {
                 Default::default(),
             );
             game.end.add_remote_eye(0, [1.0, 70.0, 1.0], [0.0; 3]);
-            let base = game.server.next_entity;
+            let base = game.side.next_entity;
             let joined = game.persist.joined_seq;
             let announced = game.persist.live.clone();
             let mut slots = crate::game::entity::taken_pass_tests::SlotIdentities::default();
@@ -1365,7 +1365,7 @@ mod tests {
                     ids,
                     std::array::from_fn::<_, 11, _>(|i| base + i as u32 + 1)
                 );
-                assert_eq!(game.server.next_entity, base + 11);
+                assert_eq!(game.side.next_entity, base + 11);
                 assert_eq!(game.persist.joined_seq, joined);
                 assert_eq!(game.persist.live, announced);
                 let epoch = game.native_lifecycle.epoch().unwrap();
@@ -1400,12 +1400,12 @@ mod tests {
                     pending!(game.falling);
                     slots.observe(&mut game.falling, epoch, |f| f.id);
                 }
-                let before = game.server.next_entity;
+                let before = game.side.next_entity;
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     game.lan_assign_ids()
                 }));
                 assert!(result.is_err());
-                assert_eq!(game.server.next_entity, before);
+                assert_eq!(game.side.next_entity, before);
             });
         }
     }
@@ -1425,7 +1425,7 @@ mod tests {
                         .summon_with_nbt($kind, [2.0, 70.0, 1.0], $nbt)
                         .unwrap();
                     pending!($list);
-                    let base = $game.server.next_entity;
+                    let base = $game.side.next_entity;
                     $game.lan_assign_ids();
                     assert_eq!(taken[0].id, 0);
                     assert_eq!($list[0].id, base + 1);
@@ -1438,7 +1438,7 @@ mod tests {
                         $list.iter().map(|p| p.id).collect::<Vec<_>>(),
                         [base + 2, base + 1]
                     );
-                    assert_eq!($game.server.next_entity, base + 2);
+                    assert_eq!($game.side.next_entity, base + 2);
                 });
             };
         }
@@ -1450,7 +1450,7 @@ mod tests {
             game.summon_with_nbt("minecraft:arrow", [2.0, 70.0, 1.0], "{}")
                 .unwrap();
             pending!(game.creatures.projectiles);
-            let base = game.server.next_entity;
+            let base = game.side.next_entity;
             game.lan_assign_ids();
             assert_eq!(game.creatures.projectiles[0].id, base + 1);
             game.restore_entities(taken);
@@ -1464,7 +1464,7 @@ mod tests {
                     .collect::<Vec<_>>(),
                 [base + 2, base + 1]
             );
-            assert_eq!(game.server.next_entity, base + 2);
+            assert_eq!(game.side.next_entity, base + 2);
         });
         check!(
             "minecraft:area_effect_cloud",
@@ -1494,7 +1494,7 @@ mod tests {
                     .unwrap();
                 pending!(game.crystals);
             }
-            let base = game.server.next_entity;
+            let base = game.side.next_entity;
             for _ in 0..2 {
                 game.assign_dragon_and_crystal_ids();
                 assert_eq!(game.dragon.as_ref().unwrap().id, base + 1);
@@ -1502,9 +1502,9 @@ mod tests {
                     game.crystals.iter().map(|c| c.id).collect::<Vec<_>>(),
                     [base + 10, base + 11]
                 );
-                assert_eq!(game.server.next_entity, base + 11);
+                assert_eq!(game.side.next_entity, base + 11);
                 game.lan_assign_ids();
-                assert_eq!(game.server.next_entity, base + 11);
+                assert_eq!(game.side.next_entity, base + 11);
             }
         });
     }

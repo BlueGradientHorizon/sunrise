@@ -160,7 +160,7 @@ impl Hooks for ChestReaderMod {
 }
 
 /// A stone floor with a chest at `[3, 64, 1]` in the level in place, holding `items` diamonds.
-fn chest_level(game: &mut Game<'_>, items: usize) {
+fn chest_level(game: &mut crate::game::ServerGame<'_>, items: usize) {
     let registry = game.pack.assets.registry;
     let stone = registry.default_state("minecraft:stone").unwrap();
     let chest = registry.default_state("minecraft:chest").unwrap();
@@ -197,7 +197,7 @@ fn a_block_part_reads_a_block_entity_through_its_owning_level() {
         // A second loaded dimension has a chest of its own at the same position:
         // the level host answers from that level's block entity, not a fixed one.
         let scratch = tempfile::tempdir().unwrap();
-        game.server.world_root = scratch.path().to_path_buf();
+        game.side.world_root = scratch.path().to_path_buf();
         game.enter_level(crate::game::Dim::Nether).unwrap();
         game.world.chunks.insert(
             (0, 0),
@@ -232,7 +232,7 @@ fn cache_follows_update_flags_and_direct_block_entity_notifications() {
         game.world.block_log = None;
         game.world.enable_path_type_cache();
         let calls = Cell::new(0);
-        let read = |game: &Game<'_>| {
+        let read = |game: &crate::game::ServerGame<'_>| {
             game.world.cached_path_type(packed_pos, || {
                 calls.set(calls.get() + 1);
                 if game.world.block(pos[0], pos[1], pos[2]) == air {
@@ -301,7 +301,7 @@ fn cache_follows_update_flags_and_direct_block_entity_notifications() {
     });
 }
 
-fn with_parts(id: &'static str, hooks: impl Hooks + 'static, test: impl FnOnce(&mut Game<'_>)) {
+fn with_parts(id: &'static str, hooks: impl Hooks + 'static, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(id, Box::new(hooks))].into();
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {

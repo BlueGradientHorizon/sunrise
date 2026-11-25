@@ -93,7 +93,7 @@ pub(in crate::game) mod tests {
     pub(in crate::game) fn game_with_breeze<'a>(
         resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
         feet: Vec3,
-    ) -> Game<'a> {
+    ) -> crate::game::ClientGame<'a> {
         let root = std::path::PathBuf::from(
             std::env::var_os("SUNRISE_TEST_RESOURCES")
                 .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -116,7 +116,7 @@ pub(in crate::game) mod tests {
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::Client;
         let res = &*resources.insert(loaded.resources);
-        let mut game = Game::new(
+        let mut game = crate::game::ClientGame::new(
             res,
             loaded.pack,
             loaded.gui.unwrap(),
@@ -136,7 +136,7 @@ pub(in crate::game) mod tests {
             sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 66.0, 16.5))
                 .unwrap(),
         );
-        game.particles.0.camera = [8.5, 66.0, 16.5];
+        game.side.particles.0.camera = [8.5, 66.0, 16.5];
         let kind = game.res.mob_types()["minecraft:breeze"].clone();
         game.mobs.push(Mob::new(13001, kind, feet, 0.0));
         game

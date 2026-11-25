@@ -47,7 +47,7 @@ pub(in crate::game) mod server_tick_rate_changed_tests {
 
     pub(in crate::game) fn with_scheduler(
         retune: Option<&'static str>,
-        check: impl FnOnce(&mut super::Game<'_>, &dyn Fn() -> Vec<f32>),
+        check: impl FnOnce(&mut crate::game::ServerGame<'_>, &dyn Fn() -> Vec<f32>),
     ) {
         let rates = Arc::new(Mutex::new(Vec::new()));
         let scheduler = Scheduler {

@@ -28,7 +28,7 @@ use sunrise_core::geometry::Vec3;
 
 pub(in crate::game) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> Game<'a> {
+) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -51,15 +51,12 @@ pub(in crate::game) fn game<'a>(
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = &*resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
         None,
     )
     .unwrap();
@@ -196,20 +193,20 @@ fn typed_particle_command_encoder_refusal_does_not_deliver_to_a_guest() {
         }
     });
     game.lan = Some(crate::game::lan::LanHost::for_test(hub));
-    game.server.lan_acting = Some(1);
+    game.side.lan_acting = Some(1);
     game.particles.0.created_requests = Some(Vec::new());
     assert!(game.run_command("particle test:measured{measure:1} 0.5 100.5 0.5 0 0 0 0 1 force @s"));
-    assert!(game.server.guest_packets.iter().any(|p| matches!(
+    assert!(game.side.guest_packets.iter().any(|p| matches!(
         p,
         sunrise_protocol::packets::play::Clientbound::LevelParticles(_)
     )));
-    game.server.guest_packets.clear();
+    game.side.guest_packets.clear();
     let (ok, outcome) = game.recording_command_outcome(|game| {
         game.run_command("particle test:measured{measure:-1} 0.5 100.5 0.5 0 0 0 0 1 force @s")
     });
     assert!(!ok);
     assert_eq!(outcome, Some((false, 0)));
-    assert!(game.server.guest_packets.iter().all(|p| !matches!(
+    assert!(game.side.guest_packets.iter().all(|p| !matches!(
         p,
         sunrise_protocol::packets::play::Clientbound::LevelParticles(_)
     )));

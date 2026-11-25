@@ -36,7 +36,7 @@ pub(in crate::game) fn cut_pack(root: &std::path::Path) -> impl Fn(&str, &str) {
     write
 }
 
-pub(in crate::game) fn place_stonecutter(server: &mut Game<'_>) -> Station {
+pub(in crate::game) fn place_stonecutter(server: &mut crate::game::ServerGame<'_>) -> Station {
     server
         .world
         .chunks

@@ -11,7 +11,7 @@ use sunrise_core::position::ChunkPos;
 
 pub(in crate::game) const PIG: &str = "00000251-0000-0000-0000-000000000001";
 
-pub(in crate::game) fn game(test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     crate::game::native_entity_refs::tests::with_game(|game| {
         game.build_registries();
         game.load_server_loot();
@@ -35,10 +35,10 @@ pub(in crate::game) fn game(test: impl FnOnce(&mut Game<'_>)) {
 }
 
 /// Runs `command`: whether it succeeded and what it said.
-pub(in crate::game) fn run(game: &mut Game<'_>, command: &str) -> (bool, Vec<String>) {
-    game.server.chat_capture = Some(Vec::new());
+pub(in crate::game) fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Vec<String>) {
+    game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.server.chat_capture.take().unwrap_or_default();
+    let said = game.side.chat_capture.take().unwrap_or_default();
     (
         ok,
         said.iter().map(sunrise_client::text::Text::plain).collect(),
@@ -47,8 +47,8 @@ pub(in crate::game) fn run(game: &mut Game<'_>, command: &str) -> (bool, Vec<Str
 
 /// The `entity_die` events posted while `f` runs.
 pub(in crate::game) fn deaths(
-    game: &mut Game<'_>,
-    f: impl FnOnce(&mut Game<'_>),
+    game: &mut crate::game::ServerGame<'_>,
+    f: impl FnOnce(&mut crate::game::ServerGame<'_>),
 ) -> Vec<([f64; 3], Option<Who>)> {
     super::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
     f(game);
@@ -138,7 +138,7 @@ fn a_killed_mob_posts_its_death_before_the_command_returns() {
             "the body stays"
         );
         // The rest of the death still runs once: the pig's loot is on the ground.
-        let porkchops = |g: &Game<'_>| {
+        let porkchops = |g: &crate::game::ServerGame<'_>| {
             g.dropped
                 .iter()
                 .filter(|i| &*i.stack.item == "minecraft:porkchop")

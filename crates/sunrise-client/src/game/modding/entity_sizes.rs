@@ -486,7 +486,7 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game::server_side) fn m_pose(game: &crate::game::Game<'_>, i: usize) -> Pose {
+    pub(in crate::game::server_side) fn m_pose(game: &crate::game::ServerGame<'_>, i: usize) -> Pose {
         game.mobs[i].pose()
     }
 
@@ -539,7 +539,7 @@ pub(in crate::game) mod tests {
     /// A client logged in to a memory server, receiving that server's packets by their wire
     /// form, with `Log` listening; its chunk at the origin is loaded and empty.
     pub(in crate::game) fn with_loopback_client(
-        test: impl FnOnce(&mut crate::game::Game<'_>, &Mutex<Seen>),
+        test: impl FnOnce(&mut crate::game::ClientGame<'_>, &Mutex<Seen>),
     ) {
         use crate::game::{
             native_client_session::tests::{finish_login, logged_client},
@@ -567,7 +567,7 @@ pub(in crate::game) mod tests {
     }
 
     pub(in crate::game::server_side) fn deliver(
-        game: &mut crate::game::Game<'_>,
+        game: &mut crate::game::ClientGame<'_>,
         packet: sunrise_protocol::packets::play::Clientbound,
     ) {
         use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
@@ -579,7 +579,7 @@ pub(in crate::game) mod tests {
     }
 
     pub(in crate::game) fn add_entity(
-        game: &mut crate::game::Game<'_>,
+        game: &mut crate::game::ClientGame<'_>,
         id: i32,
         kind: &str,
         position: [f64; 3],
@@ -611,7 +611,7 @@ pub(in crate::game) mod tests {
     }
 
     pub(in crate::game) fn entity_data(
-        game: &mut crate::game::Game<'_>,
+        game: &mut crate::game::ClientGame<'_>,
         id: i32,
         values: Vec<(u8, i32, sunrise_protocol::entity_data::Value)>,
     ) {
@@ -623,7 +623,7 @@ pub(in crate::game) mod tests {
     }
 
     pub(in crate::game::server_side) fn scale(
-        game: &mut crate::game::Game<'_>,
+        game: &mut crate::game::ClientGame<'_>,
         id: i32,
         base: f64,
     ) {
@@ -828,7 +828,7 @@ pub(in crate::game) mod tests {
     /// A server game with `Log` listening (`seen`), or with no listener at all.
     pub(in crate::game::server_side) fn with_server(
         listen: bool,
-        test: impl FnOnce(&mut crate::game::Game<'_>, &Mutex<Seen>),
+        test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Mutex<Seen>),
     ) {
         let seen = Arc::new(Mutex::new(Seen::default()));
         let mods: mod_api::Mods = if listen {
@@ -896,7 +896,7 @@ pub(in crate::game) mod tests {
                 (9005, "minecraft:leash_knot"),
                 (9006, "minecraft:block_display"),
             ] {
-                game.others.0.push(crate::game::commands::OtherEntity {
+                game.side.others.0.push(crate::game::commands::OtherEntity {
                     size_answer: None,
                     attachment_lifetime: Default::default(),
                     knot_check: None,

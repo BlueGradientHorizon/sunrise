@@ -144,7 +144,7 @@ pub(in crate::game) mod tests {
 
     /// Runs `test` on a game whose acting player stands at the origin, the use
     /// button down, under a mod that fills the returned record.
-    pub(in crate::game) fn with_uses(test: impl FnOnce(&mut super::Game<'_>, &Shared, LivingRef)) {
+    pub(in crate::game) fn with_uses(test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Shared, LivingRef)) {
         let uses = Shared::default();
         let mods: Mods = vec![ModEntry::new("uses", Box::new(UseMod(uses.clone())))].into();
         crate::game::api_values::install_parts(&mods).unwrap();

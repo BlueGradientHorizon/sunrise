@@ -1074,7 +1074,7 @@ mod tests {
         with_game(|game| {
             // The harness's world root is empty: give the transfer a
             // throwaway world of its own, as the save tests do.
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -1177,11 +1177,11 @@ mod tests {
     fn an_overflowing_destination_refuses() {
         let root = transfer_root("overflow");
         with_game(|game| {
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
-            game.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
                 sunrise_client::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
@@ -1217,11 +1217,11 @@ mod tests {
     fn a_ticking_block_entity_refuses_before_the_lift() {
         let root = transfer_root("passive");
         with_game(|game| {
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
-            game.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
                 sunrise_client::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
@@ -1272,11 +1272,11 @@ mod tests {
     fn repeated_transfers_beyond_the_index_capacity_stay_bounded() {
         let root = transfer_root("capacity");
         with_game(|game| {
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
-            game.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
                 sunrise_client::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
@@ -1327,9 +1327,9 @@ mod tests {
     fn capacity_refusal_leaves_world_untouched() {
         let root = transfer_root("admission");
         with_game(|game| {
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             game.world.carrier_data_existed_at_open = true;
-            game.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
                 sunrise_client::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
@@ -1364,9 +1364,9 @@ mod tests {
     fn saved_tag_refuses_assembly_and_disassembly_without_mutation() {
         let root = transfer_root("saved-tag");
         with_game(|game| {
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             game.world.carrier_data_existed_at_open = true;
-            game.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
                 sunrise_client::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
@@ -1442,9 +1442,9 @@ mod tests {
     fn assembly_revalidation_refuses_saved_tag_without_mutation() {
         let root = transfer_root("assembly-revalidation-saved-tag");
         with_game(|game| {
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             game.world.carrier_data_existed_at_open = true;
-            game.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
                 sunrise_client::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
@@ -1527,11 +1527,11 @@ mod tests {
     fn a_crash_after_a_finished_disassembly_recovers_clean() {
         let root = transfer_root("post-disassembly");
         with_game(|game| {
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
-            game.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
                 sunrise_client::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
@@ -1582,11 +1582,11 @@ mod tests {
             BlockPos::new(7, 71, 9),
         ];
         with_game(|game| {
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
-            game.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
                 sunrise_client::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
@@ -1647,11 +1647,11 @@ mod tests {
     fn non_default_states_survive_the_round_trip() {
         let root = transfer_root("states");
         with_game(|game| {
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
-            game.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
                 sunrise_client::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
@@ -1724,11 +1724,11 @@ mod tests {
     fn the_live_assembly_publishes_the_cargo_before_prepared() {
         let root = transfer_root("live-cargo");
         with_game(|game| {
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
-            game.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
                 sunrise_client::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
@@ -1819,11 +1819,11 @@ mod tests {
         std::fs::create_dir_all(root.join("data")).unwrap();
         write_level_dat(&root);
         with_game(|game| {
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
-            game.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
                 sunrise_client::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
@@ -1891,11 +1891,11 @@ mod tests {
     fn a_failed_commit_stops_the_session_until_recovery() {
         let root = transfer_root("fail-closed");
         with_game(|game| {
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
-            game.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
                 sunrise_client::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
@@ -1986,7 +1986,7 @@ mod tests {
     fn assemble_then_disassemble_keeps_one_owner_at_every_step() {
         let root = transfer_root("cycle");
         with_game(|game| {
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -2026,7 +2026,7 @@ mod tests {
     fn a_destination_with_a_block_entity_refuses() {
         let root = transfer_root("dest");
         with_game(|game| {
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -2063,7 +2063,7 @@ mod tests {
     fn rotations_refuse_without_symmetry_or_an_adapter() {
         let root = transfer_root("rot");
         with_game(|game| {
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -2153,7 +2153,7 @@ mod tests {
         // that lookup; the test harness points its sibling variable at
         // the same folder).
         with_game(|game| {
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -2163,7 +2163,7 @@ mod tests {
             // The transfer happens in the Nether, opened on demand.
             game.enter_level(crate::game::Dim::Nether).unwrap();
             assert_eq!(game.dim, crate::game::Dim::Nether);
-            game.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
                 root.join("dimensions/minecraft/the_nether"),
                 sunrise_client::save::LevelShape::NETHER,
                 Some(Default::default()),
@@ -2188,8 +2188,8 @@ mod tests {
             assert_eq!(game.dim, crate::game::Dim::Overworld);
             // A fresh open holds no parked level: drop the Nether so
             // recovery has to open it from disk, as at world load.
-            game.levels.0.parked.remove(&crate::game::Dim::Nether);
-            assert!(!game.levels.0.parked.contains_key(&crate::game::Dim::Nether));
+            game.side.levels.0.parked.remove(&crate::game::Dim::Nether);
+            assert!(!game.side.levels.0.parked.contains_key(&crate::game::Dim::Nether));
             game.carrier_recover_all_levels().unwrap();
             assert_eq!(
                 game.dim,
@@ -2235,7 +2235,7 @@ mod tests {
     fn an_unknown_dimension_refuses_the_load_without_touching_levels() {
         let root = transfer_root("nope");
         with_game(|game| {
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -2287,7 +2287,7 @@ mod tests {
     fn an_older_snapshot_completing_late_cannot_overwrite_the_post_state() {
         let root = transfer_root("writer");
         with_game(|game| {
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -2344,7 +2344,7 @@ mod tests {
     fn every_save_route_refuses_under_the_obligation_and_admits_after_commit() {
         let root = transfer_root("saves");
         with_game(|game| {
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -2361,11 +2361,11 @@ mod tests {
                 let _lease = sunrise_client::join_seq::visibility::PassLease::enter();
                 assert!(game.save_game_with(true).is_err(), "autosave");
                 assert!(game.save_level(true).is_err(), "save-all");
-                game.levels.0.request_save(game.dim);
+                game.side.levels.0.request_save(game.dim);
                 game.run_requested_saves();
                 // The requested save was refused while lifted and stays
                 // queued for the next tick, as #2488 defines.
-                assert!(game.levels.0.save_pending(game.dim));
+                assert!(game.side.levels.0.save_pending(game.dim));
             }
             // Committed: the routes admit again (the full save writes
             // the harness's throwaway world, which is allowed here).
@@ -2384,11 +2384,11 @@ mod tests {
     fn the_supported_backup_restores_identical_carriers_and_chunks() {
         let root = transfer_root("backup");
         with_game(|game| {
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
-            game.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
                 sunrise_client::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
@@ -2511,10 +2511,10 @@ mod tests {
         use sunrise_client::join_seq::visibility::{PassLease, passes_settled};
         let _lease = PassLease::enter();
         assert!(!passes_settled());
-        assert!(Game::admit_entity_save().is_err());
+        assert!(crate::game::ServerGame::admit_entity_save().is_err());
         drop(_lease);
         assert!(passes_settled());
-        assert!(Game::admit_entity_save().is_ok());
+        assert!(crate::game::ServerGame::admit_entity_save().is_ok());
     }
 
     /// A world without transfers creates nothing and fences nothing.
@@ -2526,7 +2526,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("data")).unwrap();
         with_game(|game| {
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;

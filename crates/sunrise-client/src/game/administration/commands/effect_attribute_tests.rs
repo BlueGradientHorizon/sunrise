@@ -14,7 +14,7 @@ use std::sync::Arc;
 #[allow(unused_imports)]
 use sunrise_client::chunk::Chunk;
 
-pub(in crate::game) fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     crate::game::native_entity_refs::tests::with_game(|game| {
         game.build_registries();
         game.set_allow_commands(true);

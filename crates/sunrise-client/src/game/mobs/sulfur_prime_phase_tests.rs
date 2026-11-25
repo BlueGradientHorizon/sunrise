@@ -9,7 +9,7 @@ use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -32,15 +32,12 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -57,7 +54,7 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     game
 }
 
-fn fuse(game: &Game<'_>) -> i32 {
+fn fuse(game: &crate::game::ServerGame<'_>) -> i32 {
     let cube = game
         .mobs
         .iter()
@@ -66,13 +63,13 @@ fn fuse(game: &Game<'_>) -> i32 {
     sunrise_client::mobs::sulfur_cube::fuse(cube)
 }
 
-fn step(game: &mut Game<'_>) {
+fn step(game: &mut crate::game::ServerGame<'_>) {
     assert!(game.run_command("tick step 1"));
     game.tick_server(false).unwrap();
 }
 
 /// A NoAI cube with a TNT body summoned at 4.5 100 8.5, on `under`.
-fn cube_on(game: &mut Game<'_>, under: &str) {
+fn cube_on(game: &mut crate::game::ServerGame<'_>, under: &str) {
     assert!(game.run_command("forceload add 0 0"));
     assert!(game.run_command("fill 0 98 0 15 99 15 stone"));
     if under != "stone" {
@@ -157,7 +154,7 @@ fn control_a_primed_cube_on_power_is_not_primed_again() {
 // `collectEquipmentChanges` adopted, not the live body: a TNT body taken off
 // since the last tick still primes the cube on power, with TNT's fuse.
 
-fn replace_body(game: &mut Game<'_>, with: &str) {
+fn replace_body(game: &mut crate::game::ServerGame<'_>, with: &str) {
     assert!(game.run_command(&format!(
         "item replace entity @e[type=sulfur_cube,limit=1] armor.body with {with}"
     )));

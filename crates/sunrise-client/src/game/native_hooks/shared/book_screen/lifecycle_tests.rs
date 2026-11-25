@@ -32,7 +32,7 @@ impl mod_api::Hooks for BookMod {
         });
     }
 }
-pub(in crate::game) fn receive(game: &mut Game<'_>, message: Message) {
+pub(in crate::game) fn receive(game: &mut crate::game::ClientGame<'_>, message: Message) {
     game.remote_book_settings(&settings_codec::encode(&message).unwrap());
 }
 pub(in crate::game) type BoundLayoutEdit = fn(&mut mod_api::MenuScreenLayout);
@@ -133,7 +133,7 @@ pub(in crate::game) fn with_bound_menu_type(test: impl FnOnce()) {
 
 pub(in crate::game) const STONE: &str = "minecraft:stone";
 pub(in crate::game) const MENU: &str = "minecraft:generic_9x1";
-pub(in crate::game) fn geometry(game: &Game<'_>) -> ((f32, f32), Vec<(usize, [f32; 4])>) {
+pub(in crate::game) fn geometry(game: &crate::game::ClientGame<'_>) -> ((f32, f32), Vec<(usize, [f32; 4])>) {
     let batch = sunrise_client::hud::HudBatch::new([1280, 720], game.settings.gui_scale_inputs());
     let layout = game.built_container(&batch).expect("cached container");
     (layout.origin, layout.slots.clone())

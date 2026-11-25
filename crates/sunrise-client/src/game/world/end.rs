@@ -1608,7 +1608,7 @@ pub(in crate::game) mod tests {
                 chunk,
                 Arc::new(sunrise_client::chunk::Chunk::empty(chunk.0, chunk.1)),
             );
-            game.server.respawn_config = None;
+            game.side.respawn_config = None;
             game.spawn = None;
             game.level.world_spawn = None;
             game.level.world_spawn_angle = [45.0, -10.0];

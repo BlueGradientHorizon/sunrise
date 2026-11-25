@@ -5,7 +5,7 @@
 use super::*;
 use sunrise_core::geometry::Vec3;
 
-fn select(game: &mut Game<'_>, text: &str) -> HashSet<Target> {
+fn select(game: &mut crate::game::ServerGame<'_>, text: &str) -> HashSet<Target> {
     let selector = sunrise_client::command::selector::parse(
         &mut sunrise_client::command::Reader::new(text),
         &game.ui.registries,
@@ -15,7 +15,7 @@ fn select(game: &mut Game<'_>, text: &str) -> HashSet<Target> {
     game.select(&selector).into_iter().collect()
 }
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
     use sunrise_client::motion::PlayerMotion;
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.build_registries();

@@ -38,7 +38,7 @@ impl Hooks for Native {
     }
 }
 
-pub(in crate::game) fn reset_player(game: &mut Game<'_>, food: i32) {
+pub(in crate::game) fn reset_player(game: &mut crate::game::ClientGame<'_>, food: i32) {
     let mut player = PlayerMotion::new(game.motion, Vec3::new(8.0, 64.0, 8.0)).unwrap();
     player.client_side = true;
     player.health.food.food = food;
@@ -55,7 +55,7 @@ pub(in crate::game) fn reset_player(game: &mut Game<'_>, food: i32) {
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::client_side::remote_client::movement_input_tests::connect;
 
-pub(in crate::game) fn tick(game: &mut Game<'_>) {
+pub(in crate::game) fn tick(game: &mut crate::game::ClientGame<'_>) {
     if let Some(input) = game.tick_local_player(Vec::new(), 7, None).unwrap() {
         game.remote_send_state(input);
     }

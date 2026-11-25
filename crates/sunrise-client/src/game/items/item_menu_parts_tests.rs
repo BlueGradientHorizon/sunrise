@@ -57,7 +57,7 @@ impl Hooks for Mod {
     }
 }
 
-fn worn(game: &Game<'_>, item: &str, damage: u32) -> ItemStack {
+fn worn(game: &crate::game::ServerGame<'_>, item: &str, damage: u32) -> ItemStack {
     let mut stack = ItemStack::new(item, 1);
     stack.damage = damage;
     assert!(sunrise_client::stations::is_damageable(

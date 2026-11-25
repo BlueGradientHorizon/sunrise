@@ -4,13 +4,13 @@ use crate::game::native_projectiles::impact_probe::{Action, point, with_probe};
 use std::sync::atomic::Ordering;
 use sunrise_client::mobs::Mob;
 
-fn cast(game: &mut Game<'_>) {
+fn cast(game: &mut crate::game::ServerGame<'_>) {
     let mut h = Hook::remote(71, Vec3::new(0.5, 64.5, 0.5), [0, 0, 0, 71]);
     h.velocity = Vec3::new(4.0, 0.0, 0.0);
     game.install_fishing_hook(h);
 }
 
-fn target(game: &mut Game<'_>) {
+fn target(game: &mut crate::game::ServerGame<'_>) {
     let state = game
         .pack
         .assets

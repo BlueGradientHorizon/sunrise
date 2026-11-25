@@ -124,9 +124,9 @@ fn registered_crafting_remainder_drops_through_server_item_toss() {
             )
             .unwrap();
             let scratch = tempfile::tempdir().unwrap();
-            game.server.world_root = scratch.path().to_path_buf();
+            game.side.world_root = scratch.path().to_path_buf();
             game.reload_datapacks(false, &[]).unwrap();
-            game.world_tables.0.as_mut().unwrap().recipes = recipes;
+            game.side.world_tables.0.as_mut().unwrap().recipes = recipes;
             let host: &dyn mod_api::Host = game;
             let machine = host.recipes_of_type("recipe_probe:machine_type");
             assert_eq!(machine.len(), 1);

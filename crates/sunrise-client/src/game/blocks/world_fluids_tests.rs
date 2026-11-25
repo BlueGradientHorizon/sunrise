@@ -10,7 +10,7 @@ use sunrise_world::registry::BlockStateId;
 const AT: [i32; 3] = [2, 65, 2];
 
 /// A game with one empty chunk, a dirt floor at y 64 and the level's handle.
-fn with_level(test: impl FnOnce(&mut Game<'_>, LevelRef)) {
+fn with_level(test: impl FnOnce(&mut crate::game::ServerGame<'_>, LevelRef)) {
     with_game(|game| {
         game.world
             .chunks
@@ -28,7 +28,7 @@ fn with_level(test: impl FnOnce(&mut Game<'_>, LevelRef)) {
     });
 }
 
-fn state(game: &Game<'_>, name: &str) -> BlockStateId {
+fn state(game: &crate::game::ServerGame<'_>, name: &str) -> BlockStateId {
     game.pack.assets.registry.default_state(name).unwrap()
 }
 
@@ -36,7 +36,7 @@ fn key(id: &str) -> mod_api::FluidKey {
     mod_api::__private::fluid_key(id).unwrap()
 }
 
-fn block(game: &Game<'_>) -> BlockStateId {
+fn block(game: &crate::game::ServerGame<'_>) -> BlockStateId {
     game.world.block(AT[0], AT[1], AT[2])
 }
 
@@ -119,7 +119,7 @@ fn a_committed_pour_breaks_what_it_replaces_then_sends_its_events_in_order() {
         game.world.set(AT[0], AT[1], AT[2], poppy).unwrap();
         let items = game.dropped.len();
         game.world.block_log = Some(Vec::new());
-        game.server.pending_native_sounds.clear();
+        game.side.pending_native_sounds.clear();
         dispense_fixture::start_recording();
         let host: &mut dyn ServerHost = game;
         let placed: Result<bool, TransactionError<()>> = host.transaction(|host, tx| {
@@ -134,7 +134,7 @@ fn a_committed_pour_breaks_what_it_replaces_then_sends_its_events_in_order() {
         assert_eq!(told.iter().filter(|p| **p == (2, 65, 2)).count(), 1);
         // The bucket's empty sound, queued once at the commit.
         let sounds: Vec<_> = game
-            .server
+            .side
             .pending_native_sounds
             .iter()
             .map(|s| (s.sound.clone(), s.at))
@@ -490,7 +490,7 @@ fn journal_level_host_retains_neighbour_updates_from_earlier_writes() {
                         BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS
                     ));
                 }
-                let flip = |game: &mut Game<'_>| {
+                let flip = |game: &mut crate::game::ServerGame<'_>| {
                     let mut host = JournalLevelWrite::new(game, level).unwrap();
                     assert!(host.set_block_property(
                         AT,
@@ -620,7 +620,7 @@ impl mod_api::Hooks for LiquidPart {
     }
 }
 
-fn with_liquid_part(test: impl FnOnce(&mut Game<'_>, LevelRef, &LiquidCalls)) {
+fn with_liquid_part(test: impl FnOnce(&mut crate::game::ServerGame<'_>, LevelRef, &LiquidCalls)) {
     let calls = Arc::new(LiquidCalls::default());
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "liquid_container",

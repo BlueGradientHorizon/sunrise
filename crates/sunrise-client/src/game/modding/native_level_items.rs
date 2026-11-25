@@ -227,7 +227,7 @@ mod tests {
             // An item a hook spawns while the tick has the list out joins after
             // the others, which keep their numbers.
             use sunrise_client::join_seq::Joined;
-            let joins = |game: &Game| -> Vec<(u32, u64)> {
+            let joins = |game: &crate::game::ServerGame<'_>| -> Vec<(u32, u64)> {
                 game.dropped
                     .iter()
                     .map(|d| (d.id, d.join_seq().get()))
@@ -319,7 +319,7 @@ mod tests {
                 game.orbs.push(orb(40, 0.5, 3, 0));
                 game.orbs.push(orb(80, 0.5, 3, 1));
                 game.orbs.push(orb(120, 100.5, 3, 0));
-                game.server.next_entity = 159;
+                game.side.next_entity = 159;
                 // Only initial residents take turns; each scan sees hook-awarded residents.
                 let ticking: Vec<_> = game.orbs.iter().map(|orb| orb.join).collect();
                 for join in ticking {

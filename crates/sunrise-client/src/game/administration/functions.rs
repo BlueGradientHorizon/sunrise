@@ -1593,7 +1593,7 @@ mod tests {
             mod_api::Identifier::parse("test_mod:machine").unwrap(),
             Outer(Middle(Inner)),
         );
-        let reply = Game::reload_failure(ReloadStageError::Listener {
+        let reply = crate::game::ServerGame::reload_failure(ReloadStageError::Listener {
             listener: mod_api::Identifier::parse("test_mod:listener").unwrap(),
             source,
         })
@@ -1615,7 +1615,7 @@ mod tests {
             || {
                 crate::game::native_entity_refs::tests::with_game(|game| {
                     let world = tempfile::tempdir().unwrap();
-                    game.server.world_root = world.path().to_owned();
+                    game.side.world_root = world.path().to_owned();
                     let pack = world.path().join("datapacks/snow_walkers");
                     let tags = pack.join("data/minecraft/tags/entity_type");
                     std::fs::create_dir_all(&tags).unwrap();
@@ -1690,20 +1690,20 @@ mod tests {
             .unwrap();
             game.load_world(request).unwrap();
             assert!(
-                game.fns.0.store.functions.contains_key("first_open:block"),
+                game.side.fns.0.store.functions.contains_key("first_open:block"),
                 "first-open admission errors: {:?}",
-                game.fns.0.store.errors
+                game.side.fns.0.store.errors
             );
             assert!(
                 !game
-                    .fns
+                    .side.fns
                     .0
                     .store
                     .functions
                     .contains_key("first_open:invalid")
             );
             assert!(
-                game.fns
+                game.side.fns
                     .0
                     .store
                     .errors
@@ -1796,7 +1796,7 @@ mod tests {
                         .unwrap();
                         request.save_root = world;
                         game.load_world(request).unwrap();
-                        let store = &game.fns.0.store;
+                        let store = &game.side.fns.0.store;
                         assert!(
                             store.functions.contains_key("fnmod:plain"),
                             "{:?}",
@@ -1808,8 +1808,8 @@ mod tests {
                             store.errors
                         );
                         assert!(!store.functions.contains_key("fnmod:unknown"));
-                        let refusal = |game: &Game<'_>, id: &str| {
-                            game.fns
+                        let refusal = |game: &crate::game::ServerGame<'_>, id: &str| {
+                            game.side.fns
                                 .0
                                 .store
                                 .errors
@@ -1829,7 +1829,7 @@ mod tests {
                         offered.store(false, Ordering::Relaxed);
                         let features = game.level.enabled_features.clone();
                         game.reload_datapacks(false, &features).unwrap();
-                        assert!(!game.fns.0.store.functions.contains_key("fnmod:plain"));
+                        assert!(!game.side.fns.0.store.functions.contains_key("fnmod:plain"));
                         assert!(
                             refusal(game, "fnmod:plain")
                                 .unwrap()
@@ -1856,8 +1856,8 @@ mod tests {
                 (0, 0),
                 std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
             );
-            game.server.world_root = std::env::current_dir().unwrap().join("h155-causal-world");
-            let pack = game.server.world_root.join("datapacks/h155_causal");
+            game.side.world_root = std::env::current_dir().unwrap().join("h155-causal-world");
+            let pack = game.side.world_root.join("datapacks/h155_causal");
             let dir = pack.join("data/h155c/function");
             std::fs::create_dir_all(&dir).unwrap();
             let f = sunrise_core::version::DATA_PACK_FORMAT;
@@ -1906,9 +1906,9 @@ mod tests {
                 .unwrap();
             game.build_registries();
             game.set_allow_commands(true);
-            assert_eq!(game.fns.0.store.tag_functions("h155c:pair").len(), 2);
+            assert_eq!(game.side.fns.0.store.tag_functions("h155c:pair").len(), 2);
             assert!(
-                game.fns
+                game.side.fns
                     .0
                     .store
                     .functions
@@ -1935,10 +1935,10 @@ mod tests {
                 );
             }
             assert!(game.run_command("scoreboard players set #ten h155c 10"));
-            fn score(g: &Game<'_>, h: &str) -> i32 {
+            fn score(g: &crate::game::ServerGame<'_>, h: &str) -> i32 {
                 g.score.board.score(h, "h155c").unwrap().value
             }
-            fn reset(g: &mut Game<'_>) {
+            fn reset(g: &mut crate::game::ServerGame<'_>) {
                 for h in [
                     "#calls", "#trace", "#seen_a", "#seen_b", "#early", "#late", "#inner",
                     "#outer", "#macro",
@@ -1948,15 +1948,15 @@ mod tests {
                 assert!(g.run_command("scoreboard players set #r h155c 91"));
                 assert!(g.run_command("scoreboard players set #s h155c 17"));
             }
-            fn capture(g: &mut Game<'_>, line: &str) -> (Vec<String>, Vec<(bool, i32)>) {
-                g.server.chat_capture = Some(Vec::new());
-                g.cmds.0.results = Some(Vec::new());
+            fn capture(g: &mut crate::game::ServerGame<'_>, line: &str) -> (Vec<String>, Vec<(bool, i32)>) {
+                g.side.chat_capture = Some(Vec::new());
+                g.side.cmds.0.results = Some(Vec::new());
                 assert!(g.run_command(line));
-                let texts = g.server.chat_capture.take().unwrap();
-                let callbacks = g.cmds.0.results.take().unwrap();
+                let texts = g.side.chat_capture.take().unwrap();
+                let callbacks = g.side.cmds.0.results.take().unwrap();
                 println!("causal raw {line}: {texts:?} callbacks={callbacks:?}");
                 assert!(
-                    g.exec.0.prepared_function.is_none(),
+                    g.side.exec.0.prepared_function.is_none(),
                     "no prepared call after command/error/return"
                 );
                 (
@@ -2161,8 +2161,8 @@ mod tests {
                 (0, 0),
                 std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
             );
-            game.server.world_root = std::env::current_dir().unwrap().join("h155-world");
-            let pack = game.server.world_root.join("datapacks/h155_unit");
+            game.side.world_root = std::env::current_dir().unwrap().join("h155-world");
+            let pack = game.side.world_root.join("datapacks/h155_unit");
             let dir = pack.join("data/h155/function");
             std::fs::create_dir_all(&dir).unwrap();
             let format = sunrise_core::version::DATA_PACK_FORMAT;
@@ -2199,7 +2199,7 @@ mod tests {
             game.set_allow_commands(true);
             for name in ["zero", "five", "fail", "fallthrough", "admit"] {
                 assert!(
-                    game.fns
+                    game.side.fns
                         .0
                         .store
                         .functions
@@ -2261,11 +2261,11 @@ mod tests {
                         "nonfork" => "positioned 4.5 202 4.5 ",
                         _ => "",
                     };
-                    game.server.chat_capture = Some(Vec::new());
-                    game.cmds.0.results = Some(Vec::new());
+                    game.side.chat_capture = Some(Vec::new());
+                    game.side.cmds.0.results = Some(Vec::new());
                     let accepted = game.run_command(&format!("execute store result score #r h155 store success score #s h155 {middle}run function h155:{name}"));
-                    let messages = game.server.chat_capture.take().unwrap();
-                    let callbacks = game.cmds.0.results.take().unwrap();
+                    let messages = game.side.chat_capture.take().unwrap();
+                    let callbacks = game.side.cmds.0.results.take().unwrap();
                     assert!(accepted, "actual registered function command");
                     let count = if route == "two" { 2 } else { 1 };
                     assert_eq!(
@@ -2312,10 +2312,10 @@ mod tests {
                 }
             }
             assert!(game.run_command("scoreboard players set #plain h155 0"));
-            game.cmds.0.results = Some(Vec::new());
+            game.side.cmds.0.results = Some(Vec::new());
             assert!(game.run_command("execute as @e[type=pig,tag=h155u,sort=nearest,limit=2] run scoreboard players add #plain h155 1"));
             assert_eq!(
-                game.cmds.0.results.take().unwrap(),
+                game.side.cmds.0.results.take().unwrap(),
                 vec![(true, 1), (true, 2)]
             );
             assert_eq!(game.score.board.score("#plain", "h155").unwrap().value, 2);
@@ -2342,13 +2342,13 @@ mod tests {
                 lines: vec![FunctionLine::Command("return 1".into())],
                 parameters: vec![],
             };
-            game.exec.0.functions.push("test:outer".into());
+            game.side.exec.0.functions.push("test:outer".into());
             let source = game.server_source();
             game.run_function(&inner, None, source).unwrap();
-            assert_eq!(game.exec.0.functions, ["test:outer"]);
-            game.exec.0.functions.clear();
+            assert_eq!(game.side.exec.0.functions, ["test:outer"]);
+            game.side.exec.0.functions.clear();
             game.run_function(&inner, None, source).unwrap();
-            assert!(game.exec.0.functions.is_empty());
+            assert!(game.side.exec.0.functions.is_empty());
         });
         assert!(ran, "the prepared-resource fixture must run this case");
     }
@@ -2390,7 +2390,7 @@ mod tests {
             )
             .unwrap();
             let modifier_id = mod_api::Identifier::parse("reload_test:append").unwrap();
-            game.server.world_root = root.clone();
+            game.side.world_root = root.clone();
             game.set_allow_commands(true);
             // Establish the live pack generation before injecting a refused candidate.
             // Mod declarations are load-bound; replacing them cannot be used to test
@@ -2405,7 +2405,7 @@ mod tests {
             assert_eq!(first.id_of(&first_instance), Some(&modifier_id));
             assert_eq!(first.modifiers().len(), 1);
             let first_generation = Arc::downgrade(
-                game.world_tables
+                game.side.world_tables
                     .0
                     .as_ref()
                     .unwrap()
@@ -2462,12 +2462,12 @@ mod tests {
             let old_root = game.options.resources.clone();
             let old_data = game.pack.data_source.clone();
             let old_tables = game
-                .world_tables
+                .side.world_tables
                 .0
                 .as_ref()
                 .map(|tables| tables as *const _);
             let old_generation = game.damage_tag_generation;
-            let old_enabled = game.fns.0.enabled.clone();
+            let old_enabled = game.side.fns.0.enabled.clone();
             std::fs::write(&modifier_file, br#"{"type":"neoforge:add_table","table":"minecraft:blocks/stone","priority":1003}"#).unwrap();
             let error = game.reload_datapacks(true, &[]).err().unwrap();
             assert!(error.to_string().contains("reload_test:missing"));
@@ -2485,24 +2485,24 @@ mod tests {
             assert!(Arc::ptr_eq(&game.loop_context, &old_context));
             assert_eq!(
                 old_tables,
-                game.world_tables
+                game.side.world_tables
                     .0
                     .as_ref()
                     .map(|tables| tables as *const _)
             );
             assert_eq!(game.damage_tag_generation, old_generation);
-            assert_eq!(game.fns.0.enabled, old_enabled);
+            assert_eq!(game.side.fns.0.enabled, old_enabled);
             assert_eq!(
                 super::super::native_world_read::block_in_tag(stone, "reload_test:candidate"),
                 old_tag
             );
             game.save_datapack_settings();
             let settings = std::fs::read(root.join("datapacks.json")).unwrap();
-            let enabled = game.fns.0.enabled.clone();
+            let enabled = game.side.fns.0.enabled.clone();
             let context = game.loop_context.clone();
             let generation = game.damage_tag_generation;
             assert!(!game.run_command("datapack disable \"file/candidate\""));
-            assert_eq!(game.fns.0.enabled, enabled);
+            assert_eq!(game.side.fns.0.enabled, enabled);
             assert_eq!(
                 std::fs::read(root.join("datapacks.json")).unwrap(),
                 settings
@@ -2565,10 +2565,10 @@ mod tests {
         let mut ran = false;
         crate::game::native_entity_refs::tests::with_game(|game| {
             ran = true;
-            game.server.world_root = scratch.0.clone();
+            game.side.world_root = scratch.0.clone();
             game.set_allow_commands(true);
             game.reload_datapacks(false, &[]).unwrap();
-            let marker = |game: &Game<'_>| {
+            let marker = |game: &crate::game::ServerGame<'_>| {
                 game.read_template_tag("generation_test:probe")
                     .and_then(|tag| tag.get("marker").cloned())
             };
@@ -2652,9 +2652,9 @@ mod tests {
             .unwrap();
             request.save_root = root.clone();
             game.load_world(request).unwrap();
-            assert!(game.fns.0.store.functions.contains_key("test:start"));
+            assert!(game.side.fns.0.store.functions.contains_key("test:start"));
             assert_eq!(
-                game.fns.0.store.tag_functions("minecraft:load"),
+                game.side.fns.0.store.tag_functions("minecraft:load"),
                 ["test:start"]
             );
             assert!(game.items().item_tags["test:sample"].contains("minecraft:stone"));
@@ -2676,17 +2676,17 @@ mod tests {
             assert!(game.stations().recipe_index.contains("test:sample"));
 
             // Changing packs must not reload an old timer from disk.
-            game.fns.0.schedule.push(Scheduled {
+            game.side.fns.0.schedule.push(Scheduled {
                 id: "test:start".into(),
                 time: 1000,
                 seq: 1,
             });
             game.save_schedule();
-            game.fns.0.schedule.clear();
+            game.side.fns.0.schedule.clear();
             assert!(game.run_command("datapack disable \"file/test\""));
-            assert!(game.fns.0.schedule.is_empty());
+            assert!(game.side.fns.0.schedule.is_empty());
             assert!(game.run_command("datapack enable \"file/test\""));
-            assert!(game.fns.0.schedule.is_empty());
+            assert!(game.side.fns.0.schedule.is_empty());
 
             // World-open selection and completions must both use the incoming
             // level's flags, even while `self.level` is still the old level.
@@ -2708,7 +2708,7 @@ mod tests {
             let staged = game
                 .stage_world_tables(&stack, false, &game.options.resources.clone())
                 .unwrap();
-            game.world_tables.0 = staged.tables;
+            game.side.world_tables.0 = staged.tables;
             game.health_resources = staged.health;
             assert!(game.items().item_tags["test:sample"].contains("minecraft:diamond"));
         });
@@ -2738,15 +2738,12 @@ mod tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -2792,9 +2789,9 @@ mod tests {
         ] {
             std::fs::write(functions.join(format!("{name}.mcfunction")), text).unwrap();
         }
-        game.server.world_root = dir.clone();
-        let run = |game: &mut Game<'_>, line: &str| {
-            game.exec.0 = ExecState::default();
+        game.side.world_root = dir.clone();
+        let run = |game: &mut crate::game::ServerGame<'_>, line: &str| {
+            game.side.exec.0 = ExecState::default();
             let source = game.player_source();
             game.execute_line(line, source)
         };
@@ -2819,7 +2816,7 @@ mod tests {
         for name in ["bad", "forbidden", "macro_bad", "slash"] {
             assert!(
                 !game
-                    .fns
+                    .side.fns
                     .0
                     .store
                     .functions
@@ -2833,7 +2830,7 @@ mod tests {
                     .contains(&format!("h144:{name}"))
             );
             assert!(
-                game.fns
+                game.side.fns
                     .0
                     .store
                     .errors
@@ -2842,8 +2839,8 @@ mod tests {
             );
         }
         assert!(run(&mut game, "function h144:forbidden").is_err());
-        assert!(game.fns.0.store.functions.contains_key("h144:macro"));
-        assert!(game.fns.0.store.functions["h144:macro"].is_macro());
+        assert!(game.side.fns.0.store.functions.contains_key("h144:macro"));
+        assert!(game.side.fns.0.store.functions["h144:macro"].is_macro());
         run(&mut game, "function h144:good").unwrap();
         assert_eq!(game.score.board.score("good", "h144").unwrap().value, -98);
         run(&mut game, "function h144:sequence").unwrap();
@@ -2865,8 +2862,8 @@ mod tests {
         .unwrap();
         game.reload_datapacks(true, &game.level.enabled_features.clone())
             .unwrap();
-        assert!(game.fns.0.store.functions.contains_key("h144:good"));
-        assert!(!game.fns.0.store.functions.contains_key("h144:forbidden"));
+        assert!(game.side.fns.0.store.functions.contains_key("h144:good"));
+        assert!(!game.side.fns.0.store.functions.contains_key("h144:forbidden"));
         assert!(
             !game
                 .ui
@@ -2912,15 +2909,12 @@ mod tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -2952,9 +2946,9 @@ mod tests {
         ] {
             std::fs::write(functions.join(format!("{name}.mcfunction")), text).unwrap();
         }
-        game.server.world_root = dir.clone();
-        let run = |game: &mut Game<'_>, line: &str| {
-            game.exec.0 = ExecState::default();
+        game.side.world_root = dir.clone();
+        let run = |game: &mut crate::game::ServerGame<'_>, line: &str| {
+            game.side.exec.0 = ExecState::default();
             let source = game.player_source();
             game.execute_line(line, source)
         };
@@ -2962,9 +2956,9 @@ mod tests {
         run(&mut game, "scoreboard players set #ran h166 -99").unwrap();
         game.reload_datapacks(false, &game.level.enabled_features.clone())
             .unwrap();
-        assert!(!game.fns.0.store.functions.contains_key("h166:novar"));
+        assert!(!game.side.fns.0.store.functions.contains_key("h166:novar"));
         assert!(
-            game.fns
+            game.side.fns
                 .0
                 .store
                 .errors
@@ -3020,23 +3014,20 @@ mod tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
         game.build_registries();
         game.set_allow_commands(true);
-        game.fns.0.loaded = true;
-        let run = |game: &mut Game<'_>, line: &str| {
-            game.exec.0 = ExecState::default();
+        game.side.fns.0.loaded = true;
+        let run = |game: &mut crate::game::ServerGame<'_>, line: &str| {
+            game.side.exec.0 = ExecState::default();
             let source = game.player_source();
             game.execute_line(line, source).unwrap();
         };
@@ -3055,7 +3046,7 @@ mod tests {
             if let Some(tail) = tail {
                 lines.push(FunctionLine::Command(tail.into()));
             }
-            game.fns.0.store.functions.insert(
+            game.side.fns.0.store.functions.insert(
                 id.clone(),
                 Function {
                     id,
@@ -3278,15 +3269,12 @@ mod entity_score_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -3294,7 +3282,7 @@ mod entity_score_tests {
 
         game.set_allow_commands(true);
         game.ensure_datapacks();
-        game.fns.0.store.predicates.insert(
+        game.side.fns.0.store.predicates.insert(
             "h270:min2".into(),
             serde_json::json!({
                 "type": "minecraft:entity_scores", "entity": "this", "scores": {"pts": {"min": 2}}
@@ -3333,13 +3321,13 @@ mod entity_score_tests {
             actors.push((id, holder));
         }
         let time = game.world.game_time;
-        let matches = |game: &mut Game<'_>, id| {
+        let matches = |game: &mut crate::game::ServerGame<'_>, id| {
             let mut source = game.player_source();
             source.entity = Some(Target::Mob(id));
             source.pos = game.target_position(Target::Mob(id)).unwrap();
-            game.server.command_source = Some(source);
+            game.side.command_source = Some(source);
             let result = game.check_predicate("h270:min2").unwrap();
-            game.server.command_source = None;
+            game.side.command_source = None;
             result
         };
         assert!(!matches(&mut game, actors[0].0));
@@ -3381,15 +3369,12 @@ mod entity_score_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -3432,9 +3417,9 @@ mod entity_score_tests {
                 std::fs::write(pack.join("pack.mcmeta"), metadata).unwrap();
             }
         }
-        game.server.world_root = dir.clone();
-        let run = |game: &mut Game<'_>, line: &str| {
-            game.exec.0 = ExecState::default();
+        game.side.world_root = dir.clone();
+        let run = |game: &mut crate::game::ServerGame<'_>, line: &str| {
+            game.side.exec.0 = ExecState::default();
             let source = game.player_source();
             game.execute_line(line, source)
         };
@@ -3460,7 +3445,7 @@ mod entity_score_tests {
                     if valid { 17 } else { -99 }
                 );
                 assert_eq!(
-                    game.fns
+                    game.side.fns
                         .0
                         .store
                         .functions
@@ -3475,7 +3460,7 @@ mod entity_score_tests {
                     valid
                 );
                 assert_eq!(
-                    game.fns
+                    game.side.fns
                         .0
                         .packs
                         .iter()
@@ -3516,15 +3501,12 @@ mod required_tag_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -3578,11 +3560,11 @@ mod required_tag_tests {
                 &serde_json::json!({"values": values}).to_string(),
             );
         }
-        game.server.world_root = dir.clone();
+        game.side.world_root = dir.clone();
         game.build_registries();
         game.set_allow_commands(true);
-        let run = |game: &mut Game<'_>, line: &str| {
-            game.exec.0 = ExecState::default();
+        let run = |game: &mut crate::game::ServerGame<'_>, line: &str| {
+            game.side.exec.0 = ExecState::default();
             let source = game.player_source();
             if let Err(error) = game.execute_line(line, source) {
                 assert!(line.contains("function #h145:"), "{line}: {error:?}");
@@ -3598,15 +3580,15 @@ mod required_tag_tests {
             game.score.board.score("sentinel", "h145").unwrap().value,
             73
         );
-        assert!(game.fns.0.enabled.contains(&"file/h145".to_owned()));
+        assert!(game.side.fns.0.enabled.contains(&"file/h145".to_owned()));
         assert!(
-            game.fns.0.store.errors.is_empty(),
+            game.side.fns.0.store.errors.is_empty(),
             "{:?}",
-            game.fns.0.store.errors
+            game.side.fns.0.store.errors
         );
         for name in ["a", "b", "c"] {
             assert!(
-                game.fns
+                game.side.fns
                     .0
                     .store
                     .functions
@@ -3615,15 +3597,15 @@ mod required_tag_tests {
         }
         for name in tags.as_object().unwrap().keys() {
             assert!(
-                game.fns
+                game.side.fns
                     .0
                     .store
                     .function_tags
                     .contains_key(&format!("h145:{name}"))
             );
         }
-        let score = |game: &Game<'_>, key: &str| game.score.board.score(key, "h145").unwrap().value;
-        let reset = |game: &mut Game<'_>| {
+        let score = |game: &crate::game::ServerGame<'_>, key: &str| game.score.board.score(key, "h145").unwrap().value;
+        let reset = |game: &mut crate::game::ServerGame<'_>| {
             for key in ["a", "b", "c", "order"] {
                 run(game, &format!("scoreboard players set {key} h145 0"));
                 assert_eq!(score(game, key), 0);
@@ -3689,7 +3671,7 @@ mod required_tag_tests {
             if actual != expected {
                 failures.push(format!("{name}: {actual:?} expected {expected:?}"));
             }
-            let ids = game.fns.0.store.tag_functions(&format!("h145:{name}"));
+            let ids = game.side.fns.0.store.tag_functions(&format!("h145:{name}"));
             let expected_ids: Vec<String> = if name == "optional_invalid_child" {
                 vec!["h145:a".into(), "h145:b".into()]
             } else {
@@ -3771,17 +3753,17 @@ mod required_tag_tests {
                     serde_json::json!({"type":"minecraft:all_of","terms":[next]}),
                 );
             }
-            game.server.world_root = dir.clone();
+            game.side.world_root = dir.clone();
             game.reload_datapacks(false, &[]).unwrap();
-            assert!(game.fns.0.store.predicates.contains_key("h121:reference"));
+            assert!(game.side.fns.0.store.predicates.contains_key("h121:reference"));
             assert!(
                 game.ui
                     .registries
                     .predicates
                     .contains(&"h121:reference".into())
             );
-            let run = |game: &mut Game<'_>, line: &str| {
-                game.exec.0 = ExecState::default();
+            let run = |game: &mut crate::game::ServerGame<'_>, line: &str| {
+                game.side.exec.0 = ExecState::default();
                 let source = game.player_source();
                 game.execute_line(line, source).unwrap();
             };
@@ -3846,15 +3828,15 @@ mod required_tag_tests {
                     }
                 }
             }
-            let previous = game.server.command_source;
+            let previous = game.side.command_source;
             let server = game.server_source();
             assert!(server.entity.is_none());
-            game.server.command_source = Some(server);
+            game.side.command_source = Some(server);
             assert!(!game.check_predicate("h121:pig").unwrap());
             assert!(!game.check_predicate("h121:reference").unwrap());
             assert!(game.check_predicate("h121:inverted").unwrap());
             assert!(game.check_predicate("h121:absent").is_err());
-            game.server.command_source = previous;
+            game.side.command_source = previous;
             // Defensive evaluator controls only. Java rejects these graphs at
             // world load (a reload refuses a dangling or cyclic reference, so they cannot come from a
             // pack): they are put in the loaded store directly. This does not establish
@@ -3905,11 +3887,11 @@ mod required_tag_tests {
                 "minecraft:h121_canonical",
                 serde_json::json!({"type":"minecraft:all_of","terms":["h121_canonical"]}),
             );
-            game.fns.0.store.predicates.extend(defensive_graphs);
+            game.side.fns.0.store.predicates.extend(defensive_graphs);
             let mut source = game.player_source();
             source.entity = Some(Target::Mob(actors[0].0));
             source.pos = game.target_position(Target::Mob(actors[0].0)).unwrap();
-            game.server.command_source = Some(source);
+            game.side.command_source = Some(source);
             for name in [
                 "missing",
                 "nested_missing",
@@ -3926,7 +3908,7 @@ mod required_tag_tests {
                 "all_reach_cycle_a",
             ] {
                 assert!(
-                    game.fns
+                    game.side.fns
                         .0
                         .store
                         .predicates
@@ -3939,7 +3921,7 @@ mod required_tag_tests {
             }
             assert!(!game.check_predicate("minecraft:h121_canonical").unwrap());
             assert!(game.check_predicate("h121:reference").unwrap());
-            game.server.command_source = previous;
+            game.side.command_source = previous;
             assert_eq!(game.world.game_time, clock);
             std::fs::remove_dir_all(dir).unwrap();
         });

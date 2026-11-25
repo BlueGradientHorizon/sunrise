@@ -7,11 +7,11 @@ use crate::game::native_client_session::tests::logged_client;
 use crate::game::native_entity_refs::tests::with_client_game;
 
 /// A guest with one oak log in its 2x2 grid and the server's result, four planks.
-fn with_guest_grid(run: impl FnOnce(&mut Game<'_>)) {
+fn with_guest_grid(run: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     mod_platform::testing::with_mods(Vec::new().into(), || {
         with_client_game(|game| {
             let _server = logged_client(game);
-            game.title.0 = None;
+            game.side.title.0 = None;
             game.craft_size = 2;
             game.craft_grid[0] = Some(ItemStack::new("minecraft:oak_log", 1));
             game.remote.as_mut().unwrap().craft_result =

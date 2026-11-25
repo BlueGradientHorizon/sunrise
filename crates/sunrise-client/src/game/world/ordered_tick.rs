@@ -580,8 +580,8 @@ mod tests {
                 assert!(game.run_command(&format!("summon experience_orb {x} 70 12 {{Value:1}}")));
             }
             // Existing residents whose spawn packets were already announced.
-            game.server.ordered.announced = sunrise_client::join_seq::JoinSeq::MAX;
-            game.tickets.0.update(None);
+            game.side.ordered.announced = sunrise_client::join_seq::JoinSeq::MAX;
+            game.side.tickets.0.update(None);
             game.begin_ordered_ticks();
             game.run_ordered_ticks(sunrise_client::join_seq::JoinSeq::MAX, false)
                 .unwrap();
@@ -666,12 +666,12 @@ mod tests {
                         game.run_command(&format!("summon text_display {x} 70 4 {{text:\"x\"}}"))
                     );
                 }
-                ids = game.others.0.iter().map(|o| o.id).collect();
-                game.tickets.0.update(None);
+                ids = game.side.others.0.iter().map(|o| o.id).collect();
+                game.side.tickets.0.update(None);
                 game.begin_ordered_ticks();
                 game.run_ordered_ticks(sunrise_client::join_seq::JoinSeq::MAX, false)
                     .unwrap();
-                game.native_others_tick_family(game.server.ordered.told, game.server.ordered.born);
+                game.native_others_tick_family(game.side.ordered.told, game.side.ordered.born);
             });
         });
         let heard = std::mem::take(&mut *heard.lock().unwrap());

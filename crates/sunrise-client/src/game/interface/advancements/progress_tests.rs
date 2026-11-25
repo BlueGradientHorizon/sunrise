@@ -142,8 +142,8 @@ fn progress_events_capture_each_players_full_mutation_state() {
     with_guests(|game| {
         if matches!(case.as_str(), "command-reload" | "nested-reload") {
             use crate::game::lan_actions::GuestCommand;
-            game.server.world_root = scratch.join("world");
-            let pack = game.server.world_root.join("datapacks/test");
+            game.side.world_root = scratch.join("world");
+            let pack = game.side.world_root.join("datapacks/test");
             std::fs::create_dir_all(pack.join("data/testmod/function")).unwrap();
             std::fs::write(
                 pack.join("pack.mcmeta"),
@@ -156,7 +156,7 @@ fn progress_events_capture_each_players_full_mutation_state() {
             )
             .unwrap();
             std::fs::write(
-                game.server.world_root.join("datapacks.json"),
+                game.side.world_root.join("datapacks.json"),
                 r#"{"enabled":["file/test"],"disabled":[]}"#,
             )
             .unwrap();
@@ -174,7 +174,7 @@ fn progress_events_capture_each_players_full_mutation_state() {
                 guest.advancements.grant(ID, "gamma", DATE);
             });
             game.lan.as_mut().unwrap().hub.mods_loaded = true;
-            let reload = |game: &mut Game<'_>| {
+            let reload = |game: &mut crate::game::ServerGame<'_>| {
                 assert!(game.run_guest_command(GuestCommand {
                     conn: 12,
                     command: "reload".into(),
@@ -189,7 +189,7 @@ fn progress_events_capture_each_players_full_mutation_state() {
                 reload(game);
             }
             assert!(
-                game.fns.0.store.functions.contains_key("testmod:reward"),
+                game.side.fns.0.store.functions.contains_key("testmod:reward"),
                 "reward function was not loaded"
             );
             let events = observed.lock().unwrap();
@@ -392,7 +392,7 @@ fn progress_events_capture_each_players_full_mutation_state() {
             if reload {
                 game.run_native_advancement_grants();
             } else {
-                game.server.world_root = game.options.game_dir.clone().unwrap();
+                game.side.world_root = game.options.game_dir.clone().unwrap();
                 game.tick_server(false).unwrap();
             }
             let events = observed.lock().unwrap();

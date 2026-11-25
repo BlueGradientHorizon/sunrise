@@ -501,7 +501,7 @@ pub(in crate::game) mod tests {
     use sunrise_core::position::BlockPos;
 
     /// A live cow `id` at `(5.5, 64, 5.5)`, with its handle.
-    fn cow(game: &mut Game<'_>, id: u32) -> LivingRef {
+    fn cow(game: &mut crate::game::ServerGame<'_>, id: u32) -> LivingRef {
         let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
         game.mobs
             .push(Mob::new(id, kind, Vec3::new(5.5, 64.0, 5.5), 0.0));
@@ -693,7 +693,7 @@ pub(in crate::game) mod tests {
         });
     }
 
-    pub(in crate::game) fn guest_server(game: &mut Game<'_>, dedicated: bool, owner: bool) {
+    pub(in crate::game) fn guest_server(game: &mut crate::game::ServerGame<'_>, dedicated: bool, owner: bool) {
         use super::super::{execution_role::ExecutionRole, lan::LanSettings};
         use sunrise_client::lan::{NetConfig, hub::HubConfig};
         game.options.execution_role = if dedicated {
@@ -725,8 +725,8 @@ pub(in crate::game) mod tests {
             seed: 0,
             max_players: 2,
             integrated: !dedicated,
-            levels: game.server.level_shapes,
-            level_seeds: game.levels.0.runtime.seeds(),
+            levels: game.side.level_shapes,
+            level_seeds: game.side.levels.0.runtime.seeds(),
         };
         game.lan_host(settings, net, config).unwrap();
         game.lan.as_mut().unwrap().hub.singleplayer_owner = owner.then_some(12);
@@ -737,7 +737,7 @@ pub(in crate::game) mod tests {
     }
 
     pub(in crate::game) fn guest(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         conn: u32,
     ) -> (
         LivingRef,
@@ -780,7 +780,7 @@ pub(in crate::game) mod tests {
         (living, rx)
     }
 
-    fn bed(game: &mut Game<'_>, name: &str, pos: [i32; 3]) {
+    fn bed(game: &mut crate::game::ServerGame<'_>, name: &str, pos: [i32; 3]) {
         let head = game
             .pack
             .assets
@@ -802,12 +802,12 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) fn sync_guests(game: &mut Game<'_>) {
+    pub(in crate::game) fn sync_guests(game: &mut crate::game::ServerGame<'_>) {
         use sunrise_client::lan::hub::TickCtx;
         let mut ctx = TickCtx {
             world: &mut game.world,
             entities: &[],
-            next_entity: &mut game.server.next_entity,
+            next_entity: &mut game.side.next_entity,
             spawn: [0.0, 64.0, 0.0],
             spawn_angle: [0.0; 2],
             spawn_dimension: "minecraft:overworld",
@@ -1038,13 +1038,13 @@ pub(in crate::game) mod tests {
                     assert_eq!(game.entity(13), Some(foreign.entity()));
                     let _ = packets(&outer_rx);
                     let _ = packets(&foreign_rx);
-                    let refuse = |game: &mut Game<'_>| {
+                    let refuse = |game: &mut crate::game::ServerGame<'_>| {
                         let foreign_before = SleepState::guest(game, 13);
                         let outer_before = SleepState::acting(game);
                         let outer_guest_before = SleepState::guest(game, 12);
                         let foreign_bed = game.world.block(5, 64, 5);
                         let outer_bed = game.world.block(7, 64, 7);
-                        let player_beds = game.server.player_beds.clone();
+                        let player_beds = game.side.player_beds.clone();
                         for mutation in 0..4 {
                             let changed = match mutation {
                                 0 => game.living_start_sleeping(foreign, [5, 64, 5]),
@@ -1059,7 +1059,7 @@ pub(in crate::game) mod tests {
                             );
                             // No wake marker or bed cleanup may be queued for
                             // the current world by the refused foreign write.
-                            assert_eq!(game.server.player_beds, player_beds);
+                            assert_eq!(game.side.player_beds, player_beds);
                             assert_eq!(SleepState::guest(game, 13), foreign_before);
                             assert_eq!(SleepState::acting(game), outer_before);
                             assert_eq!(SleepState::guest(game, 12), outer_guest_before);
@@ -1075,8 +1075,8 @@ pub(in crate::game) mod tests {
                             let _ = packets(&outer_rx);
                             let _ = packets(&foreign_rx);
                             refuse(game);
-                            assert_eq!(game.server.lan_acting, Some(12));
-                            assert!(!game.server.lan_acting_fake);
+                            assert_eq!(game.side.lan_acting, Some(12));
+                            assert!(!game.side.lan_acting_fake);
                         })
                         .unwrap();
                     } else {
@@ -1091,7 +1091,7 @@ pub(in crate::game) mod tests {
                     assert_eq!(SleepState::guest(game, 13), foreign_before);
                     assert_eq!(game.world.block(5, 64, 5), foreign_bed);
                     assert_eq!(game.world.block(7, 64, 7), outer_bed);
-                    assert!(game.server.lan_guest_swaps.is_empty());
+                    assert!(game.side.lan_guest_swaps.is_empty());
                     assert_eq!(game.dim, super::super::Dim::Overworld);
                 });
             }
@@ -1114,7 +1114,7 @@ pub(in crate::game) mod tests {
     }
 
     impl SleepState {
-        fn acting(game: &Game<'_>) -> Self {
+        fn acting(game: &crate::game::ServerGame<'_>) -> Self {
             Self {
                 position: game.player.as_ref().map(|p| p.position),
                 velocity: game.player.as_ref().map(|p| p.velocity),
@@ -1129,7 +1129,7 @@ pub(in crate::game) mod tests {
             }
         }
 
-        fn guest(game: &Game<'_>, conn: u32) -> Self {
+        fn guest(game: &crate::game::ServerGame<'_>, conn: u32) -> Self {
             let g = game.command_guest(conn).unwrap();
             Self {
                 position: Some(Vec3::new(g.position[0], g.position[1], g.position[2])),
@@ -1255,7 +1255,7 @@ pub(in crate::game) mod tests {
                 let outer_pos = game.player.as_ref().unwrap().position;
                 assert!(game.living_set_sleeping_pos(outer, [7, 64, 7]));
                 game.as_guest(14, |game| {
-                    assert!(game.server.lan_acting_fake);
+                    assert!(game.side.lan_acting_fake);
                     assert_eq!(game.living_gliding_ticks(outer), None);
                     assert!(!game.living_stop_gliding(outer));
                     assert!(!game.living_clear_sleeping_pos(outer));
@@ -1264,18 +1264,18 @@ pub(in crate::game) mod tests {
                     assert!(!game.living_clear_sleeping_pos(fake));
                     assert!(!game.living_stop_sleeping(fake));
                     game.as_guest(13, |game| {
-                        assert!(!game.server.lan_acting_fake);
+                        assert!(!game.side.lan_acting_fake);
                         assert!(game.living_stop_gliding(inner));
                         assert!(game.living_start_sleeping(inner, [5, 64, 5]));
                     })
                     .unwrap();
-                    assert!(game.server.lan_acting_fake);
+                    assert!(game.side.lan_acting_fake);
                     assert_eq!(game.living_is_gliding(fake), Some(true));
                     assert_eq!(game.living_gliding_ticks(fake), Some(14));
                     assert!(game.living_stop_gliding(fake));
                 })
                 .unwrap();
-                assert!(!game.server.lan_acting_fake);
+                assert!(!game.side.lan_acting_fake);
                 assert_eq!(game.living_is_gliding(outer), Some(true));
                 assert_eq!(game.living_gliding_ticks(outer), Some(12));
                 assert_eq!(game.living_sleeping_pos(outer), Some([7, 64, 7]));
@@ -1287,7 +1287,7 @@ pub(in crate::game) mod tests {
             assert!(!game.command_guest(14).unwrap().fall_flying);
             assert_eq!(game.living_sleeping_pos(inner), Some([5, 64, 5]));
             assert_eq!(game.living_is_sleeping(fake), Some(false));
-            assert!(game.server.lan_guest_swaps.is_empty());
+            assert!(game.side.lan_guest_swaps.is_empty());
         });
     }
 
@@ -1401,7 +1401,7 @@ pub(in crate::game) mod tests {
                 state("minecraft:ladder"),
                 state("minecraft:stone"),
             );
-            let at = |game: &Game<'_>, id: u32| {
+            let at = |game: &crate::game::ServerGame<'_>, id: u32| {
                 let mob = game.mobs.iter().find(|m| m.id == id).unwrap();
                 mob.on_climbable(&game.mob_world_base(&[]))
             };
@@ -1457,7 +1457,7 @@ pub(in crate::game) mod tests {
 
     /// Whether the player, as entity `id` at `(5.5, 64, 5.5)`, climbs by its own motion, and the
     /// block it then remembers climbing.
-    fn player_climbs(game: &mut Game<'_>, id: i32) -> (bool, Option<BlockPos>) {
+    fn player_climbs(game: &mut crate::game::ServerGame<'_>, id: i32) -> (bool, Option<BlockPos>) {
         let mut player = PlayerMotion::new(game.motion, Vec3::new(5.5, 64.0, 5.5)).unwrap();
         player.entity_id = id;
         let side = game_side!(game);

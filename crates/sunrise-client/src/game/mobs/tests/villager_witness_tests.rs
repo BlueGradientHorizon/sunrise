@@ -69,7 +69,7 @@ fn every_accepted_hurt_counts_for_its_own_attacker() {
             .clone();
         let at = Vec3::new(1.0, 100.0, 1.0);
         game.discard_resident_dragon();
-        game.server.next_entity = 100;
+        game.side.next_entity = 100;
         let dragon = game
             .spawn_mob_spawned(
                 "minecraft:ender_dragon",
@@ -88,7 +88,7 @@ fn every_accepted_hurt_counts_for_its_own_attacker() {
         game.persist.uuids.insert(92, [0, 0, 0, 4]);
         game.native_mobs_joined(0, false);
         game.player = Some(sunrise_client::motion::PlayerMotion::new(game.motion, at).unwrap());
-        let player_hit = |game: &mut Game<'_>, uuid, amount| {
+        let player_hit = |game: &mut crate::game::ServerGame<'_>, uuid, amount| {
             bind_local_player(game, 300, uuid);
             game.mob_hits_mob(91, amount, Damage::player([at.x, at.y, at.z]))
         };
@@ -199,10 +199,10 @@ fn hurt_gossip_belongs_to_the_hits_own_player() {
         game.native_mobs_joined(0, false);
         game.player = Some(sunrise_client::motion::PlayerMotion::new(game.motion, at).unwrap());
         bind_local_player(game, 301, 9);
-        game.server.lan_acting = Some(7);
-        game.server.lan_acting_name = Some("Cloud owner".into());
+        game.side.lan_acting = Some(7);
+        game.side.lan_acting_name = Some("Cloud owner".into());
         bind_acting_guest(game);
-        game.server.lan_acting = None;
+        game.side.lan_acting = None;
         bind_local_player(game, 302, 2);
         game.cloud_affect(
             crate::game::potions::Victim::Mob(91),

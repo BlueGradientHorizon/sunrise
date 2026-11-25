@@ -64,9 +64,9 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
                     sunrise_protocol::registry::Ids::from_names(vec!["bound:menu".into()]),
                 );
                 game.settings.gui_scale = 1;
-                game.recipe_ui.0.test_viewport = Some([1280, 720]);
-                game.title.0 = None;
-                let open = |game: &mut Game<'_>| {
+                game.side.recipe_ui.0.test_viewport = Some([1280, 720]);
+                game.side.title.0 = None;
+                let open = |game: &mut crate::game::ClientGame<'_>| {
                     game.handle_packet(Clientbound::OpenScreen(OpenScreen {
                         container: 1,
                         menu: 0,
@@ -102,7 +102,7 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
                 client.start(identity.clone(), layout, 1).unwrap();
                 assert!(client.part(6, 1, 0, vec![0]).unwrap().is_some());
                 assert!(client.accept_catalog(identity.clone()));
-                let kept = |game: &Game<'_>| {
+                let kept = |game: &crate::game::ClientGame<'_>| {
                     game.native_net.placement.client.catalog() == Some(&identity)
                         && game.native_net.placement.client.window() == Some(&window)
                         && game.native_book_placement_catalog_matches(&identity)
@@ -144,7 +144,7 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
 
                 // The server replaces the menu in place, with no close packet.
                 open(game);
-                assert_eq!(game.client.screen, Screen::Inventory);
+                assert_eq!(game.side.screen, Screen::Inventory);
                 assert_ne!(game.remote.as_ref().unwrap().menu.generation, first);
                 let replacement = game.native_net.placement.client.window().unwrap();
                 assert_eq!(replacement.window, 1);
@@ -203,7 +203,7 @@ fn a_bound_recipe_book_screen_refuses_bad_layouts_at_open() {
                         !game.open_native_screen(key, None, 3, None),
                         "accepted {case}"
                     );
-                    assert!(game.mod_screen.0.is_none(), "staged {case}");
+                    assert!(game.side.mod_screen.0.is_none(), "staged {case}");
                 }
                 // Initially inactive slots (`None`) and unknown `no_item_icon` sprites open cleanly.
                 for (case, adjust) in [
@@ -221,7 +221,7 @@ fn a_bound_recipe_book_screen_refuses_bad_layouts_at_open() {
                         game.open_native_screen(key, None, 3, None),
                         "refused {case}"
                     );
-                    assert!(game.mod_screen.0.is_some(), "did not stage {case}");
+                    assert!(game.side.mod_screen.0.is_some(), "did not stage {case}");
                 }
                 *edit.lock().unwrap() = None;
                 assert!(game.open_native_screen(key, None, 3, None));
@@ -243,11 +243,11 @@ fn a_hidden_slot_leaves_the_screen_and_comes_back_where_put() {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             let generation = seed_native_menu(game, 1, MENU);
             game.settings.gui_scale = 1;
-            game.recipe_ui.0.test_viewport = Some([1280, 720]);
-            game.client.screen = Screen::Inventory;
-            game.title.0 = None;
+            game.side.recipe_ui.0.test_viewport = Some([1280, 720]);
+            game.side.screen = Screen::Inventory;
+            game.side.title.0 = None;
             game.container = Some((i32::MIN, 0, 0));
-            game.mod_screen.0 = Some(OpenNativeScreen {
+            game.side.mod_screen.0 = Some(OpenNativeScreen {
                 menu: OpenNativeMenu {
                     key: (i32::MIN, 0, 0),
                     window: 1,
@@ -337,7 +337,7 @@ fn a_hidden_slot_leaves_the_screen_and_comes_back_where_put() {
             assert_eq!(geometry(game), before);
 
             // With the screen closed there is no screen to change.
-            game.client.screen = Screen::Playing;
+            game.side.screen = Screen::Playing;
             assert_eq!(game.set_screen_slot(MENU, 0, None), Err(NoScreen));
             assert_eq!(game.screen_slot(MENU, 0), None);
         });
@@ -373,7 +373,7 @@ fn a_missing_recipe_book_factory_keeps_the_current_window() {
                             "bound:menu".into(),
                         ]),
                     );
-                let open = |game: &mut Game<'_>, container, menu, title: &str| {
+                let open = |game: &mut crate::game::ClientGame<'_>, container, menu, title: &str| {
                     game.handle_packet(Clientbound::OpenScreen(OpenScreen {
                         container,
                         menu,
@@ -391,7 +391,7 @@ fn a_missing_recipe_book_factory_keeps_the_current_window() {
 
                 assert_eq!(game.remote_menu(), (4, CHEST.to_owned()));
                 assert_eq!(game.remote_menu_title(), Some(title));
-                assert_eq!(game.client.screen, Screen::Inventory);
+                assert_eq!(game.side.screen, Screen::Inventory);
                 assert_eq!(game.container, Some(key));
                 assert_eq!(
                     game.world.block_entities.get(&key).unwrap().slots().len(),
@@ -413,11 +413,11 @@ fn a_moved_slot_takes_its_place_for_drawing_and_input_from_the_next_frame() {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             let generation = seed_native_menu(game, 1, MENU);
             game.settings.gui_scale = 1;
-            game.recipe_ui.0.test_viewport = Some([1280, 720]);
-            game.client.screen = Screen::Inventory;
-            game.title.0 = None;
+            game.side.recipe_ui.0.test_viewport = Some([1280, 720]);
+            game.side.screen = Screen::Inventory;
+            game.side.title.0 = None;
             game.container = Some((i32::MIN, 0, 0));
-            game.mod_screen.0 = Some(OpenNativeScreen {
+            game.side.mod_screen.0 = Some(OpenNativeScreen {
                 menu: OpenNativeMenu {
                     key: (i32::MIN, 0, 0),
                     window: 1,
@@ -519,9 +519,9 @@ fn a_moved_slot_takes_its_place_for_drawing_and_input_from_the_next_frame() {
             // A slot beyond the image takes the click instead of making it an outside click.
             assert!(game.set_screen_slot(MENU, 0, Some([200.0, 20.0])).is_ok());
             game.build_screen();
-            game.client.cursor = (555.0 + 200.0, 277.0 + 22.0);
+            game.side.cursor = (555.0 + 200.0, 277.0 + 22.0);
             assert_eq!(game.target_at(&batch), (Some(300), false));
-            game.client.cursor = (555.0 + 230.0, 277.0 + 22.0);
+            game.side.cursor = (555.0 + 230.0, 277.0 + 22.0);
             assert_eq!(game.target_at(&batch), (None, true));
         });
     });
@@ -550,7 +550,7 @@ fn a_registered_recipe_book_screen_opens_for_a_blockless_menu() {
                         data: Vec::new(),
                     }),
                 ));
-                let screen = game.mod_screen.0.as_ref().expect("bound screen stages");
+                let screen = game.side.mod_screen.0.as_ref().expect("bound screen stages");
                 assert_eq!(
                     screen.layout().recipe_book.as_ref().unwrap().as_str(),
                     "bound:book"
@@ -605,7 +605,7 @@ fn a_reopened_window_uses_only_its_new_screen_instance() {
                         "minecraft:menu".into(),
                         Ids::from_names(vec![REOPENED_MENU.into()]),
                     );
-                    let open = |game: &mut Game<'_>, marker: i32| {
+                    let open = |game: &mut crate::game::ClientGame<'_>, marker: i32| {
                         game.handle_packet(C::CustomPayload(CustomPayload {
                             channel: CHANNEL.into(),
                             data: menu_extra::encode(&menu_extra::Message {
@@ -637,7 +637,7 @@ fn a_reopened_window_uses_only_its_new_screen_instance() {
 
                     let mut batch = HudBatch::scratch([512, 512]);
                     let (ox, oy) = game.inventory_origin(&batch);
-                    game.client.cursor = (ox + 17.0, oy + 25.0);
+                    game.side.cursor = (ox + 17.0, oy + 25.0);
                     assert!(game.draw_native_screen(&mut batch, ox, oy));
                     assert!(game.native_screen_press_at(&batch, true));
                     let packet = (0..32)
@@ -704,11 +704,11 @@ fn authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen() {
             game.settings.gui_scale = 1;
             // The fixture has no renderer; layout still needs the same viewport
             // used by geometry() to evaluate toggle gutters and book placement.
-            game.recipe_ui.0.test_viewport = Some([1280, 720]);
-            game.client.screen = Screen::Inventory;
-            game.title.0 = None;
+            game.side.recipe_ui.0.test_viewport = Some([1280, 720]);
+            game.side.screen = Screen::Inventory;
+            game.side.title.0 = None;
             game.container = Some((i32::MIN, 0, 0));
-            game.mod_screen.0 = Some(OpenNativeScreen {
+            game.side.mod_screen.0 = Some(OpenNativeScreen {
                 menu: OpenNativeMenu {
                     key: (i32::MIN, 0, 0),
                     window: 1,
@@ -907,10 +907,10 @@ fn entering_inventory_requests_catalogue_for_preinstalled_bound_screen() {
                 remote.joined = true;
                 seed_native_menu(game, 1, "bound:menu");
                 let key = (i32::MIN, 0, 0);
-                game.client.screen = Screen::Playing;
+                game.side.screen = Screen::Playing;
                 game.container = Some(key);
                 assert!(game.open_native_screen(key, None, 3, None));
-                let staged = game.mod_screen.0.as_ref().expect("bound screen staged");
+                let staged = game.side.mod_screen.0.as_ref().expect("bound screen staged");
                 assert_eq!(staged.menu.block, None);
                 let nonce = staged.layout_revision;
 

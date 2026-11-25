@@ -30,7 +30,7 @@ fn displayed(id: &str, parent: Option<&str>, x: f32, y: f32) -> Advancement {
     }
 }
 
-fn position(game: &Game<'_>, a: &Advancement) -> (f32, f32) {
+fn position(game: &crate::game::ClientGame<'_>, a: &Advancement) -> (f32, f32) {
     game.adv.remote_tree.as_ref().unwrap().positions[game.adv.tree.by_id[&a.id]]
 }
 
@@ -76,11 +76,11 @@ fn remote_tree_rejects_unresolved_nodes_and_retains_removed_progress() {
                 assert_eq!(position(game, &grand), (2.0, 3.0));
                 assert_eq!(position(game, &sibling), (1.0, 2.5));
                 assert_eq!(game.adv.progress.criteria.len(), 3);
-                assert_eq!(game.client.toast_manager.queued.len(), 3);
+                assert_eq!(game.side.toast_manager.queued.len(), 3);
 
                 game.open_advancements(true);
                 game.select_advancement_tab(game.adv.tree.by_id[&other.id]);
-                game.adv_ui.0.tab_state_mut().unwrap().scroll = Some((12.0, 34.0));
+                game.side.adv_ui.0.tab_state_mut().unwrap().scroll = Some((12.0, 34.0));
                 game.remote_advancements(UpdateAdvancements {
                     reset: false,
                     added: vec![],
@@ -98,7 +98,7 @@ fn remote_tree_rejects_unresolved_nodes_and_retains_removed_progress() {
                 assert_eq!(view.tabs, [0]);
                 assert_eq!(view.tab, Some(0));
                 assert_eq!(
-                    game.adv_ui.0.tab_state().unwrap().scroll,
+                    game.side.adv_ui.0.tab_state().unwrap().scroll,
                     Some((12.0, 34.0))
                 );
 
@@ -112,10 +112,10 @@ fn remote_tree_rejects_unresolved_nodes_and_retains_removed_progress() {
                 let view = game.adv_view();
                 assert_eq!(view.tabs, [0]);
                 assert_eq!(view.tab, Some(0));
-                assert_eq!(game.adv_ui.0.tab_state().unwrap().scroll, None);
+                assert_eq!(game.side.adv_ui.0.tab_state().unwrap().scroll, None);
                 assert!(game.adv_done(game.adv.tree.by_id[&child.id]));
                 assert_eq!(position(game, &child), (1.0, 1.5));
-                assert_eq!(game.client.toast_manager.queued.len(), 3);
+                assert_eq!(game.side.toast_manager.queued.len(), 3);
 
                 game.remote_advancements(UpdateAdvancements {
                     reset: true,
@@ -232,12 +232,12 @@ fn remote_tab_updates_restore_pan_and_clear_hover_on_progress_only() {
                 let mut batch = HudBatch::new([640, 480], game.settings.gui_scale_inputs());
                 game.draw_advancements(&mut batch);
                 assert_eq!(
-                    game.adv_ui.0.tab_state().unwrap().scroll,
+                    game.side.adv_ui.0.tab_state().unwrap().scroll,
                     Some((-177.0, -92.0))
                 );
                 assert!(game.advancements_scroll(10.0, 5.0));
                 assert_eq!(
-                    game.adv_ui.0.tab_state().unwrap().scroll,
+                    game.side.adv_ui.0.tab_state().unwrap().scroll,
                     Some((-17.0, -12.0))
                 );
                 game.select_advancement_tab(game.adv.tree.by_id[&other.id]);
@@ -253,15 +253,15 @@ fn remote_tab_updates_restore_pan_and_clear_hover_on_progress_only() {
                 let first_index = game.adv.tree.by_id[&first.id];
                 assert_eq!(view.tab, Some(first_index));
                 assert_eq!(view.widgets, [first_index]);
-                let tab = game.adv_ui.0.tab_state().unwrap();
+                let tab = game.side.adv_ui.0.tab_state().unwrap();
                 assert_eq!(tab.scroll, Some((-17.0, -12.0)));
                 assert_eq!(tab.bounds, TabBounds(0, 0, 588, 297));
 
                 let (left, top) = window(batch.width, batch.height);
-                game.client.cursor = (left + 13.0, top + 22.0);
-                game.adv_ui.0.last_frame = Some(Instant::now() - std::time::Duration::from_secs(1));
+                game.side.cursor = (left + 13.0, top + 22.0);
+                game.side.adv_ui.0.last_frame = Some(Instant::now() - std::time::Duration::from_secs(1));
                 game.adv_tick_hover(&view, -17, -12, left, top);
-                let tab = game.adv_ui.0.tab_state().unwrap();
+                let tab = game.side.adv_ui.0.tab_state().unwrap();
                 assert_eq!(tab.hovered, Some(first_index));
                 assert!(tab.fade > 0.0);
                 game.remote_advancements(UpdateAdvancements {
@@ -271,13 +271,13 @@ fn remote_tab_updates_restore_pan_and_clear_hover_on_progress_only() {
                     progress: vec![(first.id, vec![("c".into(), Some(0))])],
                     show: false,
                 });
-                let tab = game.adv_ui.0.tab_state().unwrap();
+                let tab = game.side.adv_ui.0.tab_state().unwrap();
                 assert_eq!(tab.hovered, None);
                 assert_eq!(tab.fade.to_bits(), 0.0f32.to_bits());
                 assert_eq!(tab.scroll, Some((-17.0, -12.0)));
                 assert!(game.advancements_scroll(-1.0, 0.0));
                 assert_eq!(
-                    game.adv_ui.0.tab_state().unwrap().scroll,
+                    game.side.adv_ui.0.tab_state().unwrap().scroll,
                     Some((-33.0, -12.0))
                 );
             });
@@ -419,7 +419,7 @@ fn extreme_remote_positions_use_java_widget_coordinates_and_bounds() {
             with_client_game(|game| {
                 game.init_remote_for_replay().unwrap();
                 game.open_advancements(true);
-                let apply = |game: &mut Game<'_>, added| {
+                let apply = |game: &mut crate::game::ClientGame<'_>, added| {
                     let mut body = Writer::new();
                     UpdateAdvancements::write(
                         &UpdateAdvancements {
@@ -440,17 +440,17 @@ fn extreme_remote_positions_use_java_widget_coordinates_and_bounds() {
                 let view = game.adv_view();
                 assert_eq!(view.tab, Some(0));
                 assert_eq!(
-                    game.adv_ui.0.cache.as_ref().unwrap().pos,
+                    game.side.adv_ui.0.cache.as_ref().unwrap().pos,
                     [Some((i32::MAX, i32::MAX))]
                 );
                 assert_eq!(
-                    game.adv_ui.0.tab_state().unwrap().bounds,
+                    game.side.adv_ui.0.tab_state().unwrap().bounds,
                     TabBounds(i32::MAX, i32::MAX, -2_147_483_621, -2_147_483_622)
                 );
                 let mut batch = HudBatch::new([640, 480], game.settings.gui_scale_inputs());
                 game.draw_advancements(&mut batch);
                 assert_eq!(
-                    game.adv_ui.0.tab_state().unwrap().scroll,
+                    game.side.adv_ui.0.tab_state().unwrap().scroll,
                     Some((104.0, 44.0))
                 );
 
@@ -462,7 +462,7 @@ fn extreme_remote_positions_use_java_widget_coordinates_and_bounds() {
                     ],
                 );
                 assert_eq!(
-                    game.adv_ui.0.cache.as_ref().unwrap().pos,
+                    game.side.adv_ui.0.cache.as_ref().unwrap().pos,
                     [
                         Some((i32::MAX, i32::MAX)),
                         Some((i32::MIN, 0)),
@@ -470,12 +470,12 @@ fn extreme_remote_positions_use_java_widget_coordinates_and_bounds() {
                     ]
                 );
                 assert_eq!(
-                    game.adv_ui.0.tab_state().unwrap().bounds,
+                    game.side.adv_ui.0.tab_state().unwrap().bounds,
                     TabBounds(i32::MIN, -2, 27, 27)
                 );
                 game.draw_advancements(&mut batch);
                 assert_eq!(
-                    game.adv_ui.0.tab_state().unwrap().scroll,
+                    game.side.adv_ui.0.tab_state().unwrap().scroll,
                     Some((104.0, 44.0))
                 );
             });

@@ -270,7 +270,7 @@ mod tests {
     use sunrise_core::geometry::Vec3;
     use sunrise_core::nbt::Tag;
 
-    fn spawn(game: &mut Game<'_>, id: u32, kind: CartKind) -> MinecartRef {
+    fn spawn(game: &mut crate::game::ServerGame<'_>, id: u32, kind: CartKind) -> MinecartRef {
         game.carts.push(Minecart::new(id, kind, Vec3::ZERO));
         game.minecart(game.entity(id).unwrap()).unwrap()
     }
@@ -446,7 +446,7 @@ mod tests {
             assert_eq!(tnt.fuse(game), Some(80));
             // MinecartTNT.primeFuse broadcasts entity event 70 for clients.
             assert!(
-                game.server
+                game.side
                     .lan_entity_events
                     .iter()
                     .any(|e| (e.0, e.1) == (tnt.entity().id() as i32, 70))

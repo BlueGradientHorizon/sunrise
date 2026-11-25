@@ -41,7 +41,7 @@ pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_core::random::{LegacyRandom, RandomSource};
 
-pub(in crate::game::client_side) fn reset_arena(game: &mut Game<'_>, target: &str) {
+pub(in crate::game::client_side) fn reset_arena(game: &mut crate::game::ServerGame<'_>, target: &str) {
     clear_entities(game);
     let _ = game.run_command("fill 0 63 0 11 63 9 minecraft:stone");
     let _ = game.run_command("fill 0 64 0 11 70 9 minecraft:air");
@@ -72,7 +72,7 @@ pub(in crate::game::client_side) fn reset_arena(game: &mut Game<'_>, target: &st
 }
 
 pub(in crate::game) fn run_case(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     case: &FishingCase,
     hook_seed: i64,
     level_seed: i64,
@@ -152,7 +152,7 @@ pub(in crate::game) fn run_case(
 }
 
 pub(in crate::game) fn run_extra_case(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     case: &FishingExtraCase,
     hook_seed: i64,
     level_seed: i64,

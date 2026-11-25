@@ -220,7 +220,7 @@ static SPAWN_ON_JOIN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicB
 /// runtime initializes before the scope: a scope entered before the platform
 /// installs its instrumentation writes a fallback nobody reads, and the
 /// declaration then refuses as frozen.
-fn with_counter(test: impl FnOnce(&mut Game<'_>, Levers)) {
+fn with_counter(test: impl FnOnce(&mut crate::game::ServerGame<'_>, Levers)) {
     let declare = Declare {
         trace: Arc::default(),
         events: Arc::default(),
@@ -293,7 +293,7 @@ fn record_at(type_key: &str, uuid: [i32; 4], at: [f64; 3], riders: Vec<Tag>) -> 
 }
 
 /// Spawns one tree of `mymod:robot` records and answers its root's row id.
-fn spawn_tree(game: &mut Game<'_>, root: [i32; 4], at: [f64; 3], riders: Vec<Tag>) -> u32 {
+fn spawn_tree(game: &mut crate::game::ServerGame<'_>, root: [i32; 4], at: [f64; 3], riders: Vec<Tag>) -> u32 {
     game.load_listed(
         "mymod:robot",
         None,
@@ -311,7 +311,7 @@ fn spawn_tree(game: &mut Game<'_>, root: [i32; 4], at: [f64; 3], riders: Vec<Tag
 }
 
 /// The rows' ids in storage order.
-fn row_ids(game: &Game<'_>) -> Vec<u32> {
+fn row_ids(game: &crate::game::ServerGame<'_>) -> Vec<u32> {
     game.resident_entities
         .general
         .rows
@@ -323,19 +323,19 @@ fn row_ids(game: &Game<'_>) -> Vec<u32> {
 /// One entity phase over the current level: what `tick_world` does between
 /// its ordered runs, driven by hand. The spawn chunks tick with nobody
 /// watching, as vanilla's do (`tickets.update(None)`).
-fn tick(game: &mut Game<'_>) {
-    game.tickets.0.update(None);
+fn tick(game: &mut crate::game::ServerGame<'_>) {
+    game.side.tickets.0.update(None);
     game.begin_ordered_ticks();
     game.tick_general().unwrap();
 }
 
 /// A row's counter, read through the same host surface the part writes.
-fn counter(game: &mut Game<'_>, id: u32) -> i32 {
+fn counter(game: &mut crate::game::ServerGame<'_>, id: u32) -> i32 {
     COUNTER.get(game, Holder::Entity(id)).unwrap()
 }
 
 /// One robot row, its counter already at `value`.
-fn seeded_row(game: &mut Game<'_>, uuid: [i32; 4], value: i32) -> u32 {
+fn seeded_row(game: &mut crate::game::ServerGame<'_>, uuid: [i32; 4], value: i32) -> u32 {
     let id = spawn_tree(game, uuid, [0.5, 64.0, 0.5], Vec::new());
     COUNTER.set(game, Holder::Entity(id), value).unwrap();
     id
@@ -406,7 +406,7 @@ fn parent_ticks_before_its_depth_first_rider_subtree() {
 fn a_row_joined_during_the_tick_span_ticks_the_next_phase() {
     with_counter(|game, l| {
         let first = seeded_row(game, [1, 2, 3, 4], 40);
-        game.tickets.0.update(None);
+        game.side.tickets.0.update(None);
         game.begin_ordered_ticks();
         let late = spawn_tree(game, [5, 6, 7, 8], [0.5, 64.0, 0.5], Vec::new());
         game.tick_general().unwrap();
@@ -970,9 +970,9 @@ fn quarantine_then_reinstall_restores_the_counter() {
     // loaded package), and a save of that chunk writes the very same bytes
     // back.
     with_game(|game| {
-        game.others.0.clear();
+        game.side.others.0.clear();
         game.spawn_loaded_entity((0, 0), saved.clone(), None);
-        assert_eq!(game.others.0.len(), 1);
+        assert_eq!(game.side.others.0.len(), 1);
         let mut chunks = game.entity_chunks(&HashSet::from([(0, 0)]), false);
         let (_, mut records) = chunks.remove(0);
         assert_eq!(records.remove(0), saved, "the second save keeps the bytes");

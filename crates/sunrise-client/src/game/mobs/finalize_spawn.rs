@@ -206,7 +206,7 @@ mod tests {
     use sunrise_core::random::{LegacyRandom, RandomSource};
 
     /// A zombie for the spawn tests, at a spot with room around it.
-    fn zombie(game: &Game<'_>) -> sunrise_client::mobs::Mob {
+    fn zombie(game: &crate::game::ServerGame<'_>) -> sunrise_client::mobs::Mob {
         let kind = game
             .res
             .mob_types()
@@ -217,7 +217,7 @@ mod tests {
     }
 
     /// Any other mob for the spawn tests, at the same spot.
-    fn mob_of(game: &Game<'_>, id: u32, kind: &str) -> sunrise_client::mobs::Mob {
+    fn mob_of(game: &crate::game::ServerGame<'_>, id: u32, kind: &str) -> sunrise_client::mobs::Mob {
         let kind = game.res.mob_types().get(kind).unwrap().clone();
         sunrise_client::mobs::Mob::new(id, kind, Vec3::new(8.0, 65.0, 8.0), 0.0)
     }
@@ -437,7 +437,7 @@ mod tests {
             // fresh test game leaves peaceful; the rules default on.
             game.ui.difficulty = 2;
             let difficulty = game.local_difficulty([8.0, 65.0, 8.0]);
-            let piglins = |game: &Game<'_>| {
+            let piglins = |game: &crate::game::ServerGame<'_>| {
                 game.mobs
                     .iter()
                     .filter(|m| m.species() == Species::ZombifiedPiglin)

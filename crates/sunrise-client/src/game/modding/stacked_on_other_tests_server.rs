@@ -66,7 +66,7 @@ fn a_lan_hub_click_is_decided_the_same_way() {
                 .unwrap();
             game.world.set(pos.0, pos.1, pos.2, stone).unwrap();
             PLAYER.set(12);
-            let open = |game: &mut crate::game::Game<'_>| {
+            let open = |game: &mut crate::game::ServerGame<'_>| {
                 game.world.block_entities.insert(
                     pos,
                     sunrise_client::containers::BlockEntity::Chest(vec![None; 27]),
@@ -88,7 +88,7 @@ fn a_lan_hub_click_is_decided_the_same_way() {
                 });
                 window
             };
-            let click = |game: &mut crate::game::Game<'_>, window: i32| {
+            let click = |game: &mut crate::game::ServerGame<'_>, window: i32| {
                 game.lan_guest_packet(
                     12,
                     Serverbound::ContainerClick(ContainerClick {
@@ -154,7 +154,7 @@ fn a_lan_hub_click_is_decided_the_same_way() {
             assert_eq!(click(game, window), (0, 3, 0));
             assert_eq!(dispatches(), 1);
             assert!(game.lan.is_some());
-            assert!(game.server.lan_guest_swaps.is_empty());
+            assert!(game.side.lan_guest_swaps.is_empty());
             let window = open(game);
             script(Script::default());
             assert_eq!(click(game, window), (3, 0, 0));

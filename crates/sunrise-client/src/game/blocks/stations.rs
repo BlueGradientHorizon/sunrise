@@ -2225,14 +2225,14 @@ pub(in crate::game) mod tests {
         use crate::game::{commands::peaceful_tests, execution_role::ExecutionRole};
         use sunrise_client::hud::rgba;
 
-        peaceful_tests::with_types(ExecutionRole::Client, |game| {
+        peaceful_tests::with_types_client(ExecutionRole::Client, |game| {
             let egg = peaceful_tests::trader_egg();
             let message = game
                 .pack
                 .names
                 .display_get("item.spawn_egg.peaceful")
                 .unwrap_or_else(|| "item.spawn_egg.peaceful".into());
-            let warns = |game: &super::Game<'_>| {
+            let warns = |game: &crate::game::ClientGame<'_>| {
                 game.stack_tooltip_lines(&egg, false, false)
                     .iter()
                     .any(|(text, color)| {
@@ -2268,7 +2268,7 @@ pub(in crate::game) mod tests {
         }
         let defaults = vec![ModEntry::new("default", Box::new(DefaultMod))].into();
         mod_platform::testing::with_mods(defaults, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
+            super::super::native_entity_refs::tests::with_client_game(|game| {
                 let mut station = super::Station::new(super::Kind::Anvil, [0; 3]);
                 station.inputs[0] = Some(super::ItemStack::new("minecraft:iron_sword", 1));
                 station.anvil.cost = 5;
@@ -2480,7 +2480,7 @@ pub(in crate::game) mod tests {
 
         let mods = vec![ModEntry::new("listener", Box::new(Listener))].into();
         mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
+            super::super::native_entity_refs::tests::with_client_game(|game| {
                 let mut station = Station::new(Kind::Anvil, [0; 3]);
                 let sword = |count| ItemStack::new("minecraft:iron_sword", count);
                 station.inputs[0] = Some(sword(2));
@@ -2709,7 +2709,7 @@ pub(in crate::game) mod tests {
                 };
 
                 let stack = super::ItemStack::new("minecraft:stick", 1);
-                let assert_context = |game: &mut super::Game<'_>, advanced, rate| {
+                let assert_context = |game: &mut crate::game::ClientGame<'_>, advanced, rate| {
                     let lines = game.tooltip_lines(&stack, false, false, advanced);
                     assert!(lines.iter().any(|(text, _)| text.plain() == "context"));
                     let context = heard.lock().unwrap().pop().expect("item tooltip Part ran");
@@ -2797,7 +2797,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn tooltip_part_lines_come_after_the_name_and_never_for_a_hidden_tooltip() {
-        use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
+        use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game, with_client_game};
         use mod_api::{
             self, ClientHost, Hooks, ItemPart, ItemTooltipEvent, ModEntry, Mods, Registrar,
             TooltipEvent,
@@ -2856,7 +2856,7 @@ pub(in crate::game) mod tests {
         let mods: Mods = vec![ModEntry::new("lore", Box::new(Mod))].into();
         crate::game::api_values::install_parts(&mods).unwrap();
         mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
+            with_client_game(|game| {
                 game.settings.file.set(
                     "advancedItemTooltips",
                     sunrise_client::options_file::V::Bool(true),
@@ -2960,9 +2960,9 @@ pub(in crate::game) mod tests {
         }
         let mods: Mods = vec![ModEntry::new("runes", Box::new(Mod))].into();
         mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
+            super::super::native_entity_refs::tests::with_client_game(|game| {
                 let helmet = super::ItemStack::new("minecraft:diamond_helmet", 1);
-                let plain = |game: &super::Game<'_>| -> Vec<String> {
+                let plain = |game: &crate::game::ClientGame<'_>| -> Vec<String> {
                     game.stack_tooltip_lines(&helmet, false, false)
                         .iter()
                         .map(|(text, _)| text.plain())
@@ -3087,11 +3087,11 @@ pub(in crate::game) mod tests {
                 );
             }
             with_test_factories(factories, || {
-                super::super::native_entity_refs::tests::with_game(|game| {
+                super::super::native_entity_refs::tests::with_client_game(|game| {
                     let stick = super::ItemStack::new("minecraft:stick", 1);
                     let long = Text::literal("one two three four five six seven eight");
                     let lines = vec![(long.clone(), u32::MAX)];
-                    let gather = |game: &super::Game<'_>| {
+                    let gather = |game: &crate::game::ClientGame<'_>| {
                         game.gather_tooltip_components(&stick, lines.clone(), 10, (320.0, 240.0))
                     };
                     MODE.store(0, Ordering::Relaxed);
@@ -3465,7 +3465,7 @@ pub(in crate::game) mod cycling_tests {
             super::super::native_entity_refs::tests::with_client_game(|game| {
                 let mut batch = HudBatch::scratch([320, 240]);
                 let anchor = super::tooltip::quantize_tooltip_anchor((10.6, 20.4));
-                let mut pre = |game: &super::Game<'_>| {
+                let mut pre = |game: &crate::game::ClientGame<'_>| {
                     game.tooltip_pre_components(
                         &mut batch,
                         None,

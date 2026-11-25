@@ -343,7 +343,7 @@ mod tests {
                     .block_entities
                     .insert((pos[0], pos[1], pos[2]), entity);
             }
-            let moved = |game: &mut Game<'_>, side, max, commit: bool| {
+            let moved = |game: &mut crate::game::ServerGame<'_>, side, max, commit: bool| {
                 let host: &mut dyn ServerHost = game;
                 let source = level.capability(host, &ENERGY, from, None).unwrap();
                 let target = level.capability(host, &ENERGY, to, side).unwrap();
@@ -352,7 +352,7 @@ mod tests {
                     if commit { Ok(moved) } else { Err(moved) }
                 })
             };
-            let held = |game: &mut Game<'_>| {
+            let held = |game: &mut crate::game::ServerGame<'_>| {
                 let host: &mut dyn ServerHost = game;
                 [from, to].map(|pos| {
                     let buffer = level.capability(host, &ENERGY, pos, None).unwrap();

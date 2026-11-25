@@ -789,7 +789,7 @@ pub(in crate::game) mod birth_tests {
 
     const BED: [i32; 3] = [3, 64, 1];
 
-    fn parents(game: &mut Game<'_>) -> (u32, u32) {
+    fn parents(game: &mut crate::game::ServerGame<'_>) -> (u32, u32) {
         game.mobs.clear();
         game.world
             .chunks
@@ -816,9 +816,9 @@ pub(in crate::game) mod birth_tests {
             .get("minecraft:villager")
             .unwrap()
             .clone();
-        let parent = game.server.next_entity + 1;
+        let parent = game.side.next_entity + 1;
         let partner = parent + 1;
-        game.server.next_entity = partner;
+        game.side.next_entity = partner;
         for id in [parent, partner] {
             game.mobs.push(Mob::with_random(
                 id,
@@ -833,11 +833,11 @@ pub(in crate::game) mod birth_tests {
         game.mobs[0].extra.age = 6000;
         game.native_joins_skip();
         game.audio.0.capture = Some(Vec::new());
-        game.server.lan_entity_events.clear();
+        game.side.lan_entity_events.clear();
         (parent, partner)
     }
 
-    fn birth(game: &mut Game<'_>, parent: u32, partner: u32) {
+    fn birth(game: &mut crate::game::ServerGame<'_>, parent: u32, partner: u32) {
         game.handle_mob_events(vec![MobEvent::VillagerBirth {
             parent,
             partner,
@@ -852,7 +852,7 @@ pub(in crate::game) mod birth_tests {
         }
     }
 
-    fn bed_owners(game: &Game<'_>) -> Vec<u32> {
+    fn bed_owners(game: &crate::game::ServerGame<'_>) -> Vec<u32> {
         // The same Seen.bed projection supplies the POI ticket searches and
         // take_bed_for_child; no independent reservation exists in the Game.
         game.mobs
@@ -893,12 +893,12 @@ pub(in crate::game) mod birth_tests {
                 assert_eq!(joins.load(Ordering::SeqCst), 1);
                 assert_eq!(game.mobs.len(), 2);
                 assert!(bed_owners(game).is_empty());
-                assert!(game.server.lan_entity_events.is_empty());
+                assert!(game.side.lan_entity_events.is_empty());
             });
         });
     }
 
-    fn assert_baby(game: &Game<'_>, parent: u32, partner: u32) {
+    fn assert_baby(game: &crate::game::ServerGame<'_>, parent: u32, partner: u32) {
         assert_eq!(game.mobs.len(), 3);
         let baby = game
             .mobs
@@ -909,7 +909,7 @@ pub(in crate::game) mod birth_tests {
         assert_eq!(baby.extra.variant, 2);
         assert_eq!(baby.extra.bed, Some(BED));
         assert_eq!(bed_owners(game), vec![baby.id]);
-        assert_eq!(game.server.lan_entity_events, vec![(baby.id as i32, 12)]);
+        assert_eq!(game.side.lan_entity_events, vec![(baby.id as i32, 12)]);
     }
 
     #[test]

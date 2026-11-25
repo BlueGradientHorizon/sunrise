@@ -17,7 +17,7 @@ pub(in crate::game) use crate::game::server_side::commands_server::data::saved_t
 fn tag_commands_and_explicit_empty_loads_save_without_empty_tags() {
     with_command_game("tags", tag_commands_and_explicit_empty);
 }
-pub(in crate::game) fn tag_commands_and_explicit_empty(game: &mut Game<'_>) {
+pub(in crate::game) fn tag_commands_and_explicit_empty(game: &mut crate::game::ServerGame<'_>) {
     let start = game.world.game_time;
     let uuid = "00000148-0000-0000-0000-000000000001";
     assert!(game.run_command("summon pig 4.5 200 4.5 {UUID:[I;328,0,0,1],Health:10f,NoAI:1b,NoGravity:1b,PortalCooldown:17}"));
@@ -96,7 +96,7 @@ fn a_live_area_effect_cloud_reads_with_the_common_entity_fields() {
 pub(in crate::game) use crate::game::server_side::commands_server::data::saved_tag_tests::say;
 
 /// The `Tags` key of the compound the entity saves (`Entity.saveWithoutId`).
-pub(in crate::game) fn saved_tags(game: &mut Game<'_>, target: Target) -> Option<Tag> {
+pub(in crate::game) fn saved_tags(game: &mut crate::game::ServerGame<'_>, target: Target) -> Option<Tag> {
     game.data_of(&DataRef::Entity(target))
         .unwrap()
         .get("Tags")

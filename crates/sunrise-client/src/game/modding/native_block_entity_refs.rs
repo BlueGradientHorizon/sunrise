@@ -1474,7 +1474,7 @@ mod tests {
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             let level = game.level("minecraft:overworld").unwrap();
-            let chest = |game: &mut Game<'_>, level, x: i32, kind: &str| {
+            let chest = |game: &mut crate::game::ServerGame<'_>, level, x: i32, kind: &str| {
                 let state = game
                     .pack
                     .assets
@@ -1611,7 +1611,7 @@ mod tests {
             let chest = game.block_entity(level, [0, 64, 0]).unwrap();
             let sensor = game.block_entity(level, [2, 64, 0]).unwrap();
             let stick = "{Items:[{Slot:3b,id:\"minecraft:stick\",count:3}]}";
-            let slot3 = |game: &Game<'_>| match game.world.block_entities.get(&(0, 64, 0)) {
+            let slot3 = |game: &crate::game::ServerGame<'_>| match game.world.block_entities.get(&(0, 64, 0)) {
                 Some(BlockEntity::Chest(items)) => items[3].as_ref().map(|s| s.count),
                 _ => panic!("chest block entity missing"),
             };
@@ -1797,7 +1797,7 @@ mod tests {
         use sunrise_world::chunk::BlockState;
 
         fn write(
-            game: &mut Game<'_>,
+            game: &mut crate::game::ServerGame<'_>,
             pos: [i32; 3],
             state: mod_api::BlockState,
             flags: BlockUpdateFlags,

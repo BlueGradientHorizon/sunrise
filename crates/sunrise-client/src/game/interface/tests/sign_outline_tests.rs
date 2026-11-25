@@ -24,7 +24,7 @@ fn sign_outline_follows_scope_and_camera_subject_in_both_draw_paths() {
     );
 }
 
-fn check_signs(game: &mut Game<'_>) {
+fn check_signs(game: &mut crate::game::ClientGame<'_>) {
     const POS: [i32; 3] = [0, 0, 0];
     const NEAR: DVec3 = DVec3::new(0.5, 0.5, 0.5);
     const FAR: DVec3 = DVec3::new(18.5, 0.5, 0.5);
@@ -40,11 +40,11 @@ fn check_signs(game: &mut Game<'_>) {
     let section = chunk.section_index(POS[1]).unwrap();
     std::sync::Arc::make_mut(&mut chunk.sections[section]).light = Light::Uniform(0x83);
     game.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
-    let set_camera = |game: &mut Game<'_>, camera_id| {
+    let set_camera = |game: &mut crate::game::ClientGame<'_>, camera_id| {
         game.handle_packet(C::SetCamera(play::SetCamera { camera_id }))
             .unwrap();
     };
-    let remove = |game: &mut Game<'_>, id| {
+    let remove = |game: &mut crate::game::ClientGame<'_>, id| {
         game.handle_packet(C::RemoveEntities(play::RemoveEntities { ids: vec![id] }))
             .unwrap();
     };
@@ -138,7 +138,7 @@ fn check_signs(game: &mut Game<'_>) {
         for cached in [true, false] {
             for (name, camera_type, scoping, subject, visual, expected) in cases {
                 game.player = Some(player());
-                game.client.camera_type = camera_type;
+                game.side.camera_type = camera_type;
                 game.using = None;
                 game.inventory[0] = Some(ItemStack::new("minecraft:spyglass", 1));
                 if scoping {
@@ -158,8 +158,8 @@ fn check_signs(game: &mut Game<'_>) {
                 }
                 let visual = match name {
                     "eye_height" => {
-                        game.client.view.eye_height = 1.7775;
-                        game.client.view.eye_height_old = game.client.view.eye_height;
+                        game.side.view.eye_height = 1.7775;
+                        game.side.view.eye_height_old = game.side.view.eye_height;
                         let (camera, _, _) = game.camera_view(PARTIAL).unwrap();
                         assert!((camera - NEAR).length_squared() > 16.0 * 16.0);
                         camera
@@ -231,7 +231,7 @@ fn check_signs(game: &mut Game<'_>) {
                 ..Default::default()
             }),
         );
-        game.client.camera_type = CameraType::FirstPerson;
+        game.side.camera_type = CameraType::FirstPerson;
         game.player = Some(player());
         let cart_kind = game
             .remote
@@ -243,7 +243,7 @@ fn check_signs(game: &mut Game<'_>) {
             .id("minecraft:minecart")
             .unwrap();
         for cached in [true, false] {
-            let check = |game: &Game<'_>, outlined| {
+            let check = |game: &crate::game::ClientGame<'_>, outlined| {
                 let glyphs = |character| {
                     render_glyphs(game, (POS, state.0), FAR, PARTIAL, cached, character)
                 };
@@ -344,7 +344,7 @@ fn check_signs(game: &mut Game<'_>) {
 }
 
 fn render_glyphs(
-    game: &Game<'_>,
+    game: &crate::game::ClientGame<'_>,
     block: ([i32; 3], u32),
     visual: DVec3,
     partial: f32,

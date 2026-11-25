@@ -7,7 +7,7 @@ use super::{
 use mod_api::{Host, ItemStack, PlayerDataRefusal, prelude::*};
 use sunrise_core::nbt::parse_snbt;
 
-fn api_item(game: &super::Game<'_>, snbt: &str) -> Option<ItemStack> {
+fn api_item(game: &crate::game::ServerGame<'_>, snbt: &str) -> Option<ItemStack> {
     let host: &dyn Host = game;
     host.item_from_snbt(snbt)
 }

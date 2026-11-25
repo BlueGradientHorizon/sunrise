@@ -129,14 +129,14 @@ pub(in crate::game::server_side) use crate::game::native_hooks::player_leave::pl
     /// the hub hears it (`NetEvent::Left`, `Hub::remove_guest`). `prepare` sets the guests up
     /// first; `check` gets the game and what the listener heard.
     pub(in crate::game) fn first_of_two_leaves(
-        prepare: impl FnOnce(&mut Game<'_>),
-        check: impl FnOnce(&mut Game<'_>, Vec<Heard>),
+        prepare: impl FnOnce(&mut crate::game::ServerGame<'_>),
+        check: impl FnOnce(&mut crate::game::ServerGame<'_>, Vec<Heard>),
     ) {
         let heard = Arc::new(Mutex::new(Vec::new()));
         let mods = vec![ModEntry::new("leave_test", Box::new(Leave(heard.clone())))].into();
         mod_platform::testing::with_mods(mods, || {
             with_guests(|game| {
-                game.server.world_root = game.save.0.root.clone();
+                game.side.world_root = game.side.save.0.root.clone();
                 game.options.dedicated = Some(Vec::new());
                 game.native_level_opened(Dim::Overworld);
                 game.world
@@ -193,7 +193,7 @@ pub(in crate::game::server_side) use crate::game::native_hooks::player_leave::pl
                 assert_eq!(game.guest_index(12), None);
                 let mut saved = guest(12);
                 saved.uuid = 12;
-                assert!(playerdata::load(&mut saved, &game.server.world_root));
+                assert!(playerdata::load(&mut saved, &game.side.world_root));
                 assert_eq!(VALUE.get(&mut saved.attachments, Holder::Level), Ok(77));
                 if !credits {
                     assert_eq!(saved.health, 7.0);

@@ -18,14 +18,14 @@ pub(in crate::game) fn isolated(name: &str, body: impl FnOnce()) {
     crate::game::in_own_process(&test, body);
 }
 
-pub(in crate::game) fn deliver<__Side: crate::game::Side>(game: &mut Game<'_, __Side>, packet: C) {
+pub(in crate::game) fn deliver(game: &mut crate::game::ClientGame<'_>, packet: C) {
     let bytes = packet.encode();
     let mut reader = sunrise_protocol::buf::Reader::new(&bytes);
     game.handle_packet(C::decode(reader.varint().unwrap(), reader.rest()).unwrap())
         .unwrap();
 }
 
-pub(in crate::game) fn chest<__Side: crate::game::Side>(game: &Game<'_, __Side>) -> C {
+pub(in crate::game) fn chest(game: &crate::game::ClientGame<'_>) -> C {
     C::OpenScreen(play::OpenScreen {
         container: 12,
         menu: game
@@ -41,7 +41,7 @@ pub(in crate::game) fn chest<__Side: crate::game::Side>(game: &Game<'_, __Side>)
     })
 }
 
-pub(in crate::game) fn close<__Side: crate::game::Side>(game: &mut Game<'_, __Side>) {
+pub(in crate::game) fn close(game: &mut crate::game::ClientGame<'_>) {
     deliver(
         game,
         C::ContainerClose(play::ContainerClose { container: 37 }),

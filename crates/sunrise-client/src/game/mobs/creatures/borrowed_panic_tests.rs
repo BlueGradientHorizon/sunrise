@@ -412,7 +412,7 @@ pub(in crate::game) fn fresh_dimension(test: &str, cases: &[&str]) -> Option<Dim
     })
 }
 
-pub(in crate::game) fn fixture_game(output: Output, test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn fixture_game(output: Output, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     if matches!(output, Output::Guest | Output::Mixed) {
         crate::game::native_guest_turn_tests::with_guests(test);
     } else {
@@ -420,7 +420,7 @@ pub(in crate::game) fn fixture_game(output: Output, test: impl FnOnce(&mut Game<
     }
 }
 
-pub(in crate::game) fn eggs(game: &Game<'_>) -> u32 {
+pub(in crate::game) fn eggs(game: &crate::game::ServerGame<'_>) -> u32 {
     game.dropped
         .iter()
         .filter(|d| d.stack.item.as_ref() == "minecraft:egg")
@@ -428,7 +428,7 @@ pub(in crate::game) fn eggs(game: &Game<'_>) -> u32 {
         .sum()
 }
 
-pub(in crate::game) fn tick_in_level(game: &mut Game<'_>) -> Result<()> {
+pub(in crate::game) fn tick_in_level(game: &mut crate::game::ServerGame<'_>) -> Result<()> {
     sunrise_client::block_contact::in_level(
         sunrise_client::parallel::TickThread::mint(),
         Some(game.dim.id()),
@@ -484,7 +484,7 @@ pub(in crate::game) fn prime_hook(mob: &mut Mob, family: Family) {
 }
 
 pub(in crate::game) fn fixture_mob(
-    game: &Game<'_>,
+    game: &crate::game::ServerGame<'_>,
     id: u32,
     family: Family,
     output: Output,
@@ -548,7 +548,7 @@ pub(in crate::game) fn fixture_mob(
     mob
 }
 
-pub(in crate::game) fn guest_health(game: &Game<'_>) -> [f32; 2] {
+pub(in crate::game) fn guest_health(game: &crate::game::ServerGame<'_>) -> [f32; 2] {
     let guests = &game.lan.as_ref().unwrap().hub.guests;
     [guests[0].health, guests[1].health]
 }
@@ -638,7 +638,7 @@ pub(in crate::game) struct ConsumerProbe {
 }
 
 impl ConsumerProbe {
-    pub(in crate::game) fn assert_tick(&self, game: &Game<'_>, egg_count: u32) {
+    pub(in crate::game) fn assert_tick(&self, game: &crate::game::ServerGame<'_>, egg_count: u32) {
         assert_eq!(self.calls.load(Ordering::SeqCst), 1);
         assert_eq!(std::mem::take(&mut *self.posts.lock().unwrap()), [71, 72]);
         assert_eq!(eggs(game), egg_count);
@@ -708,7 +708,7 @@ impl mod_api::Hooks for Consumer {
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::server_side::creatures_server::borrowed_panic_tests::with_consumer_game;
 
-pub(in crate::game) fn queue_egg(game: &mut Game<'_>) {
+pub(in crate::game) fn queue_egg(game: &mut crate::game::ServerGame<'_>) {
     game.creatures
         .pending
         .entry(game.dim.id())

@@ -131,7 +131,7 @@ fn a_panicking_baby_listener_leaves_no_reserved_state_behind() {
                     "NeoForge Animal.spawnChildFromBreeding"
                 );
                 assert_eq!(mob.extra.in_love, 0);
-                assert!(!game.server.love_cause.contains_key(&id));
+                assert!(!game.side.love_cause.contains_key(&id));
             }
             assert!(game.orbs.is_empty());
             assert_eq!(animals_bred(game), 0);
@@ -204,11 +204,11 @@ fn a_panicking_listener_spawns_nothing_and_leaves_the_arena_usable() {
                 .unwrap();
             game.world.set(x, y, z, old_block).unwrap();
             let mut dying = cube(game, "minecraft:slime", 4, SEED);
-            let next_id = game.server.next_entity;
+            let next_id = game.side.next_entity;
             game.split_cube_children(&mut dying);
             assert!(game.mobs.is_empty(), "no child joined");
             assert_eq!(
-                game.server.next_entity, next_id,
+                game.side.next_entity, next_id,
                 "no entity number was issued"
             );
             assert_eq!(
@@ -228,7 +228,7 @@ fn a_panicking_listener_spawns_nothing_and_leaves_the_arena_usable() {
 
             // The same install still takes the arena path, but skips the retired listener.
             let mut again = cube(game, "minecraft:slime", 4, SEED);
-            let first = game.server.next_entity + 1;
+            let first = game.side.next_entity + 1;
             game.split_cube_children(&mut again);
             assert_eq!(game.mobs.len(), YAWS.len());
             for (i, (child, yaw)) in game.mobs.iter().zip(YAWS).enumerate() {
@@ -257,8 +257,8 @@ fn a_parent_changed_during_dispatch_refuses_the_baby_and_nothing_is_rebuilt() {
     }
     with_game(|game| {
         let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
-        let base = game.server.next_entity;
-        game.server.next_entity += 3;
+        let base = game.side.next_entity;
+        game.side.next_entity += 3;
         for (i, x) in [0.0, 1.0].into_iter().enumerate() {
             game.mobs.push(Mob::new(
                 base + 1 + i as u32,
@@ -268,7 +268,7 @@ fn a_parent_changed_during_dispatch_refuses_the_baby_and_nothing_is_rebuilt() {
             ));
         }
         game.native_joins_skip();
-        let run = |game: &mut Game<'_>, change: bool| {
+        let run = |game: &mut crate::game::ServerGame<'_>, change: bool| {
             let mut baby = Mob::new(base + 3, kind.clone(), Vec3::new(0.5, 64.0, 0.0), 0.0);
             sunrise_client::mobs::finalize::set_baby(&mut baby, true);
             game.dispatch_pending_children(
@@ -308,13 +308,13 @@ fn a_parent_changed_during_dispatch_refuses_the_baby_and_nothing_is_rebuilt() {
 /// [`breed_pair`] with the host player credited for feeding the parents into love (what the
 /// goal records in `love_cause`), when `credited`.
 pub(in crate::game) fn breed_pair_credited(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     kind: &str,
     credited: bool,
 ) -> (u32, u32, Option<u32>) {
     let kind = game.res.mob_types().get(kind).unwrap().clone();
-    let base = game.server.next_entity;
-    game.server.next_entity += 2;
+    let base = game.side.next_entity;
+    game.side.next_entity += 2;
     game.mobs.push(Mob::new(
         base + 1,
         kind.clone(),
@@ -325,7 +325,7 @@ pub(in crate::game) fn breed_pair_credited(
         .push(Mob::new(base + 2, kind, Vec3::new(1.0, 64.0, 0.0), 0.0));
     game.native_joins_skip();
     if credited {
-        game.server.love_cause.insert(base + 1, None);
+        game.side.love_cause.insert(base + 1, None);
     }
     let parent = game.mobs.iter_mut().find(|m| m.id == base + 1).unwrap();
     parent.random = LegacyRandom::new(0);
@@ -350,11 +350,11 @@ fn cancelled_split_spawns_nothing_but_keeps_the_construction_draws() {
         |_, _| Flow::Cancel,
         |game| {
             let mut dying = cube(game, "minecraft:slime", 4, SEED);
-            let next_id = game.server.next_entity;
+            let next_id = game.side.next_entity;
             game.split_cube_children(&mut dying);
             assert!(game.mobs.is_empty(), "a cancelled split spawns no child");
             assert_eq!(
-                game.server.next_entity, next_id,
+                game.side.next_entity, next_id,
                 "and issues no entity number"
             );
             // The count and the three yaw draws were spent before the callback.
@@ -372,8 +372,8 @@ fn credit_goes_to_the_player_only_when_the_baby_is_accepted() {
             let (parent, partner, child) = breed_pair_credited(game, "minecraft:cow", true);
             assert!(child.is_some());
             assert_eq!(animals_bred(game), 1, "an accepted baby is credited once");
-            assert!(!game.server.love_cause.contains_key(&parent));
-            assert!(!game.server.love_cause.contains_key(&partner));
+            assert!(!game.side.love_cause.contains_key(&parent));
+            assert!(!game.side.love_cause.contains_key(&partner));
         },
     );
     with_baby(
@@ -383,20 +383,20 @@ fn credit_goes_to_the_player_only_when_the_baby_is_accepted() {
             assert_eq!(child, None);
             assert_eq!(animals_bred(game), 0, "a vetoed baby earns no statistic");
             assert!(
-                !game.server.love_cause.contains_key(&parent),
+                !game.side.love_cause.contains_key(&parent),
                 "the credit is spent"
             );
-            assert!(!game.server.love_cause.contains_key(&partner));
+            assert!(!game.side.love_cause.contains_key(&partner));
         },
     );
 }
 
 /// A dying cube mob of `kind` and `size` whose own random is `new Random(seed)`.
-pub(in crate::game) fn cube(game: &mut Game<'_>, kind: &str, size: i32, seed: i64) -> Mob {
-    game.server.next_entity += 1;
+pub(in crate::game) fn cube(game: &mut crate::game::ServerGame<'_>, kind: &str, size: i32, seed: i64) -> Mob {
+    game.side.next_entity += 1;
     let kind = game.res.mob_types().get(kind).unwrap().clone();
     let mut mob = Mob::new(
-        game.server.next_entity,
+        game.side.next_entity,
         kind,
         Vec3::new(AT[0], AT[1], AT[2]),
         0.0,
@@ -441,7 +441,7 @@ fn edit_remove_append_commits_a_c_d_once_and_b_goes_stale() {
         },
         |game| {
             let mut dying = cube(game, "minecraft:slime", 4, SEED);
-            let first = game.server.next_entity + 1;
+            let first = game.side.next_entity + 1;
             game.split_cube_children(&mut dying);
             let kids = spawned(game);
             // [A, C, D]: A with yaw 90, C the vanilla third child, D appended.
@@ -473,7 +473,7 @@ fn no_listener_split_is_exactly_vanilla() {
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             let mut dying = cube(game, "minecraft:slime", 4, SEED);
-            let first = game.server.next_entity + 1;
+            let first = game.side.next_entity + 1;
             game.split_cube_children(&mut dying);
             assert_vanilla_children(&spawned(game), "minecraft:slime", first);
             assert_eq!(dying.random.next_int(), NEXT_INT);
@@ -502,7 +502,7 @@ fn size_four_slime_and_magma_split_three_children_and_draw_the_vanilla_yaws() {
             },
             |game| {
                 let mut dying = cube(game, kind, 4, SEED);
-                let first = game.server.next_entity + 1;
+                let first = game.side.next_entity + 1;
                 game.split_cube_children(&mut dying);
                 assert_vanilla_children(&spawned(game), kind, first);
                 assert_eq!(dying.random.next_int(), NEXT_INT);

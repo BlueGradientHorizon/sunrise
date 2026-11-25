@@ -320,7 +320,7 @@ mod tests {
         use sunrise_core::geometry::Vec3;
 
         with_game(|game| {
-            game.others.0.push(OtherEntity {
+            game.side.others.0.push(OtherEntity {
                 size_answer: None,
                 attachment_lifetime: Default::default(),
                 knot_check: None,
@@ -340,11 +340,11 @@ mod tests {
             let entity = game.entity(12).unwrap();
             assert!(entity.discard(game));
             // No sweep has run, as in the hook that discarded it.
-            assert_eq!(game.others.0.len(), 1);
+            assert_eq!(game.side.others.0.len(), 1);
             assert!(!game.run_command(selector));
             assert!(game.level_entity(12).is_none());
             game.native_removals_flush();
-            assert!(game.others.0.is_empty());
+            assert!(game.side.others.0.is_empty());
         });
     }
 
@@ -426,12 +426,12 @@ mod tests {
                 std::process::id()
             ));
             let _ = std::fs::remove_dir_all(&root);
-            let shape = game.save.0.shape;
-            game.save.0 = Arc::new(SaveDir::new(root.clone(), shape, Some(Default::default())));
+            let shape = game.side.save.0.shape;
+            game.side.save.0 = Arc::new(SaveDir::new(root.clone(), shape, Some(Default::default())));
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            game.others.0.push(OtherEntity {
+            game.side.others.0.push(OtherEntity {
                 size_answer: None,
                 attachment_lifetime: Default::default(),
                 knot_check: None,
@@ -625,7 +625,7 @@ mod tests {
         use sunrise_core::nbt::{Compound, Tag};
 
         with_game(|game| {
-            game.others.0.push(OtherEntity {
+            game.side.others.0.push(OtherEntity {
                 size_answer: None,
                 attachment_lifetime: Default::default(),
                 knot_check: None,
@@ -642,7 +642,7 @@ mod tests {
             game.persist.raw.insert(12, Tag::Compound(Compound::new()));
             game.ui.registries.permission = 4;
             assert!(game.run_command("kill @e[type=minecraft:marker]"));
-            assert!(game.others.0.is_empty());
+            assert!(game.side.others.0.is_empty());
             assert!(!game.persist.raw.contains_key(&12));
         });
     }

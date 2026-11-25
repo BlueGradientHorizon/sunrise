@@ -70,12 +70,12 @@ impl Hooks for Probe {
     }
 }
 
-fn place(game: &mut super::Game<'_>, pos: [i32; 3], block: &str) {
+fn place(game: &mut crate::game::ServerGame<'_>, pos: [i32; 3], block: &str) {
     let state = game.pack.assets.registry.default_state(block).unwrap();
     game.world.set(pos[0], pos[1], pos[2], state).unwrap();
 }
 
-fn block(game: &super::Game<'_>, pos: [i32; 3]) -> String {
+fn block(game: &crate::game::ServerGame<'_>, pos: [i32; 3]) -> String {
     let state = game.world.block(pos[0], pos[1], pos[2]);
     game.res.facts().get(state).name.to_string()
 }
@@ -83,7 +83,7 @@ fn block(game: &super::Game<'_>, pos: [i32; 3]) -> String {
 /// A server's game with its own player standing in the origin chunk, as the native player-break
 /// tests set one up: their handle.
 fn with_player(
-    game: &mut super::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     mode: GameMode,
     held: Option<ItemStack>,
 ) -> mod_api::PlayerRef {
@@ -95,10 +95,10 @@ fn with_player(
         .chunks
         .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 64.0, 4.5)).unwrap());
-    game.server.lan_acting_uuid = Some(123);
-    game.server.lan_acting_entity = Some(20);
-    game.server.lan_acting_name = Some("Breaker".into());
-    game.server.lan_acting_permission = Some(0);
+    game.side.lan_acting_uuid = Some(123);
+    game.side.lan_acting_entity = Some(20);
+    game.side.lan_acting_name = Some("Breaker".into());
+    game.side.lan_acting_permission = Some(0);
     game.set_mode(mode);
     game.inventory[game.selected] = held;
     // The acting player as a hook would name them: this server's entity 20.
@@ -315,7 +315,7 @@ fn with_order_probe(
     item: &str,
     replace: Option<&'static str>,
     write: Option<&'static str>,
-    test: impl FnOnce(&mut super::Game<'_>, mod_api::PlayerRef),
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, mod_api::PlayerRef),
 ) -> Vec<Seen> {
     let seen = Arc::new(Mutex::new(Vec::new()));
     with_game(|game| {
@@ -532,7 +532,7 @@ impl Hooks for DropsProbe {
     }
 }
 
-fn put_chest(game: &mut super::Game<'_>, pos: [i32; 3]) {
+fn put_chest(game: &mut crate::game::ServerGame<'_>, pos: [i32; 3]) {
     place(game, pos, "minecraft:chest");
     let mut contents = vec![None; 27];
     contents[0] = Some(ItemStack::new("minecraft:diamond", 3));

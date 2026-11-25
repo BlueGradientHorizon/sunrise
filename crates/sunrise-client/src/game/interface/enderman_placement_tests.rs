@@ -10,7 +10,7 @@ use sunrise_core::{geometry::Vec3, position::ChunkPos};
 
 /// The production tick lends the level's RNG and attachments to goals while
 /// they read its blocks. Keep that ownership boundary in the registered-goal test.
-fn tick_registered_goals(game: &mut Game<'_>, mob: &mut Mob) -> Vec<MobEvent> {
+fn tick_registered_goals(game: &mut crate::game::ServerGame<'_>, mob: &mut Mob) -> Vec<MobEvent> {
     let mut goals = std::mem::take(&mut mob.ai.goals);
     let snapshot = [super::creatures::seen(mob, None, game.items())];
     let mut events = Vec::new();
@@ -60,15 +60,12 @@ fn leave_block_goal_uses_real_neighbor_shapes_and_keeps_air_placement() {
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = super::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
         None,
     )
     .unwrap();

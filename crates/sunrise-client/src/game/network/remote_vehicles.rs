@@ -1024,7 +1024,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_driven_vehicle_takes_the_servers_teleports_and_moves() {
-        crate::game::native_entity_refs::tests::with_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             use sunrise_client::{items::ItemStack, motion::PlayerMotion};
             use sunrise_protocol::packets::play::Clientbound as C;
             let root =
@@ -1114,7 +1114,7 @@ pub(in crate::game) mod tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = ExecutionRole::Client;
-        let mut game = Game::new(
+        let mut game = crate::game::ClientGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
@@ -1296,7 +1296,7 @@ pub(in crate::game) mod tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = ExecutionRole::Client;
-        let mut game = Game::new(
+        let mut game = crate::game::ClientGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
@@ -1323,7 +1323,7 @@ pub(in crate::game) mod tests {
             forward: true,
             ..Keys::default()
         };
-        let zza = |game: &mut Game, keys| {
+        let zza = |game: &mut crate::game::ClientGame<'_>, keys| {
             assert!(game.remote_ride(keys));
             game.mobs[0].ai.zza
         };
@@ -1457,7 +1457,7 @@ mod plugin_seat_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-        let mut game = Game::new(
+        let mut game = crate::game::ClientGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),

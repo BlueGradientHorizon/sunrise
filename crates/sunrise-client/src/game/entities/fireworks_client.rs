@@ -159,7 +159,7 @@ pub(in crate::game) mod tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         let res = loaded.resources;
-        let mut game = super::Game::new(
+        let mut game = crate::game::ClientGame::new(
             &res,
             loaded.pack,
             loaded.gui.unwrap(),
@@ -178,10 +178,10 @@ pub(in crate::game) mod tests {
         let id = crate::game::MOTION_OBJECT | 77;
         // One frame's motion runs: the rocket's vertices open a run under its own id, and
         // a camera-only run (id 0) closes it so nothing drawn after takes its motion.
-        game.client.entity_motion.borrow_mut().clear();
+        game.side.entity_motion.borrow_mut().clear();
         let mut out = Vec::new();
         game.rocket_geometry(camera, 1.0, &mut out, 0..game.rockets.len());
-        let marks = game.client.entity_motion.borrow().clone();
+        let marks = game.side.entity_motion.borrow().clone();
         let at = marks
             .iter()
             .position(|m| m.1 == id)

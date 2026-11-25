@@ -72,7 +72,7 @@ pub(in crate::game::server_side) use sunrise_client::{
 pub(in crate::game::server_side) use sunrise_core::{geometry::Vec3, position::BlockPos};
 
 /// Sample the player's fluid state as a tick would, without advancing their fire timer.
-pub(in crate::game) fn sample_eye_in_water(game: &mut Game<'_>) -> bool {
+pub(in crate::game) fn sample_eye_in_water(game: &mut crate::game::ClientGame<'_>) -> bool {
     // The fluid scan requires the chunks around the interaction box to be loaded too.
     let layout = game.world.layout();
     for (x, z) in [(-1, -1), (-1, 0), (0, -1)] {

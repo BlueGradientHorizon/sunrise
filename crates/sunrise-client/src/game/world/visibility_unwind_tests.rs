@@ -14,18 +14,18 @@ use sunrise_client::{
 
 pub(in crate::game::server_side) fn with_save_game(
     root: &std::path::Path,
-    test: impl FnOnce(&mut Game<'_>),
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>),
 ) {
     native_guest_turn_tests::with_guests(|game| {
-        game.server.world_root = root.to_path_buf();
-        game.save.0 = Arc::new(SaveDir::new(
+        game.side.world_root = root.to_path_buf();
+        game.side.save.0 = Arc::new(SaveDir::new(
             root.to_path_buf(),
             LevelShape::OVERWORLD,
             Some(Default::default()),
         ));
         game.options.dedicated = Some(Vec::new());
         game.options.execution_role = execution_role::ExecutionRole::DedicatedServer;
-        game.server_lists.0 = Some(Arc::new(Mutex::new(dedicated::Lists {
+        game.side.server_lists.0 = Some(Arc::new(Mutex::new(dedicated::Lists {
             ops: OpList::new(root.join("ops.json")),
             white: WhiteList::new(root.join("whitelist.json")),
             bans: BanList::new(root.join("bans.json")),

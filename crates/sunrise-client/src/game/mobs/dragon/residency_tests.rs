@@ -7,12 +7,12 @@ use crate::game::native_entity_refs::tests::{with_client_game, with_game};
 fn singleton_dragon_spawn_install_refusal_and_kill() {
     with_game(|game| {
         game.dragon.discard();
-        let before = game.server.next_entity;
+        let before = game.side.next_entity;
         let id = game
             .spawn_dragon_spawned([0.0, 80.0, 0.0], SpawnSite::Plain)
             .unwrap();
         assert_eq!(id, before + 1);
-        assert_eq!(game.server.next_entity, before + 9);
+        assert_eq!(game.side.next_entity, before + 9);
         for part in id + 1..=id + 8 {
             assert!(game.dragon_part(part).is_some());
         }
@@ -20,7 +20,7 @@ fn singleton_dragon_spawn_install_refusal_and_kill() {
             game.spawn_dragon_spawned([1.0, 80.0, 0.0], SpawnSite::Plain)
                 .is_none()
         );
-        assert_eq!(game.server.next_entity, before + 9);
+        assert_eq!(game.side.next_entity, before + 9);
         let mut replacement = Dragon::new(Vec3::ZERO, 0.0, 0);
         replacement.id = 900;
         let refused = game.dragon.install(replacement).err().unwrap();
@@ -42,7 +42,7 @@ fn singleton_dragon_load_keeps_state_and_reserves_nine_ids() {
         saved.health = 73.0;
         let uuid = [17, 0, 0, 3];
         let tag = saved.to_nbt(uuid, None, &Default::default());
-        let before = game.server.next_entity;
+        let before = game.side.next_entity;
         game.load_dragon(tag.clone(), Some(uuid));
         let dragon = game.dragon.as_ref().unwrap();
         assert_eq!(dragon.id, before + 1);
@@ -50,10 +50,10 @@ fn singleton_dragon_load_keeps_state_and_reserves_nine_ids() {
         assert_eq!(dragon.health, 73.0);
         assert!(dragon.join.is_joined());
         assert_eq!(game.dragon.locate(dragon.join), Some(0));
-        assert_eq!(game.server.next_entity, before + 9);
+        assert_eq!(game.side.next_entity, before + 9);
         assert_eq!(game.persist.uuids.get(&dragon.id), Some(&uuid));
         game.load_dragon(tag, Some(uuid));
-        assert_eq!(game.server.next_entity, before + 9);
+        assert_eq!(game.side.next_entity, before + 9);
         assert_eq!(game.dragon.as_ref().unwrap().id, before + 1);
         let chunks = game.entity_chunks(&[(0, 0)].into_iter().collect(), false);
         assert_eq!(chunks.len(), 1);
@@ -78,14 +78,14 @@ fn singleton_dragon_load_keeps_state_and_reserves_nine_ids() {
 fn singleton_fight_dragon_install_reserves_nine_ids() {
     with_game(|game| {
         game.dragon.discard();
-        let before = game.server.next_entity;
+        let before = game.side.next_entity;
         game.create_new_dragon();
         let dragon = game.dragon.as_ref().unwrap();
         assert_eq!(dragon.id, before + 1);
-        assert_eq!(game.server.next_entity, before + 9);
+        assert_eq!(game.side.next_entity, before + 9);
         assert!(dragon.join.is_joined());
         assert_eq!(
-            game.server.fight.dragon_uuid,
+            game.side.fight.dragon_uuid,
             game.persist.uuids.get(&dragon.id).copied()
         );
     });
@@ -117,12 +117,12 @@ fn singleton_late_dragon_id_reserves_all_eight_parts_once() {
     with_game(|game| {
         game.dragon.discard();
         assert!(game.dragon.install(Dragon::new(Vec3::ZERO, 0.0, 0)).is_ok());
-        let before = game.server.next_entity;
+        let before = game.side.next_entity;
         game.assign_dragon_and_crystal_ids();
         assert_eq!(game.dragon.as_ref().unwrap().id, before + 1);
-        assert_eq!(game.server.next_entity, before + 9);
+        assert_eq!(game.side.next_entity, before + 9);
         game.assign_dragon_and_crystal_ids();
-        assert_eq!(game.server.next_entity, before + 9);
+        assert_eq!(game.side.next_entity, before + 9);
     });
 }
 

@@ -110,7 +110,7 @@ impl Hooks for SecondWatcher {
     }
 }
 
-fn with_watches(name: &str, test: impl FnOnce(&mut Game<'_>, LevelRef, Watcher)) {
+fn with_watches(name: &str, test: impl FnOnce(&mut crate::game::ServerGame<'_>, LevelRef, Watcher)) {
     if run_fresh_cases(name, "SUNRISE_CONTENTS_WATCH_CHILD", &["game"]) {
         return;
     }
@@ -159,7 +159,7 @@ fn with_watches(name: &str, test: impl FnOnce(&mut Game<'_>, LevelRef, Watcher))
 fn source_pos() -> BlockPos {
     BlockPos::new(SOURCE[0], SOURCE[1], SOURCE[2])
 }
-fn notify(game: &mut Game<'_>, level: LevelRef, at: [i32; 3]) {
+fn notify(game: &mut crate::game::ServerGame<'_>, level: LevelRef, at: [i32; 3]) {
     game.block_entity(level, at)
         .unwrap()
         .set_changed(game)

@@ -850,7 +850,7 @@ mod tests {
                 // The last comparisons ran against the grid: it stands, for the list as it is.
                 let fresh = |(stamp, _): &(ListStamp, SeenGrid)| *stamp == game.mobs.stamp();
                 assert!(
-                    game.server
+                    game.side
                         .vehicle_mobs
                         .grid
                         .borrow()
@@ -876,7 +876,7 @@ mod tests {
         for id in 1..=4 {
             game.mobs.push(Mob::new(id, pig.clone(), Vec3::ZERO, 0.0));
         }
-        let riders = |game: &Game| {
+        let riders = |game: &crate::game::ServerGame<'_>| {
             [100, 101, 102].map(|id| (game.has_seated_passengers(id), game.boat_mobs(id)))
         };
         game.mobs[0].extra.mount = Some(100);

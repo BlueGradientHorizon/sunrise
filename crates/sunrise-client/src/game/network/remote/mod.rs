@@ -1769,7 +1769,7 @@ pub(in crate::game) mod tests {
     /// the client menu tests drive it: the server end's reader (what the
     /// client sends) and writer.
     pub(crate) fn connect_menu_test(
-        game: &mut super::Game<'_>,
+        game: &mut crate::game::ClientGame<'_>,
     ) -> (
         sunrise_protocol::connection::ConnReader,
         sunrise_protocol::connection::ConnWriter,
@@ -1778,7 +1778,7 @@ pub(in crate::game) mod tests {
     }
 
     pub(in crate::game) fn connect_play_test(
-        game: &mut super::Game<'_>,
+        game: &mut crate::game::ClientGame<'_>,
         configure: impl FnOnce(
             &mut sunrise_protocol::connection::ConnReader,
             &mut sunrise_protocol::connection::ConnWriter,
@@ -1795,7 +1795,7 @@ pub(in crate::game) mod tests {
     }
 
     pub(in crate::game) fn finish_play_test(
-        game: &mut super::Game<'_>,
+        game: &mut crate::game::ClientGame<'_>,
         server: sunrise_protocol::connection::Connection,
         configure: impl FnOnce(
             &mut sunrise_protocol::connection::ConnReader,
@@ -1872,7 +1872,7 @@ pub(in crate::game) mod tests {
 
     /// Spawns the connected client in the overworld as entity 7, profile 42.
     pub(crate) fn spawn_menu_test(
-        game: &mut super::Game<'_>,
+        game: &mut crate::game::ClientGame<'_>,
     ) -> sunrise_protocol::packets::play::SpawnInfo {
         use crate::game::remote::RemoteDimensionEntry;
         use sunrise_client::level_loading::Reason;
@@ -1969,15 +1969,12 @@ pub(in crate::game) mod tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -2085,7 +2082,7 @@ pub(in crate::game) mod tests {
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        let mut game = Game::new(
+        let mut game = crate::game::ClientGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),

@@ -59,7 +59,7 @@ pub(in crate::game) mod render_tooltip_texture_tests {
             h: 100,
         }
     }
-    fn drawn(game: &super::Game<'_>, stack: Option<&ItemStack>) -> Vec<([f32; 2], u32)> {
+    fn drawn(game: &crate::game::ClientGame<'_>, stack: Option<&ItemStack>) -> Vec<([f32; 2], u32)> {
         let mut batch = HudBatch::scratch([320, 240]);
         game.tooltip_box(&mut batch, stack, 40.0, 30.0, 60.0, 8.0);
         batch.vertices.iter().map(|v| (v.uv, v.color)).collect()
@@ -130,7 +130,7 @@ pub(in crate::game) mod render_tooltip_texture_tests {
                 .collect()
         };
 
-        crate::game::native_entity_refs::tests::with_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             for case in &witness.cases {
                 let [bx, by, bw, bh] = case.bounds.map(|v| v as f32);
                 let mut plain_batch = HudBatch::scratch([320, 240]);
@@ -208,7 +208,7 @@ pub(in crate::game) mod render_tooltip_texture_tests {
         let stick = ItemStack::new("minecraft:stick", 1);
         let stone = ItemStack::new("minecraft:stone", 1);
         let mut unheard = Vec::new();
-        crate::game::native_entity_refs::tests::with_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             unheard = [None, Some(&stick)]
                 .map(|stack| drawn(game, stack))
                 .to_vec();
@@ -218,7 +218,7 @@ pub(in crate::game) mod render_tooltip_texture_tests {
         assert_eq!(unheard[0], unheard[1]);
         let mods: mod_api::Mods = vec![ModEntry::new("gold", Box::new(Gold))].into();
         with_mods(mods, || {
-            crate::game::native_entity_refs::tests::with_game(|game| {
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
                 let names =
                     ["background", "frame"].map(|part| format!("lobby:tooltip/gold_{part}"));
                 // No pack has the style: the stick keeps the fills.

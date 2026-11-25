@@ -48,14 +48,14 @@ pub(in crate::game::server_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_protocol::packets::{Empty, play::Serverbound as S};
 
-pub(in crate::game) fn send(game: &mut Game<'_>, packet: S) {
+pub(in crate::game) fn send(game: &mut crate::game::ServerGame<'_>, packet: S) {
     game.lan.as_mut().unwrap().hub.update_guest(1, |g| {
         use sunrise_client::lan::guest::InboxItem;
         g.inbox.push_back(InboxItem::Packet(packet, None));
         g.inbox
             .push_back(InboxItem::Packet(S::ClientTickEnd(Empty), None));
     });
-    game.server.level_pass.packets_drained = false;
+    game.side.level_pass.packets_drained = false;
     game.tick_lan_packets();
     // The packet phase holds output until the tick's usual network handoff.
     guest(game).sender.flush();

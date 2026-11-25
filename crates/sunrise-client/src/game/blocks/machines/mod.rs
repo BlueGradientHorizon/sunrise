@@ -2514,7 +2514,7 @@ pub(in crate::game) mod brewing_fuel_transfer_tests {
                     );
                     assert_eq!(containers.get(&target, 0).unwrap().count, 1);
                     assert!(containers.is_empty(&containers.view(pos, false).unwrap()));
-                    assert_eq!(game.server.hoppers[&pos].cooldown, 8);
+                    assert_eq!(game.side.hoppers[&pos].cooldown, 8);
                 }
             })
         });
@@ -2682,7 +2682,7 @@ pub(in crate::game) mod furnace_fuel_transfer_tests {
                     recipes_used: Default::default(),
                 }),
             );
-            game.server.hoppers.remove(&hopper);
+            game.side.hoppers.remove(&hopper);
 
             game.hopper_try_move_items(hopper);
 
@@ -3206,7 +3206,7 @@ pub(in crate::game) mod part_front_tests {
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             let level = game.level("minecraft:overworld").unwrap();
-            let state = |game: &super::Game<'_>, name: &str, prop: (&str, &str)| {
+            let state = |game: &crate::game::ServerGame<'_>, name: &str, prop: (&str, &str)| {
                 let state = sunrise_world::chunk::BlockState {
                     name: name.to_owned(),
                     properties: [(prop.0.to_owned(), prop.1.to_owned())]
@@ -3225,7 +3225,7 @@ pub(in crate::game) mod part_front_tests {
                 .unwrap();
             let flags = BlockUpdateFlags::NEIGHBORS;
             let chest_items =
-                |game: &super::Game<'_>, z| match game.world.block_entities.get(&(2, 64, z)) {
+                |game: &crate::game::ServerGame<'_>, z| match game.world.block_entities.get(&(2, 64, z)) {
                     Some(BlockEntity::Chest(items)) => {
                         items.iter().flatten().map(|s| s.count).sum::<u32>()
                     }
@@ -3332,8 +3332,8 @@ pub(in crate::game) mod hopper_cart_transfer_tests {
             game.adv.loaded = true;
             let ai = game.adv.tree.by_id["parity:boat_loot"];
             for player in [false, true] {
-                game.server.next_entity += 1;
-                let id = game.server.next_entity;
+                game.side.next_entity += 1;
+                let id = game.side.next_entity;
                 game.boats
                     .push(Boat::new(id, "oak".into(), Vec3::new(8.5, 65.0, 8.5), 0.0).with_chest());
                 game.persist.raw.insert(
@@ -3366,8 +3366,8 @@ pub(in crate::game) mod hopper_cart_transfer_tests {
             let sentinel = Some(ItemStack::new("minecraft:diamond", 17));
             for open in [false, true] {
                 for occupied in [1, 24, 27] {
-                    game.server.next_entity += 1;
-                    let id = game.server.next_entity;
+                    game.side.next_entity += 1;
+                    let id = game.side.next_entity;
                     let mut boat =
                         Boat::new(id, "oak".into(), Vec3::new(8.5, 65.0, 8.5), 0.0).with_chest();
                     if occupied > 1 {
@@ -3482,12 +3482,12 @@ pub(in crate::game) mod hopper_cart_transfer_tests {
                 (8, 65, 8),
                 BlockEntity::Chest(vec![Some(ItemStack::new("minecraft:stone", 64)); 27]),
             );
-            game.server.next_entity += 1;
-            let id = game.server.next_entity;
+            game.side.next_entity += 1;
+            let id = game.side.next_entity;
             let mut cart = Minecart::new(id, CartKind::Hopper, Vec3::new(8.5, 64.0625, 8.5));
             cart.enabled = true;
             game.carts.push(cart);
-            let count = |game: &Game<'_>| {
+            let count = |game: &crate::game::ServerGame<'_>| {
                 let in_chest: u32 = match game.world.block_entities.get(&(8, 65, 8)) {
                     Some(BlockEntity::Chest(s)) => s.iter().flatten().map(|s| s.count).sum(),
                     _ => 0,
@@ -3527,13 +3527,13 @@ pub(in crate::game) mod pot_hopper_insertion_tests {
     use sunrise_client::save;
     use sunrise_core::nbt::Tag;
 
-    fn count(game: &Game<'_>, pos: Pos, slot: usize) -> u32 {
+    fn count(game: &crate::game::ServerGame<'_>, pos: Pos, slot: usize) -> u32 {
         let Some(BlockEntity::Chest(slots)) = game.world.block_entities.get(&pos) else {
             panic!("actual command-created inventory missing at {pos:?}");
         };
         slots[slot].as_ref().map_or(0, |item| item.count)
     }
-    fn pot(game: &Game<'_>, z: i32) -> (Tag, ItemStack) {
+    fn pot(game: &crate::game::ServerGame<'_>, z: i32) -> (Tag, ItemStack) {
         let tag = spill::saved_entity(&game.world, [5, 200, z]).expect("actual saved pot");
         let item = save::item_from_nbt(tag.get("item").expect("positive actual item")).unwrap();
         (tag, item)
@@ -3707,7 +3707,7 @@ pub(in crate::game) mod tests {
         });
     }
 
-    fn hopper_facing(game: &Game<'_>, facing: &str, enabled: bool) -> BlockStateId {
+    fn hopper_facing(game: &crate::game::ServerGame<'_>, facing: &str, enabled: bool) -> BlockStateId {
         let registry = &game.pack.assets.registry;
         let mut state = registry
             .state(registry.default_state("minecraft:hopper").unwrap())
@@ -3720,7 +3720,7 @@ pub(in crate::game) mod tests {
         registry.resolve(&state).unwrap()
     }
     fn place_hopper(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         pos: Pos,
         facing: &str,
         enabled: bool,
@@ -3734,13 +3734,13 @@ pub(in crate::game) mod tests {
             .block_entities
             .insert(pos, BlockEntity::Chest(slots));
     }
-    fn hopper_count(game: &Game<'_>, pos: Pos) -> u32 {
+    fn hopper_count(game: &crate::game::ServerGame<'_>, pos: Pos) -> u32 {
         match game.world.block_entities.get(&pos) {
             Some(BlockEntity::Chest(items)) => items.iter().flatten().map(|s| s.count).sum(),
             other => panic!("no hopper at {pos:?}: {other:?}"),
         }
     }
-    fn tick_block_entities(game: &mut Game<'_>, time: i64) {
+    fn tick_block_entities(game: &mut crate::game::ServerGame<'_>, time: i64) {
         game.world.game_time = time;
         game.tick_block_entities().unwrap();
     }

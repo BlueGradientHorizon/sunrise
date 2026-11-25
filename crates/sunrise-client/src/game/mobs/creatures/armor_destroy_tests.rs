@@ -100,7 +100,7 @@ fn body_armor_guards_and_break_event_are_preserved() {
         );
         assert!(game.mobs[0].item_by_slot(EquipmentSlot::Body).is_none());
         assert_eq!(
-            game.server.lan_entity_events.last().map(|event| event.1),
+            game.side.lan_entity_events.last().map(|event| event.1),
             Some(65)
         );
     });
@@ -130,7 +130,7 @@ fn sun_protection_uses_mob_draw_and_broadcasts_break() {
         game.wear_sun_protection(21);
         assert!(game.mobs[0].item_by_slot(EquipmentSlot::Head).is_none());
         assert_eq!(
-            game.server.lan_entity_events.last().map(|event| event.1),
+            game.side.lan_entity_events.last().map(|event| event.1),
             Some(49)
         );
     });
@@ -190,7 +190,7 @@ fn a_break_effect_follows_only_an_applied_break() {
             )
             .unwrap();
         let jump =
-            |game: &mut super::Game<'_>| game.mobs.iter().find(|m| m.id == id).unwrap().ai.jumping;
+            |game: &mut crate::game::ServerGame<'_>| game.mobs.iter().find(|m| m.id == id).unwrap().ai.jumping;
         let ifbroke = || MobEvent::IfBroke {
             mob: id,
             effects: Vec::new(),

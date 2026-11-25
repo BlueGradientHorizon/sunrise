@@ -27,7 +27,7 @@ pub(in crate::game) const CRITERIA: [&str; 3] = ["any", "short", "five"];
 pub(in crate::game) use crate::game::server_side::lan_actions_server::guest_body::tests::fall_reset::scene;
 
 /// One server packet drain; put a client-tick marker between reports.
-pub(in crate::game) fn drain_moves(g: &mut Game<'_>, reports: impl IntoIterator<Item = (f64, u8)>) {
+pub(in crate::game) fn drain_moves(g: &mut crate::game::ServerGame<'_>, reports: impl IntoIterator<Item = (f64, u8)>) {
     g.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
         guest
             .inbox
@@ -52,7 +52,7 @@ pub(in crate::game) fn drain_moves(g: &mut Game<'_>, reports: impl IntoIterator<
 
 /// One server tick in which the guest's client sent these airborne positions.
 pub(in crate::game) fn tick_with_moves(
-    g: &mut Game<'_>,
+    g: &mut crate::game::ServerGame<'_>,
     heights: &[f64],
     before_level: (f64, Option<[f64; 3]>, [bool; 3]),
 ) {
@@ -65,7 +65,7 @@ pub(in crate::game) fn tick_with_moves(
 }
 
 /// The guest's fall distance, where its tracked fall began, and which criteria it has.
-pub(in crate::game) fn fall(g: &Game<'_>) -> (f64, Option<[f64; 3]>, [bool; 3]) {
+pub(in crate::game) fn fall(g: &crate::game::ServerGame<'_>) -> (f64, Option<[f64; 3]>, [bool; 3]) {
     let host = g.lan.as_ref().unwrap();
     let guest = &host.hub.guests[0];
     let done = CRITERIA.map(|name| {

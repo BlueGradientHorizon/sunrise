@@ -190,14 +190,14 @@ mod tests {
     use sunrise_client::motion::PlayerMotion;
     use sunrise_core::geometry::Vec3;
 
-    fn spawn(game: &mut super::Game<'_>, id: u32, kind: &str) -> EntityRef {
+    fn spawn(game: &mut crate::game::ServerGame<'_>, id: u32, kind: &str) -> EntityRef {
         let kind = game.res.mob_types().get(kind).unwrap().clone();
         game.mobs
             .push(Mob::new(id, kind, Vec3::new(1.5, 64.0, 2.5), 0.0));
         game.entity(id).unwrap()
     }
 
-    fn acting_player(game: &mut super::Game<'_>) {
+    fn acting_player(game: &mut crate::game::ServerGame<'_>) {
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
         crate::game::native_entity_refs::tests::bind_local_player(game, 7, 7);
     }
@@ -212,7 +212,7 @@ mod tests {
             let slime = spawn(game, 13, "minecraft:slime");
             let sulfur = spawn(game, 14, "minecraft:sulfur_cube");
             let bunny = spawn(game, 15, "minecraft:rabbit");
-            let source = |game: &super::Game<'_>, e| game.entity_sound_source(e);
+            let source = |game: &crate::game::ServerGame<'_>, e| game.entity_sound_source(e);
             assert_eq!(source(game, cow), Some(SoundSource::Neutral));
             assert_eq!(source(game, zombie), Some(SoundSource::Hostile));
             assert_eq!(source(game, ghast), Some(SoundSource::Hostile));
@@ -240,7 +240,7 @@ mod tests {
         super::super::native_guest_turn_tests::with_guests(|game| {
             let cow = spawn(game, 10, "minecraft:cow");
             assert!(game.entity_play_sound(cow, "minecraft:entity.cow.ambient", 0.5, 1.5));
-            let sound = &game.server.pending_native_sounds[0];
+            let sound = &game.side.pending_native_sounds[0];
             assert_eq!(sound.sound, "minecraft:entity.cow.ambient");
             assert_eq!(sound.at, [1.5, 64.0, 2.5]);
             assert_eq!(sound.source as usize, SoundSource::Neutral.index());
@@ -250,19 +250,19 @@ mod tests {
             assert!(!game.entity_play_sound(cow, "minecraft:entity.cow.ambient", 1.0, 1.0));
             game.mobs[0].silent = false;
             assert!(!game.entity_play_sound(cow, "minecraft:entity.cow.ambient", 1.0, f32::NAN));
-            assert_eq!(game.server.pending_native_sounds.len(), 1);
+            assert_eq!(game.side.pending_native_sounds.len(), 1);
             // A player doesn't hear their own sound, silent or not.
             game.as_guest(12, |game| {
                 let player = game.entity(12).unwrap();
                 assert!(game.entity_play_sound(player, "minecraft:entity.player.burp", 1.0, 1.0));
-                let sound = &game.server.pending_native_sounds[1];
+                let sound = &game.side.pending_native_sounds[1];
                 assert_eq!(sound.source as usize, SoundSource::Players.index());
                 assert_eq!(sound.except, Some(12));
             })
             .expect("the sound's real guest turn runs");
             let stale = EntityRef::new(WorldEpoch::new(cow.epoch().get() + 1), 10);
             assert!(!game.entity_play_sound(stale, "minecraft:entity.cow.ambient", 1.0, 1.0));
-            assert_eq!(game.server.pending_native_sounds.len(), 2);
+            assert_eq!(game.side.pending_native_sounds.len(), 2);
         });
     }
 
@@ -280,11 +280,11 @@ mod tests {
             );
             game.audio.0.capture = Some(Vec::new());
             assert!(game.entity_broadcast_event(cow, 3));
-            assert_eq!(game.server.lan_entity_events, [(10, 3)]);
+            assert_eq!(game.side.lan_entity_events, [(10, 3)]);
             let stale = EntityRef::new(WorldEpoch::new(cow.epoch().get() + 1), 10);
             assert!(!game.entity_broadcast_event(stale, 3));
             assert!(!game.entity_game_event(stale, "minecraft:step"));
-            assert_eq!(game.server.lan_entity_events.len(), 1);
+            assert_eq!(game.side.lan_entity_events.len(), 1);
         });
     }
 

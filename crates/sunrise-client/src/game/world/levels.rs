@@ -2348,7 +2348,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 mod tests {
     use super::*;
 
-    fn dirty_test_chunk(game: &mut Game<'_>) {
+    fn dirty_test_chunk(game: &mut crate::game::ServerGame<'_>) {
         let chunk = sunrise_client::chunk::Chunk::with_layout(0, 0, game.world.layout());
         game.world.chunks.insert((0, 0), Arc::new(chunk));
         game.world.modified.insert((0, 0));
@@ -2370,9 +2370,9 @@ mod tests {
         mod_platform::testing::with_mods(Vec::new().into(), || {
             with_game(|game| {
                 let root = tempfile::tempdir().unwrap();
-                game.server.world_root = root.path().to_path_buf();
-                game.save.0 = Arc::new(SaveDir::new(
-                    game.server.world_root.clone(),
+                game.side.world_root = root.path().to_path_buf();
+                game.side.save.0 = Arc::new(SaveDir::new(
+                    game.side.world_root.clone(),
                     LevelShape::OVERWORLD,
                     Some(Default::default()),
                 ));
@@ -2381,16 +2381,16 @@ mod tests {
                 for dim in [Dim::Nether, Dim::End, Dim::Overworld] {
                     game.enter_level(dim).unwrap();
                     dirty_test_chunk(game);
-                    folders.push((dim, game.save.0.root.clone(), game.save.0.shape));
+                    folders.push((dim, game.side.save.0.root.clone(), game.side.save.0.shape));
                     if dim != Dim::End {
-                        queue_unencodable_entity_record(&game.save.0);
+                        queue_unencodable_entity_record(&game.side.save.0);
                     }
                 }
                 assert_eq!(
                     game.save_all_reply().translation_key(),
                     Some("commands.save.success")
                 );
-                assert_eq!(game.save.0.record_save_failures(), 2);
+                assert_eq!(game.side.save.0.record_save_failures(), 2);
                 assert_eq!(game.dim, Dim::Overworld);
                 assert_eq!(
                     Level::read(root.path()).unwrap().name,
@@ -2421,9 +2421,9 @@ mod tests {
                 mod_platform::testing::with_mods(Vec::new().into(), || {
                     with_game(|game| {
                         let root = tempfile::tempdir().unwrap();
-                        game.server.world_root = root.path().to_path_buf();
-                        game.save.0 = Arc::new(SaveDir::new(
-                            game.server.world_root.clone(),
+                        game.side.world_root = root.path().to_path_buf();
+                        game.side.save.0 = Arc::new(SaveDir::new(
+                            game.side.world_root.clone(),
                             LevelShape::OVERWORLD,
                             Some(Default::default()),
                         ));
@@ -2433,21 +2433,21 @@ mod tests {
                         let custom = Dim::Extra(mod_api::__private::dimension_key(id));
                         let flat =
                             RuntimeLevel::new("minecraft:overworld", RuntimeGenerator::Flat, 1);
-                        game.levels
+                        game.side.levels
                             .0
                             .runtime
                             .queue_open("test_idle", id, flat)
                             .unwrap();
                         game.enter_level(custom).unwrap();
                         dirty_test_chunk(game);
-                        queue_unencodable_entity_record(&game.save.0);
-                        let disk = SaveDir::new(game.save.0.root.clone(), game.save.0.shape, None);
+                        queue_unencodable_entity_record(&game.side.save.0);
+                        let disk = SaveDir::new(game.side.save.0.root.clone(), game.side.save.0.shape, None);
                         game.enter_level(Dim::Overworld).unwrap();
-                        game.levels.0.parked.get_mut(&custom).unwrap().idle = IDLE_TICKS - 1;
+                        game.side.levels.0.parked.get_mut(&custom).unwrap().idle = IDLE_TICKS - 1;
                         game.close_idle_levels().unwrap();
                         assert_eq!(game.dim, Dim::Overworld);
-                        assert!(!game.levels.0.parked.contains_key(&custom));
-                        assert_eq!(game.save.0.record_save_failures(), 1);
+                        assert!(!game.side.levels.0.parked.contains_key(&custom));
+                        assert_eq!(game.side.save.0.record_save_failures(), 1);
                         assert!(disk.raw_chunk(0, 0).is_some());
                     });
                 });
@@ -2641,7 +2641,7 @@ mod tests {
     /// world opened and commands allowed.
     fn prepared_game<'a>(
         resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-    ) -> Game<'a> {
+    ) -> crate::game::ServerGame<'a> {
         use crate::game::{Audio, Options, Progress, Settings, load_resources};
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -2663,15 +2663,12 @@ mod tests {
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
         // The game keeps its resources for the whole test.
         let resources = &*resources.insert(loaded.resources);
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -2718,7 +2715,7 @@ mod tests {
         assert!(game.run_command("execute in minecraft:the_nether run worldborder set 100"));
         assert_eq!(game.dim, Dim::Overworld);
         assert_eq!(game.border.size(), 1000.0);
-        let nether = game.levels.0.parked_border(Dim::Nether).unwrap();
+        let nether = game.side.levels.0.parked_border(Dim::Nether).unwrap();
         assert_eq!(nether.size(), 100.0);
     }
 
@@ -2762,15 +2759,12 @@ mod tests {
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
         options.spikes = Some(0.0);
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -2811,7 +2805,7 @@ mod tests {
         root: &std::path::Path,
         home: &std::path::Path,
         world: &std::path::Path,
-    ) -> Game<'a> {
+    ) -> crate::game::ServerGame<'a> {
         use crate::game::{Audio, Options, Progress, Settings, load_resources};
         let settings = Settings::default();
         let loaded = load_resources(
@@ -2835,15 +2829,12 @@ mod tests {
         // A fixed name: no generated sunrise-player.txt in the working directory.
         options.player_name = Some("H260".into());
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
             None,
         )
         .unwrap();
@@ -2941,7 +2932,7 @@ mod tests {
             let mut resources = None;
             let mut game = open_game(&mut resources, &root, home.path(), &world);
             assert!(!saw_end.load(Ordering::Relaxed), "validation has not run");
-            assert!(game.levels.0.parked[&end].streaming.commanded().is_empty());
+            assert!(game.side.levels.0.parked[&end].streaming.commanded().is_empty());
             // An early final save can run after the world is adopted but
             // before ticket activation. The originals on disk must survive.
             game.save_parked_levels(false).unwrap();
@@ -2951,7 +2942,7 @@ mod tests {
                 "Nether validator sees the End"
             );
             assert_eq!(game.dim, Dim::Overworld);
-            let nether_level = &game.levels.0.parked[&nether];
+            let nether_level = &game.side.levels.0.parked[&nether];
             assert_eq!(
                 nether_level
                     .streaming
@@ -2960,13 +2951,13 @@ mod tests {
                     .next(),
                 Some(&ticket)
             );
-            let end_level = &game.levels.0.parked[&end];
+            let end_level = &game.side.levels.0.parked[&end];
             assert!(end_level.streaming.commanded().contains(&commanded_chunk));
-            let ticking = |game: &Game<'_>, dim, (x, z)| {
+            let ticking = |game: &crate::game::ServerGame<'_>, dim, (x, z)| {
                 let world = if dim == game.dim {
                     &game.world
                 } else {
-                    &game.levels.0.parked[&dim].world
+                    &game.side.levels.0.parked[&dim].world
                 };
                 crate::game::ticking_chunk(world, x, z)
             };
@@ -3103,7 +3094,7 @@ mod tests {
             game.settings.render_distance = 2;
             game.settings.simulation_distance = 2;
             game.streaming.radius = -1;
-            game.server_lists.0 = Some(Arc::new(Mutex::new(crate::game::dedicated::Lists {
+            game.side.server_lists.0 = Some(Arc::new(Mutex::new(crate::game::dedicated::Lists {
                 ops: OpList::new(home.path().join("ops.json")),
                 white: WhiteList::new(home.path().join("whitelist.json")),
                 bans: BanList::new(home.path().join("banned-players.json")),
@@ -3141,8 +3132,8 @@ mod tests {
                     seed: game.level.seed,
                     max_players: 2,
                     integrated: false,
-                    levels: game.server.level_shapes,
-                    level_seeds: game.levels.0.runtime.seeds(),
+                    levels: game.side.level_shapes,
+                    level_seeds: game.side.levels.0.runtime.seeds(),
                 },
             )
             .unwrap();
@@ -3159,8 +3150,8 @@ mod tests {
                 address: "127.0.0.1:25565".parse().unwrap(),
                 expected: false,
             };
-            game.server.next_entity += 1;
-            let mut guest = Guest::new(joined, game.server.next_entity as i32, [0.5, 80.0, 0.5], 0);
+            game.side.next_entity += 1;
+            let mut guest = Guest::new(joined, game.side.next_entity as i32, [0.5, 80.0, 0.5], 0);
             guest.placed = true;
             guest.loaded = true;
             guest.dimension = Dim::Overworld.id().into();
@@ -3187,13 +3178,13 @@ mod tests {
             for _ in 0..2000 {
                 game.tick_server(false).unwrap();
                 let nether_ready = game
-                    .levels
+                    .side.levels
                     .0
                     .parked
                     .get(&Dim::Nether)
                     .is_some_and(|p| p.world.chunks.contains_key(&(0, 0)));
                 let end_ready = game
-                    .levels
+                    .side.levels
                     .0
                     .parked
                     .get(&Dim::End)
@@ -3214,7 +3205,7 @@ mod tests {
                 game.tick_server(true).unwrap();
             }
             assert!(
-                game.levels.0.parked[&Dim::Nether]
+                game.side.levels.0.parked[&Dim::Nether]
                     .world
                     .chunks
                     .contains_key(&(0, 0)),
@@ -3227,7 +3218,7 @@ mod tests {
                 game.tick_server(false).unwrap();
             }
             assert!(
-                game.levels.0.parked[&Dim::Nether]
+                game.side.levels.0.parked[&Dim::Nether]
                     .world
                     .chunks
                     .contains_key(&(0, 0)),
@@ -3242,10 +3233,10 @@ mod tests {
             for _ in 0..=IDLE_TICKS + 15 {
                 game.tick_server(false).unwrap();
             }
-            assert!(game.levels.0.parked.contains_key(&Dim::Nether));
-            assert!(game.levels.0.parked.contains_key(&Dim::End));
+            assert!(game.side.levels.0.parked.contains_key(&Dim::Nether));
+            assert!(game.side.levels.0.parked.contains_key(&Dim::End));
             assert!(
-                game.levels.0.parked[&Dim::Nether].world.chunks.is_empty(),
+                game.side.levels.0.parked[&Dim::Nether].world.chunks.is_empty(),
                 "released Nether chunk unloaded while parked under /tick freeze"
             );
             assert!(
@@ -3336,8 +3327,8 @@ mod tests {
         assert_eq!(game.dim, Dim::Overworld);
         let sizes = (
             game.border.size(),
-            game.levels.0.parked_border(Dim::Nether).map(|b| b.size()),
-            game.levels.0.parked_border(Dim::End).map(|b| b.size()),
+            game.side.levels.0.parked_border(Dim::Nether).map(|b| b.size()),
+            game.side.levels.0.parked_border(Dim::End).map(|b| b.size()),
         );
         if sizes != (70.0, Some(100.0), Some(59_999_968.0)) {
             failures.push(format!("after the first set and a tick: {sizes:?}"));
@@ -3356,11 +3347,11 @@ mod tests {
         // A new world each run, as the first open expects.
         let _ = std::fs::remove_dir_all(&home);
         let world = home.join("saves/h260");
-        let sizes = |game: &mut Game<'_>| {
+        let sizes = |game: &mut crate::game::ServerGame<'_>| {
             assert!(game.run_command("execute in minecraft:overworld run worldborder get"));
             assert!(game.run_command("execute in minecraft:the_nether run worldborder get"));
             assert!(game.run_command("execute in minecraft:the_end run worldborder get"));
-            let parked = |d| game.levels.0.parked_border(d).map(|b| b.size());
+            let parked = |d| game.side.levels.0.parked_border(d).map(|b| b.size());
             let size = |d: Dim| {
                 if game.dim == d {
                     Some(game.border.size())
@@ -3624,7 +3615,7 @@ mod tests {
         let mut want = vec![f32::MAX.to_bits(); 12];
         want.extend([70.0f32, 70.0, 69.0, 68.0].map(f32::to_bits));
         let edge = game
-            .save
+            .side.save
             .0
             .calculated_blending(12, 0)
             .expect("(12, 0) was calculated");
@@ -3633,13 +3624,13 @@ mod tests {
         assert_eq!(heights.map(|h| h.map(f32::to_bits).to_vec()), Some(want));
         // (11, 0) borders no new chunk: the generation's calculation adds no height
         // to it (it may have an entry), so it packs without heights, as vanilla's.
-        let inner = game.save.0.calculated_blending(11, 0);
+        let inner = game.side.save.0.calculated_blending(11, 0);
         assert!(
             inner.as_ref().is_none_or(|data| data.pack().2.is_none()),
             "{inner:?}"
         );
         // (0, 0) is far from the new chunks: nothing calculated it.
-        assert!(game.save.0.calculated_blending(0, 0).is_none());
+        assert!(game.side.save.0.calculated_blending(0, 0).is_none());
     }
 }
 
@@ -3651,13 +3642,13 @@ mod request_save_tests {
     #[ignore = "daily"]
     fn requested_save_waits_without_consuming_the_queue_while_lifted() {
         crate::game::native_entity_refs::tests::with_game(|game| {
-            game.levels.0.request_save(Dim::Overworld);
+            game.side.levels.0.request_save(Dim::Overworld);
             let pass = game.dropped.lift();
             game.run_requested_saves();
-            assert_eq!(game.levels.0.requested_saves, [Dim::Overworld]);
+            assert_eq!(game.side.levels.0.requested_saves, [Dim::Overworld]);
             drop(pass);
             game.run_requested_saves();
-            assert!(game.levels.0.requested_saves.is_empty());
+            assert!(game.side.levels.0.requested_saves.is_empty());
         });
     }
 

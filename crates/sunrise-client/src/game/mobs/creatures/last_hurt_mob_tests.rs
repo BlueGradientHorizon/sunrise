@@ -14,12 +14,12 @@ pub(in crate::game) const WOLF: u32 = 73;
 pub(in crate::game) const PLAYER_AGE: i32 = 39;
 pub(in crate::game) const MOB_AGE: u32 = 117;
 
-pub(in crate::game) fn living(game: &Game<'_>, id: u32) -> LivingRef {
+pub(in crate::game) fn living(game: &crate::game::ServerGame<'_>, id: u32) -> LivingRef {
     game.living(game.entity(id).expect("admitted entity"))
         .expect("living entity")
 }
 
-pub(in crate::game) fn add_mob(game: &mut Game<'_>, id: u32, kind: &str, x: f64) {
+pub(in crate::game) fn add_mob(game: &mut crate::game::ServerGame<'_>, id: u32, kind: &str, x: f64) {
     let kind = game.res.mob_types().get(kind).unwrap().clone();
     let mut mob = Mob::new(id, kind, Vec3::new(x, 80.0, 0.5), 0.0);
     mob.no_ai = true;
@@ -28,7 +28,7 @@ pub(in crate::game) fn add_mob(game: &mut Game<'_>, id: u32, kind: &str, x: f64)
     game.mobs.push(mob);
 }
 
-pub(in crate::game) fn shoot(game: &mut Game<'_>, owner: Who, kind: ProjectileKind) {
+pub(in crate::game) fn shoot(game: &mut crate::game::ServerGame<'_>, owner: Who, kind: ProjectileKind) {
     let at = game.mobs[0].position;
     let mut shot = Projectile::new(kind, at, Some(owner));
     shot.velocity = Vec3::new(0.0, 0.0, 2.0);

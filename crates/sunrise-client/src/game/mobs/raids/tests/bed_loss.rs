@@ -25,19 +25,16 @@ fn admitted_raid_loses_removed_loaded_bed_without_erasing_memory() {
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = super::super::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
-    game.server.world_root =
+    game.side.world_root =
         std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap()).join("raid-unit-world");
     for x in -5..5 {
         for z in -5..5 {
@@ -76,15 +73,15 @@ fn admitted_raid_loses_removed_loaded_bed_without_erasing_memory() {
     villager.extra.bed = Some([2, 200, 1]);
     game.mobs.push(villager);
     assert!(game.raid_command_create([8, 200, 8], 1));
-    let id = game.raiding.0.raids.ids()[0];
+    let id = game.side.raiding.0.raids.ids()[0];
     for _ in 0..400 {
         game.world.game_time += 1;
         game.tick_raids();
-        if game.raiding.0.raids.get(id).unwrap().groups_spawned == 1 {
+        if game.side.raiding.0.raids.get(id).unwrap().groups_spawned == 1 {
             break;
         }
     }
-    let raid = game.raiding.0.raids.get(id).unwrap();
+    let raid = game.side.raiding.0.raids.get(id).unwrap();
     assert!(raid.started);
     assert_eq!(raid.groups_spawned, 1, "real first wave must be admitted");
     assert!(
@@ -95,19 +92,19 @@ fn admitted_raid_loses_removed_loaded_bed_without_erasing_memory() {
         game.tick_raids();
     }
     assert_eq!(
-        game.raiding.0.raids.get(id).unwrap().status,
+        game.side.raiding.0.raids.get(id).unwrap().status,
         Status::Ongoing
     );
     // Unavailable claims remain unknown rather than becoming known air.
     let chunk = game.world.chunks.remove(&(0, 0)).unwrap();
-    assert!(Game::is_village(&game.village_centers(), [2, 200, 1]));
+    assert!(crate::game::ServerGame::is_village(&game.village_centers(), [2, 200, 1]));
     game.world.chunks.insert((0, 0), chunk);
     game.level_set([2, 200, 1], air).unwrap();
     game.level_set([2, 200, 2], air).unwrap();
     assert_eq!(game.world.block(2, 200, 1), air);
     assert_eq!(game.world.block(2, 200, 2), air);
     game.tick_raids();
-    assert_eq!(game.raiding.0.raids.get(id).unwrap().status, Status::Loss);
+    assert_eq!(game.side.raiding.0.raids.get(id).unwrap().status, Status::Loss);
     assert_eq!(
         game.mobs.iter().find(|m| m.id == 162).unwrap().extra.bed,
         Some([2, 200, 1])

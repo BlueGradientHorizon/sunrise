@@ -1638,7 +1638,7 @@ pub(in crate::game) mod tests {
     /// the prepared resources are missing (CI has no vanilla data).
     pub(in crate::game) fn server_game(
         resources: &mut Option<std::sync::Arc<crate::game::Resources>>,
-    ) -> Option<Box<Game<'_>>> {
+    ) -> Option<Box<crate::game::ServerGame<'_>>> {
         use crate::game::{Audio, Options, Progress, Settings, load_resources};
         let root = std::env::var_os("SUNRISE_TEST_RESOURCES")
             .map(std::path::PathBuf::from)
@@ -1668,15 +1668,12 @@ pub(in crate::game) mod tests {
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
         let res = resources.insert(loaded.resources);
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             res,
             loaded.pack,
             loaded.gui?,
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .ok()?;
@@ -1722,7 +1719,7 @@ pub(in crate::game) mod tests {
             crate::game::sculk::TEST_POSTED_EVENTS
                 .with(|events| *events.borrow_mut() = Some(Vec::new()));
             assert!(game.interact_mount(0, "minecraft:chest"), "{kind}");
-            let sounds: Vec<_> = std::mem::take(&mut game.server.pending_sounds)
+            let sounds: Vec<_> = std::mem::take(&mut game.side.pending_sounds)
                 .into_iter()
                 .map(|s| (s.event, s.position, s.volume, s.pitch))
                 .collect();
@@ -1748,13 +1745,13 @@ pub(in crate::game) mod tests {
 
     /// Feeds `item` to mob 0 and collects the sounds and the `minecraft:eat`
     /// game events it made.
-    pub(in crate::game) fn feed(game: &mut Game<'_>, item: &str) -> (bool, Shown) {
+    pub(in crate::game) fn feed(game: &mut crate::game::ServerGame<'_>, item: &str) -> (bool, Shown) {
         game.inventory[game.selected] = Some(ItemStack::new(item, 2));
         game.start_audio_capture();
         crate::game::sculk::TEST_POSTED_EVENTS
             .with(|events| *events.borrow_mut() = Some(Vec::new()));
         let used = game.interact_mount(0, item);
-        let sounds = std::mem::take(&mut game.server.pending_sounds)
+        let sounds = std::mem::take(&mut game.side.pending_sounds)
             .into_iter()
             .map(|s| (s.event, s.position, s.volume, s.pitch))
             .collect();
@@ -1774,7 +1771,7 @@ pub(in crate::game) mod tests {
     /// A whole, tamed mount of `kind` standing at `at` with `seed` for its own
     /// random, alone in `game`.
     pub(in crate::game) fn mount(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         kind: &str,
         id: u32,
         at: [f64; 3],
@@ -1892,13 +1889,13 @@ pub(in crate::game) mod tests {
 
     /// Equips `item` on mob 0 and collects the sounds and the `minecraft:equip`
     /// game events it made.
-    pub(in crate::game) fn equip(game: &mut Game<'_>, item: &str) -> (bool, Shown) {
+    pub(in crate::game) fn equip(game: &mut crate::game::ServerGame<'_>, item: &str) -> (bool, Shown) {
         game.inventory[game.selected] = Some(ItemStack::new(item, 2));
         game.start_audio_capture();
         crate::game::sculk::TEST_POSTED_EVENTS
             .with(|events| *events.borrow_mut() = Some(Vec::new()));
         let used = game.interact_mount(0, item);
-        let sounds = std::mem::take(&mut game.server.pending_sounds)
+        let sounds = std::mem::take(&mut game.side.pending_sounds)
             .into_iter()
             .map(|s| (s.event, s.position, s.volume, s.pitch))
             .collect();

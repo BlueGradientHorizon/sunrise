@@ -38,7 +38,7 @@ pub(in crate::game) mod player_bed_leave_tests {
         }
     }
 
-    fn with_guests(test: impl FnOnce(&mut Game<'_>)) {
+    fn with_guests(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         crate::game::native_guest_turn_tests::with_guests(|game| {
             game.world.chunks.insert(
                 (0, 0),
@@ -48,7 +48,7 @@ pub(in crate::game) mod player_bed_leave_tests {
         });
     }
 
-    fn in_bed(game: &mut Game<'_>, conn: u32) {
+    fn in_bed(game: &mut crate::game::ServerGame<'_>, conn: u32) {
         game.lan
             .as_mut()
             .unwrap()

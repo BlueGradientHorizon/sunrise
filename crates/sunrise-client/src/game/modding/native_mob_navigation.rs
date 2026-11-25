@@ -378,7 +378,7 @@ mod tests {
             assert_eq!(mob.is_done(game), Some(true));
             assert!(!mob.move_to(game, [1000.0, 65.0, 0.0], 1.0));
             let compare_extreme =
-                |game: &mut super::super::Game<'_>, extreme: f64, boundary: f64| {
+                |game: &mut crate::game::ServerGame<'_>, extreme: f64, boundary: f64| {
                     let result = mob.move_to(game, [10.5, boundary, 3.5], 1.0);
                     let path = game.mobs[0].ai.nav.path.clone();
                     mob.stop(game);

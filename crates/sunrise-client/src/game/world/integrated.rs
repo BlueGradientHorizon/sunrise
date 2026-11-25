@@ -285,7 +285,7 @@ impl Integrated {
     #[cfg(test)]
     pub fn call<T: Send + 'static>(
         &self,
-        f: impl FnOnce(&mut Game<'_>) -> T + Send + 'static,
+        f: impl FnOnce(&mut crate::game::ServerGame<'_>) -> T + Send + 'static,
     ) -> Option<T> {
         self.ask(|reply| {
             OwnerRequest::InTest(Box::new(move |g| {
@@ -295,7 +295,7 @@ impl Integrated {
     }
     /// Tests only: `f` on the server thread between two ticks, not awaited.
     #[cfg(test)]
-    pub fn post(&self, f: impl FnOnce(&mut Game<'_>) + Send + 'static) -> bool {
+    pub fn post(&self, f: impl FnOnce(&mut crate::game::ServerGame<'_>) + Send + 'static) -> bool {
         self.tell(OwnerRequest::InTest(Box::new(f)))
     }
     /// An integrated server whose thread already finished, just before the window disconnects.
@@ -1475,7 +1475,7 @@ pub(in crate::game) mod tests {
 
     /// Observe both teardownPublishedState and the dropped server task queue.
     pub(in crate::game) fn install_serving(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         published: bool,
     ) -> impl Fn() -> bool + Send + Sync + 'static {
         let flags = Arc::new(Flags::default());
@@ -1556,7 +1556,7 @@ pub(in crate::game) mod tests {
                     window.settings.clone(),
                 )
                 .unwrap();
-                server.save.0 = window.save.0.clone();
+                server.side.save.0 = window.save.0.clone();
                 let result = server.run_server_lifecycle(false, |server, began| {
                     *began = true;
                     // Model publication at open_world_tables, before later steps can fail.
@@ -1572,7 +1572,7 @@ pub(in crate::game) mod tests {
                     if failed_open {
                         Err("open failed after map publication".into())
                     } else {
-                        server.server.world_adopted = true;
+                        server.side.world_adopted = true;
                         Ok(())
                     }
                 });
@@ -1782,7 +1782,7 @@ pub(in crate::game) mod tests {
     }
 
     /// Install the mod before building the fixture's frozen block and block entity registries.
-    fn with_checkpoint_mod(test: impl FnOnce(&mut Game<'_>, &Mutex<Vec<CheckpointEvent>>)) {
+    fn with_checkpoint_mod(test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Mutex<Vec<CheckpointEvent>>)) {
         use crate::game::native_entity_refs::tests::{fixture_root, with_game_at};
 
         let events = Arc::new(Mutex::new(Vec::new()));
@@ -1832,11 +1832,11 @@ pub(in crate::game) mod tests {
                     Some(Default::default()),
                 )
             };
-            game.server.world_root = root.to_path_buf();
-            game.save.0 = Arc::new(open());
+            game.side.world_root = root.to_path_buf();
+            game.side.save.0 = Arc::new(open());
             // Crash shutdown only saves an adopted world whose storage is owned.
-            game.session_lock.0 = Some(SessionLock::acquire(root).unwrap());
-            game.server.world_adopted = true;
+            game.side.session_lock.0 = Some(SessionLock::acquire(root).unwrap());
+            game.side.world_adopted = true;
             game.native_level_opened(Dim::Overworld);
             game.native_lifecycle_world_ready();
 
@@ -1964,7 +1964,7 @@ pub(in crate::game) mod tests {
             // No hub: players are not saved, so the owner's file keeps what it had.
             assert_eq!(owner_xp(), Some(11));
             assert_eq!(flags.published.load(Ordering::Relaxed), 0);
-            assert!(game.session_lock.0.is_none());
+            assert!(game.side.session_lock.0.is_none());
         });
     }
 

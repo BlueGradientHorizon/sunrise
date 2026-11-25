@@ -6,7 +6,7 @@ use super::*;
 use std::sync::Arc;
 use sunrise_core::nbt::{Tag, parse_snbt};
 
-fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
+fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -29,15 +29,12 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -67,7 +64,7 @@ fn a_mannequin_saves_its_own_fields_and_no_mob_fields() {
     assert!(game.run_command(
         "summon mannequin 8.5 100 4.5 {UUID:[I;321,0,0,6],NoGravity:1b,NoAI:1b,PersistenceRequired:1b,CanPickUpLoot:1b,LeftHanded:1b}"
     ));
-    let id = |g: &Game<'_>, n: i32| {
+    let id = |g: &crate::game::ServerGame<'_>, n: i32| {
         g.mobs
             .iter()
             .find(|m| g.persist.uuids.get(&m.id) == Some(&[321, 0, 0, n]))
@@ -106,7 +103,7 @@ fn a_mannequin_saves_its_own_fields_and_no_mob_fields() {
 fn a_mannequin_reads_and_saves_from_its_own_state() {
     let mut game_resources = None;
     let mut game = game(&mut game_resources);
-    let summon = |g: &mut Game<'_>, kind: &str, n: i32, fields: &str| {
+    let summon = |g: &mut crate::game::ServerGame<'_>, kind: &str, n: i32, fields: &str| {
         assert!(g.run_command(&format!(
             "summon {kind} {}.5 100 4.5 {{UUID:[I;321,0,0,{n}],NoGravity:1b,{fields}}}",
             n * 2

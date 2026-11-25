@@ -24,7 +24,7 @@ const SEATS: [(&str, f64, f64); 8] = [
 ];
 
 /// A mob of `kind` with id `id` standing at `at` facing south, alone in `game`.
-fn mob_at(game: &mut Game<'_>, kind: &str, id: u32, at: [f64; 3]) {
+fn mob_at(game: &mut crate::game::ServerGame<'_>, kind: &str, id: u32, at: [f64; 3]) {
     let kind = game.res.mob_types().get(kind).unwrap().clone();
     let m = sunrise_client::mobs::Mob::new(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0);
     game.mobs.clear();
@@ -32,7 +32,7 @@ fn mob_at(game: &mut Game<'_>, kind: &str, id: u32, at: [f64; 3]) {
 }
 
 /// A rideable minecart with id `id` at `at`.
-fn cart_at(game: &mut Game<'_>, id: u32, at: [f64; 3]) {
+fn cart_at(game: &mut crate::game::ServerGame<'_>, id: u32, at: [f64; 3]) {
     game.carts.clear();
     game.carts.push(Minecart::new(
         id,
@@ -119,7 +119,7 @@ fn a_marker_takes_no_rider() {
         return;
     };
     for (id, kind) in [(9, "minecraft:marker"), (10, "minecraft:item_display")] {
-        game.others.0.push(OtherEntity {
+        game.side.others.0.push(OtherEntity {
             size_answer: None,
             id,
             kind: kind.into(),

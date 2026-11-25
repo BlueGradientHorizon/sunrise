@@ -104,8 +104,8 @@ pub(in crate::game::server_side) use crate::game::native_components::item_resour
         assert_eq!(inputs.len(), expected.len());
         crate::game::native_entity_refs::tests::with_game(|game| {
             // Authoritative tag reads are available only while a world is owned.
-            game.session_lock.0 =
-                Some(sunrise_client::save::SessionLock::acquire(&game.save.0.root).unwrap());
+            game.side.session_lock.0 =
+                Some(sunrise_client::save::SessionLock::acquire(&game.side.save.0.root).unwrap());
             for (input, expected) in inputs.iter().zip(&expected) {
                 assert_eq!(input["name"], expected["name"]);
                 let support::Outcome {
@@ -146,7 +146,7 @@ pub(in crate::game::server_side) use crate::game::native_components::item_resour
                     item.repairable(game, &material)
                 );
             }
-            game.session_lock.0 = None;
+            game.side.session_lock.0 = None;
         });
     }
 }

@@ -83,7 +83,7 @@ fn a_declared_interaction_runs_after_vanillas_and_a_veto_stops_it() {
         game.install_fluid_interactions().unwrap();
         // Lava at (x, 64, z) with `beside` to its east; the beside block's placement tells
         // its neighbours, as a block set does.
-        let meet_with = |game: &mut super::Game<'_>, z: i32, liquid, beside| {
+        let meet_with = |game: &mut crate::game::ServerGame<'_>, z: i32, liquid, beside| {
             game.world.set(4, 64, z, liquid).unwrap();
             game.world.set(5, 64, z, beside).unwrap();
             let at = BlockPos::new(5, 64, z);
@@ -93,7 +93,7 @@ fn a_declared_interaction_runs_after_vanillas_and_a_veto_stops_it() {
             game.world.block(4, 64, z)
         };
 
-        let meet = |game: &mut super::Game<'_>, z: i32, beside| meet_with(game, z, lava, beside);
+        let meet = |game: &mut crate::game::ServerGame<'_>, z: i32, beside| meet_with(game, z, lava, beside);
         let flowing_lava = registry
             .resolve(&sunrise_world::chunk::BlockState {
                 name: "minecraft:lava".into(),
@@ -122,7 +122,7 @@ fn a_declared_interaction_runs_after_vanillas_and_a_veto_stops_it() {
 
         // The pure read answers what one cell becomes beside one neighbour, from the same table
         // and with no world: nothing is placed and the hook is not asked.
-        let read = |game: &super::Game<'_>, liquid, beside, below| {
+        let read = |game: &crate::game::ServerGame<'_>, liquid, beside, below| {
             let source = game.res.behaviours().fluid(liquid);
             let source = super::native_world_read::api_fluid_state(source).unwrap();
             game.fluid_interaction_result(source, beside, below)

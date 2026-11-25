@@ -16,7 +16,7 @@ use sunrise_client::{
 };
 use sunrise_core::nbt::Tag;
 
-fn with_game(f: impl FnOnce(&mut Game<'_>)) {
+fn with_game(f: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -35,15 +35,12 @@ fn with_game(f: impl FnOnce(&mut Game<'_>)) {
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
         None,
     )
     .unwrap();
@@ -59,7 +56,7 @@ fn with_game(f: impl FnOnce(&mut Game<'_>)) {
 }
 
 /// The zombie standing at `x` in the loaded chunk.
-fn zombie<'a>(game: &'a Game<'_>, x: f64) -> &'a Mob {
+fn zombie<'a>(game: &'a crate::game::ServerGame<'_>, x: f64) -> &'a Mob {
     game.mobs
         .iter()
         .find(|m| m.species() == Species::Zombie && m.position.x == x)
@@ -73,7 +70,7 @@ fn finalized(m: &Mob) -> bool {
 }
 
 /// The compound `game` would save for the entity with `uuid`.
-fn saved_tag(game: &mut Game<'_>, uuid: [i32; 4]) -> Tag {
+fn saved_tag(game: &mut crate::game::ServerGame<'_>, uuid: [i32; 4]) -> Tag {
     game.entity_chunks(&HashSet::from([(0, 0)]), false)
         .iter()
         .flat_map(|(_, tags)| tags)

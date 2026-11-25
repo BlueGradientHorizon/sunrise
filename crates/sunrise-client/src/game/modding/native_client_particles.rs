@@ -206,8 +206,8 @@ mod tests {
                 ),
                 (false, vec![]),
             ] {
-                game.particles.0.clear();
-                game.particles.0.sounds.clear();
+                game.side.particles.0.clear();
+                game.side.particles.0.sounds.clear();
                 let host: &mut dyn ClientHost = game;
                 assert!(host.create_fireworks(&request(audible)));
                 for _ in 0..20 {
@@ -218,10 +218,10 @@ mod tests {
                         player: None,
                         cached_chunk: std::cell::Cell::new(None),
                     };
-                    game.particles.0.tick(&level);
+                    game.side.particles.0.tick(&level);
                 }
                 let heard: Vec<_> = game
-                    .particles
+                    .side.particles
                     .0
                     .sounds
                     .iter()
@@ -231,7 +231,7 @@ mod tests {
                 let expected: Vec<_> = expected.into_iter().map(|s| (s, at)).collect();
                 assert_eq!(heard, expected, "audible {audible}");
                 assert!(
-                    !game.particles.0.is_empty(),
+                    !game.side.particles.0.is_empty(),
                     "the sparks drew, audible {audible}"
                 );
             }

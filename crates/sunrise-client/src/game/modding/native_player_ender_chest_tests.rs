@@ -3,7 +3,7 @@
 use super::native_guest_turn_tests::with_guests;
 use mod_api::{Host, InventoryView, ItemStack, PlayerDataRefusal, StackWriteError, prelude::*};
 
-fn api_item(game: &super::Game<'_>, snbt: &str) -> Option<ItemStack> {
+fn api_item(game: &crate::game::ServerGame<'_>, snbt: &str) -> Option<ItemStack> {
     let host: &dyn Host = game;
     host.item_from_snbt(snbt)
 }
@@ -46,7 +46,7 @@ fn ender_chest_slots_are_read_and_written() {
             );
 
             game.open_ender_chest((1, 64, 1));
-            game.server.ender_items[0] = None; // Only the open copy is authoritative now.
+            game.side.ender_items[0] = None; // Only the open copy is authoritative now.
             assert_eq!(
                 a.with_ender_chest(game, contents),
                 Some(vec![(0, pearls.clone())])
@@ -199,8 +199,8 @@ fn a_write_while_the_local_ender_chest_is_open_survives_closing_it() {
         let key = (1, 64, 1);
         let old = sunrise_client::items::ItemStack::new("minecraft:ender_pearl", 5);
         let new = sunrise_client::items::ItemStack::new("minecraft:diamond", 2);
-        game.server.ender_items = vec![None; 27];
-        game.server.ender_items[3] = Some(old);
+        game.side.ender_items = vec![None; 27];
+        game.side.ender_items[3] = Some(old);
         game.open_ender_chest(key);
         assert!(game.slot_set(&super::commands::items::Slot::Ender(3), Some(new.clone())));
         let Some(BlockEntity::Chest(open)) = game.world.block_entities.get(&key) else {
@@ -212,7 +212,7 @@ fn a_write_while_the_local_ender_chest_is_open_survives_closing_it() {
             "the menu shows the written stack"
         );
         game.close_ender_chest();
-        assert_eq!(game.server.ender_items[3], Some(new), "closing keeps it");
+        assert_eq!(game.side.ender_items[3], Some(new), "closing keeps it");
     });
 }
 
@@ -253,7 +253,7 @@ fn an_item_use_opens_the_players_own_ender_chest_and_its_clicks_keep_every_stack
     mod_platform::testing::with_mods(mods, || {
         with_guests(|game| {
             // The outer state the record holds in the guest's turn: the window's own chest.
-            game.server.ender_items = vec![Some(Stack::new("minecraft:dirt", 3)); 27];
+            game.side.ender_items = vec![Some(Stack::new("minecraft:dirt", 3)); 27];
             let hub = &mut game.lan.as_mut().unwrap().hub;
             hub.guests.update_connection(12, |g| {
                 g.inventory.fill(None);
@@ -272,7 +272,7 @@ fn an_item_use_opens_the_players_own_ender_chest_and_its_clicks_keep_every_stack
                 }),
             );
             assert_eq!(*answers.lock().unwrap(), vec![Ok(true)]);
-            let open = |game: &crate::game::Game<'_>| {
+            let open = |game: &crate::game::ServerGame<'_>| {
                 let guest = game.lan.as_ref().unwrap().hub.guest(12).unwrap();
                 let menu = guest.menu.as_ref().expect("the ender chest is open");
                 (
@@ -290,7 +290,7 @@ fn an_item_use_opens_the_players_own_ender_chest_and_its_clicks_keep_every_stack
             let shown = &guest.menu.as_ref().unwrap().sent;
             assert_eq!(shown[0], Some(Stack::new("minecraft:stone", 10)));
             assert_eq!(shown[1], None);
-            let count = |game: &crate::game::Game<'_>, item: &str| {
+            let count = |game: &crate::game::ServerGame<'_>, item: &str| {
                 let g = game.lan.as_ref().unwrap().hub.guest(12).unwrap();
                 g.ender_items
                     .iter()
@@ -301,7 +301,7 @@ fn an_item_use_opens_the_players_own_ender_chest_and_its_clicks_keep_every_stack
                     .map(|s| s.count)
                     .sum::<u32>()
             };
-            let click = |game: &mut crate::game::Game<'_>, slot: i16, input: i32| {
+            let click = |game: &mut crate::game::ServerGame<'_>, slot: i16, input: i32| {
                 game.lan_guest_packet(
                     12,
                     Serverbound::ContainerClick(ContainerClick {
@@ -337,7 +337,7 @@ fn an_item_use_opens_the_players_own_ender_chest_and_its_clicks_keep_every_stack
             );
             // The window's own chest was never shown nor touched.
             assert_eq!(
-                game.server.ender_items[0],
+                game.side.ender_items[0],
                 Some(Stack::new("minecraft:dirt", 3))
             );
             assert_eq!(open(game).0, window);

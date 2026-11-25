@@ -42,7 +42,7 @@ pub(in crate::game::server_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_core::{geometry::Vec3, nbt::Tag, position::ChunkPos};
 
-pub(in crate::game) fn fixture(run: impl FnOnce(&mut Game<'_>, &Arc<Mutex<Seen>>)) {
+pub(in crate::game) fn fixture(run: impl FnOnce(&mut crate::game::ServerGame<'_>, &Arc<Mutex<Seen>>)) {
     crate::entry::install_client_hooks();
     let seen = Arc::new(Mutex::new(Seen::default()));
     mod_platform::testing::with_mods(
@@ -67,7 +67,7 @@ pub(in crate::game) fn fixture(run: impl FnOnce(&mut Game<'_>, &Arc<Mutex<Seen>>
                     Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 80.0, 4.5)).unwrap());
                 bind_local_player(game, 11, 123);
                 game.set_mode_id(0);
-                game.server.next_entity = 100;
+                game.side.next_entity = 100;
                 run(game, &seen);
             })
         },

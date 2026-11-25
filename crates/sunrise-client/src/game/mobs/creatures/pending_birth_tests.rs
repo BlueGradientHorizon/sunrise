@@ -61,7 +61,7 @@ impl Hooks for Baby {
 
 pub(in crate::game) fn with_split(
     listener: impl Fn(&mut dyn ServerHost, &mut MobSplitEvent<'_>) -> Flow + Send + Sync + 'static,
-    run: impl FnOnce(&mut Game<'_>),
+    run: impl FnOnce(&mut crate::game::ServerGame<'_>),
 ) {
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "split",
@@ -76,7 +76,7 @@ pub(in crate::game) fn with_baby(
     + Send
     + Sync
     + 'static,
-    run: impl FnOnce(&mut Game<'_>),
+    run: impl FnOnce(&mut crate::game::ServerGame<'_>),
 ) {
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "baby",
@@ -96,7 +96,7 @@ pub(in crate::game) fn near(a: f64, b: f64) -> bool {
 }
 
 /// The mobs the split added, in order (the fixture world starts with none).
-pub(in crate::game) fn spawned(game: &Game<'_>) -> Vec<Mob> {
+pub(in crate::game) fn spawned(game: &crate::game::ServerGame<'_>) -> Vec<Mob> {
     game.mobs.to_vec()
 }
 
@@ -498,14 +498,14 @@ fn a_birth_panic_does_not_undo_or_misroute_a_biome_write_in_another_level() {
 
 /// Two cows bred directly, as `breeding_announces_the_orb_before_the_lower_id_child` does: the
 /// parents' ages are 6000 as the goal leaves them, the partner is in love.
-pub(in crate::game) fn breed_pair(game: &mut Game<'_>, kind: &str) -> (u32, u32, Option<u32>) {
+pub(in crate::game) fn breed_pair(game: &mut crate::game::ServerGame<'_>, kind: &str) -> (u32, u32, Option<u32>) {
     breed_pair_credited(game, kind, false)
 }
 
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::server_side::creatures_server::pending_birth_tests::breed_pair_credited;
 
-pub(in crate::game) fn find(game: &Game<'_>, id: u32) -> Mob {
+pub(in crate::game) fn find(game: &crate::game::ServerGame<'_>, id: u32) -> Mob {
     game.mobs.iter().find(|m| m.id == id).unwrap().clone()
 }
 
@@ -705,7 +705,7 @@ fn turtle_hatching_spawns_its_turtle_without_asking_baby_entity_spawn() {
     assert_eq!(*calls.lock().unwrap(), 0);
 }
 
-pub(in crate::game) fn with_splits(listeners: Vec<SplitFn>, run: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_splits(listeners: Vec<SplitFn>, run: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let entries: Vec<_> = listeners
         .into_iter()
         .enumerate()
@@ -785,7 +785,7 @@ fn a_token_kept_from_one_listener_is_expired_in_the_next() {
     );
 }
 
-pub(in crate::game) fn animals_bred(game: &Game<'_>) -> i32 {
+pub(in crate::game) fn animals_bred(game: &crate::game::ServerGame<'_>) -> i32 {
     game.stats.get("custom", "minecraft:animals_bred")
 }
 

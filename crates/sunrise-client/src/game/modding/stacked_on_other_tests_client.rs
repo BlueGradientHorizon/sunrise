@@ -1,5 +1,5 @@
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_entity_refs::tests::with_game;
+pub(in crate::game::client_side) use crate::game::native_entity_refs::tests::{with_game, with_client_game};
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::native_guest_turn_tests::with_guests;
 #[allow(unused_imports)]
@@ -111,7 +111,7 @@ pub(in crate::game) mod item_part_tests {
         .into();
         crate::game::api_values::install_parts(&mods).unwrap();
         mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
+            with_client_game(|game| {
                 let (mut reader, _writer) = crate::game::remote::tests::connect_menu_test(game);
                 crate::game::remote::tests::spawn_menu_test(game);
                 let mut body = sunrise_client::motion::PlayerMotion::new(
@@ -139,7 +139,7 @@ pub(in crate::game) mod item_part_tests {
                 //    HostSide::Client (never global listener), predicts the edit locally, and
                 //    sends ContainerClick with the predicted slots/carried.
                 game.creative = false;
-                game.client.screen = Screen::Inventory;
+                game.side.screen = Screen::Inventory;
                 game.inventory = vec![None; game.inventory.len()];
                 game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));
@@ -182,7 +182,7 @@ pub(in crate::game) mod item_part_tests {
                 assert_eq!(click_pkt.changed[0].1.as_ref().map(|h| h.count), Some(2));
 
                 // Server reconciliation stays authoritative over client prediction.
-                let item_id = |game: &crate::game::Game<'_>, name: &str| {
+                let item_id = |game: &crate::game::ClientGame<'_>, name: &str| {
                     game.remote
                         .as_ref()
                         .unwrap()
@@ -278,16 +278,16 @@ pub(in crate::game) mod item_part_tests {
                 // 3. Creative Survival Inventory tab pickup runs ItemPart on HostSide::Client and
                 //    sends SetCreativeModeSlot (never ContainerClick).
                 game.creative = true;
-                game.client.screen = Screen::Creative;
+                game.side.screen = Screen::Creative;
                 game.refresh_creative_tabs();
                 let inv_tab = game
-                    .creative_screen
+                    .side.creative_screen
                     .0
                     .tabs
                     .iter()
                     .position(|t| t.inventory)
                     .expect("creative inventory tab");
-                game.creative_screen.0.select(inv_tab);
+                game.side.creative_screen.0.select(inv_tab);
                 assert!(game.creative_inventory_open());
                 game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));
@@ -325,13 +325,13 @@ pub(in crate::game) mod item_part_tests {
                 // 4. Creative item-tab hotbar pickup runs ItemPart on HostSide::Client and sends
                 //    SetCreativeModeSlot; creative catalogue display slots do NOT dispatch Parts.
                 let item_tab = game
-                    .creative_screen
+                    .side.creative_screen
                     .0
                     .tabs
                     .iter()
                     .position(|t| !t.inventory && !t.search && !t.items.is_empty())
                     .expect("creative item tab");
-                game.creative_screen.0.select(item_tab);
+                game.side.creative_screen.0.select(item_tab);
                 assert!(game.creative_tab_open());
                 game.inventory[0] = Some(ItemStack::new("minecraft:flint", 1));
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));

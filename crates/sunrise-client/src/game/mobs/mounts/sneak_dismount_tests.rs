@@ -33,7 +33,7 @@ impl Hooks for KeepRider {
 }
 
 /// Runs `test` on a server game with a horse (its id) and the `KeepRider` mod.
-pub(in crate::game) fn with_horse(test: impl FnOnce(&mut Game<'_>, u32, &AtomicBool, &AtomicU32)) {
+pub(in crate::game) fn with_horse(test: impl FnOnce(&mut crate::game::ServerGame<'_>, u32, &AtomicBool, &AtomicU32)) {
     let keep = Arc::new(AtomicBool::new(true));
     let leaves = Arc::new(AtomicU32::new(0));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
@@ -60,7 +60,7 @@ pub(in crate::game) fn with_horse(test: impl FnOnce(&mut Game<'_>, u32, &AtomicB
     });
 }
 
-fn rider(game: &Game<'_>, horse: u32) -> Option<equine::Rider> {
+fn rider(game: &crate::game::ServerGame<'_>, horse: u32) -> Option<equine::Rider> {
     game.mob_object(horse).unwrap().rider
 }
 
@@ -150,13 +150,13 @@ fn a_kept_server_player_still_drives_and_sneaks() {
     const INPUT: u8 = 1 | 4 | 16 | 32;
     const SHIFT: u8 = 32;
     with_horse(|game, horse, keep, leaves| {
-        let set_input = |game: &mut Game<'_>, input: u8| {
+        let set_input = |game: &mut crate::game::ServerGame<'_>, input: u8| {
             let guests = &mut game.lan.as_mut().unwrap().hub.guests;
             guests.update(0, |g| {
                 (g.vehicle, g.vehicle_order, g.input) = (Some(horse), 1, input);
             });
         };
-        let vehicle = |game: &Game<'_>| game.lan.as_ref().unwrap().hub.guests[0].vehicle;
+        let vehicle = |game: &crate::game::ServerGame<'_>| game.lan.as_ref().unwrap().hub.guests[0].vehicle;
         set_input(game, INPUT);
         game.guest_vehicle_tick(2);
         assert_eq!(leaves.load(Ordering::SeqCst), 1, "the dismount was asked");

@@ -71,7 +71,7 @@ fn tracked_executor_failure_survives_saved_depth_boundary() {
                         game.world.modified.insert((0, 0));
                         game.save_level(true).unwrap();
                         let reopened = SaveDir::new(
-                            game.save.0.root.clone(),
+                            game.side.save.0.root.clone(),
                             LevelShape::OVERWORLD,
                             Some(Default::default()),
                         );

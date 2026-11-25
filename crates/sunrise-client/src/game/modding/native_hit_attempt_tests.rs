@@ -89,7 +89,7 @@ fn base_allow_does_not_override_worn_immunity() {
     });
 }
 
-fn fresh_player(game: &mut super::Game<'_>, mode: GameMode) {
+fn fresh_player(game: &mut crate::game::ServerGame<'_>, mode: GameMode) {
     game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
     bind_local_player(game, 7, 7);
     // A replacement player starts with survival abilities even when Game was
@@ -228,7 +228,7 @@ fn hit_attempts_reach_the_listener_once_including_refusals() {
             assert_eq!(game.player.as_ref().unwrap().health.health(), 20.0);
 
             fresh_player(game, GameMode::Survival);
-            game.combat.0.refuse_player_hit = true;
+            game.side.combat.0.refuse_player_hit = true;
             assert!(!game.hurt_player_from(
                 2.0,
                 None,
@@ -238,7 +238,7 @@ fn hit_attempts_reach_the_listener_once_including_refusals() {
             ));
             check(&[false], "PvP refusal after the first predicate");
             assert_eq!(game.player.as_ref().unwrap().health.health(), 20.0);
-            game.combat.0.refuse_player_hit = false;
+            game.side.combat.0.refuse_player_hit = false;
 
             fresh_player(game, GameMode::Survival);
             game.player

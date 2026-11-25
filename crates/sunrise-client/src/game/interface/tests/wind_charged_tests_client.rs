@@ -123,6 +123,6 @@ fn a_wind_charged_mob_bursts_with_the_breezes_sound_unless_it_is_silent() {
 }
 
 /// How many times `sound` was played as a positional sound.
-pub(in crate::game) fn heard(game: &Game<'_>, sound: &str) -> u32 {
-    game.audio.0.heard.get(sound).copied().unwrap_or(0)
+pub(in crate::game) fn heard(game: &crate::game::ClientGame<'_>, sound: &str) -> u32 {
+    game.side.audio.0.heard.get(sound).copied().unwrap_or(0)
 }

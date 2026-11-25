@@ -23,7 +23,7 @@ pub(in crate::game) mod tests {
     pub(in crate::game) const POS: (i32, i32, i32) = (3, 64, 4);
     pub(in crate::game) const AT: [i32; 3] = [POS.0, POS.1, POS.2];
 
-    pub(in crate::game) fn with_container(block: &str, test: impl FnOnce(&mut Game<'_>)) {
+    pub(in crate::game) fn with_container(block: &str, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         super::super::native_guest_turn_tests::with_guests(|game| {
             game.options.dedicated = Some(Vec::new());
             game.world
@@ -103,7 +103,7 @@ pub(in crate::game) mod tests {
             let heard = heard.lock().unwrap();
             assert_eq!(heard.len(), 100);
             assert!(heard.iter().all(|kind| kind == "minecraft:generic_9x1"));
-            assert!(!game.server.lid_openers.contains_key(&POS));
+            assert!(!game.side.lid_openers.contains_key(&POS));
         });
     }
 
@@ -212,7 +212,7 @@ pub(in crate::game) mod tests {
                     events.lock().unwrap().last(),
                     Some(&("minecraft:container_close".into(), None))
                 );
-                assert!(game.server.mod_container_viewers.is_empty());
+                assert!(game.side.mod_container_viewers.is_empty());
 
                 // Native menus can send a position as extra data without opening its container.
                 let before = notices.lock().unwrap().len();
@@ -243,11 +243,11 @@ pub(in crate::game) mod tests {
                 game.player_menu_closing(13);
                 assert_eq!(notices.lock().unwrap().len(), before_notices);
                 assert_eq!(events.lock().unwrap().len(), before_events);
-                assert!(game.server.mod_container_viewers.is_empty());
+                assert!(game.side.mod_container_viewers.is_empty());
 
                 // If a second player opens the replacement, the first player's stale menu
                 // cannot close it, count on a recheck, or appear in its viewer list.
-                let open = |game: &mut Game<'_>, conn| {
+                let open = |game: &mut crate::game::ServerGame<'_>, conn| {
                     game.lan.as_mut().unwrap().hub.open_container(
                         conn,
                         "minecraft:generic_3x3",
@@ -375,15 +375,15 @@ pub(in crate::game) mod tests {
                 .registry
                 .default_state("minecraft:barrel")
                 .unwrap();
-            game.server.audio_capture_active = true;
-            game.server.pending_sounds.clear();
+            game.side.audio_capture_active = true;
+            game.side.pending_sounds.clear();
             mod_platform::testing::with_mods(
                 vec![ModEntry::new("replace_shulker", Box::new(Replace))].into(),
                 || game.guest_close_all(12),
             );
             assert_eq!(game.world.block(POS.0, POS.1, POS.2), barrel);
             let sounds = game
-                .server
+                .side
                 .pending_sounds
                 .iter()
                 .map(|s| (s.event.as_str(), s.position))

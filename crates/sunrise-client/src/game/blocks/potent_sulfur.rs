@@ -335,13 +335,13 @@ pub(in crate::game) mod pass_tests {
     use sunrise_core::{geometry::Vec3, random::LegacyRandom};
 
     /// The mobs whose box meets `area`, by walking them all.
-    fn scan(game: &Game<'_>, area: Aabb) -> Vec<u32> {
+    fn scan(game: &crate::game::ServerGame<'_>, area: Aabb) -> Vec<u32> {
         (0..game.mobs.len() as u32)
             .filter(|&j| game.mobs[j as usize].bounds().intersects(area))
             .collect()
     }
     /// The same from the pass's grid.
-    fn from_grid(game: &mut Game<'_>, area: Aabb) -> Vec<u32> {
+    fn from_grid(game: &mut crate::game::ServerGame<'_>, area: Aabb) -> Vec<u32> {
         let mut near = Vec::new();
         assert!(
             game.mobs_in_pass(area, &mut near),
@@ -417,7 +417,7 @@ pub(in crate::game) mod pass_tests {
             let mods: mod_api::Mods =
                 vec![ModEntry::new("move-on-nausea", Box::new(MoveMob(moved)))].into();
             mod_platform::testing::with_mods(mods, || {
-                game.server.pass_mobs = Some(PassMobs::default());
+                game.side.pass_mobs = Some(PassMobs::default());
                 game.server_nausea_effect_ticker((1, 63, 1));
                 assert_eq!(game.mobs[1].position, Vec3::new(33.5, 64.0, 1.5));
                 assert!(game.mobs[1].extra.effects.is_empty());
@@ -464,8 +464,8 @@ pub(in crate::game) mod pass_tests {
                     Aabb::new(c, Vec3::new(c.x + w, c.y + h, c.z + w))
                 })
                 .collect();
-            game.server.pass_mobs = Some(PassMobs::default());
-            let check = |game: &mut Game<'_>, what: &str| {
+            game.side.pass_mobs = Some(PassMobs::default());
+            let check = |game: &mut crate::game::ServerGame<'_>, what: &str| {
                 for &area in &areas {
                     assert_eq!(from_grid(game, area), scan(game, area), "{what}");
                 }
@@ -481,7 +481,7 @@ pub(in crate::game) mod pass_tests {
             check(game, "some removed");
             // A geyser's own write leaves the boxes as they were.
             game.mobs[3].velocity.y += 0.2;
-            game.server.pass_mobs.as_mut().unwrap().wrote(&game.mobs);
+            game.side.pass_mobs.as_mut().unwrap().wrote(&game.mobs);
             check(game, "a push");
         });
     }

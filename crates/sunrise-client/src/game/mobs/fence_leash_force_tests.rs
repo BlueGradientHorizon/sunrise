@@ -25,7 +25,7 @@ const SLACK: &str = "00006099-0000-0000-0000-000000000002";
 
 /// A host with one placed guest (conn 2), so the server tracks the level and
 /// gives its fence knots their entities.
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -48,15 +48,12 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     options.resources = root.clone();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -103,7 +100,7 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     )
     .unwrap();
     // Reserve the manually installed guest in the shared runtime ID allocator.
-    game.server.next_entity = game.server.next_entity.max(2);
+    game.side.next_entity = game.side.next_entity.max(2);
     let (tx, _rx) = mpsc::channel();
     let mut guest = Guest::new(
         Joined {
@@ -139,7 +136,7 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     game
 }
 
-fn pig(game: &mut Game<'_>, uuid: &str) -> usize {
+fn pig(game: &mut crate::game::ServerGame<'_>, uuid: &str) -> usize {
     match game.target_with_uuid(sunrise_client::save::uuid_from_text(uuid).unwrap()) {
         Some(super::commands::Target::Mob(id)) => {
             game.mobs.iter().position(|m| m.id == id).unwrap()
@@ -148,7 +145,7 @@ fn pig(game: &mut Game<'_>, uuid: &str) -> usize {
     }
 }
 
-fn step(game: &mut Game<'_>) {
+fn step(game: &mut crate::game::ServerGame<'_>) {
     let before = game.world.game_time;
     assert!(game.run_command("tick step 1"));
     game.tick_server(false).unwrap();
@@ -156,7 +153,7 @@ fn step(game: &mut Game<'_>) {
 }
 
 /// `(Motion, yaw)` as saved: the velocity and the yaw.
-fn vectors(game: &mut Game<'_>, uuid: &str) -> ([f64; 3], f32) {
+fn vectors(game: &mut crate::game::ServerGame<'_>, uuid: &str) -> ([f64; 3], f32) {
     let i = pig(game, uuid);
     let m = &game.mobs[i];
     ([m.velocity.x, m.velocity.y, m.velocity.z], m.yaw)
@@ -188,7 +185,7 @@ fn a_fence_leash_pulls_a_pig_as_vanilla_does() {
         let i = pig(&mut game, uuid);
         let leash = game.mobs[i].extra.leash;
         let pending = game.mobs[i].extra.leash_pending;
-        let knot = game.server.knot_ids.get(&fence).copied();
+        let knot = game.side.knot_ids.get(&fence).copied();
         let state = knot_state(fence);
         eprintln!(
             "tick-1 binding {uuid}: leash={leash:?} pending={pending:?} knot entity={knot:?} at {:?}",

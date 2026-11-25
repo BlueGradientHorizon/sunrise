@@ -12,7 +12,7 @@ const PLAYER: u32 = 42;
 const CONN: u32 = 1;
 const PIG_Y: f64 = 73.0;
 
-fn empty_chunk(game: &mut Game<'_>) {
+fn empty_chunk<S: crate::game::Side>(game: &mut Game<'_, S>) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -28,7 +28,7 @@ fn shape() -> Collider {
     }
 }
 
-fn holder(game: &mut Game<'_>, x: f64) -> u32 {
+fn holder(game: &mut crate::game::ServerGame<'_>, x: f64) -> u32 {
     game.options.dedicated = Some(Vec::new());
     game.native_level_opened(game.dim);
     game.native_joins_skip();
@@ -52,7 +52,7 @@ fn holder(game: &mut Game<'_>, x: f64) -> u32 {
     id
 }
 
-fn shove(game: &mut Game<'_>, holder: u32, x: f64) {
+fn shove(game: &mut crate::game::ServerGame<'_>, holder: u32, x: f64) {
     let start = game.placed_moving_colliders();
     let i = game.mobs.iter().position(|m| m.id == holder).unwrap();
     game.mobs.update(i, |m| m.position.x = x);
@@ -175,8 +175,8 @@ fn a_predicted_collider_shove_passes_the_server_move_check() {
                         .set_read_timeout(Some(std::time::Duration::from_secs(5)))
                         .unwrap();
                     finish_login(game, &mut wire);
-                    game.title.0 = None;
-                    game.client.screen = crate::game::Screen::Playing;
+                    game.side.title.0 = None;
+                    game.side.screen = crate::game::Screen::Playing;
                     empty_chunk(game);
                     let mut player = PlayerMotion::new(game.motion, from).unwrap();
                     player.entity_id = PLAYER as i32;
@@ -236,14 +236,14 @@ fn a_predicted_collider_shove_passes_the_server_move_check() {
                 empty_chunk(game);
                 holder(game, 4.75);
                 game.player = Some(PlayerMotion::new(game.motion, from).unwrap());
-                game.server.lan_acting = Some(CONN);
-                game.server.lan_acting_entity = Some(PLAYER);
-                game.server.lan_acting_uuid = Some(11);
-                game.server.lan_acting_name = Some("pushed-player".into());
+                game.side.lan_acting = Some(CONN);
+                game.side.lan_acting_entity = Some(PLAYER);
+                game.side.lan_acting_uuid = Some(11);
+                game.side.lan_acting_name = Some("pushed-player".into());
                 bind_acting_guest(game);
                 // The packet belongs to the hub guest, not a second local body.
                 game.remove_local_player_body();
-                game.server.lan_acting = None;
+                game.side.lan_acting = None;
                 let hub = &mut game.lan.as_mut().unwrap().hub;
                 hub.update_guest(CONN, |g| {
                     g.loaded = true;

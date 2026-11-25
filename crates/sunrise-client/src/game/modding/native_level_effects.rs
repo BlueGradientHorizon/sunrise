@@ -297,7 +297,7 @@ mod tests {
             return;
         }
         let heart = || ParticleOptions::simple(particle_named_key("minecraft:heart").unwrap());
-        let send_at = |game: &mut Game<'_>,
+        let send_at = |game: &mut crate::game::ServerGame<'_>,
                        level: LevelRef,
                        options: &ParticleOptions,
                        positions: &[[f64; 3]]| {
@@ -332,7 +332,7 @@ mod tests {
                 .unwrap();
             let heart = heart();
             let level = game.level("minecraft:overworld").unwrap();
-            let send = |game: &mut Game<'_>, positions: &[[f64; 3]]| {
+            let send = |game: &mut crate::game::ServerGame<'_>, positions: &[[f64; 3]]| {
                 send_at(game, level, &heart, positions)
             };
             let particle = |pos| {

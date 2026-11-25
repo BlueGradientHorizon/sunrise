@@ -26,7 +26,7 @@ fn a_given_invisibility_hides_a_mobs_waypoint_and_a_loaded_one_does_not() {
         assert!(game.run_command(
             r#"summon minecraft:zombie 4.5 64 2.5 {NoAI:1b,Tags:["loaded"],UUID:[I;1988,0,0,4],active_effects:[{id:"minecraft:invisibility",amplifier:0b,duration:-1}]}"#
         ));
-        let mob = |game: &Game<'_>, n: i32| {
+        let mob = |game: &crate::game::ServerGame<'_>, n: i32| {
             let m = game
                 .mobs
                 .iter()
@@ -36,7 +36,7 @@ fn a_given_invisibility_hides_a_mobs_waypoint_and_a_loaded_one_does_not() {
         };
         let (given, loaded) = (mob(game, 3), mob(game, 4));
         // A range write marks the entity for its next waypoint check.
-        let set_range = |game: &mut Game<'_>| {
+        let set_range = |game: &mut crate::game::ServerGame<'_>| {
             for tag in ["given", "loaded"] {
                 assert!(game.run_command(&format!(
                     "attribute @e[tag={tag},limit=1] minecraft:waypoint_transmit_range base set 100"
@@ -45,7 +45,7 @@ fn a_given_invisibility_hides_a_mobs_waypoint_and_a_loaded_one_does_not() {
             game.tick_waypoints();
         };
         set_range(game);
-        let tracked = |game: &Game<'_>| game.cmds.0.waypoints.clone().unwrap_or_default();
+        let tracked = |game: &crate::game::ServerGame<'_>| game.side.cmds.0.waypoints.clone().unwrap_or_default();
         assert!(tracked(game).contains(&given));
         assert!(tracked(game).contains(&loaded));
         assert!(
@@ -58,11 +58,11 @@ fn a_given_invisibility_hides_a_mobs_waypoint_and_a_loaded_one_does_not() {
 }
 
 /// The number a successful `/attribute` read says, or None when it failed.
-pub(in crate::game) fn read(game: &mut Game<'_>, command: &str) -> Option<String> {
-    game.server.chat_capture = Some(Vec::new());
+pub(in crate::game) fn read(game: &mut crate::game::ServerGame<'_>, command: &str) -> Option<String> {
+    game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
     let said: String = game
-        .server
+        .side
         .chat_capture
         .take()
         .unwrap_or_default()

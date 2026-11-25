@@ -30,7 +30,7 @@ fn plugin_player_stack_follows_network_moves_and_local_carriers() {
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = ExecutionRole::Client;
-    let mut game = Game::new(
+    let mut game = crate::game::ClientGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
@@ -49,7 +49,7 @@ fn plugin_player_stack_follows_network_moves_and_local_carriers() {
     game.spawn_entity(40, "minecraft:player", [2.0, 64.0, 3.0], [0.0; 3]);
     game.spawn_entity(41, "minecraft:player", [0.0, 64.0, 0.0], [0.0; 3]);
     game.spawn_entity(42, "minecraft:area_effect_cloud", [0.0; 3], [0.0; 3]);
-    let set = |g: &mut Game<'_>, vehicle, passengers: Vec<i32>| {
+    let set = |g: &mut crate::game::ClientGame<'_>, vehicle, passengers: Vec<i32>| {
         g.handle_packet(C::SetPassengers(play::SetPassengers {
             vehicle,
             passengers,

@@ -64,7 +64,7 @@ fn a_new_player_after_a_portal_keeps_the_old_ones_modifiers() {
         .unwrap()
         .set_modifier("minecraft:armor", "test:bonus", 3.0, "add_value", true)
         .unwrap();
-    let read = |game: &mut Game, name: &str| game.player.as_mut().unwrap().attribute(name).unwrap();
+    let read = |game: &mut crate::game::ServerGame<'_>, name: &str| game.player.as_mut().unwrap().attribute(name).unwrap();
     assert_eq!(read(&mut game, "minecraft:armor"), 11.0);
     assert_eq!(read(&mut game, "minecraft:armor_toughness"), 2.0);
     // Through the portal: the Respawn keeps all data, the position makes the player.

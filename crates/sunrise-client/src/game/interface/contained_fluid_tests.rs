@@ -100,11 +100,11 @@ fn resource_root(scratch: &std::path::Path) -> std::path::PathBuf {
 }
 
 /// The layers `item` draws under [`MODEL`], asking the game.
-fn drawn(game: &crate::game::Game<'_>, item: &str) -> Vec<Layer> {
+fn drawn(game: &crate::game::ClientGame<'_>, item: &str) -> Vec<Layer> {
     drawn_with(game, item, MODEL)
 }
 /// The layers `item` draws under the fluid container `model`, asking the game.
-fn drawn_with(game: &crate::game::Game<'_>, item: &str, model: &str) -> Vec<Layer> {
+fn drawn_with(game: &crate::game::ClientGame<'_>, item: &str, model: &str) -> Vec<Layer> {
     let mut models = ItemModels::default();
     models.definitions.insert(
         item.into(),
@@ -147,7 +147,7 @@ fn a_mod_container_draws_the_fluid_its_part_reports_isolated() {
     let root = resource_root(scratch.path());
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
-        crate::game::native_entity_refs::tests::with_game_at(root, |game| {
+        crate::game::native_entity_refs::tests::with_game_role_client(root,crate::game::execution_role::ExecutionRole::Client,  |game| {
             let answer = |a| *part.answer.lock().unwrap() = a;
             let water_still = LayerContent::Sprite {
                 sprite: "minecraft:block/water_still".into(),

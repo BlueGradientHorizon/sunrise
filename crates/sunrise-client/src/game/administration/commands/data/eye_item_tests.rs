@@ -37,7 +37,7 @@ pub(in crate::game) fn parse_exact_snbt(text: &str) -> Tag {
     tag
 }
 
-pub(in crate::game) fn saved_item(game: &mut crate::game::Game<'_>, id: u32) -> Tag {
+pub(in crate::game) fn saved_item(game: &mut crate::game::ServerGame<'_>, id: u32) -> Tag {
     let tag = game.data_of(&DataRef::Entity(Target::Other(id))).unwrap();
     tag.get("Item")
         .cloned()

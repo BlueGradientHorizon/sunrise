@@ -20,7 +20,7 @@ const VALUE: AttachmentType<i32> = AttachmentType {
 };
 
 fn snapshot(
-    game: &Game<'_>,
+    game: &crate::game::ServerGame<'_>,
     dim: Dim,
 ) -> Arc<sunrise_mod_runtime::attachments::index::AttachmentSnapshot<AttachmentHolder>> {
     game.attachment_indexes[&dim]
@@ -33,7 +33,7 @@ fn snapshot(
 #[ignore = "daily"]
 fn saved_placement_respawn_removal_and_reconnect_publish_player_rows() {
     with_guests(|game| {
-        game.server.world_root = game.save.0.root.clone();
+        game.side.world_root = game.side.save.0.root.clone();
         game.options.dedicated = Some(Vec::new());
         game.native_level_opened(Dim::Overworld);
         let guests = &mut game.lan.as_mut().unwrap().hub.guests;
@@ -42,7 +42,7 @@ fn saved_placement_respawn_removal_and_reconnect_publish_player_rows() {
             .unwrap();
         sunrise_client::lan::playerdata::save(
             &guests[0],
-            &game.server.world_root,
+            &game.side.world_root,
             &Default::default(),
         );
         guests.update_all(|g| g.placed = false);
@@ -188,7 +188,7 @@ fn queued_level_teleport_moves_the_player_row_and_later_writes_stay_in_the_desti
         let host: &mut dyn ServerHost = game;
         VALUE.set(host, Holder::Player(12), 21).unwrap();
         let before = snapshot(game, Dim::Overworld);
-        game.server
+        game.side
             .level_teleports
             .push(crate::game::server_travel::LevelTeleport {
                 conn: 12,

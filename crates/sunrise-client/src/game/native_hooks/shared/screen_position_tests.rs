@@ -101,7 +101,7 @@ impl mod_api::Hooks for Listener {
             .then_some(mod_api::ScreenOpening::Cancel)
     }
 }
-pub(in crate::game) fn with_listener(test: impl FnOnce(&mut Game<'_>, &Seen)) {
+pub(in crate::game) fn with_listener(test: impl FnOnce(&mut crate::game::ClientGame<'_>, &Seen)) {
     let seen = Seen::default();
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "test",
@@ -150,7 +150,7 @@ fn screen_extra_data_borrows_only_the_open_windows_bytes() {
                     .registries
                     .insert("minecraft:menu".into(), Ids::from_names(vec![PACK.into()]));
 
-                let receive = |game: &mut Game<'_>, window, bytes: &[u8]| {
+                let receive = |game: &mut crate::game::ClientGame<'_>, window, bytes: &[u8]| {
                     game.handle_packet(C::CustomPayload(CustomPayload {
                         channel: CHANNEL.into(),
                         data: menu_extra::encode(&Message {
@@ -162,7 +162,7 @@ fn screen_extra_data_borrows_only_the_open_windows_bytes() {
                     }))
                     .unwrap();
                 };
-                let open = |game: &mut Game<'_>, window| {
+                let open = |game: &mut crate::game::ClientGame<'_>, window| {
                     game.handle_packet(C::OpenScreen(OpenScreen {
                         container: window,
                         menu: 0,

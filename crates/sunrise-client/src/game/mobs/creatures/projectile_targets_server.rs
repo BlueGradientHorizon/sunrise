@@ -482,7 +482,7 @@ impl<'r> Game<'r, crate::game::server_side::ServerState> {
             let pos = sunrise_client::mobs::leash::knot_state(k.fence).position;
             out.push((Who::Mob(k.id), knot_bounds(pos)));
         }
-        for o in self.others.0.iter() {
+        for o in self.side.others.0.iter() {
             if o.kind == "minecraft:leash_knot" {
                 out.push((Who::Mob(o.id), knot_bounds(o.position)));
             }

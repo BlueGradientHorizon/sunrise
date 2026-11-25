@@ -1310,9 +1310,9 @@ pub(in crate::game) mod nested_spawn_tests {
         RemoteRocket,
         OwnRocket,
     }
-    type Spawn = fn(&mut Game<'_>, u32);
+    type Spawn = fn(&mut crate::game::ClientGame<'_>, u32);
     thread_local! { static PENDING: Cell<Option<(Point, Spawn)>> = const { Cell::new(None) }; }
-    pub(in crate::game::client_side) fn after_lift(game: &mut Game<'_>, point: Point) {
+    pub(in crate::game::client_side) fn after_lift(game: &mut crate::game::ClientGame<'_>, point: Point) {
         if let Some((expected, spawn)) = PENDING.get()
             && point == expected
         {
@@ -1325,7 +1325,7 @@ pub(in crate::game) mod nested_spawn_tests {
         action();
         assert!(PENDING.take().is_none(), "requested lift was not exercised");
     }
-    fn spawn(game: &mut Game<'_>, kind: &str, data: i32, id: u32) {
+    fn spawn(game: &mut crate::game::ClientGame<'_>, kind: &str, data: i32, id: u32) {
         assert!(game.spawn_remote_projectile(
             kind,
             &sunrise_protocol::packets::play::AddEntity {
@@ -1342,7 +1342,7 @@ pub(in crate::game) mod nested_spawn_tests {
             (0.0, 0.0),
         ));
     }
-    fn falling(game: &mut Game<'_>, id: u32) {
+    fn falling(game: &mut crate::game::ClientGame<'_>, id: u32) {
         let sand = game
             .pack
             .assets
@@ -1378,16 +1378,16 @@ pub(in crate::game) mod nested_spawn_tests {
             assert!(f.ground.on_ground);
         });
     }
-    fn projectile(game: &mut Game<'_>, id: u32) {
+    fn projectile(game: &mut crate::game::ClientGame<'_>, id: u32) {
         spawn(game, "minecraft:shulker_bullet", 0, id);
     }
-    fn trident(game: &mut Game<'_>, id: u32) {
+    fn trident(game: &mut crate::game::ClientGame<'_>, id: u32) {
         spawn(game, "minecraft:trident", 0, id);
     }
-    fn rocket(game: &mut Game<'_>, id: u32) {
+    fn rocket(game: &mut crate::game::ClientGame<'_>, id: u32) {
         spawn(game, "minecraft:firework_rocket", 0, id);
     }
-    fn own_rocket(game: &mut Game<'_>, id: u32) {
+    fn own_rocket(game: &mut crate::game::ClientGame<'_>, id: u32) {
         rocket(game, id);
         let me = game.remote.as_ref().unwrap().entity_id as u32;
         game.rockets.for_each_mut(|r| {
@@ -1397,7 +1397,7 @@ pub(in crate::game) mod nested_spawn_tests {
         });
     }
     fn identities(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ClientGame<'_>,
         point: Point,
         remove: bool,
     ) -> Vec<(u32, sunrise_client::join_seq::JoinSeq)> {
@@ -1419,7 +1419,7 @@ pub(in crate::game) mod nested_spawn_tests {
     struct Case {
         point: Point,
         spawn: Spawn,
-        position: fn(&Game<'_>) -> Vec3,
+        position: fn(&crate::game::ClientGame<'_>) -> Vec3,
     }
     #[test]
     #[ignore = "daily"]
@@ -1540,7 +1540,7 @@ pub(in crate::game) mod entity_tick_tests {
 
     /// A server's `AddEntity` of an arrow, through the packet path that tracks it: a listener's
     /// handle for a client entity resolves only for one the server told this client of.
-    fn add_arrow(game: &mut crate::game::Game<'_>, id: i32, position: [f64; 3]) {
+    fn add_arrow(game: &mut crate::game::ClientGame<'_>, id: i32, position: [f64; 3]) {
         let kind = game
             .remote
             .as_ref()

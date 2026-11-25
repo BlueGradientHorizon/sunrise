@@ -7,7 +7,7 @@ use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
 
 /// A stone roof over the chunk (100, 100), all eight neighbours loaded around it.
-fn roofed(game: &mut super::Game<'_>) {
+fn roofed<S: crate::game::Side>(game: &mut super::Game<'_, S>) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
     let stone = game
         .pack
         .assets

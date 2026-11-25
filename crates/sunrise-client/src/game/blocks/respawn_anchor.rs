@@ -719,8 +719,8 @@ pub(in crate::game) mod connected_spawnpoint_rotation_tests {
         play::{self, Clientbound as C, Serverbound as S},
     };
 
-    fn command(game: &mut Game<'_>, text: &str) {
-        game.server.chat_capture = Some(Vec::new());
+    fn command(game: &mut crate::game::ServerGame<'_>, text: &str) {
+        game.side.chat_capture = Some(Vec::new());
         game.ui.registries.permission = 4;
         let dispatcher = sunrise_client::command::vanilla::build_for(false, true);
         let parsed = dispatcher.parse(text, &game.ui.registries);
@@ -730,7 +730,7 @@ pub(in crate::game) mod connected_spawnpoint_rotation_tests {
         let (root, ctx) = (parsed.context.clone(), ctx.clone());
         assert_eq!(game.run_chain(&root, &ctx).unwrap(), 1, "{text}");
         assert!(
-            !game.server.chat_capture.take().unwrap().is_empty(),
+            !game.side.chat_capture.take().unwrap().is_empty(),
             "actual command feedback {text}"
         );
     }
@@ -750,7 +750,7 @@ pub(in crate::game) mod connected_spawnpoint_rotation_tests {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&scratch).unwrap();
-        game.server.world_root = scratch.clone();
+        game.side.world_root = scratch.clone();
         // Fixture setup through the existing column insertion API; admit every lit column below.
         for x in -2..=2 {
             for z in -2..=2 {
@@ -1044,7 +1044,7 @@ pub(in crate::game) mod pitch_preservation_controls {
                 game.world.set(x, 99, z, stone).unwrap();
             }
         }
-        let state = |game: &Game<'_>, name: &str, properties: &[(&str, &str)]| {
+        let state = |game: &crate::game::ServerGame<'_>, name: &str, properties: &[(&str, &str)]| {
             let registry = game.pack.assets.registry;
             let id = registry.default_state(name).unwrap();
             let mut value = registry.state(id).unwrap().clone();

@@ -66,7 +66,7 @@ fn frame_pick_is_shared_ordered_and_refuses_stale_or_invalid_output() {
             finish_login(game, &mut server);
             game.native_lifecycle
                 .begin_open(mod_api::Authority::RemoteClient);
-            game.title.0 = None;
+            game.side.title.0 = None;
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 1.0, 0.5)).unwrap());
             game.yaw = -90.0;
             game.pitch = 0.0;
@@ -215,7 +215,7 @@ fn frame_pick_without_listeners_keeps_the_vanilla_result() {
             finish_login(game, &mut server);
             game.native_lifecycle
                 .begin_open(mod_api::Authority::RemoteClient);
-            game.title.0 = None;
+            game.side.title.0 = None;
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 1.0, 0.5)).unwrap());
             game.yaw = -90.0;
             game.pitch = 0.0;
@@ -294,12 +294,12 @@ fn rider_pick_rejects_shared_passengers_unless_their_part_allows_them() {
                 assert_eq!(game.mobs[mob].id, 31);
                 assert_eq!(*calls.lock().unwrap(), usize::from(subscribed));
                 if !subscribed {
-                    assert_eq!(game.client.client_pick.rider_candidates.capacity(), 0);
+                    assert_eq!(game.side.client_pick.rider_candidates.capacity(), 0);
                 }
-                let capacity = game.client.client_pick.rider_candidates.capacity();
+                let capacity = game.side.client_pick.rider_candidates.capacity();
                 game.refresh_client_pick(1.0);
                 assert_eq!(
-                    game.client.client_pick.rider_candidates.capacity(),
+                    game.side.client_pick.rider_candidates.capacity(),
                     capacity
                 );
 
@@ -336,7 +336,7 @@ fn rider_pick_rejects_shared_passengers_unless_their_part_allows_them() {
 pub(in crate::game) fn with_pick_game(
     kind: &str,
     x: f64,
-    run: impl FnOnce(&mut Game<'_>, &mut sunrise_protocol::connection::Connection),
+    run: impl FnOnce(&mut crate::game::ClientGame<'_>, &mut sunrise_protocol::connection::Connection),
 ) {
     use crate::game::{
         native_client_session::tests::logged_client, native_entity_refs::tests::with_client_game,
@@ -353,7 +353,7 @@ pub(in crate::game) fn with_pick_game(
         finish_login(game, &mut server);
         game.native_lifecycle
             .begin_open(mod_api::Authority::RemoteClient);
-        game.title.0 = None;
+        game.side.title.0 = None;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 1.0, 0.5)).unwrap());
         game.previous_position = Vec3::new(0.5, 1.0, 0.5);
         game.yaw = -90.0;

@@ -29,7 +29,7 @@ pub(in crate::game::server_side) use crate::game::commands::teleport_player_ride
                     .conn
             };
             let (fake, real) = (conn(2), conn(1));
-            let to_nether = |game: &mut super::super::super::Game<'_>, conn| {
+            let to_nether = |game: &mut crate::game::ServerGame<'_>, conn| {
                 game.as_guest(conn, |g| {
                     g.teleport_across(
                         Target::Player,
@@ -43,10 +43,10 @@ pub(in crate::game::server_side) use crate::game::commands::teleport_player_ride
             };
             // Taken (true), so no same-level teleport stands in for it, and nothing queued.
             assert!(matches!(to_nether(game, fake), Some(Ok(true))));
-            assert!(game.server.level_teleports.is_empty());
+            assert!(game.side.level_teleports.is_empty());
             // A real player's goes on the queue as before.
             assert!(matches!(to_nether(game, real), Some(Ok(true))));
-            assert_eq!(game.server.level_teleports.len(), 1);
+            assert_eq!(game.side.level_teleports.len(), 1);
         });
     }
 
@@ -67,17 +67,17 @@ pub(in crate::game::server_side) use crate::game::commands::teleport_player_ride
                 .find(|g| g.uuid == 1)
                 .unwrap()
                 .conn;
-            let sent = |game: &mut super::super::super::Game<'_>, level| {
+            let sent = |game: &mut crate::game::ServerGame<'_>, level| {
                 game.as_guest(conn, |g| {
                     g.teleport_to_level(Target::Player, level, [0.0, 64.0, 0.0], None)
                 })
             };
             assert_eq!(sent(game, Dim::Nether), Some(true));
-            assert_eq!(game.server.level_teleports.len(), 1);
+            assert_eq!(game.side.level_teleports.len(), 1);
             // Their own level: the same-level teleport, nothing queued.
             let home = game.target_level(Target::Guest(conn));
             assert_eq!(sent(game, home), Some(true));
-            assert_eq!(game.server.level_teleports.len(), 1);
+            assert_eq!(game.side.level_teleports.len(), 1);
             // No level holds this item.
             assert!(!game.teleport_to_level(Target::Item(9_999), Dim::Nether, [0.0; 3], None));
         });

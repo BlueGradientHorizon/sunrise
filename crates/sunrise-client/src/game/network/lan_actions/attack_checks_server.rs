@@ -139,15 +139,12 @@ pub(in crate::game) mod tests {
             std::env::temp_dir().join(format!("sunrise-attack-checks-unit-{}", std::process::id())),
         );
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -198,12 +195,12 @@ pub(in crate::game) mod tests {
             },
         )
         .unwrap();
-        let summoned = |game: &mut Game<'_>, command: &str| {
-            let before = game.server.next_entity;
+        let summoned = |game: &mut crate::game::ServerGame<'_>, command: &str| {
+            let before = game.side.next_entity;
             assert!(game.run_command(command), "{command}");
             game.lan_assign_ids();
-            assert!(game.server.next_entity > before, "{command}");
-            game.server.next_entity as i32
+            assert!(game.side.next_entity > before, "{command}");
+            game.side.next_entity as i32
         };
         let pig = summoned(
             &mut game,
@@ -248,14 +245,14 @@ pub(in crate::game) mod tests {
             guest.load_timeout = 0;
             guest
         };
-        game.server.next_entity += 1;
+        game.side.next_entity += 1;
         game.lan
             .as_mut()
             .unwrap()
             .hub
             .guests
-            .push(fresh_guest(2, game.server.next_entity as i32));
-        let attack = |game: &mut Game<'_>, conn, id: i32| {
+            .push(fresh_guest(2, game.side.next_entity as i32));
+        let attack = |game: &mut crate::game::ServerGame<'_>, conn, id: i32| {
             game.lan_guest_packet(conn, S::Attack(play::Attack { id }));
         };
         let kicked = vec![translatable(
@@ -263,7 +260,7 @@ pub(in crate::game) mod tests {
             &[],
         )];
 
-        let hp = |g: &Game<'_>| g.mobs.iter().find(|m| m.id as i32 == pig).unwrap().health;
+        let hp = |g: &crate::game::ServerGame<'_>| g.mobs.iter().find(|m| m.id as i32 == pig).unwrap().health;
         let full = hp(&game);
         attack(&mut game, 2, pig);
         assert_eq!(disconnects(&rx), vec![], "a pig is a target");
@@ -292,8 +289,8 @@ pub(in crate::game) mod tests {
         {
             // Each kick ends a connection. A later invalid target needs a new
             // guest, not another packet from the already disconnected player.
-            game.server.next_entity += 1;
-            let me = game.server.next_entity as i32;
+            game.side.next_entity += 1;
+            let me = game.side.next_entity as i32;
             let conn = 3 + case as u32;
             game.lan
                 .as_mut()

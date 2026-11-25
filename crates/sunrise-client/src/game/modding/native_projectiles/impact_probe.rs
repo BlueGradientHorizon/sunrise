@@ -223,7 +223,7 @@ impl Hooks for Probe {
 pub(in crate::game) fn with_probe(
     action: Action,
     hears: bool,
-    test: impl FnOnce(&mut Game<'_>, &Observed),
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Observed),
 ) {
     let observed = Arc::new(Observed::default());
     let mods = vec![mod_api::ModEntry::new(
@@ -236,7 +236,7 @@ pub(in crate::game) fn with_probe(
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        let check = |game: &mut Game<'_>| {
+        let check = |game: &mut crate::game::ServerGame<'_>| {
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
@@ -251,7 +251,7 @@ pub(in crate::game) fn with_probe(
             bind_local_player(game, 7, 7);
             game.selected = 0;
             game.inventory[0] = Some(ItemStack::new("minecraft:fishing_rod", 1));
-            game.server.next_entity = 100;
+            game.side.next_entity = 100;
             test(game, &observed);
         };
         if matches!(action, Action::SaveOnImpact) {

@@ -265,7 +265,7 @@ pub(in crate::game) mod tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
+            super::super::native_entity_refs::tests::with_client_game(|game| {
                 let stack = ItemStack::new("minecraft:bone_meal", 3);
                 *game.held_mut() = Some(stack.clone());
                 assert_eq!(game.held_bonemeal(CROP, &stack).0.crop, Some(true));
@@ -332,12 +332,12 @@ pub(in crate::game) mod tests {
             with_tree.add_file("mymod", "data/mymod/worldgen/feature/tree.json", || {
                 Some(r#"{"type":"minecraft:no_op","config":{}}"#.to_owned())
             });
-            let has_tree = |game: &Game<'_>| {
+            let has_tree = |game: &crate::game::ServerGame<'_>| {
                 let features = game.res.behaviours().live_features().unwrap();
                 assert!(features.configured("minecraft:oak").is_some());
                 features.configured("mymod:tree").is_some()
             };
-            let open = |game: &Game<'_>, overrides: &WorldgenOverrides| {
+            let open = |game: &crate::game::ServerGame<'_>, overrides: &WorldgenOverrides| {
                 install_live_features(&game.res, &game.pack, &game.options, overrides)
             };
             open(game, &WorldgenOverrides::default());

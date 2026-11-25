@@ -27,7 +27,7 @@ static ENERGY: AttachmentType<u32> = AttachmentType {
 };
 const CHUNK: Holder = Holder::Chunk([2, 3]);
 
-fn chunk_game(game: &mut Game<'_>) {
+fn chunk_game(game: &mut crate::game::ServerGame<'_>) {
     game.options.dedicated = Some(Vec::new());
     game.native_level_opened(Dim::Overworld);
     game.world

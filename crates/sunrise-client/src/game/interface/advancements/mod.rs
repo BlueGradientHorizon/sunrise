@@ -2939,15 +2939,12 @@ pub(in crate::game) mod tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -2959,7 +2956,7 @@ pub(in crate::game) mod tests {
             Vec3::new(4.5, 200.0, 4.5),
             0.0,
         ));
-        let matches = |game: &Game<'_>, key: &str, want: Value| {
+        let matches = |game: &crate::game::ServerGame<'_>, key: &str, want: Value| {
             let view = game.entity_view_of(Target::Mob(12500));
             assert_eq!(view.kind, "minecraft:pig");
             assert!(view.nbt.is_none());
@@ -3027,15 +3024,12 @@ pub(in crate::game) mod tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
             None,
         )
         .unwrap();
@@ -3049,7 +3043,7 @@ pub(in crate::game) mod tests {
             mob
         };
         game.mobs.push(actor(32300));
-        let matches = |game: &Game<'_>, id, effects: Value| {
+        let matches = |game: &crate::game::ServerGame<'_>, id, effects: Value| {
             let view = game.entity_view_of(Target::Mob(id));
             assert_eq!(view.kind, "minecraft:zombie");
             adv::entity(
@@ -3412,24 +3406,21 @@ pub(in crate::game) mod structure_tag_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
             None,
         )
         .unwrap();
         let set = |s: &str| json!(s);
-        let holds = |game: &Game, tag: &str, id: &str| {
+        let holds = |game: &crate::game::ServerGame<'_>, tag: &str, id: &str| {
             id_matches(&set(tag), "worldgen/structure", id, &View(game))
         };
         // A world without packs: the game's own tags.
-        assert!(game.world_tables.0.is_none());
+        assert!(game.side.world_tables.0.is_none());
         assert!(holds(
             &game,
             "#minecraft:village",
@@ -3465,7 +3456,7 @@ pub(in crate::game) mod structure_tag_tests {
         .unwrap();
         let settings = json!({"enabled": ["file/mypack"], "disabled": []});
         std::fs::write(dir.join("datapacks.json"), settings.to_string()).unwrap();
-        game.server.world_root = dir.clone();
+        game.side.world_root = dir.clone();
         let stack = crate::game::functions::pack_stack(
             &dir,
             &root,
@@ -3475,11 +3466,11 @@ pub(in crate::game) mod structure_tag_tests {
             &[],
             &[],
         );
-        game.world_tables.0 = game
+        game.side.world_tables.0 = game
             .stage_world_tables(&stack, false, &root)
             .unwrap()
             .tables;
-        assert!(game.world_tables.0.is_some());
+        assert!(game.side.world_tables.0.is_some());
         assert!(holds(&game, "#mypack:village", "minecraft:igloo"));
         assert!(holds(&game, "#mypack:village", "minecraft:village_plains"));
         assert!(!holds(&game, "#mypack:village", "minecraft:shipwreck"));
@@ -3521,15 +3512,12 @@ pub(in crate::game) mod random_chance_command_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -3562,7 +3550,7 @@ pub(in crate::game) mod random_chance_command_tests {
             .unwrap();
         }
         std::fs::write(folder.join("pig.json"),r#"{"type":"minecraft:entity_properties","entity":"this","predicate":{"minecraft:entity_type":"minecraft:pig"}}"#).unwrap();
-        game.server.world_root = dir.clone();
+        game.side.world_root = dir.clone();
         game.reload_datapacks(false, &[]).unwrap();
         assert!(game.run_command("scoreboard objectives add h122 dummy"));
         assert!(game.run_command("function h122:admit"));
@@ -3591,10 +3579,10 @@ pub(in crate::game) mod random_chance_command_tests {
         for row in &rows {
             let seed = row["seed"].as_i64().unwrap();
             let name = format!("h122:case_{}", row["case"]);
-            assert!(game.fns.0.store.predicates.contains_key(&name));
+            assert!(game.side.fns.0.store.predicates.contains_key(&name));
             game.world.random.set_seed(seed);
             game.run_command("scoreboard players set branch h122 -99");
-            game.exec.0 = Default::default();
+            game.side.exec.0 = Default::default();
             let source = game.player_source();
             game.execute_line(&format!("execute as 0000007a-0000-0000-0000-000000000001 if predicate {name} run scoreboard players set branch h122 1"),source).unwrap();
             assert_eq!(
@@ -3821,7 +3809,7 @@ pub(in crate::game) mod movement_predicate_tests {
             r#"{"type":"minecraft:all_of","terms":[]}"#,
         )
         .unwrap();
-        game.server.world_root = root;
+        game.side.world_root = root;
         game.reload_datapacks(false, &[]).unwrap();
         assert!(game.run_command("scoreboard objectives add motion dummy"));
         assert!(game.run_command("execute if predicate motion:always"));
@@ -3847,7 +3835,7 @@ pub(in crate::game) mod movement_predicate_tests {
         let mut failures = Vec::new();
         for (name, p, want) in probes {
             assert!(
-                game.fns
+                game.side.fns
                     .0
                     .store
                     .predicates

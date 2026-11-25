@@ -29,7 +29,7 @@ impl Hooks for Bus {
 }
 
 /// The mod installed, a game on its content root with a player over chunk (0, 0).
-pub(super) fn with_bus(test: impl FnOnce(&mut Game<'_>)) {
+pub(super) fn with_bus(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let mods: Mods = vec![ModEntry::new("shapes", Box::new(Bus))].into();
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
@@ -53,7 +53,7 @@ pub(super) fn with_bus(test: impl FnOnce(&mut Game<'_>)) {
 
 /// Places `block` at `pos` in the level in place, with its block entity and no shapes
 /// published yet.
-pub(super) fn place(game: &mut Game<'_>, block: &str, pos: [i32; 3]) -> BlockEntityRef {
+pub(super) fn place(game: &mut crate::game::ServerGame<'_>, block: &str, pos: [i32; 3]) -> BlockEntityRef {
     let level = game.level(game.dim.id()).unwrap();
     let state = game.pack.assets.registry.default_state(block).unwrap();
     assert!(
@@ -65,7 +65,7 @@ pub(super) fn place(game: &mut Game<'_>, block: &str, pos: [i32; 3]) -> BlockEnt
 }
 
 /// Places [`BUS`] at `pos` in the level in place and publishes `shapes` from its block entity.
-fn publish(game: &mut Game<'_>, pos: [i32; 3], shapes: BlockEntityShapes) {
+fn publish(game: &mut crate::game::ServerGame<'_>, pos: [i32; 3], shapes: BlockEntityShapes) {
     let entity = place(game, BUS, pos);
     assert_eq!(game.block_entity_set_shapes(entity, Some(shapes)), Ok(true));
 }
@@ -159,7 +159,7 @@ fn collision_selection_and_support_read_the_published_shape() {
         let pos = [2, 64, 2];
         let level = game.level(game.dim.id()).unwrap();
         let entity = place(game, BUS, pos);
-        let outline_hit = |game: &Game<'_>| {
+        let outline_hit = |game: &crate::game::ServerGame<'_>| {
             game.level_clip(
                 level,
                 [2.5, 66.0, 2.5],
@@ -204,7 +204,7 @@ fn collision_selection_and_support_read_the_published_shape() {
             game.level_collision_boxes(level, [2.0, 64.0, 2.0, 3.0, 65.0, 3.0]),
             Some(vec![[2.0, 64.0, 2.0, 3.0, 64.5, 3.0]])
         );
-        let down = |game: &Game<'_>, blocks| {
+        let down = |game: &crate::game::ServerGame<'_>, blocks| {
             game.level_clip(
                 level,
                 [2.5, 66.0, 2.5],
@@ -262,7 +262,7 @@ fn pathfinding_stands_on_the_published_collision_top() {
                     .unwrap()
             );
         }
-        let floor = |game: &Game<'_>, x: i32| game.mob_world_base(&[]).floor_level(x, 65, 2);
+        let floor = |game: &crate::game::ServerGame<'_>, x: i32| game.mob_world_base(&[]).floor_level(x, 65, 2);
         assert_eq!((floor(game, 5), floor(game, 6)), (65.0, 64.5));
         assert_eq!(floor(game, 2), 65.0, "declared before the first publish");
         assert_eq!(
@@ -317,7 +317,7 @@ fn a_published_shape_stands_over_a_dynamic_template_and_takes_its_offset() {
     with_bus(|game| {
         let level = game.level(game.dim.id()).unwrap();
         // Before the first publish and once cleared, the dynamic shape is refused again.
-        let down = |game: &Game<'_>| {
+        let down = |game: &crate::game::ServerGame<'_>| {
             game.level_clip(
                 level,
                 [0.5, 66.0, 9.5],

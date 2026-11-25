@@ -18,7 +18,7 @@ use sunrise_core::position::ChunkPos;
 
 pub(in crate::game) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> Game<'a> {
+) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -41,15 +41,12 @@ pub(in crate::game) fn game<'a>(
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = &*resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
         None,
     )
     .unwrap();
@@ -66,7 +63,7 @@ pub(in crate::game) fn game<'a>(
 }
 
 /// A portal block at (0, 64, 0) standing on `floor`.
-pub(in crate::game) fn portal_on(game: &mut Game<'_>, floor: &str) {
+pub(in crate::game) fn portal_on(game: &mut crate::game::ServerGame<'_>, floor: &str) {
     assert!(game.run_command(&format!("setblock 0 63 0 minecraft:{floor}")));
     assert!(game.run_command("setblock 0 64 0 minecraft:nether_portal"));
     let state = game.world.block(0, 64, 0);
@@ -77,7 +74,7 @@ pub(in crate::game) fn portal_on(game: &mut Game<'_>, floor: &str) {
     );
 }
 
-pub(in crate::game) fn spawned(game: &Game<'_>) -> Vec<String> {
+pub(in crate::game) fn spawned(game: &crate::game::ServerGame<'_>) -> Vec<String> {
     game.mobs.iter().map(|m| m.kind.id.clone()).collect()
 }
 

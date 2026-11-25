@@ -11,7 +11,7 @@ type Posted = (&'static str, [f64; 3], Option<Who>);
 /// A server's game with nobody playing, or `None` without prepared resources.
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> Option<crate::game::Game<'a>> {
+) -> Option<crate::game::ServerGame<'a>> {
     std::env::var_os("SUNRISE_TEST_RESOURCES")?;
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.build_registries();
@@ -36,7 +36,7 @@ fn held(name: &str, count: u32, block: &str) -> ItemStack {
 /// An adventure player (`mayBuild` false) clicks the south side of the sign
 /// at [2, 4, 3] with `stack` in hand, as `Minecraft.startUseItem` does; the
 /// game events the click posted.
-fn click_sign(game: &mut crate::game::Game<'_>, sign: SignData, stack: ItemStack) -> Vec<Posted> {
+fn click_sign(game: &mut crate::game::ServerGame<'_>, sign: SignData, stack: ItemStack) -> Vec<Posted> {
     let registry = game.pack.assets.registry;
     let sign_state = registry.default_state("minecraft:oak_sign").unwrap();
     game.world.set(2, 4, 3, sign_state).unwrap();

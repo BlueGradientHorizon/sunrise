@@ -385,7 +385,7 @@ mod tests {
             game.mobs
                 .push(Mob::new(12, kind, Vec3::new(5.0, 64.0, 5.0), 0.0));
             let level = game.level(game.dim.id()).unwrap();
-            let query = |game: &Game<'_>, lo, hi| {
+            let query = |game: &crate::game::ServerGame<'_>, lo, hi| {
                 collect_game_entities_in(game, level, lo, hi)
                     .unwrap()
                     .into_iter()

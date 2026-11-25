@@ -284,7 +284,7 @@ mod tests {
     const SIZE: [f64; 2] = [0.98, 0.98];
     const ENTRY: [i32; 3] = [8, 70, 8];
 
-    fn nether_portal_blocks(game: &Game<'_>) -> usize {
+    fn nether_portal_blocks(game: &crate::game::ServerGame<'_>) -> usize {
         let b = game.res.behaviours();
         let side = game.portal_side(Dim::Nether).expect("the Nether is open");
         side.world
@@ -294,7 +294,7 @@ mod tests {
             .sum()
     }
 
-    fn prepare(game: &mut Game<'_>) {
+    fn prepare(game: &mut crate::game::ServerGame<'_>) {
         game.build_registries();
         game.set_allow_commands(true);
         game.options.dedicated = Some(Vec::new());
@@ -305,7 +305,7 @@ mod tests {
     }
 
     /// The chunks of the level in place that every answer reads around the entry, but `skip`.
-    fn load_around(game: &mut Game<'_>, skip: Option<(i32, i32)>) {
+    fn load_around(game: &mut crate::game::ServerGame<'_>, skip: Option<(i32, i32)>) {
         for z in -3..=3 {
             for x in -3..=3 {
                 if Some((x, z)) != skip && !game.world.chunks.contains_key(&(x, z)) {
@@ -316,7 +316,7 @@ mod tests {
         }
     }
 
-    fn set(game: &mut Game<'_>, name: &str, [x, y, z]: [i32; 3]) {
+    fn set(game: &mut crate::game::ServerGame<'_>, name: &str, [x, y, z]: [i32; 3]) {
         let state = game.pack.assets.registry.default_state(name).unwrap();
         game.world.set(x, y, z, state).unwrap();
     }
@@ -328,7 +328,7 @@ mod tests {
             prepare(game);
             set(game, "minecraft:nether_portal", ENTRY);
             let overworld = game.level("minecraft:overworld").unwrap();
-            let ask = |game: &Game<'_>| game.level_portal_destination(overworld, ENTRY, SIZE);
+            let ask = |game: &crate::game::ServerGame<'_>| game.level_portal_destination(overworld, ENTRY, SIZE);
             load_around(game, None);
             // The Nether is not open.
             assert_eq!(ask(game), Err(PortalError::ChunksNotLoaded));

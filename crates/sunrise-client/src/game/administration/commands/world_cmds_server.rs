@@ -1031,14 +1031,14 @@ pub(in crate::game::server_side) use crate::game::commands::world_cmds::allay_ow
             game.player = Some(player);
             game.level.player_uuid = Some(actual);
             assert_eq!(game.attack_of(7).player_uuid, Some(actual));
-            game.server.lan_acting = Some(12);
-            game.server.lan_acting_uuid = Some(sunrise_client::lan::playerdata::ints_uuid(other));
+            game.side.lan_acting = Some(12);
+            game.side.lan_acting_uuid = Some(sunrise_client::lan::playerdata::ints_uuid(other));
             assert_eq!(
                 game.attack_of(7).player_uuid,
                 Some(other),
                 "the acting guest is the causing player"
             );
-            game.server.lan_acting_uuid = None;
+            game.side.lan_acting_uuid = None;
             game.level.player_uuid = None;
             assert_eq!(
                 game.attack_of(7).player_uuid,
@@ -1046,7 +1046,7 @@ pub(in crate::game::server_side) use crate::game::commands::world_cmds::allay_ow
                 "no invented UUID for an unknown source"
             );
             game.level.player_uuid = Some(actual);
-            game.server.lan_acting = None;
+            game.side.lan_acting = None;
             let kind = game.res.mob_types().get("minecraft:allay").unwrap().clone();
             let before = game.world.game_time;
             for melee in [true, false] {
@@ -1104,8 +1104,8 @@ pub(in crate::game) mod datapack_damage_tests {
     #[allow(unused_imports)]
     pub(in crate::game::server_side) use sunrise_world::loot::PackOverlay;
 
-    pub(in crate::game) fn pig(game: &mut crate::game::Game<'_>, id: u32, at: Vec3) {
-        game.server.next_entity = game.server.next_entity.max(id);
+    pub(in crate::game) fn pig(game: &mut crate::game::ServerGame<'_>, id: u32, at: Vec3) {
+        game.side.next_entity = game.side.next_entity.max(id);
         let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
         let mut pig = Mob::new(id, kind, at, 0.0);
         pig.no_ai = true;
@@ -1116,8 +1116,8 @@ pub(in crate::game) mod datapack_damage_tests {
      {
         with_game(|game| {
             with_pack(game);
-            let crystal = |game: &mut crate::game::Game<'_>, id: u32| {
-                game.server.next_entity = game.server.next_entity.max(id);
+            let crystal = |game: &mut crate::game::ServerGame<'_>, id: u32| {
+                game.side.next_entity = game.side.next_entity.max(id);
                 game.crystals.push(crate::game::dragon::Crystal::new(
                     id,
                     Vec3::new(0.5, 64.0, 0.5),
@@ -1175,13 +1175,13 @@ pub(in crate::game::server_side) use crate::game::commands::world_cmds::vehicle_
 pub(in crate::game::server_side) use crate::game::commands::world_cmds::vehicle_damage_command_tests::attribute_chat_count;
 
     pub(in crate::game::server_side) fn attribute_guests(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
     ) -> Vec<std::sync::mpsc::Receiver<sunrise_client::lan::Out>> {
         use std::sync::{atomic::AtomicI32, mpsc};
         use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
         use sunrise_protocol::packets::configuration::ClientInformation;
-        game.server.world_root = game.options.game_dir.as_ref().unwrap().join("h082-world");
-        std::fs::create_dir_all(&game.server.world_root).unwrap();
+        game.side.world_root = game.options.game_dir.as_ref().unwrap().join("h082-world");
+        std::fs::create_dir_all(&game.side.world_root).unwrap();
         game.lan_host(
             crate::game::lan::LanSettings {
                 port: 0,
@@ -1300,9 +1300,9 @@ pub(in crate::game::server_side) use crate::game::commands::world_cmds::vehicle_
             for rx in &receivers {
                 attribute_chat_count(rx);
             }
-            game.server.chat_capture = Some(Vec::new());
+            game.side.chat_capture = Some(Vec::new());
             let accepted = game.run_command("attribute Bob minecraft:armor base set 4");
-            let issuer = game.server.chat_capture.take().unwrap();
+            let issuer = game.side.chat_capture.take().unwrap();
             // This assertion fails old on the actual guest model, not feedback alone.
             assert_eq!(
                 game.for_player(Target::Guest(2), |g| g
@@ -1347,11 +1347,11 @@ pub(in crate::game::server_side) use crate::game::commands::world_cmds::vehicle_
                     .unwrap()),
                 Some(20.0)
             );
-            game.server.chat_capture = Some(Vec::new());
+            game.side.chat_capture = Some(Vec::new());
             assert!(
                 !game.run_command("attribute Bob minecraft:armor modifier remove h082:missing")
             );
-            let errors = game.server.chat_capture.take().unwrap();
+            let errors = game.side.chat_capture.take().unwrap();
             assert_eq!(errors.len(), 1);
             assert!(errors[0].plain().contains("h082:missing"));
             assert_eq!(
@@ -1359,9 +1359,9 @@ pub(in crate::game::server_side) use crate::game::commands::world_cmds::vehicle_
                 0,
                 "error returns to issuer"
             );
-            game.server.chat_capture = Some(Vec::new());
+            game.side.chat_capture = Some(Vec::new());
             assert!(game.run_command("attribute Bob minecraft:armor base reset"));
-            assert_eq!(game.server.chat_capture.take().unwrap().len(), 1);
+            assert_eq!(game.side.chat_capture.take().unwrap().len(), 1);
             assert_eq!(
                 game.for_player(Target::Guest(2), |g| g
                     .player
@@ -1372,7 +1372,7 @@ pub(in crate::game::server_side) use crate::game::commands::world_cmds::vehicle_
                 Some(0.0)
             );
             assert_eq!(game.acting_uuid(), host_uuid);
-            assert_eq!(game.server.lan_acting, None);
+            assert_eq!(game.side.lan_acting, None);
             assert_eq!(game.dim, dimension);
             assert_eq!(game.world.game_time, clock);
             assert_eq!(game.player.as_ref().unwrap().health.health(), 20.0);
@@ -1410,15 +1410,15 @@ pub(in crate::game::server_side) use crate::game::commands::world_cmds::vehicle_
                     "modifier remove h082:reply",
                 ] {
                     let command = format!("attribute {target} minecraft:armor {operation}");
-                    game.server.chat_capture = Some(Vec::new());
-                    game.cmds.0.results = Some(Vec::new());
+                    game.side.chat_capture = Some(Vec::new());
+                    game.side.cmds.0.results = Some(Vec::new());
                     assert!(game.run_command(&command), "{command}");
-                    let messages = game.server.chat_capture.take().unwrap();
+                    let messages = game.side.chat_capture.take().unwrap();
                     assert_eq!(messages.len(), 1, "{command}");
                     let components: Vec<_> = messages.iter().map(|m| m.component()).collect();
                     println!(
                         "H082_EXISTING {}",
-                        serde_json::json!({"command":command,"messages":components,"results":game.cmds.0.results.take().unwrap()})
+                        serde_json::json!({"command":command,"messages":components,"results":game.side.cmds.0.results.take().unwrap()})
                     );
                 }
             }

@@ -80,7 +80,7 @@ mod tests {
     const OPENING: [[f64; 6]; 1] = [[2.0, 64.0, 5.0, 3.0, 66.0, 6.0]];
     const TOO_MANY: [[f64; 6]; 65] = [[0.0, 0.0, 0.0, 1.0, 1.0, 1.0]; 65];
 
-    fn guest_boxes(game: &Game<'_>, conn: u32) -> usize {
+    fn guest_boxes(game: &crate::game::ServerGame<'_>, conn: u32) -> usize {
         let host = game.lan.as_ref().unwrap();
         host.hub
             .guest(conn)
@@ -188,7 +188,7 @@ mod tests {
             })
         };
         game.handle_packet(position(1)).unwrap();
-        let held = |game: &Game<'_>| {
+        let held = |game: &crate::game::ServerGame<'_>| {
             let player = game.player.as_ref().unwrap();
             player.collision_exclusions.boxes().len()
         };

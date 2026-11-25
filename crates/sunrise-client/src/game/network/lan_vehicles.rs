@@ -826,15 +826,12 @@ pub(in crate::game) mod controller_tests {
             std::env::temp_dir().join(format!("sunrise-boat-driver-unit-{}", std::process::id())),
         );
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -981,7 +978,7 @@ pub(in crate::game) mod controller_tests {
 
     /// A guest drives a horse with an unobstructed ten-block fall to stone.
     pub(in crate::game::server_side) fn guest_horse_at_start_of_fall(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
     ) -> (u32, mpsc::Receiver<sunrise_client::lan::Out>) {
         game.build_registries();
         game.set_allow_commands(true);
@@ -1086,15 +1083,12 @@ pub(in crate::game) mod controller_tests {
             std::env::temp_dir().join(format!("sunrise-horse-fall-unit-{}", std::process::id())),
         );
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();

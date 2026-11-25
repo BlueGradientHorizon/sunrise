@@ -18,7 +18,7 @@ pub(in crate::game) use crate::game::client_side::raids_client::bar_players_test
 fn the_raid_bar_keeps_a_viewer_until_the_next_twenty_tick_beat() {
     let mut resources = None;
     let mut game = crate::game::game_tests::tests::server_game(&mut resources);
-    game.server.world_root =
+    game.side.world_root =
         std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap()).join("raid-bar-world");
     for x in -5..5 {
         for z in -5..5 {

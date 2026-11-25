@@ -76,8 +76,8 @@ pub(in crate::game) mod sweep_tests {
                             .default_state("minecraft:short_grass")
                             .unwrap();
                         game.world.set(1, 104, 0, grass).unwrap();
-                        game.tickets.0.update(None);
-                        game.server.ticked_entities_through = u32::MAX;
+                        game.side.tickets.0.update(None);
+                        game.side.ticked_entities_through = u32::MAX;
                         for (health, count) in [(5, 3), (1, 2)] {
                             part.contacts.lock().unwrap().clear();
                             game.dropped.clear();

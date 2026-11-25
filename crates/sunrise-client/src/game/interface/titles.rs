@@ -136,8 +136,8 @@ pub(in crate::game) mod tests {
     use mod_api::{ClientHost, Text, TextFormError};
 
     /// What the action bar holds: its plain line, ticks left and whether its colour cycles.
-    fn shown(game: &Game<'_>) -> Option<(String, i32, bool)> {
-        let titles = &game.client.titles;
+    fn shown(game: &crate::game::ClientGame<'_>) -> Option<(String, i32, bool)> {
+        let titles = &game.side.titles;
         let line = titles.overlay.as_ref()?.plain();
         Some((line, titles.overlay_time, titles.overlay_animated))
     }
@@ -157,7 +157,7 @@ pub(in crate::game) mod tests {
                     );
                     assert_eq!(shown(game), Some(("Now Playing".into(), 60, true)));
                     for _ in 0..25 {
-                        game.client.titles.tick();
+                        game.side.titles.tick();
                     }
                     assert_eq!(shown(game), Some(("Now Playing".into(), 35, true)));
 
@@ -167,7 +167,7 @@ pub(in crate::game) mod tests {
                         Ok(())
                     );
                     assert_eq!(shown(game), Some(("Saved".into(), 60, false)));
-                    game.client.titles.tick();
+                    game.side.titles.tick();
 
                     let mut refused = Text::literal("lost");
                     refused.metadata = sunrise_core::nbt::Tag::Int(7);

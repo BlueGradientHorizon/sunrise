@@ -1116,14 +1116,14 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
     fn nested_vehicle_discard_notifies_a_cart_dismount_once() {
         discard_during_dismount(true);
     }
-    fn with_vehicle_tree(cart: bool, rejected: bool, test: impl FnOnce(&mut Game<'_>)) {
+    fn with_vehicle_tree(cart: bool, rejected: bool, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.options.game_dir = Some(
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                     .join(format!("guard-{:?}", std::thread::current().id())),
             );
-            game.server.world_root = game.options.game_dir.as_ref().unwrap().join("world");
+            game.side.world_root = game.options.game_dir.as_ref().unwrap().join("world");
             let at = Vec3::new(10.0, 200.0, 20.0);
             if cart {
                 game.carts.push(super::super::minecarts::Minecart::new(
@@ -1151,7 +1151,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
             game.mobs.push(child);
             // These manually installed owners bypass the normal allocator.
             // Destruction drops must not reuse the removed vehicle's ID.
-            game.server.next_entity = game.server.next_entity.max(73);
+            game.side.next_entity = game.side.next_entity.max(73);
             test(game);
         });
     }
@@ -1491,7 +1491,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
         sync: false,
     };
 
-    fn set_vehicle_test_attachment(game: &mut Game<'_>) {
+    fn set_vehicle_test_attachment(game: &mut crate::game::ServerGame<'_>) {
         // The real store path binds the resident owner's registration. Rebinding
         // it manually would replace that lifetime before removal is exercised.
         VEHICLE_VALUE
@@ -1799,7 +1799,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                 .into();
                 mod_platform::testing::with_mods(mods, || {
                     with_vehicle_tree(cart, true, |game| {
-                        game.server.next_entity = game.server.next_entity.max(100);
+                        game.side.next_entity = game.side.next_entity.max(100);
                         let items = vec![Some(sunrise_client::items::ItemStack::new(
                             "minecraft:diamond",
                             5,
@@ -1838,7 +1838,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                             }
                         }
                         game.native_removals_flush();
-                        let diamonds = |game: &Game<'_>| -> u32 {
+                        let diamonds = |game: &crate::game::ServerGame<'_>| -> u32 {
                             game.dropped
                                 .iter()
                                 .filter(|item| item.stack.item.as_ref() == "minecraft:diamond")
@@ -2351,7 +2351,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                 if cross_level {
                     assert_eq!(game.border.size(), 1000.0);
                     assert_eq!(
-                        game.levels
+                        game.side.levels
                             .0
                             .parked_border(super::super::Dim::Nether)
                             .unwrap()

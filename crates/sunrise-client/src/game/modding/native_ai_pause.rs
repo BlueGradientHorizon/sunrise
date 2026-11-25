@@ -84,7 +84,7 @@ mod tests {
 
     /// A server level with a stone floor at y 64 over chunk (0, 0) and a
     /// player bound as entity 20.
-    fn level(game: &mut super::Game<'_>) {
+    fn level(game: &mut crate::game::ServerGame<'_>) {
         game.options.dedicated = Some(Vec::new());
         for (x, z) in (-1..=1).flat_map(|x| (-1..=1).map(move |z| (x, z))) {
             let mut chunk = Chunk::empty(x, z);
@@ -106,7 +106,7 @@ mod tests {
         bind_local_player(game, 20, 123);
     }
 
-    fn add(game: &mut super::Game<'_>, id: u32, name: &str, at: Vec3) -> MobRef {
+    fn add(game: &mut crate::game::ServerGame<'_>, id: u32, name: &str, at: Vec3) -> MobRef {
         let kind = game.res.mob_types().get(name).unwrap().clone();
         let mut m = Mob::new(id, kind, at, 0.0);
         m.ground.on_ground = true;
@@ -114,17 +114,17 @@ mod tests {
         game.mob(game.entity(id).unwrap()).unwrap()
     }
 
-    fn mob<'a>(game: &'a super::Game<'_>, handle: MobRef) -> &'a Mob {
+    fn mob<'a>(game: &'a crate::game::ServerGame<'_>, handle: MobRef) -> &'a Mob {
         let id = handle.entity().id();
         game.mobs.iter().find(|m| m.id == id).unwrap()
     }
 
-    fn mob_mut<'a>(game: &'a mut super::Game<'_>, handle: MobRef) -> &'a mut Mob {
+    fn mob_mut<'a>(game: &'a mut crate::game::ServerGame<'_>, handle: MobRef) -> &'a mut Mob {
         let id = handle.entity().id();
         game.mobs.iter_mut().find(|m| m.id == id).unwrap()
     }
 
-    fn tick(game: &mut super::Game<'_>, ticks: u32) {
+    fn tick(game: &mut crate::game::ServerGame<'_>, ticks: u32) {
         for _ in 0..ticks {
             game.world.game_time += 1;
             game.tick_mobs().unwrap();
@@ -132,7 +132,7 @@ mod tests {
     }
 
     /// A pig walking a path to (12.5, 65, 3.5) with a cow as its target.
-    fn walking_pig(game: &mut super::Game<'_>) -> MobRef {
+    fn walking_pig(game: &mut crate::game::ServerGame<'_>) -> MobRef {
         level(game);
         add(game, 41, "minecraft:cow", Vec3::new(14.5, 65.0, 12.5));
         let pig = add(game, 40, "minecraft:pig", Vec3::new(3.5, 65.0, 3.5));
@@ -449,7 +449,7 @@ mod tests {
                 sunrise_mod_runtime::attachments::Attachments::from_nbt(mods),
             );
             assert_eq!(pig.set_ai_paused(game, true), Ok(()));
-            let reload = |game: &mut super::Game<'_>, id: u32| {
+            let reload = |game: &mut crate::game::ServerGame<'_>, id: u32| {
                 let index = game.mobs.iter().position(|m| m.id == id).unwrap();
                 let saved = game.mob_tree_nbt(index);
                 game.mobs.remove(index);
@@ -494,7 +494,7 @@ mod tests {
             level(game);
             let pig = add(game, 40, "minecraft:pig", Vec3::new(3.5, 65.0, 3.5));
             let epoch = pig.entity().epoch();
-            let refused = |game: &mut super::Game<'_>, handle: MobRef, why| {
+            let refused = |game: &mut crate::game::ServerGame<'_>, handle: MobRef, why| {
                 assert_eq!(handle.set_ai_paused(game, true), Err(why), "{why:?}");
                 assert_eq!(handle.ai_paused(game), None, "{why:?}");
             };
@@ -504,9 +504,9 @@ mod tests {
             let gone = MobRef::new(EntityRef::new(epoch, 999));
             refused(game, gone, MobAiPauseRefusal::Stale);
 
-            game.server.held_out.push(40);
+            game.side.held_out.push(40);
             refused(game, pig, MobAiPauseRefusal::HeldOut);
-            game.server.held_out.pop();
+            game.side.held_out.pop();
 
             let mut dragon = Dragon::new(Vec3::new(8.0, 80.0, 8.0), 0.0, 0);
             dragon.id = 50;

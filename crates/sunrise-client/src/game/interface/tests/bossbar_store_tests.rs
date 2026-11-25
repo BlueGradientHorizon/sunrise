@@ -5,7 +5,7 @@
 use super::*;
 use crate::game::game_tests::tests::server_game;
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
     let mut game = server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);
@@ -13,10 +13,10 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
 }
 
 /// Runs `command`: whether it succeeded and what the issuer was told.
-fn run(game: &mut Game<'_>, command: &str) -> (bool, Vec<String>) {
-    game.server.chat_capture = Some(Vec::new());
+fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Vec<String>) {
+    game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.server.chat_capture.take().unwrap_or_default();
+    let said = game.side.chat_capture.take().unwrap_or_default();
     (
         ok,
         said.iter().map(sunrise_client::text::Text::plain).collect(),
@@ -24,8 +24,8 @@ fn run(game: &mut Game<'_>, command: &str) -> (bool, Vec<String>) {
 }
 
 /// The bar's stored `(value, max)`.
-fn bar(game: &Game<'_>) -> (i32, i32) {
-    let b = game.server.bosses.bars.get("demo:bar").expect("the bar");
+fn bar(game: &crate::game::ServerGame<'_>) -> (i32, i32) {
+    let b = game.side.bosses.bars.get("demo:bar").expect("the bar");
     (b.value, b.max)
 }
 

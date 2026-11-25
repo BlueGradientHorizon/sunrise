@@ -600,7 +600,7 @@ mod tests {
         assert!(!config.join("other").exists());
         // Outside the mod's hooks the service is no one's.
         assert_eq!(
-            Game::config_files().read(&path("proof-common.toml")),
+            crate::game::ClientGame::config_files().read(&path("proof-common.toml")),
             Err(ConfigFileError::NoCallingMod)
         );
     }
@@ -856,7 +856,7 @@ mod tests {
             request
         };
         with_game(|game| {
-            game.server.world_root.clear();
+            game.side.world_root.clear();
             as_mod("fd", || {
                 assert_eq!(
                     Game::world_data_files(game).read(&path("tiles/nether/0.bin")),
@@ -922,7 +922,7 @@ mod tests {
         assert!(!world.exists());
         as_mod("fd", || {
             assert_eq!(
-                Game::data_files().read(&path("server-cache")).unwrap(),
+                crate::game::ServerGame::data_files().read(&path("server-cache")).unwrap(),
                 b"game-cache"
             );
         });

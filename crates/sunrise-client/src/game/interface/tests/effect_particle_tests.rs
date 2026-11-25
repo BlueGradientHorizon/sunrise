@@ -68,7 +68,7 @@ fn every_other_effect_stays_an_entity_effect_in_its_colour() {
 
 /// A game with the prepared vanilla resources (`SUNRISE_TEST_RESOURCES`): the
 /// tests that use it are `#[ignore]`d, as CI has no resources.
-fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let root = PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -87,15 +87,12 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
-    let mut g = Game::new(
+    let mut g = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
         None,
     )
     .unwrap();

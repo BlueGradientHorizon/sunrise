@@ -676,7 +676,7 @@ mod tests {
             1,
         ))
     }
-    fn spawn_pig(game: &mut Game<'_>) -> Option<u32> {
+    fn spawn_pig(game: &mut crate::game::ServerGame<'_>) -> Option<u32> {
         game.spawn_mob(
             "minecraft:pig",
             AT,
@@ -955,7 +955,7 @@ mod tests {
                 }));
                 assert!(panicked.is_err());
                 assert!(
-                    game.lent_mobs.0.borrow().lends.is_empty(),
+                    game.side.lent_mobs.0.borrow().lends.is_empty(),
                     "the lend is withdrawn"
                 );
                 let kept = kept.expect("the call ran");

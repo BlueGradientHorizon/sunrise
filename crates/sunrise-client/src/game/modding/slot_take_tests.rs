@@ -487,7 +487,7 @@ fn took(slot: usize, taken: u32, left: u32) -> Heard {
     (12, MENU.to_owned(), slot, stone(taken), left)
 }
 
-fn with_pot(menu_type: &'static ModMenuType, test: impl FnOnce(&mut crate::game::Game<'_>)) {
+fn with_pot(menu_type: &'static ModMenuType, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     with_pot_parts(
         menu_type,
         TakeMod {
@@ -502,7 +502,7 @@ fn with_pot(menu_type: &'static ModMenuType, test: impl FnOnce(&mut crate::game:
 fn with_pot_parts(
     menu_type: &'static ModMenuType,
     parts: TakeMod,
-    test: impl FnOnce(&mut crate::game::Game<'_>),
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>),
 ) {
     let mods: Mods = vec![ModEntry::new("take", Box::new(parts))].into();
     mod_platform::testing::with_mods(mods.clone(), || {
@@ -556,7 +556,7 @@ fn with_pot_parts(
 
 /// Sets the pot's slots (`pot`), the guest's inventory (`inventory`, by index) and cursor.
 fn set(
-    game: &mut crate::game::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     pot: &[(usize, Option<ItemStack>)],
     inventory: &[(usize, Option<ItemStack>)],
     carried: Option<ItemStack>,
@@ -576,7 +576,7 @@ fn set(
     });
 }
 /// The guest's click (`input` is `ClickType`'s id), claiming nothing.
-fn click(game: &mut crate::game::Game<'_>, slot: i32, button: i8, input: i32) {
+fn click(game: &mut crate::game::ServerGame<'_>, slot: i32, button: i8, input: i32) {
     let menu = game.lan.as_ref().unwrap().hub.guests[0].menu.as_ref();
     let (container, state) = menu.map(|m| (m.window, m.state)).unwrap();
     game.lan_guest_packet(
@@ -593,12 +593,12 @@ fn click(game: &mut crate::game::Game<'_>, slot: i32, button: i8, input: i32) {
     );
 }
 /// The count in pot slot `slot`.
-fn in_pot(game: &crate::game::Game<'_>, slot: usize) -> u32 {
+fn in_pot(game: &crate::game::ServerGame<'_>, slot: usize) -> u32 {
     let slots = game.world.block_entities.get(&POS).unwrap().slots();
     slots[slot].as_ref().map_or(0, |s| s.count)
 }
 /// The count in the guest's inventory slot `slot`, and on their cursor.
-fn held(game: &crate::game::Game<'_>, slot: usize) -> (u32, u32) {
+fn held(game: &crate::game::ServerGame<'_>, slot: usize) -> (u32, u32) {
     let guest = &game.lan.as_ref().unwrap().hub.guests[0];
     let count = |stack: &Option<ItemStack>| stack.as_ref().map_or(0, |s| s.count);
     (count(&guest.inventory[slot]), count(&guest.carried))
@@ -920,7 +920,7 @@ fn linked_sources_are_silent_and_linked_writes_abort_with_the_click() {
     with_pot(menu, |game| {
         let state = game.world.block(POS.0, POS.1, POS.2);
         game.world.set(LINK.0, LINK.1, LINK.2, state).unwrap();
-        let put_link = |game: &mut crate::game::Game<'_>| {
+        let put_link = |game: &mut crate::game::ServerGame<'_>| {
             game.world.block_entities.insert(
                 LINK,
                 BlockEntity::Mod(Box::new(ModBlockEntity::new(
@@ -939,7 +939,7 @@ fn linked_sources_are_silent_and_linked_writes_abort_with_the_click() {
             .hub
             .guests
             .update(0, |guest| guest.menu.as_mut().unwrap().links.push(LINK));
-        let linked = |game: &crate::game::Game<'_>| {
+        let linked = |game: &crate::game::ServerGame<'_>| {
             game.world.block_entities.get(&LINK).unwrap().slots()[0].clone()
         };
         click(game, 0, 0, 0);
@@ -1026,7 +1026,7 @@ fn an_oversized_swap_delivers_the_displaced_stack_even_when_the_holder_is_remove
         assert_eq!(guest.inventory[0], item(dirt, 63));
         assert_eq!(guest.inventory[8], stone(64));
         let spawned = game.dropped.iter().map(|e| &e.stack);
-        let queued = game.spill.0.spawns.iter().map(|e| &e.stack);
+        let queued = game.side.spill.0.spawns.iter().map(|e| &e.stack);
         assert_eq!(
             spawned
                 .chain(queued)
@@ -1054,7 +1054,7 @@ fn replacing_the_detached_holder_spills_only_the_contents_after_the_take() {
         assert_eq!(guest.carried, None);
         assert_eq!(guest.inventory[0], stone(5));
         let spawned = game.dropped.iter().map(|e| &e.stack);
-        let queued = game.spill.0.spawns.iter().map(|e| &e.stack);
+        let queued = game.side.spill.0.spawns.iter().map(|e| &e.stack);
         assert_eq!(
             spawned
                 .chain(queued)
@@ -1070,7 +1070,7 @@ const PLANKS: &str = "minecraft:oak_planks";
 const LOG: &str = "minecraft:oak_log";
 
 /// Track only the packets sent after the guest has seen the seeded pot slots.
-fn watch_pot(game: &mut crate::game::Game<'_>) -> (i32, i32, mpsc::Receiver<Out>) {
+fn watch_pot(game: &mut crate::game::ServerGame<'_>) -> (i32, i32, mpsc::Receiver<Out>) {
     let host = game.lan.as_mut().unwrap();
     let (tx, rx) = mpsc::channel();
     host.hub.guests.update(0, |guest| {
@@ -1388,7 +1388,7 @@ fn a_partial_mod_craft_keeps_crafting_bookkeeping_but_not_item_crafted() {
 
 /// Guest 12 with the blockless processing menu `OWNED_MENU` open and an empty inventory and
 /// cursor; `rx` receives the guest's packets.
-fn with_owned_processor(test: impl FnOnce(&mut crate::game::Game<'_>, mpsc::Receiver<Out>)) {
+fn with_owned_processor(test: impl FnOnce(&mut crate::game::ServerGame<'_>, mpsc::Receiver<Out>)) {
     let parts = TakeMod {
         menu_slot_take: true,
         item_parts_take: false,
@@ -1460,7 +1460,7 @@ fn drain_packets(rx: &mpsc::Receiver<Out>) -> Vec<Clientbound> {
         .collect()
 }
 
-fn owned_contents(game: &crate::game::Game<'_>) -> Vec<Option<ItemStack>> {
+fn owned_contents(game: &crate::game::ServerGame<'_>) -> Vec<Option<ItemStack>> {
     game.lan.as_ref().unwrap().hub.guests[0].native_menu.clone()
 }
 

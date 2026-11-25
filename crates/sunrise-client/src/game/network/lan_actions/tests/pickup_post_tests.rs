@@ -130,7 +130,7 @@ pub(in crate::game) fn apples(room: u32) -> Option<ItemStack> {
     .filter(|stack| stack.count > 0)
 }
 
-pub(in crate::game) fn clear_ground(game: &mut Game<'_>) {
+pub(in crate::game) fn clear_ground(game: &mut crate::game::ServerGame<'_>) {
     while !game.dropped.is_empty() {
         game.remove_dropped(0);
     }
@@ -145,7 +145,7 @@ pub(in crate::game) fn arm(probe: &Probe, case: &Case) {
     state.notices.clear();
 }
 
-pub(in crate::game) fn spawn(game: &mut Game<'_>, at: [f64; 3], case: &Case) -> u32 {
+pub(in crate::game) fn spawn(game: &mut crate::game::ServerGame<'_>, at: [f64; 3], case: &Case) -> u32 {
     let level = game.level(game.dim.id()).unwrap();
     game.level_spawn_item(
         level,
@@ -159,7 +159,7 @@ pub(in crate::game) fn spawn(game: &mut Game<'_>, at: [f64; 3], case: &Case) -> 
     .id()
 }
 
-pub(in crate::game) fn ground(game: &Game<'_>, id: u32) -> Option<u32> {
+pub(in crate::game) fn ground(game: &crate::game::ServerGame<'_>, id: u32) -> Option<u32> {
     game.dropped
         .iter()
         .find(|item| item.id == id)
@@ -172,7 +172,7 @@ pub(in crate::game) fn with_probe(probe: &Probe, test: impl FnOnce()) {
 }
 
 /// The host's player picks up through the lifted pass.
-pub(in crate::game) fn host_case(game: &mut Game<'_>, probe: &Probe, case: &Case) -> Outcome {
+pub(in crate::game) fn host_case(game: &mut crate::game::ServerGame<'_>, probe: &Probe, case: &Case) -> Outcome {
     clear_ground(game);
     game.inventory
         .fill(Some(ItemStack::new("minecraft:stone", 64)));
@@ -197,7 +197,7 @@ pub(in crate::game) fn host_case(game: &mut Game<'_>, probe: &Probe, case: &Case
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::client_side::lan_actions_client::pickups::pickup_post_tests::host_animations;
 
-pub(in crate::game) fn host_stat(game: &Game<'_>) -> i64 {
+pub(in crate::game) fn host_stat(game: &crate::game::ServerGame<'_>) -> i64 {
     game.stats
         .values
         .get("minecraft:picked_up")
@@ -206,7 +206,7 @@ pub(in crate::game) fn host_stat(game: &Game<'_>) -> i64 {
 }
 
 /// Guest 12 picks up next to itself.
-pub(in crate::game) fn guest_case(game: &mut Game<'_>, probe: &Probe, case: &Case) -> Outcome {
+pub(in crate::game) fn guest_case(game: &mut crate::game::ServerGame<'_>, probe: &Probe, case: &Case) -> Outcome {
     clear_ground(game);
     let room = case.room;
     game.lan

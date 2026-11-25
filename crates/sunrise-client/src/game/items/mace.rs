@@ -825,7 +825,7 @@ pub(in crate::game) mod tests {
     fn a_damage_item_part_changes_the_wear_of_a_weapon_hit() {
         use crate::game::damage_item_tests::{Rule, with_wear_part};
         with_wear_part("minecraft:mace", Rule::Times(5), |game, wear| {
-            let hit = |game: &mut Game<'_>, item: &str| {
+            let hit = |game: &mut crate::game::ServerGame<'_>, item: &str| {
                 game.creative = false;
                 game.selected = 0;
                 let weapon = ItemStack::new(item, 1);

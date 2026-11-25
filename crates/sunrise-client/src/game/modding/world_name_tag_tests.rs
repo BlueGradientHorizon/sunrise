@@ -22,17 +22,17 @@ fn view_proj() -> Mat4 {
 }
 
 /// The game's camera at [`CAMERA`]'s facing: south, first person.
-fn face_south(game: &mut super::Game<'_>) {
+fn face_south(game: &mut crate::game::ClientGame<'_>) {
     game.yaw = 0.0;
     game.pitch = 0.0;
-    game.client.posed_rotation = None;
-    game.client.camera_type = sunrise_client::camera::CameraType::FirstPerson;
+    game.side.posed_rotation = None;
+    game.side.camera_type = sunrise_client::camera::CameraType::FirstPerson;
 }
 
 /// One view's labels at `at`, the game's camera facing south: what it draws with the name
 /// tags, then the see-through copies.
 fn labels(
-    game: &mut super::Game<'_>,
+    game: &mut crate::game::ClientGame<'_>,
     at: [f64; 3],
     text: &Text,
     options: NameTagOptions,
@@ -74,7 +74,7 @@ fn bytes(vertices: &[Vertex]) -> &[u8] {
 }
 
 /// An opaque grey wall two blocks in front of the camera, in the white texel.
-fn wall(game: &super::Game<'_>) -> Vec<Vertex> {
+fn wall(game: &crate::game::ClientGame<'_>) -> Vec<Vertex> {
     let white = game.gui.atlas.sprites["sunrise/white"];
     let uv = [(white.u0 + white.u1) * 0.5, (white.v0 + white.v1) * 0.5];
     // Counterclockwise as seen from the camera.
@@ -93,7 +93,7 @@ fn wall(game: &super::Game<'_>) -> Vec<Vertex> {
 
 /// The offscreen pixels of `world` (the entity pass) then `see_through` (no depth test), under
 /// a lightmap whose brightness follows the light level, so light shows in the pixels.
-fn pixels(game: &super::Game<'_>, world: &[Vertex], see_through: &[Vertex]) -> Vec<u8> {
+fn pixels(game: &crate::game::ClientGame<'_>, world: &[Vertex], see_through: &[Vertex]) -> Vec<u8> {
     use sunrise_client::gfx::entity_pixel_test::{graded_lightmap, render_see_through_lit};
     render_see_through_lit(
         world,
@@ -124,7 +124,7 @@ fn a_label_hides_behind_a_wall_unless_it_is_see_through() {
         assert_ne!(pixels(game, &world, &[]), empty, "visible without a wall");
         // An alpha under 26 draws no text (its fragments are discarded); 26 does. `exact_light`
         // has no effect without `see_through`.
-        let faded = |game: &mut super::Game<'_>, alpha| {
+        let faded = |game: &mut crate::game::ClientGame<'_>, alpha| {
             let options = NameTagOptions::new(false, false, 0xF0).with_faded_alpha(alpha);
             let copy = labels(game, [0.5, 70.0, 0.5], &text, options).1[0].clone();
             pixels(game, &copy, &[])
@@ -161,7 +161,7 @@ fn a_label_hides_behind_a_wall_unless_it_is_see_through() {
 fn without_see_through_a_label_is_one_translucent_copy_in_the_callers_light() {
     with_client_game(|game| {
         let text = Text::literal("Label");
-        let drawn = |game: &mut super::Game<'_>, light| {
+        let drawn = |game: &mut crate::game::ClientGame<'_>, light| {
             let options = NameTagOptions::new(false, true, light);
             let (ok, [world, through]) = labels(game, [0.5, 70.0, 0.5], &text, options);
             assert_eq!(ok, Ok(()));
@@ -200,7 +200,7 @@ fn without_see_through_a_label_is_one_translucent_copy_in_the_callers_light() {
 fn a_see_through_label_is_lit_at_least_2_in_the_world_and_unlit_over_it() {
     with_client_game(|game| {
         let text = Text::literal("Label");
-        let drawn = |game: &mut super::Game<'_>, light| {
+        let drawn = |game: &mut crate::game::ClientGame<'_>, light| {
             let options = NameTagOptions::new(true, true, light);
             let (ok, copies) = labels(game, [0.5, 70.0, 0.5], &text, options);
             assert_eq!(ok, Ok(()));
@@ -365,12 +365,12 @@ fn glyphs_of_a_label_refused_for_capacity_still_upload() {
         let quad = mod_api::WorldQuad::new([[0.5, 70.5, 0.0]; 4], !0, mod_api::WorldDepth::Tested);
         let capacity = draw.usage().quad_capacity as usize;
         draw.quads(&vec![quad; capacity - 1]).unwrap();
-        game.client.text_patches.borrow_mut().clear();
+        game.side.text_patches.borrow_mut().clear();
         let refused = GameWorldDrawContext::new(game, &mut draw).name_tag(at, &text, options);
         assert_eq!(refused, Err(DrawError::CapacityExceeded));
         assert!(draw.labels().iter().all(|label| label.is_empty()));
         let queued: Vec<[u32; 4]> = game
-            .client
+            .side
             .text_patches
             .borrow()
             .iter()
@@ -385,7 +385,7 @@ fn glyphs_of_a_label_refused_for_capacity_still_upload() {
         let accepted = GameWorldDrawContext::new(game, &mut draw).name_tag(at, &text, options);
         assert_eq!(accepted, Ok(()));
         assert_eq!(
-            game.client.text_patches.borrow().len(),
+            game.side.text_patches.borrow().len(),
             queued.len(),
             "the glyphs were cached by the refused label"
         );
@@ -421,7 +421,7 @@ fn glyphs_of_a_label_refused_for_capacity_still_upload() {
 #[ignore = "daily"]
 fn a_label_keeps_the_name_tag_styles() {
     with_client_game(|game| {
-        let drawn = |game: &mut super::Game<'_>, style: mod_api::text::TextStyle| {
+        let drawn = |game: &mut crate::game::ClientGame<'_>, style: mod_api::text::TextStyle| {
             let text = Text::literal("Bold").with_style(style);
             let options = NameTagOptions::new(false, false, 0xF0);
             let (ok, [world, _]) = labels(game, [0.5, 70.0, 0.5], &text, options);
@@ -463,7 +463,7 @@ fn a_label_keeps_the_name_tag_styles() {
 fn labels_four_times_as_far_are_a_quarter_the_size_on_screen() {
     with_client_game(|game| {
         let text = Text::literal("Size");
-        let width = |game: &mut super::Game<'_>, z: f64| {
+        let width = |game: &mut crate::game::ClientGame<'_>, z: f64| {
             // The anchor is 0.5 below the label; the label `z` blocks ahead of the camera.
             let at = [CAMERA[0], CAMERA[1] - 0.5, CAMERA[2] + z];
             let (ok, [world, _]) = labels(game, at, &text, NameTagOptions::new(false, false, 0xF0));
@@ -522,14 +522,14 @@ impl Hooks for Native {
 }
 
 /// The world pass and see-through pass receive the scene's labels.
-fn scene_frame(game: &mut super::Game<'_>) -> ([Vec<Vertex>; 2], Vec<u32>) {
+fn scene_frame(game: &mut crate::game::ClientGame<'_>) -> ([Vec<Vertex>; 2], Vec<u32>) {
     face_south(game);
     game.world.game_time = scene::SCENE_TIME;
-    game.client.see_through_vertices.clear();
+    game.side.see_through_vertices.clear();
     let mut draw = WorldGeometry::default();
     let mut entities = Vec::new();
     game.fill_world_geometry(false, CAMERA, Mat4::IDENTITY, 0.0, &mut draw, &mut entities);
-    let see_through = std::mem::take(&mut game.client.see_through_vertices);
+    let see_through = std::mem::take(&mut game.side.see_through_vertices);
     // Each call's result, from the scene's marker lines: `code` across, the call's index up.
     let mut results: Vec<(f32, u32)> = draw
         .batch()

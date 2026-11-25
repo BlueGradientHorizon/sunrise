@@ -89,7 +89,7 @@ fn air_use_fires_once_and_passing_hands_fire_in_main_off_order() {
     });
 }
 
-pub(in crate::game) fn with_packet_game(test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_packet_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     with_game(|game| {
         game.options.dedicated = Some(Vec::new());
         game.world

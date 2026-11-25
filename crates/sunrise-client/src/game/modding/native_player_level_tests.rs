@@ -14,7 +14,7 @@ use sunrise_client::{items::ItemStack, lan::playerdata};
 pub(in crate::game) const NETHER: &str = "minecraft:the_nether";
 
 /// How many item entities lie in each of the Overworld and the Nether.
-pub(in crate::game) fn dropped(game: &mut super::Game<'_>) -> [usize; 2] {
+pub(in crate::game) fn dropped(game: &mut crate::game::ServerGame<'_>) -> [usize; 2] {
     let here = game.dim;
     let overworld = game.dropped.len();
     game.enter_level(Dim::Nether).unwrap();
@@ -25,7 +25,7 @@ pub(in crate::game) fn dropped(game: &mut super::Game<'_>) -> [usize; 2] {
 
 /// Guests 12 (the world's owner) and 13 in the Nether with full inventories but for slot 8;
 /// the Overworld in place, as for an Overworld hook. A diamond to give.
-pub(in crate::game) fn in_the_nether(game: &mut super::Game<'_>) -> mod_api::ItemStack {
+pub(in crate::game) fn in_the_nether(game: &mut crate::game::ServerGame<'_>) -> mod_api::ItemStack {
     game.level.player_uuid = Some(playerdata::uuid_ints(12));
     // A level is open while a player is in it.
     game.enter_level(Dim::Nether).unwrap();
@@ -50,7 +50,7 @@ pub(in crate::game) fn in_the_nether(game: &mut super::Game<'_>) -> mod_api::Ite
 
 /// `count` diamonds, as a mod reads them from SNBT.
 pub(in crate::game::server_side) fn some_diamonds(
-    game: &super::Game<'_>,
+    game: &crate::game::ServerGame<'_>,
     count: u32,
 ) -> mod_api::ItemStack {
     let host: &dyn mod_api::Host = game;
@@ -58,7 +58,7 @@ pub(in crate::game::server_side) fn some_diamonds(
         .unwrap()
 }
 
-pub(in crate::game) fn diamonds(game: &super::Game<'_>, conn: u32) -> u32 {
+pub(in crate::game) fn diamonds(game: &crate::game::ServerGame<'_>, conn: u32) -> u32 {
     let guest = game.lan.as_ref().unwrap().hub.guest(conn).unwrap();
     let held = guest.inventory.iter().flatten();
     held.filter(|s| &*s.item == "minecraft:diamond")
@@ -452,11 +452,11 @@ fn an_inventory_reward_for_a_player_in_another_level_waits_for_their_own_tick() 
             r#"{"enabled":["file/rewards"],"disabled":[]}"#,
         )
         .unwrap();
-        game.server.world_root = world.path().to_path_buf();
+        game.side.world_root = world.path().to_path_buf();
         game.reload_datapacks(true, &[]).unwrap();
         let diamond = in_the_nether(game);
         let before = dropped(game);
-        let done = |game: &super::Game<'_>, conn| {
+        let done = |game: &crate::game::ServerGame<'_>, conn| {
             let guest = game.lan.as_ref().unwrap().hub.guest(conn).unwrap();
             guest.advancements.has(ID, "d")
         };

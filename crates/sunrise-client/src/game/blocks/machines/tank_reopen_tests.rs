@@ -78,7 +78,7 @@ fn fluid(id: &str, amount: u32) -> FluidResource {
 /// Loads chunk (0, 0) through the game's own streaming, under a `/forceload` ticket (asked for
 /// unless the world already holds one), waiting for it as `Game::pump_chunks` does, then runs
 /// a server tick: the first one builds the tables of the mods' tanks.
-fn load_tank_chunk(game: &mut Game<'_>) {
+fn load_tank_chunk(game: &mut crate::game::ServerGame<'_>) {
     if !game.world.chunks.contains_key(&(0, 0)) {
         assert!(game.run_command("forceload add 8 8") || game.run_command("forceload query 8 8"));
     }
@@ -93,7 +93,7 @@ fn load_tank_chunk(game: &mut Game<'_>) {
 
 /// Each tank's fluid and amount, as the game's `FLUIDS` capability reports them.
 fn contents(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     level: LevelRef,
     pos: [i32; 3],
 ) -> Vec<(Option<FluidResource>, u32)> {

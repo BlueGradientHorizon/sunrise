@@ -98,7 +98,7 @@ pub(in crate::game) fn vanilla_groups(case: &serde_json::Value) -> Groups {
 }
 
 /// The same sprites, decoded from the quads a frame of the game drew.
-pub(in crate::game) fn drawn_groups<__Side: crate::game::Side>(game: &mut Game<'_, __Side>) -> Groups {
+pub(in crate::game) fn drawn_groups(game: &mut crate::game::ClientGame<'_>) -> Groups {
     let batch = game.hud_layers(SIZE);
     let rects: Vec<(&str, [f32; 4])> = GROUPS
         .iter()
@@ -131,7 +131,7 @@ pub(in crate::game) fn drawn_groups<__Side: crate::game::Side>(game: &mut Game<'
     groups
 }
 
-pub(in crate::game) fn id<__Side: crate::game::Side>(game: &Game<'_, __Side>, registry: &str, name: &str) -> i32 {
+pub(in crate::game) fn id(game: &crate::game::ClientGame<'_>, registry: &str, name: &str) -> i32 {
     game.remote
         .as_ref()
         .unwrap()
@@ -142,7 +142,7 @@ pub(in crate::game) fn id<__Side: crate::game::Side>(game: &Game<'_, __Side>, re
         .unwrap()
 }
 
-pub(in crate::game) fn spawn<__Side: crate::game::Side>(game: &mut Game<'_, __Side>, entity: i32, kind: &str) {
+pub(in crate::game) fn spawn(game: &mut crate::game::ClientGame<'_>, entity: i32, kind: &str) {
     let kind = id(game, "minecraft:entity_type", kind);
     game.handle_packet(C::AddEntity(play::AddEntity {
         id: entity,
@@ -158,12 +158,12 @@ pub(in crate::game) fn spawn<__Side: crate::game::Side>(game: &mut Game<'_, __Si
     .unwrap();
 }
 
-pub(in crate::game) fn data<__Side: crate::game::Side>(game: &mut Game<'_, __Side>, entity: i32, values: Vec<(u8, i32, Value)>) {
+pub(in crate::game) fn data(game: &mut crate::game::ClientGame<'_>, entity: i32, values: Vec<(u8, i32, Value)>) {
     game.handle_packet(C::SetEntityData(play::SetEntityData { id: entity, values }))
         .unwrap();
 }
 
-pub(in crate::game) fn attributes<__Side: crate::game::Side>(game: &mut Game<'_, __Side>, entity: i32, values: &[(&str, f64)]) {
+pub(in crate::game) fn attributes(game: &mut crate::game::ClientGame<'_>, entity: i32, values: &[(&str, f64)]) {
     let values = values
         .iter()
         .map(|(name, base)| play::AttributeSnapshot {
@@ -184,7 +184,7 @@ pub(in crate::game) fn num(v: &serde_json::Value, key: &str) -> f64 {
 }
 
 /// A mount at `entity` carrying `rider`, with the health the case gives it.
-pub(in crate::game) fn mount<__Side: crate::game::Side>(game: &mut Game<'_, __Side>, entity: i32, rider: i32, max: f64, health: f64) {
+pub(in crate::game) fn mount(game: &mut crate::game::ClientGame<'_>, entity: i32, rider: i32, max: f64, health: f64) {
     spawn(game, entity, "minecraft:horse");
     attributes(game, entity, &[("minecraft:max_health", max)]);
     data(

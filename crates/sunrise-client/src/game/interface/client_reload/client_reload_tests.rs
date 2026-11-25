@@ -614,7 +614,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                         game.pack.render.model(&id("startup_anchor:stone")),
                         Err(mod_api::ModelError::UnknownModel)
                     );
-                    let pending = game.pending_initial_models.0.take().unwrap();
+                    let pending = game.side.pending_initial_models.0.take().unwrap();
                     let candidate = pending.models.pack.render.generation;
                     let renderer = if refusal == Some("renderer") {
                         Err("renderer validation refused".into())
@@ -672,7 +672,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
 #[test]
 #[ignore = "daily"]
 fn client_reload_reads_real_assets_with_pack_overrides() {
-    use crate::game::native_entity_refs::tests::with_game;
+    use crate::game::native_entity_refs::tests::{with_game, with_client_game};
     use mod_api::{self, ModEntry};
     use mod_api::{AddClientReloadListenersEvent, Hooks};
     use mod_platform::testing::with_mods;
@@ -805,7 +805,7 @@ fn client_reload_reads_real_assets_with_pack_overrides() {
     )]
     .into();
     with_mods(mods, || {
-        with_game(|game| {
+        with_client_game(|game| {
             let resources = game.options.resources.clone();
             let enabled = BTreeSet::new();
             let mut sources = crate::game::mods::ModsState {
@@ -881,7 +881,7 @@ fn client_reload_reads_real_assets_with_pack_overrides() {
 #[test]
 #[ignore = "daily"]
 fn client_setup_reaches_each_listener_once_per_firing() {
-    use crate::game::native_entity_refs::tests::with_game;
+    use crate::game::native_entity_refs::tests::{with_game, with_client_game};
     use mod_api::{ClientSetupContext, Hooks, ModEntry};
     use mod_platform::testing::with_mods;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -905,7 +905,7 @@ fn client_setup_reaches_each_listener_once_per_firing() {
     ]
     .into();
     with_mods(mods, || {
-        with_game(|game| {
+        with_client_game(|game| {
             game.native_client_setup();
         });
     });
@@ -920,7 +920,7 @@ fn client_setup_reaches_each_listener_once_per_firing() {
 #[ignore = "daily"]
 fn only_the_first_local_client_is_the_client_start() {
     use crate::game::execution_role::ExecutionRole;
-    use crate::game::native_entity_refs::tests::with_game;
+    use crate::game::native_entity_refs::tests::{with_game, with_client_game};
 
     with_game(|game| {
         game.options.execution_role = ExecutionRole::Client;
@@ -937,7 +937,7 @@ fn only_the_first_local_client_is_the_client_start() {
 #[test]
 #[ignore = "daily"]
 fn the_lifecycle_moments_fire_once_each_in_order() {
-    use crate::game::native_entity_refs::tests::with_game;
+    use crate::game::native_entity_refs::tests::{with_game, with_client_game};
     use mod_api::{ClientHost, Hooks, ModEntry, ServerHost};
     use mod_platform::testing::with_mods;
     use std::sync::Mutex;
@@ -1547,7 +1547,7 @@ fn humanoid_arm_pose_mod_reads_mob_state_and_changes_the_model() {
         game.offhand.as_mut().unwrap().damage = 9;
         game.tick_player_model();
         let own_before =
-            anim::humanoid_arm_poses(game.client.player_model.as_ref().unwrap(), [None; 2], 0.0);
+            anim::humanoid_arm_poses(game.side.player_model.as_ref().unwrap(), [None; 2], 0.0);
         assert_eq!(own_before, [sunrise_core::arm_pose::ArmPose::Item; 2]);
         for (id, kind) in [
             (60, "minecraft:zombie"),
@@ -1600,7 +1600,7 @@ fn humanoid_arm_pose_mod_reads_mob_state_and_changes_the_model() {
                 assert_eq!(game.held_arm_poses(60, &empty), [None; 2]);
                 // The local player's extraction also exposes its actual off-hand stack.
                 game.tick_player_model();
-                let own = game.client.player_model.as_ref().unwrap();
+                let own = game.side.player_model.as_ref().unwrap();
                 assert_eq!(
                     anim::humanoid_arm_poses(own, own.extra.held_arm_pose, 0.0),
                     own_before

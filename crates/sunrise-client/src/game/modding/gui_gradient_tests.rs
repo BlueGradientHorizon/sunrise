@@ -66,7 +66,7 @@ fn a_mods_gradients_draw_top_to_bottom_in_the_clip_and_pose_and_empty_ones_draw_
     let mods: mod_api::Mods = vec![ModEntry::new("gradients", Box::new(Gradients))].into();
     let mut batch = HudBatch::scratch([320, 240]);
     with_mods(mods, || {
-        crate::game::native_entity_refs::tests::with_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             game.component_hover_effect(&mut batch, &style, (40.0, 30.0));
         });
     });

@@ -157,7 +157,7 @@ impl Hooks for Mod {
 }
 
 /// Runs `test` on an integrated-server game after the fixture parts resolve.
-fn with_parts(test: impl FnOnce(&mut Game<'_>, &Answers)) {
+fn with_parts(test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Answers)) {
     let answers = Answers::default();
     let parts = FIXTURE_ITEMS
         .map(|item| Part {
@@ -179,7 +179,7 @@ fn with_parts(test: impl FnOnce(&mut Game<'_>, &Answers)) {
 }
 
 /// `available_results` at value 30 over `[sharpness]` for `item`.
-fn sharpness_at_30(game: &Game<'_>, item: &str) -> Vec<(String, u32)> {
+fn sharpness_at_30(game: &crate::game::ServerGame<'_>, item: &str) -> Vec<(String, u32)> {
     game.stations()
         .enchantments
         .available_results(game.items(), 30, item, &[SHARPNESS.into()])
@@ -304,7 +304,7 @@ fn apply_enchantments_starts_from_vanilla_and_refuses_another_count() {
 
 /// Enchanted diamond sword, stone, then dirt × 7 in the hotbar, oak planks in main slot 20,
 /// slot 0 selected: picks the planks, and gives the selected slot and what went to slot 20.
-fn pick_planks(game: &mut Game<'_>) -> (usize, String) {
+fn pick_planks(game: &mut crate::game::ServerGame<'_>) -> (usize, String) {
     game.inventory = vec![None; game.inventory.len()];
     let mut sword = ItemStack::new("minecraft:diamond_sword", 1);
     sword.enchant(SHARPNESS, 1);
@@ -382,7 +382,7 @@ fn support_snapshot_reaches_both_anvils_and_enchant_without_dispatching_inside_t
         );
         game.build_registries();
         let sharpness = [(Arc::<str>::from(SHARPNESS), 1)];
-        let check_anvils = |game: &mut Game<'_>, item: &str, allowed: bool| {
+        let check_anvils = |game: &mut crate::game::ServerGame<'_>, item: &str, allowed: bool| {
             let mut book = ItemStack::new("minecraft:enchanted_book", 1);
             book.set_crafting_enchantments(sharpness.to_vec());
             let input = ItemStack::new(item, 1);
@@ -528,15 +528,15 @@ fn short_enchantment_item_holders_bind_for_both_selectors() {
             serde_json::to_vec(&sharpness).unwrap(),
         )
         .unwrap();
-        game.server.world_root = root.path().to_owned();
+        game.side.world_root = root.path().to_owned();
         let packs = game.reload_datapacks(false, &[]).unwrap();
-        game.world_tables.0 = game
+        game.side.world_tables.0 = game
             .stage_world_tables(&packs, false, &resources)
             .unwrap()
             .tables;
         game.load_server_loot();
-        let roll = |game: &Game<'_>| {
-            let loot = game.server_loot.0.get().unwrap();
+        let roll = |game: &crate::game::ServerGame<'_>| {
+            let loot = game.side.server_loot.0.get().unwrap();
             let stacks = loot.roll("test:sword", &mut LegacyRandom::new(1), 0.0, None, None);
             assert_eq!(stacks[0].item, "minecraft:diamond_sword");
             stacks[0].enchantments.clone()
@@ -588,7 +588,7 @@ fn support_resolves_once_against_the_tags_published_by_world_open_and_play_packe
         }])),
     )]
     .into();
-    let supports = |game: &Game<'_>| {
+    let supports = |game: &crate::game::ServerGame<'_>| {
         game.item_enchantments()
             .can_enchant(game.items(), SHARPNESS, "minecraft:stick")
     };

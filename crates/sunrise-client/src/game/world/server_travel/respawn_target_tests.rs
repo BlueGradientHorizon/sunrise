@@ -10,7 +10,7 @@ use crate::game::Game;
 use mod_api::{RespawnTarget, RespawnTargetUnavailable, ServerHost};
 
 /// Guest 2's answer, asked through its handle from the Overworld, which stays in place.
-fn respawn_target(game: &mut Game<'_>) -> Result<RespawnTarget, RespawnTargetUnavailable> {
+fn respawn_target(game: &mut crate::game::ServerGame<'_>) -> Result<RespawnTarget, RespawnTargetUnavailable> {
     let player = game.player(game.command_guest(2).unwrap().uuid).unwrap();
     let host: &mut dyn ServerHost = game;
     let answer = player.respawn_target(host);
@@ -26,7 +26,7 @@ fn respawn_target(game: &mut Game<'_>) -> Result<RespawnTarget, RespawnTargetUna
 }
 
 /// The world spawn's 5x5 chunks lit in the Overworld, which is put back in place.
-fn light_the_world_spawn(game: &mut Game<'_>) {
+fn light_the_world_spawn(game: &mut crate::game::ServerGame<'_>) {
     game.enter_level(Dim::Overworld).unwrap();
     light_spawn_chunks(game);
 }

@@ -15,7 +15,7 @@ impl mobs::LiveMobs for OneMob<'_> {
 
 /// Run the public target getter with the actor and the other mob outside `Game`.
 pub(in crate::game::server_side) fn read_borrowed_target(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     warden: MobRef,
     other: u32,
     tick_conn: u32,
@@ -194,7 +194,7 @@ fn body_yaw_is_the_raw_mob_yaw_and_none_for_others() {
         for player in &players {
             assert_eq!(player.body_yaw(game), None);
         }
-        game.others.0.push(crate::game::commands::OtherEntity {
+        game.side.others.0.push(crate::game::commands::OtherEntity {
             size_answer: None,
             attachment_lifetime: Default::default(),
             knot_check: None,

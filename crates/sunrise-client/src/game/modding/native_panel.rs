@@ -2053,7 +2053,7 @@ mod tests {
         }
     }
     /// `panel_search("jei", text)` through the host, as mod `caller`'s hook calls it.
-    fn search_as(game: &mut crate::game::Game<'_>, caller: &'static str, text: &str) {
+    fn search_as(game: &mut crate::game::ClientGame<'_>, caller: &'static str, text: &str) {
         use mod_api::content::crash::{ModCall, enter_native_mod};
         let _call = enter_native_mod(ModCall {
             id: caller,
@@ -2063,7 +2063,7 @@ mod tests {
         mod_api::prelude::RecipesClientHost::panel_search(game, "jei", text);
     }
     /// One frame of the panel on a window `size` pixels big: what the mods heard.
-    fn frame(game: &mut crate::game::Game<'_>, size: [u32; 2]) -> Vec<(String, String)> {
+    fn frame(game: &mut crate::game::ClientGame<'_>, size: [u32; 2]) -> Vec<(String, String)> {
         let mut batch = sunrise_client::hud::HudBatch::new(size, game.settings.gui_scale_inputs());
         game.draw_mod_browser(&mut batch);
         std::mem::take(&mut *HEARD.lock().unwrap())
@@ -2088,34 +2088,34 @@ mod tests {
             mod_platform::testing::with_mods(mods, || {
                 let many = vec![stack("minecraft:stone"); 300];
                 game.panel_items("jei", many.clone());
-                game.client.screen = Screen::Inventory;
-                assert!(game.title.0.is_none());
+                game.side.screen = Screen::Inventory;
+                assert!(game.side.title.0.is_none());
                 assert_eq!(frame(game, WINDOW), [], "nothing typed, nothing heard");
 
                 // Another mod naming the owner's id changes nothing.
                 search_as(game, "ae2", "iron");
-                assert_eq!(game.client.panel.pending, None);
+                assert_eq!(game.side.panel.pending, None);
                 // The owner's call is queued: the box and the page are as they were.
-                game.client.panel.page = 3;
+                game.side.panel.page = 3;
                 search_as(game, "jei", "iron");
                 assert_eq!(std::mem::take(&mut *HEARD.lock().unwrap()), []);
-                assert_eq!(game.client.panel.search.as_ref().unwrap().value, "");
+                assert_eq!(game.side.panel.search.as_ref().unwrap().value, "");
 
                 // Closed, the panel doesn't draw and the text waits; reopened,
                 // the owner hears it on the first page.
-                game.client.screen = Screen::Playing;
+                game.side.screen = Screen::Playing;
                 game.mod_browser_closed();
                 assert_eq!(frame(game, WINDOW), []);
-                game.client.screen = Screen::Inventory;
+                game.side.screen = Screen::Inventory;
                 assert_eq!(frame(game, WINDOW), heard("jei", "iron"));
-                assert_eq!(game.client.panel.page, 0);
-                assert_eq!(game.client.panel.search.as_ref().unwrap().value, "iron");
+                assert_eq!(game.side.panel.page, 0);
+                assert_eq!(game.side.panel.search.as_ref().unwrap().value, "iron");
                 assert_eq!(frame(game, WINDOW), [], "heard once");
 
                 // A window too narrow for the panel draws no box: the text waits.
                 search_as(game, "jei", "gold");
                 assert_eq!(frame(game, [200, 300]), []);
-                assert_eq!(game.client.panel.search.as_ref().unwrap().value, "iron");
+                assert_eq!(game.side.panel.search.as_ref().unwrap().value, "iron");
                 assert_eq!(frame(game, WINDOW), heard("jei", "gold"));
 
                 // Another mod takes the panel before a frame: neither hears the
@@ -2125,7 +2125,7 @@ mod tests {
                 assert_eq!(frame(game, WINDOW), []);
                 game.panel_items("jei", many);
                 assert_eq!(frame(game, WINDOW), []);
-                assert_eq!(game.client.panel.search.as_ref().unwrap().value, "gold");
+                assert_eq!(game.side.panel.search.as_ref().unwrap().value, "gold");
 
                 // Input before the frame sends only what the player typed, and
                 // that newer edit wins over the queued text.
@@ -2136,7 +2136,7 @@ mod tests {
                     heard("jei", "golds")
                 );
                 assert_eq!(frame(game, WINDOW), []);
-                assert_eq!(game.client.panel.search.as_ref().unwrap().value, "golds");
+                assert_eq!(game.side.panel.search.as_ref().unwrap().value, "golds");
             });
         });
     }

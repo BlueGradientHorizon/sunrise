@@ -48,7 +48,7 @@ fn minecart_loops_gate_both_gains_on_live_interpolated_rails() {
                 cart.velocity = Vec3::new(0.4, 0.0, 0.0);
                 game.carts.push(cart);
                 game.riding = Some(42);
-                let ctx = |game: &mut crate::game::Game<'_>| {
+                let ctx = |game: &mut crate::game::ClientGame<'_>| {
                     let (vehicle, carts) = game.start_cart_sounds();
                     TickContext {
                         vehicle,
@@ -116,13 +116,13 @@ fn guardian_and_elder_events_admit_two_independent_loops_each() {
             with_client_game(|game| {
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "GuardianAudioTest").unwrap();
-                game.audio.0.engine.loaded = true;
-                game.audio.0.engine.registry.add_file(
+                game.side.audio.0.engine.loaded = true;
+                game.side.audio.0.engine.registry.add_file(
                     "minecraft",
                     br#"{"entity.guardian.attack":{"sounds":["fixture/guardian"]}}"#,
                     &|_, _| true,
                 );
-                game.audio
+                game.side.audio
                     .0
                     .engine
                     .set_test_playback_hook(|sound, _, _, _| {
@@ -162,7 +162,7 @@ fn guardian_and_elder_events_admit_two_independent_loops_each() {
                 game.tick_sound_engine();
                 let ticked: Vec<[f64; 3]> = starts
                     .iter()
-                    .map(|(id, _)| game.audio.0.engine.instance(*id).unwrap().position)
+                    .map(|(id, _)| game.side.audio.0.engine.instance(*id).unwrap().position)
                     .collect();
                 assert_eq!(
                     ticked,
@@ -185,7 +185,7 @@ fn music_selection_and_gain_follow_the_camera_across_a_biome_boundary() {
         "game::client_side::music::audio_music_tests::music_selection_and_gain_follow_the_camera_across_a_biome_boundary",
         || {
             with_client_game(|game| {
-                game.title.0 = None;
+                game.side.title.0 = None;
                 game.dim = Dim::Overworld;
                 game.player =
                     Some(PlayerMotion::new(game.motion, Vec3::new(-20.0, 64.0, 0.0)).unwrap());
@@ -221,12 +221,12 @@ fn music_selection_and_gain_follow_the_camera_across_a_biome_boundary() {
                     game.world.chunks.insert((x >> 4, 0), Arc::new(chunk));
                 }
                 game.world_biomes = Some(Arc::new(biomes));
-                game.client.view.position = [-20.0, 64.0, 0.0];
+                game.side.view.position = [-20.0, 64.0, 0.0];
                 let (left, volume) = game.situational_music();
                 assert_eq!(left.unwrap().sound, "minecraft:music.game");
                 assert_eq!(volume.to_bits(), 0x3e800000);
 
-                game.client.view.position = [20.0, 64.0, 0.0];
+                game.side.view.position = [20.0, 64.0, 0.0];
                 let (right, volume) = game.situational_music();
                 let right = right.unwrap();
                 assert_eq!(right.sound, "minecraft:music.nether.crimson_forest");

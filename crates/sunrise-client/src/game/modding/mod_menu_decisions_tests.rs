@@ -556,7 +556,7 @@ fn count(stack: &Option<ItemStack>) -> u32 {
     stack.as_ref().map_or(0, |s| s.count)
 }
 
-fn inventory(game: &crate::game::Game<'_>, slot: usize) -> u32 {
+fn inventory(game: &crate::game::ServerGame<'_>, slot: usize) -> u32 {
     count(&game.lan.as_ref().unwrap().hub.guests[0].inventory[slot])
 }
 
@@ -568,7 +568,7 @@ fn a_click_on_a_mod_menu_tells_the_mods_inside_an_action_and_a_failure_undoes_it
         crate::game::api_values::install_parts(&mods).unwrap();
         with_guests(|game| {
             let window = open_native_menu(game);
-            let click = |game: &mut crate::game::Game<'_>| {
+            let click = |game: &mut crate::game::ServerGame<'_>| {
                 game.lan_guest_packet(12, container_click(window, 3, 0));
                 game.run_native_menu_events();
             };
@@ -661,7 +661,7 @@ fn container_click(window: i32, slot: i16, input: i32) -> Serverbound {
 }
 
 /// A menu a mod opened (`Slots::Native`) for guest 12.
-fn open_native_menu(game: &mut crate::game::Game<'_>) -> i32 {
+fn open_native_menu(game: &mut crate::game::ServerGame<'_>) -> i32 {
     use sunrise_client::lan::menu::Menu;
     let menu = Menu {
         window: 5,
@@ -696,7 +696,7 @@ fn open_native_menu(game: &mut crate::game::Game<'_>) -> i32 {
 const POS: (i32, i32, i32) = (1, 64, 1);
 const QUICK_MOVE_MENU: &str = "movemod:quick_move";
 
-fn with_depot_guests(test: impl FnOnce(&mut crate::game::Game<'_>)) {
+fn with_depot_guests(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     with_guests(|game| {
         // The game fixture stops before content loading freezes the block-entity type registry.
         // Resolve this fixture's declarations in its scoped Parts table, not the engine global.
@@ -712,7 +712,7 @@ fn with_depot_guests(test: impl FnOnce(&mut crate::game::Game<'_>)) {
     });
 }
 
-fn with_live_depot_guests(test: impl FnOnce(&mut crate::game::Game<'_>)) {
+fn with_live_depot_guests(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     sunrise_client::containers::with_mod_menu_types(
         [(
             QUICK_MOVE_MENU.into(),
@@ -740,7 +740,7 @@ fn with_live_depot_guests(test: impl FnOnce(&mut crate::game::Game<'_>)) {
 }
 
 /// A resident mod container (a block entity of the mod's registered type) with stone 10 in slot 0.
-fn place_depot(game: &mut crate::game::Game<'_>, menu: Option<&str>) {
+fn place_depot(game: &mut crate::game::ServerGame<'_>, menu: Option<&str>) {
     game.world.chunks.insert(
         (0, 0),
         std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
@@ -780,7 +780,7 @@ fn place_depot(game: &mut crate::game::Game<'_>, menu: Option<&str>) {
 }
 
 /// A mod container opening a stock 9-slot layout.
-fn open_depot(game: &mut crate::game::Game<'_>) -> i32 {
+fn open_depot(game: &mut crate::game::ServerGame<'_>) -> i32 {
     place_depot(game, None);
     let host = game.lan.as_mut().unwrap();
     host.hub.open_container(
@@ -796,7 +796,7 @@ fn open_depot(game: &mut crate::game::Game<'_>) -> i32 {
 }
 
 /// A block-backed mod layout opened through the ordinary server path.
-fn open_live_depot(game: &mut crate::game::Game<'_>) -> i32 {
+fn open_live_depot(game: &mut crate::game::ServerGame<'_>) -> i32 {
     place_depot(game, Some(QUICK_MOVE_MENU));
     assert_eq!(
         game.open_block_menu(12, POS),
@@ -814,7 +814,7 @@ const SECOND: (i32, i32, i32) = (2, 64, 1);
 
 /// A second mod container with the same state/layout as the depot, empty, that a listener
 /// can move items into through its `ITEMS` capability.
-fn second_block(game: &mut crate::game::Game<'_>) {
+fn second_block(game: &mut crate::game::ServerGame<'_>) {
     let state = game
         .pack
         .assets
@@ -835,7 +835,7 @@ fn second_block(game: &mut crate::game::Game<'_>) {
 }
 
 /// Every stone in the depot, the second block and guest 12's inventory: where a move left them.
-fn stone_everywhere(game: &crate::game::Game<'_>) -> (u32, u32, u32) {
+fn stone_everywhere(game: &crate::game::ServerGame<'_>) -> (u32, u32, u32) {
     let held = |items: &[Option<ItemStack>]| {
         items
             .iter()
@@ -858,7 +858,7 @@ fn stone_everywhere(game: &crate::game::Game<'_>) -> (u32, u32, u32) {
 }
 
 /// The block's slots 0, 1 and 2, and guest 12's slot 20.
-fn depot(game: &crate::game::Game<'_>) -> (u32, u32, u32, u32) {
+fn depot(game: &crate::game::ServerGame<'_>) -> (u32, u32, u32, u32) {
     let Some(BlockEntity::Mod(m)) = game.world.block_entities.get(&POS) else {
         panic!("the block entity is gone");
     };
@@ -872,7 +872,7 @@ fn a_mod_quick_move_is_one_action_and_a_refusal_leaves_no_prefix() {
     with_mod(|| {
         with_depot_guests(|game| {
             open_depot(game);
-            let click = |game: &mut crate::game::Game<'_>| {
+            let click = |game: &mut crate::game::ServerGame<'_>| {
                 let window = game.lan.as_ref().unwrap().hub.guests[0]
                     .menu
                     .as_ref()
@@ -979,7 +979,7 @@ fn a_panicking_live_quick_move_rolls_back_and_disables_only_its_callback() {
     with_publication_mods(|| {
         with_live_depot_guests(|game| {
             let window = open_live_depot(game);
-            let click = |game: &mut crate::game::Game<'_>| {
+            let click = |game: &mut crate::game::ServerGame<'_>| {
                 game.lan_guest_packet(12, container_click(window, 0, 1));
             };
             // An explicit transaction spans the subject and guest inventory, then panics.
@@ -1041,7 +1041,7 @@ fn a_panicking_live_quick_move_rolls_back_and_disables_only_its_callback() {
     });
 }
 
-fn mod_entity_at<'a>(game: &'a crate::game::Game<'_>, pos: (i32, i32, i32)) -> &'a ModBlockEntity {
+fn mod_entity_at<'a>(game: &'a crate::game::ServerGame<'_>, pos: (i32, i32, i32)) -> &'a ModBlockEntity {
     let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&pos) else {
         panic!("live resident block entity missing at {pos:?}");
     };
@@ -1857,7 +1857,7 @@ const STATUS_MENU: &str = "movemod:status_menu";
 
 /// Makes the depot at `POS` a mod container whose menu is `DEPOT_MENU`, so `mod_menu_at(POS)`
 /// names it.
-fn depot_container(game: &mut crate::game::Game<'_>) {
+fn depot_container(game: &mut crate::game::ServerGame<'_>) {
     let state = game
         .pack
         .assets
@@ -1948,7 +1948,7 @@ fn a_code_opened_menus_button_reaches_a_blocks_menu_button_only_for_its_menu_typ
     sunrise_client::containers::with_mod_menu_types(menus, || {
         with_mod(|| {
             with_guests(|game| {
-                let button = |game: &mut crate::game::Game<'_>, window, id| {
+                let button = |game: &mut crate::game::ServerGame<'_>, window, id| {
                     game.lan_guest_packet(
                         12,
                         Serverbound::ContainerButtonClick(ContainerButtonClick {
@@ -2144,7 +2144,7 @@ fn a_block_menu_click_commits_only_the_replacement_or_a_fresh_default() {
                         .unwrap();
                     assert_eq!(menu.mod_type.unwrap().id, DEPOT_MENU);
                     let window = menu.window;
-                    let content = |game: &crate::game::Game<'_>, pos, slot: usize| {
+                    let content = |game: &crate::game::ServerGame<'_>, pos, slot: usize| {
                         let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&pos)
                         else {
                             panic!("missing {pos:?}")

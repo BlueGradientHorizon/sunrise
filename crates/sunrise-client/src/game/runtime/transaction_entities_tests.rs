@@ -170,7 +170,7 @@ impl Hooks for Observer {
 
 /// Runs the test `name` with the observer installed, in a fresh process (installed mods are
 /// process-wide), on a dedicated server's overworld with chunk 0 0 loaded.
-fn with_observer(name: &str, test: impl FnOnce(&mut Game<'_>)) {
+fn with_observer(name: &str, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     use super::native_entity_refs::tests::{run_fresh_cases, with_game};
     if run_fresh_cases(name, "SUNRISE_TRANSACTION_ENTITIES_CHILD", &["valid"]) {
         return;
@@ -189,7 +189,7 @@ fn with_observer(name: &str, test: impl FnOnce(&mut Game<'_>)) {
 }
 
 /// Summons `kind` with `nbt` at 1.5 70 1.5: its id.
-fn summon(game: &mut Game<'_>, kind: &str, nbt: &str) -> Option<u32> {
+fn summon(game: &mut crate::game::ServerGame<'_>, kind: &str, nbt: &str) -> Option<u32> {
     let (Tag::Compound(nbt), _) = parse_snbt(nbt).unwrap() else {
         panic!("not a compound");
     };
@@ -203,7 +203,7 @@ fn heard() -> Heard {
 }
 
 /// A boat with an announced cow riding it.
-fn boat_with_rider(game: &mut Game<'_>) -> (EntityRef, EntityRef) {
+fn boat_with_rider(game: &mut crate::game::ServerGame<'_>) -> (EntityRef, EntityRef) {
     let boat = summon(game, "minecraft:oak_boat", "{}").unwrap();
     let cow = summon(game, "minecraft:cow", "{}").unwrap();
     let (boat, cow) = (game.entity(boat).unwrap(), game.entity(cow).unwrap());
@@ -217,7 +217,7 @@ fn boat_with_rider(game: &mut Game<'_>) -> (EntityRef, EntityRef) {
 fn a_spawn_then_abort_leaves_no_entity_map_or_hook() {
     const NAME: &str = "game::server_side::transaction_entities_tests::a_spawn_then_abort_leaves_no_entity_map_or_hook";
     with_observer(NAME, |game| {
-        let (mobs, next) = (game.mobs.len(), game.server.next_entity);
+        let (mobs, next) = (game.mobs.len(), game.side.next_entity);
         let pig = game.storage_scope(|game, _| {
             let pig = summon(game, "minecraft:pig", "{}").unwrap();
             assert!(game.entity(pig).is_some(), "in the level inside the action");
@@ -233,7 +233,7 @@ fn a_spawn_then_abort_leaves_no_entity_map_or_hook() {
         game.native_joins_flush(false, 0);
         game.native_leaves_flush();
         assert_eq!(heard(), Heard::default(), "no join and no leave");
-        assert_eq!(game.server.next_entity, next + 1, "its id is burnt");
+        assert_eq!(game.side.next_entity, next + 1, "its id is burnt");
     });
 }
 
@@ -333,14 +333,14 @@ fn a_thrown_spawn_joins_at_the_call_or_the_root_commit() {
     with_observer(NAME, |game| {
         use mod_api::{EntitySpawn, Identifier, SpawnBody};
         let level = game.level(game.dim.id()).unwrap();
-        let thrown = |game: &mut Game<'_>, kind: &str| {
+        let thrown = |game: &mut crate::game::ServerGame<'_>, kind: &str| {
             let key = game.item_key(&Identifier::parse(kind).unwrap()).unwrap();
             let item = mod_api::ItemStack::new(key, 1).unwrap();
             let spawn = EntitySpawn::new(SpawnBody::Thrown { item });
             game.level_spawn_entity(level, kind, [1.5, 70.0, 1.5], &spawn)
         };
         let projectiles = game.creatures.projectiles.len();
-        let next = game.server.next_entity;
+        let next = game.side.next_entity;
         assert_eq!(thrown(game, "minecraft:snowball"), None, "kept out at once");
         assert_eq!(heard().joined, [next + 1]);
         assert_eq!(game.creatures.projectiles.len(), projectiles);
@@ -365,7 +365,7 @@ fn a_thrown_spawn_joins_at_the_call_or_the_root_commit() {
 fn outside_a_transaction_joins_and_leaves_are_told_at_the_call() {
     const NAME: &str = "game::server_side::transaction_entities_tests::outside_a_transaction_joins_and_leaves_are_told_at_the_call";
     with_observer(NAME, |game| {
-        let next = game.server.next_entity;
+        let next = game.side.next_entity;
         let boat = summon(game, "minecraft:oak_boat", "{}").unwrap();
         assert_eq!(boat, next + 1);
         assert_eq!(
@@ -403,7 +403,7 @@ fn a_removal_then_abort_keeps_the_row_map_and_rider() {
                 game.boats.iter().any(|b| b.id == boat.id()),
                 "the row stays"
             );
-            let mount = |game: &Game<'_>| {
+            let mount = |game: &crate::game::ServerGame<'_>| {
                 game.mobs
                     .iter()
                     .find(|m| m.id == cow.id())
@@ -456,7 +456,7 @@ fn a_killed_mobs_oozing_spawns_only_at_commit() {
         let zombie = summon(game, "minecraft:zombie", "{}").unwrap();
         let at = game.mobs.iter().position(|m| m.id == zombie).unwrap();
         (game.mobs[at].extra.effects).push(StoredEffect::new("minecraft:oozing", 600, 0));
-        let slimes = |game: &Game<'_>| {
+        let slimes = |game: &crate::game::ServerGame<'_>| {
             let slime = sunrise_client::mobs::Species::Slime;
             game.mobs.iter().filter(|m| m.species() == slime).count()
         };
@@ -586,7 +586,7 @@ fn ids_never_go_back_and_a_stale_handle_names_no_later_entity() {
         });
         let next = summon(game, "minecraft:pig", "{}").unwrap();
         assert_eq!(next, aborted + 1);
-        assert!(game.server.next_entity >= next);
+        assert!(game.side.next_entity >= next);
         assert_eq!(game.native_entity_target(handle), None);
         assert_eq!(game.entity(aborted), None);
     });
@@ -597,7 +597,7 @@ fn ids_never_go_back_and_a_stale_handle_names_no_later_entity() {
 fn late_id_kinds_spawned_then_aborted_are_removed() {
     const NAME: &str = "game::server_side::transaction_entities_tests::late_id_kinds_spawned_then_aborted_are_removed";
     with_observer(NAME, |game| {
-        let counts = |game: &Game<'_>| {
+        let counts = |game: &crate::game::ServerGame<'_>| {
             [
                 game.tnts.len(),
                 game.falling.len(),
@@ -644,7 +644,7 @@ fn a_traveller_arriving_inside_an_aborted_action_stays() {
             "{Item:{id:\"minecraft:diamond\",count:3}}",
         );
         game.enter_level(Dim::Overworld).unwrap();
-        let diamonds = |game: &Game<'_>| {
+        let diamonds = |game: &crate::game::ServerGame<'_>| {
             (game.dropped.iter())
                 .filter(|d| &*d.stack.item == "minecraft:diamond")
                 .count()
@@ -673,9 +673,9 @@ fn an_aborted_spawn_is_in_no_tracking_pass() {
         "game::server_side::transaction_entities_tests::an_aborted_spawn_is_in_no_tracking_pass";
     with_observer(NAME, |game| {
         // Above the guest's fixed entity id.
-        game.server.next_entity = 100;
+        game.side.next_entity = 100;
         let _rx = super::lan::world_spawn_sync_tests::host_for(game);
-        let tracked = |game: &mut Game<'_>, id: u32| {
+        let tracked = |game: &mut crate::game::ServerGame<'_>, id: u32| {
             let mut states = sunrise_client::lan::entity::States::default();
             game.lan_entities(&mut states, false, 0, None);
             states.as_slice().iter().any(|e| e.id == id as i32)
@@ -694,7 +694,7 @@ fn an_aborted_spawn_is_in_no_tracking_pass() {
 }
 
 /// One mod spawn function, called with everything it needs: whether it spawned.
-type Spawn = fn(&mut Game<'_>, Fixture) -> bool;
+type Spawn = fn(&mut crate::game::ServerGame<'_>, Fixture) -> bool;
 
 #[derive(Clone, Copy)]
 struct Fixture {
@@ -797,16 +797,16 @@ fn exhausted_ids_refuse_every_mod_spawn() {
         };
         // Each spawns below the headroom; ids only ever go up.
         let last = u32::MAX - ENTITY_ID_HEADROOM;
-        game.server.next_entity = last - 1024;
+        game.side.next_entity = last - 1024;
         for (name, spawn) in rows {
             assert!(spawn(game, fixture), "{name} spawns below the headroom");
         }
         assert!(!game.native_lifecycle.ids_exhausted_told);
-        game.server.next_entity = last;
+        game.side.next_entity = last;
         for (name, spawn) in rows {
             let entities = game.live_entity_ids().len();
             assert!(!spawn(game, fixture), "{name} refuses");
-            assert_eq!(game.server.next_entity, last, "{name} takes no id");
+            assert_eq!(game.side.next_entity, last, "{name} takes no id");
             assert_eq!(
                 game.live_entity_ids().len(),
                 entities,
@@ -823,13 +823,13 @@ fn exhausted_ids_stop_the_tick_spawners() {
     const NAME: &str =
         "game::server_side::transaction_entities_tests::exhausted_ids_stop_the_tick_spawners";
     with_observer(NAME, |game| {
-        game.server.next_entity = u32::MAX - ENTITY_ID_HEADROOM - 1;
+        game.side.next_entity = u32::MAX - ENTITY_ID_HEADROOM - 1;
         game.tick_spawners();
         assert!(!game.native_lifecycle.ids_exhausted_told);
-        game.server.next_entity = u32::MAX - ENTITY_ID_HEADROOM;
+        game.side.next_entity = u32::MAX - ENTITY_ID_HEADROOM;
         game.tick_spawners();
         assert!(game.native_lifecycle.ids_exhausted_told, "named in the log");
-        assert_eq!(game.server.next_entity, u32::MAX - ENTITY_ID_HEADROOM);
+        assert_eq!(game.side.next_entity, u32::MAX - ENTITY_ID_HEADROOM);
     });
 }
 
@@ -1177,12 +1177,12 @@ fn an_exhausted_level_pop_draws_nothing_from_the_level_random() {
     const NAME: &str = "game::server_side::transaction_entities_tests::an_exhausted_level_pop_draws_nothing_from_the_level_random";
     with_observer(NAME, |game| {
         let level = game.level(game.dim.id()).unwrap();
-        game.server.next_entity = u32::MAX - ENTITY_ID_HEADROOM;
+        game.side.next_entity = u32::MAX - ENTITY_ID_HEADROOM;
         let expected = game.world.random.clone().next_long();
         let stack = ItemStack::new("minecraft:stone", 1);
         assert!(game.level_pop_resource(level, [1, 70, 1], stack).is_none());
         assert_eq!(game.world.random.clone().next_long(), expected);
-        assert_eq!(game.server.next_entity, u32::MAX - ENTITY_ID_HEADROOM);
+        assert_eq!(game.side.next_entity, u32::MAX - ENTITY_ID_HEADROOM);
     });
 }
 

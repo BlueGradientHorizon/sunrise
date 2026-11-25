@@ -613,7 +613,7 @@ pub(in crate::game) mod loot_mine_component_tests {
     #[allow(unused_imports)]
     use sunrise_core::nbt::{Compound, Tag};
 
-    pub(in crate::game) fn slot(game: &Game<'_>, index: usize) -> ItemStack {
+    pub(in crate::game) fn slot(game: &crate::game::ServerGame<'_>, index: usize) -> ItemStack {
         let Some(BlockEntity::Chest(items)) = game.world.block_entities.get(&(12, 200, 4)) else {
             panic!("actual command-created chest required");
         };
@@ -652,15 +652,12 @@ pub(in crate::game) mod loot_mine_component_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -840,15 +837,12 @@ pub(in crate::game) mod loot_position_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -864,10 +858,10 @@ pub(in crate::game) mod loot_position_tests {
             .unwrap();
         assert!(game.run_command("forceload add 0 0"));
         assert!(game.run_command("setblock 4 200 4 chest"));
-        let slot = |game: &mut Game<'_>, i| {
+        let slot = |game: &mut crate::game::ServerGame<'_>, i| {
             game.slot_get(&crate::game::commands::items::Slot::Block([4, 200, 4], i))
         };
-        let reset = |game: &mut Game<'_>| {
+        let reset = |game: &mut crate::game::ServerGame<'_>| {
             assert!(game.run_command("item replace block 4 200 4 container.0 with diamond 3"));
             assert!(game.run_command("item replace block 4 200 4 container.1 with emerald 4"));
             assert!(game.run_command("item replace block 4 200 4 container.2 with gold_ingot 5"));
@@ -955,15 +949,12 @@ pub(in crate::game) mod loot_kill_target_tests {
             std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap()).join("h036-game"),
         );
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();

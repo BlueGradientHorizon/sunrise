@@ -244,7 +244,7 @@ pub(in crate::game) mod tests {
     }
 
     /// The ids of the rows present on the window.
-    pub(in crate::game) fn row_ids(game: &Game<'_>) -> Vec<i32> {
+    pub(in crate::game) fn row_ids(game: &crate::game::ClientGame<'_>) -> Vec<i32> {
         let mut ids: Vec<i32> = game
             .remote
             .as_ref()
@@ -258,7 +258,7 @@ pub(in crate::game) mod tests {
         ids
     }
 
-    pub(in crate::game) fn rows(game: &Game<'_>) -> IndexMap<i32, RemoteGeneral> {
+    pub(in crate::game) fn rows(game: &crate::game::ClientGame<'_>) -> IndexMap<i32, RemoteGeneral> {
         game.remote.as_ref().unwrap().general.rows.clone()
     }
 
@@ -481,7 +481,7 @@ pub(in crate::game) mod tests {
                 game.remote_attachment_sync(attachment_message(5, true, Some(9)));
                 assert_eq!(row_ids(game), [5]);
                 assert_eq!(rows(game)[&5].render_attachments.get(&FUEL), Ok(Some(&9)));
-                let fuel = |game: &Game<'_>, id: u32| {
+                let fuel = |game: &crate::game::ClientGame<'_>, id: u32| {
                     let held = game.remote.as_ref().unwrap();
                     let map = held.attachments.get(&Holder::Entity(id))?;
                     let value = map

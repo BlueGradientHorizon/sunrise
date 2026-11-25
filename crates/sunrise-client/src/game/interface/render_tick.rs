@@ -1313,7 +1313,7 @@ mod tests {
                     game.player = Some(
                         super::PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap(),
                     );
-                    game.client.camera_type = CameraType::FirstPerson;
+                    game.side.camera_type = CameraType::FirstPerson;
                     game.ui.hide_gui = false;
                     game.gui.atlas.sprites.clear();
                     let expected = [0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875];
@@ -1354,7 +1354,7 @@ mod tests {
                     game.armor = [head, chest, legs, feet];
                     game.equipment.set(sunrise_items::equipment::BODY, body);
                     game.equipment.set(sunrise_items::equipment::SADDLE, saddle);
-                    let quads = |game: &super::Game<'_>| {
+                    let quads = |game: &crate::game::ClientGame<'_>| {
                         game.screen_quads(
                             0.0,
                             [427, 240],
@@ -1375,12 +1375,12 @@ mod tests {
                         assert_eq!(q.vertices[2].pos[..2], [1.0, -1.0]);
                     }
 
-                    game.client.camera_type = CameraType::ThirdPersonBack;
+                    game.side.camera_type = CameraType::ThirdPersonBack;
                     assert!(
                         quads(game).is_empty(),
                         "third-person suppresses equipment overlays"
                     );
-                    game.client.camera_type = CameraType::FirstPerson;
+                    game.side.camera_type = CameraType::FirstPerson;
                     game.inventory[4] = Some(ItemStack::new("minecraft:spyglass", 1));
                     assert_eq!(
                         quads(game).len(),
@@ -1480,7 +1480,7 @@ mod tests {
                 }
             }
         }
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_client_game(|game| {
             let registry = &game.pack.assets.registry;
             let state = |name: &str| registry.default_state(name).unwrap();
             let (air, stone, dirt, fire) = (
@@ -1499,7 +1499,7 @@ mod tests {
             player.position = Vec3::new(0.5, 64.0, 0.5);
             player.fire_ticks = 100;
             game.player = Some(player);
-            let effects = |game: &mut super::Game<'_>, block| {
+            let effects = |game: &mut crate::game::ClientGame<'_>, block| {
                 game.world.set(0, 65, 0, block).unwrap();
                 let p = game.player.as_ref().unwrap();
                 let eye = [0.5, 64.0 + f64::from(p.dimensions.eye_height), 0.5];

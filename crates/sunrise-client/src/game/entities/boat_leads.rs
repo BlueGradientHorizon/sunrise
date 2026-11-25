@@ -608,7 +608,7 @@ pub(in crate::game) mod tests {
                 .push(Boat::new(id, "oak".into(), Vec3::new(6.5, 100.0, 4.5), 0.0));
             game.persist.uuids.insert(id, uuid);
             game.level.player_uuid = Some([326, 3, 0, 1]);
-            let read = |game: &mut Game<'_>| game.command_target_nbt(Target::Boat(id)).unwrap();
+            let read = |game: &mut crate::game::ServerGame<'_>| game.command_target_nbt(Target::Boat(id)).unwrap();
             assert!(!game.persist.raw.contains_key(&id));
             assert_eq!(read(game).get("UUID"), Some(&Tag::IntArray(uuid.to_vec())));
             assert!(read(game).get("leash").is_none());

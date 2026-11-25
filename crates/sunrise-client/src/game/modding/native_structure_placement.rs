@@ -342,7 +342,7 @@ mod tests {
     }
 
     /// The game fixture's own chunk, the level of the placement.
-    fn ready_chunked_game(game: &mut Game<'_>) {
+    fn ready_chunked_game(game: &mut crate::game::ServerGame<'_>) {
         // The templates' resources the level places from, as opening a world
         // installs them.
         crate::game::growth::install_live_features(

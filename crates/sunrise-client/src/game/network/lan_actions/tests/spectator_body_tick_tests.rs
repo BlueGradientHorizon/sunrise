@@ -40,7 +40,7 @@ pub(in crate::game) fn placed(
     g
 }
 
-pub(in crate::game) fn luck_left(game: &Game<'_>) -> Vec<i32> {
+pub(in crate::game) fn luck_left(game: &crate::game::ServerGame<'_>) -> Vec<i32> {
     let host = game.lan.as_ref().unwrap();
     host.hub
         .guests
@@ -50,7 +50,7 @@ pub(in crate::game) fn luck_left(game: &Game<'_>) -> Vec<i32> {
 }
 
 /// Each guest's ender pearl cooldown, in ticks left.
-pub(in crate::game) fn pearl_left(game: &Game<'_>) -> Vec<i32> {
+pub(in crate::game) fn pearl_left(game: &crate::game::ServerGame<'_>) -> Vec<i32> {
     let host = game.lan.as_ref().unwrap();
     host.hub
         .guests
@@ -177,7 +177,7 @@ fn a_dead_spectator_touching_an_unloaded_chunk_does_not_tick_its_death() {
                 .hub
                 .guests
                 .extend([dead(1, 8.5), dead(2, 15.5)]);
-            let death_times = |game: &Game<'_>| -> Vec<u32> {
+            let death_times = |game: &crate::game::ServerGame<'_>| -> Vec<u32> {
                 let host = game.lan.as_ref().unwrap();
                 host.hub.guests.iter().map(|g| g.death_time).collect()
             };

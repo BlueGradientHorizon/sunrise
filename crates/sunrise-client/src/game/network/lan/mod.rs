@@ -4089,11 +4089,11 @@ pub(in crate::game) mod tests {
                     peer_ip: peer_ip.map(str::to_owned),
                     thread: thread::current().id(),
                 };
-                let pump = |game: &mut crate::game::Game<'_>, count| {
+                let pump = |game: &mut crate::game::ServerGame<'_>, count| {
                     let deadline = Instant::now() + WAIT;
                     while seen.lock().unwrap().len() < count {
                         assert!(Instant::now() < deadline, "handshake was not dispatched");
-                        game.server.level_pass = Default::default();
+                        game.side.level_pass = Default::default();
                         game.tick_lan_packets();
                         thread::yield_now();
                     }
@@ -4237,7 +4237,7 @@ pub(in crate::game) mod tests {
                     assert!(reason.reason_json.contains(key));
                     assert_closed(&mut c);
                 }
-                game.server.level_pass = Default::default();
+                game.side.level_pass = Default::default();
                 game.tick_lan_packets();
                 assert!(seen.lock().unwrap().is_empty());
                 assert_eq!(gate_calls.try_recv(), Err(mpsc::TryRecvError::Empty));
@@ -4388,15 +4388,12 @@ pub(in crate::game) mod tests {
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
         let res = loaded.resources;
-        let mut game = super::Game::new(
+        let mut game = crate::game::ServerGame::new(
             &res,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -5130,7 +5127,7 @@ pub(in crate::game) mod tests {
             game.mobs.push(Mob::new(12, kind, at, 0.0));
             let mob = game.entity(12).unwrap();
             let hub = meta_hub("CustomNameMetaTest");
-            let meta_of = |game: &super::super::Game<'_>| {
+            let meta_of = |game: &crate::game::ServerGame<'_>| {
                 let m = game.mobs.iter().find(|m| m.id == 12).unwrap();
                 let (mut meta, mut defaults) = (Vec::new(), Vec::new());
                 super::mob_meta(m, &hub, None, 0, &mut meta, &mut defaults);
@@ -5303,8 +5300,8 @@ pub(in crate::game) mod tests {
                     seed: 0,
                     max_players: 3,
                     integrated: true,
-                    levels: game.server.level_shapes,
-                    level_seeds: game.levels.0.runtime.seeds(),
+                    levels: game.side.level_shapes,
+                    level_seeds: game.side.levels.0.runtime.seeds(),
                 };
                 game.lan_host(settings, net, config).unwrap();
                 let mut join = |conn: u32| {
@@ -5359,7 +5356,7 @@ pub(in crate::game) mod tests {
                 };
                 received(&sender);
                 received(&other);
-                let say = |game: &mut super::Game<'_>, content: &str| {
+                let say = |game: &mut crate::game::ServerGame<'_>, content: &str| {
                     let message = ChatMessage {
                         sender: 12,
                         index: 0,
@@ -5572,8 +5569,8 @@ pub(in crate::game) mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.server.level_shapes,
-                level_seeds: game.levels.0.runtime.seeds(),
+                levels: game.side.level_shapes,
+                level_seeds: game.side.levels.0.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
             let (tx, _rx) = std::sync::mpsc::channel();
@@ -5647,7 +5644,7 @@ pub(in crate::game) mod tests {
             };
             // One pass of the entities players are sent, then the guest's
             // swirls as the hub sends them.
-            let sent = |game: &mut super::Game<'_>| {
+            let sent = |game: &mut crate::game::ServerGame<'_>| {
                 let mut states = super::States::default();
                 game.lan_entities(&mut states, false, 0, None);
                 let zombie = states.as_slice().iter().find(|e| e.id == ZOMBIE).unwrap();
@@ -5828,12 +5825,12 @@ pub(in crate::game) mod world_spawn_sync_tests {
     use sunrise_client::lan::{Joined, Out, PlayerSender, guest::Guest};
     use sunrise_protocol::packets::play::{self, Clientbound as C};
 
-    fn host(game: &mut Game<'_>) -> mpsc::Receiver<Out> {
+    fn host(game: &mut crate::game::ServerGame<'_>) -> mpsc::Receiver<Out> {
         host_for(game)
     }
 
     /// An integrated LAN host with one placed guest (uuid 1) in the Nether.
-    pub(crate) fn host_for(game: &mut Game<'_>) -> mpsc::Receiver<Out> {
+    pub(crate) fn host_for(game: &mut crate::game::ServerGame<'_>) -> mpsc::Receiver<Out> {
         game.lan_host(
             LanSettings {
                 port: 0,
@@ -6118,7 +6115,7 @@ pub(in crate::game) mod world_spawn_join_tests {
     #[ignore = "daily"]
     fn a_returning_player_from_a_missing_level_joins_in_the_world_spawn_level() {
         crate::game::native_guest_turn_tests::with_guests(|game| {
-            game.server.world_root = game.save.0.root.clone();
+            game.side.world_root = game.side.save.0.root.clone();
             game.level.world_spawn_dimension = Some("minecraft:the_nether".into());
             let guests = &mut game.lan.as_mut().unwrap().hub.guests;
             guests.update(0, |g| {
@@ -6129,7 +6126,7 @@ pub(in crate::game) mod world_spawn_join_tests {
             });
             sunrise_client::lan::playerdata::save(
                 &guests[0],
-                &game.server.world_root,
+                &game.side.world_root,
                 &Default::default(),
             );
             guests.update(0, |g| g.placed = false);
@@ -6153,7 +6150,7 @@ pub(in crate::game) mod mob_pickup_sync_tests {
     };
 
     /// A server with one placed guest beside the mob.
-    fn guest_at(game: &mut Game<'_>, at: [f64; 3]) -> mpsc::Receiver<Out> {
+    fn guest_at(game: &mut crate::game::ServerGame<'_>, at: [f64; 3]) -> mpsc::Receiver<Out> {
         game.lan_host(
             LanSettings {
                 port: 0,
@@ -6259,7 +6256,7 @@ pub(in crate::game) mod mob_swing_sync_tests {
     };
 
     /// A server with one placed guest beside the mobs.
-    fn guest_at(game: &mut Game<'_>, at: [f64; 3]) -> mpsc::Receiver<Out> {
+    fn guest_at(game: &mut crate::game::ServerGame<'_>, at: [f64; 3]) -> mpsc::Receiver<Out> {
         game.lan_host(
             LanSettings {
                 port: 0,
@@ -6893,13 +6890,13 @@ pub(in crate::game) mod merchant_packet_tests {
                 }
                 actual
             };
-            let other_hit = |game: &mut super::Game<'_>, amount| {
+            let other_hit = |game: &mut crate::game::ServerGame<'_>, amount| {
                 assert_eq!(
                     game.hurt_by_player(0, amount, Damage::player(at)),
                     (true, false)
                 );
             };
-            let buyer_hit = |game: &mut super::Game<'_>, amount| {
+            let buyer_hit = |game: &mut crate::game::ServerGame<'_>, amount| {
                 assert_eq!(
                     game.as_guest(1, |g| g.hurt_by_player(0, amount, Damage::player(at))),
                     Some((true, false))

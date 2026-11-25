@@ -81,7 +81,7 @@ impl Hooks for CacheBench {
 
 const POS: (i32, i32, i32) = (1, 64, 1);
 
-fn with_cache_mod(name: &str, test: impl FnOnce(&mut super::Game<'_>, mod_api::LevelRef)) {
+fn with_cache_mod(name: &str, test: impl FnOnce(&mut crate::game::ServerGame<'_>, mod_api::LevelRef)) {
     if super::native_entity_refs::tests::run_fresh_cases(
         name,
         "SUNRISE_CAPABILITY_CACHE_CHILD",
@@ -112,7 +112,7 @@ fn with_cache_mod(name: &str, test: impl FnOnce(&mut super::Game<'_>, mod_api::L
 }
 
 /// The test mod's block entity at `POS`, on `block`.
-fn place_holder(game: &mut super::Game<'_>, block: &str) {
+fn place_holder(game: &mut crate::game::ServerGame<'_>, block: &str) {
     let state = game.pack.assets.registry.default_state(block).unwrap();
     game.world.set(POS.0, POS.1, POS.2, state).unwrap();
     let holder = ModBlockEntity::new("cache_bench:holder".into(), Default::default());
@@ -127,7 +127,7 @@ fn cache(level: mod_api::LevelRef) -> BlockCapabilityCache<dyn ResourceHandler<I
 
 /// Whether the cache answers, and how many lookups reached the provider so far.
 fn ask(
-    game: &mut super::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     cache: &mut BlockCapabilityCache<dyn ResourceHandler<ItemResource>>,
 ) -> (bool, usize) {
     let found = cache.get(game).is_some();
@@ -136,7 +136,7 @@ fn ask(
 
 /// The size of the handler the cache lends, if it lends one.
 fn slots(
-    game: &mut super::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     cache: &mut BlockCapabilityCache<dyn ResourceHandler<ItemResource>>,
 ) -> Option<usize> {
     let handler = cache.get(game)?;
@@ -376,7 +376,7 @@ fn moves_through_kept_handlers_conserve_every_item_when_some_abort() {
             }
             let mut from = BlockCapabilityCache::new(&ITEMS, level, [3, 64, 1], None);
             let mut to = BlockCapabilityCache::new(&ITEMS, level, [5, 64, 1], None);
-            let count = |game: &super::Game<'_>| {
+            let count = |game: &crate::game::ServerGame<'_>| {
                 [(3, 64, 1), (5, 64, 1)]
                     .iter()
                     .flat_map(|pos| game.world.block_entities.get(pos).unwrap().slots().to_vec())
@@ -387,13 +387,13 @@ fn moves_through_kept_handlers_conserve_every_item_when_some_abort() {
             let before = count(game);
             // Where each cache's kept handler lives: an aborted move must not make it look again.
             let kept = |cache: &mut BlockCapabilityCache<dyn ResourceHandler<ItemResource>>,
-                        game: &mut super::Game<'_>| {
+                        game: &mut crate::game::ServerGame<'_>| {
                 cache.get(game).map(|handler| {
                     &**handler as *const dyn ResourceHandler<ItemResource> as *const ()
                 })
             };
             let kept_before = (kept(&mut from, game), kept(&mut to, game));
-            let entities = |game: &super::Game<'_>| {
+            let entities = |game: &crate::game::ServerGame<'_>| {
                 [[3, 64, 1], [5, 64, 1]].map(|pos| game.block_entity(level, pos))
             };
             let entities_before = entities(game);

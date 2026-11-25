@@ -559,7 +559,7 @@ mod tests {
                 std::thread::current().id()
             ));
             let _ = std::fs::remove_dir_all(&world);
-            game.server.world_root = world.clone();
+            game.side.world_root = world.clone();
             game.level.player_uuid = Some([0, 0, 0, 5]);
             game.stats.loaded = true;
             game.adv.loaded = true;
@@ -584,7 +584,7 @@ mod tests {
             let host = game.lan.as_mut().unwrap();
             host.play
                 .insert(12, super::super::lan_actions::GuestPlay::default());
-            let save = |game: &Game<'_>| {
+            let save = |game: &crate::game::ServerGame<'_>| {
                 game.save_stats();
                 game.save_advancements();
                 let host = game.lan.as_ref().unwrap();

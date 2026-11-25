@@ -216,15 +216,12 @@ mod tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
             None,
         )
         .unwrap();
@@ -237,7 +234,7 @@ mod tests {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&scratch).unwrap();
-        game.server.world_root = scratch.clone();
+        game.side.world_root = scratch.clone();
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(10.5, 64.0, 0.5)).unwrap());
         let original = game.player.as_ref().unwrap().bounds();
         let net = NetConfig {
@@ -294,9 +291,9 @@ mod tests {
             assert_eq!(g.dim, Dim::Nether);
             // for_player already switched the level before entering the guest.
             // The host's body must not become a phantom blocker in the Nether.
-            assert!(g.lan_building_boxes.0.boxes(Dim::Nether).is_empty());
+            assert!(g.side.lan_building_boxes.0.boxes(Dim::Nether).is_empty());
             assert_eq!(
-                g.lan_building_boxes.0.boxes(Dim::Overworld),
+                g.side.lan_building_boxes.0.boxes(Dim::Overworld),
                 vec![(
                     original.min_position().components(),
                     original.max_position().components()

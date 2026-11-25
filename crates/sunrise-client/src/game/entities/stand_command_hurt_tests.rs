@@ -9,7 +9,7 @@ use sunrise_client::chunk::Chunk;
 use sunrise_client::mobs::Who;
 use sunrise_core::position::ChunkPos;
 
-fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
+fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -32,15 +32,12 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -57,10 +54,10 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
 }
 
 /// What a command says, and whether it succeeded.
-fn say(game: &mut Game<'_>, command: &str) -> (bool, String) {
-    game.server.chat_capture = Some(Vec::new());
+fn say(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, String) {
+    game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.server.chat_capture.take().unwrap_or_default();
+    let said = game.side.chat_capture.take().unwrap_or_default();
     (
         ok,
         said.iter().map(sunrise_client::text::Text::plain).collect(),
@@ -69,7 +66,7 @@ fn say(game: &mut Game<'_>, command: &str) -> (bool, String) {
 
 const STAND: &str = "00000ad5-0000-0000-0000-000000000001";
 
-fn summon(game: &mut Game<'_>, extra: &str) {
+fn summon(game: &mut crate::game::ServerGame<'_>, extra: &str) {
     assert!(game.run_command(&format!(
         "summon armor_stand 2.5 100 8.5 {{NoGravity:1b,UUID:[I;2773,0,0,1]{extra}}}"
     )));
@@ -246,7 +243,7 @@ fn cause_damage_and_explosion_post_attributed_game_events() {
 // Controls added after the baseline: the guards before the acting sources,
 // and a stand broken once however often it is hurt.
 
-fn items(game: &mut Game<'_>) -> String {
+fn items(game: &mut crate::game::ServerGame<'_>) -> String {
     say(game, "execute if entity @e[type=item]").1
 }
 
@@ -324,7 +321,7 @@ fn control_repeated_burning_breaks_the_stand_once() {
 // `#always_kills_armor_stands` hurt the stand as a hit does, and the command
 // succeeds.
 
-fn with_player(game: &mut Game<'_>) {
+fn with_player(game: &mut crate::game::ServerGame<'_>) {
     game.player = Some(
         sunrise_client::motion::PlayerMotion::new(
             game.motion,
@@ -443,7 +440,7 @@ fn control_a_source_in_neither_tag_still_fails_without_a_hurt() {
 }
 
 /// The game events (name, source) posted while `f` runs.
-fn events(game: &mut Game<'_>, f: impl FnOnce(&mut Game<'_>)) -> Vec<(&'static str, Option<Who>)> {
+fn events(game: &mut crate::game::ServerGame<'_>, f: impl FnOnce(&mut crate::game::ServerGame<'_>)) -> Vec<(&'static str, Option<Who>)> {
     super::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
     f(game);
     super::sculk::TEST_POSTED_EVENTS.with(|e| {

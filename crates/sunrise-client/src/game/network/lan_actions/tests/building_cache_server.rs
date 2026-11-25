@@ -22,8 +22,8 @@ pub(in crate::game::server_side) use sunrise_client::{
 pub(in crate::game::server_side) use sunrise_protocol::packets::configuration::ClientInformation;
 
 /// The other players' boxes in the Builder's turn: what blocks its placing.
-pub(in crate::game) fn seen_by_builder(game: &mut Game<'_>) -> Boxes {
-    let seen = game.as_guest(3, |g| g.lan_building_boxes.0.boxes(Dim::Overworld));
+pub(in crate::game) fn seen_by_builder(game: &mut crate::game::ServerGame<'_>) -> Boxes {
+    let seen = game.as_guest(3, |g| g.side.lan_building_boxes.0.boxes(Dim::Overworld));
 
     seen.unwrap()
 }

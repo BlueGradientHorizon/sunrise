@@ -48,6 +48,11 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         remote.backlog = backlog;
     }
 
+    
+}
+
+#[cfg(test)]
+impl crate::game::ClientGame<'_> {
     #[cfg(test)]
     pub(in crate::game) fn acknowledge_test_configuration(&mut self) {
         self.wait_for_test_remote_event(|event| matches!(event, Event::FinishConfiguration(_)));

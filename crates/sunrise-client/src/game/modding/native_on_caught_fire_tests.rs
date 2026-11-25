@@ -67,7 +67,7 @@ fn a_block_part_hears_it_burned_and_writes_the_level() {
             let air = registry.default_state("minecraft:air").unwrap();
             game.world.set(1, 64, 0, wool).unwrap();
             // The wool is still present when the notice is dispatched.
-            let burn = |game: &mut super::Game<'_>, face: Direction| {
+            let burn = |game: &mut crate::game::ServerGame<'_>, face: Direction| {
                 game.with_level(|_, level, ticks| {
                     level.on_caught_fire(ticks, wool, BlockPos::new(1, 64, 0), face);
                 });

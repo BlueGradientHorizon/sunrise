@@ -41,7 +41,7 @@ fn chat_completion_reaches_mods_from_keyboard_and_mouse_isolated() {
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root;
-    let mut game = Game::new(
+    let mut game = crate::game::ClientGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
@@ -75,7 +75,7 @@ fn chat_completion_reaches_mods_from_keyboard_and_mouse_isolated() {
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        game.client.screen = Screen::Chat;
+        game.side.screen = Screen::Chat;
         game.ui.registries.players = vec!["Steve".into(), "Steven".into()];
         game.ui.chat_screen = Some(ChatScreen::new(
             &Measure(&game.gui.atlas.font),
@@ -115,7 +115,7 @@ fn chat_completion_reaches_mods_from_keyboard_and_mouse_isolated() {
                 _ => None,
             })
             .expect("Steve is a visible suggestion");
-        game.client.cursor = at;
+        game.side.cursor = at;
         game.chat_click();
         assert_eq!(
             *calls.lock().unwrap(),

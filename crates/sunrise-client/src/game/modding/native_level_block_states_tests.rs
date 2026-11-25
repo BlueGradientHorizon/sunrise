@@ -60,7 +60,7 @@ fn a_random_tick_part_reads_a_neighbours_weathering_facts_through_the_level() {
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-            let state = |game: &mut crate::game::Game, name: &str| {
+            let state = |game: &mut crate::game::ServerGame<'_>, name: &str| {
                 game.pack.assets.registry.default_state(name).unwrap()
             };
             let stone = state(game, "minecraft:stone");

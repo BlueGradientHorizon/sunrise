@@ -191,7 +191,7 @@ fn a_hand_egg_checks_and_spawns_the_type_named_by_its_component() {
     use sunrise_core::nbt::Tag;
     peaceful_tests::with_types(ExecutionRole::IntegratedServer, |game| {
         game.set_mode_id(0);
-        game.server.forced_hit = Some(crate::game::Hit {
+        game.side.forced_hit = Some(crate::game::Hit {
             pos: [4, 64, 4],
             face: [0, 1, 0],
             point: [4.5, 65.0, 4.5],
@@ -200,14 +200,14 @@ fn a_hand_egg_checks_and_spawns_the_type_named_by_its_component() {
         let egg = peaceful_tests::trader_egg();
         game.inventory[game.selected] = Some(egg.clone());
         assert!(game.use_spawn_egg(&egg).unwrap());
-        assert!(game.server.use_failed);
+        assert!(game.side.use_failed);
         assert!(game.mobs.is_empty());
         assert_eq!(game.held().unwrap().count, 1);
 
-        game.server.use_failed = false;
+        game.side.use_failed = false;
         game.set_difficulty_forced(2);
         assert!(game.use_spawn_egg(&egg).unwrap());
-        assert!(!game.server.use_failed);
+        assert!(!game.side.use_failed);
         assert!(game.held().is_none());
         assert_eq!(game.mobs.len(), 1);
         assert_eq!(game.mobs[0].kind.id, peaceful_tests::TRADER);
@@ -222,7 +222,7 @@ fn a_hand_egg_checks_and_spawns_the_type_named_by_its_component() {
         );
         let key = (4, 64, 4);
         for op in [false, true] {
-            game.server.lan_acting_permission = Some(if op { 2 } else { 0 });
+            game.side.lan_acting_permission = Some(if op { 2 } else { 0 });
             game.world
                 .block_entities
                 .insert(key, BlockEntity::Spawner(Box::default()));
@@ -5248,8 +5248,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         }
         let plan =
-            self.prepare_knockback_credit(victim as i32, source.attacker, self.combat.0.attack());
-        let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+            self.prepare_knockback_credit(victim as i32, source.attacker, self.side.combat.0.attack());
+        let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
         if let Some(mob) = self.mobs.iter_mut().find(|mob| mob.id == victim) {
             sunrise_client::health::KnockbackCredit::accepted_mob_hit(&mut credit, mob);
         }

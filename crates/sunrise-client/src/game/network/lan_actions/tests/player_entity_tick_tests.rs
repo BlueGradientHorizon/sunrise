@@ -66,7 +66,7 @@ impl mod_api::Hooks for Players {
 
 /// Both guests (12 and 13) with a chest open 20 blocks away, past reach, and the listener's
 /// cancel aimed at guest 12; returns their entity ids.
-fn far_chests(game: &mut crate::game::Game<'_>, cancel: &Mutex<Option<u32>>) -> [u32; 2] {
+fn far_chests(game: &mut crate::game::ServerGame<'_>, cancel: &Mutex<Option<u32>>) -> [u32; 2] {
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -94,7 +94,7 @@ fn far_chests(game: &mut crate::game::Game<'_>, cancel: &Mutex<Option<u32>>) -> 
     ids
 }
 
-fn open(game: &crate::game::Game<'_>, gi: usize) -> bool {
+fn open(game: &crate::game::ServerGame<'_>, gi: usize) -> bool {
     game.lan.as_ref().unwrap().hub.guests[gi].menu.is_some()
 }
 

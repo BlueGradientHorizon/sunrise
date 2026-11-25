@@ -50,7 +50,7 @@ fn lending(sources: Vec<[i32; 3]>, calls: Arc<AtomicUsize>, run: impl FnOnce()) 
     );
 }
 
-fn setup(game: &mut Game<'_>) -> &'static ModMenuType {
+fn setup(game: &mut crate::game::ServerGame<'_>) -> &'static ModMenuType {
     game.build_registries();
     game.world
         .chunks

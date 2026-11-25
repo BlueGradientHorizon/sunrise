@@ -86,7 +86,7 @@ pub(in crate::game) mod tests {
                 game.clock.set_frozen(false);
                 game.clock.end_frame(false);
                 let elapsed = Duration::from_secs_f64(1.0 / 60.0);
-                let frame = |game: &mut super::Game<'_>, world: bool| {
+                let frame = |game: &mut crate::game::ClientGame<'_>, world: bool| {
                     game.clock.advance(elapsed, 50.0);
                     game.extras_frame(elapsed);
                     // A clock change after pre cannot change the captured draw/post value.
@@ -122,7 +122,7 @@ pub(in crate::game) mod tests {
                 assert_eq!(frozen.0, 1.0);
                 assert_eq!(frozen_next.0, 1.0);
                 assert_ne!(frozen.1, frozen_next.1);
-                game.title.0 = Some(Title::new(
+                game.side.title.0 = Some(Title::new(
                     game.save.0.root.clone(),
                     &game.options.resources,
                     "",

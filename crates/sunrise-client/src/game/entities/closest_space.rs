@@ -38,7 +38,7 @@ mod tests {
                     let mut body =
                         PlayerMotion::new(game.motion, Vec3::new(3.5, 64.0, 5.5)).unwrap();
                     body.entity_id = PLAYER as i32;
-                    let nudge = |game: &Game<'_>| {
+                    let nudge = |game: &crate::game::ClientGame<'_>| {
                         super::closest_space_nudge(
                             &body,
                             &game.world,

@@ -2017,7 +2017,7 @@ pub(in crate::game) mod tests {
                             changed.store(true, Ordering::Relaxed);
                             game.register_native_commands();
                             assert_eq!(registrations.load(Ordering::Relaxed), 1);
-                            let registered = game.native_commands.0.registered.as_ref().unwrap();
+                            let registered = game.side.native_commands.0.registered.as_ref().unwrap();
                             assert!(registered.levels.contains_key("before"));
                             mod_api::Commands::refresh_commands(game);
                             mod_api::Commands::refresh_commands(game);
@@ -2027,7 +2027,7 @@ pub(in crate::game) mod tests {
                                 "requests are deferred"
                             );
                             game.register_native_commands();
-                            assert!(!game.native_commands.0.refresh);
+                            assert!(!game.side.native_commands.0.refresh);
                             assert_eq!(
                                 registrations.load(Ordering::Relaxed),
                                 2,
@@ -2057,7 +2057,7 @@ pub(in crate::game) mod tests {
                                 [Some("refresh"), Some("replacement")]
                             );
                             assert!(mod_api::__private::set_mod_enabled("replacement", true));
-                            let commands = game.native_commands.0.registered.as_ref().unwrap();
+                            let commands = game.side.native_commands.0.registered.as_ref().unwrap();
                             assert!(!commands.levels.contains_key("before"));
                             assert!(commands.levels.contains_key("after"));
                             let dispatcher = &game.ui.dispatcher.0;
@@ -2084,7 +2084,7 @@ pub(in crate::game) mod tests {
                             mod_api::Commands::refresh_commands(game);
                             game.register_native_commands();
                             assert_eq!(registrations.load(Ordering::Relaxed), 3);
-                            assert!(game.native_commands.0.level("after").is_some());
+                            assert!(game.side.native_commands.0.level("after").is_some());
                             changed.store(false, Ordering::Relaxed);
                             game.reload_datapacks(false, &game.level.enabled_features.clone())
                                 .unwrap();
@@ -2165,7 +2165,7 @@ pub(in crate::game) mod tests {
                 };
                 assert_eq!(block.last_output.is_some(), track);
             }
-            game.server.chat_capture = Some(Vec::new());
+            game.side.chat_capture = Some(Vec::new());
             game.with_source(
                 Source {
                     silent: true,
@@ -2174,8 +2174,8 @@ pub(in crate::game) mod tests {
                 },
                 |game| game.native_feedback(Text::literal("silent"), false),
             );
-            assert!(game.server.chat_capture.take().unwrap().is_empty());
-            assert!(game.server.command_source.is_none());
+            assert!(game.side.chat_capture.take().unwrap().is_empty());
+            assert!(game.side.command_source.is_none());
             game.as_guest(12, |game| {
                 let source = game.server_source();
                 game.with_source(source, |game| {
@@ -2186,9 +2186,9 @@ pub(in crate::game) mod tests {
                 });
             })
             .unwrap();
-            game.exec.0.functions.push("test:outer".into());
+            game.side.exec.0.functions.push("test:outer".into());
             assert!(game.native_run_command("list"));
-            assert_eq!(game.exec.0.functions, ["test:outer"]);
+            assert_eq!(game.side.exec.0.functions, ["test:outer"]);
         });
     }
 
@@ -2260,7 +2260,7 @@ pub(in crate::game) mod tests {
                             assert!(
                                 matches!(heard.lock().unwrap().last().unwrap(), CommandSource::CommandBlockMinecart { entity, .. } if entity.id() == 99)
                             );
-                            game.server.chat_capture = Some(Vec::new());
+                            game.side.chat_capture = Some(Vec::new());
                             let mut function = Function {
                                 id: "test:inner".into(),
                                 lines: vec![
@@ -2272,7 +2272,7 @@ pub(in crate::game) mod tests {
                                 parameters: vec![],
                             };
                             game.ensure_datapacks();
-                            game.fns
+                            game.side.fns
                                 .0
                                 .store
                                 .functions
@@ -2288,10 +2288,10 @@ pub(in crate::game) mod tests {
                                 matches!(heard.lock().unwrap().last().unwrap(), CommandSource::Function { id, permission } if id.to_string() == "test:inner" && *permission == Permission::Gamemasters)
                             );
                             assert!(
-                                game.server.chat_capture.take().unwrap().is_empty(),
+                                game.side.chat_capture.take().unwrap().is_empty(),
                                 "functions suppress both success and failure"
                             );
-                            assert!(game.exec.0.functions.is_empty());
+                            assert!(game.side.exec.0.functions.is_empty());
                             game.ui.registries.permission = 4;
                             assert!(!game.run_command("unhandled"));
                             assert!(game.run_command(
@@ -2403,9 +2403,9 @@ pub(in crate::game) mod tests {
                                 ("typed give guest13 nope", "parsing.int.expected"),
                                 ("typed give missing 1", "argument.entity.notfound.player"),
                             ] {
-                                game.server.chat_capture = Some(Vec::new());
+                                game.side.chat_capture = Some(Vec::new());
                                 assert!(game.perform_native_console_command(line));
-                                let output = game.server.chat_capture.take().unwrap();
+                                let output = game.side.chat_capture.take().unwrap();
                                 assert_eq!(
                                     output[0].plain(),
                                     Text::translate(key, &[]).plain(),
@@ -2432,7 +2432,7 @@ pub(in crate::game) mod tests {
                             game.perform_native_console_command("typed at 1 64.25");
                             game.perform_native_console_command("typed at 1 up 3");
                             assert!(
-                                game.server.command_source.is_none(),
+                                game.side.command_source.is_none(),
                                 "console source restored"
                             );
                             game.as_guest(12, |game| {
@@ -2604,13 +2604,13 @@ pub(in crate::game) mod fake_action_tests {
                 Err(ActionRefused::NotFake)
             );
             // Inside another action, as a hook running during it would ask.
-            let acting = Acting::start(&game.fake_action.0);
+            let acting = Acting::start(&game.side.fake_action.0);
             assert_eq!(
                 game.player_perform_action(player, on_top([1, 63, 0])),
                 Err(ActionRefused::Busy)
             );
             drop(acting);
-            assert!(!game.fake_action.0.acting());
+            assert!(!game.side.fake_action.0.acting());
         });
     }
 
@@ -2625,17 +2625,17 @@ pub(in crate::game) mod fake_action_tests {
                 point: [7.0, 7.5, 7.5],
                 inside: true,
             };
-            game.server.forced_hit = Some(before);
+            game.side.forced_hit = Some(before);
             assert_eq!(
                 game.player_perform_action(player, on_top([1, 63, 0])),
                 Ok(ActionOutcome::Consumed)
             );
-            let after = game.server.forced_hit.expect("the forced hit is put back");
+            let after = game.side.forced_hit.expect("the forced hit is put back");
             assert_eq!(
                 (after.pos, after.face, after.point, after.inside),
                 (before.pos, before.face, before.point, before.inside)
             );
-            assert!(game.server.guest_use.is_none());
+            assert!(game.side.guest_use.is_none());
         });
     }
 
@@ -2650,7 +2650,7 @@ pub(in crate::game) mod fake_action_tests {
             let shulker = [1, 64, 0];
             place(game, shulker, "minecraft:shulker_box");
             let count =
-                |game: &Game<'_>| game.be_anims.shulkers.get(&shulker).map(|s| s.open_count);
+                |game: &crate::game::ServerGame<'_>| game.be_anims.shulkers.get(&shulker).map(|s| s.open_count);
             assert_eq!(
                 game.player_perform_action(player, on_top(shulker)),
                 Ok(ActionOutcome::EffectBlocked(FakeEffect::Menu))
@@ -2671,7 +2671,7 @@ pub(in crate::game) mod fake_action_tests {
             );
 
             let diamonds = Some(ItemStack::new("minecraft:diamond", 5));
-            game.server.ender_items[0] = diamonds.clone();
+            game.side.ender_items[0] = diamonds.clone();
             let ender = [2, 64, 0];
             place(game, ender, "minecraft:ender_chest");
             let key = (ender[0], ender[1], ender[2]);
@@ -2684,7 +2684,7 @@ pub(in crate::game) mod fake_action_tests {
                 game.player_perform_action(player, on_top(ender)),
                 Ok(ActionOutcome::EffectBlocked(FakeEffect::Menu))
             );
-            assert!(game.server.ender_open.is_none());
+            assert!(game.side.ender_open.is_none());
             match game.world.block_entities.get(&key) {
                 Some(sunrise_client::chunk::block_entity::BlockEntity::Chest(items)) => assert!(
                     items.iter().all(Option::is_none),
@@ -2693,11 +2693,11 @@ pub(in crate::game) mod fake_action_tests {
                 other => panic!("the ender chest lost its block entity: {other:?}"),
             }
             assert_eq!(
-                game.server.ender_items[0], diamonds,
+                game.side.ender_items[0], diamonds,
                 "the server's own ender items changed"
             );
             assert!(
-                !game.server.lid_openers.contains_key(&key),
+                !game.side.lid_openers.contains_key(&key),
                 "its lid stayed open"
             );
         });
@@ -2750,7 +2750,7 @@ pub(in crate::game) mod fake_action_tests {
                     .update_all(|g| g.yaw = -90.0);
                 let near = zombie(game, 5000, [2.0, 64.0, 0.5]);
                 let full = health(game, 5000);
-                game.as_guest(fake_conn, |g| g.server.attack_ticks = 2)
+                game.as_guest(fake_conn, |g| g.side.attack_ticks = 2)
                     .unwrap();
                 assert_eq!(
                     game.player_perform_action(player, PlayerAction::Attack { target: near }),
@@ -2769,7 +2769,7 @@ pub(in crate::game) mod fake_action_tests {
                     "the blow uses the pre-reset charge"
                 );
                 assert_eq!(
-                    game.as_guest(fake_conn, |g| g.server.attack_ticks).unwrap(),
+                    game.as_guest(fake_conn, |g| g.side.attack_ticks).unwrap(),
                     0,
                     "the swing resets the charge after the hit"
                 );
@@ -2788,7 +2788,7 @@ pub(in crate::game) mod fake_action_tests {
                 let full = health(game, 5001);
                 seen.lock().unwrap().clear();
                 cancel.store(true, Ordering::Relaxed);
-                game.as_guest(fake_conn, |g| g.server.attack_ticks = 2)
+                game.as_guest(fake_conn, |g| g.side.attack_ticks = 2)
                     .unwrap();
                 assert_eq!(
                     game.player_perform_action(player, PlayerAction::Attack { target: near }),
@@ -2797,7 +2797,7 @@ pub(in crate::game) mod fake_action_tests {
                 assert_eq!(*seen.lock().unwrap(), vec![full]);
                 assert_eq!(health(game, 5001), full, "a veto stops the blow");
                 assert_eq!(
-                    game.as_guest(fake_conn, |g| g.server.attack_ticks).unwrap(),
+                    game.as_guest(fake_conn, |g| g.side.attack_ticks).unwrap(),
                     2,
                     "and the swing that would reset the charge never starts"
                 );
@@ -2811,7 +2811,7 @@ pub(in crate::game) mod fake_action_tests {
         use super::super::native_entity_refs::tests::with_game;
         with_game(|game| {
             let (player, conn, _) = fake(game, None, 0);
-            game.as_guest(conn, |g| g.server.attack_ticks = 2).unwrap();
+            game.as_guest(conn, |g| g.side.attack_ticks = 2).unwrap();
             for partial in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
                 assert_eq!(game.player_attack_strength_scale(player, partial), None);
                 game.as_guest(conn, |g| {
@@ -2867,14 +2867,14 @@ pub(in crate::game) mod fake_action_tests {
                 let full = health(game, 5000);
                 // A fist's cooldown is 5 ticks: a full ticker reads 1.0, and half of one
                 // ((2 + 0.5) / 5) reads 0.5.
-                game.as_guest(fake_conn, |g| g.server.attack_ticks = 5)
+                game.as_guest(fake_conn, |g| g.side.attack_ticks = 5)
                     .unwrap();
                 assert_eq!(
                     player.attack_strength_scale(game, 0.5),
                     Some(1.0),
                     "a full ticker is a fully charged blow"
                 );
-                game.as_guest(fake_conn, |g| g.server.attack_ticks = 2)
+                game.as_guest(fake_conn, |g| g.side.attack_ticks = 2)
                     .unwrap();
                 assert_eq!(
                     player.attack_strength_scale(game, 0.5),
@@ -2915,7 +2915,7 @@ pub(in crate::game) mod fake_action_tests {
         }
         with_game(|game| {
             let (player, conn, _) = fake(game, None, 0);
-            game.as_guest(conn, |g| g.server.attack_ticks = 3).unwrap();
+            game.as_guest(conn, |g| g.side.attack_ticks = 3).unwrap();
             let charged = zombie(game, 5000, [2.0, 64.0, 0.5]);
             // Out of a sweep's reach of the first.
             let uncharged = zombie(game, 5001, [-1.5, 64.0, 0.5]);
@@ -2936,7 +2936,7 @@ pub(in crate::game) mod fake_action_tests {
                     .unwrap();
                 assert_eq!(result.outcome, ActionOutcome::Consumed);
                 assert_eq!(
-                    game.as_guest(conn, |g| g.server.attack_ticks).unwrap(),
+                    game.as_guest(conn, |g| g.side.attack_ticks).unwrap(),
                     3,
                     "the fake's own ticker comes back"
                 );
@@ -2998,7 +2998,7 @@ pub(in crate::game) mod fake_action_tests {
             || {
                 super::super::native_entity_refs::tests::with_game(|game| {
                     let (player, ..) = fake(game, Some("minecraft:diamond"), 0);
-                    game.server.use_failed = true;
+                    game.side.use_failed = true;
                     let result = player
                         .perform_action_scoped(
                             game,
@@ -3027,7 +3027,7 @@ pub(in crate::game) mod fake_action_tests {
                             1
                         )))
                     );
-                    assert!(game.server.use_failed, "outer per-action flag restored");
+                    assert!(game.side.use_failed, "outer per-action flag restored");
                     let level = game.level(game.dim.id()).unwrap();
                     assert_eq!(
                         game.level_block(level, [1, 64, 0])
@@ -3134,7 +3134,7 @@ pub(in crate::game) mod fake_action_tests {
                 ),
                 Err(ActionRefused::NotFake)
             );
-            let acting = Acting::start(&game.fake_action.0);
+            let acting = Acting::start(&game.side.fake_action.0);
             assert_eq!(
                 game.player_perform_action_scoped(
                     player,
@@ -3169,9 +3169,9 @@ pub(in crate::game) mod fake_action_tests {
             };
             let spawn = sunrise_core::geometry::Vec3::new(1.0, 2.0, 3.0);
             game.station = Some(Station::new_kind(Kind::Anvil, [4, 5, 6]));
-            game.server.craft_table = Some([7, 8, 9]);
+            game.side.craft_table = Some([7, 8, 9]);
             game.experience.level = 7;
-            game.server.respawn_config = Some(config);
+            game.side.respawn_config = Some(config);
             game.spawn = Some(spawn);
             // An ender inventory left open goes back while the fake player
             // acts, and its stand-in returns afterwards, as a guest's turn does.
@@ -3188,11 +3188,11 @@ pub(in crate::game) mod fake_action_tests {
                 game.station.as_ref().map(|s| (s.kind, s.pos)),
                 Some((Kind::Anvil, [4, 5, 6])),
             );
-            assert_eq!(game.server.craft_table, Some([7, 8, 9]));
+            assert_eq!(game.side.craft_table, Some([7, 8, 9]));
             assert_eq!(game.experience.level, 7);
-            assert_eq!(game.server.respawn_config, Some(config));
+            assert_eq!(game.side.respawn_config, Some(config));
             assert_eq!(game.spawn, Some(spawn));
-            assert_eq!(game.server.ender_open, Some(stand_in));
+            assert_eq!(game.side.ender_open, Some(stand_in));
             assert!(game.world.block_entities.get(&stand_in).is_some());
 
             let setup = PlayerActionSetup::new(

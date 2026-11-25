@@ -221,7 +221,7 @@ pub(in crate::game) mod pickup_tests {
 
     /// An advancement on the pickup trigger, as a data pack would add one: no
     /// vanilla advancement tests it, so the tree needs one of its own.
-    fn install_pickup_advancement(game: &mut Game<'_>) {
+    fn install_pickup_advancement(game: &mut crate::game::ServerGame<'_>) {
         let mut tree = std::sync::Arc::new(adv::Tree::default());
         let one = std::sync::Arc::get_mut(&mut tree).unwrap();
         one.list.push(adv::Advancement {
@@ -255,7 +255,7 @@ pub(in crate::game) mod pickup_tests {
         game.level.player_uuid = Some(THROWER);
         game.level.health = 20.0;
         game.creative = false;
-        game.server.world_root = world.path().to_owned();
+        game.side.world_root = world.path().to_owned();
         game.set_allow_commands(true);
         // Opening the world installs its staged advancement tree. Install the
         // custom tree afterwards so the first tick cannot replace it.
@@ -282,7 +282,7 @@ pub(in crate::game) mod pickup_tests {
             assert!(game.run_command(command), "{command}");
         }
         let id = game.mob_by_uuid([9, 9, 9, 9]).unwrap();
-        let holding = |g: &Game<'_>| {
+        let holding = |g: &crate::game::ServerGame<'_>| {
             g.mobs
                 .iter()
                 .any(|m| m.id == id && m.extra.main_hand_id() == Some("minecraft:bamboo"))

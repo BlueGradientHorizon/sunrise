@@ -53,7 +53,7 @@ pub(in crate::game) mod customize_chat_overlay_tests {
     }
 
     /// The top of what the chat draws, in GUI pixels, and the batch's GUI scale.
-    pub(in crate::game) fn chat_top(game: &mut super::Game<'_>) -> (Option<f32>, f32) {
+    pub(in crate::game) fn chat_top(game: &mut crate::game::ClientGame<'_>) -> (Option<f32>, f32) {
         let mut batch = HudBatch::scratch([1280, 720]);
         game.draw_chat(&mut batch);
         let top = batch.vertices.iter().map(|v| v.pos[1]).reduce(f32::min);

@@ -40,7 +40,7 @@ fn a_block_part_decides_whether_it_keeps_a_fire_burning() {
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             let registry = game.pack.assets.registry;
-            let source = |game: &mut super::Game<'_>, name: &str| {
+            let source = |game: &mut crate::game::ServerGame<'_>, name: &str| {
                 let state = registry.default_state(name).unwrap();
                 game.with_level(|_, level, _| {
                     let mut source = None;

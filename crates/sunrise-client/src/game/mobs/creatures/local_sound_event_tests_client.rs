@@ -30,15 +30,12 @@ fn local_mob_events_play_without_entering_the_shared_capture() {
     options.game_dir =
         Some(std::env::temp_dir().join(format!("sunrise-h069-unit-{}", std::process::id())));
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -51,7 +48,7 @@ fn local_mob_events_play_without_entering_the_shared_capture() {
     .unwrap();
     // Server role queues shared sounds and skips client-only LocalSound without touching local audio.
     assert!(game.audio.0.heard.is_empty());
-    let shared = std::mem::take(&mut game.server.pending_sounds);
+    let shared = std::mem::take(&mut game.side.pending_sounds);
     game.stop_audio_capture();
     assert_eq!(shared.len(), 2, "LocalSound must not become a shared sound");
     assert_eq!(shared[0].event, "minecraft:entity.cow.hurt");

@@ -72,7 +72,7 @@ impl Hooks for Register {
 
 /// A client game with the hearts part installed, in loaded empty chunks around a player at
 /// `(8.5, 65, 8.5)`.
-pub(in crate::game) fn with_hearts(test: impl FnOnce(&mut Game<'_>, &Calls)) {
+pub(in crate::game) fn with_hearts(test: impl FnOnce(&mut crate::game::ClientGame<'_>, &Calls)) {
     let calls = Calls::default();
     let mods = vec![ModEntry::new("hearts", Box::new(Register(calls.clone())))];
     mod_platform::testing::with_mods(mods.into(), || {

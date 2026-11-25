@@ -218,7 +218,7 @@ pub(in crate::game) mod sweep_tests {
     /// The game's player sweeps its move through two stone blocks, over the game's
     /// own world and assets, through the production `BLOCK_CONTACT_HOOKS` fire.
     /// Returns the player's velocity x before and after, and whether it died.
-    pub(in crate::game) fn sweep_game_player(game: &mut Game<'_>) -> (f64, f64, bool) {
+    pub(in crate::game) fn sweep_game_player(game: &mut crate::game::ServerGame<'_>) -> (f64, f64, bool) {
         let stone = game
             .pack
             .assets
@@ -256,7 +256,7 @@ pub(in crate::game) mod sweep_tests {
     /// The same world and player setup, with the caller's passes run in the level
     /// scope: what a server turn walks, or the client's own tick.
     pub(in crate::game) fn sweep_game_player_runs(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         runs: impl FnOnce(&mut sunrise_client::motion::MotionWorld) -> crate::Result<()>,
     ) -> (f64, f64, bool) {
         use sunrise_client::motion::MotionWorld;
@@ -617,7 +617,7 @@ pub(in crate::game) mod sweep_tests {
     /// The item's batch sweep tests: the same part, the same assertions as the
     /// player's, over `Game::sweep_item_inside`.
     pub(in crate::game) fn item_at_blocks(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
     ) -> sunrise_client::entities::ItemEntity {
         let stone = game
             .pack

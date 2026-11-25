@@ -37,7 +37,7 @@ fn tracking_emitters_follow_the_packet_target() {
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = ExecutionRole::Client;
-    let mut game = Game::new(
+    let mut game = crate::game::ClientGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),

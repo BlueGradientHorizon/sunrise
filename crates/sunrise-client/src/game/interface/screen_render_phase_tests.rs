@@ -48,9 +48,9 @@ impl Hooks for PaintPhases {
     }
 }
 
-fn chest(game: &mut Game<'_>) -> (u32, u32) {
-    game.title.0 = None;
-    game.client.screen = Screen::Inventory;
+fn chest(game: &mut crate::game::ClientGame<'_>) -> (u32, u32) {
+    game.side.title.0 = None;
+    game.side.screen = Screen::Inventory;
     game.ui.hide_gui = true;
     game.container = Some(POS);
     game.craft_size = 2;
@@ -74,11 +74,11 @@ fn chest(game: &mut Game<'_>) -> (u32, u32) {
     let (x, y) = game.inventory_origin(&batch);
     let (sx, sy) = game.slot_position(300);
     assert_eq!((sx, sy), (8.0, 18.0));
-    game.client.cursor = (x + sx + 8.0, y + sy + 8.0);
+    game.side.cursor = (x + sx + 8.0, y + sy + 8.0);
     ((x + sx) as u32, (y + sy) as u32)
 }
 
-fn frame(game: &mut Game<'_>) -> Vec<u8> {
+fn frame(game: &mut crate::game::ClientGame<'_>) -> Vec<u8> {
     // Exercise the actual Game dispatch, including its Pre/Post orchestration,
     // rather than manufacturing an equivalent sequence of render operations.
     let batch = game.hud_layers(SIZE);
@@ -91,7 +91,7 @@ fn pixel(pixels: &[u8], x: u32, y: u32) -> [u8; 4] {
         .unwrap()
 }
 
-fn overlay_reference(game: &mut Game<'_>, carried: bool) -> Vec<u8> {
+fn overlay_reference(game: &mut crate::game::ClientGame<'_>, carried: bool) -> Vec<u8> {
     let mut batch = HudBatch::scratch(SIZE);
     batch.fill(
         &game.gui.atlas,

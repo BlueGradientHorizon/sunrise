@@ -183,7 +183,7 @@ pub(in crate::game) mod tests {
             let player = Some((7, "minecraft:player"));
             let creeper = Some((8, "minecraft:creeper"));
             let sniffer = Some((9, "minecraft:sniffer"));
-            let sound = |game: &crate::game::Game<'_>, block: &str, entity, cause| {
+            let sound = |game: &crate::game::ServerGame<'_>, block: &str, entity, cause| {
                 let state = registry.default_state(block).unwrap();
                 let sound = game.block_sound_type([5, 64, 5], state, entity, cause);
                 let event = match cause {
@@ -268,7 +268,7 @@ pub(in crate::game) mod tests {
 
             let mut placed = Vec::new();
             for acting in [Some(7), None] {
-                game.server.lan_acting_entity = acting;
+                game.side.lan_acting_entity = acting;
                 placed.extend(game.with_level(|behaviours, level, _| {
                     // None when the level's own sound type is kept.
                     let place = |state| {

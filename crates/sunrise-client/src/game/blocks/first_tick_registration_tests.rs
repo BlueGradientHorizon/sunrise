@@ -9,7 +9,7 @@ use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
 
-fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
+fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -32,15 +32,12 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -51,7 +48,7 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
 
 /// The fluid ticks queued in chunk `key`, or None when the chunk has no
 /// fluid tick container.
-fn fluid_ticks(game: &Game<'_>, key: (i32, i32)) -> Option<usize> {
+fn fluid_ticks(game: &crate::game::ServerGame<'_>, key: (i32, i32)) -> Option<usize> {
     game.block_ticks
         .fluids
         .chunk(ChunkPos::new(key.0, key.1))
@@ -204,7 +201,7 @@ fn saved_block_and_fluid_ticks_unpack_when_the_chunk_starts_ticking() {
         "a ticking chunk"
     );
     assert!(
-        game.tickets.0.levels().loaded_ticking(key.0, key.1),
+        game.side.tickets.0.levels().loaded_ticking(key.0, key.1),
         "a ticking ticket level"
     );
     let pos = ChunkPos::new(key.0, key.1);

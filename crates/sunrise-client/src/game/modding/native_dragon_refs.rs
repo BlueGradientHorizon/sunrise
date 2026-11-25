@@ -156,7 +156,7 @@ mod tests {
     use sunrise_core::nbt::Tag;
     use sunrise_protocol::entity_data::{Value, serializer};
 
-    fn dragon_in(game: &mut Game<'_>) -> (EntityRef, DragonRef) {
+    fn dragon_in(game: &mut crate::game::ServerGame<'_>) -> (EntityRef, DragonRef) {
         let mut dragon = Dragon::new(Vec3::ZERO, 0.0, 0);
         dragon.id = 15;
         game.dragon.replace(dragon);
@@ -329,9 +329,9 @@ mod tests {
             // The fight: unloaded until the End loads it, and only the End's.
             assert_eq!(dragon.alive_crystals(game), None);
             assert_eq!(dragon.previously_killed(game), None);
-            game.server.fight.loaded = true;
-            game.server.fight.alive_crystals = 3;
-            game.server.fight.previously_killed = true;
+            game.side.fight.loaded = true;
+            game.side.fight.alive_crystals = 3;
+            game.side.fight.previously_killed = true;
             assert_eq!(dragon.alive_crystals(game), None, "not in the End");
             assert_eq!(dragon.previously_killed(game), None);
             game.dim = Dim::End;
@@ -441,14 +441,14 @@ mod tests {
         )
     }
 
-    fn place_parts(game: &mut Game<'_>) {
+    fn place_parts(game: &mut crate::game::ServerGame<'_>) {
         for i in 0..8 {
             let [x, y, z] = part_fixture(i).0;
             game.dragon.as_mut().unwrap().parts[i].0 = Vec3::new(x, y, z);
         }
     }
 
-    fn assert_parts_are_the_dragons_own(game: &Game<'_>, dragon: EntityRef) {
+    fn assert_parts_are_the_dragons_own(game: &crate::game::ServerGame<'_>, dragon: EntityRef) {
         let parts = game.entity_parts(dragon).unwrap();
         let ids: Vec<u32> = parts.iter().map(|part| part.id()).collect();
         assert_eq!(ids, (dragon.id() + 1..=dragon.id() + 8).collect::<Vec<_>>());

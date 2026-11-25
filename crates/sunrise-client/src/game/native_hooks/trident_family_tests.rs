@@ -80,7 +80,7 @@ impl Hooks for Probe {
 }
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::server_side::native_hooks_server::trident_family_tests::fixture;
-pub(in crate::game) fn victim(game: &mut Game<'_>, name: &str) -> f32 {
+pub(in crate::game) fn victim(game: &mut crate::game::ServerGame<'_>, name: &str) -> f32 {
     let kind = game.res.mob_types().get(name).unwrap().clone();
     let mut mob = Mob::new(41, kind, Vec3::new(6.0, 80.0, 4.5), 0.0);
     mob.persistent = true;
@@ -107,7 +107,7 @@ pub(in crate::game) fn weapon() -> ItemStack {
     );
     stack
 }
-pub(in crate::game) fn throw_player(game: &mut Game<'_>) -> (u32, ItemStack) {
+pub(in crate::game) fn throw_player(game: &mut crate::game::ServerGame<'_>) -> (u32, ItemStack) {
     game.inventory[game.selected] = Some(weapon());
     game.release_trident(10);
     assert_eq!(
@@ -121,7 +121,7 @@ pub(in crate::game) fn throw_player(game: &mut Game<'_>) -> (u32, ItemStack) {
     shot.velocity = Vec3::new(4.0, 0.0, 0.0);
     (shot.id, shot.stack.clone())
 }
-pub(in crate::game) fn throw_mob(game: &mut Game<'_>) -> (u32, ItemStack) {
+pub(in crate::game) fn throw_mob(game: &mut crate::game::ServerGame<'_>) -> (u32, ItemStack) {
     // A non-undead owner ensures WitherBoss's separate WITHER_FRIENDS filter
     // cannot hide a missing direct-projectile immunity.
     let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
@@ -142,7 +142,7 @@ pub(in crate::game) fn throw_mob(game: &mut Game<'_>) -> (u32, ItemStack) {
     game.creatures.projectiles.push(shot);
     (id, stack)
 }
-pub(in crate::game) fn step(game: &mut Game<'_>, player: bool) {
+pub(in crate::game) fn step(game: &mut crate::game::ServerGame<'_>, player: bool) {
     if player {
         game.tick_tridents();
     } else {

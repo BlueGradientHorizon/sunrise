@@ -7,7 +7,7 @@ use std::sync::Arc;
 use sunrise_client::{chunk::Chunk, mobs::Mob};
 use sunrise_core::nbt::Tag;
 
-fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
+fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -30,15 +30,12 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -52,7 +49,7 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
 }
 
 /// A fresh mob of `kind` in front of the player, alone; returns its id.
-fn mob(game: &mut Game<'_>, kind: &str, edit: impl FnOnce(&mut Mob)) -> u32 {
+fn mob(game: &mut crate::game::ServerGame<'_>, kind: &str, edit: impl FnOnce(&mut Mob)) -> u32 {
     game.mobs.clear();
     let kind = game.res.mob_types().get(kind).unwrap().clone();
     let mut m = Mob::new(42, kind, Vec3::new(0.5, 64.0, 2.5), 0.0);
@@ -65,7 +62,7 @@ fn mob(game: &mut Game<'_>, kind: &str, edit: impl FnOnce(&mut Mob)) -> u32 {
 /// Clicks mob `id` holding `count` of `item` in `mode`: whether the click
 /// was used, whether the mob is still there, and the inventory after it.
 fn click(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     id: u32,
     mode: i32,
     item: &str,
@@ -160,7 +157,7 @@ fn no_pickup_without_an_empty_bucket_or_of_a_baby_or_primed_cube() {
 }
 
 /// The filled bucket the click left in the inventory.
-fn filled(game: &Game<'_>, item: &str) -> ItemStack {
+fn filled(game: &crate::game::ServerGame<'_>, item: &str) -> ItemStack {
     game.inventory
         .iter()
         .flatten()

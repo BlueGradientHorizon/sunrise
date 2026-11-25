@@ -76,7 +76,7 @@ fn a_panicking_submersion_listener_preserves_the_incoming_fog() {
     });
 }
 
-fn water_at_4_64_4(game: &mut crate::game::Game<'_>) {
+fn water_at_4_64_4(game: &mut crate::game::ClientGame<'_>) {
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

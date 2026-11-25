@@ -2371,7 +2371,7 @@ pub(in crate::game) mod peaceful_tests {
         stack
     }
 
-    pub(in crate::game) fn with_types(role: ExecutionRole, test: impl FnOnce(&mut Game<'_>)) {
+    pub(in crate::game) fn with_types(role: ExecutionRole, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         // All cases use the same data-only fixture. Build its overlay once; never edit the base.
         static PACKAGE: OnceLock<(tempfile::TempDir, std::path::PathBuf)> = OnceLock::new();
         let (_, root) = PACKAGE.get_or_init(|| {
@@ -2418,6 +2418,63 @@ capabilities = ["registries"]
         });
         mod_platform::testing::with_mods(Arc::from([]), || {
             fixture::with_game_role(root.clone(), role, |game| {
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                game.build_registries();
+                game.set_difficulty_forced(0);
+                test(game);
+            });
+        });
+    }
+
+    pub(in crate::game) fn with_types_client(role: ExecutionRole, test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
+        // All cases use the same data-only fixture. Build its overlay once; never edit the base.
+        static PACKAGE: OnceLock<(tempfile::TempDir, std::path::PathBuf)> = OnceLock::new();
+        let (_, root) = PACKAGE.get_or_init(|| {
+            let scratch = tempfile::tempdir().unwrap();
+            let path = scratch.path().join("peaceful.smod");
+            let manifest = r#"id = "peaceful_test"
+name = "Peaceful test"
+version = "1.0"
+api = "0.2"
+side = "both"
+capabilities = ["registries"]
+"#;
+            let rows: [(&str, &[u8]); 3] = [
+                (
+                    "data/peaceful_test/sunrise/entity_type/trader.json",
+                    br#"{"template":"minecraft:wandering_trader","allowed_in_peaceful":false}"#,
+                ),
+                (
+                    "data/peaceful_test/sunrise/entity_type/zombie.json",
+                    br#"{"template":"minecraft:zombie","allowed_in_peaceful":true}"#,
+                ),
+                (
+                    "data/peaceful_test/sunrise/entity_type/inherited_zombie.json",
+                    br#"{"template":"minecraft:zombie"}"#,
+                ),
+            ];
+            std::fs::write(&path, Package::write_files(manifest, &rows).unwrap()).unwrap();
+            let package = Package::read(&path).unwrap();
+            let mods = [ContentMod {
+                id: "peaceful_test".into(),
+                content: Content::read(&path, &package.manifest).unwrap(),
+                jars: Vec::new(),
+            }];
+            let inventory = EnabledMods::new([("peaceful_test".into(), mod_api::Side::Both)]);
+            let root = mod_content::resource_root(
+                &fixture::fixture_root(),
+                scratch.path(),
+                &mods,
+                scratch.path(),
+                &inventory,
+            )
+            .unwrap();
+            (scratch, root)
+        });
+        mod_platform::testing::with_mods(Arc::from([]), || {
+            fixture::with_game_role_client(root.clone(), role, |game| {
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -2608,15 +2665,12 @@ pub(in crate::game) mod selector_bounds_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
             None,
         )
         .unwrap();
@@ -2891,7 +2945,7 @@ pub(in crate::game) mod fill_note_instrument_tests {
     use std::sync::Arc;
     use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::position::ChunkPos;
-    fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+    fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -2914,15 +2968,12 @@ pub(in crate::game) mod fill_note_instrument_tests {
                 .join(format!("h164-{:?}", std::thread::current().id())),
         );
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
             None,
         )
         .unwrap();
@@ -2943,7 +2994,7 @@ pub(in crate::game) mod fill_note_instrument_tests {
         test(&mut game);
     }
 
-    fn instrument(game: &Game<'_>, x: i32, z: i32) -> String {
+    fn instrument(game: &crate::game::ServerGame<'_>, x: i32, z: i32) -> String {
         let state = game
             .pack
             .assets

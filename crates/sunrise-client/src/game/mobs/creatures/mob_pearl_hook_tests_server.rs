@@ -32,12 +32,12 @@ pub(in crate::game) fn run_player_pearl_keeps_acting_context_cancellation_and_mu
         with_game(|game| {
             let from = Vec3::new(0.0, 65.0, 0.0);
             game.player = Some(PlayerMotion::new(game.motion, from).unwrap());
-            game.server.lan_acting = Some(12);
-            game.server.lan_acting_uuid = Some(7);
+            game.side.lan_acting = Some(12);
+            game.side.lan_acting_uuid = Some(7);
             crate::game::native_entity_refs::tests::bind_local_player(game, 2, 7);
-            game.server.lan_acting_name = Some("PearlTest".into());
-            game.server.lan_acting_permission = Some(4);
-            game.server.lan_acting_entity = Some(2);
+            game.side.lan_acting_name = Some("PearlTest".into());
+            game.side.lan_acting_permission = Some(4);
+            game.side.lan_acting_entity = Some(2);
             crate::game::native_entity_refs::tests::bind_acting_guest(game);
             game.ui.difficulty = 0;
             let pearl = Projectile::new(

@@ -9,7 +9,7 @@ use sunrise_client::mobs::{Mob, Who};
 use sunrise_client::motion::PlayerMotion;
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
 
-fn game<'a>(resources: &'a mut Option<Arc<Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<Arc<Resources>>) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -17,7 +17,7 @@ fn game<'a>(resources: &'a mut Option<Arc<Resources>>) -> Game<'a> {
     game_at(resources, root)
 }
 
-fn game_at<'a>(resources: &'a mut Option<Arc<Resources>>, root: std::path::PathBuf) -> Game<'a> {
+fn game_at<'a>(resources: &'a mut Option<Arc<Resources>>, root: std::path::PathBuf) -> crate::game::ServerGame<'a> {
     let settings = Settings::default();
     let loaded = load_resources(
         sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
@@ -36,15 +36,12 @@ fn game_at<'a>(resources: &'a mut Option<Arc<Resources>>, root: std::path::PathB
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -63,7 +60,7 @@ fn game_at<'a>(resources: &'a mut Option<Arc<Resources>>, root: std::path::PathB
     game
 }
 
-fn spawn(game: &mut Game<'_>, kind: &str, id: u32, at: [f64; 3]) {
+fn spawn(game: &mut crate::game::ServerGame<'_>, kind: &str, id: u32, at: [f64; 3]) {
     game.mobs.clear();
     let kind = game.res.mob_types().get(kind).unwrap().clone();
     game.mobs
@@ -113,7 +110,7 @@ fn milk_sounds_carry_pitch_one_and_draw_no_level_random() {
         game.start_audio_capture();
         let before = game.world.random.state();
         assert!(game.interact_mob(target(7)).unwrap(), "{kind}");
-        let sounds = std::mem::take(&mut game.server.pending_sounds);
+        let sounds = std::mem::take(&mut game.side.pending_sounds);
         let heard: Vec<_> = sounds.iter().filter(|s| s.event == sound).collect();
         assert_eq!(heard.len(), 1, "{kind}: {sounds:?}");
         assert_eq!(heard[0].pitch, 1.0, "{kind} milk pitch");

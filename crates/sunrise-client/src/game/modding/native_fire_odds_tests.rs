@@ -60,7 +60,7 @@ fn a_block_part_answers_fire_odds_for_one_face() {
             game.world.set(1, 65, 0, glass).unwrap();
             // Fire in the air at `x`, beside the glass, with air below it: it
             // stands only beside a flammable face.
-            let stands = |game: &mut super::Game<'_>, x: i32| {
+            let stands = |game: &mut crate::game::ServerGame<'_>, x: i32| {
                 game.with_level(|b, level, ticks| {
                     b.can_survive(level, ticks, BlockPos::new(x, 65, 0), fire)
                 })
@@ -194,7 +194,7 @@ fn a_block_part_answers_fire_odds_for_one_face() {
                 rain[2] >> 2,
                 plains,
             );
-            let raining_live = |game: &mut super::Game<'_>| {
+            let raining_live = |game: &mut crate::game::ClientGame<'_>| {
                 game.with_level(|_, live, _| mod_api::LevelHost::is_raining_at(live, rain))
             };
             assert!(raining_live(game), "the live sky is open to rain");

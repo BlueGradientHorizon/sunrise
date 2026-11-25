@@ -1674,7 +1674,7 @@ pub(in crate::game) mod tests {
 
     pub(in crate::game) fn server_game<'a>(
         resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-    ) -> Game<'a> {
+    ) -> crate::game::ServerGame<'a> {
         build_server_game(resources, false)
     }
 
@@ -1692,7 +1692,7 @@ pub(in crate::game) mod tests {
     /// when the returned guard drops. Bind the guard before the game.
     pub(in crate::game) fn isolated_server_game<'a>(
         resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-    ) -> (Published, Game<'a>) {
+    ) -> (Published, crate::game::ServerGame<'a>) {
         let published = Published(sunrise_client::save::level_mods::block_namespaces());
         (published, build_server_game(resources, true))
     }
@@ -1700,7 +1700,7 @@ pub(in crate::game) mod tests {
     fn build_server_game<'a>(
         resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
         menu: bool,
-    ) -> Game<'a> {
+    ) -> crate::game::ServerGame<'a> {
         use crate::game::*;
         let root = std::path::PathBuf::from(
             std::env::var_os("SUNRISE_TEST_RESOURCES")
@@ -1743,15 +1743,12 @@ pub(in crate::game) mod tests {
         options.resources = root.clone();
         options.execution_role = execution_role::ExecutionRole::IntegratedServer;
         let res = resources.insert(loaded.resources);
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             res,
             loaded.pack,
             gui.or(loaded.gui).unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -1918,7 +1915,7 @@ mod completed_test_coordinate_feedback_tests {
         let definition = game.test_def("minecraft:always_pass").unwrap();
         assert_eq!(definition.dimension, "minecraft:overworld");
         assert!(!definition.block_based);
-        game.server.chat_capture = Some(Vec::new());
+        game.side.chat_capture = Some(Vec::new());
         assert!(game.run_command("scoreboard objectives add coords dummy"));
         assert!(game.run_command("scoreboard players set result coords 99"));
         assert!(game.run_command("scoreboard players set success coords 99"));
@@ -1926,7 +1923,7 @@ mod completed_test_coordinate_feedback_tests {
         assert!(game.run_command("execute if score result coords matches 1"));
         assert!(game.run_command("execute if score success coords matches 1"));
         assert!(
-            game.game_tests
+            game.side.game_tests
                 .0
                 .ticker
                 .iter()
@@ -1937,18 +1934,18 @@ mod completed_test_coordinate_feedback_tests {
         for _ in 0..8 {
             game.enter_command_level(Dim::Overworld);
             game.tick_game_tests();
-            for out in &game.game_tests.0.outbox {
+            for out in &game.side.game_tests.0.outbox {
                 if let Out::Console { text, .. } = out {
                     messages.push(text.component());
                 }
             }
             game.enter_command_level(Dim::Nether);
         }
-        let runner = game.game_tests.0.runner.as_ref().unwrap();
+        let runner = game.side.game_tests.0.runner.as_ref().unwrap();
         assert_eq!(runner.tracked.len(), 1);
         assert!(runner.tracked.iter().all(|t| t.done && !t.failed));
         messages.extend(
-            game.server
+            game.side
                 .chat_capture
                 .take()
                 .unwrap()
@@ -2091,7 +2088,7 @@ mod registered_game_test_tests {
                     .register("minecraft:always_pass", Arc::new(Fail))
                     .is_err()
             );
-            game.game_tests.0.runner = Some(Runner {
+            game.side.game_tests.0.runner = Some(Runner {
                 batches: Vec::new(),
                 current: 0,
                 batch_pending: 5,
@@ -2159,11 +2156,11 @@ mod registered_game_test_tests {
                 game.test_finished(&info);
                 outcomes.push((info.done, info.error.is_none()));
             }
-            let runner = game.game_tests.0.runner.as_ref().unwrap();
+            let runner = game.side.game_tests.0.runner.as_ref().unwrap();
             assert_eq!(runner.tracked.iter().filter(|t| t.done).count(), 5);
             assert_eq!(runner.tracked.iter().filter(|t| t.failed).count(), 3);
             assert_eq!(
-                game.game_tests.0.failed,
+                game.side.game_tests.0.failed,
                 ["example:panic", "example:fail", "example:missing"]
             );
             assert_eq!(

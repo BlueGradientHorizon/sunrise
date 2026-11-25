@@ -11,7 +11,7 @@ use sunrise_core::nbt::Tag;
 use sunrise_world::registry::BlockStateId;
 
 /// A server's game with the prepared resources, or `None` where CI has none.
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Option<Game<'a>> {
+fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Option<crate::game::ServerGame<'a>> {
     std::env::var_os("SUNRISE_TEST_RESOURCES")?;
     let mut game = server_game(resources);
     game.build_registries();
@@ -33,7 +33,7 @@ fn placeable(name: &str, count: u32, block: &str) -> ItemStack {
 
 /// Puts `name` at `pos` with `properties` overridden, returning its state.
 fn place(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     pos: [i32; 3],
     name: &str,
     properties: &[(&str, &str)],
@@ -66,33 +66,33 @@ fn hit(pos: [i32; 3]) -> Hit {
 }
 
 /// Clicks the top of `pos` with `stack`, as `Minecraft.startUseItem` does.
-fn click(game: &mut Game<'_>, pos: [i32; 3], stack: ItemStack) {
+fn click(game: &mut crate::game::ServerGame<'_>, pos: [i32; 3], stack: ItemStack) {
     game.using = None;
     game.cooldowns = Default::default();
     *game.held_mut() = Some(stack);
     let hit = hit(pos);
-    game.server.forced_hit = Some(hit);
+    game.side.forced_hit = Some(hit);
     game.with_player_actor(|g| g.use_hand(Some(&hit))).unwrap();
 }
 
 /// The same click as a LAN guest's `UseItemOn` packet: the server acts for one
 /// hand on the block the guest's client named, and stops at `ItemStack.useOn`.
-fn click_as_guest(game: &mut Game<'_>, pos: [i32; 3], stack: ItemStack) {
+fn click_as_guest(game: &mut crate::game::ServerGame<'_>, pos: [i32; 3], stack: ItemStack) {
     game.using = None;
     game.cooldowns = Default::default();
     *game.held_mut() = Some(stack);
     let hit = hit(pos);
-    game.server.forced_hit = Some(hit);
-    game.server.guest_use = Some(GuestUse::on_block(Hand::Main));
+    game.side.forced_hit = Some(hit);
+    game.side.guest_use = Some(GuestUse::on_block(Hand::Main));
     game.with_player_actor(|g| g.use_hand(Some(&hit))).unwrap();
-    game.server.guest_use = None;
+    game.side.guest_use = None;
 }
 
-fn state(game: &Game<'_>, pos: [i32; 3]) -> BlockStateId {
+fn state(game: &crate::game::ServerGame<'_>, pos: [i32; 3]) -> BlockStateId {
     game.world.block(pos[0], pos[1], pos[2])
 }
 
-fn held(game: &Game<'_>) -> Option<(String, u32)> {
+fn held(game: &crate::game::ServerGame<'_>) -> Option<(String, u32)> {
     game.held().map(|s| (s.item.to_string(), s.count))
 }
 
@@ -363,7 +363,7 @@ fn an_adventure_use_on_is_not_predicted_on_the_client() {
 
 /// The client's `Item.useOn` prediction behind `ItemStack.useOn`'s adventure gate, which the
 /// fork's use phase applies before it selects the prediction.
-fn predicts(game: &mut Game<'_>, stack: &ItemStack, hit: &Hit) -> bool {
+fn predicts(game: &mut crate::game::ServerGame<'_>, stack: &ItemStack, hit: &Hit) -> bool {
     game.with_hand(Hand::Main, |g| {
         g.may_use_on(hit.pos) && g.predict_item_on_block(stack, hit)
     })

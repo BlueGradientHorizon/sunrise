@@ -53,7 +53,7 @@ const PLAYER: u32 = 42;
 const GUEST: u32 = 12;
 
 /// A serving game with a survival host player, entity `PLAYER`, at `at`.
-fn serving(game: &mut super::Game<'_>, at: Vec3) {
+fn serving(game: &mut crate::game::ServerGame<'_>, at: Vec3) {
     game.options.dedicated = Some(Vec::new());
     game.player = Some(PlayerMotion::new(game.motion, at).unwrap());
     bind_local_player(game, PLAYER, u128::from(PLAYER));
@@ -70,7 +70,7 @@ fn armor(head: Option<&str>, feet: Option<&str>) -> [Option<ItemStack>; 4] {
 }
 
 /// The host wears `head` and `feet` and nothing else; whether calm piglins leave them alone.
-fn wearing(game: &mut super::Game<'_>, head: Option<&str>, feet: Option<&str>) -> bool {
+fn wearing(game: &mut crate::game::ServerGame<'_>, head: Option<&str>, feet: Option<&str>) -> bool {
     game.armor = armor(head, feet);
     ASKED.lock().unwrap().clear();
     game.player_view().unwrap().gold_armor
@@ -169,7 +169,7 @@ fn without_parts_the_piglin_safe_armor_tag_decides_isolated() {
 
 /// A calm adult piglin 4 blocks from the survival host, who wears `head` and `feet`, ticked
 /// for 100 ticks; whether it took the host as its target.
-fn targets_the_wearer(game: &mut super::Game<'_>, head: Option<&str>, feet: Option<&str>) -> bool {
+fn targets_the_wearer(game: &mut crate::game::ServerGame<'_>, head: Option<&str>, feet: Option<&str>) -> bool {
     game.options.dedicated = Some(Vec::new());
     game.build_registries();
     game.set_allow_commands(true);

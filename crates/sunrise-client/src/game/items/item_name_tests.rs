@@ -164,7 +164,7 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
                 (0, 0),
                 std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
             );
-            let run = |game: &mut super::Game<'_>, line: &str| {
+            let run = |game: &mut crate::game::ServerGame<'_>, line: &str| {
                 game.execute_line(line, game.player_source())
                     .unwrap_or_else(|e| panic!("{line}: {}", e.message.plain()));
                 game.ui.chat.recent_lines(1).concat()
@@ -257,15 +257,15 @@ fn a_client_anvil_click_fills_the_rename_box_with_the_parts_name() {
             game.connect_local(client, "AnvilTest").unwrap();
             game.remote_set_menu(Some((1, "minecraft:anvil".into())), None);
             game.station = Some(Station::new_kind(Kind::Anvil, [0, 64, 0]));
-            let rename_box = |game: &super::Game<'_>| {
+            let rename_box = |game: &crate::game::ServerGame<'_>| {
                 let station = game.station.as_ref().unwrap();
                 (station.rename.value.clone(), station.rename.editable)
             };
             // One left click on the input slot: puts the carried stack in, or takes it out.
-            let click = |game: &mut super::Game<'_>| {
+            let click = |game: &mut crate::game::ServerGame<'_>| {
                 assert!(game.remote_menu_ops(&[(Some(INPUT), 0, Input::Pickup)]));
             };
-            let input = |game: &super::Game<'_>| game.station.as_ref().unwrap().inputs[0].clone();
+            let input = |game: &crate::game::ServerGame<'_>| game.station.as_ref().unwrap().inputs[0].clone();
 
             // The Part names a stack of two: the box shows its name, as the anvil menu compares.
             let notes = ItemStack::new("minecraft:paper", 2);

@@ -89,7 +89,7 @@ pub(in crate::game) mod swap_hands_tests {
             });
             // One press through the connection's inbox; the hands (main, off)
             // in the last inventory the client was sent.
-            let press = |game: &mut crate::game::Game<'_>| {
+            let press = |game: &mut crate::game::ServerGame<'_>| {
                 let swap = S::PlayerAction(play::PlayerAction {
                     action: 7,
                     pos: [0; 3],
@@ -104,8 +104,8 @@ pub(in crate::game) mod swap_hands_tests {
                             .push_back(sunrise_client::lan::guest::InboxItem::Packet(swap, None))
                     })
                     .unwrap();
-                game.server.level_pass.first = false;
-                game.server.level_pass.packets_drained = false;
+                game.side.level_pass.first = false;
+                game.side.level_pass.packets_drained = false;
                 game.tick_lan_packets();
                 let hub = &game.lan.as_ref().unwrap().hub;
                 sunrise_client::lan::flush_all(hub.guests.iter().map(|g| &g.sender));

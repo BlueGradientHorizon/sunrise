@@ -170,14 +170,14 @@ fn times(asks: &Asks, (slot, item, count): (usize, &str, u32)) -> usize {
 }
 
 /// Guest 12 with the pot at `POS` open, and what their client is sent.
-fn with_pot(test: impl FnOnce(&mut crate::game::Game<'_>, &mpsc::Receiver<Out>)) {
+fn with_pot(test: impl FnOnce(&mut crate::game::ServerGame<'_>, &mpsc::Receiver<Out>)) {
     with_pot_mod(true, test);
 }
 
 /// `with_pot`, with the block's `menu_quick_move` listener when `quick_move`.
 fn with_pot_mod(
     quick_move: bool,
-    test: impl FnOnce(&mut crate::game::Game<'_>, &mpsc::Receiver<Out>),
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, &mpsc::Receiver<Out>),
 ) {
     let mods: Mods = vec![ModEntry::new("pot", Box::new(PotMod { quick_move }))].into();
     crate::game::api_values::install_parts(&mods).unwrap();
@@ -257,7 +257,7 @@ fn predicted(menu: &Menu) -> Shown {
         .chain([shown(menu.carried.as_ref())])
         .collect()
 }
-fn served(game: &crate::game::Game<'_>) -> Shown {
+fn served(game: &crate::game::ServerGame<'_>) -> Shown {
     let guest = &game.lan.as_ref().unwrap().hub.guests[0];
     let pot = game.world.block_entities.get(&POS).unwrap().slots();
     pot.iter()
@@ -268,7 +268,7 @@ fn served(game: &crate::game::Game<'_>) -> Shown {
         .collect()
 }
 /// Starts both sides with the same pot, inventory and cursor state.
-fn serve(game: &mut crate::game::Game<'_>, menu: &Menu) {
+fn serve(game: &mut crate::game::ServerGame<'_>, menu: &Menu) {
     let pot = game.world.block_entities.get_mut(&POS).unwrap().slots_mut();
     for (s, slot) in pot.iter_mut().enumerate() {
         *slot = menu.slot(s).cloned();
@@ -285,7 +285,7 @@ fn serve(game: &mut crate::game::Game<'_>, menu: &Menu) {
 }
 
 /// A client's claim that a slot or the cursor holds `count` stone.
-fn claim(game: &mut crate::game::Game<'_>, count: u32) -> Option<Hashed> {
+fn claim(game: &mut crate::game::ServerGame<'_>, count: u32) -> Option<Hashed> {
     let item = game
         .lan
         .as_mut()
@@ -304,7 +304,7 @@ fn claim(game: &mut crate::game::Game<'_>, count: u32) -> Option<Hashed> {
 /// The guest's click, sent as a client that predicted the take sends it (`changed`, `carried`),
 /// and the slots and cursor the guest is sent back: (slot, count), with `-1` for the cursor.
 fn click(
-    game: &mut crate::game::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     rx: &mpsc::Receiver<Out>,
     (slot, button, input): (i32, i32, Input),
     changed: Vec<(i16, Option<Hashed>)>,
@@ -358,7 +358,7 @@ fn click(
 /// `action` from `slots` and `carried` in the client's prediction, then on the server as that
 /// client sends it: the prediction, and what each side asked the rule.
 fn asked_by_both(
-    game: &mut crate::game::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     rx: &mpsc::Receiver<Out>,
     (slots, carried): (&[(usize, Option<ItemStack>)], Option<ItemStack>),
     action: (i32, i32, Input),
@@ -376,7 +376,7 @@ fn asked_by_both(
 /// `click` from `slots` and `carried`, on the server and in the client's prediction: what each
 /// leaves, and what the guest is sent back when its client claims the shown slot emptied.
 fn refused(
-    game: &mut crate::game::Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     rx: &mpsc::Receiver<Out>,
     (slots, carried): (&[(usize, Option<ItemStack>)], Option<ItemStack>),
     action: (i32, i32, Input),
@@ -541,7 +541,7 @@ fn a_refused_quick_move_moves_nothing_and_asks_before_menu_quick_move() {
     });
 }
 
-fn link_pot(game: &mut crate::game::Game<'_>) {
+fn link_pot(game: &mut crate::game::ServerGame<'_>) {
     let state = game.world.block(POS.0, POS.1, POS.2);
     game.world.set(LINK.0, LINK.1, LINK.2, state).unwrap();
     game.world.block_entities.insert(

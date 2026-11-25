@@ -9,7 +9,7 @@ const FRAME: u32 = 900;
 const PAINTING: u32 = 901;
 
 /// A server's game with a south-facing item frame and painting hanging at 4, 70, 4 and 4, 70, 6.
-fn with_hanging(test: impl FnOnce(&mut super::Game<'_>)) {
+fn with_hanging(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     with_game(|game| {
         game.options.dedicated = Some(Vec::new());
         with_hanging_in(game);
@@ -17,7 +17,7 @@ fn with_hanging(test: impl FnOnce(&mut super::Game<'_>)) {
     });
 }
 
-fn with_hanging_in(game: &mut super::Game<'_>) {
+fn with_hanging_in(game: &mut crate::game::ServerGame<'_>) {
     game.item_frames.push(ItemFrame {
         attachment_lifetime: Default::default(),
         join: Default::default(),
@@ -48,7 +48,7 @@ fn with_hanging_in(game: &mut super::Game<'_>) {
         check_interval: 0,
         ticks: 0,
     });
-    game.server.next_entity = game.server.next_entity.max(PAINTING);
+    game.side.next_entity = game.side.next_entity.max(PAINTING);
 }
 
 /// Which axes of a box are thin (a hanging entity's depth).
@@ -115,7 +115,7 @@ fn a_frames_item_turns_with_vanillas_wrap_and_other_kinds_are_refused() {
 
 /// The facing (`HangingEntity.DATA_DIRECTION`, entry 8) the tracker holds for entity `id`: its
 /// value, or the default it sends once the value is left out (`ServerEntity.sendDirtyEntityData`).
-fn tracked_facing(game: &mut super::Game<'_>, id: u32) -> Option<i32> {
+fn tracked_facing(game: &mut crate::game::ServerGame<'_>, id: u32) -> Option<i32> {
     use sunrise_protocol::entity_data::Value;
     let mut states = sunrise_client::lan::entity::States::default();
     game.lan_object_states(&mut states, false, 0);

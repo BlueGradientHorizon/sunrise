@@ -44,7 +44,7 @@ fn request(root: &Path) -> super::world_loading::WorldRequest {
     request.save_root = root.to_owned();
     request
 }
-fn host<'a>(game: &'a super::Game<'_>) -> &'a dyn mod_api::Host {
+fn host<'a, S: crate::game::Side>(game: &'a super::Game<'_, S>) -> &'a dyn mod_api::Host where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
     game
 }
 fn id(value: &str) -> mod_api::Identifier {
@@ -52,7 +52,7 @@ fn id(value: &str) -> mod_api::Identifier {
 }
 
 // Feed the same server-built snapshot to both Host implementations.
-fn check_rejected_sync_tags(game: &super::Game<'_>) {
+fn check_rejected_sync_tags<S: crate::game::Side>(game: &super::Game<'_, S>) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
     for (registry, name) in [
         ("minecraft:enchantment", "minecraft:sharpness"),
         ("minecraft:entity_type", "minecraft:zombie"),

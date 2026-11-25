@@ -23,7 +23,7 @@ fn with_block_state(item: &str, props: &[(&str, &str)]) -> ItemStack {
 }
 
 /// One property of the block at `pos`.
-fn property(game: &Game<'_>, pos: [i32; 3], key: &str) -> Option<String> {
+fn property(game: &crate::game::ServerGame<'_>, pos: [i32; 3], key: &str) -> Option<String> {
     let state = game.world.block(pos[0], pos[1], pos[2]);
     game.pack
         .assets

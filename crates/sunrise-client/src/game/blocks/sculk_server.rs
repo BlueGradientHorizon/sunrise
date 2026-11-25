@@ -374,9 +374,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 order.push((
                     event,
                     ctx.source.and_then(|source| source.actor()),
-                    self.server.lan_entity_events.len(),
+                    self.side.lan_entity_events.len(),
                     if self.is_logical_server() {
-                        self.server.pending_sounds.len()
+                        self.side.pending_sounds.len()
                     } else {
                         0
                     },
@@ -2699,7 +2699,7 @@ pub(in crate::game) mod tests {
                 .cloned()
                 .unwrap();
             let at = |x| sunrise_core::geometry::Vec3::new(x, 100.0, 0.0);
-            let post = |game: &mut Game<'_>| {
+            let post = |game: &mut crate::game::ServerGame<'_>| {
                 game.post_game_event("minecraft:explode", [0.5, 100.5, 0.5], Context::default());
                 let later = game.world.game_time + 1;
                 let heard = |m: &mut Mob| {
@@ -2838,7 +2838,7 @@ pub(in crate::game) mod command_damage_listener_tests {
     use sunrise_client::chunk::Chunk;
     use sunrise_core::position::ChunkPos;
 
-    fn selected(game: &Game<'_>, key: (i32, i32, i32)) -> Option<(Info, i64)> {
+    fn selected(game: &crate::game::ServerGame<'_>, key: (i32, i32, i32)) -> Option<(Info, i64)> {
         let Some(BlockEntity::Sculk(sensor)) = game.world.block_entities.get(&key) else {
             panic!("actual command-created sensor must be registered");
         };
@@ -2868,15 +2868,12 @@ pub(in crate::game) mod command_damage_listener_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
             None,
         )
         .unwrap();
@@ -2946,12 +2943,12 @@ pub(in crate::game) mod command_damage_listener_tests {
                 );
                 assert_eq!(tick, before);
                 assert_eq!(
-                    game.server.sculk.damaged.get(&id).copied(),
+                    game.side.sculk.damaged.get(&id).copied(),
                     mob.last_damage.map(|(_, tick)| tick)
                 );
             } else {
                 assert!(selected(&game, origin).is_none());
-                assert!(!game.server.sculk.damaged.contains_key(&id));
+                assert!(!game.side.sculk.damaged.contains_key(&id));
             }
             assert!(game.run_command(&format!("tp {uuid} 36.5 200 4.5")));
             assert_eq!(game.world.game_time, before);
@@ -2974,8 +2971,8 @@ pub(in crate::game) mod command_damage_listener_tests {
 }
 
 #[cfg(test)]
-impl Game<'_> {
+impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn test_sculk_mut(&mut self) -> &mut SculkState {
-        &mut self.server.sculk
+        &mut self.side.sculk
     }
 }

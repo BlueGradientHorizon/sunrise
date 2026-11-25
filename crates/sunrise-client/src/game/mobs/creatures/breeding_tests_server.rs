@@ -69,8 +69,8 @@ fn breeding_announces_the_orb_before_the_lower_id_child() {
         super::super::native_entity_refs::tests::with_game(|game| {
             assert!(game.mob_world_base(&[]).asks_baby_spawn);
             let cow = game.res.mob_types().get("minecraft:cow").unwrap().clone();
-            let base = game.server.next_entity;
-            game.server.next_entity += 2;
+            let base = game.side.next_entity;
+            game.side.next_entity += 2;
             game.mobs.push(Mob::new(
                 base + 1,
                 cow.clone(),
@@ -147,8 +147,8 @@ fn breeding_announces_the_orb_before_the_lower_id_child() {
             );
             joins.lock().unwrap().clear();
             let fox = game.res.mob_types().get("minecraft:fox").unwrap().clone();
-            let fox_base = game.server.next_entity;
-            game.server.next_entity += 2;
+            let fox_base = game.side.next_entity;
+            game.side.next_entity += 2;
             game.mobs.push(Mob::new(
                 fox_base + 1,
                 fox.clone(),
@@ -161,7 +161,7 @@ fn breeding_announces_the_orb_before_the_lower_id_child() {
             game.player =
                 Some(sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             let feeder = sunrise_client::lan::playerdata::uuid_ints(game.native_acting_id());
-            game.server.love_cause.insert(fox_base + 1, None);
+            game.side.love_cause.insert(fox_base + 1, None);
             let fox_child = game.breed(
                 fox_base + 1,
                 fox_base + 2,
@@ -181,7 +181,7 @@ fn breeding_announces_the_orb_before_the_lower_id_child() {
                 ]
             );
             joins.lock().unwrap().clear();
-            let next = game.server.next_entity;
+            let next = game.side.next_entity;
             let parent = game.mobs.iter_mut().find(|mob| mob.id == base + 1).unwrap();
             let mut expected = parent.random.clone();
             let choice = parent.random.next_boolean();
@@ -199,7 +199,7 @@ fn breeding_announces_the_orb_before_the_lower_id_child() {
             assert_eq!(child, None);
             // The baby is built before the hook now (its draws and entity number are spent), so a
             // veto keeps the number vanilla's constructor took but spawns nothing.
-            assert_eq!(game.server.next_entity, next + 1);
+            assert_eq!(game.side.next_entity, next + 1);
             assert_eq!(
                 game.mobs
                     .iter()
@@ -215,7 +215,7 @@ fn breeding_announces_the_orb_before_the_lower_id_child() {
 }
 
 pub(in crate::game) fn tick_breeding(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     parent_kind: &str,
     partner_kind: &str,
     seed: i64,
@@ -226,8 +226,8 @@ pub(in crate::game) fn tick_breeding(
         "mob_drops",
         sunrise_client::gamerules::Value::Bool(mob_drops),
     );
-    let base = game.server.next_entity;
-    game.server.next_entity += 2;
+    let base = game.side.next_entity;
+    game.side.next_entity += 2;
     let mut parent = Mob::new(
         base + 1,
         game.res.mob_types().get(parent_kind).unwrap().clone(),

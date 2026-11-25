@@ -12,7 +12,7 @@ static VALUE: AttachmentType<u32> = AttachmentType {
     sync: false,
 };
 
-fn capture(game: &Game<'_>) -> Vec<(AttachmentHolder, u32, AttachmentWriteToken)> {
+fn capture(game: &crate::game::ServerGame<'_>) -> Vec<(AttachmentHolder, u32, AttachmentWriteToken)> {
     let batch = game.attachment_query("boundary", "value").unwrap();
     let query = batch.query(&VALUE).unwrap();
     let mut rows = query.iter();

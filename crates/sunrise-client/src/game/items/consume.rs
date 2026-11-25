@@ -983,11 +983,11 @@ pub(in crate::game) mod teleport_hook_tests {
                 // This body belongs to the guest record installed below, never
                 // to a separately admitted local player with the same runtime ID.
                 game.player.as_mut().unwrap().entity_id = 2;
-                game.server.lan_acting = Some(12);
-                game.server.lan_acting_uuid = Some(7);
-                game.server.lan_acting_name = Some("ConsumedStackTest".into());
-                game.server.lan_acting_entity = Some(2);
-                game.server.lan_acting_permission = Some(4);
+                game.side.lan_acting = Some(12);
+                game.side.lan_acting_uuid = Some(7);
+                game.side.lan_acting_name = Some("ConsumedStackTest".into());
+                game.side.lan_acting_entity = Some(2);
+                game.side.lan_acting_permission = Some(4);
                 crate::game::native_entity_refs::tests::bind_acting_guest(game);
                 game.creative = false;
                 let mut consumed = ItemStack::new("minecraft:chorus_fruit", 7);
@@ -1343,7 +1343,7 @@ pub(in crate::game) mod fox_consumption_hook_tests {
                         game.world.set(x, 63, z, stone).unwrap();
                     }
                 }
-                game.server.next_entity = 300;
+                game.side.next_entity = 300;
                 let ty = game.res.mob_types().get("minecraft:fox").unwrap().clone();
                 for (id, x) in [(200, 8.5), (201, 11.5), (202, 13.5), (204, 6.5)] {
                     let mut actor = Mob::new(id, ty.clone(), Vec3::new(x, 64.0, 8.5), 0.0);

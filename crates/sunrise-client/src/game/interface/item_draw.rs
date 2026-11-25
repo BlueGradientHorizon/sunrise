@@ -1153,7 +1153,7 @@ pub(in crate::game) mod tests {
 
         let mods: mod_api::Mods = vec![ModEntry::new("quiet", Box::new(Quiet))].into();
         mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
+            super::super::native_entity_refs::tests::with_client_game(|game| {
                 let env = Env { game };
                 assert!(!mod_api::__private::listened(HookId::ItemModelProperty));
                 assert!(!env.item_model_property("example:charged", &stack));
@@ -1166,7 +1166,7 @@ pub(in crate::game) mod tests {
         let mods: mod_api::Mods =
             vec![ModEntry::new("charged", Box::new(Charged(calls.clone())))].into();
         mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
+            super::super::native_entity_refs::tests::with_client_game(|game| {
                 let env = Env { game };
                 for _ in 0..3 {
                     assert!(env.item_model_property("example:charged", &stack));
@@ -1248,7 +1248,7 @@ pub(in crate::game) mod tests {
                 .unwrap()
                 .is_none()
             );
-            super::super::native_entity_refs::tests::with_game(|game| {
+            super::super::native_entity_refs::tests::with_client_game(|game| {
                 let env = Env { game };
                 assert_eq!(env.item_model_range_property(&bound, &stack, &ctx), 0.25);
             });
@@ -1353,7 +1353,7 @@ pub(in crate::game) mod tests {
                 .unwrap()
                 .is_none()
             );
-            super::super::native_entity_refs::tests::with_game(|game| {
+            super::super::native_entity_refs::tests::with_client_game(|game| {
                 let env = Env { game };
                 let one = StackView::new("minecraft:stick", 1);
                 let two = StackView::new("minecraft:stick", 2);
@@ -1577,7 +1577,7 @@ pub(in crate::game) mod tests {
                 .unwrap()
                 .is_none()
             );
-            super::super::native_entity_refs::tests::with_game(|game| {
+            super::super::native_entity_refs::tests::with_client_game(|game| {
                 let env = Env { game };
                 assert_eq!(
                     drawn(&env, &bound, 1, &in_screen),
@@ -1658,7 +1658,7 @@ pub(in crate::game) mod tests {
                     .unwrap()
                     .is_none()
             );
-            super::super::native_entity_refs::tests::with_game(|game| {
+            super::super::native_entity_refs::tests::with_client_game(|game| {
                 let env = Env { game };
                 let color = |stack| env.item_tint_source(&bound, stack) as u32;
                 assert_eq!(color(&one), 0xFFAA_BBCC);
@@ -1838,7 +1838,7 @@ pub(in crate::game) mod tests {
                         witness_sides.len()
                     );
                 }
-                super::super::native_entity_refs::tests::with_game_role(
+                super::super::native_entity_refs::tests::with_game_role_client(
                     root,
                     super::super::execution_role::ExecutionRole::Client,
                     |game| {
@@ -1846,7 +1846,7 @@ pub(in crate::game) mod tests {
                             .item_renderer
                             .prepare_glint_atlas(16384, (0, 2))
                             .unwrap();
-                        game.client.glint_frame = item_render::GlintFrame {
+                        game.side.glint_frame = item_render::GlintFrame {
                             millis: 123_456,
                             speed: 0.5,
                             alpha: 0.75,

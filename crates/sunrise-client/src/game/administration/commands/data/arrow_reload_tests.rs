@@ -8,7 +8,7 @@ use sunrise_client::projectiles::ProjectileKind;
 use sunrise_core::nbt::Tag;
 
 /// What `entity_merge_nbt` does: the saved compound, `nbt` merged in, loaded back.
-fn merge(game: &mut Game<'_>, target: Target, nbt: Tag) {
+fn merge(game: &mut crate::game::ServerGame<'_>, target: Target, nbt: Tag) {
     let old = game.command_target_nbt(target).unwrap();
     let merged = sunrise_client::data_cmd::merged(&old, &nbt);
     assert_ne!(merged, old);
@@ -36,15 +36,12 @@ fn a_merge_reloads_an_arrows_own_save_data() {
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();

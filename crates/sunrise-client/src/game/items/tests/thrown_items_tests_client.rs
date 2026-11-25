@@ -20,8 +20,8 @@ pub(in crate::game::client_side) use sunrise_client::items::ItemStack;
 pub(in crate::game::client_side) use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// The one sound `event` played since the last call, with its volume.
-pub(in crate::game) fn sound(game: &mut Game<'_>, event: &str) -> (f32, f32) {
-    let heard = game.audio.0.capture.replace(Vec::new()).unwrap_or_default();
+pub(in crate::game) fn sound(game: &mut crate::game::ClientGame<'_>, event: &str) -> (f32, f32) {
+    let heard = game.side.audio.0.capture.replace(Vec::new()).unwrap_or_default();
     let sound = heard
         .iter()
         .find(|s| s.event == event)
@@ -31,7 +31,7 @@ pub(in crate::game) fn sound(game: &mut Game<'_>, event: &str) -> (f32, f32) {
 
 /// A window joined to a server through memory, with the sounds it plays
 /// recorded: the client half of a pickup (`ClientPacketListener`).
-pub(in crate::game) fn with_remote_game<R>(f: impl FnOnce(&mut Game<'_>) -> R) -> R {
+pub(in crate::game) fn with_remote_game<R>(f: impl FnOnce(&mut crate::game::ClientGame<'_>) -> R) -> R {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -49,7 +49,7 @@ pub(in crate::game) fn with_remote_game<R>(f: impl FnOnce(&mut Game<'_>) -> R) -
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    let mut game = Game::new(
+    let mut game = crate::game::ClientGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
@@ -63,6 +63,6 @@ pub(in crate::game) fn with_remote_game<R>(f: impl FnOnce(&mut Game<'_>) -> R) -
     .unwrap();
     let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
     game.connect_local(pipe, "Steve").unwrap();
-    game.audio.0.capture = Some(Vec::new());
+    game.side.audio.0.capture = Some(Vec::new());
     f(&mut game)
 }

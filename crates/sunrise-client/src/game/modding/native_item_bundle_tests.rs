@@ -757,7 +757,7 @@ mod custom_bundle_integration_tests {
                 .unwrap();
                 body.entity_id = 99;
                 game.player = Some(body);
-                game.server.next_entity = game.server.next_entity.max(100);
+                game.side.next_entity = game.side.next_entity.max(100);
                 game.creative = false;
                 game.client.screen = crate::game::Screen::Inventory;
                 game.inventory = vec![None; game.inventory.len()];

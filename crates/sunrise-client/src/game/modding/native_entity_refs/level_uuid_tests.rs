@@ -112,7 +112,7 @@ fn a_parked_levels_uuid_lookup_finds_its_entity_until_removed_or_unloaded() {
             let nether = game.level("minecraft:the_nether").unwrap();
             // The zombies' ids, read from the Nether's own memory while it is in place.
             game.enter_level(Dim::Nether).unwrap();
-            let id = |game: &crate::game::Game<'_>, last: i32| {
+            let id = |game: &crate::game::ServerGame<'_>, last: i32| {
                 let (&id, _) = game
                     .persist
                     .uuids

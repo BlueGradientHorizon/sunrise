@@ -4971,10 +4971,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     fn tick(&mut self) -> Result<()> {
         self.side_tick()
     }
-    #[cfg(test)]
-    fn hud(&mut self, size: [u32; 2]) -> HudBatch {
-        self.hud_with_reload(size, None)
-    }
+    
 
     fn draw_reload_overlay(
         &self,
@@ -5404,6 +5401,14 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         } else {
             self.ui.vanilla_root.clone()
         }
+    }
+}
+
+#[cfg(test)]
+impl crate::game::ClientGame<'_> {
+    #[cfg(test)]
+    fn hud(&mut self, size: [u32; 2]) -> HudBatch {
+        self.hud_with_reload(size, None)
     }
 }
 
@@ -6759,7 +6764,7 @@ mod test_neighbourhood {
     //! Shared fixture step for tests that tick entities on prepared data.
     use super::*;
 
-    impl Game<'_> {
+    impl<S: crate::game::Side> Game<'_, S> {
         /// Loads the chunks within 2 columns of `(cx, cz)` that are not loaded yet.
         /// Entity ticking waits for every chunk in that 5x5 neighbourhood
         /// (`ChunkMap.prepareEntityTickingChunk`), so a fixture that ticks mobs,

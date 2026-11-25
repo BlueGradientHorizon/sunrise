@@ -136,7 +136,7 @@ mod item_destroyed_tests {
         }
     }
 
-    fn setup_server_world(game: &mut Game<'_>) {
+    fn setup_server_world(game: &mut crate::game::ServerGame<'_>) {
         game.options.dedicated = Some(Vec::new());
         game.native_lifecycle
             .begin_open(mod_api::Authority::IntegratedServer);
@@ -165,7 +165,7 @@ mod item_destroyed_tests {
     }
 
     fn tick_until_seen(
-        game: &mut Game<'_>,
+        game: &mut crate::game::ServerGame<'_>,
         seen: &Arc<Mutex<Vec<(String, Option<[f64; 3]>)>>>,
         max_ticks: usize,
     ) {
@@ -269,7 +269,7 @@ mod item_destroyed_tests {
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_game(|game| {
                 setup_server_world(game);
-                let block_state = |game: &Game<'_>, id: &str| {
+                let block_state = |game: &crate::game::ServerGame<'_>, id: &str| {
                     game.pack.assets.registry.default_state(id).unwrap()
                 };
 
@@ -577,7 +577,7 @@ mod item_destroyed_tests {
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_game(|game| {
                 setup_server_world(game);
-                let make_bundle = |game: &Game<'_>| {
+                let make_bundle = |game: &crate::game::ServerGame<'_>| {
                     let mut bundle = ItemStack::new("minecraft:bundle", 1);
                     let mut contents =
                         sunrise_client::bundle::Contents::of(game.items(), &bundle).unwrap();

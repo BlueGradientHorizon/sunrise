@@ -659,7 +659,7 @@ mod tests {
         with_game(|game| {
             let dir =
                 std::env::temp_dir().join(format!("sunrise-tag-reads-{}", std::process::id()));
-            game.session_lock.0 = Some(sunrise_client::save::SessionLock::acquire(&dir).unwrap());
+            game.side.session_lock.0 = Some(sunrise_client::save::SessionLock::acquire(&dir).unwrap());
             let registry = game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
             let water = registry.default_state("minecraft:water").unwrap();
@@ -1003,7 +1003,7 @@ mod tests {
                 .unwrap();
             assert_eq!(tags.items(oak_tag), mod_api::TagMembers::Unavailable);
             assert_eq!(tags.is_in_tag(item, oak_tag), None);
-            game.session_lock.0 = None;
+            game.side.session_lock.0 = None;
             let _ = std::fs::remove_dir_all(dir);
         });
     }

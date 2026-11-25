@@ -266,7 +266,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 #[cfg(test)]
 pub(in crate::game) mod swap_hands_tests {
     #[allow(unused_imports)]
-    use crate::game::native_entity_refs::tests::with_game;
+    use crate::game::native_entity_refs::tests::{with_game, with_client_game};
     #[allow(unused_imports)]
     use mod_api::{Flow, Hooks, PlayerSwapHandsEvent, ServerHost};
     #[allow(unused_imports)]
@@ -304,7 +304,7 @@ pub(in crate::game) mod swap_hands_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod pause_close_tests {
-    use crate::game::{Screen, native_entity_refs::tests::with_game};
+    use crate::game::{Screen, native_entity_refs::tests::{with_game, with_client_game}};
     use sunrise_protocol::packets::play::Serverbound as S;
     use winit::keyboard::KeyCode;
 
@@ -314,7 +314,7 @@ pub(in crate::game) mod pause_close_tests {
     #[test]
     #[ignore = "daily"]
     fn escape_out_of_the_pause_menu_closes_no_container() {
-        with_game(|game| {
+        with_client_game(|game| {
             let (mut peer, _writer) = crate::game::remote::tests::connect_menu_test(game);
             peer.set_read_timeout(Some(std::time::Duration::from_millis(50)))
                 .unwrap();
@@ -322,7 +322,7 @@ pub(in crate::game) mod pause_close_tests {
             for (screen, closes) in [(Screen::Paused, 0), (Screen::Inventory, 1)] {
                 game.set_screen(screen);
                 game.key_pressed(KeyCode::Escape, KeyCode::Escape).unwrap();
-                assert_eq!(game.client.screen, Screen::Playing);
+                assert_eq!(game.side.screen, Screen::Playing);
                 let mut sent = 0;
                 while let Ok((id, bytes)) = peer.recv() {
                     if matches!(S::decode(id, &bytes), Ok(S::ContainerClose(_))) {
@@ -337,7 +337,7 @@ pub(in crate::game) mod pause_close_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod creative_close_tests {
-    use crate::game::{Screen, native_entity_refs::tests::with_game};
+    use crate::game::{Screen, native_entity_refs::tests::{with_game, with_client_game}};
     use mod_api::{ClientHost, Hooks, ModEntry, ScreenOpening, ScreenOpeningEvent};
     use std::sync::{
         Arc,
@@ -370,7 +370,7 @@ pub(in crate::game) mod creative_close_tests {
         let veto = Arc::new(AtomicBool::new(true));
         let mods: mod_api::Mods = vec![ModEntry::new("veto", Box::new(Veto(veto.clone())))].into();
         mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
+            with_client_game(|game| {
                 let (mut peer, _writer) = crate::game::remote::tests::connect_menu_test(game);
                 peer.set_read_timeout(Some(std::time::Duration::from_millis(50)))
                     .unwrap();
@@ -389,7 +389,7 @@ pub(in crate::game) mod creative_close_tests {
                 veto.store(true, Ordering::SeqCst);
                 game.key_pressed(KeyCode::Escape, KeyCode::Escape).unwrap();
                 assert_eq!(
-                    game.client.screen,
+                    game.side.screen,
                     Screen::Creative,
                     "a vetoed close keeps the screen"
                 );
@@ -399,7 +399,7 @@ pub(in crate::game) mod creative_close_tests {
                     game.set_screen(Screen::Creative);
                     closes(&mut peer);
                     game.key_pressed(key, key).unwrap();
-                    assert_eq!(game.client.screen, Screen::Playing, "{key:?}");
+                    assert_eq!(game.side.screen, Screen::Playing, "{key:?}");
                     assert_eq!(closes(&mut peer), [0], "{key:?}");
                 }
             });

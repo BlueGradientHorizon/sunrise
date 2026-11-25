@@ -46,7 +46,7 @@ impl Hooks for Observer {
     }
 }
 
-fn with_observer(test: impl FnOnce(&mut super::Game<'_>, &Arc<Mutex<Observation>>)) {
+fn with_observer(test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Arc<Mutex<Observation>>)) {
     let state = Arc::new(Mutex::new(Observation::default()));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "observer",

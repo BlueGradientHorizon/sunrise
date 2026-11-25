@@ -59,7 +59,7 @@ fn an_interaction_key_reaches_a_mod_as_its_kind_and_can_be_cancelled() {
     let log = Arc::new(Mutex::new(Vec::new()));
     let mods = vec![ModEntry::new("keys", Box::new(KeyProbe(log.clone())))].into();
     with_mods(mods, || {
-        crate::game::native_entity_refs::tests::with_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             let hand = Hand::Main;
             assert_eq!(
                 game.native_interaction(InteractionKey::Attack, hand, InteractionAttempt::Held)
@@ -136,7 +136,7 @@ impl Hooks for Probe {
 
 /// Runs `test` on a client game with one probe mod; the probe's log and answer.
 pub(in crate::game) fn run(
-    test: impl FnOnce(&mut Game<'_>, &Arc<Mutex<Vec<String>>>, &Arc<Mutex<Option<ScreenOpening>>>),
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Arc<Mutex<Vec<String>>>, &Arc<Mutex<Option<ScreenOpening>>>),
 ) {
     let log = Arc::new(Mutex::new(Vec::new()));
     let answer = Arc::new(Mutex::new(None));
@@ -154,7 +154,7 @@ pub(in crate::game) fn run(
     with_game_of(mods, |game| test(game, &log, &answer));
 }
 /// A client game with a player, under `mods`.
-pub(in crate::game) fn with_game_of(mods: Arc<[ModEntry]>, test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_game_of(mods: Arc<[ModEntry]>, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     with_mods(mods, || {
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.options.execution_role = ExecutionRole::Client;
@@ -287,7 +287,7 @@ fn title_hook_requests_one_orderly_quit() {
     let mods = vec![ModEntry::new("quit", Box::new(QuitProbe(log.clone())))].into();
     with_mods(mods, || {
         with_client_game(|game| {
-            game.title.0 = Some(game.new_title(game.save.0.root.clone()));
+            game.side.title.0 = Some(game.new_title(game.save.0.root.clone()));
             let event_loop = QuitLoop(Cell::new(0));
             let batch = HudBatch::scratch([854, 480]);
             let screen = game.title_screen_view(&batch).unwrap();
@@ -412,9 +412,9 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
     with_mods(mods, || {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             // 1) Refused when headless (`renderer.is_none()`).
-            assert!(game.renderer.0.is_none());
+            assert!(game.side.renderer.0.is_none());
             assert!(!game.mod_screen_open("mod_a"));
-            assert_eq!(game.client.screen, Screen::Playing);
+            assert_eq!(game.side.screen, Screen::Playing);
             assert!(take(&log).is_empty());
 
             // Attach an offscreen window + renderer for live screen transitions.
@@ -436,9 +436,9 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
                     .unwrap(),
             );
             game.options.offscreen = true;
-            game.window.0 = Some(window.clone());
-            game.renderer.0 = Some(game.new_renderer(window).unwrap());
-            game.title.0 = None;
+            game.side.window.0 = Some(window.clone());
+            game.side.renderer.0 = Some(game.new_renderer(window).unwrap());
+            game.side.title.0 = None;
             game.player = Some(
                 sunrise_client::motion::PlayerMotion::new(
                     game.motion,
@@ -446,13 +446,13 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
                 )
                 .unwrap(),
             );
-            game.client.focused = true;
+            game.side.focused = true;
 
             // 2) Opens over `Screen::Paused`, fires opening/closing/init_post.
             game.set_screen(Screen::Paused);
             take(&log);
             assert!(game.mod_screen_open("mod_a"));
-            assert_eq!(game.client.screen, Screen::Mod);
+            assert_eq!(game.side.screen, Screen::Mod);
             assert_eq!(game.mod_screen(), Some("mod_a"));
             assert!(game.screen_hooks_open());
             assert_eq!(
@@ -470,7 +470,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
 
             // 5) Switches from `mod_a` to another mod `mod_b`, firing opening/closing/init_post.
             assert!(game.mod_screen_open("mod_b"));
-            assert_eq!(game.client.screen, Screen::Mod);
+            assert_eq!(game.side.screen, Screen::Mod);
             assert_eq!(game.mod_screen(), Some("mod_b"));
             assert_eq!(
                 take(&log),
@@ -484,7 +484,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
             // 6) `ScreenOpening::Cancel` keeps `mod_b` open and returns `false`.
             *answer.lock().unwrap() = Some(ScreenOpening::Cancel);
             assert!(!game.mod_screen_open("mod_c"));
-            assert_eq!(game.client.screen, Screen::Mod);
+            assert_eq!(game.side.screen, Screen::Mod);
             assert_eq!(game.mod_screen(), Some("mod_b"));
             assert_eq!(take(&log), vec!["opening mod->mod"]);
             *answer.lock().unwrap() = None;
@@ -493,7 +493,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
             game.set_screen(Screen::Creative);
             take(&log);
             assert!(game.mod_screen_open("mod_a"));
-            assert_eq!(game.client.screen, Screen::Mod);
+            assert_eq!(game.side.screen, Screen::Mod);
             assert_eq!(game.mod_screen(), Some("mod_a"));
             assert_eq!(
                 take(&log),
@@ -562,7 +562,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
                 title: Tag::String("Chest".into()),
             }))
             .unwrap();
-            assert_eq!(game.client.screen, Screen::Inventory);
+            assert_eq!(game.side.screen, Screen::Inventory);
             reader
                 .set_read_timeout(Some(std::time::Duration::from_millis(100)))
                 .unwrap();
@@ -570,7 +570,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
             take(&log);
 
             assert!(game.mod_screen_open("mod_a"));
-            assert_eq!(game.client.screen, Screen::Mod);
+            assert_eq!(game.side.screen, Screen::Mod);
             assert_eq!(game.mod_screen(), Some("mod_a"));
             assert!(game.remote.as_ref().unwrap().menu.as_ref().is_none());
             let mut closed_container = None;
@@ -601,7 +601,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
             assert!(game.screen_over_playing());
             take(&log);
             assert!(game.mod_screen_open("mod_a"));
-            assert!(game.client.book.is_none());
+            assert!(game.side.book.is_none());
             assert!(!game.screen_over_playing());
             assert!(game.screen_hooks_open());
             assert_eq!(
@@ -618,7 +618,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
             assert!(game.screen_over_playing());
             take(&log);
             assert!(game.mod_screen_open("mod_a"));
-            assert!(game.client.sign_edit.is_none());
+            assert!(game.side.sign_edit.is_none());
             assert!(!game.screen_over_playing());
             assert!(game.screen_hooks_open());
             assert_eq!(
@@ -653,12 +653,12 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
 
             game.set_screen(Screen::Playing);
             game.open_screen_overlay("link_prompt", |game| {
-                game.client.link_prompt = Some("https://example.com".into());
+                game.side.link_prompt = Some("https://example.com".into());
             });
             assert!(game.screen_over_playing());
             take(&log);
             assert!(game.mod_screen_open("mod_a"));
-            assert!(game.client.link_prompt.is_none());
+            assert!(game.side.link_prompt.is_none());
             assert!(!game.screen_over_playing());
             assert!(game.screen_hooks_open());
             assert_eq!(
@@ -675,10 +675,10 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
             game.remote = None;
             game.player = None;
             let saves = tempfile::tempdir().unwrap();
-            game.title.0 = Some(game.new_title(saves.path().to_path_buf()));
+            game.side.title.0 = Some(game.new_title(saves.path().to_path_buf()));
             take(&log);
             assert!(game.mod_screen_open("mod_a"));
-            assert_eq!(game.client.screen, Screen::Mod);
+            assert_eq!(game.side.screen, Screen::Mod);
             assert_eq!(game.mod_screen(), Some("mod_a"));
             assert_eq!(
                 take(&log),
@@ -696,7 +696,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
             assert!(game.remote_loading());
             take(&log);
             assert!(!game.mod_screen_open("mod_a"));
-            assert_eq!(game.client.screen, Screen::Playing);
+            assert_eq!(game.side.screen, Screen::Playing);
             assert!(take(&log).is_empty());
 
             drop(event_loop);

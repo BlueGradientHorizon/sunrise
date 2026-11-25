@@ -19,7 +19,7 @@ pub(in crate::game::server_side) use sunrise_core::{
 
 pub(in crate::game) fn with_role_game(
     role: crate::game::execution_role::ExecutionRole,
-    test: impl FnOnce(&mut Game<'_>),
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>),
 ) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
@@ -43,15 +43,12 @@ pub(in crate::game) fn with_role_game(
             .join(format!("h169-{:?}", std::thread::current().id())),
     );
     options.execution_role = role;
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -86,6 +83,6 @@ pub(in crate::game) fn with_role_game(
     game.world.random.set_seed(169);
     game.update_chunk_tickets();
     assert!(crate::game::ticking_chunk(&game.world, 0, 0));
-    assert!(game.tickets.0.levels().block_ticking(0, 0));
+    assert!(game.side.tickets.0.levels().block_ticking(0, 0));
     test(&mut game);
 }

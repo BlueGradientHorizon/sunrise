@@ -12,7 +12,7 @@ use sunrise_mod_runtime::attachments::{
     index::AttachmentIndex,
 };
 
-type Spawn = fn(&mut Game<'_>);
+type Spawn = fn(&mut crate::game::ServerGame<'_>);
 thread_local! {
     static AFTER_TAKE: Cell<Option<Spawn>> = const { Cell::new(None) };
 }
@@ -23,7 +23,7 @@ pub(in crate::game) fn with_spawn(spawn: Spawn, tick: impl FnOnce()) {
     assert!(AFTER_TAKE.take().is_none(), "tick did not lift its batch");
 }
 
-pub(in crate::game) fn after_take(game: &mut Game<'_>) {
+pub(in crate::game) fn after_take(game: &mut crate::game::ServerGame<'_>) {
     if let Some(spawn) = AFTER_TAKE.take() {
         spawn(game);
     }
@@ -31,16 +31,16 @@ pub(in crate::game) fn after_take(game: &mut Game<'_>) {
 
 /// Storage adapters for the same production lifecycle walk across entity kinds.
 pub(in crate::game) struct LifecycleFixture {
-    pub seed: fn(&mut Game<'_>, &[(u32, [f64; 3])]),
-    pub ids: fn(&Game<'_>) -> Vec<u32>,
+    pub seed: fn(&mut crate::game::ServerGame<'_>, &[(u32, [f64; 3])]),
+    pub ids: fn(&crate::game::ServerGame<'_>) -> Vec<u32>,
     pub target: fn(u32) -> crate::game::commands::Target,
     pub unloads_with_chunk: bool,
     pub remote: Option<RemoteLifecycle>,
 }
 
 pub(in crate::game) struct RemoteLifecycle {
-    pub prepare: fn(&mut Game<'_>),
-    pub apply: fn(&mut Game<'_>, u32, u32),
+    pub prepare: fn(&mut crate::game::ClientGame<'_>),
+    pub apply: fn(&mut crate::game::ClientGame<'_>, u32, u32),
 }
 
 struct ScratchDirectory(std::path::PathBuf);
@@ -123,7 +123,7 @@ impl LifecycleFixture {
 
     /// Observe each seeded or transformed storage before checking its order.
     /// Slot-bearing adapters bind new owners and compare remembered registrations here.
-    pub fn run_with(self, observe: impl FnMut(&mut Game<'_>)) {
+    pub fn run_with(self, observe: impl FnMut(&mut crate::game::ServerGame<'_>)) {
         self.walk(false, observe);
     }
 
@@ -134,9 +134,9 @@ impl LifecycleFixture {
         self.walk(true, |_| {});
     }
 
-    fn walk(self, singleton: bool, mut observe: impl FnMut(&mut Game<'_>)) {
+    fn walk(self, singleton: bool, mut observe: impl FnMut(&mut crate::game::ServerGame<'_>)) {
         crate::game::native_entity_refs::tests::with_game(|game| {
-            let mut ids = |game: &mut Game<'_>| {
+            let mut ids = |game: &mut crate::game::ServerGame<'_>| {
                 observe(game);
                 use sunrise_client::join_seq::Joined;
                 let mut unique = std::collections::HashSet::new();
@@ -151,7 +151,7 @@ impl LifecycleFixture {
                         }
                     };
                 }
-                lookup!(game.others.0);
+                lookup!(game.side.others.0);
                 lookup!(game.fangs.list);
                 lookup!(game.ominous_spawners);
                 lookup!(game.breath_clouds);
@@ -168,7 +168,7 @@ impl LifecycleFixture {
                 std::process::id(),
                 std::thread::current().id()
             )));
-            game.server.world_root = root.0.clone();
+            game.side.world_root = root.0.clone();
             let active = if singleton || self.unloads_with_chunk {
                 vec![103]
             } else {
@@ -309,7 +309,7 @@ fn lifecycle_fixture_walks_other_owners() {
 }
 
 /// Run each fixture's complete setup and actual action in both dimensions.
-pub(in crate::game) fn in_both_dimensions(mut test: impl FnMut(&mut Game<'_>, &PassBalance)) {
+pub(in crate::game) fn in_both_dimensions(mut test: impl FnMut(&mut crate::game::ServerGame<'_>, &PassBalance)) {
     for dimension in [crate::game::Dim::Overworld, crate::game::Dim::Nether] {
         // with_game isolates the initial SaveDir; newly opened dimensions use
         // world_root instead. Keep that root alive until the Game is dropped.
@@ -319,7 +319,7 @@ pub(in crate::game) fn in_both_dimensions(mut test: impl FnMut(&mut Game<'_>, &P
             std::thread::current().id()
         )));
         crate::game::native_entity_refs::tests::with_game(|game| {
-            game.server.world_root = root.0.clone();
+            game.side.world_root = root.0.clone();
             game.enter_level(dimension).unwrap();
             use sunrise_client::join_seq::residency::{Kind, Owner};
             let balance = PassBalance {
@@ -371,7 +371,7 @@ impl PassBalance {
         assert_eq!(depth, 0, "actual caller abandoned a lifted pass");
         lifts
     }
-    fn assert_parked(&self, game: &mut Game<'_>) {
+    fn assert_parked(&self, game: &mut crate::game::ServerGame<'_>) {
         let home = game.dim;
         let away = match home {
             crate::game::Dim::Overworld => crate::game::Dim::Nether,
@@ -387,12 +387,12 @@ impl PassBalance {
 /// next real entity pass with just that new owner so the caller's other state
 /// remains available for its own assertions.
 pub(in crate::game) fn assert_mob_spawn_survives(
-    game: &mut Game<'_>,
+    game: &mut crate::game::ServerGame<'_>,
     balance: &PassBalance,
-    action: impl FnOnce(&mut Game<'_>),
+    action: impl FnOnce(&mut crate::game::ServerGame<'_>),
 ) {
     const SPAWNED: u32 = 1_900_000_000;
-    fn spawn(game: &mut Game<'_>) {
+    fn spawn(game: &mut crate::game::ServerGame<'_>) {
         let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
         let mut mob = sunrise_client::mobs::Mob::new(
             SPAWNED,
@@ -449,11 +449,11 @@ pub(in crate::game) fn assert_mob_spawn_survives(
 
 /// Check a real player/guest projectile pickup pass and the next server flight pass.
 pub(in crate::game) fn assert_projectile_spawn_survives(
-    game: &mut Game<'_>,
-    action: impl FnOnce(&mut Game<'_>),
+    game: &mut crate::game::ServerGame<'_>,
+    action: impl FnOnce(&mut crate::game::ServerGame<'_>),
 ) {
     const ID: u32 = 1_900_000_002;
-    fn spawn(game: &mut Game<'_>) {
+    fn spawn(game: &mut crate::game::ServerGame<'_>) {
         let mut p = sunrise_client::projectiles::Projectile::new(
             sunrise_client::projectiles::ProjectileKind::Egg,
             sunrise_core::geometry::Vec3::new(3.5, 80.0, 3.5),
@@ -514,11 +514,11 @@ fn data_merge_preserves_two_distinct_other_joins_for_every_runtime_kind() {
             "text_display",
             "interaction",
         ] {
-            game.others.0.clear();
+            game.side.others.0.clear();
             for (tag, x) in [("first", 1), ("second", 8)] {
                 assert!(game.run_command(&format!("summon {kind} {x} 80 1 {{Tags:[\"{tag}\"]}}")));
             }
-            let expected: Vec<_> = game.others.0.iter().map(|e| (e.id, e.join)).collect();
+            let expected: Vec<_> = game.side.others.0.iter().map(|e| (e.id, e.join)).collect();
             assert_eq!(expected.len(), 2, "{kind}");
             assert_ne!(expected[0].1, expected[1].1);
             assert_ne!(expected[0].1, sunrise_client::join_seq::JoinSeq::UNJOINED);
@@ -528,7 +528,7 @@ fn data_merge_preserves_two_distinct_other_joins_for_every_runtime_kind() {
                 )));
             }
             assert_eq!(
-                game.others
+                game.side.others
                     .0
                     .iter()
                     .map(|e| (e.id, e.join))
@@ -537,7 +537,7 @@ fn data_merge_preserves_two_distinct_other_joins_for_every_runtime_kind() {
                 "{kind}"
             );
             for (id, join) in expected {
-                assert_eq!(game.others.0[game.others.0.locate(join).unwrap()].id, id);
+                assert_eq!(game.side.others.0[game.side.others.0.locate(join).unwrap()].id, id);
             }
         }
     });
@@ -546,7 +546,7 @@ fn data_merge_preserves_two_distinct_other_joins_for_every_runtime_kind() {
 #[test]
 #[ignore = "daily"]
 fn mob_tick_restores_spawn_buffer_before_multiple_survivors_without_renumbering() {
-    fn seed(game: &mut Game<'_>, ids: std::ops::RangeInclusive<u32>, x: f64) {
+    fn seed(game: &mut crate::game::ServerGame<'_>, ids: std::ops::RangeInclusive<u32>, x: f64) {
         for (index, id) in ids.enumerate() {
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             let mut mob = sunrise_client::mobs::Mob::new(

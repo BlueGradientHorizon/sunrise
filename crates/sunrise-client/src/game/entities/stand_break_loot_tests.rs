@@ -8,7 +8,7 @@ use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -31,15 +31,12 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     options.resources = root.clone();
     options.execution_role = execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
-    let mut game = Game::new(
+    let mut game = crate::game::ServerGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
         None,
     )
     .unwrap();
@@ -57,7 +54,7 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
 }
 
 /// The world pack's table for armor stands: one stick.
-fn with_stick_table(game: &mut Game<'_>, name: &str) {
+fn with_stick_table(game: &mut crate::game::ServerGame<'_>, name: &str) {
     let dir =
         std::env::temp_dir().join(format!("sunrise-stand-loot-{}-{name}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -78,10 +75,10 @@ fn with_stick_table(game: &mut Game<'_>, name: &str) {
         r#"{"enabled":["file/stand"],"disabled":[]}"#,
     )
     .unwrap();
-    game.server.world_root = dir;
+    game.side.world_root = dir;
     let root = game.options.resources.clone();
     let stack = crate::game::functions::pack_stack(
-        &game.server.world_root,
+        &game.side.world_root,
         &root,
         &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
         &Default::default(),
@@ -89,7 +86,7 @@ fn with_stick_table(game: &mut Game<'_>, name: &str) {
         &[],
         &[],
     );
-    game.world_tables.0 = game
+    game.side.world_tables.0 = game
         .stage_world_tables(&stack, false, &root)
         .unwrap()
         .tables;
@@ -108,7 +105,7 @@ fn with_stick_table(game: &mut Game<'_>, name: &str) {
     assert!(game.run_command("kill @e[type=item]"));
 }
 
-fn burn(game: &mut Game<'_>, small: bool) {
+fn burn(game: &mut crate::game::ServerGame<'_>, small: bool) {
     let small = if small { ",Small:1b" } else { "" };
     assert!(game.run_command(&format!(
         "summon armor_stand 2.5 100 8.5 {{NoGravity:1b,Fire:200s,Health:0.6f,UUID:[I;23326,0,0,1]{small},\
@@ -157,10 +154,10 @@ fn a_small_burnt_out_stand_drops_no_loot() {
 // Controls added after the baseline: the roll is gated by mob_drops, and one
 // break rolls the table once.
 
-fn sticks(game: &mut Game<'_>) -> String {
-    game.server.chat_capture = Some(Vec::new());
+fn sticks(game: &mut crate::game::ServerGame<'_>) -> String {
+    game.side.chat_capture = Some(Vec::new());
     game.run_command(STICK);
-    let said = game.server.chat_capture.take().unwrap_or_default();
+    let said = game.side.chat_capture.take().unwrap_or_default();
     said.iter().map(sunrise_client::text::Text::plain).collect()
 }
 

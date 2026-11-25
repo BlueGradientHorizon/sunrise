@@ -500,7 +500,7 @@ pub(in crate::game) mod system_helpers;
 pub(in crate::game) mod world_helpers;
 
 #[cfg(test)]
-pub(in crate::game) fn seed_native_menu(game: &mut Game<'_>, window: i32, name: &str) -> u64 {
+pub(in crate::game) fn seed_native_menu(game: &mut crate::game::ClientGame<'_>, window: i32, name: &str) -> u64 {
     if game.remote.is_none() {
         let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(pipe, "Native screen fixture").unwrap();
@@ -1951,7 +1951,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     #[cfg(test)]
     pub(in crate::game) fn test_observed_title(&self) -> Option<std::sync::Arc<mod_api::Text>> {
-        self.observe_view(self.screen_change_view(self.client.screen))
+        self.observe_view(self.screen_change_view(self.side.screen))
             .title
     }
     /// The hooks of the title appearing (`to` is its screen) or going

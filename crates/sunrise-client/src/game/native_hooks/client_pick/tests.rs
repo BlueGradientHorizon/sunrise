@@ -36,7 +36,7 @@ impl Hooks for Last {
 }
 
 pub(in crate::game) fn finish_login(
-    game: &mut crate::game::Game<'_>,
+    game: &mut crate::game::ClientGame<'_>,
     server: &mut sunrise_protocol::connection::Connection,
 ) {
     use sunrise_protocol::packets::{Empty, configuration as cfg, login};
@@ -108,7 +108,7 @@ pub(in crate::game) fn ranged_stack() -> sunrise_client::items::ItemStack {
 }
 
 pub(in crate::game) fn sent_actions(
-    game: &Game<'_>,
+    game: &crate::game::ClientGame<'_>,
     server: &mut sunrise_protocol::connection::Connection,
 ) -> Vec<(&'static str, i32)> {
     let mut actions = sent_packets(game, server);
@@ -117,7 +117,7 @@ pub(in crate::game) fn sent_actions(
 }
 
 pub(in crate::game) fn sent_packets(
-    game: &Game<'_>,
+    game: &crate::game::ClientGame<'_>,
     server: &mut sunrise_protocol::connection::Connection,
 ) -> Vec<(&'static str, i32)> {
     use sunrise_protocol::packets::{configuration::Ping, play::Serverbound as S};
@@ -309,7 +309,7 @@ fn attack_range_pick_outside_interact_range_falls_through_to_item_use() {
 /// A cushion the stored pick selected, spawned where `with_pick_game` puts an
 /// entity and raised to the player's eye so the look ray crosses it.
 pub(in crate::game) fn with_picked_cushion(
-    run: impl FnOnce(&mut Game<'_>, &mut sunrise_protocol::connection::Connection, CrosshairTarget),
+    run: impl FnOnce(&mut crate::game::ClientGame<'_>, &mut sunrise_protocol::connection::Connection, CrosshairTarget),
 ) {
     let selected = Arc::new(Mutex::new(None));
     let mods = vec![mod_api::ModEntry::new(

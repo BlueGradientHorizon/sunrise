@@ -150,21 +150,21 @@ fn startup_rollback_waits_for_world_resources() {
         game.selection_reload_failed("device refused the clouds pipeline");
         assert!(game.settings.resource_packs.is_empty());
         assert!(
-            game.client
+            game.side
                 .toast_manager
                 .system_mut(crate::game::toast_manager::SystemToastId::PackLoadFailure)
                 .is_some()
         );
-        assert!(game.client.pending_pack_reload);
-        assert!(game.pack_reload.0.is_none());
+        assert!(game.side.pending_pack_reload);
+        assert!(game.side.pack_reload.0.is_none());
         game.resume_world_entry().unwrap();
-        assert!(game.pack_reload.0.is_none());
+        assert!(game.side.pack_reload.0.is_none());
         release.send(()).unwrap();
         game.rest_loader.take().unwrap().finish().unwrap();
         game.resume_world_entry().unwrap();
-        assert!(!game.client.pending_pack_reload);
-        assert!(game.pack_reload.0.is_some());
-        while game.pack_reload.0.is_some() {
+        assert!(!game.side.pending_pack_reload);
+        assert!(game.side.pack_reload.0.is_some());
+        while game.side.pack_reload.0.is_some() {
             game.drive_pack_reload();
             std::thread::yield_now();
         }
@@ -195,7 +195,7 @@ fn a_reload_fails_and_drops_the_selection(refused: &str) {
         );
         assert_eq!(game.pack.clouds, vanilla_clouds);
         assert!(
-            game.client
+            game.side
                 .toast_manager
                 .system_mut(crate::game::toast_manager::SystemToastId::PackLoadFailure)
                 .is_some(),

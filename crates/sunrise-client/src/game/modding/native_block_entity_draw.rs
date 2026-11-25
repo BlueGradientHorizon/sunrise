@@ -2205,7 +2205,7 @@ mod tests {
                 .render_assets()
                 .model(&Identifier::parse("minecraft:block/grass_block").unwrap())
                 .unwrap();
-            let prepared = game.client.standalone_geometry.slots[model.fields().slot as usize]
+            let prepared = game.side.standalone_geometry.slots[model.fields().slot as usize]
                 .as_ref()
                 .unwrap();
             let face_index = prepared
@@ -2313,7 +2313,7 @@ mod tests {
             (0, 2.0, 0, 0),
         ];
         super::super::native_entity_refs::tests::with_client_game(|game| {
-            game.client.standalone_geometry.slots = vec![Some(vec![face])];
+            game.side.standalone_geometry.slots = vec![Some(vec![face])];
             let play = |cap, steps: &[_]| {
                 cap_prepared_instance_slots(cap);
                 let mut draw = draw();
@@ -2327,7 +2327,7 @@ mod tests {
                         assert!(draw.defer_model(0, 1, *tint));
                     }
                 }
-                game.client.prepared_model_draws.borrow_mut().clear();
+                game.side.prepared_model_draws.borrow_mut().clear();
                 game.finish_prepared_draw(&mut draw, DVec3::ZERO, DVec3::ZERO);
                 assert!(draw.records.is_empty());
                 draw
@@ -2342,8 +2342,8 @@ mod tests {
             let paint = |d: &BlockEntityDraw, i: usize, color: u32, light: u32| {
                 assert_eq!((d.vertices[i].color, d.vertices[i].light), (color, light));
             };
-            let cuts = |game: &Game| {
-                game.client
+            let cuts = |game: &crate::game::ClientGame<'_>| {
+                game.side
                     .prepared_model_draws
                     .borrow()
                     .iter()
@@ -2351,14 +2351,14 @@ mod tests {
                     .collect::<Vec<_>>()
             };
             let same = |got: Vec<f32>, want: &[f32]| assert_eq!(got.as_slice(), want);
-            let staged = |game: &Game, want: &[u32]| assert_eq!(cuts(game).as_slice(), want);
+            let staged = |game: &crate::game::ClientGame<'_>, want: &[u32]| assert_eq!(cuts(game).as_slice(), want);
             let draw = play(1, &scene);
             same(xs(&draw), &[1.0, 20.0, 2.0, 30.0, 3.0]);
             paint(&draw, 4, 0xFF06_0504, 0x2220);
             paint(&draw, 12, 0xFF09_0807, 0x3330);
             staged(game, &[4]);
             assert_eq!(
-                game.client.prepared_model_draws.borrow()[0]
+                game.side.prepared_model_draws.borrow()[0]
                     .instance
                     .matrix()
                     .w_axis
@@ -2410,10 +2410,10 @@ mod tests {
                 .unwrap();
             let instance = super::prepared_instance(local, origin, camera, 0xFF80_C040, 0xF030);
             assert_eq!(instance.matrix(), pose);
-            let (vertices, ranges) = game.client.standalone_geometry.prepared_upload();
+            let (vertices, ranges) = game.side.standalone_geometry.prepared_upload();
             let atlas = &game.gui.atlas;
             let mut pixels = atlas.pixels().to_vec();
-            let face_index = game.client.standalone_geometry.slots[slot as usize]
+            let face_index = game.side.standalone_geometry.slots[slot as usize]
                 .as_ref()
                 .unwrap()
                 .iter()
@@ -2457,7 +2457,7 @@ mod tests {
                 true,
             )
             .expect("software Vulkan entity pixels");
-            let uploaded = game.client.standalone_geometry.generation();
+            let uploaded = game.side.standalone_geometry.generation();
             let instance_pixels = |ranges, requested| {
                 sunrise_client::gfx::entity_pixel_test::render_instance(
                     sunrise_client::gfx::entity_pixel_test::PreparedInstanceDraw {
@@ -2492,7 +2492,7 @@ mod tests {
             fail_next_prepared_upload();
             assert!(
                 instance_pixels(
-                    game.client.standalone_geometry.prepared_upload().1,
+                    game.side.standalone_geometry.prepared_upload().1,
                     uploaded
                 )
                 .is_err(),
@@ -2500,7 +2500,7 @@ mod tests {
             );
             assert!(
                 instance_pixels(
-                    game.client.standalone_geometry.prepared_upload().1,
+                    game.side.standalone_geometry.prepared_upload().1,
                     uploaded.wrapping_add(1),
                 )
                 .is_err(),
@@ -2762,7 +2762,7 @@ mod tests {
                 assert_eq!(spun.color, kept.color, "spin and keep tint alpha differ");
             }
             let slot = mod_api::__private::game::Fields::fields(&model).slot;
-            let faces = game.client.standalone_geometry.faces(slot).unwrap();
+            let faces = game.side.standalone_geometry.faces(slot).unwrap();
             let (quads, _) = kept.vertices.as_chunks::<4>();
             assert!(
                 quads
@@ -2793,10 +2793,10 @@ mod tests {
                 };
                 ctx.model(model, tint).unwrap();
             }
-            game.client.prepared_model_draws.borrow_mut().clear();
+            game.side.prepared_model_draws.borrow_mut().clear();
             game.finish_prepared_draw(&mut deferred, origin, camera);
-            let deferred_instance = game.client.prepared_model_draws.borrow()[0].instance;
-            game.client.prepared_model_draws.borrow_mut().clear();
+            let deferred_instance = game.side.prepared_model_draws.borrow()[0].instance;
+            game.side.prepared_model_draws.borrow_mut().clear();
             let mut batch = crate::world_geometry::WorldGeometry::default();
             batch.reset(camera.to_array(), Mat4::IDENTITY, [0.0, 0.0]);
             let copy = ModelInstance::new(
@@ -2815,14 +2815,14 @@ mod tests {
             }
             let mut entities = Vec::new();
             game.commit_model_instances(&mut batch, camera, &mut entities);
-            let batch_instance = game.client.prepared_model_draws.borrow()[0].instance;
+            let batch_instance = game.side.prepared_model_draws.borrow()[0].instance;
             let alpha = 0x40 as f32 / 255.0;
             assert!((deferred_instance.tint[3] - alpha).abs() < 1e-6);
             assert!((batch_instance.tint[3] - alpha).abs() < 1e-6);
             let atlas = &game.gui.atlas;
             let pixels = atlas.pixels();
-            let uploaded = game.client.standalone_geometry.generation();
-            let (vertices, ranges) = game.client.standalone_geometry.prepared_upload();
+            let uploaded = game.side.standalone_geometry.generation();
+            let (vertices, ranges) = game.side.standalone_geometry.prepared_upload();
             let view = Mat4::from_scale_rotation_translation(
                 Vec3::new(1.4, 1.4, 0.2),
                 Quat::IDENTITY,
@@ -2889,8 +2889,8 @@ mod tests {
             let tint = 0xFF80_C040;
             let light = LightCoords::new(3, 15).unwrap();
             let take_spans =
-                |game: &Game<'_>| std::mem::take(&mut *game.client.entity_spans.borrow_mut());
-            let batch = |game: &mut Game<'_>| {
+                |game: &crate::game::ClientGame<'_>| std::mem::take(&mut *game.side.entity_spans.borrow_mut());
+            let batch = |game: &mut crate::game::ClientGame<'_>| {
                 let mut draw = crate::world_geometry::WorldGeometry::default();
                 draw.reset(camera.to_array(), Mat4::IDENTITY, [0.0, 0.0]);
                 let copy =
@@ -2912,7 +2912,7 @@ mod tests {
                 "no pack, no run"
             );
 
-            game.client.pack_ids = Some(Default::default());
+            game.side.pack_ids = Some(Default::default());
             // What `mod_block_entity_geometry` does around a mod's `model()` call.
             let mut per_copy = draw();
             per_copy.pose = local;
@@ -2968,7 +2968,7 @@ mod tests {
                     |s| s.id == 0 && s.stage == sunrise_shaders::render_stage("BLOCK_ENTITIES")
                 ));
             }
-            game.client.pack_ids = None;
+            game.side.pack_ids = None;
             let bytes = |v: &[Vertex]| bytemuck::cast_slice::<Vertex, u8>(v).to_vec();
             assert_eq!(bytes(&copies), bytes(&per_copy.vertices), "route vertices");
             assert_eq!(bytes(&copies), bytes(&plain), "the pack changed the bake");
@@ -3162,9 +3162,9 @@ mod tests {
         use sunrise_protocol::packets::play;
         super::super::native_entity_refs::tests::with_client_game(|game| {
             game.clock = sunrise_client::clock::FixedStep::client();
-            game.client.texture_ticks = 0;
+            game.side.texture_ticks = 0;
             // Run just the fixture's visual work, then the real frame's phase sampling.
-            let frame = |game: &mut Game<'_>, ms, target, pause| {
+            let frame = |game: &mut crate::game::ClientGame<'_>, ms, target, pause| {
                 let steps = game.clock.advance(Duration::from_millis(ms), target);
                 if !game.clock.paused() {
                     for _ in 0..steps {
@@ -3197,7 +3197,7 @@ mod tests {
 
             game.clock.set_frozen(false);
             frame(game, 50, 50.0, false);
-            assert_eq!(game.client.texture_ticks, 3);
+            assert_eq!(game.side.texture_ticks, 3);
             assert_eq!(game.animation_time(), 2.5);
             frame(game, 25, 100.0, false);
             assert_eq!(game.animation_time(), 2.75);
@@ -3209,8 +3209,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn atlas_reset_discards_queued_text_uploads() {
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.client
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            game.side
                 .text_patches
                 .borrow_mut()
                 .push(sunrise_client::font::Patch {
@@ -3221,7 +3221,7 @@ mod tests {
                     rgba: vec![255; 4],
                 });
             game.forget_atlas_slots();
-            assert!(game.client.text_patches.borrow().is_empty());
+            assert!(game.side.text_patches.borrow().is_empty());
         });
     }
 
@@ -3388,7 +3388,7 @@ mod tests {
                 });
             }
         }
-        let drawn = |game: &Game<'_>| {
+        let drawn = |game: &crate::game::ClientGame<'_>| {
             let part = game
                 .bake_layer("golem_mod:golem#main")
                 .expect("the mod's layer bakes");
@@ -3416,7 +3416,7 @@ mod tests {
                 game.spawn_pack_reload(crate::game::packs::ReloadKind::Selection)
                     .unwrap();
                 let started = std::time::Instant::now();
-                while game.pack_reload.0.is_some() {
+                while game.side.pack_reload.0.is_some() {
                     assert!(
                         started.elapsed().as_secs() < 300,
                         "the reload never finished"
@@ -3574,13 +3574,13 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn an_unlit_item_draws_the_same_in_the_dark_as_at_full_light() {
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_client_game(|game| {
             game.gui
                 .atlas
                 .sprites
                 .insert("misc/missingno".into(), sprite());
             let stack = ItemStack::new("minecraft:stick", 1);
-            let item = |game: &Game<'_>, light: u32, unlit: bool| {
+            let item = |game: &crate::game::ClientGame<'_>, light: u32, unlit: bool| {
                 let mut d = draw();
                 d.set_light(light);
                 d.unlit(unlit);

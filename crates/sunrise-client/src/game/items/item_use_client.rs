@@ -137,7 +137,7 @@ pub(in crate::game) mod tests {
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use sunrise_core::use_animation::UseAnimation;
 
-    pub(in crate::game) fn stand_in_first_person(game: &mut crate::game::Game<'_>) {
+    pub(in crate::game) fn stand_in_first_person(game: &mut crate::game::ClientGame<'_>) {
         game.player = Some(
             sunrise_client::motion::PlayerMotion::new(
                 game.motion,
@@ -240,7 +240,7 @@ pub(in crate::game) mod tests {
                 }
             }
         }
-        fn hold_a_sword(game: &mut crate::game::Game<'_>) {
+        fn hold_a_sword(game: &mut crate::game::ClientGame<'_>) {
             game.player = Some(
                 sunrise_client::motion::PlayerMotion::new(
                     game.motion,
@@ -253,7 +253,7 @@ pub(in crate::game) mod tests {
                 1,
             ));
             game.tick_player_model();
-            game.client.visible_hands[0].1 = game.inventory[game.selected].clone();
+            game.side.visible_hands[0].1 = game.inventory[game.selected].clone();
         }
 
         let cancel = Arc::new(AtomicBool::new(false));
@@ -450,7 +450,7 @@ pub(in crate::game) mod tests {
                 game.using = Some((game.selected, 0));
                 game.tick_player_model();
                 assert_eq!(
-                    game.client
+                    game.side
                         .player_model
                         .as_ref()
                         .unwrap()
@@ -459,14 +459,14 @@ pub(in crate::game) mod tests {
                     UseAnimation::Drink
                 );
                 assert_eq!(calls.load(Ordering::Relaxed), 10);
-                game.client.visible_hands[0].1 = game.inventory[game.selected].clone();
+                game.side.visible_hands[0].1 = game.inventory[game.selected].clone();
                 game.use_duration = 72_000;
                 let (overridden, _) = game.hand_geometry(0.0);
                 assert_eq!(calls.load(Ordering::Relaxed), 11);
                 // A scoped spear override on a component-patched ordinary item
                 // must reach hand geometry without the old whitelist panic.
                 game.inventory[game.selected] = Some(kinetic_stick);
-                game.client.visible_hands[0].1 = game.inventory[game.selected].clone();
+                game.side.visible_hands[0].1 = game.inventory[game.selected].clone();
                 let (kinetic_geometry, _) = game.hand_geometry(0.0);
                 assert!(!kinetic_geometry.is_empty());
                 overridden_geometry = Some(overridden);
@@ -486,7 +486,7 @@ pub(in crate::game) mod tests {
                 Some(sunrise_client::items::ItemStack::new("minecraft:bow", 1));
             game.using = Some((game.selected, 0));
             game.tick_player_model();
-            game.client.visible_hands[0].1 = game.inventory[game.selected].clone();
+            game.side.visible_hands[0].1 = game.inventory[game.selected].clone();
             game.use_duration = 72_000;
             let (vanilla, _) = game.hand_geometry(0.0);
             let overridden = overridden_geometry.unwrap();
@@ -573,7 +573,7 @@ pub(in crate::game) mod tests {
                     {
                         let stack = ItemStack::new(item, 1);
                         *game.stack_in_mut(slot) = Some(stack.clone());
-                        game.client.visible_hands[i] = (slot, Some(stack));
+                        game.side.visible_hands[i] = (slot, Some(stack));
                     }
                     let atlas = Rect {
                         u0: 0.25,
@@ -587,7 +587,7 @@ pub(in crate::game) mod tests {
                         .atlas
                         .sprites
                         .insert("arms:fixture_skin".into(), atlas);
-                    let avatar = game.client.player_model.as_mut().unwrap();
+                    let avatar = game.side.player_model.as_mut().unwrap();
                     avatar.skin = Some("arms:fixture_skin".into());
                     avatar.slim = slim;
                     let (vanilla, runs) = game.hand_geometry(0.0);
@@ -607,7 +607,7 @@ pub(in crate::game) mod tests {
                     let quads = 6 * 4;
                     let arm_vertices = quads * 2;
                     let submitted = arm_vertices * 2;
-                    let view = game.client.sway.to_world(0.0, &game.client.view);
+                    let view = game.side.sway.to_world(0.0, &game.side.view);
                     for (i, (shoulder, roll, x, base_u, sleeve_u, v)) in [
                         (
                             5.0,
@@ -698,7 +698,7 @@ pub(in crate::game) mod tests {
                     game.gui.atlas.sprites.remove("arms:fixture_skin");
                     for missing_avatar in [false, true] {
                         if missing_avatar {
-                            game.client.player_model = None;
+                            game.side.player_model = None;
                         }
                         state.mode.store(0, Relaxed);
                         let (items, item_runs) = game.hand_geometry(0.0);

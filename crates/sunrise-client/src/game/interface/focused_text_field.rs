@@ -216,39 +216,39 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             with_client_game(|game| {
                 let _event_loop = frame_scene(game);
-                let social = |game: &Game<'_>| {
-                    let search = &game.client.social.search;
+                let social = |game: &crate::game::ClientGame<'_>| {
+                    let search = &game.side.social.search;
                     (search.value.clone(), search.cursor, search.highlight)
                 };
 
                 // An input method's commit, over a selected emoji.
-                game.client.screen = Screen::Social;
-                game.client.social.search.set_value("a\u{1f600}b");
-                game.client.social.search.set_cursor(2, false);
-                game.client.social.search.set_cursor(1, true);
+                game.side.screen = Screen::Social;
+                game.side.social.search.set_value("a\u{1f600}b");
+                game.side.social.search.set_cursor(2, false);
+                game.side.social.search.set_cursor(1, true);
                 game.ime_commit("x?!");
                 assert_eq!(taken(), ["x:a\u{1f600}b:1:2", "?:axb:2:2", "!:axb:2:2",]);
                 assert_eq!(social(game), ("a\u{1f600}b".to_owned(), 2, 2));
-                assert_eq!(game.client.social.search.max_length, 16);
+                assert_eq!(game.side.social.search.max_length, 16);
 
                 // A key's characters: the box's own filter and limit cut a replacement.
                 game.screen_chars_typed(Some("#"));
-                assert_eq!(game.client.social.search.value, "abcdefghijklmnop");
+                assert_eq!(game.side.social.search.value, "abcdefghijklmnop");
                 taken();
 
                 // An edit that lets the character through: it lands at the edited caret.
-                game.client.social.search.set_value("");
+                game.side.social.search.set_value("");
                 game.screen_chars_typed(Some("^"));
                 assert_eq!(taken(), ["^::0:0"]);
-                assert_eq!(game.client.social.search.value, "^z");
+                assert_eq!(game.side.social.search.value, "^z");
 
                 // Clearing `field` is no edit of the box.
                 game.screen_chars_typed(Some("~"));
-                assert_eq!(game.client.social.search.value, "^z");
+                assert_eq!(game.side.social.search.value, "^z");
                 taken();
 
                 // The chat box: its completions follow the replaced text.
-                game.client.screen = Screen::Chat;
+                game.side.screen = Screen::Chat;
                 game.ui.registries.players = vec!["Steve".into(), "Steven".into()];
                 game.ui.chat_screen = Some(ChatScreen::new(
                     &Measure(&game.gui.atlas.font),
@@ -273,21 +273,21 @@ mod tests {
                 );
 
                 // No box to offer: the mod's `Some` goes nowhere.
-                game.client.screen = Screen::Inventory;
+                game.side.screen = Screen::Inventory;
                 game.ui.chat_screen = None;
                 game.screen_chars_typed(Some("q"));
                 assert_eq!(taken(), ["q"]);
 
                 // A prompt over the screen keeps the underlying screen's box away.
-                game.client.screen = Screen::Social;
-                game.client.link_prompt = Some("https://example.com".into());
+                game.side.screen = Screen::Social;
+                game.side.link_prompt = Some("https://example.com".into());
                 game.ime_commit("w");
                 assert_eq!(taken(), ["w"]);
                 assert_eq!(social(game), ("^z".to_owned(), 1, 1));
-                game.client.link_prompt = None;
+                game.side.link_prompt = None;
 
                 // The title's own field.
-                game.client.screen = Screen::Playing;
+                game.side.screen = Screen::Playing;
                 let mut menu = title::Title::new(
                     std::path::PathBuf::from("/nonexistent-field-fixture/saves"),
                     std::path::Path::new("/nonexistent-field-fixture"),
@@ -296,10 +296,10 @@ mod tests {
                 menu.mode = title::Mode::Multiplayer(multiplayer::Screen::Direct {
                     address: "\u{1f600}".into(),
                 });
-                game.title.0 = Some(menu);
+                game.side.title.0 = Some(menu);
                 game.screen_chars_typed(Some("y?"));
                 assert_eq!(taken(), ["y:\u{1f600}:1:1", "?:\u{1f600}y:2:2"]);
-                let (_, value, _) = game.title.0.as_mut().unwrap().focused_field().unwrap();
+                let (_, value, _) = game.side.title.0.as_mut().unwrap().focused_field().unwrap();
                 assert_eq!(value, "\u{1f600}y");
             });
         });

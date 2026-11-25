@@ -3,7 +3,7 @@
 use super::super::native_entity_refs::tests::with_game;
 use sunrise_core::geometry::Vec3;
 
-fn reported_sitting(game: &super::Game<'_>) -> serde_json::Value {
+fn reported_sitting(game: &crate::game::ServerGame<'_>) -> serde_json::Value {
     game.control_mobs_at(4.0, Vec3::new(8.0, 65.0, 8.0))["near"][0]["sitting"].clone()
 }
 

@@ -3,7 +3,7 @@ use super::native_entity_refs::tests::with_game;
 use std::sync::Arc;
 use sunrise_world::worldgen::generator::{GeneratorData, OverworldGenerator};
 
-fn assert_preset_unavailable(game: &super::Game<'_>, data: &GeneratorData) {
+fn assert_preset_unavailable(game: &crate::game::ServerGame<'_>, data: &GeneratorData) {
     let host: &dyn mod_api::Host = game;
     assert_eq!(
         host.registry_entries("minecraft:worldgen/world_preset"),

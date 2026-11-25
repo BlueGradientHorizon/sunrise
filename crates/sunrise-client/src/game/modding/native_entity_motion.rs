@@ -914,7 +914,7 @@ pub(in crate::game) mod tests {
     fn reset_fall_distance_forgets_a_fall_for_mobs_carts_and_players() {
         use super::super::minecarts::{CartKind, Minecart};
         use sunrise_client::mobs::Mob;
-        fn fake_fall<'a>(game: &'a mut super::super::Game<'_>) -> &'a mut f64 {
+        fn fake_fall<'a>(game: &'a mut crate::game::ServerGame<'_>) -> &'a mut f64 {
             let host = game.lan.as_mut().unwrap();
             let conn = host.hub.guests.iter().find(|g| g.uuid == 2).unwrap().conn;
             &mut host

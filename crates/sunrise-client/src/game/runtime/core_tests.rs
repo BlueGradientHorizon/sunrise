@@ -312,15 +312,15 @@ fn the_block_outline_stays_off_the_panorama() {
 #[test]
 fn a_snuffed_candle_and_candle_cake_smoke_at_vanillas_offsets() {
     assert_eq!(
-        Game::candle_offsets("minecraft:candle", Some(1)),
+        crate::game::ServerGame::candle_offsets("minecraft:candle", Some(1)),
         [[8u8, 8, 8]].as_slice()
     );
     assert_eq!(
-        Game::candle_offsets("minecraft:red_candle", Some(3)),
+        crate::game::ServerGame::candle_offsets("minecraft:red_candle", Some(3)),
         [[8u8, 5, 10], [6, 7, 8], [9, 8, 7]].as_slice()
     );
     assert_eq!(
-        Game::candle_offsets("minecraft:candle_cake", None),
+        crate::game::ServerGame::candle_offsets("minecraft:candle_cake", None),
         [[8u8, 16, 8]].as_slice()
     );
 }
@@ -337,11 +337,11 @@ use sunrise_client::keymapping::{KeyAction, SNEAK, SPRINT, ToggleKeys};
 fn an_interact_packet_clicks_the_entity_it_names_not_the_nearest() {
     // (server id, distance from the guest) in the level's own order.
     let cows = [(17u32, 1.5f64), (23, 2.5)];
-    assert_eq!(Game::named_entity(&cows, 23, |c| c.0), Some(1));
+    assert_eq!(crate::game::ServerGame::named_entity(&cows, 23, |c| c.0), Some(1));
     // The near cow is reachable too, when that is the one named.
-    assert_eq!(Game::named_entity(&cows, 17, |c| c.0), Some(0));
+    assert_eq!(crate::game::ServerGame::named_entity(&cows, 17, |c| c.0), Some(0));
     // An id the level does not hold clicks nothing (Level.getEntity).
-    assert_eq!(Game::named_entity(&cows, 31, |c| c.0), None);
+    assert_eq!(crate::game::ServerGame::named_entity(&cows, 31, |c| c.0), None);
 }
 
 /// The id path keeps the crosshair pick's filters, so a packet cannot name
@@ -394,12 +394,12 @@ fn an_interact_packet_carries_the_point_the_ray_hit() {
 fn a_mod_screen_on_a_machine_menu_takes_the_stock_layout_out() {
     let stock = Some((8.0, 109.0));
     // A mod screen is open: the stock grid does not answer.
-    assert_eq!(Game::stock_machine_slot(stock, true), None);
+    assert_eq!(crate::game::ServerGame::stock_machine_slot(stock, true), None);
     // No mod screen: the hopper and dispenser layouts are untouched.
-    assert_eq!(Game::stock_machine_slot(stock, false), stock);
+    assert_eq!(crate::game::ServerGame::stock_machine_slot(stock, false), stock);
     // Other menus have no stock layout to stand back from.
-    assert_eq!(Game::stock_machine_slot(None, true), None);
-    assert_eq!(Game::stock_machine_slot(None, false), None);
+    assert_eq!(crate::game::ServerGame::stock_machine_slot(None, true), None);
+    assert_eq!(crate::game::ServerGame::stock_machine_slot(None, false), None);
 }
 
 /// A falling block is drawn moved by its column's model offset, as
@@ -957,7 +957,7 @@ pub(in crate::game) mod wind_charge_burst_tests {
     };
     use sunrise_core::position::ChunkPos;
 
-    fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+    fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -978,15 +978,12 @@ pub(in crate::game) mod wind_charge_burst_tests {
         options.game_dir =
             Some(std::env::temp_dir().join(format!("sunrise-wind-charge-{}", std::process::id())));
         options.execution_role = execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
+        let mut game = crate::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
             None,
         )
         .unwrap();
@@ -1036,7 +1033,7 @@ pub(in crate::game) mod wind_charge_burst_tests {
                 at,
                 Some(Who::Player),
             ));
-            game.server.ticked_entities_through = game.server.next_entity;
+            game.side.ticked_entities_through = game.side.next_entity;
             let id = game.creatures.projectiles.last().unwrap().id;
             game.tick_projectiles().unwrap();
             let bursts: Vec<_> = game

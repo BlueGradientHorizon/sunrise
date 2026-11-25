@@ -8,7 +8,7 @@ use sunrise_client::chunk::Chunk;
 
 /// The 3x3 chunks around (100, 100): a dirt floor at y 63 under open air, or, with `buried`,
 /// stone from y 63 up to y 90.
-fn ground(game: &mut super::Game<'_>, buried: bool) {
+fn ground(game: &mut crate::game::ServerGame<'_>, buried: bool) {
     // As a world opens, its live features are installed (`prepare_world`).
     game.install_live_features();
     let registry = &game.pack.assets.registry;

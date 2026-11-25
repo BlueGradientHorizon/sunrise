@@ -159,9 +159,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         mod_platform::testing::with_mods(Vec::new().into(), || {
             with_game(|game| {
-                game.server.world_root = dir.path().to_path_buf();
-                game.save.0 = Arc::new(SaveDir::new(
-                    game.server.world_root.clone(),
+                game.side.world_root = dir.path().to_path_buf();
+                game.side.save.0 = Arc::new(SaveDir::new(
+                    game.side.world_root.clone(),
                     LevelShape::OVERWORLD,
                     Some(Default::default()),
                 ));
@@ -172,7 +172,7 @@ mod tests {
                 let stone = registry.default_state("minecraft:stone").unwrap();
                 let gold = registry.default_state("minecraft:gold_block").unwrap();
                 chunk.set(1, 64, 1, stone.0);
-                game.save
+                game.side.save
                     .0
                     .save(&[Arc::new(chunk.clone())], registry, world_biomes!(game))
                     .unwrap();
@@ -187,16 +187,16 @@ mod tests {
 
                 let now = Instant::now();
                 game.save_chunks_eagerly_at(now);
-                game.save.0.flush().unwrap();
-                assert_eq!(game.save.0.record_save_failures(), 1);
+                game.side.save.0.flush().unwrap();
+                assert_eq!(game.side.save.0.record_save_failures(), 1);
 
                 // Advance beyond the ordinary cooldown and exercise all later save paths.
                 game.save_chunks_eagerly_at(now + Duration::from_secs(11));
                 game.save_game_with(false).unwrap();
                 game.save_game().unwrap();
-                assert_eq!(game.save.0.record_save_failures(), 1);
+                assert_eq!(game.side.save.0.record_save_failures(), 1);
                 assert_eq!(
-                    game.save
+                    game.side.save
                         .0
                         .load(key.0, key.1, registry, world_biomes!(game))
                         .unwrap()
@@ -210,9 +210,9 @@ mod tests {
                     .remove(&"test:invalid".into());
                 game.world.modified.insert(key);
                 game.save_chunks_eagerly_at(now + Duration::from_secs(22));
-                game.save.0.flush().unwrap();
+                game.side.save.0.flush().unwrap();
                 assert_eq!(
-                    game.save
+                    game.side.save
                         .0
                         .load(key.0, key.1, registry, world_biomes!(game))
                         .unwrap()

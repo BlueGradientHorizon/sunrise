@@ -58,7 +58,7 @@ mod tests {
     use sunrise_client_core::who::EventSource;
 
     fn sensor<'a>(
-        game: &'a mut crate::game::Game<'_>,
+        game: &'a mut crate::game::ServerGame<'_>,
     ) -> Option<&'a mut sunrise_client::sculk::SculkEntity> {
         match game.world.block_entities.get_mut(&(1, 64, 1)) {
             Some(sunrise_client::containers::BlockEntity::Sculk(entity)) => Some(entity),
@@ -100,7 +100,7 @@ mod tests {
                     let source = game.entity(id).unwrap();
                     let level = game.level(game.dim.id()).unwrap();
                     heard.lock().unwrap().clear();
-                    assert!(game.server.lan_acting_entity.is_none());
+                    assert!(game.side.lan_acting_entity.is_none());
                     assert!(game.level_game_event(
                         level,
                         "minecraft:step",
@@ -111,7 +111,7 @@ mod tests {
                         }
                     ));
                     assert!(
-                        game.server.lan_acting_entity.is_none(),
+                        game.side.lan_acting_entity.is_none(),
                         "guest scope must be restored"
                     );
                     assert_eq!(*heard.lock().unwrap(), [Some(id)]);

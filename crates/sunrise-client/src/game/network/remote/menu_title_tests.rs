@@ -28,7 +28,7 @@ fn menu_title_snapshot_follows_packet_and_close_paths() {
     with_client_game(|game| {
         let (client, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(client, "menu-title-paths").unwrap();
-        let menu_id = |game: &crate::game::Game<'_>, name: &str| {
+        let menu_id = |game: &crate::game::ClientGame<'_>, name: &str| {
             game.remote
                 .as_ref()
                 .unwrap()
@@ -40,7 +40,7 @@ fn menu_title_snapshot_follows_packet_and_close_paths() {
         };
         let chest = menu_id(game, "minecraft:generic_9x3");
         let lectern = menu_id(game, "minecraft:lectern");
-        let open = |game: &mut crate::game::Game<'_>, menu, title: &str| {
+        let open = |game: &mut crate::game::ClientGame<'_>, menu, title: &str| {
             game.handle_packet(C::OpenScreen(play::OpenScreen {
                 container: 7,
                 menu,
@@ -48,7 +48,7 @@ fn menu_title_snapshot_follows_packet_and_close_paths() {
             }))
             .unwrap();
         };
-        let snapshot = |game: &crate::game::Game<'_>| {
+        let snapshot = |game: &crate::game::ClientGame<'_>| {
             let shared = game
                 .remote
                 .as_ref()

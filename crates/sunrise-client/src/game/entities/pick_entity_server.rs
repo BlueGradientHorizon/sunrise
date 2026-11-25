@@ -209,7 +209,7 @@ pub(in crate::game) mod tests {
                         "far knot outside reach+3 must fail server reach"
                     );
                     // Cross the signed i32 boundary so later dragon parts carry negative wire IDs.
-                    game.server.next_entity = (i32::MAX as u32) - 3;
+                    game.side.next_entity = (i32::MAX as u32) - 3;
                     let dragon = game
                         .spawn_dragon_facing([0.5, 65.0, 3.5], SpawnSite::Plain, Some(0.0))
                         .unwrap();

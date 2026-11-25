@@ -24,9 +24,9 @@ pub(in crate::game::server_side) use sunrise_protocol::{buf::Reader, connection:
 /// Transfer the client's real play packets to the integrated server's normal
 /// connection drain. The test drives ticks without scheduling two game loops.
 pub(in crate::game) fn client_tick_to_server(
-    client: &Game<'_>,
+    client: &crate::game::ClientGame<'_>,
     peer: &mut ConnReader,
-    server: &mut Game<'_>,
+    server: &mut crate::game::ServerGame<'_>,
 ) -> Vec<S> {
     client.send(S::ClientTickEnd(Empty));
     let mut packets = Vec::new();
@@ -45,7 +45,7 @@ pub(in crate::game) fn client_tick_to_server(
             .extend(packets.iter().cloned().map(|p| InboxItem::Packet(p, None)));
     })
     .unwrap();
-    server.server.level_pass = Default::default();
+    server.side.level_pass = Default::default();
     server.tick_lan_packets();
     let hub = &mut server.lan.as_mut().unwrap().hub;
     hub.end_tick();

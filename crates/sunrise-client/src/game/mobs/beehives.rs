@@ -531,7 +531,7 @@ pub(in crate::game) mod stay_tests {
             game.world
                 .block_entities
                 .insert(key, BlockEntity::Beehive(Box::new(hive)));
-            let inside = |game: &Game<'_>| match game.world.block_entities.get(&key) {
+            let inside = |game: &crate::game::ServerGame<'_>| match game.world.block_entities.get(&key) {
                 Some(BlockEntity::Beehive(h)) => h.bees.len(),
                 _ => panic!("the hive is gone"),
             };
@@ -556,7 +556,7 @@ pub(in crate::game) mod changed_tests {
     use sunrise_core::geometry::Vec3;
     use sunrise_core::nbt::Tag;
 
-    fn hive_at(game: &mut super::Game<'_>, key: (i32, i32, i32), hive: Beehive) {
+    fn hive_at(game: &mut crate::game::ServerGame<'_>, key: (i32, i32, i32), hive: Beehive) {
         let state = game
             .pack
             .assets

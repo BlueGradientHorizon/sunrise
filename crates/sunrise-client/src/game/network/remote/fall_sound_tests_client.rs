@@ -31,10 +31,10 @@ pub(in crate::game) fn heard_stone_fall(silent: bool) -> Vec<(f32, f32)> {
             player.fall_distance = 5.0;
             player.velocity = Vec3::new(0.0, -0.2, 0.0);
             game.player = Some(player);
-            game.audio.0.capture = Some(Vec::new());
+            game.side.audio.0.capture = Some(Vec::new());
             game.tick_remote().unwrap();
             out = game
-                .audio
+                .side.audio
                 .0
                 .capture
                 .as_ref()

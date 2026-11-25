@@ -69,7 +69,7 @@ impl mod_api::MenuPart for InventoryPart {
     }
 }
 
-fn click(game: &mut super::Game<'_>, window: i32) {
+fn click(game: &mut crate::game::ServerGame<'_>, window: i32) {
     use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
     game.lan_guest_packet(
         12,
@@ -133,7 +133,7 @@ fn exercise(reopen: bool) {
             let give = ItemPlace::MenuSlot { menu, slot: 10 };
             let partial = ItemPlace::MenuSlot { menu, slot: 11 };
             // The hook runs without a guest swapped in; use that same Host state.
-            assert!(game.server.lan_acting.is_none());
+            assert!(game.side.lan_acting.is_none());
             let hand = ItemPlace::PlayerHand {
                 player: 12,
                 hand: mod_api::Hand::Main,
@@ -389,7 +389,7 @@ mod owner {
             // A level is open while a player is in it.
             game.enter_level(super::super::Dim::Nether).unwrap();
             game.enter_level(super::super::Dim::Overworld).unwrap();
-            let stack = |game: &super::super::Game<'_>, snbt: &str| {
+            let stack = |game: &crate::game::ServerGame<'_>, snbt: &str| {
                 let host: &dyn mod_api::Host = game;
                 host.item_from_snbt(snbt).unwrap()
             };

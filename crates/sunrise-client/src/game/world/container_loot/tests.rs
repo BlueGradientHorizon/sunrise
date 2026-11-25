@@ -141,7 +141,7 @@ fn run_group(scenarios: &[(&str, fn())]) {
     }
 }
 
-fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     crate::game::native_guest_turn_tests::with_guests(|game| {
         game.build_registries();
         game.set_allow_commands(true);
@@ -166,22 +166,22 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
         )
         .unwrap();
         assert!(loot.has_table(TABLE));
-        game.server_loot.0.set(Some(Arc::new(loot)));
+        game.side.server_loot.0.set(Some(Arc::new(loot)));
         test(game);
     });
 }
 
-fn place(game: &mut Game<'_>, pos: (i32, i32, i32), table: &str, seed: i64) {
+fn place(game: &mut crate::game::ServerGame<'_>, pos: (i32, i32, i32), table: &str, seed: i64) {
     assert!(game.run_command(&format!(
         "setblock {} {} {} minecraft:chest{{LootTable:\"{table}\",LootTableSeed:{seed}L}}",
         pos.0, pos.1, pos.2
     )));
     pending_seed(game, pos, &[seed]);
 }
-fn pending(game: &Game<'_>, pos: (i32, i32, i32)) {
+fn pending(game: &crate::game::ServerGame<'_>, pos: (i32, i32, i32)) {
     pending_seed(game, pos, &[37, 91]);
 }
-fn pending_seed(game: &Game<'_>, pos: (i32, i32, i32), seeds: &[i64]) {
+fn pending_seed(game: &crate::game::ServerGame<'_>, pos: (i32, i32, i32), seeds: &[i64]) {
     let pending = game.world.chunks[&(pos.0 >> 4, pos.2 >> 4)]
         .saved
         .as_ref()
@@ -204,7 +204,7 @@ fn pending_seed(game: &Game<'_>, pos: (i32, i32, i32), seeds: &[i64]) {
             .all(Option::is_none)
     );
 }
-fn consumed(game: &Game<'_>, pos: (i32, i32, i32)) {
+fn consumed(game: &crate::game::ServerGame<'_>, pos: (i32, i32, i32)) {
     assert!(
         !game.world.chunks[&(pos.0 >> 4, pos.2 >> 4)]
             .saved
@@ -214,7 +214,7 @@ fn consumed(game: &Game<'_>, pos: (i32, i32, i32)) {
             .contains_key(&pos)
     );
 }
-fn count(game: &Game<'_>, pos: (i32, i32, i32), item: &str) -> u32 {
+fn count(game: &crate::game::ServerGame<'_>, pos: (i32, i32, i32), item: &str) -> u32 {
     game.world.block_entities.get(&pos).map_or(0, |e| {
         e.slots()
             .iter()
@@ -224,14 +224,14 @@ fn count(game: &Game<'_>, pos: (i32, i32, i32), item: &str) -> u32 {
             .sum()
     })
 }
-fn dropped(game: &Game<'_>, item: &str) -> u32 {
+fn dropped(game: &crate::game::ServerGame<'_>, item: &str) -> u32 {
     game.dropped
         .iter()
         .filter(|d| &*d.stack.item == item)
         .map(|d| d.stack.count)
         .sum()
 }
-fn open(game: &mut Game<'_>, pos: (i32, i32, i32), luck: f64) {
+fn open(game: &mut crate::game::ServerGame<'_>, pos: (i32, i32, i32), luck: f64) {
     game.as_guest(12, |g| {
         let p = g.player.as_mut().unwrap();
         let key = p.attributes.key("minecraft:luck").unwrap();
@@ -273,7 +273,7 @@ fn hopper_pull_unpacks_source_once() {
         g.hopper_try_move_items((8, 63, 8));
         consumed(g, POS);
         assert_eq!(count(g, (8, 63, 8), "minecraft:diamond"), 1);
-        g.server.hoppers.insert(
+        g.side.hoppers.insert(
             (8, 63, 8),
             crate::game::machines::HopperState::with_cooldown(0),
         );
@@ -294,7 +294,7 @@ fn hopper_push_unpacks_destination_once() {
         assert_eq!(count(g, POS, "minecraft:diamond"), 1);
         assert_eq!(count(g, POS, "minecraft:cobblestone"), 1);
         assert!(g.run_command("item replace block 7 64 8 container.0 with minecraft:cobblestone"));
-        g.server.hoppers.insert(
+        g.side.hoppers.insert(
             (7, 64, 8),
             crate::game::machines::HopperState::with_cooldown(0),
         );
@@ -307,7 +307,7 @@ fn comparator_first_read_unpacks_and_measures() {
     with_game(|g| {
         place(g, POS, TABLE, 37);
         assert!(g.run_command("setblock 9 64 8 minecraft:comparator[facing=west]"));
-        let tick = |g: &mut Game<'_>| {
+        let tick = |g: &mut crate::game::ServerGame<'_>| {
             g.with_level(|b, l, t| b.scheduled_block_tick(l, t, BlockPos::new(9, 64, 8)));
         };
         tick(g);
@@ -345,7 +345,7 @@ fn block_break_unpacks_before_contents_drop() {
 fn explosion_unpacks_before_contents_drop() {
     with_game(|g| {
         place(g, POS, TABLE, 37);
-        let explode = |g: &mut Game<'_>| {
+        let explode = |g: &mut crate::game::ServerGame<'_>| {
             g.server_explode(
                 [8.5, 64.5, 8.5],
                 4.0,
@@ -399,9 +399,9 @@ fn double_chest_rolls_each_half_once() {
     });
 }
 
-fn cart(g: &mut Game<'_>) -> u32 {
-    g.server.next_entity += 1;
-    let id = g.server.next_entity;
+fn cart(g: &mut crate::game::ServerGame<'_>) -> u32 {
+    g.side.next_entity += 1;
+    let id = g.side.next_entity;
     let mut c = Minecart::new(id, CartKind::Chest, Vec3::new(8.5, 64.0, 8.5));
     c.loot = Some(PendingContainerLoot {
         table: Tag::String(TABLE.into()),
@@ -575,7 +575,7 @@ fn detector_rail_comparator_unpacks_cart_once() {
     });
 }
 
-fn double(game: &mut Game<'_>) {
+fn double(game: &mut crate::game::ServerGame<'_>) {
     assert!(game.run_command("setblock 8 64 8 minecraft:chest[facing=north,type=left]{LootTable:\"test:left\",LootTableSeed:37L}"));
     assert!(game.run_command("setblock 9 64 8 minecraft:chest[facing=north,type=right]{LootTable:\"test:right\",LootTableSeed:91L}"));
     pending(game, POS);
@@ -591,7 +591,7 @@ fn double_chest_hopper_pull_reads_only_needed_half() {
         consumed(g, (9, 64, 8));
         pending(g, POS);
         assert_eq!(count(g, (8, 63, 8), "minecraft:emerald"), 1);
-        g.server.hoppers.insert(
+        g.side.hoppers.insert(
             (8, 63, 8),
             crate::game::machines::HopperState::with_cooldown(0),
         );
@@ -599,7 +599,7 @@ fn double_chest_hopper_pull_reads_only_needed_half() {
         pending(g, POS);
         assert_eq!(count(g, (8, 63, 8), "minecraft:emerald"), 2);
         for _ in 0..2 {
-            g.server.hoppers.insert(
+            g.side.hoppers.insert(
                 (8, 63, 8),
                 crate::game::machines::HopperState::with_cooldown(0),
             );
@@ -621,7 +621,7 @@ fn double_chest_hopper_push_keeps_other_half_pending() {
         assert_eq!(count(g, (9, 64, 8), "minecraft:emerald"), 2);
         assert_eq!(count(g, (9, 64, 8), "minecraft:cobblestone"), 1);
         assert!(g.run_command("item replace block 7 64 8 container.0 with minecraft:cobblestone"));
-        g.server.hoppers.insert(
+        g.side.hoppers.insert(
             (7, 64, 8),
             crate::game::machines::HopperState::with_cooldown(0),
         );
@@ -631,7 +631,7 @@ fn double_chest_hopper_push_keeps_other_half_pending() {
     });
 }
 
-fn pending_bytes(game: &Game<'_>, pos: (i32, i32, i32)) -> Vec<u8> {
+fn pending_bytes(game: &crate::game::ServerGame<'_>, pos: (i32, i32, i32)) -> Vec<u8> {
     pending(game, pos);
     let pending = game.world.block_entity_extras(pos).pending_loot.unwrap();
     let mut fields = sunrise_core::nbt::Compound::new();
@@ -690,7 +690,7 @@ fn structure_capture_disk_round_trip_keeps_pending_loot() {
         place(g, POS, TABLE, 37);
         let original = pending_bytes(g, POS);
         // fresh() supplies a unique scratch working directory for this world.
-        g.server.world_root = std::env::current_dir().unwrap().join("world");
+        g.side.world_root = std::env::current_dir().unwrap().join("world");
         assert!(g.save_structure_area(
             "test:pending",
             [8, 64, 8],
@@ -707,7 +707,7 @@ fn structure_capture_disk_round_trip_keeps_pending_loot() {
         let nbt = blocks[0].get("nbt").expect("captured block entity");
         assert_eq!(nbt.get("LootTable"), Some(&Tag::String(TABLE.into())));
         assert_eq!(nbt.get("LootTableSeed"), Some(&Tag::Long(37)));
-        g.server.structure_templates.clear();
+        g.side.structure_templates.clear();
         let entry = g
             .template_entry("test:pending")
             .expect("read saved structure from disk");
@@ -879,7 +879,7 @@ fn explicit_seed_is_position_independent() {
             (6, -1),
             Arc::new(sunrise_client::chunk::Chunk::empty(6, -1)),
         );
-        let snapshot = |g: &Game<'_>, pos| g.world.block_entities[&pos].slots().to_vec();
+        let snapshot = |g: &crate::game::ServerGame<'_>, pos| g.world.block_entities[&pos].slots().to_vec();
         let mut level_results = Vec::new();
         for seed in [1, 2, 1] {
             g.run_command("setblock 8 64 8 minecraft:air");
@@ -907,7 +907,7 @@ fn explicit_seed_is_position_independent() {
                 "setblock {} {} {} minecraft:chest{{LootTable:\"test:sequence_position\"}}",
                 pos.0, pos.1, pos.2
             )));
-            g.server.rand_sequences = Default::default();
+            g.side.rand_sequences = Default::default();
             g.unpack_loot(LootTarget::Block(pos), None);
         }
         assert_eq!(snapshot(g, POS), snapshot(g, other));

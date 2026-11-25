@@ -16,7 +16,7 @@ impl Hooks for Heard {
     }
 }
 
-fn place(game: &mut super::Game<'_>, block: &str) {
+fn place(game: &mut crate::game::ServerGame<'_>, block: &str) {
     let state = game.pack.assets.registry.default_state(block).unwrap();
     game.world.set(POS[0], POS[1], POS[2], state).unwrap();
 }

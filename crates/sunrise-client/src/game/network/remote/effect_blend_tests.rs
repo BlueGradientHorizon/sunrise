@@ -9,7 +9,7 @@ use sunrise_protocol::{
     packets::play::{self, Clientbound as C},
 };
 
-fn with_client(test: impl FnOnce(&mut Game<'_>, LivingRef, i32)) {
+fn with_client(test: impl FnOnce(&mut crate::game::ServerGame<'_>, LivingRef, i32)) {
     with_game(|game| {
         game.options.execution_role = ExecutionRole::Client;
         game.options.dedicated = None;
@@ -31,7 +31,7 @@ fn with_client(test: impl FnOnce(&mut Game<'_>, LivingRef, i32)) {
     });
 }
 
-fn update(game: &mut Game<'_>, effect: i32, duration: i32, flags: i8) {
+fn update(game: &mut crate::game::ClientGame<'_>, effect: i32, duration: i32, flags: i8) {
     game.handle_packet(C::UpdateMobEffect(play::UpdateMobEffect {
         id: 7,
         effect,
@@ -42,12 +42,12 @@ fn update(game: &mut Game<'_>, effect: i32, duration: i32, flags: i8) {
     .unwrap();
 }
 
-fn remove(game: &mut Game<'_>, effect: i32) {
+fn remove(game: &mut crate::game::ClientGame<'_>, effect: i32) {
     game.handle_packet(C::RemoveMobEffect(play::RemoveMobEffect { id: 7, effect }))
         .unwrap();
 }
 
-fn assert_blend(game: &Game<'_>, living: LivingRef, expected: [f32; 6]) {
+fn assert_blend(game: &crate::game::ServerGame<'_>, living: LivingRef, expected: [f32; 6]) {
     // Vanilla Mth.lerp does not clamp partial ticks, even outside a frame.
     for (partial, expected) in [-1.0, 0.0, 0.25, 0.5, 1.0, 2.0].into_iter().zip(expected) {
         assert_eq!(

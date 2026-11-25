@@ -1475,7 +1475,7 @@ mod tests {
 
                 // The spawn search sees the pack's flat layers before the first save.
                 game.level = prepared.level.clone();
-                game.server.level_shapes = prepared.shapes;
+                game.side.level_shapes = prepared.shapes;
                 assert_eq!(
                     game.spawn_origin().unwrap(),
                     ((0, 0), prepared.world.shape.min_y + 3)
@@ -1706,7 +1706,7 @@ mod tests {
             game.world.modified.insert((8, 8));
             game.save_level(true).unwrap();
             let reloaded = game
-                .save
+                .side.save
                 .0
                 .load(8, 8, game.pack.assets.registry, world_biomes!(game))
                 .unwrap();

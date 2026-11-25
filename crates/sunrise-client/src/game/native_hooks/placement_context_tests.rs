@@ -369,9 +369,9 @@ fn item_parts_rewrite_or_refuse_context_and_control_survival_on_both_sides() {
                 inside: false,
             };
             let stack = |item| ItemStack::new(item, 1);
-            assert!(!Game::can_hint_block_placement(&stack("minecraft:stone")));
-            assert!(!Game::can_hint_block_placement(&stack("minecraft:poppy")));
-            assert!(Game::can_hint_block_placement(&stack("minecraft:glass")));
+            assert!(!crate::game::ClientGame::can_hint_block_placement(&stack("minecraft:stone")));
+            assert!(!crate::game::ClientGame::can_hint_block_placement(&stack("minecraft:poppy")));
+            assert!(crate::game::ClientGame::can_hint_block_placement(&stack("minecraft:glass")));
             assert!(
                 game.remote_can_place(&hit, &stack("minecraft:glass"))
                     .is_none()

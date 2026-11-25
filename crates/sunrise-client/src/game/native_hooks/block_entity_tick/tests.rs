@@ -47,7 +47,7 @@ pub(in crate::game) fn row(kind: &str, value: i32) -> BlockEntity {
     )))
 }
 
-pub(in crate::game) fn place_subject(game: &mut Game<'_>, kind: &str) -> BlockEntityRef {
+pub(in crate::game) fn place_subject(game: &mut crate::game::ServerGame<'_>, kind: &str) -> BlockEntityRef {
     game.world
         .chunks
         .insert(CHUNK, Arc::new(Chunk::empty(0, 0)));
@@ -65,13 +65,13 @@ pub(in crate::game) fn place_subject(game: &mut Game<'_>, kind: &str) -> BlockEn
 }
 
 pub(in crate::game) fn access<'a, 'g>(
-    game: &'a mut Game<'g>,
+    game: &'a mut crate::game::ServerGame<'g>,
     subject: BlockEntityRef,
 ) -> ResidentBlockEntityAccess<'a, 'g> {
     ResidentBlockEntityAccess::new(game, Some(subject), Loan::Tick(None))
 }
 
-pub(in crate::game) fn enable_block_ticks(game: &mut Game<'_>) {
+pub(in crate::game) fn enable_block_ticks(game: &mut crate::game::ServerGame<'_>) {
     game.player = Some(
         sunrise_client::motion::PlayerMotion::new(
             game.motion,
@@ -1096,13 +1096,13 @@ impl Hooks for Effects {
     }
 }
 
-pub(in crate::game) fn with_ticker(test: impl FnOnce(&mut Game<'_>, &Effects)) {
+pub(in crate::game) fn with_ticker(test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Effects)) {
     with_ticker_mods(None, test);
 }
 
 pub(in crate::game) fn with_ticker_mods(
     observer: Option<ModEntry>,
-    test: impl FnOnce(&mut Game<'_>, &Effects),
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Effects),
 ) {
     let effects = Effects::default();
     let mut entries = vec![ModEntry::new("view_tick", Box::new(effects.clone()))];
@@ -1344,7 +1344,7 @@ fn chunk_save_reloads_reordered_slotless_items() {
         };
         let initial = Tag::List(vec![item(1), item(0)]);
         let reordered = Tag::List(vec![item(0), item(1)]);
-        let write_items = |game: &mut Game<'_>, subject: BlockEntityRef, items: Tag| {
+        let write_items = |game: &mut crate::game::ServerGame<'_>, subject: BlockEntityRef, items: Tag| {
             let mut access = access(game, subject);
             let mut scope = BlockEntityScope::new(&mut access);
             assert_eq!(
@@ -1353,7 +1353,7 @@ fn chunk_save_reloads_reordered_slotless_items() {
             );
             subject.set_changed(scope.host()).unwrap();
         };
-        let save_reload = |game: &Game<'_>| {
+        let save_reload = |game: &crate::game::ServerGame<'_>| {
             let snapshots = game.with_entities([game.world.chunks.get(&CHUNK).unwrap()]);
             let registry = game.pack.assets.registry;
             let biomes = game.res.biomes();

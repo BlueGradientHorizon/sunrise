@@ -1154,8 +1154,8 @@ pub(in crate::game) mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.server.level_shapes,
-                level_seeds: game.levels.0.runtime.seeds(),
+                levels: game.side.level_shapes,
+                level_seeds: game.side.levels.0.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
             let (tx, _rx) = std::sync::mpsc::channel();
@@ -1188,7 +1188,7 @@ pub(in crate::game) mod tests {
             assert!(game.living_set_stinger_count(player, 2));
             assert!(game.living_set_arrow_removal_ticks(player, 7));
             assert!(game.living_set_stinger_removal_ticks(player, 9));
-            let stuck = &game.guest_combat.0[&12].stuck;
+            let stuck = &game.side.guest_combat.0[&12].stuck;
             assert_eq!((stuck.arrows, stuck.stingers), (4, 2));
             assert_eq!((stuck.remove_arrow_time, stuck.remove_stinger_time), (7, 9));
             assert_eq!(game.living_arrow_count(player), Some(4));
@@ -1224,12 +1224,12 @@ pub(in crate::game) mod tests {
                 game.using = None;
                 // Its swing is queued for it when asked: not in the first half.
                 game.swing.ticks = 0;
-                game.server.guest_packets.clear();
+                game.side.guest_packets.clear();
                 assert!(game.living_swing(player, Hand::Main, true));
-                assert_eq!(game.server.guest_packets.len(), 1);
+                assert_eq!(game.side.guest_packets.len(), 1);
                 game.swing.ticks = 1;
                 assert!(!game.living_swing(player, Hand::Main, true));
-                assert_eq!(game.server.guest_packets.len(), 1);
+                assert_eq!(game.side.guest_packets.len(), 1);
             })
             .unwrap();
         });
@@ -1271,8 +1271,8 @@ pub(in crate::game) mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.server.level_shapes,
-                level_seeds: game.levels.0.runtime.seeds(),
+                levels: game.side.level_shapes,
+                level_seeds: game.side.levels.0.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
             let (tx, rx) = std::sync::mpsc::channel();

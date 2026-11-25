@@ -675,7 +675,7 @@ mod tests {
     }
 
     /// A player entity for the tests: the host's player standing in for a guest.
-    fn player(game: &mut Game<'_>) -> EntityRef {
+    fn player(game: &mut crate::game::ServerGame<'_>) -> EntityRef {
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
         crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
         game.entity(20).unwrap()
@@ -920,9 +920,9 @@ mod tests {
             charge.velocity = Vec3::new(0.0, 1.0, 0.0);
             game.add_projectile(charge);
             let i = game.creatures.projectiles.len() - 1;
-            game.server.attack_ticks = 50;
+            game.side.attack_ticks = 50;
             assert!(!game.deflect(i));
-            assert_eq!(game.server.attack_ticks, 0);
+            assert_eq!(game.side.attack_ticks, 0);
             assert_eq!(
                 game.creatures.projectiles[i].velocity,
                 Vec3::new(0.0, 1.0, 0.0)
@@ -931,9 +931,9 @@ mod tests {
             game.creatures
                 .projectiles
                 .update(i, |p| p.no_deflect_ticks = 0);
-            game.server.attack_ticks = 50;
+            game.side.attack_ticks = 50;
             assert!(game.deflect(i));
-            assert_eq!(game.server.attack_ticks, 0);
+            assert_eq!(game.side.attack_ticks, 0);
             assert_eq!(game.creatures.projectiles[i].owner, Some(Who::Player));
         });
     }

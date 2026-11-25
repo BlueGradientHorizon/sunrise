@@ -893,7 +893,7 @@ mod tests {
             mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
             with_test_factories(factories, || {
                 crate::game::native_entity_refs::tests::with_client_game(|game| {
-                    let draw = |game: &mut Game<'_>, stack: &ItemStack| {
+                    let draw = |game: &mut crate::game::ClientGame<'_>, stack: &ItemStack| {
                         TEXT_DRAWN.store(false, Ordering::Relaxed);
                         IMAGE_DRAWN.store(false, Ordering::Relaxed);
                         game.draw_stack_tooltip(

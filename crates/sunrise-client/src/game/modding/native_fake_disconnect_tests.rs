@@ -39,7 +39,7 @@ impl Hooks for Owner {
     }
 }
 
-fn listen(game: &mut super::Game<'_>, conn: u32) -> Receiver<Out> {
+fn listen(game: &mut crate::game::ServerGame<'_>, conn: u32) -> Receiver<Out> {
     let (tx, rx) = std::sync::mpsc::channel();
     game.lan.as_mut().unwrap().hub.update_guest(conn, |guest| {
         guest.sender = PlayerSender::new(tx, Arc::default())
@@ -131,7 +131,7 @@ fn fake_kicks_leave_once_with_the_first_reason() {
                     assert!(leave_lines(observer).is_empty());
                 }
 
-                game.server.level_pass = Default::default();
+                game.side.level_pass = Default::default();
                 game.tick_lan_packets();
                 // Packet draining holds sends until the full tick's flush boundary.
                 sunrise_client::lan::flush_all(
@@ -161,7 +161,7 @@ fn fake_kicks_leave_once_with_the_first_reason() {
                         .disconnect(game, Text::literal("After removal"))
                         .unwrap()
                 );
-                game.server.level_pass = Default::default();
+                game.side.level_pass = Default::default();
                 game.tick_lan_packets();
                 // Packet draining holds sends until the full tick's flush boundary.
                 sunrise_client::lan::flush_all(
