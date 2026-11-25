@@ -1737,6 +1737,8 @@ mod native_scoreboard;
 #[path = "game/modding/native_scoreboard_teams.rs"]
 mod native_scoreboard_teams;
 
+#[path = "game/modding/native_section_dirty.rs"]
+mod native_section_dirty;
 #[path = "game/modding/native_section_visibility.rs"]
 mod native_section_visibility;
 #[path = "game/modding/native_server.rs"]
