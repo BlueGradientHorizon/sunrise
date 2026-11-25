@@ -3527,7 +3527,13 @@ impl Game<'_> {
                         }
                         Who::Mob(id) => self.mob_hits_mob(id, amount, source),
                     };
-                    self.combat.hit_landed = hurt;
+                    // A mod's `MobRef::do_hurt_target` answers the golem's `wasHurt` from it.
+                    // The mob tick's own events don't record it: vanilla's `doHurtTarget` and
+                    // `stabAttack` each read their own hurt, so a golem's must not reach a
+                    // `StabMemory` of the same batch.
+                    if self.fake_action.acting() {
+                        self.combat.hit_landed = hurt;
+                    }
                     if hurt {
                         let resistance = match target {
                             Who::Player => self.player.as_mut().map_or(0.0, |p| {
