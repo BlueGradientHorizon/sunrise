@@ -101,8 +101,11 @@ pub trait StockLayerDraw {
     /// An empty equipment slot or unmet draw condition draws nothing and returns `Ok(())`.
     /// Returns `Err` if the target's renderer lacks `layer` (including when a mod replaced the
     /// renderer) or if `layer` was not hidden on this target in `register_entity_layers`, since an
-    /// unhidden layer has already drawn. Anything drawn by this call rolls back with the rest of
-    /// `submit` if the layer returns `Err` or panics.
+    /// unhidden layer has already drawn. Within a single `submit` call, geometry from
+    /// `draw_stock_layer` is submitted after everything the mod layer emitted through `draw`,
+    /// regardless of the order in which `draw` and `stock.draw_stock_layer` were called. Anything
+    /// drawn by this call rolls back with the rest of `submit` if the layer returns `Err` or
+    /// panics.
     fn draw_stock_layer(&mut self, layer: StockLayer) -> Result<(), String>;
 }
 

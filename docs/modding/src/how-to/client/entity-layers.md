@@ -159,7 +159,8 @@ impl EntityRenderLayer for ConditionalChestplate {
 `draw_stock_layer` submits the stock layer with the entity's exact pose, lighting and draw
 conditions for this frame; an empty slot draws nothing and returns `Ok(())`. It returns `Err` if
 the target's renderer lacks `layer` or if `layer` was not hidden on this target (an unhidden layer
-has already drawn).
+has already drawn). Within one `submit` call, the stock layer's geometry is submitted after
+everything the mod layer emitted through `draw`, regardless of the call order.
 
 ## Where layers draw
 

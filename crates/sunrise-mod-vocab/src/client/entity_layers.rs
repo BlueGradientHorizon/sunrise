@@ -50,15 +50,18 @@ pub trait EntityRenderLayer: Send + Sync + 'static {
     /// replacement renderer), not that the body is nonhumanoid. `draw` also has the partial tick,
     /// the game time and the entity's light. `stock` lets the layer draw a stock layer that was
     /// hidden on this target in `register_entity_layers` (`StockLayerDraw::draw_stock_layer`),
-    /// conditionally for the entity in hand. In the world, called once a frame for each entity of
-    /// the target in view, but not when its `render_living_pre` or `render_player_pre` was
-    /// canceled. A frame is drawn afresh: `draw.keep()` does nothing here. `Ok(())` keeps what
-    /// `draw` and `stock` emitted. On an `Err`, everything this layer drew this frame (including
-    /// any `stock.draw_stock_layer` geometry) is rolled back, the error is logged as a warning,
-    /// and the layer stays active for later draws. On a panic, everything this layer drew this
-    /// frame is rolled back and this mod's layer instance is disabled for the rest of the session,
-    /// with an error log and an in-game error toast naming the mod. Re-adding the same `Arc` on
-    /// reload does not re-enable it.
+    /// conditionally for the entity in hand. Within one `submit` call, any geometry produced by
+    /// `stock.draw_stock_layer` is submitted after everything the mod layer emitted through
+    /// `draw`, regardless of the order in which `draw` and `stock.draw_stock_layer` were called.
+    /// In the world, called once a frame for each entity of the target in view, but not when its
+    /// `render_living_pre` or `render_player_pre` was canceled. A frame is drawn afresh:
+    /// `draw.keep()` does nothing here. `Ok(())` keeps what `draw` and `stock` emitted. On an
+    /// `Err`, everything this layer drew this frame (including any `stock.draw_stock_layer`
+    /// geometry) is rolled back, the error is logged as a warning, and the layer stays active for
+    /// later draws. On a panic, everything this layer drew this frame is rolled back and this
+    /// mod's layer instance is disabled for the rest of the session, with an error log and an
+    /// in-game error toast naming the mod. Re-adding the same `Arc` on reload does not re-enable
+    /// it.
     fn submit(
         &self,
         entity: &EntityRenderState,
