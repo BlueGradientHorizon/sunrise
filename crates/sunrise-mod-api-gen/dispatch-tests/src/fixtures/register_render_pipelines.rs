@@ -3,6 +3,7 @@ mod api {
     pub struct RenderPipeline(pub &'static str);
     #[derive(Debug, PartialEq, Eq)]
     pub struct RenderSetup(pub &'static str);
+    #[derive(Debug, PartialEq, Eq)]
     pub struct ComputePipeline(pub &'static str);
 }
 

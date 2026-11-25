@@ -77,13 +77,7 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
         if !mod_api::__private::listened(mod_api::HookId::FrameGraphSetup) {
             return;
         }
-        let view = Self::view(
-            self.frame_camera,
-            self.alpha,
-            self.game.world.game_time,
-            sections,
-            oit_on,
-        );
+        let view = Self::view(self.game, self.frame_camera, self.alpha, sections, oit_on);
         let surface = self.draw.frame_graph_surface(oit_on);
         self.game.native_frame_graph_setup(&view, surface);
     }

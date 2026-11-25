@@ -150,9 +150,7 @@ impl Game<'_> {
                 if let Some(row) = remote.general.rows.get(&id) {
                     return Some(row.previous);
                 }
-                if self.native_client_tracked(entity).is_none() {
-                    return None;
-                }
+                self.native_client_tracked(entity)?;
                 if let Some(display) = self.native_client_display(entity) {
                     return Some(display.previous_position().to_array());
                 }

@@ -264,7 +264,7 @@ jobs:
   fuzz:
     needs: [resolve, parity]
     if: >-
-      !cancelled() && github.repository == 'sunrise-org/sunrise' && github.ref == 'refs/heads/main' &&
+      !cancelled() && github.repository == 'sunrise-org/sunrise' && needs.resolve.outputs.branch == 'main' &&
       needs.resolve.result == 'success' && needs.resolve.outputs.skip == 'false' &&
       needs.resolve.outputs.dry_run == 'false' && needs.resolve.outputs.commit == github.sha
     permissions:

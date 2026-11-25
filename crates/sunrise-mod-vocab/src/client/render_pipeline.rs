@@ -5362,10 +5362,12 @@ mod tests {
     fn render_setup_builder_validation_and_registration() {
         let mut pipelines = Vec::new();
         let mut render_types = Vec::new();
+        let mut compute_pipelines = Vec::new();
         let mut event = crate::RegisterRenderPipelinesEvent {
             mod_id: "example",
             pipelines: &mut pipelines,
             render_types: &mut render_types,
+            compute_pipelines: &mut compute_pipelines,
         };
         let setup = RenderSetup::new(
             Identifier::parse("example:glowing").unwrap(),

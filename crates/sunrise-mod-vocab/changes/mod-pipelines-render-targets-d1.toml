@@ -5,8 +5,9 @@ ids = [
     "type:RenderTargetDescriptor",
     "trait:RenderTargetContext",
     "type:RenderTargetRef",
-    "type:TextureSource",
-    "type:PipelineDrawError",
+    "type:TextureSource.RenderTargetColor",
+    "type:TextureSource.RenderTargetDepth",
+    "type:PipelineDrawError.TargetReadWriteHazard",
     "method:prelude::ClientRenderClientHost::create_render_target",
 ]
 why = "Add mod-owned offscreen render targets (RenderTargetRef, RenderTargetDescriptor, RenderTargetFormat, RenderTargetDepth, RenderTargetError, RenderTargetContext), TextureSource::RenderTargetColor/RenderTargetDepth sampling, and PipelineDrawError::TargetReadWriteHazard refusal (#5429). Targets retain contents across frames until resized (no persistent flag)."

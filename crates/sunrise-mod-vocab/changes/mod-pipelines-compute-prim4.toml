@@ -8,7 +8,7 @@ ids = [
     "type:ComputePipelineRef",
     "type:ComputePipelineError",
     "type:ComputePassDescriptor",
-    "type:ComputeDispatchContext",
+    "trait:ComputeDispatchContext",
     "type:ComputeDispatchError",
     "type:RenderCapabilities",
 ]

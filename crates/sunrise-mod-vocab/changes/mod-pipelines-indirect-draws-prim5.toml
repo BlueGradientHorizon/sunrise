@@ -1,8 +1,6 @@
 ids = [
     "type:IndirectDraw",
-    "const:INDIRECT_DRAW_SIZE",
-    "const:INDIRECT_INDEXED_DRAW_SIZE",
-    "type:PipelineDrawError",
+    "type:PipelineDrawError.InvalidIndirect",
     "method:WorldDrawContext::draw_indirect",
     "method:PrepareRenderBuffersContext::draw_indirect",
     "method:OffscreenDrawContext::draw_indirect",

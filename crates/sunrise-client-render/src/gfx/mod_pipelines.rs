@@ -3259,6 +3259,7 @@ impl ModPipelines {
                             },
                             instances: 0..1,
                             mod_bind_group: cmd.set1_bind_group.clone(),
+                            mod_globals: self.pack_globals(cmd.slot),
                         });
                     }
                     continue;

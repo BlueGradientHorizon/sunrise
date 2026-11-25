@@ -919,14 +919,10 @@ pub fn translate_compute(
     })?);
     let code =
         rewrite(&expanded, ShaderStage::Compute, inputs, &glue, &mut names).map_err(|e| vec![e])?;
-    let (module, info) = compile(
-        ShaderStage::Compute,
-        &code,
-        inputs.defines,
-        &names,
-        &|_| false,
-        interface,
-    )?;
+    // The directives run on the rewritten stage, the program's defines first, as for the other
+    // stages.
+    let parsed = run_directives(&code, inputs.defines).map_err(|e| vec![e])?;
+    let (module, info) = compile(ShaderStage::Compute, &parsed, &names, &|_| false, interface)?;
     let Some(entry) = module.entry_points.first() else {
         return Err(vec![Error {
             file: file.to_owned(),
@@ -1412,25 +1408,6 @@ fn strip_comments(text: &str) -> String {
 
 fn is_ident(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
-}
-
-/// `text` with each whole identifier `from` written as `to`.
-fn replace_ident(text: &str, from: &str, to: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    while let Some(at) = rest.find(from) {
-        let before = rest[..at].chars().next_back();
-        let after = rest[at + from.len()..].chars().next();
-        out.push_str(&rest[..at]);
-        if before.is_some_and(is_ident) || after.is_some_and(is_ident) {
-            out.push_str(from);
-        } else {
-            out.push_str(to);
-        }
-        rest = &rest[at + from.len()..];
-    }
-    out.push_str(rest);
-    out
 }
 
 /// How a shader uses a storage image, as its `readonly`/`writeonly` qualifiers say.
