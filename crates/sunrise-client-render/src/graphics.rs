@@ -808,9 +808,11 @@ pub struct Graphics {
     pub cave_culling: bool,
     /// Near solid terrain culled, and its draws listed, on the GPU (`gfx::gpu_culling`), where it
     /// is offered (`gpu_culling_offer`). Off by default (GPU Culling, Performance graphics); it
-    /// applies at once, and every preset sets it to Auto. Every save writes it, so a default
-    /// turned on later needs a new key, as `batchTranslucent` did. Auto turns it on only where
-    /// the CPU limits the frame and it makes the frame faster (`autotune`).
+    /// applies at once, and no preset sets it. Every save writes it, so a default
+    /// turned on later needs a new key, as `batchTranslucent` did. Its key is `gpuCullingMode`:
+    /// an older file's `gpuCulling` reads Auto as Off, because every preset set Auto then
+    /// (`Graphics::parse`). Auto turns it on only where the CPU limits the frame and it makes
+    /// the frame faster (`autotune`).
     pub gpu_culling: GpuCullingMode,
     /// Skip drawing entities hidden behind opaque terrain, synchronously or asynchronously.
     pub entity_culling: EntityCullingMode,
@@ -1057,6 +1059,8 @@ impl Graphics {
         let mut g = Self::default();
         // UI Brightness: `hdrUiNits`, else an older file's share of Paper White.
         let (mut ui_nits, mut ui_share) = (None, None);
+        // GPU Culling: `gpuCullingMode`, else an older file's `gpuCulling`.
+        let (mut gpu_culling, mut gpu_culling_before) = (None, None);
         for line in text.lines() {
             let Some((key, value)) = line.split_once(':') else {
                 continue;
@@ -1080,7 +1084,10 @@ impl Graphics {
                     }
                 }
                 "caveCulling" => g.cave_culling = flag(g.cave_culling),
-                "gpuCulling" => g.gpu_culling = GpuCullingMode::parse(value, g.gpu_culling),
+                "gpuCullingMode" => gpu_culling = Some(GpuCullingMode::parse(value, g.gpu_culling)),
+                "gpuCulling" => {
+                    gpu_culling_before = Some(GpuCullingMode::parse(value, g.gpu_culling))
+                }
                 "entityCulling" => g.entity_culling = EntityCullingMode::parse(value),
                 "entityCullingPrecheck" => {
                     g.entity_culling_precheck = number(g.entity_culling_precheck).min(512)
@@ -1179,11 +1186,20 @@ impl Graphics {
             }
             _ => 0,
         });
+        // Every preset used to set Auto, and every save wrote it, so an older file's Auto is
+        // read as Off once: what it holds is a preset's, not a choice. On and Off read as they
+        // were; from the next save on, the key is `gpuCullingMode`, whatever the player picks.
+        g.gpu_culling = gpu_culling
+            .or(gpu_culling_before.map(|before| match before {
+                GpuCullingMode::Auto => GpuCullingMode::Off,
+                other => other,
+            }))
+            .unwrap_or(g.gpu_culling);
         g
     }
     pub fn serialize(&self) -> String {
         let mut text = format!(
-            "preset:{}\nlodDistance:{}\nfarDetail:{}\ncaveCulling:{}\nentityCulling:{}\nentityCullingPrecheck:{}\nparticleCulling:{}\nleafCulling:{}\nopaqueIce:{}\nblockEntityCacheShulkerBoxes:{}\nblockEntityCacheSigns:{}\nblockEntityCacheDecoratedPots:{}\nblockEntityCacheBells:{}\nblockEntityCacheChests:{}\nblockEntityCacheBanners:{}\nblockEntityCacheCopperGolemStatues:{}\nchunkUpdates:{}\nuploadBudgetKiB:{}\ntextureBudgetMiB:{}\nsky:{}\nfog:{}\nweather:{}\nanimatedTextures:{}\nditherCutoutMips:{}\npresentMode:{}\nframePacing:{}\nworkers:{}\nresolutionScale:{}\ndynamicResolution:{}\ntargetFps:{}\nfxaa:{}\ntaa:{}\nupscaling:{}\nupscalingSharpness:{}\nscreenshotQuality:{}\nframeGeneration:{}\nhdr:{}\nhdrPaperWhite:{}\nhdrPeak:{}\nhdrBlackLevel:{}\nhdrUiNits:{}\nhdrLighting:{}\nbatteryMode:{}\nshadowCache:{}\ngraphicsApi:{}\npickedShaderPack:{}\nbatchTranslucent:{}\nhdrSmoothGradients:{}\ngpuCulling:{}\nparallelTick:{}\n",
+            "preset:{}\nlodDistance:{}\nfarDetail:{}\ncaveCulling:{}\nentityCulling:{}\nentityCullingPrecheck:{}\nparticleCulling:{}\nleafCulling:{}\nopaqueIce:{}\nblockEntityCacheShulkerBoxes:{}\nblockEntityCacheSigns:{}\nblockEntityCacheDecoratedPots:{}\nblockEntityCacheBells:{}\nblockEntityCacheChests:{}\nblockEntityCacheBanners:{}\nblockEntityCacheCopperGolemStatues:{}\nchunkUpdates:{}\nuploadBudgetKiB:{}\ntextureBudgetMiB:{}\nsky:{}\nfog:{}\nweather:{}\nanimatedTextures:{}\nditherCutoutMips:{}\npresentMode:{}\nframePacing:{}\nworkers:{}\nresolutionScale:{}\ndynamicResolution:{}\ntargetFps:{}\nfxaa:{}\ntaa:{}\nupscaling:{}\nupscalingSharpness:{}\nscreenshotQuality:{}\nframeGeneration:{}\nhdr:{}\nhdrPaperWhite:{}\nhdrPeak:{}\nhdrBlackLevel:{}\nhdrUiNits:{}\nhdrLighting:{}\nbatteryMode:{}\nshadowCache:{}\ngraphicsApi:{}\npickedShaderPack:{}\nbatchTranslucent:{}\nhdrSmoothGradients:{}\ngpuCullingMode:{}\nparallelTick:{}\n",
             self.preset.name(),
             self.lod_distance,
             self.far_detail.name(),
@@ -1667,24 +1683,31 @@ mod tests {
         assert!(Graphics::parse("translucentBatching:false\n").translucent_batching);
         // GPU Culling is opt-in: only the file or its switch turns it on.
         assert_eq!(Graphics::default().gpu_culling, GpuCullingMode::Off);
+        let read = |text: &str| Graphics::parse(text).gpu_culling;
+        // Its key is `gpuCullingMode`, with Auto a third value.
+        assert_eq!(read("gpuCullingMode:true\n"), GpuCullingMode::On);
+        assert_eq!(read("gpuCullingMode:auto\n"), GpuCullingMode::Auto);
+        assert_eq!(read("gpuCullingMode:false\n"), GpuCullingMode::Off);
+        assert_eq!(read("gpuCullingMode:maybe\n"), GpuCullingMode::Off);
+        // A file from before it has `gpuCulling`, whose Auto every preset wrote: read once as
+        // Off. On and Off read as they were, and the new key wins where both are.
+        assert_eq!(read("gpuCulling:auto\n"), GpuCullingMode::Off);
+        assert_eq!(read("gpuCulling:true\n"), GpuCullingMode::On);
+        assert_eq!(read("gpuCulling:false\n"), GpuCullingMode::Off);
         assert_eq!(
-            Graphics::parse("gpuCulling:true\n").gpu_culling,
-            GpuCullingMode::On
-        );
-        // Auto is a third value of the same key. A file from before it reads as before, and an
-        // older Sunrise reading `auto` finds a value it doesn't know and keeps Off.
-        assert_eq!(
-            Graphics::parse("gpuCulling:auto\n").gpu_culling,
+            read("gpuCulling:false\ngpuCullingMode:auto\n"),
             GpuCullingMode::Auto
         );
         assert_eq!(
-            Graphics::parse("gpuCulling:false\n").gpu_culling,
-            GpuCullingMode::Off
+            read("gpuCullingMode:on\ngpuCulling:auto\n"),
+            GpuCullingMode::On
         );
-        assert_eq!(
-            Graphics::parse("gpuCulling:maybe\n").gpu_culling,
-            GpuCullingMode::Off
-        );
+        // The next save writes the new key, so a later Auto stays Auto.
+        let mut chosen = Graphics::parse("gpuCulling:auto\n");
+        chosen.gpu_culling = GpuCullingMode::Auto;
+        assert!(chosen.serialize().contains("gpuCullingMode:auto\n"));
+        assert!(!chosen.serialize().contains("gpuCulling:"));
+        assert_eq!(read(&chosen.serialize()), GpuCullingMode::Auto);
         for mode in GpuCullingMode::ALL {
             let g = Graphics {
                 gpu_culling: mode,
@@ -1796,6 +1819,26 @@ mod tests {
                 LeafCullingMode::Off,
                 "{text:?}"
             );
+        }
+    }
+
+    #[test]
+    fn presets_leave_gpu_culling_off_and_keep_the_players_choice() {
+        // Its picture isn't proven to be vanilla's, so no preset turns it on.
+        for preset in Preset::ALL {
+            let mut s = crate::settings::Settings::default();
+            apply_preset(preset, &mut s);
+            assert_eq!(s.sunrise.gpu_culling, GpuCullingMode::Off, "{preset:?}");
+        }
+        // A choice made in the options, saved Auto included, outlasts every preset.
+        for mode in GpuCullingMode::ALL {
+            for preset in Preset::ALL {
+                let mut s = crate::settings::Settings::default();
+                s.sunrise.gpu_culling = mode;
+                apply_preset(preset, &mut s);
+                assert_eq!(s.sunrise.gpu_culling, mode, "{preset:?}");
+                assert_eq!(Graphics::parse(&s.sunrise.serialize()).gpu_culling, mode);
+            }
         }
     }
 
