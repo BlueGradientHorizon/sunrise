@@ -193,4 +193,13 @@ impl Game<'_> {
             self.client_outline_camera_kind()
         }
     }
+
+    #[inline(always)]
+    pub(in crate::game) fn side_close_container(&mut self) {
+        if self.is_logical_server() {
+            self.close_container_server();
+        } else {
+            self.close_container_client();
+        }
+    }
 }

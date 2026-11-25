@@ -4938,13 +4938,12 @@ impl Game<'_> {
                 {
                     return Ok(pressed);
                 }
-                let handled = if pressed {
+                if pressed {
                     self.inventory_pick_press();
                     true
                 } else {
                     self.inventory_pick_release()
-                };
-                handled
+                }
             }
             Screen::Inventory if pressed => {
                 self.inventory_press(!left);

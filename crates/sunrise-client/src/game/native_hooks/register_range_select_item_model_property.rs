@@ -1,7 +1,5 @@
 use super::*;
 
-/// The hook points. Each does nothing in Sunrise.
-
 /// Gather attributed numeric `minecraft:range_dispatch` item model property providers at
 /// client startup, before resources load (NeoForge's
 /// `RegisterRangeSelectItemModelPropertyEvent`).

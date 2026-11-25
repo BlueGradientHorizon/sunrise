@@ -239,12 +239,23 @@ impl Game<'_> {
         if !ages_on_food(m, item) {
             return;
         }
-        let id = m.id;
-        self.particles_around_mob(
-            id,
-            "happy_villager",
-            sunrise_client::particles::Burst::HORSE_EATING,
+        let feet = [m.position.x, m.position.y, m.position.z];
+        let (width, height) = (f64::from(m.width()), f64::from(m.height()));
+        let options = sunrise_client::particles::ParticleOptions::simple(
+            sunrise_client::particles::ParticleType::HappyVillager,
         );
+        let mut spawned = Vec::new();
+        sunrise_client::particles::around_self(
+            self.particles.0.random(),
+            feet,
+            width,
+            height,
+            sunrise_client::particles::Burst::HORSE_EATING,
+            |p, v| spawned.push((p, v)),
+        );
+        for (p, v) in spawned {
+            self.particles.0.add(&options, p, v);
+        }
     }
 }
 

@@ -1,7 +1,7 @@
 //! The running state of `ProjectileUtil.getEntityHitResult`.
 use super::Game;
 
-pub(in crate::game) use crate::game::pick_ray::{PickAccumulator, PickCandidate, pick_ray_segment};
+pub(in crate::game) use crate::game::pick_ray::{PickAccumulator, PickCandidate};
 
 impl PickAccumulator {
     /// Reuses the caller's candidate buffer when `CanRiderInteract` is subscribed.

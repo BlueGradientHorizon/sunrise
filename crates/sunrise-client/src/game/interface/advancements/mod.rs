@@ -1412,41 +1412,40 @@ impl Game<'_> {
     /// Publish a completed advancement's rewards after its tentative criterion commits.
     pub(in crate::game::server_side) fn commit_merchant_reward(&mut self, a: &adv::Advancement) {
         let rewards = self.grant_rewards(a);
-        if let Some(d) = &a.display {
-            if d.announce
-                && self
-                    .ui
-                    .rules
-                    .bool_at(sunrise_client::gamerules::vanilla::SHOW_ADVANCEMENT_MESSAGES)
-            {
-                let key = match d.frame {
-                    Frame::Task => "chat.type.advancement.task",
-                    Frame::Goal => "chat.type.advancement.goal",
-                    Frame::Challenge => "chat.type.advancement.challenge",
-                };
-                let name = adv_name(a);
-                // PlayerList.broadcastSystemMessage: everyone hears of a
-                // network player's advancement.
-                match self.server.lan_acting_name.clone() {
-                    // Player.getDisplayName.
-                    Some(_) => {
-                        let player = self.target_name(super::commands::Target::Player);
-                        self.adv
-                            .announced
-                            .push(Text::translate(key, &[player, name]));
+        if let Some(d) = &a.display
+            && d.announce
+            && self
+                .ui
+                .rules
+                .bool_at(sunrise_client::gamerules::vanilla::SHOW_ADVANCEMENT_MESSAGES)
+        {
+            let key = match d.frame {
+                Frame::Task => "chat.type.advancement.task",
+                Frame::Goal => "chat.type.advancement.goal",
+                Frame::Challenge => "chat.type.advancement.challenge",
+            };
+            let name = adv_name(a);
+            // PlayerList.broadcastSystemMessage: everyone hears of a
+            // network player's advancement.
+            match self.server.lan_acting_name.clone() {
+                // Player.getDisplayName.
+                Some(_) => {
+                    let player = self.target_name(super::commands::Target::Player);
+                    self.adv
+                        .announced
+                        .push(Text::translate(key, &[player, name]));
+                }
+                None => {
+                    let text = Text::translate(key, &[self.player_display_text(), name]);
+                    // The guests hear of the host's advancement too.
+                    if let Some(host) = &self.lan {
+                        host.hub
+                            .system_message(sunrise_client::lan::data::component_nbt(
+                                &text.component(),
+                            ));
                     }
-                    None => {
-                        let text = Text::translate(key, &[self.player_display_text(), name]);
-                        // The guests hear of the host's advancement too.
-                        if let Some(host) = &self.lan {
-                            host.hub
-                                .system_message(sunrise_client::lan::data::component_nbt(
-                                    &text.component(),
-                                ));
-                        }
-                        if self.lan.is_none() {
-                            self.server_system_message(text);
-                        }
+                    if self.lan.is_none() {
+                        self.server_system_message(text);
                     }
                 }
             }

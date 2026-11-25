@@ -1,7 +1,5 @@
 use super::*;
 
-/// The hook points. Each does nothing in Sunrise.
-
 /// Collect the mods' skull models once at client startup, after layer definitions freeze.
 /// API @API:create_skull_models@.
 pub(in crate::game) fn native_create_skull_models(

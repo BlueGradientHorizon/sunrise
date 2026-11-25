@@ -126,7 +126,7 @@ impl Game<'_> {
                         .container
                         .is_some_and(|at| at == from || Some(at) == partner)
                     {
-                        self.close_container_server();
+                        self.side_close_container();
                     }
                     let guests: Vec<_> = self
                         .lan

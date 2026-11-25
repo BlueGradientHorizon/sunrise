@@ -619,7 +619,6 @@ use mod_api::ModBlockEntity;
 use sound_and_shader_helpers::{finite, finite_params, local_sound_ok};
 #[allow(unused_imports)]
 pub(in crate::game) use sound_and_shader_helpers::{level_sound_playable, mod_sound_ok, sound_id};
-include!("shared.rs");
 
 // Free-function associated native hooks re-exported at native_hooks::*
 #[allow(unused_imports)]
@@ -729,3 +728,5 @@ pub(in crate::game) use register_texture_atlases::native_register_texture_atlase
 pub(in crate::game) use register_villager_professions::native_register_villager_professions;
 #[allow(unused_imports)]
 pub(in crate::game) use system_helpers::{mod_data_root, native_config_dir};
+
+include!("shared.rs");

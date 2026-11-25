@@ -173,15 +173,14 @@ impl Game<'_> {
         // checkHotbarKeyPressed refuses the swap while the cursor carries a
         // stack; the drop below is the next arm of keyPressed, which the menu
         // itself leaves to an empty hand.
-        let done = if let Some(button) = hotbar_swap(hotbar, self.carried.is_none()) {
+        if let Some(button) = hotbar_swap(hotbar, self.carried.is_none()) {
             self.click_open_inventory(Some(slot), button, Input::Swap)
         } else if key == KeyCode::KeyQ {
             let all = drop_whole_stack(self.client.modifiers);
             self.click_open_inventory(Some(slot), i32::from(all), Input::Throw)
         } else {
             false
-        };
-        done
+        }
     }
     /// The pick block key bound to a keyboard key, over a slot of the open
     /// menu (`AbstractContainerScreen.keyPressed`): `CLONE` with button 0. The

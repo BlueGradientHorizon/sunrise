@@ -471,7 +471,12 @@ impl Game<'_> {
             hit,
             self.held_mapping(sunrise_client::actions::Action::Sneak),
         ) {
-            self.transform_particle(&particle, hit.pos);
+            match particle.as_str() {
+                "scrape" => self.client_level_event_at(3005, hit.pos, 0),
+                "wax_on" => self.client_level_event_at(3003, hit.pos, 0),
+                "wax_off" => self.client_level_event_at(3004, hit.pos, 0),
+                _ => {}
+            }
             self.play_client_local_sound(
                 LevelSound::new(&sound, at, 1.0, 1.0).in_source(mod_api::SoundSource::Blocks),
             );

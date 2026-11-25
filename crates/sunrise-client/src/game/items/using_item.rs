@@ -275,7 +275,7 @@ impl Game<'_> {
         match self.use_start.item.clone().or_else(|| {
             self.using
                 .and_then(|(slot, _)| self.stack_in(slot))
-                .map(ItemStack::clone)
+                .cloned()
         }) {
             Some(stack) => self.stop_using_item(&stack),
             None => {
