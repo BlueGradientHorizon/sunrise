@@ -12,7 +12,6 @@ ids = [
     "type:EntityRenderState.distance_to_camera_sq",
     "type:PreparedItemRef",
     "handle:PreparedItemRef::destroy",
-    "type:ModelError",
     "method:BlockEntityDrawContext::view",
     "method:BlockEntityDrawContext::instance_group",
     "method:BlockEntityDrawContext::prepared_item",
