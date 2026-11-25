@@ -33,6 +33,10 @@ fn a_special_dropped_item_outlines_only_its_committed_world_vertices() {
         "game::client_side::native_special_renderers::frame_tests::a_special_dropped_item_outlines_only_its_committed_world_vertices",
         || {
             crate::game::native_entity_refs::tests::with_client_game(|game| {
+                const ID: u32 = 1_900_000_101;
+                let (client, _server) = Pipe::pair();
+                game.connect_local(client, "SpecialOutlineTest").unwrap();
+                game.remote.as_mut().unwrap().glowing.insert(ID as i32);
                 install_special_stick(game);
                 game.gui.atlas.sprites.insert(
                     "block/stone".into(),
@@ -59,10 +63,6 @@ fn a_special_dropped_item_outlines_only_its_committed_world_vertices() {
                 light[index(0, 65, 0)] = 0xA5;
                 Arc::make_mut(&mut chunk.sections[section]).light = Light::packed(light);
                 game.world.chunks.insert((0, 0), Arc::new(chunk));
-                const ID: u32 = 1_900_000_101;
-                let (client, _server) = Pipe::pair();
-                game.connect_local(client, "SpecialOutlineTest").unwrap();
-                game.remote.as_mut().unwrap().glowing.insert(ID as i32);
                 let mut stick = ItemStack::new("minecraft:stick", 1);
                 stick
                     .data_mut()
