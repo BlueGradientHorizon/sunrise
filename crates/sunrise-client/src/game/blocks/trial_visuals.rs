@@ -64,9 +64,9 @@ impl Game<'_> {
         } else {
             T::Flame
         };
-        let sound = |s: &mut Self, name: &str, volume: f32| {
-            let pitch = event_pitch(s.particles.0.level_random());
-            s.local_sound(name, pos, volume, pitch);
+        let sound = |game: &mut Self, name: &str, volume: f32| {
+            let pitch = event_pitch(game.particles.0.level_random());
+            game.local_sound(name, pos, volume, pitch);
         };
         match id {
             3011 => self.trial_spawn_particles(pos, spawn_flame),

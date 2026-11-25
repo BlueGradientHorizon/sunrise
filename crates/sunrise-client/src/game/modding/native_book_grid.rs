@@ -13,17 +13,17 @@ use sunrise_client::{
 };
 
 // no wire: the detached placement a part is answering, alive only while its hook runs.
-pub(super) struct Session {
-    pub(super) recipe: String,
-    pub(super) plan: MenuPlacement,
-    pub(super) menu: Box<Menu>,
-    pub(super) graph: Backings,
-    pub(super) before: MenuSnapshot,
-    pub(super) known: Settings,
-    pub(super) limited: bool,
-    pub(super) use_max: bool,
+pub(in crate::game) struct Session {
+    pub(in crate::game) recipe: String,
+    pub(in crate::game) plan: MenuPlacement,
+    pub(in crate::game) menu: Box<Menu>,
+    pub(in crate::game) graph: Backings,
+    pub(in crate::game) before: MenuSnapshot,
+    pub(in crate::game) known: Settings,
+    pub(in crate::game) limited: bool,
+    pub(in crate::game) use_max: bool,
     /// `place_recipe_in_grid` has placed this click's recipe: it places once.
-    pub(super) placed: bool,
+    pub(in crate::game) placed: bool,
 }
 
 fn reason(refusal: PlacementRefusal) -> &'static str {
@@ -40,7 +40,7 @@ fn reason(refusal: PlacementRefusal) -> &'static str {
 impl Game<'_> {
     /// Ask the part of the open menu's type to place `session`'s recipe, with the player swapped in.
     /// The placement comes back with the answer, changed by what the part placed.
-    pub(super) fn ask_mod_book_place(
+    pub(in crate::game) fn ask_mod_book_place(
         &mut self,
         session: Session,
     ) -> Result<(Session, PostPlace), Refusal> {
@@ -82,7 +82,7 @@ impl Game<'_> {
     /// `place_recipe_in_grid`: only while a `recipe_book_place` part runs. The placement is worked
     /// out on the detached menu; the game compares the player and the blocks again before
     /// it publishes anything.
-    pub(super) fn place_recipe_in_grid(
+    pub(in crate::game) fn place_recipe_in_grid(
         &mut self,
         recipe: &str,
         grid_width: u16,

@@ -2,10 +2,10 @@
 use super::Game;
 use mod_api::__private::game::RegistrationContextNew;
 use std::{collections::BTreeMap, sync::Arc};
-pub(super) type ConditionTable =
+pub(in crate::game) type ConditionTable =
     Arc<BTreeMap<mod_api::Identifier, (String, Arc<dyn mod_api::LoadCondition>)>>;
 impl Game<'_> {
-    pub(super) fn begin_condition_reload(
+    pub(in crate::game) fn begin_condition_reload(
         &mut self,
         stack: &super::functions::PackStack,
         resources: &std::path::Path,
@@ -24,7 +24,7 @@ impl Game<'_> {
         }
         self.prepare_server_reload(stack)
     }
-    pub(super) fn prepare_pack_condition_reload(
+    pub(in crate::game) fn prepare_pack_condition_reload(
         &mut self,
         stack: &super::functions::PackStack,
     ) -> Result<
@@ -35,7 +35,7 @@ impl Game<'_> {
         self.begin_condition_reload(stack, &self.options.resources.clone())
     }
 
-    pub(super) fn stage_condition_inventory(
+    pub(in crate::game) fn stage_condition_inventory(
         &mut self,
     ) -> sunrise_client::Result<Option<sunrise_assets::resource_source::ResourceRoot>> {
         self.protect_condition_root();
@@ -45,13 +45,13 @@ impl Game<'_> {
         self.stage_enabled_inventory()
     }
 
-    pub(super) fn protect_condition_root(&mut self) {
+    pub(in crate::game) fn protect_condition_root(&mut self) {
         self.mods.active_condition_root = Some(sunrise_client::mod_content::retain_root(
             &self.options.resources,
         ));
     }
 
-    pub(super) fn condition_root_needs_reload(&self) -> bool {
+    pub(in crate::game) fn condition_root_needs_reload(&self) -> bool {
         self.mods
             .load_condition_candidate
             .as_ref()
@@ -62,7 +62,7 @@ impl Game<'_> {
     }
 
     /// The conditions of a load from `root` over the candidate pack `files`.
-    pub(super) fn registered_load_conditions(
+    pub(in crate::game) fn registered_load_conditions(
         &self,
         inventory: &sunrise_mod_package::enabled::EnabledMods,
         stack: &super::functions::PackStack,
@@ -211,7 +211,7 @@ fn candidate_registries<'a>(
     registries
 }
 
-pub(super) fn conditions_for_mods(
+pub(in crate::game) fn conditions_for_mods(
     sources: &super::mods::ModsState,
     inventory: &sunrise_mod_package::enabled::EnabledMods,
 ) -> Result<sunrise_world::conditions::LoadConditions, String> {
@@ -269,7 +269,7 @@ mod startup_tests;
 #[path = "load_conditions/tests.rs"]
 mod tests;
 
-pub(super) fn content_root_with_conditions(
+pub(in crate::game) fn content_root_with_conditions(
     root: &std::path::Path,
     jars: &std::path::Path,
     mods: &[sunrise_client::mod_content::ContentMod],

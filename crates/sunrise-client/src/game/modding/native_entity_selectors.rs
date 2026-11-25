@@ -7,7 +7,7 @@ use sunrise_client::command::args::Selector;
 use sunrise_client_core::registries::SelectorToken;
 
 /// The frozen base selections validated when the installed mods registered their tokens.
-pub(super) fn selector_tokens() -> Vec<SelectorToken> {
+pub(in crate::game) fn selector_tokens() -> Vec<SelectorToken> {
     mod_api::__private::entity_selector_types()
         .map(|(name, base)| SelectorToken {
             name: name.to_owned(),
@@ -28,7 +28,7 @@ impl Game<'_> {
     /// `select_in_level`, then, for a mod's token, only the candidates its type keeps: after the
     /// base selection and the `[...]` options, before sorting and the limit. A vanilla selector
     /// costs nothing more.
-    pub(super) fn native_selector_kept(
+    pub(in crate::game) fn native_selector_kept(
         &mut self,
         s: &Selector,
         candidates: Vec<Target>,

@@ -2,6 +2,16 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::*;
 
+#[path = "mobs/spawner_client.rs"]
+pub(in crate::game) mod spawner_client;
+#[path = "mobs/allays_client.rs"]
+pub(in crate::game) mod allays_client;
+#[path = "blocks/composter_client.rs"]
+pub(in crate::game) mod composter_client;
+#[path = "modding/native_mob_draw.rs"]
+pub(in crate::game) mod native_mob_draw;
+#[path = "interface/random_textures.rs"]
+pub(in crate::game) mod random_textures;
 #[path = "side_ops/modapi_client.rs"]
 pub(in crate::game) mod modapi_client;
 #[path = "runtime/activity.rs"]
@@ -61,8 +71,6 @@ pub(in crate::game) mod cloud_height_frame_tests;
 pub(in crate::game) mod code_of_conduct;
 #[path = "administration/command_blocks.rs"]
 pub(in crate::game) mod command_blocks;
-#[path = "blocks/composter.rs"]
-pub(in crate::game) mod composter;
 #[path = "interface/container_hooks.rs"]
 pub(in crate::game) mod container_hooks;
 #[path = "interface/container_layout.rs"]
@@ -479,8 +487,6 @@ pub(in crate::game) mod sign_outline_tests;
 pub(in crate::game) mod sniffers;
 #[path = "network/social.rs"]
 pub(in crate::game) mod social;
-#[path = "mobs/spawner.rs"]
-pub(in crate::game) mod spawner;
 #[cfg(test)]
 #[path = "mobs/spawner_client_tick_tests.rs"]
 pub(in crate::game) mod spawner_client_tick_tests;

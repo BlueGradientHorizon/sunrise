@@ -751,7 +751,7 @@ impl Game<'_> {
         // damageable item with no such component — a sword put in a horse's body
         // slot by `/item replace` — never wears; `equip_damage_on_hurt` alone
         // cannot say that, since it defaults to true when the component is absent.
-        fn wearable(me: &Game<'_>, stack: &ItemStack, name: &str) -> Option<u32> {
+        let wearable = |me: &Self, stack: &ItemStack, name: &str| -> Option<u32> {
             let info = me.res.items().get(&stack.item)?;
             if info.equip_slot.is_none()
                 || !sunrise_client::item_sync::damage_on_hurt(stack, info.equip_damage_on_hurt)
@@ -762,7 +762,7 @@ impl Game<'_> {
                 return None;
             }
             Some(info.max_damage)
-        }
+        };
         let Some(body) = self
             .mobs
             .iter()

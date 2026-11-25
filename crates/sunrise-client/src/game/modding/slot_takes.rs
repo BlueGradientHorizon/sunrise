@@ -12,7 +12,7 @@ impl Game<'_> {
     /// `menu`. `backing` is the block a block-backed menu is open on, `None` for a blockless
     /// owned menu. Returns `false` when a listener panicked (contained and disabled for
     /// `menu_slot_take` for the rest of the session) so an enclosing click transaction can abort.
-    pub(super) fn mod_menu_slot_take(
+    pub(in crate::game) fn mod_menu_slot_take(
         &mut self,
         backing: Option<Pos>,
         player: u128,

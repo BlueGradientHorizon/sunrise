@@ -15,7 +15,7 @@ impl Game<'_> {
     /// positions, then the blast's block step on those left. Positions in chunks that aren't
     /// loaded, or outside the level's height, are skipped and not counted. The number of blocks
     /// destroyed.
-    pub(super) fn level_explosion_destroy_blocks(
+    pub(in crate::game) fn level_explosion_destroy_blocks(
         &mut self,
         level: LevelRef,
         positions: &[[i32; 3]],

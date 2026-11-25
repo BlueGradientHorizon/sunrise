@@ -2224,3 +2224,61 @@ pub(in crate::game) mod forced_respawn_tests {
 #[cfg(test)]
 #[path = "incoming_tests/knot_identity_server.rs"]
 pub(in crate::game) mod knot_identity_tests;
+
+impl Game<'_> {
+    /// `Entity.teleportTo(level, x, y, z, relatives, yRot, xRot, ...)`, as
+    /// `/tp` and `/spreadplayers` call it: its transition has no motion and no
+    /// relative delta, so `teleportSetPosition` leaves the moving entity still.
+    /// (An end gateway's or a vehicle's transition carries its motion.)
+    pub(in crate::game) fn teleport_stops(&mut self, t: Target) {
+        let _ = self.in_target_level(t, |g| {
+            target_entity_mut!(g, t, e => *e.velocity_mut() = Vec3::ZERO);
+            // The dragon's flight builds on the motion it carries.
+            if let Target::Dragon(id) = t
+                && let Some(d) = g.dragon.as_mut().filter(|d| d.id == id)
+            {
+                d.teleport_motion([false; 3]);
+            }
+        });
+    }
+    /// `TeleportCommand.performTeleport` after a successful `teleportTo` in
+    /// the target's own level: unless it is a fall-flying living entity, its
+    /// vertical motion is zeroed and it is on the ground; a mob's navigation
+    /// stops (`PathfinderMob`; the others hold no path). The players' own
+    /// ground is their clients'.
+    pub(in crate::game) fn tp_lands(&mut self, t: Target) {
+        // Player placement already handles motion and fall-flying ground state.
+        if matches!(t, Target::Player | Target::Guest(_)) {
+            return;
+        }
+        let _ = self.in_target_level(t, |g| {
+            if let Target::Mob(id) = t
+                && let Some(m) = g.mobs.iter_mut().find(|m| m.id == id)
+            {
+                m.nav_stop();
+                if m.extra.fall_flying {
+                    return;
+                }
+            }
+            target_entity_mut!(g, t, e => {
+                e.velocity_mut().y = 0.0;
+                if matches!(e.update_retained_ground(&g.world, g.collision, &world_items!(g).entity_type_tags, true, None), Ok(false)) {
+                    e.set_on_ground(true);
+                }
+            });
+        });
+    }
+    pub(in crate::game) fn teleport_to_relative(
+        &mut self,
+        t: Target,
+        pos: [f64; 3],
+        rotation: Option<[f32; 2]>,
+        relative: [bool; 3],
+        turn_riders: bool,
+    ) {
+        // An entity in another level is teleported in the level that holds it.
+        let _ = self.in_target_level(t, |g| {
+            g.teleport_to_in_level(t, pos, rotation, relative, turn_riders)
+        });
+    }
+}

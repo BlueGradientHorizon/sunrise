@@ -57,7 +57,7 @@ impl Game<'_> {
     /// `set_weather_parameters` through a handle of the level in place. False for a negative
     /// time, inside the `weather_change` or `thunder_change` hook, a parked level, a stale
     /// handle or a client.
-    pub(super) fn level_set_weather(
+    pub(in crate::game) fn level_set_weather(
         &mut self,
         level: LevelRef,
         clear_ticks: i32,
@@ -78,7 +78,7 @@ impl Game<'_> {
     /// `Level.setRainLevel(rain)` and `setThunderLevel(thunder)`: both halves of each level
     /// at once, clamped to 0 to 1, so the change shows without fading in. False for a value
     /// that isn't finite, a parked level, a stale handle or a client.
-    pub(super) fn level_set_weather_levels(
+    pub(in crate::game) fn level_set_weather_levels(
         &mut self,
         level: LevelRef,
         rain: f32,

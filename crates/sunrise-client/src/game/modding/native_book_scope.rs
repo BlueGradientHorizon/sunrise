@@ -11,42 +11,42 @@ use sunrise_client::{
 };
 
 #[derive(Clone, PartialEq)]
-pub(super) struct NativeMenuSlot {
-    pub(super) place: MenuSlotPlace,
-    pub(super) stack: Option<mod_api::ItemStack>,
+pub(in crate::game) struct NativeMenuSlot {
+    pub(in crate::game) place: MenuSlotPlace,
+    pub(in crate::game) stack: Option<mod_api::ItemStack>,
 }
 
 // no wire: server-local state compared before publishing a detached placement.
 #[derive(Clone, PartialEq)]
-pub(super) struct MenuSnapshot {
-    pub(super) conn: u32,
-    pub(super) uuid: u128,
-    pub(super) entity_id: i32,
-    pub(super) placed_at: u64,
-    pub(super) dimension: String,
-    pub(super) instance: u64,
-    pub(super) window: i32,
-    pub(super) kind: &'static ModMenuType,
-    pub(super) slots: Slots,
-    pub(super) pos: Option<(i32, i32, i32)>,
-    pub(super) size: usize,
+pub(in crate::game) struct MenuSnapshot {
+    pub(in crate::game) conn: u32,
+    pub(in crate::game) uuid: u128,
+    pub(in crate::game) entity_id: i32,
+    pub(in crate::game) placed_at: u64,
+    pub(in crate::game) dimension: String,
+    pub(in crate::game) instance: u64,
+    pub(in crate::game) window: i32,
+    pub(in crate::game) kind: &'static ModMenuType,
+    pub(in crate::game) slots: Slots,
+    pub(in crate::game) pos: Option<(i32, i32, i32)>,
+    pub(in crate::game) size: usize,
 
-    pub(super) links: Vec<(i32, i32, i32)>,
-    pub(super) craft: Option<ModCraft>,
-    pub(super) inventory: Vec<Option<ItemStack>>,
-    pub(super) armor: [Option<ItemStack>; 4],
-    pub(super) offhand: Option<ItemStack>,
-    pub(super) carried: Option<ItemStack>,
-    pub(super) selected: usize,
-    pub(super) game_mode: i32,
-    pub(super) health: u32,
-    pub(super) xp: (i32, u32, i32, i32),
-    pub(super) known: BTreeSet<String>,
-    pub(super) native: Option<Vec<Option<NativeMenuSlot>>>,
+    pub(in crate::game) links: Vec<(i32, i32, i32)>,
+    pub(in crate::game) craft: Option<ModCraft>,
+    pub(in crate::game) inventory: Vec<Option<ItemStack>>,
+    pub(in crate::game) armor: [Option<ItemStack>; 4],
+    pub(in crate::game) offhand: Option<ItemStack>,
+    pub(in crate::game) carried: Option<ItemStack>,
+    pub(in crate::game) selected: usize,
+    pub(in crate::game) game_mode: i32,
+    pub(in crate::game) health: u32,
+    pub(in crate::game) xp: (i32, u32, i32, i32),
+    pub(in crate::game) known: BTreeSet<String>,
+    pub(in crate::game) native: Option<Vec<Option<NativeMenuSlot>>>,
     block: Option<(u32, Option<u64>, String, usize)>,
 }
 impl Game<'_> {
-    pub(super) fn mod_book_menu_snapshot(
+    pub(in crate::game) fn mod_book_menu_snapshot(
         &mut self,
         conn: u32,
         window: i32,
@@ -164,7 +164,7 @@ impl Game<'_> {
             block,
         })
     }
-    pub(super) fn mod_book_menu_unchanged(&self, before: &MenuSnapshot) -> bool {
+    pub(in crate::game) fn mod_book_menu_unchanged(&self, before: &MenuSnapshot) -> bool {
         let slots = {
             let Some(host) = &self.lan else {
                 return false;

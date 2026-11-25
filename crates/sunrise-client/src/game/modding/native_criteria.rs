@@ -54,7 +54,7 @@ impl Game<'_> {
     ///
     /// `test` is lent to this call only. A failed test stops further testing
     /// and reports `Test`; earlier matching criteria may already be granted.
-    pub(super) fn player_trigger_criterion(
+    pub(in crate::game) fn player_trigger_criterion(
         &mut self,
         player: PlayerRef,
         trigger: &Identifier,
@@ -83,7 +83,7 @@ impl Game<'_> {
     }
 
     /// Fire only `default_block_use` for a use a mod handled.
-    pub(super) fn player_trigger_block_use(
+    pub(in crate::game) fn player_trigger_block_use(
         &mut self,
         player: PlayerRef,
         pos: [i32; 3],
@@ -94,7 +94,7 @@ impl Game<'_> {
     }
 
     /// Fire only `item_used_on_block` against the pre-use snapshot.
-    pub(super) fn player_trigger_item_used_on_block(
+    pub(in crate::game) fn player_trigger_item_used_on_block(
         &mut self,
         player: PlayerRef,
         pos: [i32; 3],
@@ -106,7 +106,7 @@ impl Game<'_> {
     }
 
     /// The same consume_item criterion path food and potions use, in the player's level.
-    pub(super) fn player_trigger_consume_item(
+    pub(in crate::game) fn player_trigger_consume_item(
         &mut self,
         player: PlayerRef,
         stack: &sunrise_client::items::ItemStack,

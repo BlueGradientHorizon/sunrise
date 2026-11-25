@@ -69,7 +69,7 @@ fn render_id(mob_id: u32, local: bool, own_id: i32) -> u32 {
 
 /// The render state of `m` at `partial` (`LivingEntityRenderer.extractRenderState`),
 /// told as entity `id`.
-pub(super) fn mob_render<'a>(m: &'a Mob, id: u32, partial: f32) -> MobRender<'a> {
+pub(in crate::game) fn mob_render<'a>(m: &'a Mob, id: u32, partial: f32) -> MobRender<'a> {
     let body = anim::body_rot(m, partial);
     // The walk cycle, head turn and age as the vanilla models read them:
     // no walking while riding or dead, a baby's legs three times as far
@@ -95,7 +95,7 @@ pub(super) fn mob_render<'a>(m: &'a Mob, id: u32, partial: f32) -> MobRender<'a>
 
 /// The frame of `m` at `partial` an entity renderer or layer reads, told as entity `id`:
 /// `LivingEntityRenderer.extractRenderState`'s `LivingEntityRenderState`.
-pub(super) fn entity_render_state(m: &Mob, id: u32, partial: f32) -> EntityRenderState {
+pub(in crate::game) fn entity_render_state(m: &Mob, id: u32, partial: f32) -> EntityRenderState {
     let body_rot = anim::body_rot(m, partial);
     let pose = anim::state(m, partial);
     // `isEntityUpsideDown` turns the head's angles over with the body.
@@ -144,18 +144,18 @@ pub(super) fn entity_render_state(m: &Mob, id: u32, partial: f32) -> EntityRende
 /// The pose a mod's mob model starts from: at the feet, `at` (relative to the
 /// camera), turned with the body so +z is the way it faces, +x its left and +y
 /// up, in blocks.
-pub(super) fn mob_pose(at: DVec3, body_yaw: f32) -> Mat4 {
+pub(in crate::game) fn mob_pose(at: DVec3, body_yaw: f32) -> Mat4 {
     Mat4::from_translation(at.as_vec3()) * Mat4::from_rotation_y((-body_yaw).to_radians())
 }
 
 impl Game<'_> {
     /// Whether a mod listens to the render hook pair this frame (asked once, when the frame's
     /// entity pass began): with none, nothing is posed or built for the hooks per entity.
-    pub(super) fn mob_render_listened(&self) -> bool {
+    pub(in crate::game) fn mob_render_listened(&self) -> bool {
         FRAME.with_borrow(|frame| frame.listened)
     }
     /// Whether a Post listener can read the final model of this entity.
-    pub(super) fn mob_render_post_listened(&self, player: bool) -> bool {
+    pub(in crate::game) fn mob_render_post_listened(&self, player: bool) -> bool {
         FRAME.with_borrow(|frame| frame.living_post || (player && frame.player_post))
     }
     /// Whether a mod's pre hook canceled the drawing of entity `id` this frame: the later passes
@@ -176,7 +176,7 @@ impl Game<'_> {
     /// Player Post is called here without a model. `listened` is the frame's
     /// [`Game::mob_render_listened`].
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn mod_render_pre<'m>(
+    pub(in crate::game) fn mod_render_pre<'m>(
         &self,
         mob: &'m Mob,
         who: Option<PlayerRender<'_>>,
@@ -234,7 +234,7 @@ impl Game<'_> {
     /// of its model and its vanilla layers, from a draw at its feet, not turned: true when it
     /// drew. False when none is registered for the type, and when it fails this frame (then it is
     /// asked no more until resources reload): the type draws its own model.
-    pub(super) fn mod_living_renderer_geometry(
+    pub(in crate::game) fn mod_living_renderer_geometry(
         &self,
         mob: &Mob,
         partial: f32,
@@ -266,7 +266,7 @@ impl Game<'_> {
     /// whose answer also decided whether the draw kept its model. `who` is set for a player, and
     /// `model` lends the final model as the vanilla draw posed it, if one ran.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn mod_layer_geometry(
+    pub(in crate::game) fn mod_layer_geometry(
         &self,
         mob: &Mob,
         who: Option<PlayerRender<'_>>,
@@ -288,7 +288,7 @@ impl Game<'_> {
     /// spectating player draws none). `model` is the same borrowed model offered to the layers,
     /// absent if there was no vanilla body pose.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn mod_render_post(
+    pub(in crate::game) fn mod_render_post(
         &self,
         mob: &Mob,
         who: Option<PlayerRender<'_>>,

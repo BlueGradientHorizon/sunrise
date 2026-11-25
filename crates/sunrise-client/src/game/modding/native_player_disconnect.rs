@@ -10,7 +10,7 @@ impl Game<'_> {
     /// their leave and fires `player_logged_out`; `player_kicked` hears the reason.
     /// False for a stale or unavailable player, the single-player owner or a player
     /// already leaving: the first reason stands, and nothing more is sent or heard.
-    pub(super) fn player_disconnect(&mut self, player: PlayerRef, reason: Text) -> bool {
+    pub(in crate::game) fn player_disconnect(&mut self, player: PlayerRef, reason: Text) -> bool {
         let Some(conn) = self.disconnect_target(player) else {
             return false;
         };

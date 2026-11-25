@@ -14,7 +14,7 @@ use sunrise_client::{
 use sunrise_core::nbt::Compound;
 type Pos = (i32, i32, i32);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(super) struct Key {
+pub(in crate::game) struct Key {
     pub dimension: &'static str,
     pub pos: Pos,
     pub slot: usize,
@@ -33,17 +33,17 @@ struct Block {
     limit: Option<u32>,
     data: Option<(u64, Compound, Vec<i32>)>,
 }
-pub(super) struct NativeChange {
-    pub(super) slot: usize,
-    pub(super) place: MenuSlotPlace,
-    pub(super) before: Option<mod_api::ItemStack>,
-    pub(super) after: Option<ItemStack>,
+pub(in crate::game) struct NativeChange {
+    pub(in crate::game) slot: usize,
+    pub(in crate::game) place: MenuSlotPlace,
+    pub(in crate::game) before: Option<mod_api::ItemStack>,
+    pub(in crate::game) after: Option<ItemStack>,
 }
-pub(super) struct Changes {
-    pub(super) blocks: BTreeMap<Key, Option<ItemStack>>,
-    pub(super) native: Vec<NativeChange>,
+pub(in crate::game) struct Changes {
+    pub(in crate::game) blocks: BTreeMap<Key, Option<ItemStack>>,
+    pub(in crate::game) native: Vec<NativeChange>,
 }
-pub(super) struct Backings {
+pub(in crate::game) struct Backings {
     dimension: &'static str,
     blocks: BTreeMap<Pos, Block>,
     pub main: Vec<Option<ItemStack>>,

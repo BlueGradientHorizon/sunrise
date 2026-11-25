@@ -81,11 +81,7 @@ impl Game<'_> {
             teams: std::sync::Arc::new(self.mob_teams()),
             items: Some(self.items()),
             lid_openers: &self.server.lid_openers,
-            mod_effects: if self.is_logical_server() {
-                Some(self)
-            } else {
-                None
-            },
+            mod_effects: Some(self),
             mob_hooks: (self.native_authoritative()
                 && ([
                     mod_api::HookId::EndermanAnger,

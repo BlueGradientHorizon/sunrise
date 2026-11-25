@@ -25,7 +25,7 @@ impl Game<'_> {
     /// is past vanilla's limits for a template file, a template that places
     /// nothing, a client of a server, a chunk of the template's box not
     /// loaded, or the game's structure resources missing.
-    pub(super) fn place_template(
+    pub(in crate::game) fn place_template(
         &mut self,
         source: &StructureTemplateSource,
         at: [i32; 3],

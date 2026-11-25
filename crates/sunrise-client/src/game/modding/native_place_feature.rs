@@ -6,7 +6,7 @@ use mod_api::{LevelReadError, LevelRef, PlaceFeatureRefusal};
 impl Game<'_> {
     /// `Feature.place` of `feature` at `pos` in the level in place: the feature's own report of
     /// success. Blocks it set before reporting `false` are kept, as the command keeps them.
-    pub(super) fn level_place_feature(
+    pub(in crate::game) fn level_place_feature(
         &mut self,
         level: LevelRef,
         feature: &str,
@@ -18,7 +18,7 @@ impl Game<'_> {
     /// `PlacedFeature.place` of `placed_feature` at `pos` in the level in place:
     /// its modifiers from `pos`, then its feature at each position.
     /// `Ok(false)` when no position remains or every feature invocation reports failure.
-    pub(super) fn level_place_placed_feature(
+    pub(in crate::game) fn level_place_placed_feature(
         &mut self,
         level: LevelRef,
         placed_feature: &str,

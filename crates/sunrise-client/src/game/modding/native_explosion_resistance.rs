@@ -12,7 +12,7 @@ impl Game<'_> {
     /// The resistance the blast `level.explode(source, center, radius, fire, interaction)` would
     /// meet in the cell at `pos`. `Unavailable` for a stale level or source, a chunk that isn't
     /// loaded or an unknown state.
-    pub(super) fn level_explosion_resistance(
+    pub(in crate::game) fn level_explosion_resistance(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],
@@ -34,7 +34,7 @@ impl Game<'_> {
 
     /// `level_explosion_resistance` for every cell of `cells`, in its order. Refused, with
     /// nothing read, for an inverted area or more than `ResistanceCells::MAX` cells.
-    pub(super) fn level_explosion_resistances(
+    pub(in crate::game) fn level_explosion_resistances(
         &mut self,
         level: LevelRef,
         cells: &ResistanceCells,

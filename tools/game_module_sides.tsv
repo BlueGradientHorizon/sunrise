@@ -8,7 +8,8 @@ agent_settings	client	touches only ClientState fields	game/runtime/agent_setting
 ahead	server	touches only ServerState fields	game/entities/ahead.rs
 allay_jukebox_source_tests	game	touches neither ClientState nor ServerState fields	game/mobs/allay_jukebox_source_tests.rs
 allay_pickup_cooldown_tests	game	touches neither ClientState nor ServerState fields	game/mobs/allay_pickup_cooldown_tests.rs
-allays	game	touches neither ClientState nor ServerState fields	game/mobs/allays.rs
+allays	server	re-homed server module	game/mobs/allays.rs
+allays_client	client	re-homed client module	game/mobs/allays_client.rs
 api_values	server	touches only server-owned fields	game/modding/api_values.rs
 armor_stand_refind_tests	server	touches only ServerState fields	game/entities/armor_stand_refind_tests.rs
 armor_stands	server	touches only server-owned fields (opposite-side functions moved to armor_stands_client)	game/entities/armor_stands.rs
@@ -97,7 +98,8 @@ command_harness	server	touches only ServerState fields	game/administration/comma
 command_minecarts	game	touches neither ClientState nor ServerState fields	game/administration/command_minecarts.rs
 command_registries	game	touches neither ClientState nor ServerState fields	game/interface/command_registries.rs
 commands	game	touches both ClientState and ServerState fields	game/administration/commands/mod.rs
-composter	client	touches only client-owned fields	game/blocks/composter.rs
+composter	server	re-homed server module	game/blocks/composter.rs
+composter_client	client	re-homed client module	game/blocks/composter_client.rs
 condition_reload_state	game	touches neither ClientState nor ServerState fields	game/world/condition_reload_state.rs
 consume	server	touches only ServerState fields	game/items/consume.rs
 consume_effect_dispatch	game	touches neither ClientState nor ServerState fields	game/modding/consume_effect_dispatch.rs
@@ -154,7 +156,7 @@ dragon_boss_bar_name_tests	client	touches only ClientState fields	game/interface
 dragon_fireball_motion_tests	server	touches only ServerState fields	game/mobs/dragon_fireball_motion_tests.rs
 draw_boundary	game	touches neither ClientState nor ServerState fields	game/modding/draw_boundary.rs
 dropped_by_player_tests	game	touches neither ClientState nor ServerState fields	game/items/dropped_by_player_tests.rs
-dropped_item_setter	game	touches neither ClientState nor ServerState fields	game/modding/dropped_item_setter.rs
+dropped_item_setter	server	re-homed server module	game/modding/dropped_item_setter.rs
 durability	game	touches neither ClientState nor ServerState fields	game/items/durability.rs
 dynamic_light_emission	server	touches only server-owned fields	game/world/dynamic_light_emission.rs
 dynamic_light_emission_tests	game	touches neither ClientState nor ServerState fields	game/world/dynamic_light_emission_tests.rs
@@ -212,7 +214,7 @@ fluid_interaction_tests	game	touches neither ClientState nor ServerState fields	
 fluid_interactions	server	touches only server-owned fields	game/modding/fluid_interactions.rs
 focused_text_field	client	touches only ClientState fields	game/interface/focused_text_field.rs
 fov	client	touches only ClientState fields	game/interface/fov.rs
-foxes	game	touches neither ClientState nor ServerState fields	game/mobs/foxes.rs
+foxes	server	re-homed server module	game/mobs/foxes.rs
 frame_geometry	client	touches only ClientState fields	game/interface/frame_geometry.rs
 frames	server	touches only server-owned fields (opposite-side functions moved to frames_client)	game/entities/frames.rs
 friends	client	touches only ClientState fields	game/network/friends.rs,game/network/friends_off.rs
@@ -344,7 +346,7 @@ lightning_bolt_uniform_tests	game	touches neither ClientState nor ServerState fi
 lightning_item_tests	game	touches neither ClientState nor ServerState fields	game/entities/lightning_item_tests.rs
 living_attributes	server	touches only ServerState fields	game/mobs/living_attributes.rs
 llamas	server	touches only ServerState fields	game/mobs/llamas.rs
-load_conditions	game	touches neither ClientState nor ServerState fields	game/modding/load_conditions.rs
+load_conditions	server	re-homed server module	game/modding/load_conditions.rs
 loading_screen	client	touches only ClientState fields	game/runtime/loading_screen.rs
 loading_window	client	touches only ClientState fields	game/runtime/loading_window.rs
 location_world	game	touches neither ClientState nor ServerState fields	game/blocks/location_world.rs
@@ -415,16 +417,16 @@ native_block_sprites	client	touches only client-owned fields	game/modding/native
 native_block_states	game	touches neither ClientState nor ServerState fields	game/modding/native_block_states.rs
 native_block_tables	game	touches neither ClientState nor ServerState fields	game/modding/native_block_tables.rs
 native_block_use_criteria_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_block_use_criteria_tests.rs
-native_book_apply	game	touches neither ClientState nor ServerState fields	game/modding/native_book_apply.rs
-native_book_backings	game	touches neither ClientState nor ServerState fields	game/modding/native_book_backings.rs
+native_book_apply	server	re-homed server module	game/modding/native_book_apply.rs
+native_book_backings	server	re-homed server module	game/modding/native_book_backings.rs
 native_book_catalogue	game	touches neither ClientState nor ServerState fields	game/modding/native_book_catalogue.rs
 native_book_displays	game	touches neither ClientState nor ServerState fields	game/modding/native_book_displays.rs
-native_book_grid	game	touches neither ClientState nor ServerState fields	game/modding/native_book_grid.rs
+native_book_grid	server	re-homed server module	game/modding/native_book_grid.rs
 native_book_invalidation	server	touches only ServerState fields	game/modding/native_book_invalidation.rs
 native_book_net	server	touches only server-owned fields	game/modding/native_book_net.rs
 native_book_placement	game	touches neither ClientState nor ServerState fields	game/modding/native_book_placement.rs
 native_book_receive	game	touches neither ClientState nor ServerState fields	game/modding/native_book_receive.rs
-native_book_scope	game	touches neither ClientState nor ServerState fields	game/modding/native_book_scope.rs
+native_book_scope	server	re-homed server module	game/modding/native_book_scope.rs
 native_book_settings	game	touches neither ClientState nor ServerState fields	game/modding/native_book_settings.rs
 native_book_transport	game	touches neither ClientState nor ServerState fields	game/modding/native_book_transport.rs
 native_boss_bar_refs	server	touches only ServerState fields	game/modding/native_boss_bar_refs.rs
@@ -433,7 +435,7 @@ native_capability_cache_tests	game	touches neither ClientState nor ServerState f
 native_cauldron_contents	game	touches neither ClientState nor ServerState fields	game/modding/native_cauldron_contents.rs
 native_chat_recipients	game	touches neither ClientState nor ServerState fields	game/modding/native_chat_recipients.rs
 native_chat_recipients_tests	server	touches only ServerState fields	game/modding/native_chat_recipients_tests.rs
-native_chunk_areas	game	touches neither ClientState nor ServerState fields	game/modding/native_chunk_areas.rs
+native_chunk_areas	server	re-homed server module	game/modding/native_chunk_areas.rs
 native_chunk_generator	game	touches neither ClientState nor ServerState fields	game/modding/native_chunk_generator.rs
 native_chunk_queries	game	touches neither ClientState nor ServerState fields	game/modding/native_chunk_queries.rs
 native_chunk_relight_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_chunk_relight_tests.rs
@@ -457,7 +459,7 @@ native_connection_groups	server	touches only server-owned fields	game/modding/na
 native_console	game	touches neither ClientState nor ServerState fields	game/modding/native_console.rs
 native_console_tests	server	touches only ServerState fields	game/modding/native_console_tests.rs
 native_content_items	game	touches neither ClientState nor ServerState fields	game/modding/native_content_items.rs
-native_criteria	game	touches neither ClientState nor ServerState fields	game/modding/native_criteria.rs
+native_criteria	server	re-homed server module	game/modding/native_criteria.rs
 native_custom_geometry	client	touches only ClientState fields	game/modding/native_custom_geometry.rs
 native_custom_stats	game	touches neither ClientState nor ServerState fields	game/modding/native_custom_stats.rs
 native_damage_tests	server	touches only ServerState fields	game/modding/native_damage_tests.rs
@@ -497,13 +499,13 @@ native_entity_remove	server	touches only ServerState fields	game/modding/native_
 native_entity_renderers	game	touches neither ClientState nor ServerState fields	game/modding/native_entity_renderers.rs
 native_entity_renderers_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_entity_renderers_tests.rs
 native_entity_riding	server	touches only ServerState fields	game/modding/native_entity_riding.rs
-native_entity_selectors	game	touches neither ClientState nor ServerState fields	game/modding/native_entity_selectors.rs
+native_entity_selectors	server	re-homed server module	game/modding/native_entity_selectors.rs
 native_entity_sounds	server	touches only ServerState fields	game/modding/native_entity_sounds.rs
 native_entity_state	server	touches only ServerState fields	game/modding/native_entity_state.rs
 native_experience_orb_renderers_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_experience_orb_renderers_tests.rs
-native_explosion_destroy	game	touches neither ClientState nor ServerState fields	game/modding/native_explosion_destroy.rs
+native_explosion_destroy	server	re-homed server module	game/modding/native_explosion_destroy.rs
 native_explosion_destroy_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_explosion_destroy_tests.rs
-native_explosion_resistance	game	touches neither ClientState nor ServerState fields	game/modding/native_explosion_resistance.rs
+native_explosion_resistance	server	re-homed server module	game/modding/native_explosion_resistance.rs
 native_explosion_resistance_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_explosion_resistance_tests.rs
 native_explosions	server	touches only ServerState fields	game/modding/native_explosions.rs
 native_explosions_tests	server	touches only ServerState fields	game/modding/native_explosions_tests.rs
@@ -523,7 +525,7 @@ native_give_stack_tests	game	touches neither ClientState nor ServerState fields	
 native_goal_ticks	server	touches only ServerState fields	game/modding/native_goal_ticks/mod.rs
 native_ground	game	touches neither ClientState nor ServerState fields	game/modding/native_ground.rs
 native_guest_turn_tests	server	touches only ServerState fields	game/modding/native_guest_turn_tests.rs
-native_hanging	game	touches neither ClientState nor ServerState fields	game/modding/native_hanging.rs
+native_hanging	server	re-homed server module	game/modding/native_hanging.rs
 native_hanging_tests	server	touches only ServerState fields	game/modding/native_hanging_tests.rs
 native_harvest_queries	server	touches only ServerState fields	game/modding/native_harvest_queries.rs
 native_held_out_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_held_out_tests.rs
@@ -557,8 +559,8 @@ native_knockback_credit	server	touches only ServerState fields	game/modding/nati
 native_knockback_credit_site_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_knockback_credit_site_tests.rs
 native_knockback_tests	server	touches only ServerState fields	game/modding/native_knockback_tests.rs
 native_level_block_states_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_level_block_states_tests.rs
-native_level_border	game	touches neither ClientState nor ServerState fields	game/modding/native_level_border.rs
-native_level_effects	game	touches neither ClientState nor ServerState fields	game/modding/native_level_effects.rs
+native_level_border	server	re-homed server module	game/modding/native_level_border.rs
+native_level_effects	server	re-homed server module	game/modding/native_level_effects.rs
 native_level_events	server	touches only ServerState fields	game/modding/native_level_events.rs
 native_level_items	server	touches only ServerState fields	game/modding/native_level_items.rs
 native_level_notify_tests	client	touches only ClientState fields	game/modding/native_level_notify_tests.rs
@@ -569,7 +571,7 @@ native_level_signals	server	touches only ServerState fields	game/modding/native_
 native_level_sound_except_tests	server	touches only ServerState fields	game/modding/native_level_sound_except_tests.rs
 native_level_spawning	server	touches only ServerState fields	game/modding/native_level_spawning.rs
 native_level_ticking	server	touches only server-owned fields	game/modding/native_level_ticking.rs
-native_level_weather	game	touches neither ClientState nor ServerState fields	game/modding/native_level_weather.rs
+native_level_weather	server	re-homed server module	game/modding/native_level_weather.rs
 native_level_world	server	touches only ServerState fields	game/modding/native_level_world.rs
 native_lifecycle	server	touches only server-owned fields (opposite-side functions moved to native_lifecycle_client)	game/modding/native_lifecycle.rs
 native_live_holder_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_live_holder_tests.rs
@@ -595,7 +597,7 @@ native_menu_slot_kinds	client	touches only ClientState fields	game/modding/nativ
 native_menus	server	touches only ServerState fields	game/modding/native_menus.rs
 native_merchant_refs	game	touches neither ClientState nor ServerState fields	game/modding/native_merchant_refs.rs
 native_minecart_refs	server	touches only ServerState fields	game/modding/native_minecart_refs.rs
-native_mob_draw	game	touches neither ClientState nor ServerState fields	game/modding/native_mob_draw.rs
+native_mob_draw	client	re-homed client module	game/modding/native_mob_draw.rs
 native_mob_goals	server	touches only ServerState fields	game/modding/native_mob_goals.rs
 native_mob_navigation	game	touches neither ClientState nor ServerState fields	game/modding/native_mob_navigation.rs
 native_mob_navigation_flags_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_mob_navigation_flags_tests.rs
@@ -621,7 +623,7 @@ native_passage_cross	client	touches only ClientState fields	game/modding/native_
 native_passages	server	touches only ServerState fields	game/modding/native_passages.rs
 native_path_types_tests	server	touches only ServerState fields	game/modding/native_path_types_tests.rs
 native_pending_children	server	touches only server-owned fields	game/modding/native_pending_children.rs
-native_place_feature	game	touches neither ClientState nor ServerState fields	game/modding/native_place_feature.rs
+native_place_feature	server	re-homed server module	game/modding/native_place_feature.rs
 native_place_feature_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_place_feature_tests.rs
 native_placement_state_tests	server	touches only server-owned fields	game/modding/native_placement_state_tests.rs
 native_player_attack	game	touches neither ClientState nor ServerState fields	game/modding/native_player_attack.rs
@@ -629,7 +631,7 @@ native_player_break	server	touches only ServerState fields	game/modding/native_p
 native_player_cooldowns	server	touches only ServerState fields	game/modding/native_player_cooldowns.rs
 native_player_death	game	touches neither ClientState nor ServerState fields	game/modding/native_player_death.rs
 native_player_destroyed_block_tests	server	touches only ServerState fields	game/modding/native_player_destroyed_block_tests.rs
-native_player_disconnect	game	touches neither ClientState nor ServerState fields	game/modding/native_player_disconnect.rs
+native_player_disconnect	server	re-homed server module	game/modding/native_player_disconnect.rs
 native_player_disconnect_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_player_disconnect_tests.rs
 native_player_ender_chest	server	touches only ServerState fields	game/modding/native_player_ender_chest.rs
 native_player_ender_chest_tests	server	touches only ServerState fields	game/modding/native_player_ender_chest_tests.rs
@@ -658,7 +660,7 @@ native_projectile_launch	server	touches only ServerState fields	game/modding/nat
 native_projectile_launch_tests	server	touches only ServerState fields	game/modding/native_projectile_launch_tests.rs
 native_projectile_refs	server	touches only ServerState fields	game/modding/native_projectile_refs.rs
 native_projectiles	server	touches only ServerState fields	game/modding/native_projectiles.rs
-native_quick_move	game	touches neither ClientState nor ServerState fields	game/modding/native_quick_move.rs
+native_quick_move	server	re-homed server module	game/modding/native_quick_move.rs
 native_raid_refs	server	touches only ServerState fields	game/modding/native_raid_refs.rs
 native_recipe_properties	server	touches only server-owned fields (opposite-side functions moved to native_recipe_properties_client)	game/modding/native_recipe_properties.rs
 native_recipe_sync	game	touches neither ClientState nor ServerState fields	game/modding/native_recipe_sync.rs
@@ -683,7 +685,7 @@ native_scoreboard	server	touches only ServerState fields	game/modding/native_sco
 native_scoreboard_teams	game	touches neither ClientState nor ServerState fields	game/modding/native_scoreboard_teams.rs
 native_section_visibility	game	touches neither ClientState nor ServerState fields	game/modding/native_section_visibility.rs
 native_server	game	touches both ClientState and ServerState fields	game/modding/native_server.rs
-native_server_distances	game	touches neither ClientState nor ServerState fields	game/modding/native_server_distances.rs
+native_server_distances	server	re-homed server module	game/modding/native_server_distances.rs
 native_server_max_players	game	touches neither ClientState nor ServerState fields	game/modding/native_server_max_players.rs
 native_server_max_players_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_server_max_players_tests.rs
 native_shaders	client	touches only ClientState fields	game/modding/native_shaders.rs
@@ -697,9 +699,9 @@ native_sound_seed_tests	game	touches neither ClientState nor ServerState fields	
 native_special_renderers	client	touches only ClientState fields	game/modding/native_special_renderers.rs
 native_spectator_shader_tests	client	touches only ClientState fields	game/modding/native_spectator_shader_tests.rs
 native_state_shapes	game	touches neither ClientState nor ServerState fields	game/modding/native_state_shapes.rs
-native_structure_placement	game	touches neither ClientState nor ServerState fields	game/modding/native_structure_placement.rs
+native_structure_placement	server	re-homed server module	game/modding/native_structure_placement.rs
 native_structure_types	game	touches neither ClientState nor ServerState fields	game/modding/native_structure_types.rs
-native_structures	game	touches neither ClientState nor ServerState fields	game/modding/native_structures.rs
+native_structures	server	re-homed server module	game/modding/native_structures.rs
 native_success_broadcast_tests	server	touches only ServerState fields	game/modding/native_success_broadcast_tests.rs
 native_surface	server	touches only ServerState fields	game/modding/native_surface.rs
 native_tags	game	touches neither ClientState nor ServerState fields	game/modding/native_tags.rs
@@ -716,7 +718,7 @@ native_unspawned_mob	server	touches only server-owned fields	game/modding/native
 native_viewed_levels	client	touches only client-owned fields	game/modding/native_viewed_levels.rs
 native_visuals	client	touches only client-owned fields	game/modding/native_visuals.rs
 native_world_columns	game	touches neither ClientState nor ServerState fields	game/modding/native_world_columns.rs
-native_world_edit	game	touches neither ClientState nor ServerState fields	game/modding/native_world_edit.rs
+native_world_edit	server	re-homed server module	game/modding/native_world_edit.rs
 native_world_read	server	touches only server-owned fields	game/modding/native_world_read.rs
 native_worldgen	game	touches neither ClientState nor ServerState fields	game/modding/native_worldgen.rs
 native_worldgen_parts	game	touches neither ClientState nor ServerState fields	game/modding/native_worldgen_parts.rs
@@ -735,7 +737,7 @@ orb_data_tests	server	touches only ServerState fields	game/entities/orb_data_tes
 orb_merge_tests	game	touches neither ClientState nor ServerState fields	game/modding/orb_merge_tests.rs
 orb_score_store_tests	game	touches neither ClientState nor ServerState fields	game/entities/orb_score_store_tests.rs
 ordered_tick	server	touches only ServerState fields	game/world/ordered_tick.rs
-original_player	game	touches neither ClientState nor ServerState fields	game/modding/original_player.rs
+original_player	server	re-homed server module	game/modding/original_player.rs
 owner_link	server	touches only ServerState fields	game/world/owner_link.rs
 pack_clouds_frame_tests	client	touches only ClientState fields	game/interface/pack_clouds_frame_tests.rs
 pack_finders	server	touches only ServerState fields	game/modding/pack_finders/mod.rs
@@ -808,7 +810,7 @@ quick_actions	client	touches only ClientState fields	game/interface/quick_action
 raids	server	touches only server-owned fields (opposite-side functions moved to raids_client)	game/mobs/raids/mod.rs
 rail_parts_tests	server	touches only ServerState fields	game/entities/rail_parts_tests.rs
 random_order_tests	game	touches neither ClientState nor ServerState fields	game/blocks/random_order_tests.rs
-random_textures	game	touches neither ClientState nor ServerState fields	game/interface/random_textures.rs
+random_textures	client	re-homed client module	game/interface/random_textures.rs
 raw_backlog	game	touches neither ClientState nor ServerState fields	game/network/raw_backlog.rs
 recipe_book	client	touches only ClientState fields	game/items/recipe_book.rs
 recipe_book_variants_tests	server	touches only ServerState fields	game/interface/recipe_book_variants_tests.rs
@@ -892,13 +894,14 @@ slot_pickup_tests	game	touches neither ClientState nor ServerState fields	game/m
 slot_rules	game	touches neither ClientState nor ServerState fields	game/modding/slot_rules.rs
 slot_rules_tests	game	touches neither ClientState nor ServerState fields	game/modding/slot_rules_tests.rs
 slot_take_tests	server	touches only server-owned fields	game/modding/slot_take_tests.rs
-slot_takes	game	touches neither ClientState nor ServerState fields	game/modding/slot_takes.rs
+slot_takes	server	re-homed server module	game/modding/slot_takes.rs
 smithing_icons	game	touches neither ClientState nor ServerState fields	game/interface/smithing_icons.rs
 sniffers	client	touches only client-owned fields	game/mobs/sniffers.rs
 social	client	touches only ClientState fields	game/network/social.rs
 spawn_save_tests	server	touches only server-owned fields	game/world/spawn_save_tests.rs
 spawn_yaw_tests	game	touches neither ClientState nor ServerState fields	game/mobs/spawn_yaw_tests.rs
-spawner	client	touches only client-owned fields (opposite-side functions moved to spawner_server)	game/mobs/spawner.rs
+spawner	server	re-homed server module	game/mobs/spawner.rs
+spawner_client	client	re-homed client module	game/mobs/spawner_client.rs
 spawner_client_tick_tests	client	touches only client-owned fields	game/mobs/spawner_client_tick_tests.rs
 spear	server	touches only ServerState fields	game/items/spear.rs
 spear_players	server	touches only ServerState fields	game/items/spear_players.rs

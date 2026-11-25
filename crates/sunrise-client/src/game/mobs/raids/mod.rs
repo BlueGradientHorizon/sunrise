@@ -143,7 +143,7 @@ impl RaidLevel for Lvl<'_, '_> {
 pub(in crate::game) struct PatrolCx<'a, 'g, 'h> {
     pub(in crate::game) level: super::natural_spawning::GameLevel<'a, 'g>,
     pub(in crate::game) centers: HashSet<(i32, i32, i32)>,
-    pub(in crate::game) can_spawn: &'h dyn Fn(&Game, [i32; 3]) -> bool,
+    pub(in crate::game) can_spawn: &'h dyn Fn(&Game<'_>, [i32; 3]) -> bool,
 }
 impl SpawnLevel for PatrolCx<'_, '_, '_> {
     fn within_world_border(&self, x: i32, z: i32) -> bool {
@@ -1409,7 +1409,7 @@ impl Game<'_> {
             return;
         }
         let attributes = self.gameplay_attributes();
-        let biome_ok = |game: &Game, at: [i32; 3]| {
+        let biome_ok = |game: &Game<'_>, at: [i32; 3]| {
             let biome = game
                 .world
                 .chunks

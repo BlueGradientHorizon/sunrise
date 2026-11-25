@@ -188,8 +188,8 @@ mod allay_jukebox_source_tests;
 #[cfg(test)]
 #[path = "game/mobs/allay_pickup_cooldown_tests.rs"]
 mod allay_pickup_cooldown_tests;
-#[path = "game/mobs/allays.rs"]
-mod allays;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::allays;
 #[allow(unused_imports)]
 pub(crate) use server_side::api_values;
 #[cfg(test)]
@@ -390,7 +390,7 @@ mod command_registries;
 #[path = "game/administration/commands/mod.rs"]
 mod commands;
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::composter;
+pub(in crate::game) use server_side::composter;
 #[path = "game/world/condition_reload_state.rs"]
 mod condition_reload_state;
 #[allow(unused_imports)]
@@ -522,8 +522,8 @@ mod draw_boundary;
 #[cfg(test)]
 #[path = "game/items/dropped_by_player_tests.rs"]
 mod dropped_by_player_tests;
-#[path = "game/modding/dropped_item_setter.rs"]
-mod dropped_item_setter;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::dropped_item_setter;
 #[path = "game/items/durability.rs"]
 mod durability;
 #[allow(unused_imports)]
@@ -615,6 +615,12 @@ pub(in crate::game) type ClientGame<'a> = Game<'a>;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::modapi_client;
 #[allow(unused_imports)]
+pub(in crate::game) use client_side::spawner_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::allays_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::composter_client;
+#[allow(unused_imports)]
 pub(in crate::game) use server_side::modapi_server;
 #[cfg(test)]
 #[path = "game/interface/experience_points_tests.rs"]
@@ -671,8 +677,8 @@ pub(in crate::game) use client_side::focused_text_field;
 pub(in crate::game) use client_side::fov;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::fluid_interactions;
-#[path = "game/mobs/foxes.rs"]
-mod foxes;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::foxes;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::frame_geometry;
 #[allow(unused_imports)]
@@ -972,8 +978,8 @@ mod lightning_item_tests;
 pub(in crate::game) use server_side::living_attributes;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::llamas;
-#[path = "game/modding/load_conditions.rs"]
-mod load_conditions;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::load_conditions;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::loading_screen;
 #[allow(unused_imports)]
@@ -1128,16 +1134,16 @@ mod native_block_tables;
 #[cfg(test)]
 #[path = "game/modding/native_block_use_criteria_tests.rs"]
 mod native_block_use_criteria_tests;
-#[path = "game/modding/native_book_apply.rs"]
-mod native_book_apply;
-#[path = "game/modding/native_book_backings.rs"]
-mod native_book_backings;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_book_apply;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_book_backings;
 #[path = "game/modding/native_book_catalogue.rs"]
 mod native_book_catalogue;
 #[path = "game/modding/native_book_displays.rs"]
 mod native_book_displays;
-#[path = "game/modding/native_book_grid.rs"]
-mod native_book_grid;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_book_grid;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_book_invalidation;
 #[allow(unused_imports)]
@@ -1146,8 +1152,8 @@ pub(in crate::game) use server_side::native_book_net;
 mod native_book_placement;
 #[path = "game/modding/native_book_receive.rs"]
 mod native_book_receive;
-#[path = "game/modding/native_book_scope.rs"]
-mod native_book_scope;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_book_scope;
 #[path = "game/modding/native_book_settings.rs"]
 mod native_book_settings;
 #[path = "game/modding/native_book_transport.rs"]
@@ -1166,8 +1172,8 @@ mod native_chat_recipients;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_chat_recipients_tests;
-#[path = "game/modding/native_chunk_areas.rs"]
-mod native_chunk_areas;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_chunk_areas;
 #[path = "game/modding/native_chunk_generator.rs"]
 mod native_chunk_generator;
 #[path = "game/modding/native_chunk_queries.rs"]
@@ -1218,8 +1224,8 @@ mod native_console;
 pub(in crate::game) use server_side::native_console_tests;
 #[path = "game/modding/native_content_items.rs"]
 mod native_content_items;
-#[path = "game/modding/native_criteria.rs"]
-mod native_criteria;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_criteria;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::native_custom_geometry;
 #[path = "game/modding/native_custom_stats.rs"]
@@ -1310,8 +1316,8 @@ mod native_entity_renderers;
 mod native_entity_renderers_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_entity_riding;
-#[path = "game/modding/native_entity_selectors.rs"]
-mod native_entity_selectors;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_entity_selectors;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_entity_sounds;
 #[allow(unused_imports)]
@@ -1319,13 +1325,13 @@ pub(in crate::game) use server_side::native_entity_state;
 #[cfg(test)]
 #[path = "game/modding/native_experience_orb_renderers_tests.rs"]
 mod native_experience_orb_renderers_tests;
-#[path = "game/modding/native_explosion_destroy.rs"]
-mod native_explosion_destroy;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_explosion_destroy;
 #[cfg(test)]
 #[path = "game/modding/native_explosion_destroy_tests.rs"]
 mod native_explosion_destroy_tests;
-#[path = "game/modding/native_explosion_resistance.rs"]
-mod native_explosion_resistance;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_explosion_resistance;
 #[cfg(test)]
 #[path = "game/modding/native_explosion_resistance_tests.rs"]
 mod native_explosion_resistance_tests;
@@ -1372,8 +1378,8 @@ mod native_ground;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_guest_turn_tests;
-#[path = "game/modding/native_hanging.rs"]
-mod native_hanging;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_hanging;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_hanging_tests;
@@ -1457,10 +1463,10 @@ pub(in crate::game) use server_side::native_knockback_tests;
 #[cfg(test)]
 #[path = "game/modding/native_level_block_states_tests.rs"]
 mod native_level_block_states_tests;
-#[path = "game/modding/native_level_border.rs"]
-mod native_level_border;
-#[path = "game/modding/native_level_effects.rs"]
-mod native_level_effects;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_level_border;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_level_effects;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::native_level_notify_tests;
@@ -1484,8 +1490,8 @@ pub(in crate::game) use server_side::native_level_sound_except_tests;
 pub(in crate::game) use server_side::native_level_spawning;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_level_ticking;
-#[path = "game/modding/native_level_weather.rs"]
-mod native_level_weather;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_level_weather;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_level_world;
 #[allow(unused_imports)]
@@ -1542,8 +1548,8 @@ pub(in crate::game) use server_side::native_menus;
 mod native_merchant_refs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_minecart_refs;
-#[path = "game/modding/native_mob_draw.rs"]
-mod native_mob_draw;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::native_mob_draw;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_mob_goals;
 #[path = "game/modding/native_mob_navigation.rs"]
@@ -1602,8 +1608,8 @@ pub(in crate::game) use server_side::native_passages;
 pub(in crate::game) use server_side::native_path_types_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_pending_children;
-#[path = "game/modding/native_place_feature.rs"]
-mod native_place_feature;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_place_feature;
 #[cfg(test)]
 #[path = "game/modding/native_place_feature_tests.rs"]
 mod native_place_feature_tests;
@@ -1621,8 +1627,8 @@ mod native_player_death;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_player_destroyed_block_tests;
-#[path = "game/modding/native_player_disconnect.rs"]
-mod native_player_disconnect;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_player_disconnect;
 #[cfg(test)]
 #[path = "game/modding/native_player_disconnect_tests.rs"]
 mod native_player_disconnect_tests;
@@ -1690,8 +1696,8 @@ pub(in crate::game) use server_side::native_projectile_launch_tests;
 pub(in crate::game) use server_side::native_projectile_refs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_projectiles;
-#[path = "game/modding/native_quick_move.rs"]
-mod native_quick_move;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_quick_move;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_raid_refs;
 #[allow(unused_imports)]
@@ -1748,8 +1754,8 @@ mod native_scoreboard_teams;
 mod native_section_visibility;
 #[path = "game/modding/native_server.rs"]
 mod native_server;
-#[path = "game/modding/native_server_distances.rs"]
-mod native_server_distances;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_server_distances;
 #[path = "game/modding/native_server_max_players.rs"]
 mod native_server_max_players;
 #[cfg(test)]
@@ -1783,12 +1789,12 @@ pub(in crate::game) use client_side::native_special_renderers;
 pub(in crate::game) use client_side::native_spectator_shader_tests;
 #[path = "game/modding/native_state_shapes.rs"]
 mod native_state_shapes;
-#[path = "game/modding/native_structure_placement.rs"]
-mod native_structure_placement;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_structure_placement;
 #[path = "game/modding/native_structure_types.rs"]
 mod native_structure_types;
-#[path = "game/modding/native_structures.rs"]
-mod native_structures;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_structures;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_success_broadcast_tests;
@@ -1823,8 +1829,8 @@ pub(in crate::game) use client_side::native_visuals;
 pub(in crate::game) use server_side::native_unspawned_mob;
 #[path = "game/modding/native_world_columns.rs"]
 mod native_world_columns;
-#[path = "game/modding/native_world_edit.rs"]
-mod native_world_edit;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_world_edit;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_world_read;
 #[path = "game/modding/native_worldgen.rs"]
@@ -1866,8 +1872,8 @@ mod orb_merge_tests;
 mod orb_score_store_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::ordered_tick;
-#[path = "game/modding/original_player.rs"]
-mod original_player;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::original_player;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::pack_clouds_frame_tests;
@@ -2033,8 +2039,8 @@ pub(in crate::game) use server_side::rail_parts_tests;
 #[cfg(test)]
 #[path = "game/blocks/random_order_tests.rs"]
 mod random_order_tests;
-#[path = "game/interface/random_textures.rs"]
-mod random_textures;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::random_textures;
 #[path = "game/network/raw_backlog.rs"]
 mod raw_backlog;
 #[allow(unused_imports)]
@@ -2214,8 +2220,8 @@ mod slot_rules_tests;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::slot_take_tests;
-#[path = "game/modding/slot_takes.rs"]
-mod slot_takes;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::slot_takes;
 #[path = "game/interface/smithing_icons.rs"]
 mod smithing_icons;
 #[allow(unused_imports)]
@@ -2229,7 +2235,7 @@ pub(in crate::game) use server_side::spawn_save_tests;
 #[path = "game/mobs/spawn_yaw_tests.rs"]
 mod spawn_yaw_tests;
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::spawner;
+pub(in crate::game) use server_side::spawner;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::spawner_client_tick_tests;

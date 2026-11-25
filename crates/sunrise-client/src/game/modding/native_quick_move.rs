@@ -22,7 +22,7 @@ const QUICK_MOVE: i32 = 1;
 /// slot `k`, or the player's inventory index (hotbar 0 to 8, then the 27
 /// main slots), the menu listing the main slots before the hotbar.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum MenuSlot {
+pub(in crate::game) enum MenuSlot {
     Container(usize),
     Inventory(usize),
 }
@@ -31,7 +31,7 @@ pub(super) enum MenuSlot {
 /// asks a mod about, or None when the click is not one: another click type,
 /// a button other than left or right (`doClick` takes 0 and 1), no slot,
 /// or a slot past the menu.
-pub(super) fn quick_move_slot(input: i32, button: i32, slot: i32, size: usize) -> Option<MenuSlot> {
+pub(in crate::game) fn quick_move_slot(input: i32, button: i32, slot: i32, size: usize) -> Option<MenuSlot> {
     if input != QUICK_MOVE || !(0..=1).contains(&button) {
         return None;
     }
@@ -72,7 +72,7 @@ impl Game<'_> {
     /// mod's own): the mods' `native_menu_quick_move` first, as the clicking player.
     /// A mod menu type supplies the live menu after `Slot.mayPickup`. `None` lets ordinary
     /// routing continue; `Some(false)` is a refusal, not a second route.
-    pub(super) fn lan_mod_quick_move(
+    pub(in crate::game) fn lan_mod_quick_move(
         &mut self,
         conn: u32,
         p: &play::ContainerClick,
@@ -425,7 +425,7 @@ enum QuickMoveOutcome {
 /// menu, the block entity behind it (a replaced one has another generation though its values may
 /// be equal) and the inputs a listener's command could change (the guest's mode and life, a drag).
 /// The validity hook and the slot rules are not asked again.
-pub(super) struct Admitted {
+pub(in crate::game) struct Admitted {
     conn: u32,
     window: i32,
     pos: Pos,
@@ -435,7 +435,7 @@ pub(super) struct Admitted {
 }
 
 impl Admitted {
-    pub(super) fn of(
+    pub(in crate::game) fn of(
         game: &Game<'_>,
         conn: u32,
         pos: Pos,
@@ -456,7 +456,7 @@ impl Admitted {
 
     /// Whether the same window, guest mode and original backing generation are still admitted.
     /// Callers separately check the level-bound holder before settling the clicked slot.
-    pub(super) fn holds(&self, game: &Game<'_>) -> bool {
+    pub(in crate::game) fn holds(&self, game: &Game<'_>) -> bool {
         let Some(guest) = game.lan.as_ref().and_then(|host| host.hub.guest(self.conn)) else {
             return false;
         };

@@ -14,12 +14,12 @@ use mod_api::{StructureMirror, StructureRotation, StructureTemplateSnapshot};
 
 /// Game-owned placement result; numeric states never escape to mods.
 #[derive(Debug, PartialEq)]
-pub(super) struct TemplateSnapshot<'a> {
+pub(in crate::game) struct TemplateSnapshot<'a> {
     pub size: [i32; 3],
     pub blocks: Vec<TemplateBlock<'a>>,
 }
 #[derive(Debug, PartialEq)]
-pub(super) struct TemplateBlock<'a> {
+pub(in crate::game) struct TemplateBlock<'a> {
     pub pos: [i32; 3],
     pub state: BlockStateId,
     pub nbt: Option<&'a Compound>,
@@ -37,7 +37,7 @@ impl Game<'_> {
     /// or `..` part, a template the game doesn't have, an unknown or unavailable
     /// state mapping (the entire snapshot is refused), and on a client.
     /// API @API:structure_template@.
-    pub(super) fn structure_template(
+    pub(in crate::game) fn structure_template(
         &mut self,
         id: &str,
         at: [i32; 3],
@@ -61,7 +61,7 @@ impl Game<'_> {
 }
 
 /// The engine's rotation for an API one; `None` for one this build doesn't know.
-pub(super) fn engine_rotation(rotation: StructureRotation) -> Option<Rotation> {
+pub(in crate::game) fn engine_rotation(rotation: StructureRotation) -> Option<Rotation> {
     Some(match rotation {
         StructureRotation::None => Rotation::None,
         StructureRotation::Clockwise90 => Rotation::Clockwise90,
@@ -72,7 +72,7 @@ pub(super) fn engine_rotation(rotation: StructureRotation) -> Option<Rotation> {
 }
 
 /// The engine's mirror for an API one; `None` for one this build doesn't know.
-pub(super) fn engine_mirror(mirror: StructureMirror) -> Option<Mirror> {
+pub(in crate::game) fn engine_mirror(mirror: StructureMirror) -> Option<Mirror> {
     Some(match mirror {
         StructureMirror::None => Mirror::None,
         StructureMirror::LeftRight => Mirror::LeftRight,
@@ -83,7 +83,7 @@ pub(super) fn engine_mirror(mirror: StructureMirror) -> Option<Mirror> {
 
 /// `Identifier.tryParse`, less the paths the world's `generated` folder
 /// refuses (`FileUtil.isPathNormalized`): one with a `.` or `..` part.
-pub(super) fn template_id(id: &str) -> Option<String> {
+pub(in crate::game) fn template_id(id: &str) -> Option<String> {
     let id = parse_identifier(id)?;
     let (_, path) = id.split_once(':')?;
     path.split('/')

@@ -24,7 +24,7 @@ impl Game<'_> {
         if self.agent_attack_click_refused() {
             return false;
         }
-        self.with_interaction_swing_scope(Game::remote_start_attack_inner)
+        self.with_interaction_swing_scope(|game| game.remote_start_attack_inner())
     }
     pub(in crate::game) fn remote_continue_attack(&mut self, down: bool) {
         self.with_interaction_swing_scope(|game| game.remote_continue_attack_inner(down));

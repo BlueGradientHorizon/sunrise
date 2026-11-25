@@ -217,7 +217,7 @@ impl Moves {
     /// The moves of the items that will tick (`ticks`), on the helper threads; none while the
     /// parallel tick is off, for few items, or with a mod that could see an item's move.
     pub(in crate::game::server_side) fn work_out(
-        game: &Game,
+        game: &Game<'_>,
         items: &[ItemEntity],
         obstacles: &ObstacleGrid,
         round: &native_ticks::TickRound,
@@ -225,7 +225,6 @@ impl Moves {
     ) -> Self {
         if !ahead()
             || items.len() < MIN_ITEMS
-            || game.remote.is_some()
             || round.listening()
             || !mod_api::__private::mods().is_empty()
         {

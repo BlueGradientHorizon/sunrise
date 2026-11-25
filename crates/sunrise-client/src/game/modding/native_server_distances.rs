@@ -4,24 +4,24 @@ use super::Game;
 
 impl Game<'_> {
     /// `MinecraftServer.getTickTimesNanos`.
-    pub(super) fn tick_times(&self) -> Vec<u64> {
+    pub(in crate::game) fn tick_times(&self) -> Vec<u64> {
         self.clock.tick_times()
     }
     /// `PlayerList.getViewDistance`.
-    pub(super) fn server_view_distance(&self) -> Option<i32> {
+    pub(in crate::game) fn server_view_distance(&self) -> Option<i32> {
         Some(self.lan.as_ref()?.hub.config.view_distance)
     }
     /// `PlayerList.getSimulationDistance`.
-    pub(super) fn server_simulation_distance(&self) -> Option<i32> {
+    pub(in crate::game) fn server_simulation_distance(&self) -> Option<i32> {
         Some(self.lan.as_ref()?.hub.config.simulation_distance)
     }
     /// `MinecraftServer.isPublished`: `DedicatedServer`'s is always true, `IntegratedServer`'s
     /// while it is open to LAN (`multiplayerScope != OFF`).
-    pub(super) fn server_is_published(&self) -> bool {
+    pub(in crate::game) fn server_is_published(&self) -> bool {
         self.is_dedicated_server() || self.published_port().is_some()
     }
     /// `PlayerList.setViewDistance` on a dedicated server; the tickets read the settings.
-    pub(super) fn server_set_view_distance(&mut self, distance: i32) -> bool {
+    pub(in crate::game) fn server_set_view_distance(&mut self, distance: i32) -> bool {
         if !(2..=32).contains(&distance) || self.options.dedicated.is_none() || self.lan.is_none() {
             return false;
         }
@@ -30,7 +30,7 @@ impl Game<'_> {
         true
     }
     /// `PlayerList.setSimulationDistance` on a dedicated server.
-    pub(super) fn server_set_simulation_distance(&mut self, distance: i32) -> bool {
+    pub(in crate::game) fn server_set_simulation_distance(&mut self, distance: i32) -> bool {
         if !(2..=32).contains(&distance) || self.options.dedicated.is_none() || self.lan.is_none() {
             return false;
         }

@@ -13,7 +13,7 @@ impl Game<'_> {
     /// has is true with nothing heard, as `/worldborder center` changes nothing. False for a
     /// centre that isn't finite or lies past 2.9999984E7 on x or z, inside the border-center
     /// hook, and for a stale handle, a level the server has not opened or a client.
-    pub(super) fn level_set_world_border_center(
+    pub(in crate::game) fn level_set_world_border_center(
         &mut self,
         level: LevelRef,
         center: [f64; 2],
@@ -37,7 +37,7 @@ impl Game<'_> {
     /// border-bounds hook hears it. A still border set to the size it has is true with nothing
     /// heard. False for a size outside 1 to 5.9999968E7, a negative `ticks`, inside the
     /// border-bounds hook, a stale handle, a level the server has not opened or a client.
-    pub(super) fn level_set_world_border_size(
+    pub(in crate::game) fn level_set_world_border_size(
         &mut self,
         level: LevelRef,
         size: f64,
@@ -60,7 +60,7 @@ impl Game<'_> {
     /// `setDamagePerBlock` and `setSafeZone`: the damage a player outside takes per block past
     /// the safe zone, and how far outside they are safe. False for a value that is negative
     /// or not finite, a stale handle, a level the server has not opened or a client.
-    pub(super) fn level_set_world_border_damage(
+    pub(in crate::game) fn level_set_world_border_damage(
         &mut self,
         level: LevelRef,
         per_block: f64,
@@ -77,7 +77,7 @@ impl Game<'_> {
     /// `setWarningBlocks` and `setWarningTime`: how near the border, in blocks, and how soon a
     /// shrinking border reaches the player, in ticks, before their screen tints red. False
     /// for a negative value, a stale handle, a level the server has not opened or a client.
-    pub(super) fn level_set_world_border_warning(
+    pub(in crate::game) fn level_set_world_border_warning(
         &mut self,
         level: LevelRef,
         distance: i32,

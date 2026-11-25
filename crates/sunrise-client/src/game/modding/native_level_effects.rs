@@ -13,18 +13,18 @@ use sunrise_client::particles::ParticleOptions;
 use sunrise_world::registry::BlockStateId;
 
 /// Validated inputs for queueing or deferring a level or entity-bound native sound.
-pub(super) struct NativeSoundRequest<'a> {
-    pub(super) level: LevelRef,
-    pub(super) sound: &'a str,
-    pub(super) at: [f64; 3],
-    pub(super) source: SoundSource,
-    pub(super) volume: f32,
-    pub(super) pitch: f32,
-    pub(super) except: Option<u32>,
-    pub(super) entity: Option<i32>,
+pub(in crate::game) struct NativeSoundRequest<'a> {
+    pub(in crate::game) level: LevelRef,
+    pub(in crate::game) sound: &'a str,
+    pub(in crate::game) at: [f64; 3],
+    pub(in crate::game) source: SoundSource,
+    pub(in crate::game) volume: f32,
+    pub(in crate::game) pitch: f32,
+    pub(in crate::game) except: Option<u32>,
+    pub(in crate::game) entity: Option<i32>,
     /// The caller's seed (`ServerLevel.playSeededSound`), or `None` to draw the next one from
     /// the level's sound-seed stream when the sound is published (`Level.playSound`).
-    pub(super) seed: Option<i64>,
+    pub(in crate::game) seed: Option<i64>,
 }
 
 impl Game<'_> {
@@ -40,7 +40,7 @@ impl Game<'_> {
     /// leaves out no one; a stale one queues nothing). A `minecraft:` event
     /// must be registered; a mod's goes by name and is heard where its
     /// resources define it. True means queued, not heard.
-    pub(super) fn level_play_sound(
+    pub(in crate::game) fn level_play_sound(
         &mut self,
         level: LevelRef,
         sound: &str,
@@ -54,7 +54,7 @@ impl Game<'_> {
     }
     /// [`Self::level_play_sound`] with the caller's seed (`ServerLevel.playSeededSound`): the
     /// level's sound-seed stream does not move.
-    pub(super) fn level_play_seeded_sound(
+    pub(in crate::game) fn level_play_seeded_sound(
         &mut self,
         level: LevelRef,
         sound: &str,
@@ -71,14 +71,14 @@ impl Game<'_> {
     /// (`Level.soundSeedGenerator.nextLong()`), drawn now without playing a sound: the same
     /// draw a published [`Self::level_play_sound`] makes. None where that call would refuse
     /// the level or send nothing.
-    pub(super) fn level_next_sound_seed(&mut self, level: LevelRef) -> Option<i64> {
+    pub(in crate::game) fn level_next_sound_seed(&mut self, level: LevelRef) -> Option<i64> {
         self.native_level_dimension(level)?;
         Some(self.lan.as_ref()?.hub.next_sound_seed())
     }
     /// The connection a level sound leaves out for `except` (`Level.playSound(except, ...)`):
     /// `Some(None)` for no one, and for a fake player, who has no client to leave out; `None`
     /// refuses the sound for a stale or client-side player.
-    pub(super) fn native_sound_except(&self, except: Option<PlayerRef>) -> Option<Option<u32>> {
+    pub(in crate::game) fn native_sound_except(&self, except: Option<PlayerRef>) -> Option<Option<u32>> {
         let Some(player) = except else {
             return Some(None);
         };
@@ -119,7 +119,7 @@ impl Game<'_> {
     /// `except` and optionally binding to `entity`. Inside an open transaction the sound waits in
     /// `PendingWrite::Sound` until root commit (drawing its seed on publish unless the request
     /// gave one) and discards on abort.
-    pub(super) fn native_queue_sound(&mut self, request: NativeSoundRequest<'_>) -> bool {
+    pub(in crate::game) fn native_queue_sound(&mut self, request: NativeSoundRequest<'_>) -> bool {
         let NativeSoundRequest {
             level,
             sound,
@@ -160,7 +160,7 @@ impl Game<'_> {
     /// count sends one particle moving along `spread`). Block particle types
     /// need `state`; item particles need a validated stack; trail and vibration aren't supported.
     /// True means queued, not drawn.
-    pub(super) fn level_send_particles(
+    pub(in crate::game) fn level_send_particles(
         &mut self,
         level: LevelRef,
         options: &ParticleOptions,
@@ -184,7 +184,7 @@ impl Game<'_> {
         )
     }
 
-    pub(super) fn level_send_particles_batch(
+    pub(in crate::game) fn level_send_particles_batch(
         &mut self,
         level: LevelRef,
         options: &mod_api::ParticleOptions,

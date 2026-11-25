@@ -19,7 +19,7 @@ impl Game<'_> {
     /// why the edit was left out, with nothing changed: another dimension, a client of a server, a palette entry
     /// or filter that doesn't read or carries NBT (refused), a run naming a palette entry or filter past the end,
     /// or more than 65536 filters.
-    pub(super) fn edit_blocks(
+    pub(in crate::game) fn edit_blocks(
         &mut self,
         dimension: &str,
         edit: &mod_api::BlockEdit,
@@ -54,7 +54,7 @@ impl Game<'_> {
     /// run at the next light update, never on this call. How many columns were newly queued (the
     /// ring included, columns already waiting not counted). A call that would take the queue past
     /// `RELIGHT_QUEUE_MAX` columns is refused whole.
-    pub(super) fn level_relight_chunks(
+    pub(in crate::game) fn level_relight_chunks(
         &mut self,
         level: mod_api::LevelRef,
         chunks: &[[i32; 2]],
@@ -83,7 +83,7 @@ impl Game<'_> {
     }
     /// The chunk queued to go whole to its watchers at the end of the tick, as an
     /// `edit_blocks` chunk does (`World::bulk_log`).
-    pub(super) fn chunk_resend(
+    pub(in crate::game) fn chunk_resend(
         &mut self,
         chunk: mod_api::ChunkRef,
     ) -> Result<(), mod_api::ChunkRefusal> {
@@ -98,7 +98,7 @@ impl Game<'_> {
         Ok(())
     }
     /// Whether `dimension` is the authoritative level being ticked: where a server mod's world helpers act.
-    pub(super) fn native_level_open(&self, dimension: &str) -> bool {
+    pub(in crate::game) fn native_level_open(&self, dimension: &str) -> bool {
         (self.serving.is_some() || self.options.dedicated.is_some()) && dimension == self.dim.id()
     }
 }

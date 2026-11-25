@@ -2,6 +2,62 @@
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::*;
 
+#[path = "mobs/spawner.rs"]
+pub(in crate::game) mod spawner;
+#[path = "blocks/composter.rs"]
+pub(in crate::game) mod composter;
+#[path = "modding/slot_takes.rs"]
+pub(in crate::game) mod slot_takes;
+#[path = "modding/original_player.rs"]
+pub(in crate::game) mod original_player;
+#[path = "modding/native_world_edit.rs"]
+pub(in crate::game) mod native_world_edit;
+#[path = "modding/native_structures.rs"]
+pub(in crate::game) mod native_structures;
+#[path = "modding/native_structure_placement.rs"]
+pub(in crate::game) mod native_structure_placement;
+#[path = "modding/native_server_distances.rs"]
+pub(in crate::game) mod native_server_distances;
+#[path = "modding/native_quick_move.rs"]
+pub(in crate::game) mod native_quick_move;
+#[path = "modding/native_player_disconnect.rs"]
+pub(in crate::game) mod native_player_disconnect;
+#[path = "modding/native_place_feature.rs"]
+pub(in crate::game) mod native_place_feature;
+#[path = "modding/native_level_weather.rs"]
+pub(in crate::game) mod native_level_weather;
+#[path = "modding/native_level_effects.rs"]
+pub(in crate::game) mod native_level_effects;
+#[path = "modding/native_level_border.rs"]
+pub(in crate::game) mod native_level_border;
+#[path = "modding/native_hanging.rs"]
+pub(in crate::game) mod native_hanging;
+#[path = "modding/native_explosion_resistance.rs"]
+pub(in crate::game) mod native_explosion_resistance;
+#[path = "modding/native_explosion_destroy.rs"]
+pub(in crate::game) mod native_explosion_destroy;
+#[path = "modding/native_entity_selectors.rs"]
+pub(in crate::game) mod native_entity_selectors;
+#[path = "modding/native_criteria.rs"]
+pub(in crate::game) mod native_criteria;
+#[path = "modding/native_chunk_areas.rs"]
+pub(in crate::game) mod native_chunk_areas;
+#[path = "modding/native_book_scope.rs"]
+pub(in crate::game) mod native_book_scope;
+#[path = "modding/native_book_grid.rs"]
+pub(in crate::game) mod native_book_grid;
+#[path = "modding/native_book_backings.rs"]
+pub(in crate::game) mod native_book_backings;
+#[path = "modding/native_book_apply.rs"]
+pub(in crate::game) mod native_book_apply;
+#[path = "modding/load_conditions.rs"]
+pub(in crate::game) mod load_conditions;
+#[path = "modding/dropped_item_setter.rs"]
+pub(in crate::game) mod dropped_item_setter;
+#[path = "mobs/foxes.rs"]
+pub(in crate::game) mod foxes;
+#[path = "mobs/allays.rs"]
+pub(in crate::game) mod allays;
 #[path = "side_ops/modapi_server.rs"]
 pub(in crate::game) mod modapi_server;
 #[path = "interface/advancements/mod.rs"]

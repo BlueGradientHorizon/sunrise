@@ -59,7 +59,7 @@ impl Game<'_> {
     /// For a server mod: its areas for `player`, in place of its last ones, through
     /// `Hub::set_viewed_areas`. Refused, changing nothing, for a player not online, a level
     /// handle of an earlier open, a call outside a mod's hook, and what the hub refuses.
-    pub(super) fn player_set_chunk_areas(
+    pub(in crate::game) fn player_set_chunk_areas(
         &mut self,
         player: PlayerRef,
         areas: &[ChunkArea],

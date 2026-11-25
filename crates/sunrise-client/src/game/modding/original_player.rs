@@ -12,9 +12,9 @@ use sunrise_items::items::ItemStack;
 
 /// Per-player attachment state and active replacement player UUIDs during clone hooks.
 #[derive(Default)]
-pub(super) struct PlayerState {
-    pub(super) attachments: sunrise_mod_runtime::attachments::ResidentAttachments,
-    pub(super) cloning_players: Vec<(u128, u32, u32)>,
+pub(in crate::game) struct PlayerState {
+    pub(in crate::game) attachments: sunrise_mod_runtime::attachments::ResidentAttachments,
+    pub(in crate::game) cloning_players: Vec<(u128, u32, u32)>,
 }
 
 /// Retained original-player attachment storage tied to `Game::transactions` so mutations,
@@ -233,7 +233,7 @@ impl OriginalPlayerAccess for RetainedOriginalPlayer {
 impl Game<'_> {
     /// Make the callback's player addressable without publishing it in a level's player list
     /// or entity table. This also covers construction and the post-clone set-spawn event.
-    pub(super) fn with_cloning_player<R>(
+    pub(in crate::game) fn with_cloning_player<R>(
         &mut self,
         conn: u32,
         run: impl FnOnce(&mut Self) -> R,
