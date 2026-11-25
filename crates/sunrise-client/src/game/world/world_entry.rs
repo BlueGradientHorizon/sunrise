@@ -42,7 +42,7 @@ impl Game<'_> {
     pub(super) fn resume_world_entry(&mut self) -> Result<()> {
         self.poll_integrated_start()?;
         self.poll_world_rest()?;
-        self.poll_world_creation();
+        self.poll_world_creation()?;
         if self.rest_loader.is_some() {
             return Ok(());
         }
@@ -102,21 +102,19 @@ impl Game<'_> {
     /// `CreateWorldScreen.openCreateWorldScreen`: read the world generation
     /// data the create screen describes, on a worker, then open the screen
     /// (`title.preparing`).
-    pub(super) fn poll_world_creation(&mut self) {
+    pub(super) fn poll_world_creation(&mut self) -> Result<()> {
         let Some(title) = self.title.as_ref() else {
-            return;
+            return Ok(());
         };
         if !title.preparing() {
-            return;
+            return Ok(());
         }
         if self.creation_job.is_none() {
             let dir = self.options.resources.join("worldgen");
             let registry = self.pack.assets.registry;
             // The chosen packs' worldgen over the game's own:
             // `applyNewPackConfig` reloads with the new pack config.
-            let base_conditions = self
-                .worldgen_base_conditions()
-                .unwrap_or_else(|_| sunrise_world::conditions::LoadConditions::vanilla());
+            let base_conditions = self.worldgen_base_conditions()?;
             let overrides = title
                 .creation_packs()
                 .map(|(dir, packs)| {
@@ -158,14 +156,14 @@ impl Game<'_> {
                     }
                 }
             }
-            return;
+            return Ok(());
         }
         if !self
             .creation_job
             .as_ref()
             .is_none_or(std::thread::JoinHandle::is_finished)
         {
-            return;
+            return Ok(());
         }
         let outcome = self.creation_job.take().and_then(|job| job.join().ok());
         if let Some(title) = self.title.as_mut() {
@@ -192,6 +190,7 @@ impl Game<'_> {
                 }
             }
         }
+        Ok(())
     }
 
     pub(super) fn poll_world_rest(&mut self) -> Result<()> {
