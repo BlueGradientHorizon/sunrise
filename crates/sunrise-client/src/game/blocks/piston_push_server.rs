@@ -1175,7 +1175,7 @@ impl Game<'_> {
                 sunrise_client::motion::BodyMove { wanted, moved, effect },
                 entity.get_gravity(), drag, entity.velocity(), entity.body_fall_distance())
         });
-        let velocity = self.side_finish_body_restitution((id, kind), feet, response);
+        let velocity = self.server_finish_body_restitution((id, kind), feet, response);
         let MoveWho::Entity(handle) = self.resolve_push_target(selected)? else {
             return None;
         };

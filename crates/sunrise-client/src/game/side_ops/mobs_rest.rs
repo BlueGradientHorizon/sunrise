@@ -1,6 +1,5 @@
 //! Two-arm side dispatchers owned by lane `mobs-rest`.
-use super::Game;
-use crate::game::{boats::Boat, collision_source::Mover, commands::Target};
+use crate::game::{Game, boats::Boat, collision_source::Mover, commands::Target};
 use std::collections::HashMap;
 use sunrise_client::{
     entities::ItemEntity,
@@ -64,7 +63,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn side_player_equipped(&mut self, slot: usize, new: Option<&ItemStack>) {
+    pub(in crate::game) fn side_player_equipped(&mut self, slot: &str, new: Option<&ItemStack>) {
         if self.is_logical_server() {
             self.server_player_equipped(slot, new);
         } else {
@@ -209,6 +208,17 @@ impl Game<'_> {
             self.server_own_passenger_index(mob_id)
         } else {
             self.client_own_passenger_index(mob_id)
+        }
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn side_game_side_fields(
+        &self,
+    ) -> (Option<u128>, Option<mod_api::LevelRef>, bool) {
+        if self.is_logical_server() {
+            self.server_game_side_fields()
+        } else {
+            self.client_game_side_fields()
         }
     }
 }

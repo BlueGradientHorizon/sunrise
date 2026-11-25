@@ -24,7 +24,7 @@ fn placement_flags(update_neighbour_shapes: bool) -> BlockUpdateFlags {
 impl Game<'_> {
     /// The one block write (`level_set_block`, its block entity included) with a placement's
     /// flags, then `Block.setPlacedBy` in the player's turn; nothing else of `BlockItem.place`.
-    pub(super) fn player_place_block(
+    pub(in crate::game) fn player_place_block(
         &mut self,
         player: PlayerRef,
         level: LevelRef,
@@ -86,7 +86,7 @@ impl Game<'_> {
         });
         if ran { Ok(()) } else { Err(Refusal::Stale) }
     }
-    pub(super) fn level_state_for_placement(
+    pub(in crate::game) fn level_state_for_placement(
         &mut self,
         level: LevelRef,
         block: BlockKey,
@@ -138,7 +138,7 @@ impl Game<'_> {
     /// A chosen state written as a placement writes it, then `Block.setPlacedBy`, with no
     /// player: the write and the extra halves are those of `player_place_block`. `Ok(false)`
     /// when the write was refused or changed nothing.
-    pub(super) fn level_place_block(
+    pub(in crate::game) fn level_place_block(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],
@@ -160,7 +160,7 @@ impl Game<'_> {
     }
     /// `Block.setPlacedBy` of a block already standing at `pos`, with no placer. Its stack
     /// is consulted, not placed: the caller has already loaded any block entity data.
-    pub(super) fn level_set_placed_by(
+    pub(in crate::game) fn level_set_placed_by(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],
@@ -224,7 +224,7 @@ impl Game<'_> {
 
     /// The game-level part of `Block.setPlacedBy`, once the state-only part has run.
     /// A supplied player is already the acting player. A supplied stack is read only.
-    pub(super) fn set_placed_by(
+    pub(in crate::game) fn set_placed_by(
         &mut self,
         pos: [i32; 3],
         placer: Option<PlayerRef>,

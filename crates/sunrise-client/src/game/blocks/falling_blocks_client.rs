@@ -1,8 +1,9 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::*;
+use crate::game::FallingBlock;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::falling_blocks::*;
-use sunrise_client::{Result, collisions, falling_block::FallingBlock};
+use sunrise_client::{Result, collisions};
 use sunrise_core::geometry::Vec3;
 use sunrise_world::{
     collision_context::{CollisionContext, CollisionEntity},
@@ -103,7 +104,8 @@ impl Game<'_> {
         }
         let effect = body.legacy_contact(f.position, &f.ground);
         let entity = (f.id, "minecraft:falling_block");
-        let response = self.body_motion(&game_side!(self)).restitute(
+        let side_server = self.game_side_client();
+        let response = self.body_motion(&game_side!(self, side_server)).restitute(
             entity,
             sunrise_client::motion::BodyMove {
                 wanted,
@@ -116,7 +118,7 @@ impl Game<'_> {
             f.fall_distance,
         );
         f.velocity = response.velocity;
-        let side = game_side!(self);
+        let side = game_side!(self, side_server);
         let body = self.body_motion(&side);
         body.apply_block_speed(f.position, &mut f.velocity);
         let _ = self.body_step_on(entity, (f.position, f.bounds()), &f.ground, &mut f.velocity);

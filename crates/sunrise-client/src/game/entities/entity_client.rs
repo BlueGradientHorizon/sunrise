@@ -326,9 +326,16 @@ impl Game<'_> {
 
     pub(in crate::game) fn client_player_equipped(
         &mut self,
-        _slot: usize,
+        _slot: &str,
         _new: Option<&sunrise_client::items::ItemStack>,
     ) {
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn client_game_side_fields(
+        &self,
+    ) -> (Option<u128>, Option<mod_api::LevelRef>, bool) {
+        self.game_side_client()
     }
 
     pub(in crate::game) fn client_finish_body_restitution(
@@ -347,7 +354,7 @@ impl Game<'_> {
         ground: &sunrise_world::ground_support::GroundState,
         velocity: &mut Vec3,
     ) -> Vec<mod_api::EntityWrite> {
-        let side = game_side!(self);
+        let side = game_side!(self, self.game_side_client());
         self.body_motion(&side)
             .step_on(entity, footprint, ground, velocity);
         Vec::new()

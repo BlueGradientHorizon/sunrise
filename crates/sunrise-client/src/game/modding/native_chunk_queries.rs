@@ -4,7 +4,7 @@ use mod_api::{BlockKey, ChunkRef};
 use sunrise_core::random::{RandomSource, slime_chunk_random};
 
 impl Game<'_> {
-    pub(super) fn chunk_is_slime_chunk(&self, chunk: ChunkRef) -> Option<bool> {
+    pub(in crate::game) fn chunk_is_slime_chunk(&self, chunk: ChunkRef) -> Option<bool> {
         let seed = self.level_seed(chunk.level())?;
         let [x, z] = chunk.pos();
         // Reuse the same world-bound validation as handles for unloaded chunks.
@@ -19,7 +19,7 @@ impl Game<'_> {
 
     /// The sections of a loaded chunk whose palette may hold a state of `block` (`maybeHas`),
     /// by section Y, bottom up.
-    pub(super) fn chunk_sections_with_block(
+    pub(in crate::game) fn chunk_sections_with_block(
         &self,
         chunk: ChunkRef,
         block: BlockKey,

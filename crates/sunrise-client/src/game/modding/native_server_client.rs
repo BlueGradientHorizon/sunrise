@@ -261,8 +261,12 @@ impl Game<'_> {
         if !world.is_loaded_at(pos[0], pos[1], pos[2]) {
             return None;
         }
-        let weather = self.weather_for_level(level)?;
-        if weather.rain <= 0.2 {
+        let (rain, _) = crate::game::mod_api_host_common::weather_for_level(
+            world.shape,
+            level.dimension() == Dim::End.key(),
+            world.weather.levels(1.0),
+        );
+        if rain <= 0.2 {
             return Some(false);
         }
         Some(crate::game::server_side::native_level_world::rain_at(

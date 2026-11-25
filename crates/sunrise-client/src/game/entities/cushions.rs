@@ -11,6 +11,8 @@ use super::{Game, Hit, InteractTarget, Keys, entity_culling::default_range};
 #[allow(unused_imports)]
 use sunrise_client::actions::Action;
 #[allow(unused_imports)]
+use sunrise_client::cushion::blocks_in;
+#[allow(unused_imports)]
 use sunrise_client::entities::{Cushion, dye_index};
 #[allow(unused_imports)]
 use sunrise_client::items::ItemStack;

@@ -194,6 +194,37 @@ pub(in crate::game::server_side) use sunrise_world::{
 };
 
 impl Game<'_> {
+    pub(in crate::game) fn begin_condition_reload(
+        &mut self,
+        stack: &crate::game::server_side::functions::PackStack,
+        resources: &std::path::Path,
+    ) -> Result<
+        crate::game::server_side::server_reload::PreparedServerReload,
+        mod_api::__private::reload::ReloadStageError,
+    > {
+        use mod_api::__private::reload::ReloadStageError;
+        if self.mods.load_condition_candidate.is_none() {
+            let inventory = sunrise_mod_package::enabled::EnabledMods::read(resources)
+                .map_err(|error| ReloadStageError::DataSource(error.to_string()))?;
+            self.mods.load_condition_candidate = Some(
+                crate::game::load_conditions::conditions_for_mods(&self.mods, &inventory)
+                    .map_err(ReloadStageError::DataSource)?,
+            );
+        }
+        self.prepare_server_reload(stack)
+    }
+
+    pub(in crate::game) fn prepare_pack_condition_reload(
+        &mut self,
+        stack: &crate::game::server_side::functions::PackStack,
+    ) -> Result<
+        crate::game::server_side::server_reload::PreparedServerReload,
+        mod_api::__private::reload::ReloadStageError,
+    > {
+        self.mods.load_condition_candidate = None;
+        self.begin_condition_reload(stack, &self.options.resources.clone())
+    }
+
     pub(in crate::game) fn server_set_audio_loop_context(
         &mut self,
         audio: Option<sunrise_world::native_load_context::LoopContext>,

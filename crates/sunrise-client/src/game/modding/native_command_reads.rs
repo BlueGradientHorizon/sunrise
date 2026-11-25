@@ -12,7 +12,7 @@ use sunrise_client::advancements::{Advancement, Frame, Tree};
 impl Game<'_> {
     /// A parsed native command with the level and position it executes at: after `execute
     /// in/at/positioned`, or the console's overworld spawn corner.
-    pub(super) fn native_invocation(
+    pub(in crate::game) fn native_invocation(
         &self,
         literals: Vec<String>,
         arguments: Vec<CommandArgument>,
@@ -27,7 +27,7 @@ impl Game<'_> {
 
     /// `ServerPlayer.getGameProfile`: the name `player_name` reads, and the properties the
     /// player logged in with. None for a stale or unavailable player.
-    pub(super) fn player_profile(&self, player: PlayerRef) -> Option<GameProfile<'_>> {
+    pub(in crate::game) fn player_profile(&self, player: PlayerRef) -> Option<GameProfile<'_>> {
         let name = self.player_name(player)?;
         let properties = self
             .online_player_record(player)
@@ -42,7 +42,7 @@ impl Game<'_> {
 
     /// `ServerAdvancementManager.get(id)` over the loaded tree, read once on first use and
     /// replaced by `/reload`.
-    pub(super) fn advancement(&mut self, id: &Identifier) -> Option<AdvancementInfo> {
+    pub(in crate::game) fn advancement(&mut self, id: &Identifier) -> Option<AdvancementInfo> {
         advancement_in(&self.advancement_tree(), id)
     }
 }

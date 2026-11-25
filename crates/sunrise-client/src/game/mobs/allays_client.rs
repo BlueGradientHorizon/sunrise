@@ -1,7 +1,9 @@
 //! Client-side allay interaction prediction.
 use super::{Game, level_sounds::LevelSound};
 use mod_api::SoundSource;
-use sunrise_client::{first_person::Hand, items::ItemStack, mobs::allay, save::uuid_ints};
+use sunrise_client::{
+    first_person::Hand, items::ItemStack, lan::playerdata::uuid_ints, mobs::allay,
+};
 
 impl Game<'_> {
     fn client_acting_uuid(&self) -> [i32; 4] {

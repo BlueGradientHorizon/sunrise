@@ -1,7 +1,7 @@
 //! Common entity helpers shared by client and server (`PlacementWorld`, spawn/placement checks,
 //! body motion/restitution/item contacts, suffocation, dismount, critical check, and sound wrapper).
 #[allow(unused_imports)]
-use super::{Game, Hit};
+use super::{Game, Hit, entity::Entity as _};
 #[allow(unused_imports)]
 use crate::game::server_side::{
     armor_stands::overlaps as stand_overlaps, cushions::aabb as cushion_aabb,
@@ -65,8 +65,14 @@ impl sunrise_client::cushion::World for PlacementWorld<'_, '_> {
 }
 
 impl Game<'_> {
-    /// Particle emission around a mob (currently no-op on both sides).
-    pub(in crate::game) fn particles_around_mob(&mut self, _m: &Mob, _count: usize) {}
+    /// `particles::around_self` about mob `id`.
+    pub(in crate::game) fn particles_around_mob(
+        &mut self,
+        _id: u32,
+        _kind: &'static str,
+        _burst: sunrise_client::particles::Burst,
+    ) {
+    }
 
     /// Play an entity-bound sound following the acting player on the active side.
     pub(in crate::game) fn play_player_bound_sound(
@@ -427,7 +433,10 @@ impl Game<'_> {
         if !client && let Some((on, distance)) = step.landed() {
             self.side_item_fall_on(item.id, on, distance);
         }
-        if let Some(response) = item.move_restitution(self.body_motion(&game_side!(self)), step) {
+        if let Some(response) = item.move_restitution(
+            self.body_motion(&game_side!(self, self.side_game_side_fields())),
+            step,
+        ) {
             item.velocity = self.side_finish_body_restitution(
                 (item.id, "minecraft:item"),
                 item.position,
@@ -465,7 +474,10 @@ impl Game<'_> {
             }
         }
         if !no_physics {
-            item.apply_move_speed(self.body_motion(&game_side!(self)), step);
+            item.apply_move_speed(
+                self.body_motion(&game_side!(self, self.side_game_side_fields())),
+                step,
+            );
             if !self.side_item_post_move_contacts(item, client) {
                 return (false, true);
             }
@@ -477,7 +489,7 @@ impl Game<'_> {
             self.res.facts(),
             self.collision,
         );
-        let side = game_side!(self);
+        let side = game_side!(self, self.side_game_side_fields());
         let alive = item.tick_settle(
             &self.world,
             self.pack.assets.registry,

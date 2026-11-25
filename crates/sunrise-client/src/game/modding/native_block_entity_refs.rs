@@ -827,7 +827,7 @@ fn mod_item_slots(
     Ok(slots)
 }
 
-pub(in crate::game::server_side) fn part_snapshot(
+pub(in crate::game) fn part_snapshot(
     world: &World,
     level: Option<LevelRef>,
     authoritative: bool,

@@ -188,7 +188,9 @@ impl Game<'_> {
             self.others
                 .0
                 .iter()
-                .filter(|o| super::native_ticks::other_ticks(&o.kind) && told.alone_kind(&o.kind))
+                .filter(|o| {
+                    super::native_ticks_server::other_ticks(&o.kind) && told.alone_kind(&o.kind)
+                })
                 .for_each(|o| offer(o.join, Pending::Other));
         }
         pending.sort_unstable_by_key(|&(j, _)| j);

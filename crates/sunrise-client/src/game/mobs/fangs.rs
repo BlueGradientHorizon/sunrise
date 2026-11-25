@@ -66,7 +66,7 @@ pub(in crate::game) struct FangState {
     pub(in crate::game) model: Option<Arc<Part>>,
 }
 impl FangState {
-    pub(in crate::game::server_side) fn perf_count(&self) -> usize {
+    pub(in crate::game) fn perf_count(&self) -> usize {
         self.list.len()
     }
 }

@@ -725,12 +725,12 @@ impl Game<'_> {
         let ridden = self.remote.as_ref().is_some_and(|r| r.has_passengers(id));
         // `Entity.isInWaterOrRain`: `isInWater`, else `isInRain`.
         let wet = self.player.as_ref().is_some_and(|p| {
-            let bp = sunrise_core::geometry::BlockPos::new(
+            let bp = sunrise_core::position::BlockPos::new(
                 p.position.x.floor() as i32,
                 p.position.y.floor() as i32,
                 p.position.z.floor() as i32,
             );
-            let up = sunrise_core::geometry::BlockPos::new(
+            let up = sunrise_core::position::BlockPos::new(
                 bp.x,
                 p.bounds().max_position().y.floor() as i32,
                 bp.z,

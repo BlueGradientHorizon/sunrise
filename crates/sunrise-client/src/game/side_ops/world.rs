@@ -147,4 +147,15 @@ impl Game<'_> {
             self.client_reset_entity_residency()
         }
     }
+
+    #[inline(always)]
+    pub(in crate::game) fn side_game_side_meta(
+        &self,
+    ) -> (Option<u128>, Option<mod_api::LevelRef>, bool) {
+        if self.is_logical_server() {
+            self.server_game_side_meta()
+        } else {
+            self.client_game_side_meta()
+        }
+    }
 }

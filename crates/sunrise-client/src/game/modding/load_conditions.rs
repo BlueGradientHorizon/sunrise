@@ -5,36 +5,6 @@ use std::{collections::BTreeMap, sync::Arc};
 pub(in crate::game) type ConditionTable =
     Arc<BTreeMap<mod_api::Identifier, (String, Arc<dyn mod_api::LoadCondition>)>>;
 impl Game<'_> {
-    pub(in crate::game) fn begin_condition_reload(
-        &mut self,
-        stack: &super::functions::PackStack,
-        resources: &std::path::Path,
-    ) -> Result<
-        super::server_reload::PreparedServerReload,
-        mod_api::__private::reload::ReloadStageError,
-    > {
-        use mod_api::__private::reload::ReloadStageError;
-        if self.mods.load_condition_candidate.is_none() {
-            let inventory = sunrise_mod_package::enabled::EnabledMods::read(resources)
-                .map_err(|error| ReloadStageError::DataSource(error.to_string()))?;
-            self.mods.load_condition_candidate = Some(
-                conditions_for_mods(&self.mods, &inventory)
-                    .map_err(ReloadStageError::DataSource)?,
-            );
-        }
-        self.prepare_server_reload(stack)
-    }
-    pub(in crate::game) fn prepare_pack_condition_reload(
-        &mut self,
-        stack: &super::functions::PackStack,
-    ) -> Result<
-        super::server_reload::PreparedServerReload,
-        mod_api::__private::reload::ReloadStageError,
-    > {
-        self.mods.load_condition_candidate = None;
-        self.begin_condition_reload(stack, &self.options.resources.clone())
-    }
-
     pub(in crate::game) fn stage_condition_inventory(
         &mut self,
     ) -> sunrise_client::Result<Option<sunrise_assets::resource_source::ResourceRoot>> {

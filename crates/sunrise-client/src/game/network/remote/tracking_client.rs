@@ -121,7 +121,7 @@ impl Game<'_> {
                 return Some([p.x, p.y, p.z]);
             }
         }
-        if let Some(m) = self.mob_index.get(&self.mobs, eid) {
+        if let Some(m) = self.mob_index.get_ref(&self.mobs, eid) {
             return Some([m.position.x, m.position.y, m.position.z]);
         }
         if let Some(b) = self.boats.iter().find(|b| b.id == eid) {

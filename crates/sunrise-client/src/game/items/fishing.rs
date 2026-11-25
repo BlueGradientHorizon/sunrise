@@ -316,7 +316,7 @@ impl Hook {
     }
     /// `FishingHook.tick` returns before `applyEffectsFromBlocks` while it
     /// holds an entity.
-    pub(in crate::game::server_side) fn applies_block_effects(&self) -> bool {
+    pub(in crate::game) fn applies_block_effects(&self) -> bool {
         !matches!(self.state, State::Hooked(_))
     }
     /// `FishingHook.catchingFish`: the nibble timer, and DATA_BITING's plunge

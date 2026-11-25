@@ -87,7 +87,7 @@ impl Game<'_> {
         if self.paintings.iter().any(|e| e.id == uid) {
             return Some(Target::Painting(uid));
         }
-        if self.fangs.iter().any(|e| e.id == uid) {
+        if self.fangs.list.iter().any(|e| e.id == uid) {
             return Some(Target::Fangs(uid));
         }
         if self.bolts.iter().any(|b| b.id == uid) {

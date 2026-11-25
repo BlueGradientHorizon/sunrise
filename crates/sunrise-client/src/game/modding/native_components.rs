@@ -1104,7 +1104,7 @@ pub(in crate::game) mod combat_query_tests {
 }
 
 /// Supply the gameplay component snapshot to the shared stack rule.
-pub(in crate::game::client_side) fn stack_can_be_hurt_by(
+pub(in crate::game) fn stack_can_be_hurt_by(
     models: &sunrise_assets::item_model::ItemModels,
     catalog: &sunrise_world::damage_source::Catalog,
     stack: &ItemStack,

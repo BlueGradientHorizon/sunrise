@@ -236,7 +236,7 @@ impl MapData {
         }
         Some(changed)
     }
-    pub(in crate::game::server_side) fn update_color(&mut self, x: i32, y: i32, color: u8) -> bool {
+    pub(in crate::game) fn update_color(&mut self, x: i32, y: i32, color: u8) -> bool {
         let i = (x + y * 128) as usize;
         if self.colors[i] == color {
             return false;

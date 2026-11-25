@@ -330,8 +330,12 @@ impl Game<'_> {
             }
             ControlRequest::StationEffect { effect, reply } => {
                 let out = self.in_owner_guest_turn(|g| match effect {
-                    None => g.remove_player_effects(None),
-                    Some(inst) => g.apply_player_effect(inst),
+                    None => {
+                        let _ = g.remove_player_effects(None);
+                    }
+                    Some(inst) => {
+                        let _ = g.apply_player_effect(inst);
+                    }
                 });
                 if out.is_ok()
                     && let Some(host) = self.lan.as_mut()

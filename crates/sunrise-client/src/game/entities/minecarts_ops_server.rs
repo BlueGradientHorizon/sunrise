@@ -6,9 +6,9 @@ use crate::game::minecarts::{
     CART_KEY_Y, CartKind, Minecart, TNT_PRIME_EVENT, cart_is_destroyed, hit::CartHit,
 };
 #[allow(unused_imports)]
-use sunrise_client::{block_entities::BlockEntity, items::ItemStack, sound_engine::BLOCKS};
+use sunrise_client::{containers::BlockEntity, items::ItemStack, sound_engine::BLOCKS};
 #[allow(unused_imports)]
-use sunrise_core::geometry::Vec3;
+use sunrise_core::{geometry::Vec3, random::RandomSource};
 
 impl Game<'_> {
     /// `getDismountLocationForPassenger`: beside the cart's motion direction,

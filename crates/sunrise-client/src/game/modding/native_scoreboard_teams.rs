@@ -94,7 +94,7 @@ impl Game<'_> {
     }
 
     /// `Scoreboard.getPlayerTeam`.
-    pub(super) fn team(&self, name: &str) -> Option<TeamRef> {
+    pub(in crate::game) fn team(&self, name: &str) -> Option<TeamRef> {
         if !self.is_logical_server() {
             return None;
         }
@@ -102,7 +102,7 @@ impl Game<'_> {
     }
 
     /// `Scoreboard.getPlayerTeams`.
-    pub(super) fn teams(&self) -> Vec<TeamRef> {
+    pub(in crate::game) fn teams(&self) -> Vec<TeamRef> {
         if !self.is_logical_server() {
             return Vec::new();
         }
@@ -115,7 +115,7 @@ impl Game<'_> {
     }
 
     /// `/team add`.
-    pub(super) fn add_team(&mut self, name: &str) -> Result<TeamRef, TeamError> {
+    pub(in crate::game) fn add_team(&mut self, name: &str) -> Result<TeamRef, TeamError> {
         if !self.is_logical_server() || self.native_lifecycle.epoch().is_none() {
             return Err(TeamError::Stale);
         }
@@ -134,69 +134,81 @@ impl Game<'_> {
     }
 
     /// `Scoreboard.getPlayersTeam`.
-    pub(super) fn holder_team(&self, holder: ScoreHolder) -> Option<TeamRef> {
+    pub(in crate::game) fn holder_team(&self, holder: ScoreHolder) -> Option<TeamRef> {
         let key = self.score_holder_key(&holder)?;
         self.team_handle(self.score.board.players_team(&key)?)
     }
 
     /// `PlayerTeam.getName`.
-    pub(super) fn team_name(&self, team: TeamRef) -> Option<String> {
+    pub(in crate::game) fn team_name(&self, team: TeamRef) -> Option<String> {
         self.team_state(team).map(|t| t.name.clone())
     }
 
     /// `PlayerTeam.getDisplayName`.
-    pub(super) fn team_display_name(&self, team: TeamRef) -> Result<EngineText, TeamError> {
+    pub(in crate::game) fn team_display_name(
+        &self,
+        team: TeamRef,
+    ) -> Result<EngineText, TeamError> {
         let team = self.team_state(team).ok_or(TeamError::Stale)?;
         Ok(comp_text(&team.display_name))
     }
 
     /// `PlayerTeam.getColor`.
-    pub(super) fn team_color(&self, team: TeamRef) -> Result<Option<TeamColor>, TeamError> {
+    pub(in crate::game) fn team_color(
+        &self,
+        team: TeamRef,
+    ) -> Result<Option<TeamColor>, TeamError> {
         Ok(api_color(self.team_state(team).ok_or(TeamError::Stale)?))
     }
 
     /// `PlayerTeam.getPlayerPrefix`.
-    pub(super) fn team_prefix(&self, team: TeamRef) -> Result<EngineText, TeamError> {
+    pub(in crate::game) fn team_prefix(&self, team: TeamRef) -> Result<EngineText, TeamError> {
         let team = self.team_state(team).ok_or(TeamError::Stale)?;
         Ok(comp_text(&team.prefix))
     }
 
     /// `PlayerTeam.getPlayerSuffix`.
-    pub(super) fn team_suffix(&self, team: TeamRef) -> Result<EngineText, TeamError> {
+    pub(in crate::game) fn team_suffix(&self, team: TeamRef) -> Result<EngineText, TeamError> {
         let team = self.team_state(team).ok_or(TeamError::Stale)?;
         Ok(comp_text(&team.suffix))
     }
 
     /// `PlayerTeam.isAllowFriendlyFire`.
-    pub(super) fn team_friendly_fire(&self, team: TeamRef) -> Option<bool> {
+    pub(in crate::game) fn team_friendly_fire(&self, team: TeamRef) -> Option<bool> {
         self.team_state(team).map(|t| t.allow_friendly_fire)
     }
 
     /// `PlayerTeam.canSeeFriendlyInvisibles`.
-    pub(super) fn team_see_friendly_invisibles(&self, team: TeamRef) -> Option<bool> {
+    pub(in crate::game) fn team_see_friendly_invisibles(&self, team: TeamRef) -> Option<bool> {
         self.team_state(team).map(|t| t.see_friendly_invisibles)
     }
 
     /// `PlayerTeam.getNameTagVisibility`.
-    pub(super) fn team_name_tag_visibility(&self, team: TeamRef) -> Option<TeamVisibility> {
+    pub(in crate::game) fn team_name_tag_visibility(
+        &self,
+        team: TeamRef,
+    ) -> Option<TeamVisibility> {
         self.team_state(team)
             .map(|t| api_visibility(t.nametag_visibility))
     }
 
     /// `PlayerTeam.getDeathMessageVisibility`.
-    pub(super) fn team_death_message_visibility(&self, team: TeamRef) -> Option<TeamVisibility> {
+    pub(in crate::game) fn team_death_message_visibility(
+        &self,
+        team: TeamRef,
+    ) -> Option<TeamVisibility> {
         self.team_state(team)
             .map(|t| api_visibility(t.death_message_visibility))
     }
 
     /// `PlayerTeam.getCollisionRule`.
-    pub(super) fn team_collision_rule(&self, team: TeamRef) -> Option<CollisionRule> {
+    pub(in crate::game) fn team_collision_rule(&self, team: TeamRef) -> Option<CollisionRule> {
         self.team_state(team)
             .map(|t| api_collision_rule(t.collision_rule))
     }
 
     /// `PlayerTeam.getPlayers`.
-    pub(super) fn team_visit_members(
+    pub(in crate::game) fn team_visit_members(
         &self,
         team: TeamRef,
         visit: &mut dyn FnMut(&str) -> ControlFlow<()>,
@@ -209,7 +221,7 @@ impl Game<'_> {
     }
 
     /// `PlayerTeam.setDisplayName`.
-    pub(super) fn team_set_display_name(
+    pub(in crate::game) fn team_set_display_name(
         &mut self,
         team: TeamRef,
         name: EngineText,
@@ -222,12 +234,16 @@ impl Game<'_> {
     }
 
     /// `PlayerTeam.setColor`.
-    pub(super) fn team_set_color(&mut self, team: TeamRef, color: Option<TeamColor>) -> bool {
+    pub(in crate::game) fn team_set_color(
+        &mut self,
+        team: TeamRef,
+        color: Option<TeamColor>,
+    ) -> bool {
         self.team_edit(team, |t| t.color = color.map(|c| c.name().to_owned()))
     }
 
     /// `PlayerTeam.setPlayerPrefix`.
-    pub(super) fn team_set_prefix(
+    pub(in crate::game) fn team_set_prefix(
         &mut self,
         team: TeamRef,
         prefix: EngineText,
@@ -240,7 +256,7 @@ impl Game<'_> {
     }
 
     /// `PlayerTeam.setPlayerSuffix`.
-    pub(super) fn team_set_suffix(
+    pub(in crate::game) fn team_set_suffix(
         &mut self,
         team: TeamRef,
         suffix: EngineText,
@@ -253,12 +269,12 @@ impl Game<'_> {
     }
 
     /// `PlayerTeam.setAllowFriendlyFire`.
-    pub(super) fn team_set_friendly_fire(&mut self, team: TeamRef, allowed: bool) -> bool {
+    pub(in crate::game) fn team_set_friendly_fire(&mut self, team: TeamRef, allowed: bool) -> bool {
         self.team_edit(team, |t| t.allow_friendly_fire = allowed)
     }
 
     /// `PlayerTeam.setSeeFriendlyInvisibles`.
-    pub(super) fn team_set_see_friendly_invisibles(
+    pub(in crate::game) fn team_set_see_friendly_invisibles(
         &mut self,
         team: TeamRef,
         allowed: bool,
@@ -267,7 +283,7 @@ impl Game<'_> {
     }
 
     /// `PlayerTeam.setNameTagVisibility`.
-    pub(super) fn team_set_name_tag_visibility(
+    pub(in crate::game) fn team_set_name_tag_visibility(
         &mut self,
         team: TeamRef,
         visibility: TeamVisibility,
@@ -278,7 +294,7 @@ impl Game<'_> {
     }
 
     /// `PlayerTeam.setDeathMessageVisibility`.
-    pub(super) fn team_set_death_message_visibility(
+    pub(in crate::game) fn team_set_death_message_visibility(
         &mut self,
         team: TeamRef,
         visibility: TeamVisibility,
@@ -289,12 +305,16 @@ impl Game<'_> {
     }
 
     /// `PlayerTeam.setCollisionRule`.
-    pub(super) fn team_set_collision_rule(&mut self, team: TeamRef, rule: CollisionRule) -> bool {
+    pub(in crate::game) fn team_set_collision_rule(
+        &mut self,
+        team: TeamRef,
+        rule: CollisionRule,
+    ) -> bool {
         self.team_edit(team, |t| t.collision_rule = engine_collision_rule(rule))
     }
 
     /// `Scoreboard.addPlayerToTeam`.
-    pub(super) fn team_join(
+    pub(in crate::game) fn team_join(
         &mut self,
         team: TeamRef,
         holder: ScoreHolder,
@@ -309,7 +329,7 @@ impl Game<'_> {
     }
 
     /// `Scoreboard.removePlayerFromTeam(holder, team)`.
-    pub(super) fn team_leave(&mut self, team: TeamRef, holder: ScoreHolder) -> bool {
+    pub(in crate::game) fn team_leave(&mut self, team: TeamRef, holder: ScoreHolder) -> bool {
         let Ok(name) = self.team_for_write(team) else {
             return false;
         };
@@ -325,7 +345,7 @@ impl Game<'_> {
     }
 
     /// `Scoreboard.removePlayerTeam`.
-    pub(super) fn team_remove(&mut self, team: TeamRef) -> bool {
+    pub(in crate::game) fn team_remove(&mut self, team: TeamRef) -> bool {
         let Ok(name) = self.team_for_write(team) else {
             return false;
         };

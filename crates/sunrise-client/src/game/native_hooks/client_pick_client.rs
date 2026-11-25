@@ -488,7 +488,7 @@ impl Game<'_> {
                     .boats
                     .iter()
                     .find(|b| b.id == uid)
-                    .map(sunrise_client::entities::Boat::entity_type),
+                    .map(|b| b.entity_type()),
                 other => self.client_target_kind_name(other).map(str::to_owned),
             };
         }

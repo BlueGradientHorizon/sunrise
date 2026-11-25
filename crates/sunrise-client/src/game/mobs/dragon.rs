@@ -361,7 +361,7 @@ impl PartialEq for PathBox {
 }
 impl Phase {
     /// `EnderDragonPhase` ids.
-    pub(in crate::game::server_side) fn id(&self) -> i32 {
+    pub(in crate::game) fn id(&self) -> i32 {
         match self {
             Self::Holding { .. } => 0,
             Self::Strafe { .. } => 1,
@@ -376,7 +376,7 @@ impl Phase {
             Self::Hover { .. } => 10,
         }
     }
-    pub(in crate::game::server_side) fn from_id(id: i32) -> Self {
+    pub(in crate::game) fn from_id(id: i32) -> Self {
         match id {
             1 => Self::Strafe {
                 charge: 0,
@@ -757,7 +757,7 @@ impl Dragon {
         self.history[self.head] = (self.position.y, self.yaw);
     }
     /// DragonFlightHistory.get(delay).
-    pub(in crate::game::server_side) fn sample(&self, delay: usize) -> (f64, f32) {
+    pub(in crate::game) fn sample(&self, delay: usize) -> (f64, f32) {
         self.history[(self.head + 64 - (delay & 63)) & 63]
     }
     /// `DragonFlightHistory.get(delay, partial)`, with
@@ -1153,7 +1153,7 @@ impl Dragon {
             self.set_phase(Phase::from_id(phase.id()));
         }
     }
-    pub(in crate::game::server_side) fn set_phase(&mut self, phase: Phase) {
+    pub(in crate::game) fn set_phase(&mut self, phase: Phase) {
         if self.phase.id() == phase.id() && phase.id() != 1 {
             return;
         }

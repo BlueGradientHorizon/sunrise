@@ -1629,7 +1629,6 @@ impl Game<'_> {
             spread,
             0.05,
             10,
-            false,
         );
     }
 }

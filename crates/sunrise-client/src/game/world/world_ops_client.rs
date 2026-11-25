@@ -7,6 +7,18 @@ use sunrise_client::join_seq::{
 };
 
 impl Game<'_> {
+    #[inline(always)]
+    pub(in crate::game) fn client_game_side_meta(
+        &self,
+    ) -> (Option<u128>, Option<mod_api::LevelRef>, bool) {
+        let level = self.native_lifecycle.epoch().and_then(|epoch| {
+            let key = self.dim.key();
+            mod_api::__private::dimension_id(key)?;
+            Some(mod_api::LevelRef::with_generation(epoch, key, 0))
+        });
+        (None, level, false)
+    }
+
     pub(in crate::game) fn client_with_level_access<R>(
         &mut self,
         placement_preview: bool,

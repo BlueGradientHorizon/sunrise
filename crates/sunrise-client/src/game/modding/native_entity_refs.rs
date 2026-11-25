@@ -342,7 +342,7 @@ impl Game<'_> {
         }
         {
             let mut table = table.borrow_mut();
-            crate::game::pick_entity::pick_sections::visit_server_section_members(
+            crate::game::server_side::pick_entity_server::visit_server_section_members(
                 self,
                 &mut |_, _, id, position| {
                     if let Some(id) = std::num::NonZeroU32::new(id) {

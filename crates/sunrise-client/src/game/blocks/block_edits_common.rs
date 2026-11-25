@@ -2,7 +2,9 @@
 use super::Game;
 use mod_api::Heightmap;
 use sunrise_client::world::World;
-use sunrise_world::{heightmap::HeightmapType, registry::BlockStateId};
+use sunrise_world::{
+    heightmap::HeightmapType, registry::BlockStateId, worldgen::terrain::TerrainBlockStates,
+};
 
 /// The most columns one `surface_heights` reads.
 pub(in crate::game) const MAX_COLUMNS: usize = 1 << 16;

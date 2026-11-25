@@ -93,15 +93,11 @@ impl Game<'_> {
         if held.item.as_ref().is_some_and(|item| *item != offer.item) {
             return 0;
         }
-        let max = offer
-            .effective_max_stack_size()
-            .map(|n| n.clamp(1, 99) as u32)
-            .unwrap_or_else(|| {
-                self.items()
-                    .get(&offer.item)
-                    .map_or(64, |i| i.max_stack)
-                    .max(1)
-            });
+        let info = self.items().get(&offer.item);
+        let max = match offer.effective_max_stack_size(info) {
+            Some(max) => max.clamp(1, 99) as u32,
+            None => info.map_or(64, |i| i.max_stack).max(1),
+        };
         let mut stack = held.stack;
         let mut overflow = held.overflow;
         let items = self.res.items();

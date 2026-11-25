@@ -89,7 +89,7 @@ impl EntityMaps {
     }
 
     /// Takes the collider off the entity, wherever it stands.
-    pub(in crate::game::server_side) fn remove_collider(&mut self, id: u32) -> bool {
+    pub(in crate::game) fn remove_collider(&mut self, id: u32) -> bool {
         let had = self.colliders.remove(&id).is_some();
         if had {
             self.unindex(id);

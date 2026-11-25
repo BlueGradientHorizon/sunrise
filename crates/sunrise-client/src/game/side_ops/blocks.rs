@@ -1,5 +1,5 @@
 //! Role dispatchers owned by lane `blocks` (`side_ops/blocks.rs`).
-use super::Game;
+use crate::game::{Game, piston_push, stations_common};
 use sunrise_client::{Result, containers::BlockEntity};
 use sunrise_client_render::moving_colliders::Prepared;
 use sunrise_core::{geometry::Vec3, nbt::Tag};
@@ -29,7 +29,7 @@ impl Game<'_> {
 
     pub(in crate::game) fn side_combiner_take_effects(
         &mut self,
-        kind: super::stations_common::Kind,
+        kind: stations_common::Kind,
         pos: [i32; 3],
         level_change: i32,
     ) -> bool {
@@ -53,10 +53,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn side_push_piston_entities(
-        &mut self,
-        pushes: Vec<super::piston_push::Push>,
-    ) {
+    pub(in crate::game) fn side_push_piston_entities(&mut self, pushes: Vec<piston_push::Push>) {
         if self.is_logical_server() {
             self.server_push_piston_entities(pushes)
         } else {

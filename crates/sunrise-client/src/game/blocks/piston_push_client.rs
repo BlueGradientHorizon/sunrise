@@ -40,11 +40,16 @@ impl Game<'_> {
         let before = player.position;
         let entities = self.entity_collisions(Mover::Player);
         let section_scope = self.player_section_scope();
+        let side_server = self.game_side_client();
         let Some(player) = self.player.as_mut() else {
             return Ok(None);
         };
-        let side = game_side!(self);
+        let side = game_side!(self, side_server);
         let _sections = section_scope.map(|scope| scope.begin(&mut self.native_lifecycle));
+        let tag_items = self
+            .server_items
+            .as_deref()
+            .unwrap_or_else(|| self.res.items());
         let mut world = MotionWorld {
             side: &side,
             entities: &entities,
@@ -56,7 +61,7 @@ impl Game<'_> {
             health: &self.health_resources,
             loop_context: &self.loop_context,
             damage_hooks: &self.damage_hooks,
-            tag_items: Some(self.items()),
+            tag_items: Some(tag_items),
             block_registries: Some(&self.pack.block_registries),
         };
         let _ = world.move_ordinary(&mut MoveGate::new(), mover, movement, auto_jump, false)?;
@@ -438,12 +443,13 @@ impl Game<'_> {
         {
             return;
         }
+        let side_server = self.game_side_client();
         let boat = &self.boats[i];
         let (id, feet, kind) = (boat.id, boat.position, boat.shared_type_name());
         let effect = self
-            .body_motion(&game_side!(self))
+            .body_motion(&game_side!(self, side_server))
             .legacy_contact(feet, &boat.ground);
-        let response = self.body_motion(&game_side!(self)).restitute(
+        let response = self.body_motion(&game_side!(self, side_server)).restitute(
             (id, &kind),
             BodyMove {
                 wanted,
@@ -455,7 +461,7 @@ impl Game<'_> {
             boat.velocity,
             boat.fall_distance,
         );
-        let velocity = self.side_finish_body_restitution((id, &kind), feet, response);
+        let velocity = self.client_finish_body_restitution((id, &kind), feet, response);
         if let Some(i) = self.client_resolve_boat(selected) {
             self.boats.update(i, |b| b.velocity = velocity);
         }
@@ -468,8 +474,16 @@ impl Game<'_> {
             if let Some(remote) = self.remote.as_ref()
                 && remote.passenger_vehicle(id).is_some()
             {
-                id = passenger_root(&remote.passenger_vehicles, id);
-                continue;
+                match passenger_root(&remote.passenger_vehicles, id) {
+                    Ok(root) if root != id => {
+                        id = root;
+                        continue;
+                    }
+                    Ok(root) | Err(root) => {
+                        id = root;
+                        break;
+                    }
+                }
             }
             if let Some(mount) = self
                 .mobs
@@ -655,12 +669,13 @@ impl Game<'_> {
                 || differs(movement.x, moved.x)
                 || differs(movement.z, moved.z))
         {
+            let side_server = self.game_side_client();
             let boat = &self.boats[i];
             let (id, feet, kind) = (boat.id, boat.position, boat.shared_type_name());
             let effect = self
-                .body_motion(&game_side!(self))
+                .body_motion(&game_side!(self, side_server))
                 .legacy_contact(feet, &boat.ground);
-            let response = self.body_motion(&game_side!(self)).restitute(
+            let response = self.body_motion(&game_side!(self, side_server)).restitute(
                 (id, &kind),
                 BodyMove {
                     wanted: movement,
@@ -672,7 +687,7 @@ impl Game<'_> {
                 boat.velocity,
                 boat.fall_distance,
             );
-            let velocity = self.side_finish_body_restitution((id, &kind), feet, response);
+            let velocity = self.client_finish_body_restitution((id, &kind), feet, response);
             if let Some(i) = self.client_resolve_boat(selected) {
                 self.boats.update(i, |b| b.velocity = velocity);
             }

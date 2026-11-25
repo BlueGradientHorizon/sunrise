@@ -823,6 +823,26 @@ impl Game<'_> {
         movement
     }
 
+    #[inline(always)]
+    pub(in crate::game) fn server_game_side_fields(
+        &self,
+    ) -> (Option<u128>, Option<mod_api::LevelRef>, bool) {
+        let level = self.native_lifecycle.epoch().and_then(|epoch| {
+            let key = self.dim.key();
+            let id = mod_api::__private::dimension_id(key)?;
+            Some(mod_api::LevelRef::with_generation(
+                epoch,
+                key,
+                self.levels.0.runtime.generation_of(id),
+            ))
+        });
+        (
+            self.server.lan_acting_uuid,
+            level,
+            self.session_lock.0.is_some(),
+        )
+    }
+
     pub(in crate::game) fn server_finish_body_restitution(
         &mut self,
         entity: (u32, &str),

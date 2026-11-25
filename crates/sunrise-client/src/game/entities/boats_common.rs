@@ -11,6 +11,7 @@ use std::{io, sync::Arc};
 use sunrise_client::{
     blocks::Fluid,
     collisions::{EntityCollisions, SceneCollisions, no_collision_with_context},
+    entity_rules::EntityRules,
     items::ItemStack,
     motion::{BubbleColumn, bubble_column_at},
 };
@@ -620,7 +621,7 @@ impl Game<'_> {
                 b.position.y + moved.y,
                 b.position.z + moved.z,
             );
-            let side = game_side!(self);
+            let side = game_side!(self, self.side_game_side_fields());
             let motion = sunrise_client::motion::BodyMotion {
                 world: &self.world,
                 collision: self.collision,
@@ -660,7 +661,7 @@ impl Game<'_> {
             );
             b.velocity = self.side_finish_body_restitution(entity, b.position, response);
         }
-        self.body_motion(&game_side!(self))
+        self.body_motion(&game_side!(self, self.side_game_side_fields()))
             .apply_block_speed(b.position, &mut b.velocity);
         self.boat_step_on(&mut b);
         self.boat_stuck_in_blocks(&mut b);

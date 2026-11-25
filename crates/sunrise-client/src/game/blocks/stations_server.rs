@@ -3,6 +3,7 @@
 use super::Game;
 use crate::game::stations_common::{Kind, Station};
 use sunrise_client::{brewing, containers::BlockEntity, items::ItemStack, stations};
+use sunrise_core::random::RandomSource;
 
 impl Game<'_> {
     /// Server arm of [`Game::side_station_changed`].

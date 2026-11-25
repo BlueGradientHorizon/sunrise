@@ -60,7 +60,7 @@ impl Game<'_> {
     /// entities a piston landed whole to the players who see them, then the
     /// synced changes of the holders lent to mods since the last pass to the
     /// players who see them.
-    pub(super) fn flush_attachment_sync(&mut self) {
+    pub(in crate::game) fn flush_attachment_sync(&mut self) {
         let landings = std::mem::take(&mut self.world.attachment_landings);
         let Some(host) = self.lan.as_mut() else {
             return;

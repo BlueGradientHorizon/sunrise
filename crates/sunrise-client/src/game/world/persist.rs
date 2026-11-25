@@ -209,7 +209,7 @@ pub struct EntityMemory {
     /// Formerly resident vehicles kept for vetoed dismounts, never for ticking.
     pub(in crate::game) removed_vehicles: HashMap<u32, RemovedVehicle>,
     /// Destruction callbacks already consumed for geometry retained after removal.
-    score_destroyed: HashSet<u32>,
+    pub(in crate::game) score_destroyed: HashSet<u32>,
     /// Mount notifications currently on the callback stack, keyed by object IDs.
     pub(in crate::game) mount_notifications: HashSet<(u32, u32, bool)>,
     /// Deferred native removals already notified their passenger edges.

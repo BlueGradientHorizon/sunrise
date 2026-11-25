@@ -120,15 +120,15 @@ impl sunrise_client::motion::SideLevel for GameSide<'_> {
 /// The game's own side, for a tick that only reads it: each query builds the borrowed tables.
 impl sunrise_client::motion::SideLevel for Game<'_> {
     fn is_raining_at(&self, world: &World, pos: BlockPos) -> bool {
-        game_side!(self).is_raining_at(world, pos)
+        game_side!(self, self.side_game_side_meta()).is_raining_at(world, pos)
     }
 
     fn enabled_features(&self) -> &std::sync::Arc<[String]> {
-        game_side!(self).features
+        game_side!(self, self.side_game_side_meta()).features
     }
 
     fn tag_items(&self) -> Option<&Items> {
-        game_side!(self).tag_items
+        game_side!(self, self.side_game_side_meta()).tag_items
     }
 
     fn player_equipment(&self) -> sunrise_client::health::PlayerEquipment<'_> {
@@ -144,7 +144,7 @@ impl sunrise_client::motion::SideLevel for Game<'_> {
     }
 
     fn block_entity(&self, world: &World, pos: BlockPos) -> Option<BlockEntityRef> {
-        game_side!(self).block_entity(world, pos)
+        game_side!(self, self.side_game_side_meta()).block_entity(world, pos)
     }
 
     fn block_entity_data(
@@ -153,7 +153,7 @@ impl sunrise_client::motion::SideLevel for Game<'_> {
         registry: &BlockRegistry,
         entity: BlockEntityRef,
     ) -> Option<Compound> {
-        game_side!(self).block_entity_data(world, registry, entity)
+        game_side!(self, self.side_game_side_meta()).block_entity_data(world, registry, entity)
     }
 }
 
@@ -389,7 +389,7 @@ impl Game<'_> {
             side: &GameSide {
                 dim: Dim::from_id(level.dimension_id()),
                 level: Some(level),
-                ..game_side!(self)
+                ..game_side!(self, self.side_game_side_meta())
             },
             coefficient: &|id| facts.states.get(id.0 as usize).map(|facts| facts.friction),
         };

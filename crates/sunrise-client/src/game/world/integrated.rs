@@ -324,7 +324,7 @@ impl Integrated {
             .as_ref()
             .is_none_or(|thread| thread.is_finished())
     }
-    pub(in crate::game::server_side) fn halt(&mut self) -> Result<()> {
+    pub(in crate::game) fn halt(&mut self) -> Result<()> {
         self.request_stop();
         self.emergency_save.take();
         if let Some(thread) = self.thread.take() {

@@ -4,7 +4,7 @@ use mod_api::{EquipmentSlot, ItemStackView, LivingRef};
 use sunrise_client::mobs::finalize::EquipmentRead;
 
 impl Game<'_> {
-    pub(super) fn living_weapon_item(
+    pub(in crate::game) fn living_weapon_item(
         &self,
         living: LivingRef,
         read: &mut dyn for<'a> FnMut(ItemStackView<'a>),

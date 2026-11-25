@@ -220,10 +220,7 @@ impl DragonSlot {
         }
     }
     // Return a copy so the caller never runs a visitor under the table borrow.
-    pub(in crate::game::server_side) fn next_part(
-        &self,
-        cursor: &mut Option<usize>,
-    ) -> Option<u32> {
+    pub(in crate::game) fn next_part(&self, cursor: &mut Option<usize>) -> Option<u32> {
         self.table.borrow().next_part(cursor)
     }
     #[cfg(test)]

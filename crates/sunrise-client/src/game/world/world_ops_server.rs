@@ -3,6 +3,26 @@ use super::*;
 use serde_json::{Value, json};
 
 impl Game<'_> {
+    #[inline(always)]
+    pub(in crate::game) fn server_game_side_meta(
+        &self,
+    ) -> (Option<u128>, Option<mod_api::LevelRef>, bool) {
+        let level = self.native_lifecycle.epoch().and_then(|epoch| {
+            let key = self.dim.key();
+            let id = mod_api::__private::dimension_id(key)?;
+            Some(mod_api::LevelRef::with_generation(
+                epoch,
+                key,
+                self.levels.0.runtime.generation_of(id),
+            ))
+        });
+        (
+            self.server.lan_acting_uuid,
+            level,
+            self.session_lock.0.is_some(),
+        )
+    }
+
     pub(in crate::game) fn server_with_level_access<R>(
         &mut self,
         placement_preview: bool,

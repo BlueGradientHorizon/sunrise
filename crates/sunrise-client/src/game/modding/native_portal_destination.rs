@@ -232,7 +232,7 @@ impl Game<'_> {
     /// Where an entity of `size` arrives through the portal at `portal_pos`, changing nothing
     /// (`getPortalDestination`). Vanilla places the exit from the two portals' axes
     /// alone.
-    pub(super) fn level_portal_destination(
+    pub(in crate::game) fn level_portal_destination(
         &self,
         level: LevelRef,
         portal_pos: [i32; 3],
@@ -247,7 +247,7 @@ impl Game<'_> {
 
     /// [`Self::level_portal_destination`], building the exit portal when none stands
     /// (`PortalForcer.createPortal`) and telling `portal_create` as travel does.
-    pub(super) fn level_find_or_create_portal_exit(
+    pub(in crate::game) fn level_find_or_create_portal_exit(
         &mut self,
         level: LevelRef,
         portal_pos: [i32; 3],

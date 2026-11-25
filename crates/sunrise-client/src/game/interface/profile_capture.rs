@@ -1052,7 +1052,7 @@ impl Game<'_> {
             + self.cushions.len()
             + self.breath_clouds.len()
             + self.bolts.len()
-            + self.fangs.perf_count()
+            + self.fangs.list.len()
             + usize::from(self.dragon.as_ref().is_some())
             + self.mobs.len()
             + self.creatures.projectiles.len()
