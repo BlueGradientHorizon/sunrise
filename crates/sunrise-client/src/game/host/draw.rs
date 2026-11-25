@@ -560,6 +560,10 @@ impl WorldDrawContext for GameWorldDrawContext<'_, '_> {
         self.game
             .native_world_draw_mesh(&mut *self.surface, pipeline, mesh, draw, bindings)
     }
+    fn draw_indirect(&mut self, draw: &IndirectDraw<'_>) -> Result<(), PipelineDrawError> {
+        self.game
+            .native_world_draw_indirect(&mut *self.surface, draw)
+    }
     fn draw_vertices(
         &mut self,
         pipeline: RenderPipelineRef,
@@ -742,6 +746,35 @@ impl PrepareRenderBuffersContext for GamePrepareRenderBuffersContext<'_, '_> {
         })
     }
 
+    fn draw_indirect(
+        &mut self,
+        stage: RenderLevelStage,
+        draw: &IndirectDraw<'_>,
+    ) -> Result<PreparedWorldDraw, PipelineDrawError> {
+        if !stage.has_render_pass() {
+            return Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid));
+        }
+        let slot = self
+            .game
+            .pack
+            .render
+            .mod_pipelines
+            .slot(draw.pipeline)
+            .map_err(PipelineDrawError::Pipeline)?;
+        if stage.oit_stage().is_some() && !self.game.pack.render.mod_pipelines.is_oit_eligible(slot)
+        {
+            self.game
+                .pack
+                .render
+                .mod_pipelines
+                .warn_oit_ineligible(slot);
+            return Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid));
+        }
+        self.surface.prepare_draw(stage, |surface| {
+            self.game.native_world_draw_indirect(surface, draw)
+        })
+    }
+
     fn draw_vertices(
         &mut self,
         stage: RenderLevelStage,
@@ -848,6 +881,11 @@ impl OffscreenDrawContext for GameOffscreenDrawContext<'_, '_> {
             draw,
             bindings,
         )
+    }
+
+    fn draw_indirect(&mut self, draw: &IndirectDraw<'_>) -> Result<(), PipelineDrawError> {
+        self.game
+            .native_offscreen_draw_indirect(self.pass, self.transients, draw)
     }
 
     fn draw_vertices(

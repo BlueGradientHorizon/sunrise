@@ -3908,7 +3908,8 @@ pub enum PipelineDrawError {
     /// The handle is stale, or names no usable pipeline.
     Pipeline(RenderPipelineError),
     /// The pipeline's effective [`PrimitiveTopology`] does not match the draw call (for example,
-    /// submitting a non-[`PrimitiveTopology::Quads`] pipeline to `pipeline_quads`).
+    /// submitting a non-[`PrimitiveTopology::Quads`] pipeline to `pipeline_quads`, or a
+    /// `Quads`, `Lines` or `TriangleFan` pipeline to a non-indexed [`IndirectDraw`](crate::IndirectDraw)).
     TopologyMismatch,
     /// The retained [`MeshRef`] handle was stale, not owned, or unavailable.
     Mesh(MeshError),
@@ -3928,7 +3929,13 @@ pub enum PipelineDrawError {
     /// invalid push-constant payload.
     InvalidBinding,
     /// A retained [`UniformBufferRef`] in [`DrawBindings`] was stale, not owned, or unavailable.
+    /// For an [`IndirectDraw`](crate::IndirectDraw), also its command buffer.
     Buffer(BufferError),
+    /// An [`IndirectDraw`](crate::IndirectDraw)'s command buffer was not created with
+    /// [`StorageBufferDescriptor::indirect`](crate::StorageBufferDescriptor::indirect), its
+    /// offset is not a multiple of 4, `indirect_offset + max_count * stride` lies beyond the
+    /// buffer.
+    InvalidIndirect,
     /// A [`TextureSource::RenderTargetColor`] or [`TextureSource::RenderTargetDepth`] in
     /// [`DrawBindings`] references the same [`RenderTargetRef`] that the active offscreen pass is
     /// writing to.

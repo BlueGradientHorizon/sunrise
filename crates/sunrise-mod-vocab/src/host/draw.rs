@@ -582,6 +582,19 @@ pub trait WorldDrawContext {
         let _ = (pipeline, vertices, indices, draw, bindings);
         Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid))
     }
+    /// Draw `draw.max_count` commands a compute shader wrote into a storage buffer
+    /// (vanilla's `RenderPass.drawIndexedIndirect(commands, drawCount)` and `drawIndirect`), with
+    /// no CPU readback. The same draw on every backend and through a translated shader pack. See
+    /// [`IndirectDraw`] for the command layout. Everything is checked before anything is recorded
+    /// (never panics, never triggers a GPU validation error): pipeline liveness
+    /// ([`PipelineDrawError::Pipeline`]), mesh ownership, liveness and strides
+    /// ([`PipelineDrawError::Mesh`]), the command buffer's handle ([`PipelineDrawError::Buffer`])
+    /// and its use as indirect arguments ([`PipelineDrawError::InvalidIndirect`]), and the
+    /// bindings. A `max_count` of zero is a legal no-op.
+    fn draw_indirect(&mut self, draw: &IndirectDraw<'_>) -> Result<(), PipelineDrawError> {
+        let _ = draw;
+        Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid))
+    }
     /// A label at world position `at`, drawn as vanilla draws a name tag
     /// (`SubmitNodeCollection.submitNameTag`): 0.5 blocks above `at`, facing the camera,
     /// 0.025 blocks per font pixel (so it shrinks with distance; scale by distance yourself
@@ -729,6 +742,18 @@ pub trait PrepareRenderBuffersContext {
         let _ = (stage, pipeline, vertices, indices, draw, bindings);
         Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid))
     }
+
+    /// Prepare a GPU-driven [`IndirectDraw`] for `stage` (standard pass stages or
+    /// [`RenderLevelStage::OitTranslucent`]), checked as
+    /// [`WorldDrawContext::draw_indirect`] checks it.
+    fn draw_indirect(
+        &mut self,
+        stage: RenderLevelStage,
+        draw: &IndirectDraw<'_>,
+    ) -> Result<PreparedWorldDraw, PipelineDrawError> {
+        let _ = (stage, draw);
+        Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid))
+    }
 }
 
 /// Draw batches prepared for the active standard render stage, in call order.
@@ -802,6 +827,14 @@ pub trait OffscreenDrawContext {
         bindings: &DrawBindings<'_>,
     ) -> Result<(), PipelineDrawError> {
         let _ = (pipeline, vertices, indices, draw, bindings);
+        Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid))
+    }
+
+    /// Record a GPU-driven [`IndirectDraw`] into this offscreen pass, checked as
+    /// [`WorldDrawContext::draw_indirect`] checks it. A compute node earlier in the graph can
+    /// write the commands this pass reads.
+    fn draw_indirect(&mut self, draw: &IndirectDraw<'_>) -> Result<(), PipelineDrawError> {
+        let _ = draw;
         Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid))
     }
 
