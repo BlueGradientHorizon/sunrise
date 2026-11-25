@@ -3833,7 +3833,7 @@ mod tests {
         uv[3][0] = f32::INFINITY;
         assert!(!d.textured_quad(CORNERS, uv, SOLID, 7, 0xFFFFFF));
         assert!(d.vertices.is_empty());
-        d.normal_pose = Some(Mat4::IDENTITY);
+        d.normal_pose = Some(ModelNormals::from_rotation(Mat4::IDENTITY));
         assert!(!d.textured_quad(CORNERS, UNIT_UV, SOLID, 7, 0xFFFFFF));
         assert!(d.vertices.is_empty());
     }
@@ -3861,7 +3861,9 @@ mod tests {
     fn a_textured_quad_of_a_texture_that_is_not_live_or_a_plain_render_type_draws_nothing() {
         use sunrise_client_render::mod_pipelines::{BuiltinRenderType, Pipelines};
         crate::game::native_entity_refs::tests::with_client_game(|game| {
-            game.pack.render.mod_pipelines = Pipelines::load(
+            std::sync::Arc::get_mut(&mut game.pack.render)
+                .expect("the test game's render assets are not shared")
+                .mod_pipelines = Pipelines::load(
                 &sunrise_assets::resource_source::ResourceSource::directory(
                     "/nonexistent/sunrise-test-assets".into(),
                 ),
