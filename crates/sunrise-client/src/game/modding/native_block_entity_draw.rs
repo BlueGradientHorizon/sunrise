@@ -337,16 +337,31 @@ fn mod_block_entity_visible(
 
 /// One mod block entity's frame, as `submit` gets it: the render state's
 /// partial tick, game time and light, and the pose stack the helpers draw
+/// Default camera for unit tests constructing `BlockEntityDraw::posed` without a frame view.
+static DEFAULT_DRAW_CAMERA: mod_api::Camera = mod_api::Camera {
+    position: [0.0; 3],
+    eye_height: 0.0,
+    partial_tick: 0.0,
+    yaw: 0.0,
+    pitch: 0.0,
+    roll: 0.0,
+    fov_degrees: 70.0,
+    near: 0.05,
+    far: 128.0,
+    view: [
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+    ],
+    projection: [
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+    ],
+    dimension: String::new(),
+};
+
 /// under (`native_draw_quad`, `native_draw_cube`, `native_draw_block`).
 // Native mods read and drive it; nothing in Sunrise does.
-pub struct BlockEntityDraw {
-    /// The frame's partial tick, 0 to 1 (`BlockEntityRenderState`).
-    partial: f32,
-    /// The level's game time, for animations.
-    game_time: i64,
-    /// The client's mod animation clock for `spin`: whole level-running ticks plus a separate
-    /// animation phase.
-    animation: f64,
+pub struct BlockEntityDraw<'v> {
+    /// Read-only frame state for the world view this draw belongs to.
+    view: mod_api::WorldRenderView<'v>,
     /// The light the helpers draw with: the block's own
     /// (`LevelRenderer.getLightCoords`), 16 times sky light in bits 0..8 and
     /// 16 times block light in bits 8..16; set it to light a part otherwise.
@@ -361,7 +376,7 @@ pub struct BlockEntityDraw {
     local_light_translation: Option<DVec3>,
     parent_poses: Vec<(Mat4, Option<ModelNormals>, Option<DVec3>)>,
     lights: (Vec3, Vec3),
-    vertices: Vec<Vertex>,
+    pub(super) vertices: Vec<Vertex>,
     /// Earlier frame vertices are not owned by this draw and must keep their offsets.
     first_vertex: usize,
     kept: bool,
@@ -369,9 +384,9 @@ pub struct BlockEntityDraw {
     /// parts standing still start again (`still`, none).
     spins: Vec<(usize, Option<Spin>)>,
     /// `level_light` is on: elements drawn now are lit by the level.
-    level_lit: bool,
+    pub(super) level_lit: bool,
     /// `unlit` is on: elements drawn now skip face shading and draw full bright.
-    unlit: bool,
+    pub(super) unlit: bool,
     /// Each element drawn under `level_light` (vertex range and local centre),
     /// beside `spins`.
     lit: Vec<LitElement>,
@@ -597,13 +612,11 @@ fn place_geometry(
 }
 
 #[allow(dead_code)]
-impl BlockEntityDraw {
-    /// A frame drawn from `pose` (relative to the camera), lit by `light` and
-    /// `lights`, adding to `vertices`; `block` is where `native_draw_item`'s
-    /// owner stands. A mob's frame (`native_render_living_pre`) is made this way.
-    pub(super) fn posed(
-        partial: f32,
-        game_time: i64,
+impl<'v> BlockEntityDraw<'v> {
+    /// A frame drawn from `pose` (relative to the camera), borrowing `view`, lit by `light` and
+    /// `lights`, adding to `vertices`; `block` is where `native_draw_item`'s owner stands.
+    pub(super) fn posed_with_view(
+        view: mod_api::WorldRenderView<'v>,
         light: u32,
         block: [i32; 3],
         pose: Mat4,
@@ -611,9 +624,7 @@ impl BlockEntityDraw {
         vertices: Vec<Vertex>,
     ) -> Self {
         Self {
-            partial,
-            game_time,
-            animation: 0.0,
+            view,
             light,
             block,
             pose,
@@ -633,6 +644,11 @@ impl BlockEntityDraw {
             quad_capacity: sunrise_client::gfx::EntityQuadCapacity::default_device(),
             reserved_quads: 0,
         }
+    }
+
+    /// Borrow the active world render view for this draw.
+    pub(crate) fn view(&self) -> &mod_api::WorldRenderView<'_> {
+        &self.view
     }
 
     /// Sets the renderer-owned combined entity quad capacity and quads already reserved by other
@@ -664,7 +680,7 @@ impl BlockEntityDraw {
     /// This frame on the client's animation clock (`Game::animation_time`),
     /// which turns its `spin` parts and `animation_time` reads.
     pub(super) fn animated(mut self, time: f64) -> Self {
-        self.animation = time;
+        self.view.animation_time = time;
         self
     }
     fn spinning(&self) -> bool {
@@ -673,6 +689,19 @@ impl BlockEntityDraw {
 
     /// Record a prepared copy at the current vertex, unless this draw is CPU-only or spinning.
     fn defer_model(&mut self, slot: u32, generation: u64, tint: u32) -> bool {
+        self.defer_model_at(slot, generation, self.pose(), tint, self.light)
+    }
+
+    /// Record a prepared copy with an explicit pose and light, unless this draw is CPU-only,
+    /// spinning, level-lit or unlit.
+    pub(super) fn defer_model_at(
+        &mut self,
+        slot: u32,
+        generation: u64,
+        pose: Mat4,
+        tint: u32,
+        light: u32,
+    ) -> bool {
         if !self.prepared || self.spinning() || self.level_lit || self.unlit {
             return false;
         }
@@ -680,9 +709,9 @@ impl BlockEntityDraw {
             at: self.vertices.len(),
             slot,
             generation,
-            pose: self.pose(),
+            pose,
             tint,
-            light: self.light,
+            light,
         });
         true
     }
@@ -765,7 +794,7 @@ impl BlockEntityDraw {
         place_geometry(
             &mut self.vertices,
             &self.spins,
-            self.animation,
+            self.view.animation_time,
             origin,
             None,
         );
@@ -896,7 +925,12 @@ impl BlockEntityDraw {
     /// The vertices from `start` of an element `unlit` covers: under `unlit` they lose their
     /// shading normal and draw full bright (their colours carry no shade), else `lit_since`.
     /// `terrain_model` keeps its own shading and calls `lit_since` directly.
-    fn drawn_since(&mut self, start: usize, centre: impl FnOnce() -> DVec3, ambient: u32) {
+    pub(super) fn drawn_since(
+        &mut self,
+        start: usize,
+        centre: impl FnOnce() -> DVec3,
+        ambient: u32,
+    ) {
         if !self.unlit {
             return self.lit_since(start, centre, ambient);
         }
@@ -1037,6 +1071,38 @@ impl BlockEntityDraw {
     }
 }
 
+#[allow(dead_code)]
+impl BlockEntityDraw<'static> {
+    /// A frame drawn from `pose` with a default static view, for unit tests that only exercise
+    /// local geometry helpers without a frame camera.
+    pub(super) fn posed(
+        partial: f32,
+        game_time: i64,
+        light: u32,
+        block: [i32; 3],
+        pose: Mat4,
+        lights: (Vec3, Vec3),
+        vertices: Vec<Vertex>,
+    ) -> Self {
+        Self::posed_with_view(
+            mod_api::WorldRenderView::new(
+                &DEFAULT_DRAW_CAMERA,
+                None,
+                partial,
+                game_time,
+                0.0,
+                false,
+                &[],
+            ),
+            light,
+            block,
+            pose,
+            lights,
+            vertices,
+        )
+    }
+}
+
 /// 0xRRGGBB `tint` times `brightness`, as an opaque vertex colour.
 fn shaded(tint: u32, brightness: f32) -> u32 {
     let c = |shift: u32| (((tint >> shift) & 255) as f32 * brightness) as u32;
@@ -1145,20 +1211,20 @@ impl KeptGeometry {
     }
 
     /// Place the kept draw if its inputs still match; only a miss asks for bounds and submits.
-    fn render(
+    fn render<'v>(
         &mut self,
         pos: [i32; 3],
         key: KeptKey,
         revision: ModRevision,
-        draw: &mut BlockEntityDraw,
+        draw: &mut BlockEntityDraw<'v>,
         origin: Vec3,
         level: &LevelLight<'_>,
         bounds: impl FnOnce() -> [f32; 6],
         visible: impl FnOnce([f32; 6], usize) -> bool,
-        submit: impl FnOnce(&mut BlockEntityDraw),
+        submit: impl FnOnce(&mut BlockEntityDraw<'v>),
     ) {
         let start = draw.vertices.len();
-        if let Some(entry) = self.get(pos, key, revision, draw.game_time) {
+        if let Some(entry) = self.get(pos, key, revision, draw.view.game_time) {
             if visible(entry.bounds, start) {
                 let take = entry
                     .vertices
@@ -1178,7 +1244,7 @@ impl KeptGeometry {
                     place_geometry(
                         &mut draw.vertices[start..],
                         &entry.spins,
-                        draw.animation,
+                        draw.view.animation_time,
                         origin,
                         (!entry.lit.is_empty()).then_some(PlacementLight {
                             elements: &entry.lit,
@@ -1229,7 +1295,7 @@ impl KeptGeometry {
                 vertices,
                 std::mem::take(&mut draw.spins),
                 std::mem::take(&mut draw.lit),
-                draw.game_time,
+                draw.view.game_time,
             );
             (
                 &entry.spins,
@@ -1243,7 +1309,7 @@ impl KeptGeometry {
         place_geometry(
             vertices,
             spins,
-            draw.animation,
+            draw.view.animation_time,
             origin,
             (!lit.is_empty()).then_some(PlacementLight {
                 elements: lit,
@@ -1267,6 +1333,100 @@ impl Game<'_> {
     /// across pauses and freezes. Server time updates never change it.
     pub(super) fn animation_time(&self) -> f64 {
         self.texture_ticks as f64 + self.clock.animation_phase()
+    }
+
+    /// The camera entity's interpolated eye position for the current world view, or `None`
+    /// when there is no camera entity (title screen, scenes, or no player/spectated entity).
+    pub(in crate::game) fn world_camera_entity_eye(&self) -> Option<[f64; 3]> {
+        if self.shows_panorama() {
+            return None;
+        }
+        if let Some(eye) = self.native_camera_entity_eye {
+            return Some(eye);
+        }
+        if self.view.initialized {
+            self.camera_subject().map(|_| self.view.eye)
+        } else {
+            self.camera_eye_position()
+        }
+    }
+
+    /// Build a frame camera snapshot for `position` and `partial` when a draw runs outside
+    /// `Game::render` or for a secondary view whose position differs from `native_camera_frame`.
+    pub(in crate::game) fn fallback_camera(
+        &self,
+        position: DVec3,
+        partial: f32,
+    ) -> mod_api::Camera {
+        let (yaw, pitch, roll) =
+            self.posed_rotation
+                .unwrap_or((self.view.y_rot, self.view.x_rot, self.view.roll));
+        let view = if roll == 0.0 {
+            sunrise_client::camera::view_matrix(yaw, pitch)
+        } else {
+            sunrise_client::camera::view_matrix_rolled(yaw, pitch, roll)
+        };
+        mod_api::Camera {
+            position: position.to_array(),
+            eye_height: self.view.eye_height_old
+                + (self.view.eye_height - self.view.eye_height_old) * partial,
+            partial_tick: partial,
+            yaw,
+            pitch,
+            roll,
+            fov_degrees: self.settings.fov,
+            near: 0.05,
+            far: sunrise_client::camera::depth_far(
+                self.terrain_distance(),
+                self.settings.cloud_range,
+            ),
+            view: view.to_cols_array(),
+            projection: glam::Mat4::IDENTITY.to_cols_array(),
+            dimension: self.dim.id().to_owned(),
+        }
+    }
+
+    /// Borrow the active world view for `camera` and `partial`, preferring an explicit
+    /// per-view [`mod_api::WorldRenderView`] (such as a scene or secondary view) or the
+    /// current frame's cached camera snapshot with zero allocation.
+    pub(in crate::game) fn with_world_view<R>(
+        &self,
+        camera: DVec3,
+        partial: f32,
+        explicit: Option<&mod_api::WorldRenderView<'_>>,
+        f: impl FnOnce(mod_api::WorldRenderView<'_>) -> R,
+    ) -> R {
+        if let Some(&view) = explicit {
+            return f(view);
+        }
+        let eye = self.world_camera_entity_eye();
+        let anim = self.animation_time();
+        let oit = self.settings.improved_transparency;
+        if let Some(frame_cam) = self
+            .native_camera_frame
+            .as_ref()
+            .filter(|c| c.position == camera.to_array())
+        {
+            return f(mod_api::WorldRenderView::new(
+                frame_cam,
+                eye,
+                partial,
+                self.world.game_time,
+                anim,
+                oit,
+                &[],
+            ));
+        }
+        let owned = self.fallback_camera(camera, partial);
+        f(mod_api::WorldRenderView::new(
+            &owned,
+            eye,
+            partial,
+            self.world.game_time,
+            anim,
+            oit,
+            &[],
+        ))
     }
     /// The mod block entities within view distance of `camera` whose block's
     /// template has none, which the mesher's block entity lists (made from
@@ -1339,102 +1499,115 @@ impl Game<'_> {
         partial: f32,
         out: &mut Vec<Vertex>,
     ) {
-        let mut draw = BlockEntityDraw {
-            partial,
-            game_time: self.world.game_time,
-            animation: self.animation_time(),
-            light: 0,
-            block: [0; 3],
-            pose: Mat4::IDENTITY,
-            normal_pose: None,
-            local_light_translation: None,
-            parent_poses: Vec::new(),
-            lights: diffuse_lights(self.nether_lighting()),
-            first_vertex: out.len(),
-            vertices: std::mem::take(out),
-            kept: false,
-            spins: Vec::new(),
-            level_lit: false,
-            unlit: false,
-            lit: Vec::new(),
-            prepared: prepared_route(
-                self.pack_ids.is_some(),
-                !self.native_shaders.picked.is_empty(),
-                self.renderer_prepared_generation(),
-                self.standalone_geometry.generation(),
-            ),
-            records: Vec::new(),
-            quad_capacity: self.entity_quad_capacity(),
-            reserved_quads: self.entity_batch_reserved_quads(),
-        };
-        let now = self.world.game_time;
-        let mut kept = self.kept_block_entities.borrow_mut();
-        kept.sweep(now);
-        let distances = self.view_distances();
-        let light_at = |b: [i32; 3]| self.world.light(b[0], b[1], b[2]);
-        for (&(pos, state), eye_visible) in blocks {
-            let corner = DVec3::new(f64::from(pos[0]), f64::from(pos[1]), f64::from(pos[2]));
-            // Vec3.closerThan: strictly closer.
-            let distance = distances.of(state);
-            if (corner + 0.5).distance_squared(camera) >= distance * distance {
-                continue;
+        self.mod_block_entity_geometry_with_view(blocks, camera, partial, None, out);
+    }
+
+    /// [`Self::mod_block_entity_geometry`] with an explicit [`mod_api::WorldRenderView`] for
+    /// multi-view rendering.
+    pub(super) fn mod_block_entity_geometry_with_view<'a>(
+        &self,
+        blocks: impl Iterator<Item = (&'a ([i32; 3], u32), bool)>,
+        camera: DVec3,
+        partial: f32,
+        explicit_view: Option<&mod_api::WorldRenderView<'_>>,
+        out: &mut Vec<Vertex>,
+    ) {
+        self.with_world_view(camera, partial, explicit_view, |view| {
+            let mut draw = BlockEntityDraw {
+                view,
+                light: 0,
+                block: [0; 3],
+                pose: Mat4::IDENTITY,
+                normal_pose: None,
+                local_light_translation: None,
+                parent_poses: Vec::new(),
+                lights: diffuse_lights(self.nether_lighting()),
+                first_vertex: out.len(),
+                vertices: std::mem::take(out),
+                kept: false,
+                spins: Vec::new(),
+                level_lit: false,
+                unlit: false,
+                lit: Vec::new(),
+                prepared: prepared_route(
+                    self.pack_ids.is_some(),
+                    !self.native_shaders.picked.is_empty(),
+                    self.renderer_prepared_generation(),
+                    self.standalone_geometry.generation(),
+                ),
+                records: Vec::new(),
+                quad_capacity: self.entity_quad_capacity(),
+                reserved_quads: self.entity_batch_reserved_quads(),
+            };
+            let now = view.game_time;
+            let mut kept = self.kept_block_entities.borrow_mut();
+            kept.sweep(now);
+            let distances = self.view_distances();
+            let light_at = |b: [i32; 3]| self.world.light(b[0], b[1], b[2]);
+            for (&(pos, state), eye_visible) in blocks {
+                let corner = DVec3::new(f64::from(pos[0]), f64::from(pos[1]), f64::from(pos[2]));
+                // Vec3.closerThan: strictly closer.
+                let distance = distances.of(state);
+                if (corner + 0.5).distance_squared(camera) >= distance * distance {
+                    continue;
+                }
+                let Some(BlockEntity::Mod(entity)) =
+                    self.world.block_entities.get(&(pos[0], pos[1], pos[2]))
+                else {
+                    continue;
+                };
+                let origin = (corner - camera).as_vec3();
+                let light = vertex_light(self.world.light(pos[0], pos[1], pos[2]));
+                let key = KeptKey {
+                    dim: self.dim,
+                    state,
+                    light,
+                    glyphs: self.gui.atlas.font.epoch(),
+                };
+                let id = BlockStateId(state);
+                let block = || &*self.res.facts().get(id).name;
+                kept.render(
+                    pos,
+                    key,
+                    entity.revision(),
+                    &mut draw,
+                    origin,
+                    &LevelLight {
+                        origin: corner,
+                        light_at: &light_at,
+                    },
+                    || {
+                        let mut bounds = DEFAULT_BOUNDS;
+                        self.api_block_entity_render_bounding_box(
+                            pos,
+                            block(),
+                            id,
+                            entity,
+                            &mut bounds,
+                        );
+                        bounds
+                    },
+                    |bounds, start| {
+                        if !mod_block_entity_visible(
+                            self.view_frustum.as_ref(),
+                            origin,
+                            bounds,
+                            eye_visible,
+                            self.block_entity_reach(state).off_screen(),
+                        ) {
+                            return false;
+                        }
+                        self.mark_block_entity(start, state);
+                        true
+                    },
+                    |draw| {
+                        self.api_block_entity_submit(pos, block(), id, entity, draw);
+                        self.finish_prepared_draw(draw, corner, camera);
+                    },
+                );
             }
-            let Some(BlockEntity::Mod(entity)) =
-                self.world.block_entities.get(&(pos[0], pos[1], pos[2]))
-            else {
-                continue;
-            };
-            let origin = (corner - camera).as_vec3();
-            let light = vertex_light(self.world.light(pos[0], pos[1], pos[2]));
-            let key = KeptKey {
-                dim: self.dim,
-                state,
-                light,
-                glyphs: self.gui.atlas.font.epoch(),
-            };
-            let id = BlockStateId(state);
-            let block = || &*self.res.facts().get(id).name;
-            kept.render(
-                pos,
-                key,
-                entity.revision(),
-                &mut draw,
-                origin,
-                &LevelLight {
-                    origin: corner,
-                    light_at: &light_at,
-                },
-                || {
-                    let mut bounds = DEFAULT_BOUNDS;
-                    self.api_block_entity_render_bounding_box(
-                        pos,
-                        block(),
-                        id,
-                        entity,
-                        &mut bounds,
-                    );
-                    bounds
-                },
-                |bounds, start| {
-                    if !mod_block_entity_visible(
-                        self.view_frustum.as_ref(),
-                        origin,
-                        bounds,
-                        eye_visible,
-                        self.block_entity_reach(state).off_screen(),
-                    ) {
-                        return false;
-                    }
-                    self.mark_block_entity(start, state);
-                    true
-                },
-                |draw| {
-                    self.api_block_entity_submit(pos, block(), id, entity, draw);
-                    self.finish_prepared_draw(draw, corner, camera);
-                },
-            );
-        }
-        *out = draw.vertices;
+            *out = draw.vertices;
+        });
     }
 
     pub(super) fn prepared_copy_room(&self, already: u64, incoming: usize) -> Option<usize> {
@@ -1540,17 +1713,17 @@ impl Game<'_> {
         draw.keep();
     }
     /// The frame's partial tick, 0 to 1 (`BlockEntityRenderState`).
-    pub(super) fn native_draw_partial(&self, draw: &BlockEntityDraw) -> f32 {
-        draw.partial
+    pub(super) fn native_draw_partial(&self, draw: &BlockEntityDraw<'_>) -> f32 {
+        draw.view.partial_tick
     }
     /// The level's game time, for animations.
-    pub(super) fn native_draw_game_time(&self, draw: &BlockEntityDraw) -> i64 {
-        draw.game_time
+    pub(super) fn native_draw_game_time(&self, draw: &BlockEntityDraw<'_>) -> i64 {
+        draw.view.game_time
     }
     /// The frame on this client's animation clock: whole level ticks plus the animation phase,
     /// held through a tick freeze and carried on without a jump. This is what turns `spin` parts.
-    pub(super) fn native_draw_animation_time(&self, draw: &BlockEntityDraw) -> f64 {
-        draw.animation
+    pub(super) fn native_draw_animation_time(&self, draw: &BlockEntityDraw<'_>) -> f64 {
+        draw.view.animation_time
     }
     /// The light the helpers draw with: the block's own
     /// (`LevelRenderer.getLightCoords`), 16 times sky light in bits 0..8 and
@@ -1964,30 +2137,16 @@ mod tests {
     use super::*;
     use sunrise_client::containers::{ModBlockEntity, ModBlockEntityFields};
 
-    fn draw() -> BlockEntityDraw {
-        BlockEntityDraw {
-            partial: 0.0,
-            game_time: 0,
-            animation: 0.0,
-            light: 0xF0F0,
-            block: [0; 3],
-            pose: Mat4::from_translation(Vec3::new(10.0, 0.0, 0.0)),
-            normal_pose: None,
-            local_light_translation: None,
-            parent_poses: Vec::new(),
-            lights: diffuse_lights(false),
-            vertices: Vec::new(),
-            first_vertex: 0,
-            kept: false,
-            spins: Vec::new(),
-            level_lit: false,
-            unlit: false,
-            lit: Vec::new(),
-            prepared: false,
-            records: Vec::new(),
-            quad_capacity: sunrise_client::gfx::EntityQuadCapacity::default_device(),
-            reserved_quads: 0,
-        }
+    fn draw() -> BlockEntityDraw<'static> {
+        BlockEntityDraw::posed(
+            0.0,
+            0,
+            0xF0F0,
+            [0; 3],
+            Mat4::from_translation(Vec3::new(10.0, 0.0, 0.0)),
+            diffuse_lights(false),
+            Vec::new(),
+        )
     }
 
     fn sprite() -> Rect {
@@ -3975,7 +4134,7 @@ mod tests {
             (0, [0x9020, 0xF070, 0xF070, 0xF0F0]),
             (1, [0x9020, 0xC000, 0x0000, 0xF0F0]),
         ] {
-            draw.animation = f64::from(tick);
+            draw.view.animation_time = f64::from(tick);
             draw.vertices.clear();
             kept.render(
                 pos,

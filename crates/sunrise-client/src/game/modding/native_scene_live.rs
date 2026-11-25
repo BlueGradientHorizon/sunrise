@@ -219,7 +219,11 @@ impl Game<'_> {
             return Err(SceneError::Unavailable);
         }
         if !lives(scene) {
-            return self.draw_scene_quads(batch, rect, blocks, view, |_| {});
+            let scene_clock = scene.clock.filter(|c| c.partial.is_finite()).map(|c| {
+                let tick = c.tick as i64;
+                (tick, c.partial, c.tick as f64 + f64::from(c.partial))
+            });
+            return self.draw_scene_quads(batch, rect, blocks, view, scene_clock, |_, _| {});
         }
         let clock = check(rect, scene, view)?;
         // Checked whole before anything is kept; an empty list allocates nothing.
@@ -272,7 +276,15 @@ impl Game<'_> {
                     l.frame = frame;
                     self.draw_live(batch, rect, blocks, view, l, clock.partial)?;
                 }
-                None => self.draw_scene_quads(batch, rect, blocks, view, |_| {})?,
+                None => {
+                    let tick = clock.tick as i64;
+                    let scene_clock = (
+                        tick,
+                        clock.partial,
+                        clock.tick as f64 + f64::from(clock.partial),
+                    );
+                    self.draw_scene_quads(batch, rect, blocks, view, Some(scene_clock), |_, _| {})?
+                }
             }
             return Err(SceneError::TooManyScenes);
         }
@@ -320,31 +332,46 @@ impl Game<'_> {
         partial: f32,
     ) -> Result<(), SceneError> {
         let Live {
+            tick,
             engine,
             mobs,
             verts,
             ..
         } = l;
-        self.draw_scene_quads(batch, rect, blocks, view, |quads| {
-            for mob in mobs.iter() {
+        let scene_clock = (*tick as i64, partial, *tick as f64 + f64::from(partial));
+        self.draw_scene_quads(
+            batch,
+            rect,
+            blocks,
+            view,
+            Some(scene_clock),
+            |quads, render_view| {
+                for mob in mobs.iter() {
+                    verts.clear();
+                    // `DrawContext::entity`'s submission, in the scene's coordinates.
+                    self.gui_entity_geometry_at(
+                        mob,
+                        partial,
+                        DVec3::ZERO,
+                        Some(render_view),
+                        verts,
+                    );
+                    entity_quads(verts, quads);
+                }
                 verts.clear();
-                // `DrawContext::entity`'s submission, in the scene's coordinates.
-                self.gui_entity_geometry_at(mob, partial, DVec3::ZERO, verts);
-                entity_quads(verts, quads);
-            }
-            verts.clear();
-            let base = facing_viewer(view);
-            engine.render(DVec3::ZERO, base, partial, &|_| 0xFF, verts);
-            for q in verts.as_chunks::<4>().0 {
-                quads.push(SceneQuad {
-                    corners: q.each_ref().map(|v| Vec3::from_array(v.pos)),
-                    uv: q.each_ref().map(|v| v.uv),
-                    color: q[0].color,
-                    normal: Vec3::Z,
-                    cull: false,
-                });
-            }
-        })
+                let base = facing_viewer(view);
+                engine.render(DVec3::ZERO, base, partial, &|_| 0xFF, verts);
+                for q in verts.as_chunks::<4>().0 {
+                    quads.push(SceneQuad {
+                        corners: q.each_ref().map(|v| Vec3::from_array(v.pos)),
+                        uv: q.each_ref().map(|v| v.uv),
+                        color: q[0].color,
+                        normal: Vec3::Z,
+                        cull: false,
+                    });
+                }
+            },
+        )
     }
 
     /// A new kept scene: a level of `blocks`, an empty particle engine on the GUI atlas

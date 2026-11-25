@@ -78,7 +78,7 @@ pub(crate) fn check_namespace(name: &str, manifest: &Manifest) -> Result<(), Str
     let owned = own || manifest.namespaces.iter().any(|n| n == namespace);
     // Vanilla's own files stay vanilla's; a mod may only add to its
     // tags and atlases, and to the convention tags mods share.
-    let shared = matches!(namespace, "minecraft" | "c");
+    let shared = matches!(namespace, "minecraft" | "c" | "neoforge");
     let atlas = top == "assets" && namespace == "minecraft" && rest.starts_with("atlases/");
     let mut extension = false;
     if top == "data" && namespace == "sunrise" && rest.starts_with("tags/") {
@@ -113,7 +113,7 @@ pub(crate) fn check_namespace(name: &str, manifest: &Manifest) -> Result<(), Str
         || name == RECIPE_PRIORITIES_PATH;
     if !allowed {
         return Err(format!(
-            "{name}: a mod adds files in its own namespaces ({top}/{id}/ and those listed in namespaces), to vanilla and convention (c) tags, to vanilla's atlases, or to declared shared resource paths"
+            "{name}: a mod adds files in its own namespaces ({top}/{id}/ and those listed in namespaces), to vanilla and convention (c, neoforge) tags, to vanilla's atlases, or to declared shared resource paths"
         ));
     }
 
@@ -200,9 +200,32 @@ pub struct BlockProperties {
     /// Leaf and ice graphics culling still follows the template class.
     #[serde(default, deserialize_with = "deserialize_skip_same_block_faces")]
     pub skip_same_block_faces: Option<bool>,
+    /// Which mobs may spawn on the block (`BlockBehaviour.Properties.isValidSpawn`); unset keeps
+    /// the template block's rule. Set on every state of the block, from the block alone: a
+    /// `dynamic_light` block's cell light and an outline declared over the template's do not
+    /// reach it (see [`SpawnRule::Default`]).
+    pub spawn_rule: Option<SpawnRule>,
     /// Opt into `VegetationBlock` survival independently of the template.
     #[serde(default)]
     pub vegetation: bool,
+}
+
+/// A block's mob spawn rule (`BlockBehaviour.Properties.isValidSpawn`), the answer of
+/// `BlockState.isValidSpawn` for every entity type; a polar bear follows the rule like any other mob.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SpawnRule {
+    /// Vanilla's default: the top face is sturdy and the block's light emission is below 14. The
+    /// top face is the template's, and the emission is the declared `light` (or `state_light`),
+    /// else the template's: a `dynamic_light` block is judged by that static light, since the
+    /// spawn tables hold one answer per state.
+    Default,
+    /// Every mob spawns on the block (`Blocks::always`).
+    Always,
+    /// No mob spawns on the block (`Blocks::never`).
+    Never,
+    /// Only ocelots and parrots spawn on the block (`Blocks::ocelotOrParrot`).
+    OcelotOrParrot,
 }
 
 /// Vanilla's per-column offset mode (`BlockBehaviour.OffsetType`).
@@ -1067,7 +1090,7 @@ pub use lenient::without_comments;
 #[cfg(feature = "references")]
 mod references;
 #[cfg(feature = "references")]
-pub use references::{Findings, check_references};
+pub use references::{Findings, JarLayer, check_references};
 
 /// A block entity type declared in code, with the blocks it supports.
 #[derive(Clone, Debug, PartialEq, Eq)]

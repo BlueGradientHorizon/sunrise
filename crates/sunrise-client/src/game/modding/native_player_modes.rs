@@ -14,8 +14,13 @@ impl Game<'_> {
     /// `PlayerList.getProfilePermissions`): an op's level, the
     /// single-player owner's 4 with commands allowed. A displaced connected
     /// player keeps their permission level even while their body is unavailable.
+    /// On a client, the local player's level the server last sent; None for another player.
     /// None for a stale or unavailable player.
     pub(super) fn player_permission_level(&self, player: PlayerRef) -> Option<u8> {
+        if self.remote.is_some() {
+            // `LocalPlayer.permissionLevel`, from the server's entity events 24 to 28.
+            return (self.local_player()? == player).then_some(self.ui.registries.permission);
+        }
         let read = self
             .player_handle_read(player)
             .or_else(|| self.online_player_record(player).map(PlayerRead::Guest))?;

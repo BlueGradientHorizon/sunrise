@@ -290,19 +290,17 @@ fn wrap_main(src: &mut Expanded) -> Result<(), String> {
     Err("no main".into())
 }
 
-/// Parses and validates one stage, with the backend's defines every program has
-/// (`core_shader::glsl_options`: a post pass has none of its own); errors at the files and lines
-/// the author wrote.
+/// Runs the directives of one stage, with the backend's defines every program has
+/// (`core_shader::run_directives`: a post pass has none of its own), then parses and validates
+/// it; errors at the files and lines the author wrote. With the code that was parsed.
 fn parse(
     stage: ShaderStage,
     code: &Expanded,
     limits: naga::front::glsl::InterfaceLimits,
-) -> Result<(naga::Module, naga::valid::ModuleInfo), Vec<Error>> {
+) -> Result<(naga::Module, naga::valid::ModuleInfo, Expanded), Vec<Error>> {
+    let code = crate::core_shader::run_directives(code, &[]).map_err(|e| vec![e])?;
     let module = Frontend::default()
-        .parse(
-            &crate::core_shader::glsl_options(stage, &[], limits),
-            code.text(),
-        )
+        .parse(&sunrise_glsl::glsl_options(stage, limits), code.text())
         .map_err(|e| code.errors_in(e.errors.iter().map(|e| (e.meta, e.kind.to_string()))))?;
     let info = Validator::new(ValidationFlags::all(), Capabilities::empty())
         .validate(&module)
@@ -314,7 +312,7 @@ fn parse(
             let span = span.unwrap_or_default();
             vec![code.error_in(span, format!("{:?}", e.into_inner()))]
         })?;
-    Ok((module, info))
+    Ok((module, info, code))
 }
 
 /// Translates the vertex and fragment shader a pass names (`minecraft:post/invert`), refused
@@ -370,17 +368,18 @@ pub fn translate(
     rewrite(&mut fs, &blocks, &samplers);
     vs.wrap("#version 450\n", "");
     fs.wrap("#version 450\n", "");
-    let vertex_module = parse(ShaderStage::Vertex, &vs, declarable.interface)
+    let (vertex_module, vertex_info, vs) = parse(ShaderStage::Vertex, &vs, declarable.interface)
         .map_err(|errors| refused(vertex, errors))?;
-    let fragment_module = parse(ShaderStage::Fragment, &fs, declarable.interface)
-        .map_err(|errors| refused(fragment, errors))?;
+    let (fragment_module, fragment_info, fs) =
+        parse(ShaderStage::Fragment, &fs, declarable.interface)
+            .map_err(|errors| refused(fragment, errors))?;
     let read = sunrise_glsl::bindings_read([
-        (&vertex_module.0, &vertex_module.1),
-        (&fragment_module.0, &fragment_module.1),
+        (&vertex_module, &vertex_info),
+        (&fragment_module, &fragment_info),
     ]);
     Ok(Program {
-        vertex: vertex_module.0,
-        fragment: fragment_module.0,
+        vertex: vertex_module,
+        fragment: fragment_module,
         blocks,
         samplers,
         read,
@@ -436,6 +435,91 @@ mod tests {
             translate(&source, "custom:missing", "custom:post/test", ANY),
             Err(Refused::Source(_))
         ));
+    }
+
+    /// The value of `module`'s constant `name`.
+    fn constant(module: &naga::Module, name: &str) -> i64 {
+        let (_, c) = (module.constants.iter())
+            .find(|(_, c)| c.name.as_deref() == Some(name))
+            .unwrap_or_else(|| panic!("no constant {name}"));
+        match module.global_expressions[c.init] {
+            naga::Expression::Literal(naga::Literal::I32(n)) => n.into(),
+            ref other => panic!("{name} is {other:?}"),
+        }
+    }
+
+    /// A post shader's `__VERSION__` is its own file's `#version` (not the `#version 450` the
+    /// translator writes for naga), in its conditions and its code, each stage its own.
+    #[test]
+    fn a_post_shader_reads_its_version() {
+        use sunrise_assets::resource_source::Resource;
+        let vsh = "#version 330\nconst int seen = __VERSION__;\n\
+            void main() { gl_Position = vec4(float(seen)); }";
+        let fsh = "#version 150\n#if __VERSION__ != 150\n#error not 150\n#endif\n\
+            #ifdef __VERSION__\nconst int seen = __VERSION__;\n#endif\n\
+            #define NEXT (__VERSION__ + 1)\nconst int next = NEXT;\n\
+            layout(location=0) out vec4 fragColor;\n\
+            void main() { fragColor = vec4(float(seen + next)); }";
+        let source = ResourceSource::indexed(std::collections::BTreeMap::from([
+            (
+                "assets/custom/shaders/post/v.vsh".into(),
+                Resource::bytes(vsh.as_bytes().to_vec()),
+            ),
+            (
+                "assets/custom/shaders/post/v.fsh".into(),
+                Resource::bytes(fsh.as_bytes().to_vec()),
+            ),
+        ]));
+        let program = translate(&source, "custom:post/v", "custom:post/v", ANY).unwrap();
+        let read = [
+            constant(&program.vertex, "seen"),
+            constant(&program.fragment, "seen"),
+            constant(&program.fragment, "next"),
+        ];
+        assert_eq!(read, [330, 150, 151]);
+    }
+
+    /// A post shader's include reads the stage's `__VERSION__` in a condition that gates another
+    /// include (pasted with every branch, then dropped by the directives), in `#elif`, in
+    /// `#ifndef` and in its code; a post stage without `#version` reads 110.
+    #[test]
+    fn a_post_shaders_include_and_a_stage_without_version_read_it() {
+        use sunrise_assets::resource_source::Resource;
+        let a = "#if __VERSION__ == 150\n#include \"scale.glsl\"\n#endif\n\
+            const int a = __VERSION__;\n\
+            #if __VERSION__ == 100\nconst int e = 1;\n#elif __VERSION__ == 150\nconst int e = 2;\n#endif\n\
+            #ifndef __VERSION__\nconst int n = 1;\n#else\nconst int n = 4;\n#endif\n";
+        let vsh = "const int seen = __VERSION__;\n\
+            void main() { gl_Position = vec4(float(seen)); }";
+        let fsh = "#version 150\n#include <custom:a.glsl>\n\
+            layout(location=0) out vec4 fragColor;\n\
+            void main() { fragColor = vec4(SCALE * float(a + e + n)); }";
+        let source = ResourceSource::indexed(std::collections::BTreeMap::from([
+            (
+                "assets/custom/shaders/post/n.vsh".into(),
+                Resource::bytes(vsh.as_bytes().to_vec()),
+            ),
+            (
+                "assets/custom/shaders/post/n.fsh".into(),
+                Resource::bytes(fsh.as_bytes().to_vec()),
+            ),
+            (
+                "assets/custom/shaders/include/a.glsl".into(),
+                Resource::bytes(a.as_bytes().to_vec()),
+            ),
+            (
+                "assets/custom/shaders/include/scale.glsl".into(),
+                Resource::bytes(b"#define SCALE 2.0\n".to_vec()),
+            ),
+        ]));
+        let program = translate(&source, "custom:post/n", "custom:post/n", ANY).unwrap();
+        let read = [
+            constant(&program.vertex, "seen"),
+            constant(&program.fragment, "a"),
+            constant(&program.fragment, "e"),
+            constant(&program.fragment, "n"),
+        ];
+        assert_eq!(read, [110, 150, 2, 4]);
     }
 
     /// A stage with an array too large to lay out (#4134) is the translator's refusal naming

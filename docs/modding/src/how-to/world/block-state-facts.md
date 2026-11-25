@@ -28,7 +28,11 @@ known state reads as `Ok(None)`; unavailable metadata, invalid states and refuse
 | `friction(state) -> Option<f32>` | `BlockBehaviour.getFriction()` of the block: 0.6 usually, 0.98 ice, 0.8 slime |
 | `speed_factor(state) -> Option<f32>` | `Block.getSpeedFactor()`: 1.0 usually, 0.4 soul sand and honey; the declared value, which a block's `block_speed_factor` part can change where an entity stands |
 | `jump_factor(state) -> Option<f32>` | `Block.getJumpFactor()`: 1.0 usually, 0.5 honey; the declared value, which a block's `block_jump_factor` part can change |
+| `collision(state) -> Option<StateCollision>` | `BlockState.getCollisionShape(level, pos, CollisionContext.empty())`: `Fixed` boxes the same at every position, `Contextual` boxes an entity's context can change (scaffolding, powder snow, liquids), or `Positional` (bamboo and dripstone offsets, shulker boxes, moving pistons, published shapes, parts that answer collision): read those per position |
+| `landing(state) -> Option<BlockLanding>` | `BlockBehaviour.Properties.bounceRestitution` and `fallDistanceReduction`: 0.75 and 0.5 for beds and the shelf mushroom, a bounce of 1.0 for slime, 0 usually; not a part's `bounce_restitution` or a custom `fallOn` (hay) |
+| `path_type(state) -> Option<PathType>` | `WalkNodeEvaluator.getPathTypeFromState` after parts' `isPathfindable`: the state alone, without the `block_path_type` hook or neighbour rules |
 | `is_solid_render(state) -> Option<bool>` | `BlockState.isSolidRender()`: a full, occluding cube (stone yes; glass, leaves, slabs no) |
+| `poi_type(state) -> Option<Identifier>` | `PoiTypes.forState`: the point of interest type (`minecraft:librarian` for a lectern, `minecraft:meeting` for a bell), mods' `extend_poi_types` states included |
 | `propagates_skylight_down(state) -> Option<bool>` | `BlockState.propagatesSkylightDown()`: sky light passes down unchanged, the block's own answer included (glass and air yes, stone no) |
 | `is_air(state) -> Option<bool>` | `BlockState.isAir()`: air, cave air and void air, by the block's flag rather than the `#minecraft:air` tag |
 | `is_redstone_conductor(state) -> Option<bool>` | `BlockState.isRedstoneConductor` when it depends only on the block state; `None` when a position is needed |
@@ -67,6 +71,13 @@ placed block, use `LevelRef::is_redstone_conductor(host, pos)` (server side, `No
 position).
 
 Option-only queries return `None` for an unknown state or block, including an invalid local ordinal, and on a host with no game behind it (a mod's test double). Queries returning `Result<Option<_>, LevelReadError>` distinguish unknown states (`Ok(None)`) from unavailable metadata (`Err(LevelReadError::Unavailable)`). The ordinal order is defined by the complete canonical property constraints, not by the engine's numeric enumeration.
+
+## Spawn rule
+
+A declared block's `spawn_rule` property (`default`, `always`, `never` or `ocelot_or_parrot`; see
+[content mods](../content-mods.md)) sets the block's mob spawn surface flags, which natural spawning reads as
+`BlockBehaviour.Properties.isValidSpawn` does. The default rule asks for a sturdy top face and light emission below
+14 from the block's own light, which `light_emission` above reports without the cell's dynamic answer.
 
 ## Block sounds
 
@@ -136,6 +147,23 @@ your own scan and transmitter checks if summing powers for a table; the read doe
 cap them. It doesn't load chunks or write to the world. A stale handle or unavailable view
 or state refuses the query. A nested enchanting-power query for an active provider state
 is also refused, even at another level or position; it can still ask a different state.
+
+## Where an enchanting table finds its bookshelves
+
+A table scans vanilla's 32 positions (the ring two blocks out, two blocks high). A mod adds
+positions with `registrar.add_enchanting_table_offsets(&[[3, 0, 0], ...])` in `register`; they
+follow vanilla's in mod load order, and one already scanned is dropped. The list is fixed at
+startup, so a mod whose offsets come from its settings needs a restart to change them; `/reload`
+doesn't re-run registration. Each added position adds one `nextInt(16)` draw to every table's
+particle tick on the client, and nothing to the server's offers.
+
+At each scanned position, `is_valid_book_shelf(level, table_pos, offset, valid)` decides whether
+it counts (`EnchantingTableBlock.isValidBookShelf`). `valid` starts at vanilla's answer: the block
+there has a nonzero enchanting power and the block halfway to the table (x and z halved, rounded
+toward zero) is in `#minecraft:enchantment_power_transmitter`. A position set to valid adds its
+block's enchanting power to the offers, so a block with none still adds 0. The client's
+glyphs ask it too, only where vanilla does (after that position's `nextInt(16)` draw is 0), so a
+mod that changes it belongs on both sides.
 
 ## Block classes
 

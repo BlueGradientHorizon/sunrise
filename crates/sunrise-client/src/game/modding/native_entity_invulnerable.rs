@@ -550,6 +550,11 @@ mod tests {
             );
             let staged = game.stage_world_tables(&stack, false, &root).unwrap();
             game.open_world_tables(staged).unwrap();
+            // Entities are found in resident columns only (`Visibility.isAccessible`).
+            game.world.chunks.insert(
+                (0, 0),
+                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            );
 
             let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             game.mobs

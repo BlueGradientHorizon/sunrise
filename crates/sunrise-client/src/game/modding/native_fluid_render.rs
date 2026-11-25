@@ -154,7 +154,7 @@ mod tests {
     }
 
     /// A frame a block east of the camera, lit by sky 12 and block 3.
-    fn frame() -> BlockEntityDraw {
+    fn frame() -> BlockEntityDraw<'static> {
         BlockEntityDraw::posed(
             0.0,
             0,

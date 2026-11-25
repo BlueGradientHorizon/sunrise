@@ -1114,6 +1114,15 @@ mod facts_tests {
                 facts.is_solid_render(state("minecraft:stone_slab")),
                 Some(false)
             );
+            // PoiTypes.forState: a lectern is a librarian's job site, a bell a meeting point;
+            // stone is in no POI type.
+            let poi = |name: &str| facts.poi_type(state(name)).map(|id| id.to_string());
+            assert_eq!(
+                poi("minecraft:lectern").as_deref(),
+                Some("minecraft:librarian")
+            );
+            assert_eq!(poi("minecraft:bell").as_deref(), Some("minecraft:meeting"));
+            assert_eq!(poi("minecraft:stone"), None);
             // propagatesSkylightDown: glass's own answer and air, not a full cube.
             assert_eq!(
                 facts.propagates_skylight_down(state("minecraft:glass")),

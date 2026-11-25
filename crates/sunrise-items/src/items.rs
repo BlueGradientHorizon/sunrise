@@ -7,6 +7,7 @@ pub(crate) mod ingredient_defaults;
 pub use entity_type_tags::EntityTypeTags;
 #[path = "loot_query.rs"]
 mod loot_query;
+use crate::item_data::CodecBool;
 use crate::{Result, blocks::BlockFacts};
 pub use ingredient_defaults::LoadEntityTags;
 use serde_json::Value;
@@ -147,7 +148,7 @@ pub fn parse_consumable(
             .or_else(|| cons["sound"]["sound_id"].as_str())
             .unwrap_or("minecraft:entity.generic.eat")
             .to_owned(),
-        particles: cons["has_consume_particles"].as_bool().unwrap_or(true),
+        particles: cons["has_consume_particles"].codec_bool().unwrap_or(true),
         effects,
     })
 }
@@ -870,11 +871,23 @@ pub struct Items {
     /// place, first occurrence kept), the order `TagSlotDisplay` resolves.
     pub item_tag_order: HashMap<String, Vec<String>>,
     pub(crate) item_tag_names: Option<ItemTagNames>,
-    tags_loaded: [bool; 3],
+    tags_loaded: [bool; 10],
     /// Block tags in the same order.
     pub block_tag_order: HashMap<String, Vec<String>>,
     /// Fluid tags in the same order.
     pub fluid_tag_order: HashMap<String, Vec<String>>,
+    /// Biome tags in `TagLoader` order (`worldgen/biome`).
+    pub biome_tag_order: HashMap<String, Vec<String>>,
+    /// Enchantment tags in `TagLoader` order (`enchantment`).
+    pub enchantment_tag_order: HashMap<String, Vec<String>>,
+    /// Structure tags in `TagLoader` order (`worldgen/structure`).
+    pub structure_tag_order: HashMap<String, Vec<String>>,
+    /// Potion tags in `TagLoader` order (`potion`).
+    pub potion_tag_order: HashMap<String, Vec<String>>,
+    /// Damage type tags in `TagLoader` order (`damage_type`).
+    pub damage_type_tag_order: HashMap<String, Vec<String>>,
+    /// World clock tags in `TagLoader` order (`world_clock`).
+    pub world_clock_tag_order: HashMap<String, Vec<String>>,
     pub entity_type_tags: Arc<EntityTypeTags>,
     loot: Arc<sunrise_world::loot::LootTables>,
     loot_bindings: sunrise_world::loot::types::Bindings,
@@ -921,6 +934,7 @@ impl Items {
         ids.tags.sort();
         Arc::make_mut(&mut self.enchantments).entity_tags = tags.members().clone();
         self.entity_type_tags = Arc::new(tags);
+        self.tags_loaded[TagRegistry::EntityType as usize] = true;
     }
 
     /// The states' names [`Self::block_tag_flags`] was built against.
@@ -1105,6 +1119,13 @@ pub enum TagRegistry {
     Block,
     Item,
     Fluid,
+    EntityType,
+    Biome,
+    Enchantment,
+    Structure,
+    Potion,
+    DamageType,
+    WorldClock,
 }
 /// An entity type id or `#tag` as the set of entity type ids it names.
 fn entity_spec(tags: &HashMap<String, HashSet<String>>, spec: &str) -> HashSet<String> {
@@ -1359,7 +1380,7 @@ impl Items {
                         _ => vec![],
                     },
                     speed: r["speed"].as_f64().map(|v| v as f32),
-                    correct: r["correct_for_drops"].as_bool(),
+                    correct: r["correct_for_drops"].codec_bool(),
                 })
                 .collect();
             let modifier = |kind: &str| -> f32 {
@@ -1383,7 +1404,7 @@ impl Items {
             let can_always_eat = c
                 .get("minecraft:food")
                 .and_then(|f| f.get("can_always_eat"))
-                .and_then(|v| v.as_bool())
+                .and_then(|v| v.codec_bool())
                 .unwrap_or(false);
             let prototype = sunrise_core::json_nbt::json_to_tag(c)?;
             let (damage, extra) = crate::item_data::decode_components(Some(&prototype));
@@ -1424,7 +1445,7 @@ impl Items {
                         .map(|t| t["damage_per_block"].as_u64().unwrap_or(1) as u32),
                     can_destroy_blocks_in_creative:
                         c["minecraft:tool"]["can_destroy_blocks_in_creative"]
-                            .as_bool()
+                            .codec_bool()
                             .unwrap_or(true),
                     food,
                     can_always_eat,
@@ -1442,13 +1463,13 @@ impl Items {
                         .to_owned(),
                     glider: c["minecraft:glider"].is_object(),
                     swappable: c["minecraft:equippable"]["swappable"]
-                        .as_bool()
+                        .codec_bool()
                         .unwrap_or(true),
                     equip_dispensable: c["minecraft:equippable"]["dispensable"]
-                        .as_bool()
+                        .codec_bool()
                         .unwrap_or(true),
                     equip_damage_on_hurt: c["minecraft:equippable"]["damage_on_hurt"]
-                        .as_bool()
+                        .codec_bool()
                         .unwrap_or(true),
                     equip_sound: c["minecraft:equippable"]["equip_sound"]
                         .as_str()
@@ -1485,10 +1506,10 @@ impl Items {
                         .as_f64()
                         .unwrap_or(0.2) as f32,
                     can_sprint: c["minecraft:use_effects"]["can_sprint"]
-                        .as_bool()
+                        .codec_bool()
                         .unwrap_or(false),
                     interact_vibrations: c["minecraft:use_effects"]["interact_vibrations"]
-                        .as_bool()
+                        .codec_bool()
                         .unwrap_or(true),
                     blocks_attacks: BlocksAttacks::parse(&c["minecraft:blocks_attacks"]),
                     arm_pose: mod_arm_poses.get(name).copied(),
@@ -1578,6 +1599,72 @@ impl Items {
             })?,
         );
         self.set_tags(TagRegistry::Fluid, fluid_tag_list(root, overlay)?);
+        self.tags_loaded[TagRegistry::EntityType as usize] = true;
+        let builtin = tag_layers::builtin_ids(root)?;
+        for (registry, kind, reg_key) in [
+            (TagRegistry::Potion, "potion", "minecraft:potion"),
+            (
+                TagRegistry::Structure,
+                "worldgen/structure",
+                "minecraft:worldgen/structure",
+            ),
+            (
+                TagRegistry::WorldClock,
+                "world_clock",
+                "minecraft:world_clock",
+            ),
+            (
+                TagRegistry::Biome,
+                "worldgen/biome",
+                "minecraft:worldgen/biome",
+            ),
+            (
+                TagRegistry::Enchantment,
+                "enchantment",
+                "minecraft:enchantment",
+            ),
+        ] {
+            let exported = self.component_registry.ids(reg_key);
+            let fallback = builtin.get(kind);
+            let tags = tag_layers::load(root, kind, overlay, |id| {
+                if !exported.is_empty() {
+                    exported
+                        .binary_search_by(|known| known.as_str().cmp(id))
+                        .is_ok()
+                } else if let Some(ids) = fallback {
+                    ids.contains(id)
+                } else {
+                    false
+                }
+            })?;
+            self.set_tags(registry, tags);
+        }
+        Ok(())
+    }
+
+    /// Rebind one registry's ordered tags against an authoritative world-owned predicate.
+    pub fn bind_registry_tags(
+        &mut self,
+        root: &Path,
+        overlay: &PackOverlay,
+        registry: TagRegistry,
+        kind: &str,
+        contains: impl Fn(&str) -> bool,
+    ) -> Result<()> {
+        self.set_tags(registry, tag_layers::load(root, kind, overlay, contains)?);
+        Ok(())
+    }
+
+    /// Bind `enchantment` tags against the currently installed enchantment definitions.
+    pub fn bind_enchantment_tags(&mut self, root: &Path, overlay: &PackOverlay) -> Result<()> {
+        let known: HashSet<&str> = self
+            .enchantments
+            .list
+            .iter()
+            .map(|entry| entry.id.as_ref())
+            .collect();
+        let tags = tag_layers::load(root, "enchantment", overlay, |id| known.contains(id))?;
+        self.set_tags(TagRegistry::Enchantment, tags);
         Ok(())
     }
 
@@ -1597,6 +1684,7 @@ impl Items {
             crate::enchant::Enchantments::load_definitions(root, overlay, defaults)?,
             load_instruments(root, overlay),
         );
+        self.bind_enchantment_tags(root, overlay)?;
         Ok(())
     }
 
@@ -1708,6 +1796,42 @@ impl Items {
         if self.fluid_tag_order.is_empty() {
             self.set_tags(TagRegistry::Fluid, previous.fluid_tag_order.clone());
         }
+        for (registry, current, prev) in [
+            (
+                TagRegistry::Biome,
+                self.biome_tag_order.is_empty(),
+                &previous.biome_tag_order,
+            ),
+            (
+                TagRegistry::Enchantment,
+                self.enchantment_tag_order.is_empty(),
+                &previous.enchantment_tag_order,
+            ),
+            (
+                TagRegistry::Structure,
+                self.structure_tag_order.is_empty(),
+                &previous.structure_tag_order,
+            ),
+            (
+                TagRegistry::Potion,
+                self.potion_tag_order.is_empty(),
+                &previous.potion_tag_order,
+            ),
+            (
+                TagRegistry::DamageType,
+                self.damage_type_tag_order.is_empty(),
+                &previous.damage_type_tag_order,
+            ),
+            (
+                TagRegistry::WorldClock,
+                self.world_clock_tag_order.is_empty(),
+                &previous.world_clock_tag_order,
+            ),
+        ] {
+            if current && previous.tags_loaded(registry) {
+                self.set_tags(registry, prev.clone());
+            }
+        }
     }
 
     /// Ordered bindings for data loaders, keyed by the vanilla registry directory.
@@ -1722,23 +1846,58 @@ impl Items {
 
     /// Replace one registry's tags with `tags`, each tag's members in order.
     pub fn set_tags(&mut self, registry: TagRegistry, tags: HashMap<String, Vec<String>>) {
-        let (sets, order) = match registry {
-            TagRegistry::Block => (&mut self.block_tags, &mut self.block_tag_order),
-            TagRegistry::Item => {
-                self.item_tag_names = Some(ItemTagNames::bind(&tags));
-                (&mut self.item_tags, &mut self.item_tag_order)
+        match registry {
+            TagRegistry::Block | TagRegistry::Item | TagRegistry::Fluid => {
+                let (sets, order) = match registry {
+                    TagRegistry::Block => (&mut self.block_tags, &mut self.block_tag_order),
+                    TagRegistry::Item => {
+                        self.item_tag_names = Some(ItemTagNames::bind(&tags));
+                        (&mut self.item_tags, &mut self.item_tag_order)
+                    }
+                    TagRegistry::Fluid => (&mut self.fluid_tags, &mut self.fluid_tag_order),
+                    _ => unreachable!(),
+                };
+                *sets = tags
+                    .iter()
+                    .map(|(tag, members)| (tag.clone(), members.iter().cloned().collect()))
+                    .collect();
+                *order = tags;
+                self.tags_loaded[registry as usize] = true;
+                if registry == TagRegistry::Block {
+                    let names = self.block_state_names();
+                    self.rebuild_block_tag_flags(names);
+                }
             }
-            TagRegistry::Fluid => (&mut self.fluid_tags, &mut self.fluid_tag_order),
-        };
-        *sets = tags
-            .iter()
-            .map(|(tag, members)| (tag.clone(), members.iter().cloned().collect()))
-            .collect();
-        *order = tags;
-        self.tags_loaded[registry as usize] = true;
-        if registry == TagRegistry::Block {
-            let names = self.block_state_names();
-            self.rebuild_block_tag_flags(names);
+            TagRegistry::EntityType => {
+                self.set_entity_type_tags(EntityTypeTags::from_ordered(
+                    tags,
+                    self.entity_type_tags.ids().clone(),
+                ));
+            }
+            TagRegistry::Biome => {
+                self.biome_tag_order = tags;
+                self.tags_loaded[registry as usize] = true;
+            }
+            TagRegistry::Enchantment => {
+                self.enchantment_tag_order = tags;
+                self.tags_loaded[registry as usize] = true;
+            }
+            TagRegistry::Structure => {
+                self.structure_tag_order = tags;
+                self.tags_loaded[registry as usize] = true;
+            }
+            TagRegistry::Potion => {
+                self.potion_tag_order = tags;
+                self.tags_loaded[registry as usize] = true;
+            }
+            TagRegistry::DamageType => {
+                self.damage_type_tag_order = tags;
+                self.tags_loaded[registry as usize] = true;
+            }
+            TagRegistry::WorldClock => {
+                self.world_clock_tag_order = tags;
+                self.tags_loaded[registry as usize] = true;
+            }
         }
     }
     /// Whether `block` is in the block tag `tag` (`minecraft:fire`, no `#`).
@@ -1759,6 +1918,13 @@ impl Items {
             TagRegistry::Block => &self.block_tag_order,
             TagRegistry::Item => &self.item_tag_order,
             TagRegistry::Fluid => &self.fluid_tag_order,
+            TagRegistry::EntityType => self.entity_type_tags.ordered(),
+            TagRegistry::Biome => &self.biome_tag_order,
+            TagRegistry::Enchantment => &self.enchantment_tag_order,
+            TagRegistry::Structure => &self.structure_tag_order,
+            TagRegistry::Potion => &self.potion_tag_order,
+            TagRegistry::DamageType => &self.damage_type_tag_order,
+            TagRegistry::WorldClock => &self.world_clock_tag_order,
         };
         order.get(tag).map(Vec::as_slice)
     }
@@ -6126,6 +6292,65 @@ mod tests {
             Some("minecraft:bucket")
         );
         assert_eq!(remainder(&modded, "minecraft:bowl"), None);
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// A component's boolean fields are read as `Codec.BOOL` over `NbtOps` reads them: a mod's
+    /// patch gives a boolean as an NBT number, true unless its double value is zero.
+    #[test]
+    fn component_booleans_read_numbers_as_codec_bool_does() {
+        let root =
+            std::env::temp_dir().join(format!("sunrise-component-bools-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("data/minecraft/loot_table")).unwrap();
+        let items = r#"{
+            "ruby:helm": {
+                "minecraft:equippable": {"slot": "head", "swappable": 0, "dispensable": 256, "damage_on_hurt": -0.0},
+                "minecraft:tool": {"rules": [{"blocks": "minecraft:stone", "correct_for_drops": 1}], "can_destroy_blocks_in_creative": 0},
+                "minecraft:food": {"nutrition": 1, "saturation": 0.5, "can_always_eat": 0.5},
+                "minecraft:use_effects": {"can_sprint": 2, "interact_vibrations": 0},
+                "minecraft:enchantment_glint_override": 1
+            },
+            "ruby:cap": {
+                "minecraft:equippable": {"slot": "head", "swappable": false},
+                "minecraft:enchantment_glint_override": 0
+            },
+            "ruby:hat": {"minecraft:equippable": {"slot": "head"}}
+        }"#;
+        fs::write(root.join("items.json"), items).unwrap();
+        let defaults = sunrise_world::item_defaults::read(&root).unwrap();
+        let items = Items::catalog(&root, &PackOverlay::NONE, &defaults).unwrap();
+        let equip = |id: &str| {
+            let item = &items.items[id];
+            (
+                item.swappable,
+                item.equip_dispensable,
+                item.equip_damage_on_hurt,
+            )
+        };
+        // 256 is true (its double value is not zero), -0.0 is false.
+        assert_eq!(equip("ruby:helm"), (false, true, false));
+        assert_eq!(equip("ruby:cap"), (false, true, true));
+        assert_eq!(equip("ruby:hat"), (true, true, true));
+        let helm = &items.items["ruby:helm"];
+        assert_eq!(helm.tool[0].correct, Some(true));
+        assert!(!helm.can_destroy_blocks_in_creative);
+        assert!(helm.can_always_eat, "0.5 is true");
+        assert!(helm.can_sprint);
+        assert!(!helm.interact_vibrations);
+        let particles = |value| {
+            parse_consumable(&serde_json::json!({"has_consume_particles": value}))
+                .unwrap()
+                .particles
+        };
+        assert!(!particles(serde_json::json!(0)));
+        assert!(particles(serde_json::json!(0.5)));
+        assert!(particles(serde_json::json!(true)));
+        let enchantments = crate::enchant::Enchantments::load(&root, &defaults).unwrap();
+        let glint = |id: &str| enchantments.props(id).unwrap().glint;
+        assert_eq!(glint("ruby:helm"), Some(true));
+        assert_eq!(glint("ruby:cap"), Some(false));
+        assert_eq!(glint("ruby:hat"), None);
         fs::remove_dir_all(&root).unwrap();
     }
 

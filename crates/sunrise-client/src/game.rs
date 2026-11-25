@@ -617,6 +617,9 @@ mod fov;
 mod foxes;
 #[path = "game/interface/frame_geometry.rs"]
 mod frame_geometry;
+#[cfg(test)]
+#[path = "game/modding/frame_view_retained_draw_tests.rs"]
+mod frame_view_retained_draw_tests;
 #[path = "game/entities/frames.rs"]
 mod frames;
 #[cfg(feature = "friends")]
@@ -1067,6 +1070,9 @@ mod native_block_sprites;
 mod native_block_states;
 #[path = "game/modding/native_block_tables.rs"]
 mod native_block_tables;
+#[cfg(test)]
+#[path = "game/modding/native_block_tables_tests.rs"]
+mod native_block_tables_tests;
 #[cfg(test)]
 #[path = "game/modding/native_block_use_criteria_tests.rs"]
 mod native_block_use_criteria_tests;
@@ -1667,6 +1673,11 @@ mod native_registry_ids_tests;
 #[cfg(test)]
 #[path = "game/modding/native_registry_processor_tests.rs"]
 mod native_registry_processor_tests;
+#[path = "game/modding/native_render_hooks.rs"]
+mod native_render_hooks;
+#[cfg(test)]
+#[path = "game/modding/native_render_hooks_tests.rs"]
+mod native_render_hooks_tests;
 #[cfg(test)]
 #[path = "game/modding/native_render_pair_tests.rs"]
 pub(in crate::game) mod native_render_pair_tests;
@@ -1833,6 +1844,11 @@ mod owner_link;
 mod pack_clouds_frame_tests;
 #[path = "game/modding/pack_finders/mod.rs"]
 mod pack_finders;
+#[cfg(test)]
+#[path = "game/interface/pack_layer_frame_tests.rs"]
+mod pack_layer_frame_tests;
+#[path = "game/interface/pack_layers.rs"]
+mod pack_layers;
 #[cfg(test)]
 #[path = "game/interface/pack_sources_tests.rs"]
 mod pack_sources_tests;
@@ -2787,6 +2803,7 @@ struct GameLevel<'w> {
     /// (`Entity.isIgnoringBlockTriggers`).
     trigger_extras: Vec<Aabb>,
     biomes: &'w Biomes,
+    biome_keys: Option<&'w mod_api::__private::BiomeKeys>,
     /// `BiomeManager`'s zoom over this level's seed, for `biome_name`.
     biome_zoom: sunrise_core::biome::BiomeZoom,
     seed: i64,
@@ -3406,6 +3423,7 @@ struct Game<'a> {
     /// The title and menu bundle (GUI atlas, font and panorama).
     gui: UiResources,
     instance_groups: std::cell::RefCell<native_instance_groups::InstanceGroupStorage>,
+    prepared_items: std::cell::RefCell<native_instance_groups::PreparedItemStorage>,
     standalone_geometry: native_block_entity_draw::StandaloneGeometry,
     /// `FogRenderer`'s evolving state.
     fog: sunrise_client::fog::FogState,
@@ -3518,6 +3536,13 @@ struct Game<'a> {
     /// wanting it takes it again (`MouseHandler.grabMouse`, whose grab
     /// outlives the window's focus).
     regrab_on_refocus: bool,
+    /// The open mod screen holds the pointer (`ClientHost::set_pointer_grab`): `captured` is
+    /// its grab, and the device's motion goes to `screen_pointer_motion`, not the camera.
+    /// Cleared by any release and when the screen changes.
+    screen_grab: bool,
+    /// A grab or release the calling mod asked for through `&self` (`set_pointer_grab`),
+    /// applied by `apply_pointer_grab_request` at the next input event or frame.
+    pointer_grab_request: std::cell::Cell<Option<bool>>,
     /// Controller connection notices.
     controller_notice: sunrise_client::controller_notice::NoticeSlot,
     focused: bool,
@@ -3981,6 +4006,9 @@ struct Game<'a> {
     /// The camera the last frame drew from (position, yaw, pitch, fov), for the locator bar.
     locator_camera: Option<([f64; 3], f32, f32, f32)>,
     native_camera_frame: Option<mod_api::Camera>,
+    /// The camera entity's interpolated eye position for the current world frame, or `None`
+    /// when there is no camera entity (title screen, scenes).
+    native_camera_entity_eye: Option<[f64; 3]>,
     /// The yaw, pitch and roll a native mod's or spectated camera drew the last frame from,
     /// none when it drew from the local player's vanilla view.
     posed_rotation: Option<(f32, f32, f32)>,
@@ -5734,6 +5762,9 @@ impl Game<'_> {
             building_player_boxes,
             player_collision,
             biomes: world_biomes!(self),
+            biome_keys: (self.serving.is_some() || self.options.dedicated.is_some())
+                .then(|| self.world_tables.as_ref().map(|t| &*t.data_maps.biome_keys))
+                .flatten(),
             biome_zoom: self.streaming.biome_zoom,
             seed: self.level.seed,
             behaviours: self.res.behaviours(),
@@ -9107,6 +9138,11 @@ impl Game<'_> {
                 continue;
             }
             if let Some(resolved) = native_entity_renderers::experience_orb_renderer() {
+                let [width, height, eye_height] = o
+                    .size_answer
+                    .filter(|s| s.vanilla == sunrise_client::entities::ExperienceOrb::DIMENSIONS)
+                    .and_then(|s| s.size)
+                    .unwrap_or(sunrise_client::entities::ExperienceOrb::DIMENSIONS);
                 let entity: mod_api::EntityRenderState =
                     mod_api::__private::built::EntityRenderState {
                         id: o.id,
@@ -9114,6 +9150,11 @@ impl Game<'_> {
                         age: o.age as f32 + partial,
                         yaw: o.rotation[0],
                         pitch: o.rotation[1],
+                        position: at,
+                        size: [width, height],
+                        eye_height,
+                        distance_to_camera_sq: (glam::DVec3::from_array(at) - camera)
+                            .length_squared(),
                         living: None,
                         tnt_fuse: None,
                         orb_value: Some(o.value),
@@ -11662,6 +11703,8 @@ impl Game<'_> {
         self.screen_blur_requested.set(false);
         // GUI and world hooks read the same frame snapshot. Keep its dimension allocation
         // between frames rather than formatting another copy for the world renderer.
+        self.native_camera_entity_eye =
+            (!title && self.camera_subject().is_some()).then_some(self.view.eye);
         let previous_camera = self.native_camera_frame.take();
         self.native_camera_frame = (!title && !mod_api::__private::mods().is_empty()).then(|| {
             let mut dimension =
@@ -12909,11 +12952,21 @@ impl Game<'_> {
                             // up as vanilla's do; their pending clicks stay.
                             self.mod_keys.set_all_up();
                             self.capture(false);
+                        } else if self.screen_grab {
+                            // A mod screen's grab goes with the focus under a control
+                            // connection too; the game's own grab stays as it was.
+                            self.capture(false);
                         }
                         self.regrab_on_refocus = held;
                     }
                 }
                 WindowEvent::CursorMoved { .. } => {
+                    // A screen holding the pointer grab hears only `screen_pointer_motion`:
+                    // where the system merely confines the hidden cursor (Windows, X11), its
+                    // moves leave the screen's cursor and drags alone.
+                    if self.mod_screen_grabs_pointer() {
+                        return Ok(());
+                    }
                     if let (Some(r), Some(sample)) = (&self.renderer, cursor_sample) {
                         let size = [r.config.width, r.config.height];
                         let projection = self.pointer_projection(size);
@@ -12936,6 +12989,12 @@ impl Game<'_> {
                             self.drag_button
                                 .filter(|b| self.physical_buttons.contains(b))
                         };
+                        if self.screen_mouse_moved(delta) {
+                            return Ok(());
+                        }
+                        if self.screen_state.screen_instance != initial_instance {
+                            return Ok(());
+                        }
                         match self.screen_mouse_dragged(delta) {
                             native_hooks::ScreenMousePre::Canceled => return Ok(()),
                             native_hooks::ScreenMousePre::Passed(post) => mouse_post = Some(post),
@@ -14161,6 +14220,7 @@ impl<'a> Game<'a> {
             pack,
             gui,
             instance_groups: Default::default(),
+            prepared_items: Default::default(),
             standalone_geometry,
             fog: Default::default(),
             screen_fx: Default::default(),
@@ -14230,6 +14290,8 @@ impl<'a> Game<'a> {
             captured: false,
             capture_mode: None,
             regrab_on_refocus: false,
+            screen_grab: false,
+            pointer_grab_request: std::cell::Cell::new(None),
             controller_notice: Default::default(),
             focused: true,
             unclaimed_window: false,
@@ -14478,6 +14540,7 @@ impl<'a> Game<'a> {
             waypoints: Default::default(),
             locator_camera: None,
             native_camera_frame: None,
+            native_camera_entity_eye: None,
             posed_rotation: None,
             post_effects: Vec::new(),
             requested_post_effects_buf: Vec::new(),
