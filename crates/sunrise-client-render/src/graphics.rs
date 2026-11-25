@@ -808,11 +808,13 @@ pub struct Graphics {
     pub cave_culling: bool,
     /// Near solid terrain culled, and its draws listed, on the GPU (`gfx::gpu_culling`), where it
     /// is offered (`gpu_culling_offer`). Off by default (GPU Culling, Performance graphics); it
-    /// applies at once, and no preset sets it. Every save writes it, so a default
-    /// turned on later needs a new key, as `batchTranslucent` did. Its key is `gpuCullingMode`:
-    /// an older file's `gpuCulling` reads Auto as Off, because every preset set Auto then
-    /// (`Graphics::parse`). Auto turns it on only where the CPU limits the frame and it makes
-    /// the frame faster (`autotune`).
+    /// applies at once, and no preset sets it, nor does changing it leave the preset. Every save
+    /// writes it, so a default turned on later needs a new key, as `batchTranslucent` did. Its
+    /// key is `gpuCullingMode`; saves also write `gpuCulling`, which builds from before it read,
+    /// and `gpuCullingWritten`, the same value again, so a later change there is told apart
+    /// (`Graphics::parse`). An older file's `gpuCulling` reads Auto as Off, because every preset
+    /// set Auto then. Auto turns it on only where the CPU limits the frame and it makes the frame
+    /// faster (`autotune`).
     pub gpu_culling: GpuCullingMode,
     /// Skip drawing entities hidden behind opaque terrain, synchronously or asynchronously.
     pub entity_culling: EntityCullingMode,
@@ -1059,8 +1061,8 @@ impl Graphics {
         let mut g = Self::default();
         // UI Brightness: `hdrUiNits`, else an older file's share of Paper White.
         let (mut ui_nits, mut ui_share) = (None, None);
-        // GPU Culling: `gpuCullingMode`, else an older file's `gpuCulling`.
-        let (mut gpu_culling, mut gpu_culling_before) = (None, None);
+        // GPU Culling: `gpuCullingMode`, an older build's `gpuCulling`, and the marker beside it.
+        let (mut gpu_culling, mut gpu_culling_before, mut gpu_culling_written) = (None, None, None);
         for line in text.lines() {
             let Some((key, value)) = line.split_once(':') else {
                 continue;
@@ -1087,6 +1089,9 @@ impl Graphics {
                 "gpuCullingMode" => gpu_culling = Some(GpuCullingMode::parse(value, g.gpu_culling)),
                 "gpuCulling" => {
                     gpu_culling_before = Some(GpuCullingMode::parse(value, g.gpu_culling))
+                }
+                "gpuCullingWritten" => {
+                    gpu_culling_written = Some(GpuCullingMode::parse(value, g.gpu_culling))
                 }
                 "entityCulling" => g.entity_culling = EntityCullingMode::parse(value),
                 "entityCullingPrecheck" => {
@@ -1186,20 +1191,26 @@ impl Graphics {
             }
             _ => 0,
         });
-        // Every preset used to set Auto, and every save wrote it, so an older file's Auto is
-        // read as Off once: what it holds is a preset's, not a choice. On and Off read as they
-        // were; from the next save on, the key is `gpuCullingMode`, whatever the player picks.
-        g.gpu_culling = gpu_culling
-            .or(gpu_culling_before.map(|before| match before {
-                GpuCullingMode::Auto => GpuCullingMode::Off,
-                other => other,
-            }))
-            .unwrap_or(g.gpu_culling);
+        // A build from before `gpuCullingMode` reads and saves only `gpuCulling`, and keeps the
+        // lines it doesn't know as they were. Its presets all set Auto, so its Auto reads as Off
+        // once: what it holds is a preset's, not a choice. This build saves `gpuCulling` with
+        // the same value as `gpuCullingWritten`, so where the two differ such a build changed
+        // it later, and its value wins. Otherwise `gpuCullingMode` does, as it does in a file
+        // saved without the marker by a build that writes `gpuCullingMode` alone.
+        let older = gpu_culling_before.map(|before| match before {
+            GpuCullingMode::Auto => GpuCullingMode::Off,
+            other => other,
+        });
+        g.gpu_culling = match (gpu_culling_written, gpu_culling_before) {
+            (Some(written), Some(before)) if written != before => older,
+            _ => gpu_culling.or(older),
+        }
+        .unwrap_or(g.gpu_culling);
         g
     }
     pub fn serialize(&self) -> String {
         let mut text = format!(
-            "preset:{}\nlodDistance:{}\nfarDetail:{}\ncaveCulling:{}\nentityCulling:{}\nentityCullingPrecheck:{}\nparticleCulling:{}\nleafCulling:{}\nopaqueIce:{}\nblockEntityCacheShulkerBoxes:{}\nblockEntityCacheSigns:{}\nblockEntityCacheDecoratedPots:{}\nblockEntityCacheBells:{}\nblockEntityCacheChests:{}\nblockEntityCacheBanners:{}\nblockEntityCacheCopperGolemStatues:{}\nchunkUpdates:{}\nuploadBudgetKiB:{}\ntextureBudgetMiB:{}\nsky:{}\nfog:{}\nweather:{}\nanimatedTextures:{}\nditherCutoutMips:{}\npresentMode:{}\nframePacing:{}\nworkers:{}\nresolutionScale:{}\ndynamicResolution:{}\ntargetFps:{}\nfxaa:{}\ntaa:{}\nupscaling:{}\nupscalingSharpness:{}\nscreenshotQuality:{}\nframeGeneration:{}\nhdr:{}\nhdrPaperWhite:{}\nhdrPeak:{}\nhdrBlackLevel:{}\nhdrUiNits:{}\nhdrLighting:{}\nbatteryMode:{}\nshadowCache:{}\ngraphicsApi:{}\npickedShaderPack:{}\nbatchTranslucent:{}\nhdrSmoothGradients:{}\ngpuCullingMode:{}\nparallelTick:{}\n",
+            "preset:{}\nlodDistance:{}\nfarDetail:{}\ncaveCulling:{}\nentityCulling:{}\nentityCullingPrecheck:{}\nparticleCulling:{}\nleafCulling:{}\nopaqueIce:{}\nblockEntityCacheShulkerBoxes:{}\nblockEntityCacheSigns:{}\nblockEntityCacheDecoratedPots:{}\nblockEntityCacheBells:{}\nblockEntityCacheChests:{}\nblockEntityCacheBanners:{}\nblockEntityCacheCopperGolemStatues:{}\nchunkUpdates:{}\nuploadBudgetKiB:{}\ntextureBudgetMiB:{}\nsky:{}\nfog:{}\nweather:{}\nanimatedTextures:{}\nditherCutoutMips:{}\npresentMode:{}\nframePacing:{}\nworkers:{}\nresolutionScale:{}\ndynamicResolution:{}\ntargetFps:{}\nfxaa:{}\ntaa:{}\nupscaling:{}\nupscalingSharpness:{}\nscreenshotQuality:{}\nframeGeneration:{}\nhdr:{}\nhdrPaperWhite:{}\nhdrPeak:{}\nhdrBlackLevel:{}\nhdrUiNits:{}\nhdrLighting:{}\nbatteryMode:{}\nshadowCache:{}\ngraphicsApi:{}\npickedShaderPack:{}\nbatchTranslucent:{}\nhdrSmoothGradients:{}\ngpuCullingMode:{}\ngpuCulling:{}\ngpuCullingWritten:{}\nparallelTick:{}\n",
             self.preset.name(),
             self.lod_distance,
             self.far_detail.name(),
@@ -1251,6 +1262,8 @@ impl Graphics {
             self.shader_pack,
             bool_text(self.translucent_batching),
             bool_text(self.hdr_smooth_gradients),
+            self.gpu_culling.key(),
+            self.gpu_culling.key(),
             self.gpu_culling.key(),
             self.parallel_tick.name(),
         );
@@ -1702,11 +1715,15 @@ mod tests {
             read("gpuCullingMode:on\ngpuCulling:auto\n"),
             GpuCullingMode::On
         );
-        // The next save writes the new key, so a later Auto stays Auto.
+        // The next save writes the new key, the old one and the marker, so a later Auto stays
+        // Auto.
         let mut chosen = Graphics::parse("gpuCulling:auto\n");
         chosen.gpu_culling = GpuCullingMode::Auto;
-        assert!(chosen.serialize().contains("gpuCullingMode:auto\n"));
-        assert!(!chosen.serialize().contains("gpuCulling:"));
+        assert!(
+            chosen
+                .serialize()
+                .contains("gpuCullingMode:auto\ngpuCulling:auto\ngpuCullingWritten:auto\n")
+        );
         assert_eq!(read(&chosen.serialize()), GpuCullingMode::Auto);
         for mode in GpuCullingMode::ALL {
             let g = Graphics {
@@ -1820,6 +1837,103 @@ mod tests {
                 "{text:?}"
             );
         }
+    }
+
+    /// What a build from before `gpuCullingMode` saves after reading `text`: `gpuCulling` as it
+    /// read it (Off without one), or as the player or a preset there set it (`set`), and the
+    /// lines it doesn't know after its own, as they were.
+    fn saved_by_an_older_build(text: &str, set: Option<&str>) -> String {
+        let mut value = "false".to_owned();
+        let (mut own, mut kept) = (String::new(), String::new());
+        for line in text.lines() {
+            match line.split_once(':') {
+                Some(("gpuCulling", v)) => value = v.to_owned(),
+                Some(("gpuCullingMode" | "gpuCullingWritten", _)) => kept += &format!("{line}\n"),
+                _ => own += &format!("{line}\n"),
+            }
+        }
+        format!("{own}gpuCulling:{}\n{kept}", set.unwrap_or(&value))
+    }
+
+    #[test]
+    fn gpu_culling_keeps_the_last_builds_choice_across_a_downgrade() {
+        let saved = |mode| {
+            Graphics {
+                gpu_culling: mode,
+                ..Graphics::default()
+            }
+            .serialize()
+        };
+        let read = |text: &str| Graphics::parse(text).gpu_culling;
+        let older = saved_by_an_older_build;
+        // A file with `gpuCullingMode` alone, saved again by an older build that changed
+        // something else: it adds its Off, and the On stays.
+        assert_eq!(
+            read(&older("gpuCullingMode:true\n", None)),
+            GpuCullingMode::On
+        );
+        // This build's value, saved there with something else changed, stays: every value.
+        for mode in GpuCullingMode::ALL {
+            assert_eq!(read(&older(&saved(mode), None)), mode);
+        }
+        // Changed there, the older build's value wins, read its way.
+        assert_eq!(
+            read(&older(&saved(GpuCullingMode::On), Some("false"))),
+            GpuCullingMode::Off
+        );
+        assert_eq!(
+            read(&older(&saved(GpuCullingMode::Off), Some("true"))),
+            GpuCullingMode::On
+        );
+        assert_eq!(
+            read(&older(&saved(GpuCullingMode::On), Some("auto"))),
+            GpuCullingMode::Off
+        );
+        // A file from before `gpuCullingMode` reads its Auto as Off; one with the new key alone
+        // keeps Auto.
+        assert_eq!(read("gpuCulling:auto\n"), GpuCullingMode::Off);
+        assert_eq!(read("gpuCullingMode:auto\n"), GpuCullingMode::Auto);
+        // A build that writes `gpuCullingMode` alone drops `gpuCulling` and keeps the marker,
+        // a line it doesn't know; `mode` is its value as it saves it.
+        let mode_alone = |text: &str, mode: &str| {
+            text.lines()
+                .filter(|line| {
+                    !line.starts_with("gpuCulling:") && !line.starts_with("gpuCullingMode:")
+                })
+                .map(|line| format!("{line}\n"))
+                .collect::<String>()
+                + &format!("gpuCullingMode:{mode}\n")
+        };
+        // Its value stands.
+        assert_eq!(
+            read(&mode_alone(&saved(GpuCullingMode::On), "false")),
+            GpuCullingMode::Off
+        );
+        // Left as is: On here, saved unchanged by a build that writes `gpuCullingMode` alone,
+        // then by a build from before it with something else changed, which adds its default
+        // `gpuCulling:false`. Back here it reads Off: those builds' own saves write the same
+        // bytes as an explicit Off in that older build, so nothing tells the two apart, and Off
+        // is kept. The model here compares the lines, not their order.
+        let three = older(&mode_alone(&saved(GpuCullingMode::On), "true"), None);
+        let sorted = |text: &str| {
+            let mut lines: Vec<&str> = text.lines().collect();
+            lines.sort_unstable();
+            lines.join("\n")
+        };
+        let explicit_off = older(&saved(GpuCullingMode::On), Some("false"));
+        assert_eq!(
+            sorted(&three),
+            sorted(&explicit_off),
+            "the same lines as an explicit Off there"
+        );
+        assert_eq!(read(&three), GpuCullingMode::Off);
+        // Left as is: Auto here, Off there, then a preset there sets Auto again. The older
+        // build's last value equals the marker, so Auto, the player's own choice here, reads.
+        let there = older(
+            &older(&saved(GpuCullingMode::Auto), Some("false")),
+            Some("auto"),
+        );
+        assert_eq!(read(&there), GpuCullingMode::Auto);
     }
 
     #[test]
