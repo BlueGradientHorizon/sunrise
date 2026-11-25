@@ -1350,6 +1350,7 @@ class GameModuleSidesTests(unittest.TestCase):
         self.assertIn("python3 tools/game_field_owners.py --check", wf)
         self.assertIn('python3 tools/game_module_sides.py --check ${BASE_SHA:+--against "$BASE_SHA" --pull-request-merge}', wf)
         self.assertIn("python3 tools/game_fn_sides.py --check", wf)
+        self.assertIn('python3 tools/game_side_calls.py --check ${BASE_SHA:+--against "$BASE_SHA" --pull-request-merge}', wf)
 
         from tools import pr_ready
         import argparse
@@ -1366,6 +1367,7 @@ class GameModuleSidesTests(unittest.TestCase):
         self.assertEqual(by_name["Game field owners"].command, "python3 tools/game_field_owners.py --check")
         self.assertEqual(by_name["Game module sides"].command, "python3 tools/game_module_sides.py --check --against deadbeef")
         self.assertEqual(by_name["Game function sides"].command, "python3 tools/game_fn_sides.py --check")
+        self.assertEqual(by_name["Game side calls"].command, "python3 tools/game_side_calls.py --check --against deadbeef")
 
     def test_r3_01_daily_move_tsvs_rewritten_and_checked(self):
         with tempfile.TemporaryDirectory() as td:

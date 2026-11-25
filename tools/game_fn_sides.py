@@ -1925,9 +1925,11 @@ def diff_mirror_file(
     return errs
 
 
-def rewrite_vis_to_game(vis: str) -> str | None:
+def rewrite_vis_to_game(vis: str, *, preserve_side: str | None = None) -> str | None:
     norm = re.sub(r"\s+", " ", vis).replace("( ", "(").replace(" )", ")")
     if norm in ("pub", "pub(crate)", "pub(in crate::game)"):
+        return None
+    if preserve_side in SIDE_MOD_NAME and norm == f"pub(in crate::game::{SIDE_MOD_NAME[preserve_side]})":
         return None
     return "pub(in crate::game)"
 
@@ -2054,7 +2056,12 @@ def rewrite_use_stmt_for_mirror(
 
 
 def rewrite_moved_fn_vis(
-    fn_text: str, *, is_trait_impl: bool, is_test_fn: bool, is_game_root: bool = False
+    fn_text: str,
+    *,
+    is_trait_impl: bool,
+    is_test_fn: bool,
+    is_game_root: bool = False,
+    side: str | None = None,
 ) -> str:
     if is_trait_impl or is_test_fn:
         return fn_text
@@ -2072,7 +2079,7 @@ def rewrite_moved_fn_vis(
         norm = re.sub(r"\s+", " ", vis).replace("( ", "(").replace(" )", ")")
         if is_game_root and norm in ("pub(super)", "pub(in super)"):
             return fn_text[: tokens[i].start] + "pub(crate)" + fn_text[tokens[j - 1].end :]
-        rep = rewrite_vis_to_game(vis)
+        rep = rewrite_vis_to_game(vis, preserve_side=side)
         if rep:
             return fn_text[: tokens[i].start] + rep + fn_text[tokens[j - 1].end :]
         return fn_text
@@ -2884,7 +2891,13 @@ def _render_mirror_tree(
                                 lines.append(f"{cfgs}#[allow(unused_imports)]\npub(in crate::game::{side_mod}) use {cmod}::{sname};\n")
                     elif it.kind == "fn" and not it.is_test_attr:
                         k = item_fn_key(node.orig_mod, it, None, eff_ncfgs)
-                        if k not in moved_here_keys and placement.get(k, "game") == "game" and ekey not in emitted_expl:
+                        norm_it_vis = re.sub(r"\s+", " ", it.vis).replace("( ", "(").replace(" )", ")")
+                        parent_side_narrow = (
+                            parent_side in SIDE_MOD_NAME
+                            and parent_side != side
+                            and norm_it_vis == f"pub(in crate::game::{SIDE_MOD_NAME[parent_side]})"
+                        )
+                        if not parent_side_narrow and k not in moved_here_keys and placement.get(k, "game") == "game" and ekey not in emitted_expl:
                             emitted_expl.add(ekey)
                             cfgs = "".join(f"{c}\n" for c in eff_item_cfgs)
                             lines.append(f"{cfgs}#[allow(unused_imports)]\npub(in crate::game::{side_mod}) use {cmod}::{it.name};\n")
@@ -2951,6 +2964,7 @@ def _render_mirror_tree(
                     is_trait_impl=False,
                     is_test_fn=it.is_test_attr,
                     is_game_root=is_game_root,
+                    side=side,
                 )
             )
 
@@ -2968,6 +2982,7 @@ def _render_mirror_tree(
                         is_trait_impl=False,
                         is_test_fn=it.is_test_attr,
                         is_game_root=is_game_root,
+                        side=side,
                     )
                 )
             lines.append("}\n")
@@ -3272,7 +3287,15 @@ def run_fix(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str], *, 
                         continue
                     if desired_side.get(kk, "game") == "game" and kk not in orig_fns:
                         if pimpl is None:
-                            restore_free.append(fn_source_text[kk])
+                            restore_free.append(
+                                rewrite_moved_fn_vis(
+                                    fn_source_text[kk],
+                                    is_trait_impl=False,
+                                    is_test_fn=it.is_test_attr,
+                                    is_game_root=is_game_root,
+                                    side=None,
+                                )
+                            )
                         elif pimpl.is_trait_impl:
                             eff_iattrs = effective_attrs(pimpl.norm_attrs, fcfgs)
                             tkey = (nid[0], nid[1], pimpl.impl_header, eff_iattrs)
@@ -3281,7 +3304,15 @@ def run_fix(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str], *, 
                                 restore_trait_impls.append(trait_impl_source[tkey][0])
                         else:
                             eff_iattrs = effective_attrs(pimpl.norm_attrs, fcfgs)
-                            restore_methods[(pimpl.impl_header, eff_iattrs)].append(fn_source_text[kk])
+                            restore_methods[(pimpl.impl_header, eff_iattrs)].append(
+                                rewrite_moved_fn_vis(
+                                    fn_source_text[kk],
+                                    is_trait_impl=False,
+                                    is_test_fn=it.is_test_attr,
+                                    is_game_root=is_game_root,
+                                    side=None,
+                                )
+                            )
 
             moved_macro_names_here = {
                 it.name
@@ -3317,7 +3348,10 @@ def run_fix(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str], *, 
                                     re_vis = "pub(in crate::game)"
                                 edits.append((it.start, it.end, f"{cfgs}#[allow(unused_imports)]\n{re_vis} use crate::game::{dest}::{it.name};\n"))
                         elif (not is_game_root) and node_split and not it.is_test_attr:
-                            rep = rewrite_vis_to_game(it.vis)
+                            rep = rewrite_vis_to_game(
+                                it.vis,
+                                preserve_side=parent_side if parent_side in SIDE_MOD_NAME else None,
+                            )
                             if rep:
                                 edits.append((it.vis_start, it.vis_end, f"{rep} " if it.vis == "" else rep))
                         elif widen_super and "super" in it.vis:
@@ -3342,7 +3376,10 @@ def run_fix(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str], *, 
                                     for ch in stay_ch:
                                         if ch.kind == "method" and not ch.is_test_attr:
                                             if node_split:
-                                                rep = rewrite_vis_to_game(ch.vis)
+                                                rep = rewrite_vis_to_game(
+                                                    ch.vis,
+                                                    preserve_side=parent_side if parent_side in SIDE_MOD_NAME else None,
+                                                )
                                                 if rep:
                                                     edits.append((ch.vis_start, ch.vis_end, f"{rep} " if ch.vis == "" else rep))
                                             elif "super" in ch.vis:
@@ -3375,15 +3412,27 @@ def run_fix(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str], *, 
                         if rm:
                             cur_side = rm.group(2)
                             fname = rm.group(3)
-                            want_sides = [
-                                desired_side[kk]
+                            want_keys = [
+                                kk
                                 for kk in top_rows
                                 if kk.module == node.orig_mod and kk.impl == "-" and kk.name == fname and fn_node_id.get(kk) == nid
                             ]
-                            want = want_sides[0] if want_sides else "game"
+                            want = desired_side[want_keys[0]] if want_keys else "game"
                             if want == "game":
                                 edits.append((it.start, it.end, ""))
                                 continue
+                            if want == cur_side and want_keys:
+                                m_entry = mirror_fns[cur_side].get(want_keys[0])
+                                if m_entry is not None:
+                                    m_vis = re.sub(r"\s+", " ", m_entry[3].vis).replace("( ", "(").replace(" )", ")")
+                                    u_vis = re.sub(r"\s+", " ", it.vis).replace("( ", "(").replace(" )", ")")
+                                    if (
+                                        m_vis == f"pub(in crate::game::{SIDE_MOD_NAME[cur_side]})"
+                                        and u_vis == "pub(in crate::game)"
+                                        and any("unused_imports" in a for a in it.attrs)
+                                    ):
+                                        edits.append((it.start, it.end, ""))
+                                        continue
                             if want != cur_side:
                                 dest = mirror_mod_rel(node.orig_mod, top_name, want)
                                 cfgs = "".join(f"{c}\n" for c in it.cfg_attrs)

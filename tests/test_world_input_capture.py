@@ -17,9 +17,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def method(source, name):
-    # A method moved out of game.rs is `pub(super)` (or, out of its parent module,
-    # `pub(in crate::game)`) in its own file; the fixtures paste it as a private one.
-    candidates = [f"    fn {name}(", f"    pub(super) fn {name}(", f"    pub(in crate::game) fn {name}("]
+    # Strip moved-method visibility (`pub(super)`, `pub(in crate::game)`, or side-private) for the private fixture.
+    vis_prefixes = (
+        "pub(super) fn",
+        "pub(in crate::game) fn",
+        "pub(in crate::game::client_side) fn",
+        "pub(in crate::game::server_side) fn",
+    )
+    candidates = [f"    fn {name}(", *(f"    {vis} {name}(" for vis in vis_prefixes)]
     at = next((source.index(c) for c in candidates if c in source), None)
     if at is None:
         raise ValueError(f"{name} not found")
@@ -31,7 +36,7 @@ def method(source, name):
         depth += (source[end] == "{") - (source[end] == "}")
         end += 1
     body = source[start:end]
-    for vis in ("pub(super) fn", "pub(in crate::game) fn"):
+    for vis in vis_prefixes:
         body = body.replace(vis, "fn", 1)
     return body
 
