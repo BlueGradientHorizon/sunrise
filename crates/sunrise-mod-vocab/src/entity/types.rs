@@ -140,8 +140,23 @@ pub struct ArmorStandPose {
     pub right_leg: [f32; 3],
 }
 
+/// A new armor stand's pose (`ArmorStand.DEFAULT_HEAD_POSE` to `DEFAULT_RIGHT_LEG_POSE`).
+impl Default for ArmorStandPose {
+    fn default() -> Self {
+        Self {
+            head: [0.0, 0.0, 0.0],
+            body: [0.0, 0.0, 0.0],
+            left_arm: [-10.0, 0.0, -10.0],
+            right_arm: [-15.0, 0.0, 10.0],
+            left_leg: [-1.0, 0.0, -1.0],
+            right_leg: [1.0, 0.0, 1.0],
+        }
+    }
+}
+
 /// An armor stand's client flags (`ArmorStand.DATA_CLIENT_FLAGS`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
+/// The default is vanilla's: no flag set.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 // exhaustive: the game builds it with a literal; mods only read it
 pub struct ArmorStandFlags {
     /// `ArmorStand.isSmall`.
