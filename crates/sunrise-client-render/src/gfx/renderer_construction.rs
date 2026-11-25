@@ -2593,6 +2593,7 @@ impl Renderer {
             hdr_driver,
             pack_post: None,
             pack_loading: None,
+            pack_generation: 0,
             native: None,
             pass_timing: false,
             pass_detail: false,

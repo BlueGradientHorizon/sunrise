@@ -256,6 +256,9 @@ impl crate::RenderAssets for EmptyClientReloadServices {
     fn shader_pack_block_id(&self, _: crate::BlockState) -> Option<i32> {
         None
     }
+    fn pipeline_pack_bound(&self, _: crate::RenderPipelineRef) -> bool {
+        false
+    }
 }
 
 impl crate::InstanceGroups for EmptyClientReloadServices {

@@ -116,6 +116,16 @@ fn run_frame_and_sample_center(
     color: &wgpu::TextureView,
     depth: &wgpu::TextureView,
 ) -> [u8; 4] {
+    run_frame_and_sample(gpu, post, color, depth, false)
+}
+
+fn run_frame_and_sample(
+    gpu: &Gpu,
+    post: &mut PackPost,
+    color: &wgpu::TextureView,
+    depth: &wgpu::TextureView,
+    shadow_cache: bool,
+) -> [u8; 4] {
     let screen = gpu.texture(T::Rgba8Unorm);
     let stride = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
     let read = gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -125,7 +135,10 @@ fn run_frame_and_sample_center(
         mapped_at_creation: false,
     });
     let hud = HudBatch::scratch(SIZE);
-    let frame = fixture_frame(&hud);
+    let frame = Frame {
+        shadow_cache,
+        ..fixture_frame(&hud)
+    };
     let mut encoder = gpu.device.create_command_encoder(&Default::default());
     post.run(
         &gpu.device,
@@ -488,4 +501,103 @@ fn mod_pack_type_mismatch_uniform_and_unbound_pipeline_never_panic() {
         "expected mismatch diagnostic in notes: {:?}",
         post.notes
     );
+}
+
+/// A mod pipeline bound to the pack's shadow pass draws into the shadow map, and its geometry
+/// forces the pass to run again while the shadow cache is on: the quad's colour comes from a
+/// per-frame uniform, so a kept map would show the first frame's colour on the second. Covers
+/// the transient quad chunk and the retained non-indexed chunk a `MeshRef` draw makes.
+#[test]
+#[ignore = "daily"]
+fn mod_shadow_pass_geometry_is_drawn_and_invalidates_the_shadow_cache() {
+    let _gpu_guard = crate::gfx::test_gpu::lock();
+    let Some(gpu) = Gpu::new() else {
+        return;
+    };
+    for retained in [false, true] {
+        let files = vec![
+            (
+                "shadow.vsh".to_owned(),
+                "#version 120\nvoid main(){gl_Position=vec4(2.0,2.0,2.0,1.0);}".to_owned(),
+            ),
+            (
+                "shadow.fsh".to_owned(),
+                "#version 120\n/* DRAWBUFFERS:0 */\nvoid main(){gl_FragData[0]=vec4(0.0);}"
+                    .to_owned(),
+            ),
+            (
+                "mod_shadow.vsh".to_owned(),
+                "#version 120\nvoid main(){gl_Position=vec4(gl_Vertex.xyz,1.0);}".to_owned(),
+            ),
+            (
+                "mod_shadow.fsh".to_owned(),
+                "#version 120\n/* DRAWBUFFERS:0 */\nuniform float modColor;\n\
+                 void main(){gl_FragData[0]=vec4(modColor,0.0,0.0,1.0);}"
+                    .to_owned(),
+            ),
+            ("final.vsh".to_owned(), VERTEX.to_owned()),
+            (
+                "final.fsh".to_owned(),
+                "#version 120\nuniform sampler2D shadowcolor0;varying vec2 uv;\n\
+                 void main(){gl_FragColor=vec4(texture2D(shadowcolor0,uv).rgb,1.0);}"
+                    .to_owned(),
+            ),
+        ];
+        let requests = vec![sunrise_shaders::ModPackProgramRequest {
+            slot: 0,
+            programs: vec!["mod_shadow".into(), "shadow".into()],
+            group: sunrise_shaders::Group::Shadow,
+            inputs: mod_gbuffers_inputs(),
+            default_blend: None,
+        }];
+        let runtime = OwnedModPackRuntime {
+            depth_targets: Vec::new(),
+            uniforms: vec![ModUniformDecl {
+                name: "modColor".into(),
+                ty: ModUniformType::Float,
+                previous_name: None,
+            }],
+            pipelines: vec![ModPipelinePackSpec {
+                slot: 0,
+                pass_slot: ModPassSlot::Shadow,
+                depth_target: None,
+                depth_write: true,
+                depth_test: true,
+            }],
+        };
+        let (mut post, color, depth) = load_with_mods(&gpu, files, requests, &runtime);
+        assert!(
+            post.is_mod_pipeline_bound(0),
+            "mod_shadow not bound: {:?}",
+            post.notes
+        );
+        let (vbuf, ibuf) = mod_quad_buffers(&gpu.device, -0.5);
+        let draw = || {
+            if retained {
+                ModDrawChunk {
+                    slot: 0,
+                    vertex_buffers: vec![(0, vbuf.clone(), 0..vbuf.size())],
+                    kind: ModDrawKind::Indexed {
+                        buffer: ibuf.clone(),
+                        format: wgpu::IndexFormat::Uint32,
+                        indices: 0..6,
+                        base_vertex: 0,
+                    },
+                    instances: 0..1,
+                    mod_bind_group: None,
+                }
+            } else {
+                ModDrawChunk::quads(0, vbuf.clone(), ibuf.clone(), 0..1)
+            }
+        };
+        for (value, expected) in [(0.25, 64), (0.75, 191)] {
+            post.set_mod_draws(vec![draw()]);
+            assert!(post.set_mod_uniform("modColor", ModUniformValue::Float(value)));
+            let px = run_frame_and_sample(&gpu, &mut post, &color, &depth, true);
+            assert!(
+                (px[0] as i16 - expected).abs() <= 2,
+                "retained {retained}: shadow map shows {px:?}, expected {expected}"
+            );
+        }
+    }
 }

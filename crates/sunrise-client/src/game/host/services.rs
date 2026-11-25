@@ -208,4 +208,13 @@ impl RenderAssets for Game<'_> {
         let state = state.try_into_engine(&()).ok()?;
         CallbackOwner::call_host(|| self.active_block_state_id(state.0 as usize))
     }
+    fn pipeline_pack_bound(&self, pipeline: RenderPipelineRef) -> bool {
+        CallbackOwner::call_host(|| {
+            self.pack
+                .render
+                .mod_pipelines
+                .slot(pipeline)
+                .is_ok_and(|slot| self.pack_slot_bound(slot as usize))
+        })
+    }
 }

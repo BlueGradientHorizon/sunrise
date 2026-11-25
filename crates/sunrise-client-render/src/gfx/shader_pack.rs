@@ -88,6 +88,7 @@ impl Renderer {
         post: std::result::Result<Option<pack_post::PackPost>, pack_post::Refused>,
         block_ids: Vec<i32>,
     ) -> std::result::Result<Option<(Vec<String>, Vec<String>)>, pack_post::Refused> {
+        self.pack_changed();
         let runs = post.as_ref().is_ok_and(Option::is_some);
         let block_ids = if runs { block_ids } else { Vec::new() };
         let old = self.pack_block_ids.as_deref().map_or(&[][..], |ids| &ids.0);
@@ -148,6 +149,43 @@ impl Renderer {
             if let Some(post) = &mut native.post {
                 post.reset_history();
             }
+        }
+    }
+    /// Counts a shader pack loaded, switched or turned off (`ShaderPackState::generation`).
+    fn pack_changed(&mut self) {
+        self.pack_generation = self.pack_generation.wrapping_add(1);
+    }
+    /// The running pack as a mod reads it this frame, or `None` while the panorama shows or no
+    /// pack runs. `frame` gives the camera, so the shadow matrices are this frame's.
+    pub fn shader_pack_state(&self, frame: &Frame<'_>) -> Option<mod_api::ShaderPackState> {
+        if frame.title {
+            return None;
+        }
+        match (&self.pack_post, &self.native) {
+            (Some((_, Some(post))), _) => Some(mod_api::ShaderPackState::new(
+                post.has_clouds(),
+                post.mod_shadow_state(frame).map(
+                    |(resolution, distance, model_view, projection)| {
+                        mod_api::ShaderPackShadowView::new(
+                            resolution, distance, model_view, projection,
+                        )
+                    },
+                ),
+                self.pack_generation,
+            )),
+            (_, Some(_)) => Some(mod_api::ShaderPackState::new(
+                false,
+                None,
+                self.pack_generation,
+            )),
+            _ => None,
+        }
+    }
+    /// The mod pipeline slots the running `shaders/` pack bound to its programs.
+    pub fn pack_bound_mod_slots(&self) -> &[usize] {
+        match &self.pack_post {
+            Some((_, Some(post))) => post.bound_mod_slots(),
+            _ => &[],
         }
     }
     /// The running shader pack's kind: `iris` (a `shaders/` pack) or `native` (one of
@@ -283,6 +321,7 @@ impl Renderer {
         match thread {
             Ok(thread) => {
                 // The last pack doesn't draw this dimension meanwhile.
+                self.pack_changed();
                 self.pack_post = None;
                 self.pack_loading = Some(PackLoading {
                     dimension,
@@ -297,6 +336,7 @@ impl Renderer {
                 log::error!("shader pack {label}: no thread to build it on: {e}");
                 // Off for this dimension, as a pack that fails, not tried again every frame.
                 self.pack_loading = None;
+                self.pack_changed();
                 self.pack_post = Some((dimension, None));
             }
         }
@@ -341,6 +381,7 @@ impl Renderer {
     /// Drops the running shader pack, of either kind.
     pub fn drop_shader_packs(&mut self) {
         self.pack_loading = None;
+        self.pack_changed();
         self.pack_post = None;
         self.native = None;
         self.pack_atlas = None;
@@ -386,6 +427,7 @@ impl Renderer {
             );
         }
         let Some((report, constants, sprite_tags, sprite_materials, lights)) = pack else {
+            self.pack_changed();
             self.native = None;
             return Ok(Vec::new());
         };
@@ -409,6 +451,7 @@ impl Renderer {
             &constants,
             lights,
         )?;
+        self.pack_changed();
         self.native = pack.draws().then_some(pack);
         if self.native.is_some() {
             self.pack_post = None;
