@@ -1068,6 +1068,9 @@ mod native_block_states;
 #[path = "game/modding/native_block_tables.rs"]
 mod native_block_tables;
 #[cfg(test)]
+#[path = "game/modding/native_block_tables_tests.rs"]
+mod native_block_tables_tests;
+#[cfg(test)]
 #[path = "game/modding/native_block_use_criteria_tests.rs"]
 mod native_block_use_criteria_tests;
 #[path = "game/modding/native_book_apply.rs"]

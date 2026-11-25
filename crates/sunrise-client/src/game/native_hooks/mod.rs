@@ -196,6 +196,7 @@ mod chunk_ticket_level_updated;
 mod chunk_watch;
 mod client_attack_target;
 mod client_block_changed;
+mod client_break_progress;
 mod client_chat;
 mod client_chat_received;
 #[cfg(test)]
@@ -258,6 +259,7 @@ mod death_source_tests;
 mod default_components_bound;
 mod destroy_progress;
 mod dispense_method;
+mod dragon_fight;
 mod draw_measures;
 mod effect_particle_modification;
 mod empty_contents;

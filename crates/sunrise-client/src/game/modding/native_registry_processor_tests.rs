@@ -66,7 +66,7 @@ fn generic_processor_and_referencing_pool_accept_block_properties() {
             let mut accepted = false;
             assert_eq!(
                 host.visit_registry_entries(registry, &mut |id| {
-                    accepted |= id == "registry_processor_test:pillar";
+                    accepted |= id == "registry_processor_test:rule";
                     assert_ne!(id, "registry_processor_test:rejected", "{registry}");
                     ControlFlow::Continue(())
                 }),

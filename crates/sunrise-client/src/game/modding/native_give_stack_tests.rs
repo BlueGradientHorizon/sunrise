@@ -5,7 +5,7 @@ use super::{
     native_entity_refs::tests::{run_fresh_cases, with_game},
     native_guest_turn_tests::with_guests,
 };
-use mod_api::{Host, ItemStack, PlayerDataRefusal, prelude::*};
+use mod_api::{Host, ItemJsonError, ItemStack, PlayerDataRefusal, prelude::*};
 use sunrise_core::nbt::parse_snbt;
 use sunrise_items::item_nbt;
 
@@ -262,5 +262,153 @@ fn a_dead_player_is_given_nothing() {
             Some(true)
         );
         assert_eq!(game.dropped.len(), before);
+    });
+}
+
+/// `Host::item_to_json` / `Host::item_from_json` match `ItemStack.OPTIONAL_CODEC` over `JsonOps`:
+/// empty stack (`{}`), plain stack, and a stack with text, enchantments, damage, float, boolean
+/// and explicit component removal.
+#[test]
+#[ignore = "daily"]
+fn item_json_roundtrips_plain_component_and_empty_stacks() {
+    if run_fresh_cases(
+        "game::native_give_stack_tests::item_json_roundtrips_plain_component_and_empty_stacks",
+        "SUNRISE_NATIVE_GIVE_STACK_CHILD",
+        &["json-roundtrip"],
+    ) {
+        return;
+    }
+    with_game(|game| {
+        let host: &dyn Host = game;
+
+        // Empty stack <-> {}.
+        assert_eq!(host.item_to_json(None).unwrap(), "{}");
+        assert_eq!(host.item_from_json("{}").unwrap(), None);
+
+        // Plain stack <-> {"id", "count"}.
+        let plain_expected = serde_json::json!({"id": "minecraft:stone", "count": 64});
+        let plain = host
+            .item_from_json(r#"{"id":"minecraft:stone","count":64}"#)
+            .unwrap()
+            .expect("plain stack");
+        assert_eq!(plain.count(), 64);
+        let plain_encoded = host.item_to_json(Some(&plain)).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&plain_encoded).unwrap(),
+            plain_expected
+        );
+        assert_eq!(host.item_from_json(&plain_encoded).unwrap(), Some(plain));
+
+        // Stack with several component kinds: styled text component (real JSON bool),
+        // enchantments, integer damage, float attack charge, boolean glint override, and
+        // removal of a prototype component (`!minecraft:rarity`).
+        let rich_expected = serde_json::json!({
+            "id": "minecraft:diamond_sword",
+            "count": 1,
+            "components": {
+                "minecraft:custom_name": {"text": "Blade", "color": "gold", "bold": true},
+                "minecraft:enchantments": {"minecraft:sharpness": 3},
+                "minecraft:damage": 5,
+                "minecraft:minimum_attack_charge": 0.5,
+                "minecraft:enchantment_glint_override": true,
+                "!minecraft:rarity": {}
+            }
+        });
+        let rich = host
+            .item_from_json(&rich_expected.to_string())
+            .unwrap()
+            .expect("multi-component stack");
+        assert_eq!(rich.damage_component(), Some(5));
+        let rich_encoded = host.item_to_json(Some(&rich)).unwrap();
+        let rich_parsed: serde_json::Value = serde_json::from_str(&rich_encoded).unwrap();
+        assert_eq!(rich_parsed, rich_expected);
+        assert_eq!(
+            rich_parsed["components"]["minecraft:custom_name"]["bold"],
+            serde_json::Value::Bool(true)
+        );
+        assert_eq!(host.item_from_json(&rich_encoded).unwrap(), Some(rich));
+
+        // Explicit removal of `minecraft:damage` on a damageable item writes `"!minecraft:damage": {}`.
+        let removed_expected = serde_json::json!({
+            "id": "minecraft:diamond_sword",
+            "count": 1,
+            "components": {
+                "!minecraft:damage": {}
+            }
+        });
+        let removed = host
+            .item_from_json(&removed_expected.to_string())
+            .unwrap()
+            .expect("damage-removed sword");
+        let removed_encoded = host.item_to_json(Some(&removed)).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&removed_encoded).unwrap(),
+            removed_expected
+        );
+        assert_eq!(
+            host.item_from_json(&removed_encoded).unwrap(),
+            Some(removed)
+        );
+    });
+}
+
+/// Decode refusals report the failing field name through `ItemJsonError`.
+#[test]
+#[ignore = "daily"]
+fn item_json_decode_errors_name_the_failing_field() {
+    if run_fresh_cases(
+        "game::native_give_stack_tests::item_json_decode_errors_name_the_failing_field",
+        "SUNRISE_NATIVE_GIVE_STACK_CHILD",
+        &["json-errors"],
+    ) {
+        return;
+    }
+    with_game(|game| {
+        let host: &dyn Host = game;
+
+        for (input, expected_field) in [
+            (r#"{"count":1}"#, "id"),
+            (r#"{"id":"nomod:missing","count":1}"#, "id"),
+            (r#"{"id":"minecraft:air","count":1}"#, "id"),
+            (r#"{"id":"minecraft:stone","count":100}"#, "count"),
+            (r#"{"id":"minecraft:stone","count":true}"#, "count"),
+            (r#"{"id":"minecraft:stone","components":1}"#, "components"),
+            (
+                r#"{"id":"minecraft:diamond_sword","components":{"minecraft:damage":-1}}"#,
+                "minecraft:damage",
+            ),
+            (
+                r#"{"id":"minecraft:diamond_sword","components":{"minecraft:damage":true}}"#,
+                "minecraft:damage",
+            ),
+            (
+                r#"{"id":"minecraft:stone","components":{"minecraft:custom_name":{"text":"Hi","bold":1}}}"#,
+                "minecraft:custom_name",
+            ),
+            (
+                r#"{"id":"minecraft:diamond_sword","components":{"!minecraft:damage":1}}"#,
+                "!minecraft:damage",
+            ),
+            (
+                r#"{"id":"minecraft:stone","components":{"nomod:unknown":1}}"#,
+                "nomod:unknown",
+            ),
+            (
+                r#"{"id":"minecraft:stone","components":{"minecraft:creative_slot_lock":{}}}"#,
+                "minecraft:creative_slot_lock",
+            ),
+        ] {
+            let error = host.item_from_json(input).unwrap_err();
+            assert_eq!(error.field(), Some(expected_field), "{input}: {error}");
+            assert!(
+                error.to_string().contains(expected_field),
+                "{input}: {error}"
+            );
+        }
+
+        assert!(matches!(
+            host.item_from_json("{bad"),
+            Err(ItemJsonError::InvalidJson { .. })
+        ));
     });
 }
