@@ -33,7 +33,8 @@ game keeps no copy of your pixels: keep your own if you need them again.
 The id is in a namespace owned by the calling mod (`mymod:...`, its extra manifest namespaces, or a content package it
 serves via `served_by`); the path is the mod's to choose. Only the owner can create, update or release it: another
 mod's call is `NotOwned`. Drawing has no owner check: any mod may draw any live id. `GuiCanvas::texture` has one lookup
-rule for an id: a live dynamic texture of that id, otherwise the resource stack. An id released after its draw was
+rule for an id: a live dynamic texture of that id, otherwise the resource stack; an id in neither when you call it is
+`GuiDrawError::UnknownTexture` and draws nothing. An id released after its draw was
 submitted, before the frame draws, shows vanilla's missing texture, as vanilla does after `release`. A dynamic
 texture is not a GUI atlas sprite: `DrawContext::sprite`, `gui_nine_slice`, `tiled_sprite` and `gui_sprite` do not
 reach it.

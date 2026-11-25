@@ -384,11 +384,12 @@ fn draw_chapter(draw: &mut dyn DrawContext, art: &Identifier) -> Result<(), GuiD
   clamping: past 1 the image repeats (or clamps, below), and a negative `src` or `tex` flips that axis.
 - **Sampler.** As the image's `.png.mcmeta` says, from the image's pack or a pack above it: `"blur": true`
   filters linearly, `"clamp": true` clamps to the edge; otherwise nearest and repeat. No mipmaps.
-- **Missing images.** An id with no image, one that doesn't decode, or one whose `.png.mcmeta` isn't valid JSON or
+- **Missing images.** An id that names no image in the stack and no live dynamic texture when you call is refused
+  (below). One that is there but doesn't decode, or one whose `.png.mcmeta` isn't valid JSON or
   has a `texture` section vanilla's codec refuses, draws vanilla's magenta and black missing texture in its place, in
   order with the other draws. The call isn't refused for it.
-- **Refused.** A NaN or infinite `uv` returns `GuiDrawError::NotFinite` and a `tex` with a zero side
-  `GuiDrawError::BadBlitRegion`; the call draws nothing.
+- **Refused.** A NaN or infinite `uv` returns `GuiDrawError::NotFinite`, a `tex` with a zero side
+  `GuiDrawError::BadBlitRegion`, and an id that names nothing `GuiDrawError::UnknownTexture`; the call draws nothing.
 - **Pose and clip.** The quad follows the canvas's pose and scissor (`GuiCanvas::scope` and
   `DrawContext::with_scissor`), as `blit` does.
 

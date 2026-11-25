@@ -49,6 +49,27 @@ impl Cache {
     /// or undecodable image, or a `.mcmeta` that cannot be read or parsed
     /// ([`TextureFlags::read_mcmeta`]), is vanilla's missing texture
     /// (`TextureManager.loadContentsSafe`, `TextureContents.createMissing`).
+    /// Whether the resource `assets/<namespace>/<path>` of `id` is in a root: an image that is
+    /// there but cannot be decoded still is, and draws vanilla's missing texture.
+    fn has(&self, id: &Identifier) -> bool {
+        // An id already loaded is found without building its name, unless it loaded as missing.
+        if self
+            .textures
+            .get(id.namespace())
+            .and_then(|t| t.get(id.path()))
+            .is_some_and(|texture| {
+                !self
+                    .missing
+                    .as_ref()
+                    .is_some_and(|m| Arc::ptr_eq(m, texture))
+            })
+        {
+            return true;
+        }
+        let name = format!("assets/{}/{}", id.namespace(), id.path());
+        crate::resource_source::stays_inside(&name)
+            && self.roots.iter().any(|root| root.contains(&name))
+    }
     fn texture(&mut self, id: &Identifier) -> Arc<Picture> {
         let (namespace, path) = (id.namespace(), id.path());
         if let Some(texture) = self.textures.get(namespace).and_then(|t| t.get(path)) {
@@ -129,6 +150,13 @@ impl Cache {
         self.entries
             .insert(name.into(), image.as_ref().map(Arc::downgrade));
         image
+    }
+}
+
+impl HudAtlas {
+    /// Whether the standalone texture `id` is in the resource stack ([`HudBatch::texture`]).
+    pub fn has_texture(&self, id: &Identifier) -> bool {
+        self.pictures.lock().unwrap().has(id)
     }
 }
 

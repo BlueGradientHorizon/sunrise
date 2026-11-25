@@ -217,11 +217,14 @@ pub trait GuiCanvas {
     /// `(region.uv + region.src) / region.tex` unclamped, as `innerBlit` does (a negative extent
     /// flips that axis), with the sampler the winning `.png.mcmeta` sets: `blur` filters
     /// linearly, `clamp` clamps to the edge, else nearest and repeat, no mipmaps. The image loads
-    /// on first use and stays loaded until the next resource reload. A missing or undecodable
-    /// image, or a `.png.mcmeta` vanilla cannot read, draws vanilla's missing texture in its
+    /// on first use and stays loaded until the next resource reload. An `id` that names neither a
+    /// live dynamic texture nor a resource in the stack when this is called is refused with
+    /// [`GuiDrawError::UnknownTexture`] and draws nothing. An image that is there but undecodable,
+    /// or a `.png.mcmeta` vanilla cannot read, draws vanilla's missing texture in its
     /// place rather than refusing, and so does a dynamic texture released after this call
-    /// and before the frame draws, as vanilla's `TextureManager.release` leaves its id. A non-finite `uv` is refused with
-    /// [`GuiDrawError::NotFinite`] and a zero `tex` side with [`GuiDrawError::BadBlitRegion`].
+    /// and before the frame draws, as vanilla's `TextureManager.release` leaves its id. A
+    /// non-finite `uv` is refused with [`GuiDrawError::NotFinite`] and a zero `tex` side with
+    /// [`GuiDrawError::BadBlitRegion`].
     fn texture(
         &mut self,
         id: &Identifier,
