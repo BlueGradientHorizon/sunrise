@@ -1951,10 +1951,20 @@ pub(super) fn emit<'a>(
                     } else {
                         "continue;".to_owned()
                     };
-                    format!(
-                        "for ({listener_id}, {part_item}) in super::entered_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{ {} }}",
-                        call(&part_item, &listener_id, &on_abort, "break"),
-                    )
+                    let part_call = call(&part_item, &listener_id, &on_abort, "break");
+                    if name == "menu_slot_rules" {
+                        // A Part's refusal stands: a later Part may not turn it back. A Part may
+                        // still allow what the slot's own rule refuses.
+                        let refused = fresh_name("refused", &mut used);
+                        let before = fresh_name("before", &mut used);
+                        format!(
+                            "let mut {refused} = (false, false); for ({listener_id}, {part_item}) in super::entered_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{ let {before} = ({event}.may_place, {event}.may_pickup); {part_call} {refused}.0 |= {before}.0 && !{event}.may_place; {refused}.1 |= {before}.1 && !{event}.may_pickup; }} {event}.may_place &= !{refused}.0; {event}.may_pickup &= !{refused}.1;"
+                        )
+                    } else {
+                        format!(
+                            "for ({listener_id}, {part_item}) in super::entered_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{ {part_call} }}",
+                        )
+                    }
                 },
             ),
         };

@@ -432,7 +432,7 @@ let moved: Result<(), TransactionError<()>> = host.transaction(|host, tx| {
 });
 ```
 
-`MenuPart::menu_clicked` v4 runs directly on parts registered for the open mod menu's type before
+`MenuPart::menu_clicked` v5 runs directly on parts registered for the open mod menu's type before
 default click execution (`ServerGamePacketListenerImpl.handleContainerClick`,
 `AbstractContainerMenu.clicked`). The event names that type and gives the raw slot, button and
 click type. Menu-button clicks, recipe placement and creative set-slot do not reach it. There is

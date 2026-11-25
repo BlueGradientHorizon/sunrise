@@ -1477,7 +1477,28 @@ impl Game<'_> {
                 else {
                     return;
                 };
-                let placed = self.lan_place_in_current_menu(gi, container, &id, use_max, creative);
+                let placed = if container == 0
+                    && mod_api::__private::menu_listens(
+                        mod_api::HookId::RecipeBookPlace,
+                        sunrise_client::menu::INVENTORY_MENU,
+                    ) {
+                    match self.inventory_book_place(player, &id, use_max, creative) {
+                        mod_api::RecipeBookPlacement::Nothing => None,
+                        mod_api::RecipeBookPlacement::Ghost => Some(PostPlace::Ghost),
+                        mod_api::RecipeBookPlacement::Grid { .. } => {
+                            // The Part ran with the player swapped in: place only into the menu
+                            // the click named, with the mode it left.
+                            let Some((gi, creative)) = self.recipe_click_menu_still_current(
+                                conn, container, generation, &dimension,
+                            ) else {
+                                return;
+                            };
+                            self.lan_place_in_current_menu(gi, container, &id, use_max, creative)
+                        }
+                    }
+                } else {
+                    self.lan_place_in_current_menu(gi, container, &id, use_max, creative)
+                };
                 if placed == Some(PostPlace::Ghost)
                     && self
                         .recipe_click_menu_still_current(conn, container, generation, &dimension)

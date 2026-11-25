@@ -767,6 +767,9 @@ mod interaction_data_tests;
 mod interactions;
 #[path = "game/interface/inventory_input.rs"]
 mod inventory_input;
+#[cfg(test)]
+#[path = "game/modding/inventory_menu_parts_tests.rs"]
+mod inventory_menu_parts_tests;
 #[path = "game/interface/inventory_slots.rs"]
 mod inventory_slots;
 #[path = "game/items/inventory_tick.rs"]
