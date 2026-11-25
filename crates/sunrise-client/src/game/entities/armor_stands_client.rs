@@ -699,26 +699,19 @@ impl Game<'_> {
         else {
             return;
         };
-        let block = [
-            at[0].floor() as i32,
-            at[1].floor() as i32,
-            at[2].floor() as i32,
-        ];
-        let Some((sprite, tint)) = self.particle_sprite(state, block) else {
-            return;
-        };
-        let options = sunrise_client::particles::ParticleOptions::block(
-            sunrise_client::particles::ParticleType::Block,
-            sprite,
-            tint,
-        );
         // Entity.getY(2/3): the box's height is scaled by 2/3 from the feet.
         let centre = [at[0], at[1] + height * (2.0 / 3.0), at[2]];
         let spread = [width / 4.0, height / 4.0, width / 4.0];
-        self.particles
-            .0
-            .send_particles(&options, centre, spread, 0.05, 10);
-        self.lan_level_particles(&options, centre, spread, 0.05, 10, Some(state));
+        self.server_level_particles(
+            &crate::lan::server_effects::ServerParticle::block(
+                sunrise_client::particles::ParticleType::Block,
+                state,
+            ),
+            centre,
+            spread,
+            0.05,
+            10,
+        );
     }
 }
 

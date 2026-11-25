@@ -413,7 +413,7 @@ impl Game<'_> {
             false
         });
         for at in shattered {
-            self.client_audio_play("minecraft:entity.ender_eye.death", Some(at), 1.0, 1.0);
+            self.server_play_sound("minecraft:entity.ender_eye.death", at, 1.0, 1.0);
             self.level_event_at(2003, at.map(|v| v.floor() as i32), 0);
         }
     }

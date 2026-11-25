@@ -94,8 +94,8 @@ impl Game<'_> {
                 started: Instant::now(),
                 stage: Stage::Quit,
             });
-        } else {
-            self.close_container();
+        } else if self.is_logical_server() {
+            self.close_container_server();
             self.award_custom_stat("leave_game", 1);
             self.lan_close(false);
             self.free_player_beds()?;
@@ -105,6 +105,14 @@ impl Game<'_> {
                 reply: None,
                 started: Instant::now(),
                 stage: Stage::Generation,
+            });
+        } else {
+            self.pending_save.0 = Some(ClosingSave {
+                quit,
+                close: true,
+                reply: None,
+                started: Instant::now(),
+                stage: Stage::Quit,
             });
         }
         self.capture(false);

@@ -92,22 +92,17 @@ impl Game<'_> {
         self.mark_block_entity_updated((pos[0], pos[1], pos[2]));
         self.consume_held();
         self.server_play_sound("minecraft:block.decorated_pot.insert", center, 1.0, 0.7 + 0.5 * pitch_bend);
-        // ServerLevel.sendParticles(DUST_PLUME, x + 0.5, y + 1.2, z + 0.5, 7, 0, 0, 0, 0):
-        // the server draws none of it; the players within 32 blocks do, the window included.
-        let plume = ParticleOptions::simple(ParticleType::DustPlume);
+        // ServerLevel.sendParticles(DUST_PLUME, x + 0.5, y + 1.2, z + 0.5, 7, 0, 0, 0, 0).
         let plume_at = [center[0], f64::from(pos[1]) + 1.2, center[2]];
-        self.particles
-            .0
-            .send_particles(&plume, plume_at, [0.0; 3], 0.0, 7);
-        self.lan_send_particles(super::lan_particles::QueuedParticle {
+        self.server_send_particles(crate::lan::server_effects::ServerQueuedParticle {
             dimension: self.dim.id(),
-            options: plume,
-            state: None,
+            particle: crate::lan::server_effects::ServerParticle::simple(ParticleType::DustPlume),
             at: plume_at,
             spread: [0.0; 3],
             speed: [0.0; 3],
             count: 7,
             randomization: 0,
+            except: None,
         });
         self.post_block_game_event("minecraft:block_change", pos, Some(Who::Player), None);
         Some(Answer::Success)

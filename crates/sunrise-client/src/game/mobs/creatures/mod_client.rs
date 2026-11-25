@@ -295,7 +295,6 @@ impl Game<'_> {
     /// splashes and two bubbles over it, which the level random places, shown here
     /// and to the players within range.
     pub(in crate::game) fn bubble_column_particles(&mut self, pos: BlockPos) {
-        let draw_locally = self.options.dedicated.is_none();
         for _ in 0..2 {
             let r = &mut self.world.random;
             let splash = [
@@ -308,20 +307,20 @@ impl Game<'_> {
                 f64::from(pos.y + 1),
                 f64::from(pos.z) + r.next_double(),
             ];
-            let splash_options = ParticleOptions::simple(ParticleType::Splash);
-            if draw_locally {
-                self.particles
-                    .0
-                    .send_particles(&splash_options, splash, [0.0; 3], 1.0, 1);
-            }
-            self.lan_level_particles(&splash_options, splash, [0.0; 3], 1.0, 1, None);
-            let bubble_options = ParticleOptions::simple(ParticleType::Bubble);
-            if draw_locally {
-                self.particles
-                    .0
-                    .send_particles(&bubble_options, bubble, [0.0, 0.01, 0.0], 0.2, 1);
-            }
-            self.lan_level_particles(&bubble_options, bubble, [0.0, 0.01, 0.0], 0.2, 1, None);
+            self.server_level_particles(
+                &crate::lan::server_effects::ServerParticle::simple(ParticleType::Splash),
+                splash,
+                [0.0; 3],
+                1.0,
+                1,
+            );
+            self.server_level_particles(
+                &crate::lan::server_effects::ServerParticle::simple(ParticleType::Bubble),
+                bubble,
+                [0.0, 0.01, 0.0],
+                0.2,
+                1,
+            );
         }
     }
     /// Culls one entity's vertices from `entity_start`, counting what it drew
@@ -597,11 +596,13 @@ impl Game<'_> {
     /// the players within range.
     pub(in crate::game) fn mooshroom_shear_puff(&mut self, at: [f64; 3], height: f64) {
         let at = [at[0], at[1] + 0.5 * height, at[2]];
-        let options = ParticleOptions::simple(ParticleType::Explosion);
-        self.particles
-            .0
-            .send_particles(&options, at, [0.0; 3], 0.0, 1);
-        self.lan_level_particles(&options, at, [0.0; 3], 0.0, 1, None);
+        self.server_level_particles(
+            &crate::lan::server_effects::ServerParticle::simple(ParticleType::Explosion),
+            at,
+            [0.0; 3],
+            0.0,
+            1,
+        );
     }
     pub(in crate::game::client_side) fn pickup_arrow_geometry(
         &self,

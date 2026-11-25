@@ -35,7 +35,7 @@ impl Game<'_> {
                     position,
                     count,
                     speed,
-                }) => self.landing_dust(state, position, count, speed),
+                }) => self.server_landing_dust(state, position, count, speed),
                 // A block's own sound names no player: the guest hears it too.
                 MotionEvent::Fall(sunrise_client::landing::FallEvent::Sound {
                     sound,

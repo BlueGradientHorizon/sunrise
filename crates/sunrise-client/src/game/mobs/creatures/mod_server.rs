@@ -1517,7 +1517,7 @@ impl Game<'_> {
                     at,
                     count,
                     speed,
-                } => self.landing_dust(state, Vec3::new(at[0], at[1], at[2]), count, speed),
+                } => self.server_landing_dust(state, Vec3::new(at[0], at[1], at[2]), count, speed),
                 MobEvent::DrinkFinished { mob, stack } => self.finish_mob_drink(mob, &stack),
                 MobEvent::SquidCycle { mob, at } => self.lan_entity_event(mob as i32, 19, at),
                 MobEvent::RabbitHop { mob, at } => self.lan_entity_event(mob as i32, 1, at),
@@ -3477,11 +3477,17 @@ impl Game<'_> {
                 }
             }
             Species::Sheep if shears && !m.extra.sheared && !m.is_baby() => {
-                let sound_entity =
-                    sunrise_client::sound_engine::SoundEntity::new(m.id, feet, m.silent);
+                let silent = m.silent;
                 m.extra.sheared = true;
                 let color = sunrise_client::mobs::render::DYE_NAMES[m.extra.color as usize & 15];
-                self.play_bound_sound(LevelSound::new("minecraft:entity.sheep.shear", feet, 1.0, 1.0).in_source(mod_api::SoundSource::Neutral), m.id, None);
+                if !silent {
+                    self.play_bound_sound(
+                        LevelSound::new("minecraft:entity.sheep.shear", feet, 1.0, 1.0)
+                            .in_source(mod_api::SoundSource::Neutral),
+                        mob.0,
+                        None,
+                    );
+                }
                 drops_table = format!("minecraft:shearing/sheep/{color}");
                 let stacks = world_items!(self).loot_table(
                     &drops_table,
@@ -3934,20 +3940,19 @@ impl Game<'_> {
             } else {
                 ParticleType::Smoke
             };
-            let options = ParticleOptions::simple(ty);
             let at = [feet[0], feet[1] + 0.5, feet[2]];
             let (spread, count) = ([0.5, 0.0, 0.5], if fresh { 4 } else { 2 });
             // shortcut: scalar speed models DEFAULT randomization; 26.3 sends
             // ALTERNATIVE_WITH_SPEED with a per-axis maximum speed.
-            self.lan_send_particles(super::lan_particles::QueuedParticle {
+            self.server_send_particles(crate::lan::server_effects::ServerQueuedParticle {
                 dimension: self.dim.id(),
-                options,
-                state: None,
+                particle: crate::lan::server_effects::ServerParticle::simple(ty),
                 at,
                 spread,
                 speed: [0.2; 3],
                 count: count as i32,
                 randomization: 0,
+                except: None,
             });
         }
         // PlayerInteractTrigger: the item used on the mob, once the interaction took.

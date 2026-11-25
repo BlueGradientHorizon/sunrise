@@ -911,7 +911,7 @@ impl Game<'_> {
         }
     }
     /// Drinking a potion while right-click is held; true when handled.
-    pub(in crate::game::client_side) fn tick_drinking(
+    pub(in crate::game) fn tick_drinking(
         &mut self,
         slot: usize,
         ticks: u32,

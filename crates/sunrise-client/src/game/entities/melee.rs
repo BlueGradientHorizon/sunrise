@@ -325,19 +325,18 @@ impl Game<'_> {
                 );
             }
             if actual > 2.0 {
-                let indicator = sunrise_client::particles::ParticleOptions::simple(
-                    sunrise_client::particles::ParticleType::DamageIndicator,
-                );
                 // The players a server serves are sent them too.
-                self.lan_send_particles(lan_particles::QueuedParticle {
+                self.server_send_particles(crate::lan::server_effects::ServerQueuedParticle {
                     dimension: self.dim.id(),
-                    options: indicator,
-                    state: None,
+                    particle: crate::lan::server_effects::ServerParticle::simple(
+                        sunrise_client::particles::ParticleType::DamageIndicator,
+                    ),
                     at: [feet[0], feet[1] + height * 0.5, feet[2]],
                     spread: [0.1, 0.0, 0.1],
                     speed: [0.2; 3],
                     count: (actual * 0.5) as u32 as i32,
                     randomization: 0,
+                    except: None,
                 });
             }
             let sound = if crit {
@@ -518,22 +517,21 @@ impl Game<'_> {
         if let Some((area, mob)) = target {
             self.sweep_damage(area, mob, scale);
         }
-        let arc = sunrise_client::particles::ParticleOptions::simple(
-            sunrise_client::particles::ParticleType::SweepAttack,
-        );
         // Player.sweepAttack's `sendParticles(SWEEP_ATTACK, ..., 0, dx, 0, dz, 0)`:
         // the offset is the one from the player to the particle.
         let origin = from.unwrap_or(at);
         let spread = [at[0] - origin[0], 0.0, at[2] - origin[2]];
-        self.lan_send_particles(lan_particles::QueuedParticle {
+        self.server_send_particles(crate::lan::server_effects::ServerQueuedParticle {
             dimension: self.dim.id(),
-            options: arc,
-            state: None,
+            particle: crate::lan::server_effects::ServerParticle::simple(
+                sunrise_client::particles::ParticleType::SweepAttack,
+            ),
             at,
             spread,
             speed: [0.0; 3],
             count: 0,
             randomization: 0,
+            except: None,
         });
     }
 }
