@@ -512,6 +512,10 @@ pub struct Ai {
     /// last started on. On the mob, not the goal, so the mob tick can tell that a pet
     /// has nothing new to read without building the level's player views.
     pub owner_hurt_timestamp: i32,
+    /// `OwnerHurtByTargetGoal.timestamp`: the owner's `getLastHurtByMobTimestamp` the
+    /// goal last started on. On the mob, not the goal, so the mob tick can tell that a
+    /// pet has nothing new to read without building the level's player views.
+    pub owner_hurt_by_timestamp: i64,
     /// Sensing: line-of-sight results cached for one tick.
     pub seen_cache: Vec<(Who, bool)>,
     /// Swing animation progress (attackAnim) and ticks.

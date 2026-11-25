@@ -347,7 +347,9 @@ impl Game<'_> {
             None => Text::translate(&format!("entity.{}", m.kind.id.replace(':', ".")), &[]),
         })
     }
-    /// `getLastHurtByMob`: the last mob to hurt the player, for 100 ticks.
+    /// `getLastHurtByMob`: the last mob to hurt the player, for 100 ticks. The id is a
+    /// player's too when a player dealt the hit (`Who::Mob` names any entity id), which
+    /// `OwnerHurtByTargetGoal` resolves through the tick's player selection.
     pub(super) fn player_hurt_by(&self) -> Option<(sunrise_client::mobs::Who, i64)> {
         let ((id, _), at) = self.combat.last_hurt_by.as_ref()?;
         (self.world.game_time - at <= 100).then_some((sunrise_client::mobs::Who::Mob(*id), *at))
