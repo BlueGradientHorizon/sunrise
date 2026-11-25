@@ -844,6 +844,14 @@ pub(super) enum DeferredEffect {
     /// `PlayerRef::set_statistics` inside a transaction: the counters and their criterion
     /// scores are replaced together at the root commit.
     RestoreStatistics(mod_api::PlayerRef, Box<sunrise_gameplay::stats::StatValues>),
+    /// `PlayerRef::award_advancement` / `revoke_advancement` inside a transaction:
+    /// applied at the root commit so an abort rolls back progress, rewards and hooks.
+    ChangeAdvancement {
+        player: mod_api::PlayerRef,
+        id: String,
+        criterion: Option<String>,
+        grant: bool,
+    },
 }
 
 impl Level {
@@ -2592,6 +2600,19 @@ impl<'g> Game<'g> {
                 } => self.play_audio(sound, Some(at), volume, pitch),
                 DeferredEffect::RestoreStatistics(player, values) => {
                     self.restore_player_statistics(player, *values);
+                }
+                DeferredEffect::ChangeAdvancement {
+                    player,
+                    id,
+                    criterion,
+                    grant,
+                } => {
+                    self.apply_deferred_advancement_change(
+                        player,
+                        &id,
+                        criterion.as_deref(),
+                        grant,
+                    );
                 }
             },
             // Only reached through a root commit, which replays blocks and connection groups in order.

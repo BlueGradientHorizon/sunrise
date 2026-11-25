@@ -53,11 +53,17 @@ pub trait PlayerProgressBackendMut {
     /// toast, fires `player_advancement_progress` and `player_advancement_done`, and queues
     /// the client's progress update.
     ///
-    /// Returns `Ok(true)` when progress changed and `Ok(false)` when nothing changed (such
-    /// as an already-obtained criterion or an already-done advancement with `None`).
-    /// Refuses clients (`NotServer`), stale, offline, displaced or unreachable players
-    /// (`PlayerUnavailable`), unknown advancements (`UnknownAdvancement`), and unknown
-    /// criterion names (`UnknownCriterion`).
+    /// Inside a transaction, validation runs immediately and the returned `bool` reports
+    /// whether the change would alter current progress, while the change itself—along with
+    /// its rewards, messages, hooks and client updates—happens when the outermost
+    /// transaction commits and is dropped if it aborts; until then reads see the old
+    /// progress.
+    ///
+    /// Returns `Ok(true)` when progress changed (or would change inside a transaction) and
+    /// `Ok(false)` when nothing changed (such as an already-obtained criterion or an
+    /// already-done advancement with `None`). Refuses clients (`NotServer`), stale, offline,
+    /// dead, displaced or unreachable players (`PlayerUnavailable`), unknown advancements
+    /// (`UnknownAdvancement`), and unknown criterion names (`UnknownCriterion`).
     fn player_award_advancement(
         &mut self,
         player: PlayerRef,
@@ -74,10 +80,15 @@ pub trait PlayerProgressBackendMut {
     /// `player_advancement_progress` for each revoked criterion and queueing the client's
     /// progress update.
     ///
-    /// Returns `Ok(true)` when progress changed and `Ok(false)` when nothing was obtained.
-    /// Refuses clients (`NotServer`), stale, offline, displaced or unreachable players
-    /// (`PlayerUnavailable`), unknown advancements (`UnknownAdvancement`), and unknown
-    /// criterion names (`UnknownCriterion`).
+    /// Inside a transaction, validation runs immediately and the returned `bool` reports
+    /// whether the change would alter current progress, while the change itself—along with
+    /// its messages, hooks and client updates—happens when the outermost transaction
+    /// commits and is dropped if it aborts; until then reads see the old progress.
+    ///
+    /// Returns `Ok(true)` when progress changed (or would change inside a transaction) and
+    /// `Ok(false)` when nothing was obtained. Refuses clients (`NotServer`), stale, offline,
+    /// dead, displaced or unreachable players (`PlayerUnavailable`), unknown advancements
+    /// (`UnknownAdvancement`), and unknown criterion names (`UnknownCriterion`).
     fn player_revoke_advancement(
         &mut self,
         player: PlayerRef,

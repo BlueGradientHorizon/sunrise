@@ -28,6 +28,9 @@ announces in chat per the display and `show_advancement_messages`, shows the toa
 `player_advancement_progress` and `player_advancement_done`, and queues the client progress
 update. `Ok(bool)` reports whether progress changed; `Err(AdvancementError)` distinguishes
 `NotServer`, `PlayerUnavailable`, `UnknownAdvancement`, `UnknownCriterion`, and `NoBackend`.
+Inside a transaction, validation runs immediately and `Ok(bool)` reports whether the change
+would alter current progress; the change itself, along with its rewards, messages, hooks and
+client updates, happens at the root commit and is dropped on abort.
 
 ## Display icons
 

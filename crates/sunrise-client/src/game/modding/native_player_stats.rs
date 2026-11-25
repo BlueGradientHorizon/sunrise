@@ -156,10 +156,46 @@ impl Game<'_> {
         if !self.is_logical_server() || self.remote.is_some() {
             return Err(AdvancementError::NotServer);
         }
+        if !self.native_player_writable(player) {
+            return Err(AdvancementError::PlayerUnavailable);
+        }
         let target = self
-            .player_handle_read(player)
-            .and_then(|_| self.native_entity_target(player.entity()))
+            .native_entity_target(player.entity())
             .ok_or(AdvancementError::PlayerUnavailable)?;
+        let tree = self.advancement_tree();
+        let Some(index) = tree.find_id(id.as_str()) else {
+            return Err(AdvancementError::UnknownAdvancement);
+        };
+        if let Some(name) = criterion
+            && !tree.list[index].criteria.iter().any(|c| c.name == name)
+        {
+            return Err(AdvancementError::UnknownCriterion);
+        }
+        if self.transactions.last().is_some() {
+            let progress = self
+                .native_player_advancements(player)
+                .ok_or(AdvancementError::PlayerUnavailable)?;
+            let snapshot = progress_snapshot(&tree.list[index], progress);
+            let would_change = match (grant, criterion) {
+                (true, Some(name)) => snapshot
+                    .criteria
+                    .iter()
+                    .any(|c| c.name == name && c.obtained_at.is_none()),
+                (true, None) => !snapshot.done,
+                (false, Some(name)) => snapshot
+                    .criteria
+                    .iter()
+                    .any(|c| c.name == name && c.obtained_at.is_some()),
+                (false, None) => snapshot.criteria.iter().any(|c| c.obtained_at.is_some()),
+            };
+            self.defer_effect(DeferredEffect::ChangeAdvancement {
+                player,
+                id: id.as_str().to_owned(),
+                criterion: criterion.map(str::to_owned),
+                grant,
+            });
+            return Ok(would_change);
+        }
         self.for_player(target, |game| {
             game.load_advancements();
             let Some(index) = game.adv.tree.find_id(id.as_str()) else {
@@ -180,6 +216,44 @@ impl Game<'_> {
             })
         })
         .ok_or(AdvancementError::PlayerUnavailable)?
+    }
+
+    /// Apply a deferred `PlayerRef::award_advancement` / `revoke_advancement` at root commit.
+    pub(super) fn apply_deferred_advancement_change(
+        &mut self,
+        player: PlayerRef,
+        id: &str,
+        criterion: Option<&str>,
+        grant: bool,
+    ) {
+        if !self.is_logical_server()
+            || self.remote.is_some()
+            || !self.native_player_writable(player)
+        {
+            return;
+        }
+        let Some(target) = self.native_entity_target(player.entity()) else {
+            return;
+        };
+        let _ = self.for_player(target, |game| {
+            game.load_advancements();
+            let Some(index) = game.adv.tree.find_id(id) else {
+                return;
+            };
+            if let Some(name) = criterion
+                && !game.adv.tree.list[index]
+                    .criteria
+                    .iter()
+                    .any(|c| c.name == name)
+            {
+                return;
+            }
+            if grant {
+                game.grant_advancement(index, criterion);
+            } else {
+                game.revoke_advancement(index, criterion);
+            }
+        });
     }
 
     /// Decode with the server's registries before entering the player's turn. Inside a
@@ -1108,6 +1182,87 @@ mod tests {
                         ("second".to_owned(), ProgressType::Revoke),
                         ("first".to_owned(), ProgressType::Revoke),
                     ]
+                );
+
+                // Inside a transaction, award and revoke validate immediately and defer
+                // their progress change, rewards and hooks until the outermost commit.
+                use mod_api::HostTransaction as _;
+                on_progress.lock().unwrap().clear();
+                on_done.lock().unwrap().clear();
+                let xp_before = player.experience(game).unwrap().total;
+
+                let server: &mut dyn ServerHost = game;
+                let aborted = server.transaction(|server, _| {
+                    assert_eq!(
+                        player.award_advancement(server, &unknown_id, None),
+                        Err(AdvancementError::UnknownAdvancement)
+                    );
+                    assert_eq!(
+                        player.award_advancement(server, &adv_id, Some("missing")),
+                        Err(AdvancementError::UnknownCriterion)
+                    );
+                    assert_eq!(player.award_advancement(server, &adv_id, None), Ok(true));
+                    assert_eq!(player.revoke_advancement(server, &adv_id, None), Ok(false));
+                    let pending = player.advancement_progress(server, &adv_id).unwrap();
+                    assert!(!pending.done);
+                    assert_eq!(pending.completed_requirements, 0);
+                    Err::<(), ()>(())
+                });
+                assert!(aborted.is_err());
+                let after_abort = player.advancement_progress(game, &adv_id).unwrap();
+                assert!(!after_abort.done);
+                assert_eq!(after_abort.completed_requirements, 0);
+                assert_eq!(player.experience(game).unwrap().total, xp_before);
+                assert!(on_progress.lock().unwrap().is_empty());
+                assert!(on_done.lock().unwrap().is_empty());
+
+                let server: &mut dyn ServerHost = game;
+                let committed = server.transaction(|server, _| {
+                    assert_eq!(player.award_advancement(server, &adv_id, None), Ok(true));
+                    assert!(!player.advancement_progress(server, &adv_id).unwrap().done);
+                    Ok::<(), ()>(())
+                });
+                assert!(committed.is_ok());
+                let after_commit = player.advancement_progress(game, &adv_id).unwrap();
+                assert!(after_commit.done);
+                assert_eq!(after_commit.completed_requirements, 2);
+                assert_eq!(player.experience(game).unwrap().total, xp_before + 25);
+                assert_eq!(
+                    *on_progress.lock().unwrap(),
+                    vec![
+                        ("first".to_owned(), ProgressType::Grant),
+                        ("second".to_owned(), ProgressType::Grant),
+                    ]
+                );
+                assert_eq!(*on_done.lock().unwrap(), vec![adv_id.as_str().to_owned()]);
+
+                on_progress.lock().unwrap().clear();
+                let server: &mut dyn ServerHost = game;
+                let aborted_revoke = server.transaction(|server, _| {
+                    assert_eq!(player.revoke_advancement(server, &adv_id, None), Ok(true));
+                    assert!(player.advancement_progress(server, &adv_id).unwrap().done);
+                    Err::<(), ()>(())
+                });
+                assert!(aborted_revoke.is_err());
+                assert!(player.advancement_progress(game, &adv_id).unwrap().done);
+                assert!(on_progress.lock().unwrap().is_empty());
+
+                let server: &mut dyn ServerHost = game;
+                let committed_revoke = server.transaction(|server, _| {
+                    assert_eq!(
+                        player.revoke_advancement(server, &adv_id, Some("second")),
+                        Ok(true)
+                    );
+                    assert!(player.advancement_progress(server, &adv_id).unwrap().done);
+                    Ok::<(), ()>(())
+                });
+                assert!(committed_revoke.is_ok());
+                let after_commit_revoke = player.advancement_progress(game, &adv_id).unwrap();
+                assert!(!after_commit_revoke.done);
+                assert_eq!(after_commit_revoke.completed_requirements, 1);
+                assert_eq!(
+                    *on_progress.lock().unwrap(),
+                    vec![("second".to_owned(), ProgressType::Revoke)]
                 );
 
                 // Displaced player during a nested turn is unavailable for writes.

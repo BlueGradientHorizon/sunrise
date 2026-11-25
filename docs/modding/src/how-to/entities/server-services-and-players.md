@@ -129,7 +129,9 @@ remaining or obtained criteria) and return `Result<bool, AdvancementError>`.
 They route through the same engine path as triggers and `/advancement`, granting
 rewards, announcements, toasts, hooks and client updates on completion, and
 reporting `UnknownAdvancement`, `UnknownCriterion`, `PlayerUnavailable`,
-`NotServer`, or `NoBackend` on refusal.
+`NotServer`, or `NoBackend` on refusal. Inside a transaction, validation runs
+immediately while the change, its rewards, messages and hooks are deferred to
+the root commit and dropped on abort.
 
 `player.set_statistics(host, snapshot)` takes `&mut dyn ServerHost` and borrowed
 JSON. It upgrades older saves, reports decode errors and keeps recoverable
