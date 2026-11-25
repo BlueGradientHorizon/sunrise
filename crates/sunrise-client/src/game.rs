@@ -4478,6 +4478,9 @@ struct Game<'a> {
     lan_acting_entity: Option<u32>,
     /// Whether the player currently swapped into the game is connectionless.
     lan_acting_fake: bool,
+    /// Whether a server level tick's listeners are running in the one transaction their
+    /// dispatch opens for each, with nothing open around it.
+    level_tick_listener: bool,
     /// A fake player's `perform_action` in progress, and what it refused.
     fake_action: std::sync::Arc<native_server::FakeAction>,
     /// Command feedback to forward to a guest.
@@ -14744,6 +14747,7 @@ impl<'a> Game<'a> {
             lan_acting_spawn_protection: None,
             lan_acting_entity: None,
             lan_acting_fake: false,
+            level_tick_listener: false,
             fake_action: Default::default(),
             chat_capture: None,
             admin_feedback: Vec::new(),

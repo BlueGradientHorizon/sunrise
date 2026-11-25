@@ -637,11 +637,20 @@ impl Game<'_> {
     }
     /// Before a level's tick pass on either logical side.
     pub(in crate::game) fn native_level_tick_pre(&mut self, level: LevelRef) {
-        self.fire_level_tick_pre(level);
+        self.in_level_tick_listeners(|game| game.fire_level_tick_pre(level));
     }
     /// After a successful level tick pass on either logical side.
     pub(in crate::game) fn native_level_tick_post(&mut self, level: LevelRef) {
-        self.fire_level_tick_post(level);
+        self.in_level_tick_listeners(|game| game.fire_level_tick_post(level));
+    }
+    /// Marks a level tick's listeners while they run. On a server their dispatch opens one
+    /// transaction per listener to contain its failure; a fake player's action may run inside
+    /// that one (`player_perform_action`), not inside one the listener opened itself.
+    fn in_level_tick_listeners(&mut self, fire: impl FnOnce(&mut Self)) {
+        let alone = !self.has_open_transaction();
+        let outer = std::mem::replace(&mut self.level_tick_listener, alone);
+        fire(self);
+        self.level_tick_listener = outer;
     }
     /// Before a vanilla or registered HUD slot runs (`RenderGuiLayerEvent.Pre`), even under F1.
     /// Paint into `draw` below the layer, or set `canceled` to skip the entire installed body
