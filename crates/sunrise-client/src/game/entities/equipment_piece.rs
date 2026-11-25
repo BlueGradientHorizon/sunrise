@@ -1,6 +1,7 @@
 //! Shared eligibility and material resolution for worn humanoid equipment.
+use super::stock_layer_mask::StockLayerMask;
 use super::*;
-use mod_api::{ArmorLayerPass, ArmorLayerSlot, StockLayer, StockLayerMask};
+use mod_api::{ArmorLayerPass, ArmorLayerSlot, StockLayer};
 use sunrise_client::mobs::{
     finalize::EquipmentRead,
     render::{ArmorSlot, EquipmentModel},

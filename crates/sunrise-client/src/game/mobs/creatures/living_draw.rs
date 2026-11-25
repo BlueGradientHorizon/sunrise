@@ -1,5 +1,6 @@
 //! One living entity's draw (`LivingEntityRenderer.submit` and the layers, hooks, outline
 //! and beam around it). The ordered entity pass shares one `LivingFrame` across its mob runs.
+use super::stock_layer_mask::StockLayerMask;
 use super::*;
 use sunrise_client::mobs::render::FrameDraw;
 
@@ -144,7 +145,7 @@ impl Game<'_> {
         let layers = sunrise_client::mobs::render::layers_shown(mob);
         let resolved = self.entity_layers(mob);
         let hidden = if modded {
-            mod_api::StockLayerMask::EMPTY
+            StockLayerMask::EMPTY
         } else {
             resolved.hidden
         };
@@ -306,7 +307,7 @@ impl Game<'_> {
                 camera,
                 light: packed,
                 supported: if modded {
-                    mod_api::StockLayerMask::EMPTY
+                    StockLayerMask::EMPTY
                 } else {
                     resolved.supported
                 },

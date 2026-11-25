@@ -3,6 +3,7 @@
 //! of `hurtServer` (creative breaks at once), and `ArmorStandRenderer` with
 //! the default pose, the hit wobble and humanoid armor layers.
 use super::entity::Entity;
+use super::stock_layer_mask::StockLayerMask;
 use super::{Game, InteractTarget};
 use std::{collections::HashMap, sync::Arc};
 use sunrise_assets::resource_source::ResourceSource;
@@ -313,17 +314,14 @@ impl Game<'_> {
     }
     /// `HumanoidArmorLayer` for the player: (model, texture rect, colour,
     /// overlay) of each worn piece, head to feet.
-    pub(super) fn player_armor_layers(
-        &self,
-        hidden_layers: mod_api::StockLayerMask,
-    ) -> Vec<WornLayer<'_>> {
+    pub(super) fn player_armor_layers(&self, hidden_layers: StockLayerMask) -> Vec<WornLayer<'_>> {
         self.stack_armor_layers(&self.armor, hidden_layers)
     }
     /// `HumanoidArmorLayer` for worn stacks (head to feet), trims included.
     pub(super) fn stack_armor_layers(
         &self,
         armor: &[Option<ItemStack>; 4],
-        hidden_layers: mod_api::StockLayerMask,
+        hidden_layers: StockLayerMask,
     ) -> Vec<WornLayer<'_>> {
         self.armor_layers(
             armor
@@ -337,7 +335,7 @@ impl Game<'_> {
     pub(super) fn worn_armor_layers(
         &self,
         m: &Mob,
-        hidden_layers: mod_api::StockLayerMask,
+        hidden_layers: StockLayerMask,
     ) -> Vec<WornLayer<'_>> {
         use sunrise_core::equipment_slot::EquipmentSlot::{Chest, Feet, Head, Legs};
         self.armor_layers(
@@ -349,7 +347,7 @@ impl Game<'_> {
     fn armor_layers(
         &self,
         worn: [Option<EquipmentRead<'_>>; 4],
-        hidden_layers: mod_api::StockLayerMask,
+        hidden_layers: StockLayerMask,
     ) -> Vec<WornLayer<'_>> {
         let assets = &self.armor_stand_assets;
         let mut out = Vec::new();

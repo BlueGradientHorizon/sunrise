@@ -2,7 +2,8 @@
 //! block state an enderman holds (`CarriedBlockLayer`). Also the block
 //! models mobs wear (`SnowGolemHeadLayer`, `MushroomCowMushroomLayer`).
 use super::Game;
-use mod_api::{Hand, StockLayer, StockLayerMask};
+use super::stock_layer_mask::StockLayerMask;
+use mod_api::{Hand, StockLayer};
 use sunrise_client::{
     items::ItemStack,
     mesher::Vertex,

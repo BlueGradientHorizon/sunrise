@@ -1,3 +1,4 @@
+use super::stock_layer_mask::StockLayerMask;
 use super::*;
 use sunrise_client::mobs::{anim, render};
 
@@ -10,7 +11,7 @@ impl render::RenderDataSource for Game<'_> {
         self.mob_equipment_layers(
             mob,
             super::equipment_piece::EquipmentPass::Draw,
-            mod_api::StockLayerMask::EMPTY,
+            StockLayerMask::EMPTY,
         )
     }
 
@@ -18,7 +19,7 @@ impl render::RenderDataSource for Game<'_> {
         self.mob_equipment_layers(
             mob,
             super::equipment_piece::EquipmentPass::TextureInventory,
-            mod_api::StockLayerMask::EMPTY,
+            StockLayerMask::EMPTY,
         )
     }
 
@@ -32,7 +33,7 @@ impl render::RenderDataSource for Game<'_> {
 /// renderer's equipment lookup, including on the GPU skinning path.
 pub(in crate::game) struct HiddenLayersData<'a, 'game> {
     pub(in crate::game) game: &'a Game<'game>,
-    pub(in crate::game) hidden_layers: mod_api::StockLayerMask,
+    pub(in crate::game) hidden_layers: StockLayerMask,
 }
 
 impl render::RenderDataSource for HiddenLayersData<'_, '_> {
@@ -52,7 +53,7 @@ impl render::RenderDataSource for HiddenLayersData<'_, '_> {
         self.game.mob_equipment_layers(
             mob,
             super::equipment_piece::EquipmentPass::TextureInventory,
-            mod_api::StockLayerMask::EMPTY,
+            StockLayerMask::EMPTY,
         )
     }
 

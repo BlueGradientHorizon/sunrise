@@ -2,6 +2,7 @@
 //! in front, cycled by F5), the detached camera (`Camera.setup` with
 //! `getMaxZoom`), and the local player drawn as a model: in third person
 //! and in the inventory (`InventoryScreen.extractEntityInInventoryFollowsMouse`).
+use super::stock_layer_mask::StockLayerMask;
 use super::{Game, Screen, native_mob_draw::PlayerRender, shoulders::shoulder_variants};
 use mod_api::Hand;
 use std::{
@@ -1567,7 +1568,7 @@ impl Game<'_> {
         camera: glam::DVec3,
         partial: f32,
         light: u32,
-        hidden_layers: mod_api::StockLayerMask,
+        hidden_layers: StockLayerMask,
         out: &mut Vec<sunrise_client_render::render_geometry::Vertex>,
     ) {
         let sprites = &self.gui.atlas.sprites;

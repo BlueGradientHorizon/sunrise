@@ -2256,6 +2256,8 @@ mod stations;
 mod stats;
 #[path = "game/interface/stats_screen.rs"]
 mod stats_screen;
+#[path = "game/entities/stock_layer_mask.rs"]
+mod stock_layer_mask;
 #[cfg(test)]
 #[path = "game/items/stop_using_tests.rs"]
 mod stop_using_tests;

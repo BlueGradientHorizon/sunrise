@@ -8,6 +8,7 @@
 //! ([`Game::guarded_entity_draw`]), with a [`StockLayerDraw`] handle to redraw any hidden stock
 //! layer conditionally per entity. With no layer added and no stock layer hidden, a frame checks
 //! one atomic flag per entity and builds nothing.
+use super::stock_layer_mask::StockLayerMask;
 use super::{
     Game,
     entity_type_rows::EntityTypeRows,
@@ -19,7 +20,7 @@ use glam::DVec3;
 use mod_api::{
     __private::game::{CallbackOwner, RegistrationContextNew, discard_registration},
     ArmorLayerPass, ArmorLayerSlot, EntityLayers, EntityRenderLayer, FrameModel, Hand, HookId,
-    LayerTarget, PlayerModel, RegistrationContext, StockLayer, StockLayerDraw, StockLayerMask,
+    LayerTarget, PlayerModel, RegistrationContext, StockLayer, StockLayerDraw,
 };
 use std::{
     collections::{BTreeMap, HashMap},

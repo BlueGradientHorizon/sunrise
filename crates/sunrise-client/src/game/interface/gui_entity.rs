@@ -10,6 +10,7 @@
 //! the entities made for `GuiEntity::Kind` are kept per thread and reused, so a
 //! screen drawing the same entity every frame makes it once and allocates
 //! nothing once the buffers have grown.
+use super::stock_layer_mask::StockLayerMask;
 use super::{Game, commands::Target};
 use glam::{DVec3, Mat4, Vec3};
 use mod_api::{GuiEntity, GuiEntityError, GuiEntityLook, GuiEntityView};
@@ -265,7 +266,7 @@ impl Game<'_> {
         let modded =
             self.mod_living_renderer_geometry(mob, partial, camera, FULL_BRIGHT, false, out);
         let hidden = if modded {
-            mod_api::StockLayerMask::EMPTY
+            StockLayerMask::EMPTY
         } else {
             resolved.hidden
         };
@@ -303,7 +304,7 @@ impl Game<'_> {
             camera,
             light: FULL_BRIGHT,
             supported: if modded {
-                mod_api::StockLayerMask::EMPTY
+                StockLayerMask::EMPTY
             } else {
                 resolved.supported
             },
