@@ -38,20 +38,18 @@ pub(super) struct StandaloneGeometry {
     bounds: Vec<[[f32; 3]; 2]>,
     /// What each fluid draws as in a `fluid_box`, by fluid slot, resolved on its first box of
     /// this generation (the table is rebuilt with the resources, so a reload resolves anew).
-    fluid_looks: std::cell::RefCell<
-        Vec<Option<Result<super::native_fluid_render::FluidBoxLook, mod_api::FluidBoxError>>>,
-    >,
+    fluid_looks: std::cell::RefCell<Vec<Option<Option<super::native_fluid_render::FluidBoxLook>>>>,
     /// The first slot past the baked store's: block state `n` is slot `states_from + n`.
     states_from: u32,
-    /// Block states resolved by `block_state_model`, each once per generation.
-    states: std::cell::OnceCell<Box<[std::cell::OnceCell<StateModel>]>>,
-    /// How many block states the registry has: the table's size once a mod resolves one.
-    state_count: usize,
+    /// Every block state's model, bound when the generation is prepared so a draw only reads.
+    states: Box<[StateModel]>,
 }
 
 /// A block state's faces as vanilla draws it outside the terrain: default tints in the colour.
 pub(super) struct StateModel {
     faces: Vec<sunrise_client::models::catalog::BakedFace>,
+    prepared: Vec<super::minecarts::PreparedModelFace>,
+    tints: FxHashMap<i32, u32>,
     /// The state is also drawn by its block's special renderer, with default data
     /// (`BuiltInBlockModels`' `CompositeBlockModel`: the block-state model, then the special one).
     special: bool,
@@ -69,7 +67,7 @@ pub(super) struct InstanceSlot {
 }
 
 /// The box around `points`, or `None` when there are none.
-pub(super) fn point_bounds(points: impl IntoIterator<Item = [f32; 3]>) -> Option<[[f32; 3]; 2]> {
+fn point_bounds(points: impl IntoIterator<Item = [f32; 3]>) -> Option<[[f32; 3]; 2]> {
     let mut min = [f32::INFINITY; 3];
     let mut max = [f32::NEG_INFINITY; 3];
     for pos in points {
@@ -81,13 +79,18 @@ pub(super) fn point_bounds(points: impl IntoIterator<Item = [f32; 3]>) -> Option
     min[0].is_finite().then_some([min, max])
 }
 
-fn face_bounds(faces: &[super::minecarts::PreparedModelFace]) -> [[f32; 3]; 2] {
-    point_bounds(faces.iter().flat_map(|face| face.positions())).unwrap_or_default()
+fn face_bounds(positions: impl IntoIterator<Item = [f32; 3]>) -> [[f32; 3]; 2] {
+    point_bounds(positions).unwrap_or_default()
 }
 
 impl StandaloneGeometry {
     pub(super) fn new(pack: &super::PackResources, gui: &super::UiResources) -> Self {
         let catalog = &pack.render.model_catalog;
+        let layer_sprites: FxHashMap<_, _> = pack
+            .layer_names
+            .iter()
+            .filter_map(|(&layer, name)| Some((layer, *gui.atlas.sprites.get(name)?)))
+            .collect();
         let mut slots = Vec::new();
         let mut translucent = Vec::new();
         let mut bounds = Vec::new();
@@ -104,19 +107,23 @@ impl StandaloneGeometry {
                 .faces
                 .iter()
                 .filter_map(|face| {
-                    let sprite = pack
-                        .layer_names
-                        .get(&face.layer)
-                        .and_then(|name| gui.atlas.sprites.get(name))?;
+                    let sprite = layer_sprites.get(&face.layer)?;
                     Some(super::minecarts::PreparedModelFace::new(
                         &face.quad, *sprite,
                     ))
                 })
                 .collect();
             translucent[index] = model.faces.iter().any(|face| face.translucent);
-            bounds[index] = face_bounds(&prepared);
+            bounds[index] = face_bounds(
+                prepared
+                    .iter()
+                    .flat_map(super::minecarts::PreparedModelFace::positions),
+            );
             slots[index] = Some(prepared);
         }
+        let states = (0..pack.assets.registry.len() as u32)
+            .map(|state| Self::bind_state(pack, &layer_sprites, BlockStateId(state), None))
+            .collect();
         Self {
             generation: pack.render.generation,
             slots,
@@ -124,14 +131,70 @@ impl StandaloneGeometry {
             bounds,
             fluid_looks: Default::default(),
             states_from: catalog.model_count(),
-            states: std::cell::OnceCell::new(),
-            state_count: pack.assets.registry.len(),
+            states,
+        }
+    }
+
+    /// Block state `id` as one model: the blockstate file's parts at `BLOCK_MODEL_SEED` with
+    /// each tinted face holding the block's default tint (no position) in its colour, bound to
+    /// its atlas regions, plus `special`'s bounds when the state also draws with a special
+    /// renderer.
+    fn bind_state(
+        pack: &super::PackResources,
+        layer_sprites: &FxHashMap<u32, Rect>,
+        id: BlockStateId,
+        special: Option<[[f32; 3]; 2]>,
+    ) -> StateModel {
+        use sunrise_client::models::catalog::BakedFace;
+        let mut faces = Vec::new();
+        let mut prepared = Vec::new();
+        let mut tints = FxHashMap::default();
+        let grass = pack.item_renderer.grass_color(0.5, 1.0) as u32;
+        let default_tint = |index| pack.context.tables.default_tint(id, index, grass);
+        if let Ok(models) = pack
+            .render
+            .model_catalog
+            .collect_seeded(id, Game::BLOCK_MODEL_SEED)
+        {
+            for face in models.iter().flat_map(|(_, model)| &model.faces) {
+                let mut quad = face.quad.clone();
+                if let Some(tint) = default_tint(quad.tint_index) {
+                    tints.insert(quad.tint_index, tint);
+                    let base = quad.color.map_or(u32::MAX, |v| v as u32);
+                    quad.color =
+                        Some(sunrise_client::hud_layout::multiply(base, 0xFF00_0000 | tint) as i32);
+                }
+                if let Some(&sprite) = layer_sprites.get(&face.layer) {
+                    prepared.push(super::minecarts::PreparedModelFace::new(&quad, sprite));
+                }
+                faces.push(BakedFace::new(
+                    quad,
+                    face.layer,
+                    face.opaque,
+                    face.translucent,
+                    None,
+                ));
+            }
+        }
+        let corners = special.into_iter().flatten();
+        let bounds = face_bounds(
+            faces
+                .iter()
+                .flat_map(|face| face.quad.positions)
+                .chain(corners),
+        );
+        StateModel {
+            faces,
+            prepared,
+            tints,
+            special: special.is_some(),
+            bounds,
         }
     }
 
     pub(super) fn instance_slot(&self, slot: u32) -> Option<InstanceSlot> {
         if let Some(state) = slot.checked_sub(self.states_from) {
-            let model = self.states.get()?.get(state as usize)?.get()?;
+            let model = self.states.get(state as usize)?;
             return Some(InstanceSlot {
                 translucent: false,
                 state: true,
@@ -148,38 +211,9 @@ impl StandaloneGeometry {
         })
     }
 
-    /// The slot of block state `state`, resolved the first time with `resolve`: its faces,
-    /// and the box of what its special renderer draws when it has one.
-    pub(super) fn state_slot(
-        &self,
-        state: u32,
-        resolve: impl FnOnce() -> (
-            Vec<sunrise_client::models::catalog::BakedFace>,
-            Option<[[f32; 3]; 2]>,
-        ),
-    ) -> Option<u32> {
-        let states = self.states.get_or_init(|| {
-            std::iter::repeat_with(Default::default)
-                .take(self.state_count)
-                .collect()
-        });
-        let model = states.get(state as usize)?.get_or_init(|| {
-            let (faces, special) = resolve();
-            let corners = special.into_iter().flatten();
-            let bounds = point_bounds(
-                faces
-                    .iter()
-                    .flat_map(|face| face.quad.positions)
-                    .chain(corners),
-            )
-            .unwrap_or_default();
-            StateModel {
-                faces,
-                special: special.is_some(),
-                bounds,
-            }
-        });
-        (!model.faces.is_empty() || model.special).then_some(self.states_from + state)
+    /// A state's prepared seed-42 faces and atlas bindings.
+    fn state_model(&self, state: BlockStateId) -> Option<&StateModel> {
+        self.states.get(state.0 as usize)
     }
 
     /// The baked faces of a block state's slot.
@@ -188,7 +222,7 @@ impl StandaloneGeometry {
         slot: u32,
     ) -> Option<&[sunrise_client::models::catalog::BakedFace]> {
         let state = slot.checked_sub(self.states_from)?;
-        Some(&self.states.get()?.get(state as usize)?.get()?.faces)
+        Some(&self.states.get(state as usize)?.faces)
     }
 
     pub(super) fn faces(&self, slot: u32) -> Option<&[super::minecarts::PreparedModelFace]> {
@@ -199,9 +233,8 @@ impl StandaloneGeometry {
     pub(super) fn fluid_look(
         &self,
         slot: u32,
-        resolve: impl FnOnce()
-            -> Result<super::native_fluid_render::FluidBoxLook, mod_api::FluidBoxError>,
-    ) -> Result<super::native_fluid_render::FluidBoxLook, mod_api::FluidBoxError> {
+        resolve: impl FnOnce() -> Option<super::native_fluid_render::FluidBoxLook>,
+    ) -> Option<super::native_fluid_render::FluidBoxLook> {
         let mut looks = self.fluid_looks.borrow_mut();
         let at = slot as usize;
         if looks.len() <= at {
@@ -263,7 +296,7 @@ impl ViewDistances {
         let mut by_block: FxHashMap<&str, f64> = FxHashMap::default();
         let mut by_state = FxHashMap::default();
         for (state, block) in states {
-            if block.starts_with("minecraft:") {
+            if !mod_api::__private::is_content_block(block) {
                 continue;
             }
             let distance = *by_block.entry(block).or_insert_with(|| {
@@ -346,6 +379,8 @@ pub struct BlockEntityDraw {
     parent_poses: Vec<(Mat4, Option<ModelNormals>, Option<DVec3>)>,
     lights: (Vec3, Vec3),
     vertices: Vec<Vertex>,
+    /// Earlier frame vertices are not owned by this draw and must keep their offsets.
+    first_vertex: usize,
     kept: bool,
     /// Where each turning part starts in `vertices` (`spin`), and where the
     /// parts standing still start again (`still`, none).
@@ -362,6 +397,10 @@ pub struct BlockEntityDraw {
     /// in the vertex stream those paths and their spans already cover.
     prepared: bool,
     records: Vec<PreparedRecord>,
+    /// Device-derived vertex and index capacity for the combined entity batch.
+    quad_capacity: sunrise_client::gfx::EntityQuadCapacity,
+    /// Complete quads already reserved by other draw sources in the same combined batch.
+    reserved_quads: usize,
 }
 
 /// One element (`block`, `model`, `terrain_model`, `cube` or `quad`) drawn under
@@ -432,15 +471,23 @@ impl PlacementLight<'_> {
         }
         let light_turn = turn.map(|m| m.as_dmat4());
         for e in elements {
+            let lo = e.start - start;
+            let hi = (e.end - start).min(vertices.len());
+            if lo >= hi {
+                continue;
+            }
             let centre = light_turn.map_or(e.centre, |m| m.transform_point3(e.centre));
             let ambient = self.level.sample(centre).unwrap_or(e.ambient);
-            let span = &mut vertices[e.start - start..e.end - start];
+            let span = &mut vertices[lo..hi];
             LitElement::apply_light(span, ambient);
             if turn.is_none()
                 && let LightPass::Fresh(Some(kept)) = &mut self.pass
             {
-                for (kept, drawn) in kept[e.start..e.end].iter_mut().zip(span) {
-                    kept.light = drawn.light;
+                let kept_end = e.end.min(kept.len());
+                if e.start < kept_end {
+                    for (kept, drawn) in kept[e.start..kept_end].iter_mut().zip(span) {
+                        kept.light = drawn.light;
+                    }
                 }
             }
         }
@@ -530,6 +577,10 @@ fn place_geometry(
     let mut start = 0;
     let mut spin: Option<Spin> = None;
     for (end, next_spin) in spins.iter().copied().chain([(vertices.len(), None)]) {
+        if start >= vertices.len() {
+            break;
+        }
+        let end = end.min(vertices.len());
         let span = &mut vertices[start..end];
         if !span.is_empty() {
             let turn = spin.map(|s| s.turn(time));
@@ -587,6 +638,7 @@ impl BlockEntityDraw {
             local_light_translation: None,
             parent_poses: Vec::new(),
             lights,
+            first_vertex: vertices.len(),
             vertices,
             kept: false,
             spins: Vec::new(),
@@ -595,7 +647,40 @@ impl BlockEntityDraw {
             lit: Vec::new(),
             prepared: false,
             records: Vec::new(),
+            quad_capacity: sunrise_client::gfx::EntityQuadCapacity::default_device(),
+            reserved_quads: 0,
         }
+    }
+
+    /// Sets the renderer-owned combined entity quad capacity and quads already reserved by other
+    /// draw sources in the same batch.
+    pub(super) fn with_quad_budget(
+        mut self,
+        quad_capacity: sunrise_client::gfx::EntityQuadCapacity,
+        reserved_quads: usize,
+    ) -> Self {
+        self.quad_capacity = quad_capacity;
+        self.reserved_quads = reserved_quads;
+        self
+    }
+
+    /// Device-derived entity quad capacity and reserved quad count for this draw.
+    pub(super) fn quad_budget(&self) -> (sunrise_client::gfx::EntityQuadCapacity, usize) {
+        (self.quad_capacity, self.reserved_quads)
+    }
+
+    /// Opens the renderer-owned scoped quad submission sink for this draw.
+    pub(super) fn quad_scope(&mut self) -> sunrise_client::gfx::EntityQuadScope<'_> {
+        sunrise_client::gfx::EntityQuadScope::new(
+            &mut self.vertices,
+            self.quad_capacity,
+            self.reserved_quads,
+        )
+    }
+
+    /// Number of vertices currently recorded in this draw.
+    pub(super) fn vertices_len(&self) -> usize {
+        self.vertices.len()
     }
 
     /// This frame on the client's animation clock (`Game::animation_time`),
@@ -710,7 +795,8 @@ impl BlockEntityDraw {
     }
 
     fn finish_light(&mut self, level: Option<&LevelLight<'_>>) {
-        super::draw_boundary::truncate(&mut self.vertices, super::draw_boundary::MAX_DRAW_VERTICES);
+        let first = self.first_vertex;
+        self.quad_scope().truncate_to_budget_since(first);
         for e in &self.lit {
             let end = e.end.min(self.vertices.len());
             if e.start >= end {
@@ -914,14 +1000,6 @@ impl BlockEntityDraw {
     ) {
         let pose = self.pose();
         let at = corners.map(|c| pose.transform_point3(Vec3::from_array(c)));
-        if !super::draw_boundary::quad_allowed(
-            at.map(|p| p.to_array()),
-            uv,
-            self.vertices.len(),
-            super::draw_boundary::MAX_DRAW_VERTICES,
-        ) {
-            return;
-        }
         let normal = (at[1] - at[0]).cross(at[2] - at[0]).normalize_or_zero();
         let normal = if normal == Vec3::ZERO {
             (at[2] - at[1]).cross(at[3] - at[1]).normalize_or(Vec3::Y)
@@ -940,37 +1018,43 @@ impl BlockEntityDraw {
         } else {
             (shaded(tint, diffuse(normal, self.lights)), [0; 4])
         };
-        for (p, uv) in at.into_iter().zip(uv) {
-            self.vertices.push(Vertex {
-                pos: p.to_array(),
-                uv: [
-                    sprite.u0 + (sprite.u1 - sprite.u0) * uv[0],
-                    sprite.v0 + (sprite.v1 - sprite.v0) * uv[1],
-                ],
-                layer: 0,
-                color,
-                light: if self.unlit {
-                    sunrise_client::mobs::render::FULL_BRIGHT
-                } else {
-                    light
-                },
-                normal,
-                glint_uv: [0.0, 0.0],
-            });
-        }
+        let light = if self.unlit {
+            sunrise_client::mobs::render::FULL_BRIGHT
+        } else {
+            light
+        };
+        let quad = std::array::from_fn(|i| Vertex {
+            pos: at[i].to_array(),
+            uv: [
+                sprite.u0 + (sprite.u1 - sprite.u0) * uv[i][0],
+                sprite.v0 + (sprite.v1 - sprite.v0) * uv[i][1],
+            ],
+            layer: 0,
+            color,
+            light,
+            normal,
+            glint_uv: [0.0, 0.0],
+        });
+        let _ = self.quad_scope().submit_quad(quad);
     }
 
     fn model(&mut self, faces: &[super::minecarts::PreparedModelFace], tint: u32) {
         let ambient = self.element_ambient();
         let start = self.vertices.len();
+        let room = self.quad_scope().remaining_quads();
         super::minecarts::emit_model_faces(
-            faces.iter().copied().map(|face| (face, ambient)),
+            faces.iter().take(room).copied().map(|face| (face, ambient)),
             self.pose(),
             true,
             |index| (index >= 0).then_some(tint & 0xFF_FFFF),
             &mut self.vertices,
         );
-        super::minecarts::scale_tint_alpha(&mut self.vertices[start..], faces, tint);
+        super::minecarts::scale_tint_alpha(
+            &mut self.vertices[start..],
+            &faces[..faces.len().min(room)],
+            tint,
+        );
+        self.quad_scope().retain_valid_since(start);
         self.drawn_since(start, Self::cell_centre, self.light & 0xffff);
     }
 }
@@ -1098,13 +1182,21 @@ impl KeptGeometry {
         let start = draw.vertices.len();
         if let Some(entry) = self.get(pos, key, revision, draw.game_time) {
             if visible(entry.bounds, start) {
+                let take = entry
+                    .vertices
+                    .len()
+                    .min(draw.quad_scope().remaining_quads().saturating_mul(4))
+                    / 4
+                    * 4;
                 if entry.spins.is_empty() {
-                    draw.vertices.extend(entry.vertices.iter().map(|v| Vertex {
-                        pos: (Vec3::from_array(v.pos) + origin).to_array(),
-                        ..*v
-                    }));
+                    draw.vertices
+                        .extend(entry.vertices[..take].iter().map(|v| Vertex {
+                            pos: (Vec3::from_array(v.pos) + origin).to_array(),
+                            ..*v
+                        }));
+                    draw.quad_scope().retain_valid_since(start);
                 } else {
-                    draw.vertices.extend_from_slice(&entry.vertices);
+                    draw.vertices.extend_from_slice(&entry.vertices[..take]);
                     place_geometry(
                         &mut draw.vertices[start..],
                         &entry.spins,
@@ -1116,6 +1208,7 @@ impl KeptGeometry {
                             pass: LightPass::Retained,
                         }),
                     );
+                    draw.quad_scope().retain_valid_since(start);
                 }
             }
             return;
@@ -1143,8 +1236,12 @@ impl KeptGeometry {
             e.start -= start;
             e.end -= start;
         }
+        // The scope drops quads only once it is full, so a draw that leaves room dropped none:
+        // only a complete extraction is retained. A full one may have been cut short, and a
+        // later frame with more room must extract it again.
+        let complete = draw.quad_scope().has_room();
         let vertices = &mut draw.vertices[start..];
-        let (spins, lit, cached) = if draw.kept {
+        let (spins, lit, cached) = if draw.kept && complete {
             // Keep the intrinsic floors, not the sampled light written into the frame.
             let entry = self.keep(
                 pos,
@@ -1223,6 +1320,35 @@ impl Game<'_> {
             })
         })
     }
+    /// Device-derived combined entity quad capacity for this frame's renderer.
+    pub(super) fn entity_quad_capacity(&self) -> sunrise_client::gfx::EntityQuadCapacity {
+        self.renderer.as_ref().map_or_else(
+            sunrise_client::gfx::EntityQuadCapacity::default_device,
+            sunrise_client::gfx::Renderer::entity_quad_capacity,
+        )
+    }
+
+    /// Complete quads already occupied by other draw sources in the same combined entity batch
+    /// (GPU-posed entities and outlines, see-through text, shadow-only player geometry, and the
+    /// active frame's additive, hand, or entity streams outside the current target buffer).
+    pub(super) fn entity_batch_reserved_quads(&self) -> usize {
+        let (posed, outlined) = {
+            let skin = self.skin_frame.borrow();
+            (
+                (skin.vertices / 4) as usize,
+                (skin.outline_vertices / 4) as usize,
+            )
+        };
+        let see_through = self.see_through_vertices.len() / 4;
+        let shadow_only = self.shadow_only_vertices.borrow().len() / 4;
+        self.frame_batch_reserved_quads
+            .get()
+            .saturating_add(posed)
+            .saturating_add(outlined)
+            .saturating_add(see_through)
+            .saturating_add(shadow_only)
+    }
+
     /// `native_block_entity_submit` for each of `blocks` (paired with whether its section is
     /// eye-visible, drawn by no vanilla renderer) whose block entity is a mod's, closer than
     /// `BlockEntityRenderer.getViewDistance` to the camera (`shouldRender`) and with its bounds
@@ -1246,6 +1372,7 @@ impl Game<'_> {
             local_light_translation: None,
             parent_poses: Vec::new(),
             lights: diffuse_lights(self.nether_lighting()),
+            first_vertex: out.len(),
             vertices: std::mem::take(out),
             kept: false,
             spins: Vec::new(),
@@ -1259,6 +1386,8 @@ impl Game<'_> {
                 self.standalone_geometry.generation(),
             ),
             records: Vec::new(),
+            quad_capacity: self.entity_quad_capacity(),
+            reserved_quads: self.entity_batch_reserved_quads(),
         };
         let now = self.world.game_time;
         let mut kept = self.kept_block_entities.borrow_mut();
@@ -1539,6 +1668,7 @@ impl Game<'_> {
         self.text_patches.borrow_mut().append(&mut batch.patches);
         let light = if glowing { 240 | 240 << 8 } else { draw.light };
         let pose = draw.pose();
+        let mut scope = draw.quad_scope();
         for (i, quad) in batch.vertices.as_chunks::<6>().0.iter().enumerate() {
             let lift = if outline.is_some() && i * 6 >= front {
                 TEXT_OVER_OUTLINE
@@ -1546,28 +1676,19 @@ impl Game<'_> {
                 0.0
             };
             let corners = sunrise_client::text_display::CORNERS.map(|c| quad[c]);
-            let at = corners.map(|v| {
-                pose.transform_point3(Vec3::new(v.pos[0], v.pos[1], v.depth + lift))
-                    .to_array()
+            let submitted = corners.map(|v| Vertex {
+                pos: pose
+                    .transform_point3(Vec3::new(v.pos[0], v.pos[1], v.depth + lift))
+                    .to_array(),
+                uv: v.uv,
+                layer: 0,
+                color: v.color,
+                light,
+                normal: [0; 4],
+                glint_uv: [0.0, 0.0],
             });
-            if !super::draw_boundary::quad_allowed(
-                at,
-                corners.map(|v| v.uv),
-                draw.vertices.len(),
-                super::draw_boundary::MAX_DRAW_VERTICES,
-            ) {
-                continue;
-            }
-            for (pos, v) in at.into_iter().zip(corners) {
-                draw.vertices.push(Vertex {
-                    pos,
-                    uv: v.uv,
-                    layer: 0,
-                    color: v.color,
-                    light,
-                    normal: [0; 4],
-                    glint_uv: [0.0, 0.0],
-                });
+            if !scope.submit_quad(submitted) {
+                break;
             }
         }
         width.ceil()
@@ -1621,106 +1742,50 @@ impl Game<'_> {
         all
     }
 
-    /// Draws block `block`'s model (`mymod:cog`, any block with a model) in
-    /// the state with `properties` (`[("axis", "x")]`, the rest default)
-    /// under `draw`'s pose, as vanilla's `submitBlockModel` draws a block in
-    /// an entity's place: a block's baked model, with its default tints. A
-    /// moving part that is no block is a standalone model
-    /// (`native_draw_model`). False for an unknown block or property.
+    /// Draws resolved block state `state`'s baked model under `draw`'s pose
+    /// with its default tints, matching vanilla's
+    /// `SubmitNodeCollector.submitBlockModel` (`BlockEntityDrawContext::block`
+    /// lowers an API `BlockState` to `BlockStateId` before calling here). A
+    /// moving part that is not a block is a standalone model
+    /// (`native_draw_model`). Returns `false` without emitting vertices when
+    /// `state` is not in the active block registry.
     pub(super) fn native_draw_block(
         &self,
         draw: &mut BlockEntityDraw,
-        block: &str,
-        properties: &[(&str, &str)],
+        state: BlockStateId,
     ) -> bool {
-        let registry = &self.pack.assets.registry;
-        let Some(mut state) = registry
-            .default_state(block)
-            .and_then(|id| registry.state(id))
-            .cloned()
-        else {
+        let Some(model) = self.resolved_block_model(state) else {
             return false;
         };
-        for (key, value) in properties {
-            match state.properties.get_mut(*key) {
-                Some(v) => *v = (*value).to_owned(),
-                None => return false,
-            }
-        }
-        let Some(id) = registry.id(&state) else {
-            return false;
-        };
-        let pose = draw.pose();
         let start = draw.vertices.len();
-        self.block_model_vertices(
-            id,
-            Self::BLOCK_MODEL_SEED,
-            pose,
-            draw.element_ambient(),
+        let light = draw.element_ambient();
+        super::minecarts::emit_model_faces(
+            model.prepared.iter().map(|&face| (face, light)),
+            draw.pose(),
             true,
+            |index| model.tints.get(&index).copied(),
             &mut draw.vertices,
         );
         draw.drawn_since(start, BlockEntityDraw::cell_centre, draw.light & 0xffff);
         true
     }
 
-    /// Block state `state` as one model: what `native_draw_block` draws, the blockstate file's
-    /// parts for its properties at seed 42, each tinted face holding the block's default tint
-    /// (no position) in its colour. Resolved once per state in this generation.
+    /// Resolved block state `id` as one model: what `native_draw_block` draws
+    /// for a `BlockState` lowered to `BlockStateId`, combining the blockstate
+    /// file's parts at `BLOCK_MODEL_SEED` (42) with each tinted face holding
+    /// the block's default tint (no position) in its colour. Bound when the generation is
+    /// prepared.
     pub(super) fn native_block_state_model(
         &self,
         id: BlockStateId,
     ) -> Result<ModelRef, ModelError> {
-        let slot = self
-            .standalone_geometry
-            .state_slot(id.0, || {
-                use sunrise_client::models::catalog::BakedFace;
-                // `BuiltInBlockModels.addDefaults`: these blocks' states are a composite of the
-                // block-state model and the special renderer, drawn with default data.
-                let special = self
-                    .res
-                    .facts()
-                    .get(id)
-                    .name
-                    .strip_prefix("minecraft:")
-                    .is_some_and(super::text_displays::has_special_model)
-                    .then(|| {
-                        let mut drawn = Vec::new();
-                        self.special_block_model(id, Mat4::IDENTITY, 0, &mut drawn);
-                        point_bounds(drawn.iter().map(|vertex| vertex.pos))
-                    })
-                    .flatten();
-                // An unknown state resolves to no faces, which `state_slot` refuses.
-                let Ok(models) = self
-                    .pack
-                    .render
-                    .model_catalog
-                    .collect_seeded(id, Self::BLOCK_MODEL_SEED)
-                else {
-                    return (Vec::new(), special);
-                };
-                let default_tint = self.default_block_tint(id);
-                let faces = models
-                    .iter()
-                    .flat_map(|(_, model)| &model.faces)
-                    .map(|face| {
-                        let mut quad = face.quad.clone();
-                        if let Some(tint) = default_tint(quad.tint_index) {
-                            let base = quad.color.map_or(u32::MAX, |v| v as u32);
-                            quad.color = Some(sunrise_client::hud_layout::multiply(
-                                base,
-                                0xFF00_0000 | tint,
-                            ) as i32);
-                        }
-                        BakedFace::new(quad, face.layer, face.opaque, face.translucent, None)
-                    })
-                    .collect();
-                (faces, special)
-            })
+        let _ = self
+            .resolved_block_model(id)
+            .filter(|model| !model.faces.is_empty() || model.special)
             .ok_or(ModelError::UnknownModel)?;
         Ok(mod_api::__private::built::model_ref(
             self.standalone_geometry.generation(),
-            slot,
+            self.standalone_geometry.states_from + id.0,
         ))
     }
 
@@ -1728,8 +1793,10 @@ impl Game<'_> {
     /// draws with default data, after the block-state model's faces, under the same pose and
     /// packed `light`. It takes no tint and no hidden faces; `color` (`0xAARRGGBB`) multiplies
     /// it, and below opaque it blends as `entityTranslucent` does. The end portal and gateway
-    /// draw their starfield whatever `color` is, as `rendertype_end_portal` does. Appends
-    /// nothing and returns `false` when `pose` carries a vertex out of the finite range.
+    /// draw their starfield whatever `color` is, as `rendertype_end_portal` does. Non-finite
+    /// quads are skipped individually and the contribution stays within `capacity` minus
+    /// `reserved_quads`.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn special_model_part(
         &self,
         state: BlockStateId,
@@ -1737,17 +1804,17 @@ impl Game<'_> {
         light: u32,
         color: u32,
         out: &mut Vec<Vertex>,
-    ) -> bool {
+        capacity: sunrise_client::gfx::EntityQuadCapacity,
+        reserved_quads: usize,
+    ) {
         use sunrise_client::block_entity_render::{END_GATEWAY_LAYER, END_PORTAL_LAYER};
+        if !sunrise_client::gfx::EntityQuadScope::new(out, capacity, reserved_quads).has_room() {
+            return;
+        }
         let start = out.len();
         self.special_block_model(state, pose, super::minecarts::special_light(light), out);
-        if out[start..]
-            .iter()
-            .any(|vertex| vertex.pos.iter().any(|c| !c.is_finite()))
-        {
-            out.truncate(start);
-            return false;
-        }
+        sunrise_client::gfx::EntityQuadScope::new(out, capacity, reserved_quads)
+            .retain_valid_since(start);
         if color != u32::MAX {
             for vertex in &mut out[start..] {
                 vertex.color =
@@ -1761,7 +1828,11 @@ impl Game<'_> {
         if color >> 24 != 0xFF && !portal {
             sunrise_client::gfx::mark_oit(&mut out[start..]);
         }
-        true
+    }
+
+    /// Share the same prepared state model for terrain submissions and block-entity draws.
+    fn resolved_block_model(&self, id: BlockStateId) -> Option<&StateModel> {
+        self.standalone_geometry.state_model(id)
     }
 
     /// The baked faces a slot draws through the terrain materials: a standalone model's, or a
@@ -1841,25 +1912,18 @@ impl Game<'_> {
 
     /// Entity model layer `layer` baked into its `ModelPart` tree, each part
     /// at its pose, as `EntityModelSet.bakeLayer` bakes it: one a native mod
-    /// registered (`native_register_layer_definitions`), or vanilla's, by the name
-    /// `entity-models.json` gives it (`minecraft:zombie#main`,
-    /// `minecraft:player#main`). The tree is the caller's own copy: bake it
-    /// once, as a renderer does, and set its parts' poses each frame. None
-    /// for a layer neither has. A vanilla layer no mob has (a player's, a
-    /// chest's) is read from the resources each call, so slow. API
-    /// @API:model_layers@.
+    /// registered (`native_register_layer_definitions`), or a vanilla layer by
+    /// the name the prepared `entity-models.json` gives it
+    /// (`minecraft:zombie#main`, `minecraft:player#main`, `minecraft:chest#main`).
+    /// Vanilla layers are indexed at client resource load and reload, so `bake_layer` never reads
+    /// from disk. The tree is the caller's own copy: bake it once, as a
+    /// renderer does, and set its parts' poses each frame. None for a layer
+    /// neither has. API @API:model_layers@.
     pub(super) fn bake_layer(&self, layer: &str) -> Option<ModelPart> {
         if let Some(definition) = model_layers::registered(layer) {
             return Some(definition.bake_root());
         }
-        let key = layer.strip_prefix("minecraft:")?;
-        if let Some(part) = self.res.mob_types().values().find_map(|t| t.layer(key)) {
-            return Some(model_layers::from_part(part));
-        }
-        let models = sunrise_client::mobs::EntityModelDocument::load(&self.vanilla_root()).ok()?;
-        models
-            .model(layer)
-            .map(|part| model_layers::from_part(&part))
+        self.entity_models.layers.get(layer).cloned()
     }
 
     /// Draws `stack` under `draw`'s pose as an item is drawn in the world
@@ -1976,6 +2040,7 @@ mod tests {
             parent_poses: Vec::new(),
             lights: diffuse_lights(false),
             vertices: Vec::new(),
+            first_vertex: 0,
             kept: false,
             spins: Vec::new(),
             level_lit: false,
@@ -1983,6 +2048,8 @@ mod tests {
             lit: Vec::new(),
             prepared: false,
             records: Vec::new(),
+            quad_capacity: sunrise_client::gfx::EntityQuadCapacity::default_device(),
+            reserved_quads: 0,
         }
     }
 
@@ -2047,6 +2114,29 @@ mod tests {
             surface.quad(corners, bad_uv, sprite(), 0xFFFFFF);
         }
         assert_eq!(surface.into_vertices().len(), 4);
+    }
+
+    #[test]
+    fn an_overfull_draw_keeps_earlier_entity_vertices_and_offsets() {
+        use sunrise_client::gfx::EntityQuadCapacity;
+
+        let capacity =
+            EntityQuadCapacity::from_max_buffer_size(EntityQuadCapacity::VERTEX_QUAD_BYTES * 2);
+        let mut draw = BlockEntityDraw::posed(
+            0.0,
+            0,
+            0,
+            [0; 3],
+            Mat4::IDENTITY,
+            diffuse_lights(false),
+            [marker(1.0); 8].to_vec(),
+        )
+        .with_quad_budget(capacity, 1);
+        // An engine-backed helper can append its geometry before finish_light budgets this draw.
+        draw.vertices.extend([marker(2.0); 4]);
+        let out = draw.into_vertices();
+        assert_eq!(out.len(), 8);
+        assert!(out.iter().all(|vertex| vertex.pos[0] == 1.0));
     }
 
     #[test]
@@ -2637,12 +2727,35 @@ mod tests {
             );
             assert_eq!(bytes(&surface.vertices), before);
 
-            // A failed resource build never publishes a replacement, so the handle remains valid.
-            let missing = game.options.resources.join("absent-model-test-root");
-            let listeners = game.register_client_reload_listeners();
-            assert!(
-                super::super::packs::stage_pack(
-                    &missing,
+            // A bad definition set must not replace the live generations, even if it is
+            // valid JSON and fails only while decoding a nested model part.
+            let active_layers = [
+                "minecraft:leash_knot#main",
+                "minecraft:standing_banner#main",
+                "minecraft:standing_banner#flag",
+                "minecraft:chest#main",
+            ]
+            .map(|name| (name, game.bake_layer(name).unwrap()));
+            let bad_root = tempfile::tempdir().unwrap();
+            let path = bad_root.path().join("entity-models.json");
+            for (document, reason) in [
+                ("[]", "top-level JSON object"),
+                ("{}", "no entity model definitions"),
+                (
+                    r#"{"minecraft:chest#main": {"children": {"lid": {
+                        "polygons": [[[0,0,0,0], [1,0,0,1,0], [1,1,0,1,1], [0,1,0,0,1]]]
+                    }}}}"#,
+                    "layer minecraft:chest#main: child lid: polygons",
+                ),
+            ] {
+                std::fs::write(&path, document).unwrap();
+                let listeners = game.register_client_reload_listeners(
+                    &game
+                        .capture_candidate_settings(&game.options.resources)
+                        .unwrap(),
+                );
+                let error = super::super::packs::stage_pack(
+                    bad_root.path(),
                     &[],
                     &[],
                     &game.mods,
@@ -2655,8 +2768,20 @@ mod tests {
                     false,
                     &super::super::Progress::new(),
                 )
-                .is_err()
-            );
+                .err()
+                .expect("a malformed definition set must fail staging");
+                let error = error.to_string();
+                assert!(
+                    error.contains("loading vanilla entity model definitions"),
+                    "{error}"
+                );
+                assert!(error.contains(reason), "{error}");
+                for (name, layer) in &active_layers {
+                    assert_eq!(game.bake_layer(name).as_ref(), Some(layer), "{name}");
+                }
+                assert!(game.entity_models.leash_knot.is_some());
+                assert!(game.entity_models.banner.is_some());
+            }
             assert_eq!(
                 game.native_draw_model(&mut surface, model, 0xFF12_3456),
                 Ok(())
@@ -2664,7 +2789,11 @@ mod tests {
             let before = bytes(&surface.vertices);
             // Identical texture bytes still produce a new model generation.
             let old_generation = game.pack.render.generation;
-            let listeners = game.register_client_reload_listeners();
+            let listeners = game.register_client_reload_listeners(
+                &game
+                    .capture_candidate_settings(&game.options.resources)
+                    .unwrap(),
+            );
             let staged = super::super::packs::stage_pack(
                 &game.options.resources,
                 &[],
@@ -3000,29 +3129,41 @@ mod tests {
     /// furthest.
     #[test]
     fn view_distances_are_asked_once_per_mod_block() {
-        let states = [
-            (1, "minecraft:stone"),
-            (2, "mymod:beam"),
-            (3, "mymod:beam"),
-            (4, "mymod:screw"),
-            (5, "mymod:gear"),
-        ];
-        let mut asked = Vec::new();
-        let distances = ViewDistances::of_states(states.into_iter(), |block| {
-            asked.push(block.to_owned());
-            match block {
-                "mymod:beam" => 256.0,
-                "mymod:screw" => f64::NAN,
-                _ => VIEW_DISTANCE,
-            }
+        mod_platform::testing::with_mods(Default::default(), || {
+            mod_api::__private::install_content_owners(
+                [
+                    ("minecraft:p3_beam", "mymod"),
+                    ("mymod:screw", "mymod"),
+                    ("mymod:gear", "mymod"),
+                ],
+                [],
+                [],
+                [],
+            );
+            let states = [
+                (1, "minecraft:stone"),
+                (2, "minecraft:p3_beam"),
+                (3, "minecraft:p3_beam"),
+                (4, "mymod:screw"),
+                (5, "mymod:gear"),
+            ];
+            let mut asked = Vec::new();
+            let distances = ViewDistances::of_states(states.into_iter(), |block| {
+                asked.push(block.to_owned());
+                match block {
+                    "minecraft:p3_beam" => 256.0,
+                    "mymod:screw" => f64::NAN,
+                    _ => VIEW_DISTANCE,
+                }
+            });
+            assert_eq!(asked, ["minecraft:p3_beam", "mymod:screw", "mymod:gear"]);
+            assert_eq!(distances.of(2), 256.0);
+            assert_eq!(distances.of(3), 256.0);
+            assert_eq!(distances.of(4), VIEW_DISTANCE);
+            assert_eq!(distances.of(5), VIEW_DISTANCE);
+            assert_eq!(distances.of(1), VIEW_DISTANCE);
+            assert_eq!(distances.furthest, 256.0);
         });
-        assert_eq!(asked, ["mymod:beam", "mymod:screw", "mymod:gear"]);
-        assert_eq!(distances.of(2), 256.0);
-        assert_eq!(distances.of(3), 256.0);
-        assert_eq!(distances.of(4), VIEW_DISTANCE);
-        assert_eq!(distances.of(5), VIEW_DISTANCE);
-        assert_eq!(distances.of(1), VIEW_DISTANCE);
-        assert_eq!(distances.furthest, 256.0);
         let none = ViewDistances::of_states(std::iter::empty(), |_| unreachable!());
         assert_eq!(none.furthest, VIEW_DISTANCE);
     }
@@ -3283,6 +3424,143 @@ mod tests {
             faces[0] = Some(mod_api::CubeFace::new("mymod:block/missing"));
             assert!(!drawn.cube([0.0; 3], [16.0; 3], faces, 0xFFFFFF));
             assert_eq!(surface.vertices.len(), 4, "the casing face alone");
+        });
+    }
+
+    /// `BlockEntityDrawContext::block` / `Game::native_draw_block` draws a resolved
+    /// `BlockState`'s baked block model under the current pose with its default tints,
+    /// and rejects out-of-range states with `false` without appending geometry.
+    #[test]
+    #[ignore = "daily"]
+    fn block_draws_resolved_states_and_rejects_unknown_states() {
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::native_block_entity_draw::tests::block_draws_resolved_states_and_rejects_unknown_states",
+            "SUNRISE_BLOCK_DRAW_STATES_CHILD",
+            &["case"],
+        ) {
+            return;
+        }
+        use super::super::api_values::TryIntoEngine;
+        use super::super::host::draw::GameBlockEntityDrawContext;
+        use mod_api::{BlockEntityDrawContext, BlockState, HostBlockStates, StateConstraint};
+
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let mut surface = draw();
+            assert!(!game.native_draw_block(&mut surface, BlockStateId(u32::MAX)));
+            assert!(surface.vertices.is_empty());
+
+            let log_key = game.block_key("minecraft:oak_log").expect("oak_log key");
+            let states = game.block_states();
+            let log_x = BlockState::of(&states, log_key, &[StateConstraint::new("axis", "x")])
+                .expect("oak_log[axis=x]");
+            let log_y = BlockState::of(&states, log_key, &[StateConstraint::new("axis", "y")])
+                .expect("oak_log[axis=y]");
+            let log_x_id = log_x.try_into_engine(&()).expect("engine id for axis=x");
+            let log_y_id = log_y.try_into_engine(&()).expect("engine id for axis=y");
+
+            let invalid_ordinal = mod_api::__private::block_state_from_ordinal(log_key, u16::MAX);
+            let unknown_block = mod_api::__private::block_state_from_ordinal(
+                mod_api::__private::parts_installation::block_key(u32::MAX),
+                0,
+            );
+            {
+                let mut drawn = GameBlockEntityDrawContext {
+                    game,
+                    surface: &mut surface,
+                };
+                assert!(!drawn.block(invalid_ordinal));
+                assert!(!drawn.block(unknown_block));
+            }
+            assert!(surface.vertices.is_empty());
+
+            let bytes = |vertices: &[Vertex]| bytemuck::cast_slice::<_, u8>(vertices).to_vec();
+            let top_sprite = game.gui.atlas.sprites["block/oak_log_top"];
+            let side_sprite = game.gui.atlas.sprites["block/oak_log"];
+            let face_in_sprite = |quad: &[Vertex], rect: Rect| {
+                quad.iter().all(|v| {
+                    (rect.u0..=rect.u1).contains(&v.uv[0]) && (rect.v0..=rect.v1).contains(&v.uv[1])
+                })
+            };
+
+            let render = |game: &Game<'_>, state: BlockState| {
+                let mut surface = draw();
+                surface.light = 0x7030;
+                {
+                    let mut drawn = GameBlockEntityDrawContext {
+                        game,
+                        surface: &mut surface,
+                    };
+                    assert!(drawn.block(state));
+                }
+                surface
+            };
+
+            // Sprites were bound when the generation was built, not on the first block draw.
+            game.gui.atlas.sprites.remove("block/oak_log_top");
+            let drawn_y = render(game, log_y);
+            game.gui
+                .atlas
+                .sprites
+                .insert("block/oak_log_top".into(), top_sprite);
+            let drawn_x = render(game, log_x);
+
+            let air_key = game.block_key("minecraft:air").unwrap();
+            let air = BlockState::of(&game.block_states(), air_key, &[]).unwrap();
+            assert!(
+                render(game, air).vertices.is_empty(),
+                "valid empty states draw nothing"
+            );
+            assert_eq!(drawn_y.vertices.len(), 24, "upright oak_log has 6 faces");
+            assert_eq!(drawn_x.vertices.len(), 24, "horizontal oak_log has 6 faces");
+            assert!(drawn_y.vertices.iter().all(|v| v.light == 0x7030));
+            assert!(drawn_x.vertices.iter().all(|v| v.light == 0x7030));
+
+            let y_top = drawn_y
+                .vertices
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .find(|q| q.iter().all(|v| v.pos[1] == 1.0))
+                .expect("top face on axis=y");
+            let y_east = drawn_y
+                .vertices
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .find(|q| q.iter().all(|v| v.pos[0] == 11.0))
+                .expect("east face on axis=y");
+            assert!(face_in_sprite(y_top, top_sprite));
+            assert!(face_in_sprite(y_east, side_sprite));
+
+            let x_top = drawn_x
+                .vertices
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .find(|q| q.iter().all(|v| v.pos[1] == 1.0))
+                .expect("top face on axis=x");
+            let x_east = drawn_x
+                .vertices
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .find(|q| q.iter().all(|v| v.pos[0] == 11.0))
+                .expect("east face on axis=x");
+            assert!(face_in_sprite(x_top, side_sprite));
+            assert!(face_in_sprite(x_east, top_sprite));
+
+            for (state_id, drawn) in [(log_y_id, &drawn_y), (log_x_id, &drawn_x)] {
+                let mut expected = Vec::new();
+                game.block_model_vertices(
+                    state_id,
+                    Game::BLOCK_MODEL_SEED,
+                    drawn.pose(),
+                    drawn.element_ambient(),
+                    true,
+                    &mut expected,
+                );
+                assert_eq!(bytes(&drawn.vertices), bytes(&expected));
+            }
         });
     }
 
@@ -3962,6 +4240,50 @@ mod tests {
         // Drawn without keeping: forgotten.
         kept.forget(pos);
         assert!(kept.get(pos, KEY, entity.revision(), 3).is_none());
+    }
+
+    /// A block entity first submitted with room for one quad is drawn as that prefix once, but
+    /// not retained: the next frame with room extracts and draws all of it.
+    #[test]
+    fn a_crowded_first_frame_does_not_keep_its_prefix() {
+        use sunrise_client::gfx::EntityQuadCapacity;
+        let pos = [10, 64, 20];
+        let level = LevelLight {
+            origin: DVec3::from_array(pos.map(f64::from)),
+            light_at: &|_| 0,
+        };
+        let mut kept = KeptGeometry::default();
+        let revision = machine();
+        let submits = std::cell::Cell::new(0);
+        let mut frame = |quads: u64| {
+            let capacity = EntityQuadCapacity::from_max_buffer_size(
+                EntityQuadCapacity::VERTEX_QUAD_BYTES * quads,
+            );
+            let mut draw = draw().with_quad_budget(capacity, 0);
+            kept.render(
+                pos,
+                KEY,
+                revision,
+                &mut draw,
+                Vec3::ZERO,
+                &level,
+                || DEFAULT_BOUNDS,
+                |_, _| true,
+                |draw| {
+                    submits.set(submits.get() + 1);
+                    for _ in 0..2 {
+                        draw.quad(LIGHT_QUAD, [[0.0; 2]; 4], sprite(), 0xFFFFFF);
+                    }
+                    draw.keep();
+                },
+            );
+            draw.vertices.len() / 4
+        };
+        assert_eq!(frame(1), 1, "the crowded frame draws what fits");
+        assert_eq!(frame(8), 2, "an uncrowded one draws all of it");
+        assert_eq!(submits.get(), 2, "the prefix was extracted again, not kept");
+        assert_eq!(frame(1), 1);
+        assert_eq!(submits.get(), 2, "the complete extraction is kept");
     }
 
     #[test]
