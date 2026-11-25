@@ -726,6 +726,10 @@ mod tests {
         use std::sync::Arc;
         use sunrise_client::{chunk::Chunk, mobs::Mob};
         with_game(|game| {
+            // Fluid clips read the tag tables once the world has built them (`native_tag_items`).
+            let root = tempfile::tempdir().unwrap();
+            game.session_lock =
+                Some(sunrise_client::save::SessionLock::acquire(root.path()).unwrap());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -833,6 +837,7 @@ mod tests {
             let stale = EntityRef::new(mod_api::WorldEpoch::new(entity.epoch().get() + 1), 41);
             assert!(stale.pick(game, 5.0, false).is_none());
             assert!(stale.pick(game, 5.0, true).is_none());
+            game.session_lock = None;
         });
     }
 

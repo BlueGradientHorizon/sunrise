@@ -1247,7 +1247,8 @@ impl Game<'_> {
     /// in the resident world `native_level_view_world` reads, with no traversal cell cap.
     /// Out-of-height cells and missing columns read as air without loading chunks. Collider mode
     /// uses `SceneCollisions`'s full registry/context shapes; outline mode returns None when dynamic
-    /// outline geometry has no implementation. Also None for unavailable levels,
+    /// outline geometry has no implementation. Fluid modes report no fluid until the tag
+    /// tables mods read are installed (`native_tag_items`). Also None for unavailable levels,
     /// non-finite endpoints or shape query errors.
     pub(super) fn level_clip(
         &self,
@@ -1290,6 +1291,12 @@ impl Game<'_> {
             ClipFluid::Water => RayFluidMode::Water,
             _ => unreachable!("ClipFluid: unhandled variant"),
         };
+        let tags = self.native_tag_items();
+        let fluid = if tags.is_some() {
+            fluid
+        } else {
+            RayFluidMode::None
+        };
         let result = clip_world_with_fluids(
             rays,
             world,
@@ -1302,14 +1309,7 @@ impl Game<'_> {
                 let fluid_resources = &self.res.motion().fluids;
                 sunrise_client::motion::FluidClip {
                     states: fluid_resources.states(),
-                    items: if self.options.execution_role.is_client() {
-                        self.remote
-                            .as_ref()
-                            .and_then(|r| r.tags.as_ref())
-                            .unwrap_or_else(|| self.items())
-                    } else {
-                        self.items()
-                    },
+                    items: tags.expect("fluid modes are cleared until tags are installed"),
                     shapes: &fluid_resources.shapes,
                 }
             },
@@ -5260,6 +5260,10 @@ pub(super) mod tests {
         use std::sync::Arc;
         use sunrise_client::chunk::Chunk;
         with_game(|game| {
+            // Fluid clips read the tag tables once the world has built them (`native_tag_items`).
+            let root = tempfile::tempdir().unwrap();
+            game.session_lock =
+                Some(sunrise_client::save::SessionLock::acquire(root.path()).unwrap());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -5378,6 +5382,7 @@ pub(super) mod tests {
             assert_eq!(tagged_hit.location[1], 64.0 + h8);
             game.server_items = None;
             assert_eq!(game.world.chunks.len(), 2, "clip loads no chunks");
+            game.session_lock = None;
         });
     }
 
