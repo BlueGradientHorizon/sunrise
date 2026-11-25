@@ -132,7 +132,7 @@ Cushion.wouldSurviveAt	port	crates/sunrise-client/src/cushion.rs::survives
 Cushion.hasAnchorBelow	inline	crates/sunrise-client/src/cushion.rs::survives	anchor scan under the box
 Cushion.isCoveredBySuffocatingBlocks	inline	crates/sunrise-client/src/cushion.rs::survives	per-block suffocating test through PlacementWorld::suffocating
 Cushion.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::cushion_from_nbt	color tag read
-Cushion.get	port	crates/sunrise-client/src/game/entities/pick_entity.rs::Game::entity_pick_result	the pick gives the cushion item in its colour
+Cushion.get	port	crates/sunrise-client/src/game/entities/pick_entity.rs::Game::pick_result_of	the pick gives the cushion item in its colour
 Cushion.applyImplicitComponent	port	crates/sunrise-client/src/game/entities/cushions.rs::Game::place_cushion	colour from the stack's cushion colour data
 HangingEntity.onSyncedDataUpdated	skip:other		client resync of the facing; Sunrise keeps the facing as a field
 HangingEntity.setDirection	skip:other		facing field write; bounds are derived on demand from the facing
