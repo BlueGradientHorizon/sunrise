@@ -6,6 +6,14 @@ impl render::RenderDataSource for Game<'_> {
         self.res.mob_data()
     }
 
+    fn equipment_layers(&self, mob: &Mob) -> Vec<render::Layer> {
+        self.mob_equipment_layers(mob, super::equipment_piece::EquipmentPass::Draw)
+    }
+
+    fn equipment_inventory(&self, mob: &Mob) -> Vec<render::Layer> {
+        self.mob_equipment_layers(mob, super::equipment_piece::EquipmentPass::TextureInventory)
+    }
+
     fn humanoid_setup(&self) -> Option<&dyn anim::HumanoidSetup> {
         mod_api::__private::listened(mod_api::HookId::HumanoidSetupAnim)
             .then_some(self as &dyn anim::HumanoidSetup)
@@ -39,9 +47,7 @@ impl anim::HumanoidSetup for Game<'_> {
 }
 
 impl Game<'_> {
-    /// One adapter for mob and player models. Parts have a finite
-    /// value invariant, so applying the completed listener answer needs no second
-    /// validation pass and cannot overwrite scale or visibility.
+    /// Lends the live pose to listeners at the shared humanoid seam.
     pub(super) fn setup_humanoid_parts(
         &self,
         entity_id: u32,
@@ -50,33 +56,13 @@ impl Game<'_> {
         partial_tick: f32,
         poses: &mut anim::Poses,
     ) {
-        let values = mod_api::HumanoidParts::PARTS.map(|part| {
-            let name = part.model_name();
-            poses
-                .pose_of(name)
-                .map(|pose| [[pose[0], pose[1], pose[2]], [pose[3], pose[4], pose[5]]])
-        });
-        let Some(mut parts) = mod_api::HumanoidParts::new(values) else {
-            return;
-        };
         self.native_humanoid_setup_anim(mod_api::__private::HumanoidSetupAnimCall {
             entity_id,
             entity_type,
             humanoid,
             partial_tick,
             game_time: self.title.is_none().then_some(self.world.game_time),
-            parts: &mut parts,
+            parts: poses,
         });
-        for (part, original) in mod_api::HumanoidParts::PARTS.into_iter().zip(values) {
-            // A listener may replace its whole snapshot, but cannot add a part
-            // this model never had (or write the engine's dummy pose).
-            if original.is_some()
-                && let Some([position, rotation]) = parts.get(part)
-            {
-                let target = poses.get(part.model_name());
-                target[..3].copy_from_slice(&position);
-                target[3..6].copy_from_slice(&rotation);
-            }
-        }
     }
 }

@@ -85,6 +85,40 @@ pub(in crate::game) fn with_meddler(
         with_game(|game| {
             // A server hears these hooks.
             game.options.dedicated = Some(Vec::new());
+            // The command service requires an open server, not just dedicated options.
+            game.lan_host(
+                crate::game::lan::LanSettings {
+                    port: 0,
+                    guest_commands: false,
+                    force_game_mode: false,
+                },
+                sunrise_client::lan::NetConfig {
+                    listen: false,
+                    announce: false,
+                    lod_distance: 0,
+                    ..sunrise_client::lan::NetConfig::lan(0, String::new(), 2)
+                },
+                sunrise_client::lan::hub::HubConfig {
+                    default_game_mode: 0,
+                    guest_commands: false,
+                    force_game_mode: false,
+                    hardcore: false,
+                    view_distance: 2,
+                    simulation_distance: 2,
+                    dimension: game.dim.id().to_owned(),
+                    allow_flight: true,
+                    seed: 0,
+                    max_players: 2,
+                    integrated: true,
+                    levels: game.level_shapes.clone(),
+                    level_seeds: game.levels.runtime.seeds(),
+                },
+            )
+            .unwrap();
+            // Scene-building commands need an operator source: dedicated options do not
+            // grant permission, and this fixture has not opened a world with Allow Commands.
+            game.set_allow_commands(true);
+            game.build_registries();
             test(game, &gate);
         })
     });

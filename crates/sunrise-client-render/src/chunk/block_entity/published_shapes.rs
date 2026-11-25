@@ -8,7 +8,7 @@ use sunrise_core::{
 };
 
 /// The most boxes in one published list: a bound on what a block entity makes every client
-/// receive and keep (vanilla has no such limit; a declared shape table holds 16).
+/// receive and keep (vanilla has no such limit; a declared shape table has no box limit).
 pub const MAX_BOXES: usize = 64;
 /// Where a block entity's published shapes sit in its saved compound and its update tag, the
 /// name no mod's own fields can use (`ModBlockEntity::merge_update_tag` takes it out).
@@ -21,6 +21,21 @@ pub struct PublishedShapes {
     boxes: BlockEntityShapes,
     outline: VoxelShape,
     collision: VoxelShape,
+}
+
+/// A collision shape built from boxes that passed the bounds of a published shape: only
+/// [`CheckedShape::new`] makes one, so whoever holds it needs no second check.
+#[derive(Clone, Debug)]
+pub struct CheckedShape(VoxelShape);
+impl CheckedShape {
+    /// Checks `boxes` against the bounds (at most 64, finite, minimum at most maximum) and
+    /// builds the shape they make.
+    pub fn new(boxes: &[[f64; 6]]) -> Result<Self, BlockEntityShapesError> {
+        PublishedShapes::build(boxes, true).map(Self)
+    }
+    pub fn into_shape(self) -> VoxelShape {
+        self.0
+    }
 }
 
 impl PublishedShapes {
@@ -36,7 +51,10 @@ impl PublishedShapes {
         })
     }
 
-    fn build(boxes: &[[f64; 6]], collision: bool) -> Result<VoxelShape, BlockEntityShapesError> {
+    /// Checks `boxes` against the limits of `BlockEntityShapes`: at most `MAX_BOXES`, every
+    /// coordinate finite and each minimum at most its maximum. `collision` names the list in
+    /// the error.
+    pub fn check_boxes(boxes: &[[f64; 6]], collision: bool) -> Result<(), BlockEntityShapesError> {
         if boxes.len() > MAX_BOXES {
             return Err(BlockEntityShapesError::TooManyBoxes {
                 collision,
@@ -44,7 +62,6 @@ impl PublishedShapes {
                 limit: MAX_BOXES as u64,
             });
         }
-        let mut shape = VoxelShape::empty();
         for (index, bounds) in boxes.iter().enumerate() {
             let index = index as u64;
             if bounds.iter().any(|value| !value.is_finite()) {
@@ -53,6 +70,15 @@ impl PublishedShapes {
             if (0..3).any(|axis| bounds[axis] > bounds[axis + 3]) {
                 return Err(BlockEntityShapesError::InvertedBox { collision, index });
             }
+        }
+        Ok(())
+    }
+
+    /// The shape `boxes` build once they pass [`Self::check_boxes`].
+    fn build(boxes: &[[f64; 6]], collision: bool) -> Result<VoxelShape, BlockEntityShapesError> {
+        Self::check_boxes(boxes, collision)?;
+        let mut shape = VoxelShape::empty();
+        for bounds in boxes {
             let part = VoxelShape::from_box(Aabb::new(
                 Vec3::new(bounds[0], bounds[1], bounds[2]),
                 Vec3::new(bounds[3], bounds[4], bounds[5]),

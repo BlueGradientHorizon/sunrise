@@ -162,8 +162,8 @@ fn indexed_pickup_keeps_bound_survivors_and_processes_shifted_tail() {
                 );
                 assert_eq!(
                     *posts.lock().unwrap(),
-                    [(1, None)],
-                    "only the whole pickup is heard, not the partial or the refused one"
+                    [(1, None), (3, Some(2))],
+                    "the whole and the partial pickup are heard, not the refused one"
                 );
                 assert_eq!(game.inventory[0].as_ref().unwrap().count, 64);
                 assert_eq!(
@@ -180,7 +180,7 @@ fn indexed_pickup_keeps_bound_survivors_and_processes_shifted_tail() {
                         .iter()
                         .map(|item| (item.id, item.stack.count, item.pickup_delay))
                         .collect::<Vec<_>>(),
-                    [(ids[1], 2, 0), (ids[2], 2, 10)]
+                    [(ids[1], 2, 0), (ids[2], 2, 0)]
                 );
                 assert_eq!(
                     game.dropped

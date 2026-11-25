@@ -1,11 +1,11 @@
 //! Exercise the actual registered leave-block goal and Game event handler.
 use super::{Audio, Game, Options, Progress, Settings, load_resources};
-use mod_api::RandomSource;
 use std::sync::Arc;
 use sunrise_client::{
     chunk::Chunk,
     mobs::{Mob, MobEvent, goals::Cx},
 };
+use sunrise_core::random::RandomSource;
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
 
 /// The production tick lends the level's RNG and attachments to goals while

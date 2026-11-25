@@ -23,9 +23,9 @@ fn tooltip_appender_restores_owner_even_on_panic() {
     #[mod_api::__subscriptions]
     impl Hooks for Inner {
         fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
-            for panic in [false, true] {
+            for (component, panic) in [("test:steady", false), ("test:panics", true)] {
                 registrar.register_tooltip_appender(
-                    "test:item",
+                    component,
                     TooltipPlacement::AfterAll,
                     Arc::new(Check(panic)),
                 );
@@ -37,6 +37,7 @@ fn tooltip_appender_restores_owner_even_on_panic() {
     let context = TooltipAppendContext {
         player: 0,
         player_entity_id: 0,
+        tick_rate: 20.0,
         advanced: false,
         creative: false,
         nested: false,

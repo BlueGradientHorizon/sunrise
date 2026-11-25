@@ -165,6 +165,9 @@ impl Game<'_> {
             .split_once(',')
             .ok_or("SUNRISE_SCULK_FIXTURE=SCENARIOS,OUTPUT")?;
         let text = std::fs::read_to_string(input)?;
+        // The fixture enters before world_entry, which normally loads the
+        // server's death-loot tables (including experience drops).
+        self.load_server_loot();
         let mut out = std::io::BufWriter::new(std::fs::File::create(output)?);
         for s in parse(&text) {
             writeln!(out, "== {}", s.name)?;
@@ -417,9 +420,12 @@ impl Game<'_> {
         if s.trace_events {
             self.previous_position = Vec3::new(at[0], at[1], at[2]);
         }
-        self.keys.clear();
+        self.clear_device_keys();
+        // The oracle sets the new player's shift state for every scenario.
         if s.sneak {
-            self.keys.insert(KeyCode::ShiftLeft);
+            self.insert_device_key(KeyCode::ShiftLeft);
+        } else {
+            self.remove_device_key(&KeyCode::ShiftLeft);
         }
         self.sculk.tracker = WardenSpawnTracker::default();
         if let Some(level) = s.warning {
@@ -755,14 +761,15 @@ impl Game<'_> {
                         &attack,
                     );
                     let mut credit = plan.lend(&mut self.last_hurt_by_player);
-                    if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
-                        m.damage(
+                    if let Some(index) = self.mob_index.find(&self.mobs, id) {
+                        self.mobs[index].damage(
                             crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
                             amount,
                             sunrise_client::mobs::Damage::player(at),
                         );
+                        self.remember_mob_player_credit(id);
+                        self.finish_mob_damage_at(index);
                     }
-                    self.remember_mob_player_credit(id);
                 }
                 // Creeper.ignite: the next tick primes the fuse.
                 "ignite" | "ate" => {
@@ -820,5 +827,38 @@ impl Game<'_> {
         // Block entities.
         self.tick_sculk_blocks()?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    #[ignore = "daily"]
+    fn fixture_death_outside_catalyst_range_drops_experience() {
+        crate::game::native_entity_refs::tests::with_game(|game| {
+            let scratch = tempfile::tempdir().unwrap();
+            let input = scratch.path().join("scenarios.txt");
+            let output = scratch.path().join("result.txt");
+            std::fs::write(
+                &input,
+                concat!(
+                    "scenario death ticks=3\n",
+                    "block 0 -60 0 minecraft:sculk_catalyst\n",
+                    "player 5.5 -60 5.5\n",
+                    "mob minecraft:silverfish 9.5 -60 0.5 0 7 noai\n",
+                    "at 3 kill m0\nend\n",
+                ),
+            )
+            .unwrap();
+            game.sculk_fixture(&format!("{},{}", input.display(), output.display()))
+                .unwrap();
+            assert_eq!(
+                game.orbs
+                    .iter()
+                    .map(|orb| i64::from(orb.value) * i64::from(orb.count))
+                    .sum::<i64>(),
+                5
+            );
+        });
     }
 }

@@ -72,18 +72,23 @@ fn cub_nearby(m: &Mob, w: &MobWorld) -> bool {
 struct PolarBearPanic(Panic);
 impl Goal for PolarBearPanic {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         (m.is_baby() || environmental_panic(m)) && self.0.can_use(m, cx)
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         self.0.can_continue(m, cx)
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.0.start(m, cx)
     }
+    #[inline]
     fn stop(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.0.stop(m, cx)
     }
@@ -91,7 +96,7 @@ impl Goal for PolarBearPanic {
 /// `DamageTypeTags.PANIC_ENVIRONMENTAL_CAUSES` (`armadillo::environmental`), or
 /// burning.
 fn environmental_panic(m: &Mob) -> bool {
-    m.fire_ticks > 0 && !m.kind.flags.fire_immune
+    m.is_on_fire()
         || m.last_damage.is_some_and(|(d, t)| {
             super::armadillo::environmental(d.kind) && i64::from(m.age) - t <= 40
         })

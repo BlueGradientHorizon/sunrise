@@ -4,6 +4,47 @@
 use crate::ArmPose;
 use std::collections::BTreeMap;
 
+/// A fence gate's sound override, resolved once when content loads.
+/// A missing site keeps the template wood's sound for that site.
+// exhaustive: the declaration format has exactly an all-sites sound or named-site overrides.
+#[derive(Clone, Debug, PartialEq, sunrise_mod_api_macros::Wire)]
+pub enum GateSound {
+    /// Use one sound event at every site.
+    All(String),
+    /// Override only the named sites.
+    Sites {
+        /// Player interaction, including client prediction.
+        on_use: Option<String>,
+        /// An explosion that triggers an unpowered gate.
+        on_explosion: Option<String>,
+        /// A redstone power change that changes the open state.
+        on_redstone: Option<String>,
+    },
+}
+
+#[cfg(test)]
+mod gate_sound_tests {
+    use super::GateSound;
+    use crate::wire::{Reader, Wire, Writer};
+
+    #[test]
+    fn both_gate_sound_forms_cross_wire() {
+        for sound in [
+            GateSound::All("gate:open".into()),
+            GateSound::Sites {
+                on_use: Some("gate:use".into()),
+                on_explosion: None,
+                on_redstone: Some("gate:wire".into()),
+            },
+        ] {
+            let mut out = Writer::default();
+            sound.put(&mut out);
+            let back: GateSound = Reader::decode(&out.into_bytes()).unwrap();
+            assert_eq!(back, sound);
+        }
+    }
+}
+
 /// BlockProperties in a load-time content declaration.
 #[derive(Clone, Debug, PartialEq, Default)]
 // exhaustive: declaration drafts mirror the closed content schema and support record construction.
@@ -33,20 +74,77 @@ pub struct BlockProperties {
     /// Vanilla's piston push reaction, or the template's when unset.
     pub push_reaction: Option<PushReaction>,
     /// `false`: the block occludes nothing, so its neighbours' faces are drawn and light passes
-    /// it (`BlockBehaviour.Properties.noOcclusion`); unset or `true`: as its template.
+    /// it (`BlockBehaviour.Properties.noOcclusion`); `true`: occludes whatever the template
+    /// does, using the declared outline or the template's published occlusion shape. Unset
+    /// inherits the template.
     pub occludes: Option<bool>,
     /// `false`: the breaking crack (`destroy_stage_0..9`) is not drawn on the block, as for a
     /// block broken by use; unset or `true`, it is drawn. Only the overlay: the break and the
     /// destroy-progress packets are vanilla's.
     pub destroy_overlay: Option<bool>,
+    /// Per-column model offset and translation of declared outline, collision and interaction shapes.
+    /// Block-entity published shapes remain as published. Unset inherits the template.
+    pub offset: Option<OffsetType>,
+    /// Maximum horizontal displacement, 0 to 0.25 (default 0.25 for an explicit offset mode).
+    pub max_horizontal_offset: Option<f32>,
+    /// Maximum downward displacement, 0 to 0.2 (default 0.2 for XYZ; XZ has no vertical offset).
+    pub max_vertical_offset: Option<f32>,
+    /// Vanilla's note-block instrument; unset inherits the template.
+    pub instrument: Option<crate::NoteInstrument>,
+    /// Lava ignition flag. The per-position `ignited_by_lava` hook still answers first.
+    pub ignited_by_lava: Option<bool>,
+    /// Whether placement and features may replace this block; the held-own-item rule still applies.
+    pub replaceable: Option<bool>,
+    /// Skip faces against any state of this same block; false disables the template's render rule.
+    /// Leaf and ice graphics culling still follows the template class.
+    pub skip_same_block_faces: Option<bool>,
+    /// Which mobs may spawn on the block (`BlockBehaviour.Properties.isValidSpawn`), the same
+    /// `spawn_rule` key a content file's `properties` take; unset keeps the template block's rule.
+    pub spawn_rule: Option<SpawnRule>,
+    /// Opt into `VegetationBlock` survival and neighbour checks independently of the
+    /// template. Templates that already inherit `VegetationBlock` keep their rules.
+    /// Otherwise the default support is `minecraft:supports_vegetation`.
+    pub vegetation: bool,
 }
 
-/// PushReaction in a load-time content declaration.
-#[derive(Clone, Debug, PartialEq)]
+/// A block's mob spawn rule (`BlockBehaviour.Properties.isValidSpawn`), the answer of
+/// `BlockState.isValidSpawn` for every entity type.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+// exhaustive: these are vanilla's closed set of spawn predicates.
+#[derive(sunrise_mod_api_macros::Wire)]
+pub enum SpawnRule {
+    /// Vanilla's default: the top face is sturdy and the block's light emission is below 14.
+    /// The top face is the template's, and the emission is the declared `light` (or
+    /// `state_light`), else the template's.
+    Default,
+    /// Every mob spawns on the block (`Blocks::always`).
+    Always,
+    /// No mob spawns on the block (`Blocks::never`).
+    Never,
+    /// Only ocelots and parrots spawn on the block (`Blocks::ocelotOrParrot`).
+    OcelotOrParrot,
+}
+
+/// Vanilla's per-column offset mode (`BlockBehaviour.OffsetType`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+// exhaustive: these are the closed declaration modes.
+#[derive(sunrise_mod_api_macros::Wire)]
+pub enum OffsetType {
+    /// Disable the offset, even on a template that has one.
+    None,
+    /// Horizontal offset only.
+    Xz,
+    /// Horizontal and downward vertical offset.
+    Xyz,
+}
+
+/// Vanilla's piston reaction for a block state or an entity.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 // exhaustive: these variants are the closed content declaration vocabulary.
 #[derive(sunrise_mod_api_macros::Wire)]
 pub enum PushReaction {
-    /// Declaration option.
+    /// Vanilla's default: pistons can push and pull.
+    #[default]
     PushPull,
     /// Declaration option.
     Push,
@@ -54,7 +152,7 @@ pub enum PushReaction {
     Popped,
     /// Declaration option.
     Immoveable,
-    /// Declaration option.
+    /// Do not push this entity.
     IgnoreEntity,
 }
 
@@ -128,6 +226,19 @@ pub enum ShapeEntityKind {
     Other,
 }
 
+/// A vanilla block's context-dependent collision a declared block takes ([`Block::context_collision`]),
+/// whatever its template.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+// exhaustive: these variants are the closed content declaration vocabulary.
+#[derive(sunrise_mod_api_macros::Wire)]
+pub enum ContextCollision {
+    /// Scaffolding's (`ScaffoldingBlock.getCollisionShape`): solid on top unless the entity is
+    /// descending, open below, and the bottom row's floor. The block's states need scaffolding's
+    /// `distance` (0 to 7) and `bottom` properties, from the template or declared; loading
+    /// refuses the block, by name, otherwise.
+    Scaffolding,
+}
+
 /// BlockStateProperty in a load-time content declaration.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: these variants are the closed content declaration vocabulary.
@@ -143,15 +254,16 @@ pub enum BlockStateProperty {
 }
 
 /// An unvalidated draft; `Content::declare` validates it at load.
-/// Refused drafts are reported by the content admission path as
-/// `native blocks and items of <namespace>: <reason>`, without admitting part of that namespace.
+/// Refused drafts are reported by the content admission path naming the submitting mod,
+/// without admitting part of its declarations.
 /// `Default` and [`Block::new`] leave out what a content file leaves out: every field is empty
 /// except `item`, true, as in a file.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct Block {
-    /// `<mod id>:<path>`.
+    /// Block identifier: a bare name uses the declaring mod's ID, and an explicit valid
+    /// `namespace:path` keeps its namespace.
     pub id: String,
     /// The vanilla block it copies, `minecraft:<path>`.
     pub template: String,
@@ -174,17 +286,28 @@ pub struct Block {
     /// (`BlockEntityRef::set_shapes`), which then replace the declared ones until cleared.
     /// Refused at load, by name, on a block that no block entity type owns. False when unset.
     pub shapes_from_block_entity: bool,
+    /// A vanilla block's context collision it takes, over its shapes for entities that have no
+    /// `collision_context_shapes` of their own. `None` when unset.
+    pub context_collision: Option<ContextCollision>,
     /// State properties of its own, which its template does not have.
+    /// A boolean `waterlogged` adds SimpleWaterloggedBlock behaviour: buckets fill
+    /// and drain it, placement copies source water at the cell, and shape updates schedule
+    /// a water tick. The placement and shape Part answers override those defaults.
+    /// Refused if `waterlogged` is an enum or the template already has it, is a
+    /// standalone liquid such as lava, or already holds water in every state.
+    /// A double plant keeps its class and companion-half behaviour.
     pub state_properties: BTreeMap<String, BlockStateProperty>,
     /// State properties overlaid on the template default.
     pub default_state: BTreeMap<String, String>,
     /// Also add a block item with the same id; true unless set false, as in a file.
     pub item: bool,
-    /// The sound event a fence gate plays opening, instead of its wood's
-    /// (`WoodType.fenceGateOpen`); needs a `*_fence_gate` template.
-    pub open_sound: Option<String>,
-    /// The sound event a fence gate plays closing (`WoodType.fenceGateClose`).
-    pub close_sound: Option<String>,
+    /// A fence gate's opening sounds (`WoodType.fenceGateOpen`). `All` replaces
+    /// every site; `Sites` keeps the template wood's sound for each missing site.
+    /// Needs a `*_fence_gate` template.
+    pub open_sound: Option<GateSound>,
+    /// A fence gate's closing sounds (`WoodType.fenceGateClose`), with the same
+    /// per-site fallback as `open_sound`.
+    pub close_sound: Option<GateSound>,
     /// The item this block is, for pick-block and `Block.asItem`, when
     /// it is not a block item of its own: an item of this mod (a bare name is
     /// this mod's) or a vanilla one (`minecraft:<path>`), checked to exist when
@@ -198,6 +321,10 @@ pub struct Block {
     /// Its item's component patch: `Some(tag)` sets a component, `None` removes it.
     /// Component names do not include the removal prefix `!`; repeated IDs are refused.
     pub components: Vec<(String, Option<crate::Tag>)>,
+    /// Suspicious stew effects this block supplies, in order, as pairs of effect ID
+    /// and duration in ticks. Its block items feed these effects to brown mooshrooms
+    /// and generate stews in Creative. `None` declares no effect source.
+    pub suspicious_stew_effects: Option<Vec<(String, i32)>>,
     /// A connecting block (template `minecraft:chorus_plant`, a `PipeBlock`
     /// without the chorus plant's rules): the block tag, without `#`, whose
     /// blocks it joins besides itself (a cable's machines).
@@ -240,13 +367,14 @@ pub enum Rarity {
 }
 
 /// An unvalidated draft; `Content::declare` validates it at load.
-/// Refused drafts are reported by the content admission path as
-/// `native blocks and items of <namespace>: <reason>`, without admitting part of that namespace.
+/// Refused drafts are reported by the content admission path naming the submitting mod,
+/// without admitting part of its declarations.
 #[derive(Clone, Debug, PartialEq, Default)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct Item {
-    /// Identifier in the declaring mod's namespace.
+    /// Item identifier: a bare name uses the declaring mod's ID, and an explicit valid
+    /// `namespace:path` keeps its namespace.
     pub id: String,
     /// The vanilla item it copies, `minecraft:<path>`.
     pub template: String,
@@ -257,11 +385,10 @@ pub struct Item {
     /// A component patch over the template: `Some(tag)` sets, `None` removes.
     /// Component names are namespaced identifiers, without a removal prefix `!`; repeated IDs are refused.
     pub components: Vec<(String, Option<crate::Tag>)>,
-    /// What it leaves in the crafting grid (`Item.Properties.craftRemainder`):
-    /// a vanilla item (`minecraft:<path>`) or one of the mod's own (a bare name is the mod's).
+    /// The registered item it leaves in the crafting grid (`Item.Properties.craftRemainder`).
+    /// A bare name uses this mod's namespace. Omit it for no remainder; `minecraft:air` is not a stack.
     pub crafting_remainder: Option<String>,
-    /// The block placed by this item, if any: one of this mod's (a bare name is this mod's)
-    /// or a vanilla one (`minecraft:<path>`).
+    /// The registered block placed by this item, if any. A bare name uses this mod's namespace.
     pub block: Option<String>,
     /// The arm pose a humanoid takes holding it, in place of vanilla's (`ArmPose`).
     pub arm_pose: Option<ArmPose>,
@@ -280,6 +407,7 @@ impl Default for Block {
             collision_context_shapes: BTreeMap::new(),
             interaction_shapes: None,
             shapes_from_block_entity: false,
+            context_collision: None,
             state_properties: BTreeMap::new(),
             default_state: BTreeMap::new(),
             item: true,
@@ -288,6 +416,7 @@ impl Default for Block {
             block_item: None,
             pick_item: None,
             components: Vec::new(),
+            suspicious_stew_effects: None,
             connects_to: None,
             thickness: None,
             wood_type: None,

@@ -17,11 +17,11 @@ use super::{
 use crate::blocks::Fluid;
 use mod_api::SoundSource;
 use std::fmt::Debug;
+use std::ops::ControlFlow;
 use sunrise_core::{
     geometry::Vec3,
     random::{LegacyRandom, RandomSource},
 };
-use sunrise_world::move_gate::MoveGate;
 
 const JUMP: usize = 0;
 const CROAK: usize = 1;
@@ -174,20 +174,18 @@ pub fn tick(m: &mut Mob) {
 /// `Frog.travelInWater`: `moveRelative(getSpeed(), input)`, the move, then
 /// the motion scaled by 0.9. `getSpeed` is the speed the move control stored.
 /// Out of water the usual travel runs.
-pub fn travel(
+pub(super) fn travel(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     input: Vec3,
     events: &mut Vec<MobEvent>,
-) -> bool {
-    if !m.fluids.in_water {
-        return false;
-    }
+    pause: bool,
+) -> ControlFlow<super::living::TravelPause> {
     m.move_relative(m.ai.speed, input);
-    m.do_move(w, level, events, &mut MoveGate::new());
-    m.velocity = m.velocity.scale(0.9);
-    true
+    m.travel_move(w, level, events, pause, |m, _, _, _| {
+        m.set_velocity(m.velocity.scale(0.9));
+    })
 }
 
 /// `Frog.canEat`: a slime or magma cube of size 1.
@@ -237,32 +235,39 @@ pub fn server_ai_step(m: &mut Mob, w: &MobWorld) {
 struct Croak;
 impl Goal for Croak {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, _cx: &mut Cx) -> bool {
         // checkExtraStartConditions (standing), no walk target, and not in
         // a liquid (start does nothing there).
         m.extra.pose == sync::STANDING
-            && m.on_ground
+            && m.ground.on_ground
             && !m.fluids.in_water
             && !m.fluids.in_lava
             && m.ai.nav.is_done()
             && m.random.next_int_bound(4).unwrap_or(0) != 0
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, _cx: &mut Cx) -> bool {
         m.extra.frog.croak < CROAK_TICKS
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, _cx: &mut Cx) {
         m.extra.frog.croak = 0;
         set_pose(m, sync::CROAKING);
     }
+    #[inline]
     fn stop(&mut self, m: &mut Mob, _cx: &mut Cx) {
         set_pose(m, sync::STANDING);
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, _cx: &mut Cx) {
         m.extra.frog.croak += 1;
     }
+    #[inline]
     fn every_tick(&self) -> bool {
         true
     }
@@ -301,30 +306,39 @@ impl<G: Debug> Debug for Unless<G> {
 }
 impl<G: Goal + Clone + 'static> Goal for Unless<G> {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         self.1.flags()
     }
+    #[inline]
     fn name(&self) -> &'static str {
         self.1.name()
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         !(self.0)(m) && self.1.can_use(m, cx)
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         !(self.0)(m) && self.1.can_continue(m, cx)
     }
+    #[inline]
     fn interruptable(&self) -> bool {
         self.1.interruptable()
     }
+    #[inline]
     fn every_tick(&self) -> bool {
         self.1.every_tick()
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.1.start(m, cx)
     }
+    #[inline]
     fn stop(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.1.stop(m, cx)
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.1.tick(m, cx)
     }
@@ -389,7 +403,7 @@ impl LaySpawn {
         }
     }
     fn lay(m: &mut Mob, cx: &mut Cx) {
-        if m.fluids.in_water || !m.on_ground {
+        if m.fluids.in_water || !m.ground.on_ground {
             return;
         }
         let below = [
@@ -460,15 +474,19 @@ impl LaySpawn {
 }
 impl Goal for LaySpawn {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         0
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         self.step(m, cx)
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         self.step(m, cx)
     }
+    #[inline]
     fn stop(&mut self, m: &mut Mob, _cx: &mut Cx) {
         m.extra.frog.lay_target = None;
     }
@@ -503,9 +521,11 @@ fn manhattan_box(o: [i32; 3], range: i32) -> Vec<[i32; 3]> {
 struct ShootTongue;
 impl Goal for ShootTongue {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE | LOOK
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         let Some(id) = m.extra.frog.nearest else {
             return false;
@@ -562,6 +582,7 @@ impl Goal for ShootTongue {
         m.extra.frog.target = Some(id);
         true
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         let f = &m.extra.frog;
         f.phase != Phase::Done
@@ -570,6 +591,7 @@ impl Goal for ShootTongue {
             && f.target
                 .is_some_and(|id| cx.w.seen(id).is_some_and(|t| t.alive))
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         let Some(t) = m.extra.frog.target.and_then(|id| cx.w.seen(id)) else {
             return;
@@ -584,6 +606,7 @@ impl Goal for ShootTongue {
         f.time = 0;
         f.phase = Phase::MoveToTarget;
     }
+    #[inline]
     fn stop(&mut self, m: &mut Mob, _cx: &mut Cx) {
         let f = &mut m.extra.frog;
         // `ShootTongue.stop` erases brain memory directly, independently
@@ -593,9 +616,11 @@ impl Goal for ShootTongue {
         f.phase = Phase::Done;
         set_pose(m, sync::STANDING);
     }
+    #[inline]
     fn every_tick(&self) -> bool {
         true
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         let Some(id) = m.extra.frog.target else {
             return;
@@ -862,7 +887,7 @@ impl LongJump {
     /// with `entity.frog.step`), or the end of a search.
     fn end(&mut self, m: &mut Mob, cx: &mut Cx) {
         if self.mid_jump {
-            if m.on_ground {
+            if m.ground.on_ground {
                 // multiply(0.1F, 1.0, 0.1F): the float widened.
                 let slow = f64::from(0.1_f32);
                 m.velocity = m.velocity.multiply(Vec3::new(slow, 1.0, slow));
@@ -918,15 +943,19 @@ fn optimal_jump_vector(m: &Mob, w: &MobWorld, target: Vec3) -> Option<Vec3> {
 }
 impl Goal for LongJump {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE | LOOK
     }
+    #[inline]
     fn interruptable(&self) -> bool {
         !self.mid_jump
     }
+    #[inline]
     fn every_tick(&self) -> bool {
         true
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         // The activity: no cooldown, and for a frog out of water (a frog in
         // water is in its swim activity; a goat has none, so its check below
@@ -952,7 +981,7 @@ impl Goal for LongJump {
             m.position.y.floor() as i32,
             m.position.z.floor() as i32,
         );
-        let can = m.on_ground
+        let can = m.ground.on_ground
             && !m.fluids.in_water
             && !m.fluids.in_lava
             && cx.w.block_name(x, y, z) != "minecraft:honey_block";
@@ -961,6 +990,7 @@ impl Goal for LongJump {
         }
         can
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, _cx: &mut Cx) {
         // LongJumpToRandomPos.start.
         let (x, y, z) = (
@@ -985,6 +1015,7 @@ impl Goal for LongJump {
             self.wanting_preferred = m.random.next_float() < PREFERRED_BLOCKS_CHANCE;
         }
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         if self.mid_jump {
             // LongJumpMidJump starts the tick after the leap and runs until
@@ -999,7 +1030,7 @@ impl Goal for LongJump {
                 }
                 Some(t) => self.in_air = Some(t + 1),
             }
-            return !m.on_ground
+            return !m.ground.on_ground
                 && (m.species() == Species::Goat || !m.fluids.in_water)
                 && self.in_air.is_some_and(|t| t <= MID_JUMP_DURATION);
         }
@@ -1012,9 +1043,11 @@ impl Goal for LongJump {
         }
         valid
     }
+    #[inline]
     fn stop(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.end(m, cx);
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         if self.mid_jump {
             return;
@@ -1164,7 +1197,7 @@ mod tests {
                     let kind = std::sync::Arc::new(types.types["minecraft:frog"].clone());
                     let mut m = Mob::new(1, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
                     register(&mut m);
-                    m.on_ground = true;
+                    m.ground.on_ground = true;
                     m.extra.frog.nearest = Some(2);
                     let mut events = Vec::new();
                     let mut fixture = crate::health::TestLevel::new(0);
@@ -1212,17 +1245,7 @@ mod tests {
             m.ai.speed = 0.25;
             m.yaw = 0.0;
             m.velocity = Vec3::new(1.0, -0.5, 0.125);
-            let kept = m.velocity;
             let mut test_level = crate::health::TestLevel::new(0);
-            assert!(!travel(
-                &mut m,
-                w,
-                &mut test_level.level(),
-                Vec3::new(0.0, 0.0, 1.0),
-                &mut Vec::new()
-            ));
-            assert_eq!(m.velocity, kept);
-
             m.fluids.in_water = true;
             m.position = Vec3::new(0.5, 80.0, 0.5);
             m.travel(
@@ -1387,7 +1410,7 @@ mod tests {
                 let kind = std::sync::Arc::new(types.types["minecraft:frog"].clone());
                 let mut m = Mob::new(1, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
                 register(&mut m);
-                m.on_ground = true;
+                m.ground.on_ground = true;
                 // An environmental hit inside the 40 tick panic window
                 // (`DamageTypeTags.PANIC_CAUSES`).
                 m.last_damage = Some((
@@ -1430,7 +1453,7 @@ mod tests {
         };
         let mut m = frog();
         set_pregnant(&mut m, true);
-        let saved = mob_to_nbt(&m, [1, 2, 3, 4], None, None, |_| None);
+        let saved = mob_to_nbt(&m, [1, 2, 3, 4], None, None, |_| None, &Default::default());
         assert_eq!(
             memory(&saved),
             Some(Tag::compound([(
@@ -1445,7 +1468,14 @@ mod tests {
         // A frog that laid its spawn saves no memory, even over a compound
         // that still names one.
         set_pregnant(&mut m, false);
-        let saved = mob_to_nbt(&m, [1, 2, 3, 4], Some(&saved), None, |_| None);
+        let saved = mob_to_nbt(
+            &m,
+            [1, 2, 3, 4],
+            Some(&saved),
+            None,
+            |_| None,
+            &Default::default(),
+        );
         assert_eq!(memory(&saved), None, "a laid frog saves no pregnancy");
         let back = mob_from_nbt(&saved, &types, 3, None).unwrap();
         assert!(!is_pregnant(&back), "and does not come back pregnant");
@@ -1470,7 +1500,7 @@ mod tests {
             |w, _| {
                 let mut m = frog();
                 m.position = Vec3::new(8.5, 64.0, 8.5);
-                m.on_ground = true;
+                m.ground.on_ground = true;
                 set_pregnant(&mut m, true);
                 let mut lr = crate::health::TestLevel::new(3);
                 let mut events = Vec::new();

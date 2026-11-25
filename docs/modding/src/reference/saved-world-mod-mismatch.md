@@ -1,13 +1,14 @@
 # Saved-world mod mismatches
 
 `Hooks::mod_mismatch` reports changed and removed saved mods, code and content mods alike,
-whenever one of the world's saved lists exists, including empty and unchanged lists; newly
-added mods and `minecraft` are excluded. It fires once per open.
+whenever a nonempty saved list exists, changed or unchanged. An empty saved list counts as
+absent and fires nothing; newly added mods and `minecraft` are excluded. It fires once per open.
 
 A world records its code mods in `level.dat`'s `fml.LoadingModList` and its content mods in
 `sunrise.ContentModList`, beside the namespaces of the mod block states registered when it was
 saved (`sunrise.BlockNamespaces`) and the game commit that last saved it
-(`sunrise.LastSavedCommit`).
+(`sunrise.LastSavedCommit`). Saves record only nonempty lists: an empty code, content or
+namespace list is omitted, and a commit marker alone does not create the `sunrise` compound.
 
 ## When a saved mod is missing
 
@@ -36,7 +37,9 @@ restoration, after world preparation.
 
 Versions use the loader's semantic version comparison, padding omitted minor and
 patch components with zero; invalid or empty versions compare as exact text.
-Mark a migration with `event.resolved.push("my_mod".to_owned().into())`.
+Mark a migration with `event.mark_resolved("my_mod")`, and inspect earlier
+resolutions with `event.was_resolved(id)`, `event.resolver(id)` or
+`event.resolved()`.
 The first listener to mark an id owns its `resolver` attribution; later listeners
 cannot erase or replace that marker. Markers for other ids are allowed.
 Differences are logged sorted by mod id, resolved at debug with the resolver and

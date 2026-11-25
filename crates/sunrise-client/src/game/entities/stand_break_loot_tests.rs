@@ -89,15 +89,14 @@ fn with_stick_table(game: &mut Game<'_>, name: &str) {
         &[],
         &[],
     );
-    game.world_tables = game.stage_world_tables(&stack, false, &root).unwrap().0;
-    // World open warms the loot data with the world's packs (game.rs); the
-    // break's roll reads that copy, here this test's own, so the stick reaches
-    // no other test's stand (#14266).
-    let _ = sunrise_client::structure_blocks::load_thread_loot_data(
-        &game.options.resources,
-        &game.pack_files(),
-        game.res.item_defaults(),
-    );
+    game.world_tables = game
+        .stage_world_tables(&stack, false, &root)
+        .unwrap()
+        .tables;
+    // Publish the world's snapshot exactly as world open does. Do not prime
+    // the process or thread-local structure-generation cache: entity drops
+    // must read the server's pack-aware snapshot instead.
+    game.load_server_loot();
     // The table the pack installed: a direct roll, far from the stand.
     assert!(game.run_command("loot spawn 12.5 100 12.5 loot minecraft:entities/armor_stand"));
     assert!(
@@ -189,4 +188,14 @@ fn control_one_break_rolls_the_table_once() {
         game.tick_server(false).unwrap();
     }
     assert_eq!(sticks(&mut game), "Test passed. Count: 1");
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_broken_stand_item_keeps_its_styled_custom_name() {
+    let mut resources = None;
+    let mut game = game(&mut resources);
+    assert!(game.run_command(r#"summon armor_stand 2.5 100 8.5 {NoGravity:1b,CustomName:{text:"Named",bold:true},UUID:[I;23326,0,0,9]}"#));
+    assert!(game.run_command("damage 00005b1e-0000-0000-0000-000000000009 1 minecraft:arrow"));
+    assert!(game.run_command(r#"execute if entity @e[type=item,nbt={Item:{id:"minecraft:armor_stand",count:1,components:{"minecraft:custom_name":{text:"Named",bold:1b}}}}]"#));
 }

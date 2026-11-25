@@ -499,6 +499,8 @@ impl CollisionRule {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Team {
+    /// Told apart from a team added later under this name.
+    pub identity: Identity,
     pub name: String,
     pub display_name: Comp,
     pub color: Option<String>,
@@ -513,8 +515,9 @@ pub struct Team {
     pub players: HashSetOrder,
 }
 impl Team {
-    fn new(name: &str) -> Self {
+    fn new(name: &str, identity: Identity) -> Self {
         Self {
+            identity,
             name: name.to_owned(),
             display_name: literal(name),
             color: None,
@@ -688,8 +691,19 @@ pub fn death_message_reaches(board: &Scoreboard, dying: &str, other: &str) -> bo
 
 // ---- objectives and scores ---------------------------------------------
 
+/// The identity the board gives each objective and team it adds: never reused, not saved, and left out of
+/// comparisons, so two boards with the same contents are equal.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Identity(pub u64);
+impl PartialEq for Identity {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
 #[derive(Clone, Debug, PartialEq)]
 pub struct Objective {
+    /// Told apart from an objective added later under this name.
+    pub identity: Identity,
     pub name: String,
     pub criteria: String,
     pub display_name: Comp,
@@ -770,6 +784,8 @@ pub struct Scoreboard {
     pub teams: Vec<Team>,
     team_order: OpenOrder,
     team_of: BTreeMap<String, String>,
+    /// The identity the next added objective gets.
+    next_identity: Identity,
 }
 impl Default for Scoreboard {
     fn default() -> Self {
@@ -783,6 +799,7 @@ impl Default for Scoreboard {
             teams: Vec::new(),
             team_order: OpenOrder::default(),
             team_of: BTreeMap::new(),
+            next_identity: Identity(1),
         }
     }
 }
@@ -794,6 +811,19 @@ impl Scoreboard {
     fn reorder(&mut self) {
         ranked(&mut self.objectives, &self.objective_order, |o| &o.name);
         ranked(&mut self.teams, &self.team_order, |t| &t.name);
+    }
+    /// Puts back a copy of this board taken earlier. Identities handed out since stay used: an
+    /// objective added and rolled back is never mistaken for one added after.
+    pub fn restore(&mut self, saved: Scoreboard) {
+        let next = self.next_identity.0.max(saved.next_identity.0);
+        *self = saved;
+        self.next_identity = Identity(next);
+    }
+    pub fn team_by_identity(&self, identity: u64) -> Option<&Team> {
+        self.teams.iter().find(|t| t.identity.0 == identity)
+    }
+    pub fn objective_by_identity(&self, identity: u64) -> Option<&Objective> {
+        self.objectives.iter().find(|o| o.identity.0 == identity)
     }
     pub fn objective(&self, name: &str) -> Option<&Objective> {
         self.objectives.iter().find(|o| o.name == name)
@@ -820,7 +850,10 @@ impl Scoreboard {
         if self.objective(name).is_some() {
             return false;
         }
+        let identity = self.next_identity;
+        self.next_identity = Identity(identity.0 + 1);
         self.objectives.push(Objective {
+            identity,
             name: name.to_owned(),
             criteria: criteria.to_owned(),
             display_name,
@@ -943,18 +976,23 @@ impl Scoreboard {
             }
         }
     }
-    /// `listPlayerScores(objective)`, in `playerScores.forEach` order.
-    pub fn list_scores(&self, objective: &str) -> Vec<ScoreEntry> {
+    /// The resident score rows in `playerScores.forEach` order.
+    pub fn score_rows<'a>(
+        &'a self,
+        objective: &'a str,
+    ) -> impl Iterator<Item = (&'a str, &'a Score)> {
         self.holder_order
             .iter()
-            .filter_map(|owner| {
-                let s = self.scores.get(owner)?.get(objective)?;
-                Some(ScoreEntry {
-                    owner: owner.to_owned(),
-                    value: s.value,
-                    display: s.display.clone(),
-                    number_format: s.number_format.clone(),
-                })
+            .filter_map(move |owner| Some((owner, self.scores.get(owner)?.get(objective)?)))
+    }
+    /// `listPlayerScores(objective)`, in `playerScores.forEach` order.
+    pub fn list_scores(&self, objective: &str) -> Vec<ScoreEntry> {
+        self.score_rows(objective)
+            .map(|(owner, score)| ScoreEntry {
+                owner: owner.to_owned(),
+                value: score.value,
+                display: score.display.clone(),
+                number_format: score.number_format.clone(),
             })
             .collect()
     }
@@ -986,7 +1024,9 @@ impl Scoreboard {
     }
     pub fn add_team(&mut self, name: &str) -> &mut Team {
         if self.team(name).is_none() {
-            self.teams.push(Team::new(name));
+            let identity = self.next_identity;
+            self.next_identity = Identity(identity.0 + 1);
+            self.teams.push(Team::new(name, identity));
             self.team_order.insert(name);
             self.reorder();
         }
@@ -1277,7 +1317,7 @@ fn entity_uuids(tag: &mut Tag) {
     match tag {
         Tag::Compound(c) => {
             let show_entity = matches!(c.get(&"action".into()), Some(Tag::String(a)) if a.to_string_lossy() == "show_entity");
-            for (k, v) in c.iter_mut() {
+            c.for_each_mut(|k, v| {
                 if show_entity && k.to_string_lossy() == "uuid" {
                     let ints = match v {
                         Tag::List(l) => l
@@ -1298,7 +1338,7 @@ fn entity_uuids(tag: &mut Tag) {
                 } else {
                     entity_uuids(v);
                 }
-            }
+            });
         }
         Tag::List(l) => l.iter_mut().for_each(entity_uuids),
         _ => {}
@@ -1319,6 +1359,39 @@ pub fn canonical_style(style: &Value) -> Value {
 pub fn canonical_component(c: &Comp) -> Comp {
     let (mut node, extra) = decompose(c);
     finish(&mut node, extra)
+}
+/// `Entity.removeAction`: clear `click_event` on the root component and
+/// recursively on every sibling (`extra`), leaving other styles intact.
+pub fn remove_click_events_comp(c: &Comp) -> Comp {
+    let mut out = canonical_component(c);
+    strip_click_events_in_place(&mut out);
+    canonical_component(&out)
+}
+fn strip_click_events_in_place(c: &mut Comp) {
+    if let Value::Object(map) = c {
+        map.remove("click_event");
+        map.remove("clickEvent");
+        if let Some(Value::Array(extra)) = map.get_mut("extra") {
+            for sibling in extra {
+                strip_click_events_in_place(sibling);
+            }
+        }
+    }
+}
+/// Build a [`Text`] from a canonicalized component without collapsing a plain
+/// root literal to a bare JSON string: in-memory [`Text`] literals hold
+/// `{"text": s}` (matching [`Text::literal`]), while serialization through
+/// [`canonical_component`] and [`component_tag`] collapses them per vanilla's
+/// `ComponentSerialization.CODEC`.
+pub fn text_from_canonical_component(c: Comp) -> Text {
+    match c {
+        Value::String(s) => Text::from(serde_json::json!({ "text": s })),
+        other => Text::from(other),
+    }
+}
+/// [`remove_click_events_comp`] on a [`Text`].
+pub fn remove_click_events(text: &Text) -> Text {
+    text_from_canonical_component(remove_click_events_comp(&text.component()))
 }
 /// A component's own fields (content and style) and its siblings.
 fn decompose(c: &Comp) -> (serde_json::Map<String, Value>, Vec<Comp>) {
@@ -1377,10 +1450,25 @@ fn decompose(c: &Comp) -> (serde_json::Map<String, Value>, Vec<Comp>) {
                     }
                     "hover_event" => {
                         let mut h = v.clone();
-                        if let Some(value) = h.get("value").cloned()
-                            && h.get("action").and_then(Value::as_str) == Some("show_text")
-                        {
-                            h["value"] = canonical_component(&value);
+                        match h.get("action").and_then(Value::as_str) {
+                            Some("show_text") => {
+                                if let Some(value) = h.get("value").cloned() {
+                                    h["value"] = canonical_component(&value);
+                                }
+                            }
+                            Some("show_entity") => {
+                                if let Some(name) = h.get("name").cloned() {
+                                    h["name"] = canonical_component(&name);
+                                }
+                                if let Some(uuid) = h
+                                    .get("uuid")
+                                    .and_then(Value::as_str)
+                                    .and_then(crate::uuid::uuid_from_text)
+                                {
+                                    h["uuid"] = serde_json::json!(uuid);
+                                }
+                            }
+                            _ => {}
                         }
                         node.insert(k.clone(), h);
                     }
@@ -1423,7 +1511,7 @@ mod tests {
     /// and as insertion; `getFormattedDisplayName` brackets the name in it.
     #[test]
     fn a_teams_formatted_name_inserts_the_team_name() {
-        let team = Team::new("reds");
+        let team = Team::new("reds", Identity::default());
         let c = team.formatted_display_name().component();
         assert_eq!(c["translate"], "chat.square_brackets");
         let inner = &c["with"][0];
@@ -1433,6 +1521,62 @@ mod tests {
         // `{"text":"reds"}` or its short form `"reds"`: the same component.
         let value = &inner["hover_event"]["value"];
         assert!(value == "reds" || value["text"] == "reds", "{value}");
+    }
+
+    /// An objective added under a removed one's name is another objective, and a board put back
+    /// from a copy never gives a rolled-back objective's identity to a later one.
+    #[test]
+    fn an_objective_added_again_under_its_name_has_a_new_identity() {
+        let add = |sb: &mut Scoreboard, name: &str| {
+            sb.add_objective(
+                name,
+                "dummy",
+                literal(name),
+                RenderType::Integer,
+                false,
+                None,
+            );
+            sb.objective(name).unwrap().identity.0
+        };
+        let mut sb = Scoreboard::default();
+        let first = add(&mut sb, "a");
+        sb.remove_objective("a");
+        assert!(sb.objective_by_identity(first).is_none());
+        let second = add(&mut sb, "a");
+        assert_ne!(first, second);
+        assert!(sb.objective_by_identity(first).is_none());
+        let saved = sb.clone();
+        let rolled_back = add(&mut sb, "b");
+        sb.restore(saved);
+        assert!(sb.objective("b").is_none());
+        assert!(sb.objective_by_identity(rolled_back).is_none());
+        assert_ne!(add(&mut sb, "b"), rolled_back);
+        // Identities are not part of what a board is: the same contents are equal.
+        let mut other = Scoreboard::default();
+        add(&mut other, "x");
+        let mut twin = Scoreboard::default();
+        add(&mut twin, "y");
+        add(&mut twin, "x");
+        twin.remove_objective("y");
+        assert_eq!(other, twin);
+    }
+
+    /// A team added again under a removed one's name is another team, and a restored board never
+    /// gives a rolled-back team's identity to a later one.
+    #[test]
+    fn a_team_added_again_under_its_name_has_a_new_identity() {
+        let mut sb = Scoreboard::default();
+        let first = sb.add_team("a").identity.0;
+        sb.remove_team("a");
+        assert!(sb.team_by_identity(first).is_none());
+        let second = sb.add_team("a").identity.0;
+        assert_ne!(first, second);
+        let saved = sb.clone();
+        let rolled_back = sb.add_team("b").identity.0;
+        sb.restore(saved);
+        assert!(sb.team("b").is_none());
+        assert!(sb.team_by_identity(rolled_back).is_none());
+        assert_ne!(sb.add_team("b").identity.0, rolled_back);
     }
 
     fn board() -> Scoreboard {

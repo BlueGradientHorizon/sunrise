@@ -15,6 +15,14 @@ const MIN_SCALE: f32 = 0.25;
 /// The TAA history format: 8 bits would band as frames accumulate.
 const HISTORY_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 
+fn reduced_scale(scale: f32) -> Option<f32> {
+    if scale <= MIN_SCALE {
+        None
+    } else {
+        Some((scale * 0.75).max(MIN_SCALE))
+    }
+}
+
 struct WorldTarget {
     size: [u32; 2],
     color: wgpu::TextureView,
@@ -50,22 +58,11 @@ struct TaaResources {
     uniform: wgpu::Buffer,
 }
 
-/// One frame handed to an upscaler backend: the jittered world at `render_size` and what
-/// it needs to rebuild it at `output_size`. The motion is the camera's alone (`reproject`);
+/// The per-frame state the upscaler needs. Motion is the camera's alone (`reproject`);
 /// objects that move on their own carry no motion vectors yet.
-// Only TAA reads it so far; a vendor backend reads the rest (#12918).
-#[allow(dead_code)]
-pub(super) struct UpscaleFrame<'a> {
-    /// The world's colour, rendered with this frame's jitter.
-    pub color: &'a wgpu::TextureView,
-    /// The world's depth, at `render_size`.
-    pub depth: &'a wgpu::TextureView,
-    pub render_size: [u32; 2],
-    pub output_size: [u32; 2],
+pub(super) struct UpscaleFrame {
     /// The jitter in clip space, as added to the projection.
     pub jitter_clip: [f32; 2],
-    /// The same jitter in rendered pixels, y down.
-    pub jitter_pixels: [f32; 2],
     /// This frame's unjittered clip space to the previous frame's.
     pub reproject: [[f32; 4]; 4],
     /// The history is unusable: a cut, a resize, a frame without the upscaler.
@@ -86,7 +83,7 @@ pub(super) trait UpscalerBackend {
         &self,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
-        frame: &UpscaleFrame<'_>,
+        frame: &UpscaleFrame,
         target: &'t Self::Target,
         timing: Option<&mut super::pack_timing::PassTiming>,
     ) -> &'t wgpu::BindGroup;
@@ -103,11 +100,11 @@ impl UpscalerBackend for TaaResources {
         &self,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
-        frame: &UpscaleFrame<'_>,
+        frame: &UpscaleFrame,
         taa: &'t History,
         timing: Option<&mut super::pack_timing::PassTiming>,
     ) -> &'t wgpu::BindGroup {
-        // The resolve bind group already samples `frame.color` and `frame.depth`.
+        // The resolve bind group already samples the world's color and depth.
         let i = (frame.index % 2) as usize;
         let uniform = TaaUniform {
             reproject: frame.reproject,
@@ -384,20 +381,37 @@ impl Post {
     /// The world's rendered size and the size it is shown at (TAA's history).
     fn sizes(&self, window: [u32; 2]) -> ([u32; 2], [u32; 2]) {
         let upscale = if self.taa_on { self.upscale } else { 1.0 };
-        self.sizes_with_upscale(window, upscale)
+        Self::sizes_with_upscale(window, self.scale, upscale)
     }
 
-    fn sizes_with_upscale(&self, window: [u32; 2], upscale: f32) -> ([u32; 2], [u32; 2]) {
-        let output = window.map(|v| ((v as f32 * self.scale).round() as u32).clamp(1, 8192));
+    fn sizes_with_upscale(window: [u32; 2], scale: f32, upscale: f32) -> ([u32; 2], [u32; 2]) {
+        let output = window.map(|v| ((v as f32 * scale).round() as u32).clamp(1, 8192));
         (
             output.map(|v| ((v as f32 / upscale).round() as u32).max(1)),
             output,
         )
     }
 
+    /// The next world target's possible input sizes, including existing allocation fallbacks.
+    pub(super) fn render_sizes(
+        &self,
+        window: [u32; 2],
+        scale: f32,
+        taa: bool,
+    ) -> impl Iterator<Item = [u32; 2]> + Clone + use<> {
+        let upscale = if taa && self.taa && self.taa_resources.is_some() {
+            self.upscale
+        } else {
+            1.0
+        };
+        std::iter::successors(Some(scale), |&scale| reduced_scale(scale))
+            .map(move |scale| Self::sizes_with_upscale(window, scale, upscale).0)
+            .chain(std::iter::once(window))
+    }
+
     /// The next TAA frame's input size, even before its first jitter or resize.
     pub(super) fn taa_render_size(&self, window: [u32; 2]) -> [u32; 2] {
-        self.sizes_with_upscale(window, self.upscale).0
+        Self::sizes_with_upscale(window, self.scale, self.upscale).0
     }
 
     /// TAA's sub-pixel jitter this frame, as a clip-space matrix to multiply into the
@@ -482,7 +496,7 @@ impl Post {
                 break;
             }
             drop(target);
-            if self.scale <= MIN_SCALE {
+            let Some(reduced) = reduced_scale(self.scale) else {
                 log::warn!(
                     "Sunrise renderer: no video memory for the scaled world at {size:?} ({}); drawing at the window's size",
                     error.map_or_else(String::new, |e| e.to_string())
@@ -490,8 +504,7 @@ impl Post {
                 self.scale = 1.0;
                 self.target = None;
                 return None;
-            }
-            let reduced = (self.scale * 0.75).max(MIN_SCALE);
+            };
             log::warn!(
                 "Sunrise renderer: out of video memory for the scaled world at {size:?}; resolution scale {:.2} -> {reduced:.2} ({})",
                 self.scale,
@@ -655,14 +668,8 @@ impl Post {
             self.finish_with(encoder, screen, &target.group, timing.as_deref_mut());
             return;
         };
-        let size = self.size().unwrap_or([1, 1]);
         let frame = UpscaleFrame {
-            color: &target.color,
-            depth: &target.depth,
-            render_size: size,
-            output_size: taa.size,
             jitter_clip: [self.taa_this_frame.jitter[0], self.taa_this_frame.jitter[1]],
-            jitter_pixels: self.jitter_pixels(),
             reproject: self.taa_this_frame.reproject,
             reset: self.taa_this_frame.jitter[2] > 0.5,
             index: self.taa_frame,
@@ -814,6 +821,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn culling_uses_the_next_taa_size_before_the_first_jitter_or_resize() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, _)) = test_device() else {
@@ -839,6 +847,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn baked_light_changes_and_returning_from_a_pack_reject_taa_history() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, _)) = test_device() else {
@@ -894,12 +903,12 @@ mod tests {
     }
 
     fn test_device() -> Option<(wgpu::Device, wgpu::Queue)> {
-        let instance = crate::gfx::test_gpu::instance();
-        let adapter = pollster::block_on(instance.request_adapter(&Default::default())).ok()?;
-        pollster::block_on(adapter.request_device(&Default::default())).ok()
+        let (_, device, queue) = crate::gfx::test_gpu::optional_device()?;
+        Some((device, queue))
     }
 
     #[test]
+    #[ignore = "daily"]
     fn world_post_pipelines_compile_or_fall_back() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, _)) = test_device() else {

@@ -4,18 +4,60 @@
 //! placed item gives its block entity.
 use super::Game;
 use sunrise_client::{
-    Result, block_entity_item, block_entity_nbt, containers::BlockEntity, item_data,
-    items::ItemStack, save,
+    block_entity_item, block_entity_nbt, containers::BlockEntity, item_data, items::ItemStack, save,
 };
 use sunrise_core::nbt::{Compound, JavaString, Tag};
 use sunrise_world::{
-    level::{Behaviours, classes::Class, flags},
-    registry::BlockStateId,
+    level::{Behaviours, classes::Class},
+    registry::{BlockRegistry, BlockStateId},
 };
+
+/// The state to write and the state after the BlockItem's property tag, shared with prediction.
+pub(super) fn item_block_state(
+    registry: &BlockRegistry,
+    mut state: BlockStateId,
+    stack: &ItemStack,
+    game_master: bool,
+) -> (BlockStateId, BlockStateId) {
+    let Some(current) = registry.state(state) else {
+        return (state, state);
+    };
+    let saved = stack.data().and_then(|d| d.other("minecraft:block_state"));
+    let book = game_master
+        && current.name == "minecraft:lectern"
+        && block_entity_item::carries_book(stack);
+    if !book && saved.is_none() {
+        return (state, state);
+    }
+    let mut changed = current.clone();
+    if book {
+        // LecternBlock.getStateForPlacement applies this before the item tag.
+        changed.properties.insert("has_book".into(), "true".into());
+        state = registry.id(&changed).unwrap_or(state);
+    }
+    let Some(Tag::Compound(saved)) = saved else {
+        return (state, state);
+    };
+    let mut tagged = state;
+    for (key, value) in saved {
+        let key = key.to_string_lossy();
+        if let Tag::String(value) = value
+            && let Some(property) = changed.properties.get_mut(&key)
+        {
+            let previous = std::mem::replace(property, value.to_string_lossy());
+            if let Some(next) = registry.id(&changed) {
+                tagged = next;
+            } else {
+                changed.properties.insert(key, previous);
+            }
+        }
+    }
+    (state, tagged)
+}
 
 /// The component patch of `stack`.
 fn components(stack: &ItemStack) -> Compound {
-    match item_data::encode_components(stack) {
+    match item_data::component_snapshot(stack) {
         Some(Tag::Compound(c)) => c,
         _ => Compound::new(),
     }
@@ -90,14 +132,18 @@ impl Game<'_> {
     }
 
     /// The block entity at `key` as vanilla saves it, with its custom name.
-    fn saved_block_entity(&self, key: (i32, i32, i32)) -> Option<Tag> {
+    fn saved_block_entity(&self, key: (i32, i32, i32), for_save: bool) -> Option<Tag> {
         let entity = self.world.block_entities.get(&key)?;
         let block = &self
             .res
             .facts()
             .get(self.world.block(key.0, key.1, key.2))
             .name;
-        let mut tag = save::block_entity_encode::encode(key, entity, block);
+        let mut tag = if for_save {
+            self.encode_live_block_entity(key, entity, block, self.res.items())
+        } else {
+            save::block_entity_encode::encode(key, entity, block, self.res.items())
+        };
         if let (Some(name), Tag::Compound(map)) = (self.world.block_names.get(&key), &mut tag) {
             map.insert("CustomName".into(), name.clone());
         }
@@ -148,11 +194,60 @@ impl Game<'_> {
         Some(stack)
     }
 
+    /// `BlockState.getCloneItemStack` at `pos` as the server answers the acting player: the
+    /// block's own stack, or a block Part's `clone_item_stack` answer in its place. With no
+    /// player acting, no Part is asked.
+    pub(super) fn acting_clone_stack(
+        &self,
+        pos: [i32; 3],
+        include_data: bool,
+    ) -> Option<ItemStack> {
+        let stack = self.clone_stack(pos, include_data);
+        let Some(player) = self.native_acting_player() else {
+            return stack;
+        };
+        let state = self.world.block(pos[0], pos[1], pos[2]);
+        let mut replacement = None;
+        self.native_clone_item_stack(
+            self.dim.level(),
+            sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]),
+            state,
+            include_data,
+            player,
+            &mut replacement,
+        );
+        replacement.or(stack)
+    }
+
+    /// `PlayerRef::clone_item_stack`: [`Self::acting_clone_stack`] with `player` acting, in
+    /// the level in place. None on a client, for a stale or dead player, another level and an
+    /// unloaded position.
+    pub(super) fn player_clone_item_stack(
+        &mut self,
+        player: mod_api::PlayerRef,
+        level: mod_api::LevelRef,
+        pos: [i32; 3],
+        include_data: bool,
+    ) -> Option<ItemStack> {
+        if !self.is_logical_server()
+            || self.native_level_read_world(level).is_none()
+            || level.dimension() != self.dim.key()
+            || !self.world.is_loaded_at(pos[0], pos[1], pos[2])
+        {
+            return None;
+        }
+        let mut answer = None;
+        self.native_as_player_handle(player, |game| {
+            answer = game.acting_clone_stack(pos, include_data);
+        });
+        answer
+    }
+
     /// `ServerGamePacketListenerImpl.addBlockDataToItem`: the block entity at
     /// `pos`, if any, onto `stack` (`BlockItem.setBlockEntityData`, then
     /// `ItemStack.applyComponents(collectComponents())`).
     pub(super) fn add_block_data(&self, pos: [i32; 3], stack: &mut ItemStack) {
-        if let Some(saved) = self.saved_block_entity((pos[0], pos[1], pos[2])) {
+        if let Some(saved) = self.saved_block_entity((pos[0], pos[1], pos[2]), true) {
             apply_patch(stack, block_entity_item::pick(&saved));
         }
     }
@@ -240,8 +335,14 @@ impl Game<'_> {
             self.world.block_entities.get(&key),
             Some(BlockEntity::CopperGolemStatue(_))
         );
-        if (include_data || banner || pot || statue)
-            && let Some(saved) = self.saved_block_entity(key)
+        // A mod entity contributes only once, to the winning stack in add_block_data.
+        let mod_entity = matches!(
+            self.world.block_entities.get(&key),
+            Some(BlockEntity::Mod(_))
+        );
+        if !mod_entity
+            && (banner || pot || statue)
+            && let Some(saved) = self.saved_block_entity(key, false)
         {
             let mut picked = block_entity_item::pick(&saved);
             if pot {
@@ -263,7 +364,7 @@ impl Game<'_> {
         if !filled {
             return;
         }
-        let Some(saved) = self.saved_block_entity(key) else {
+        let Some(saved) = self.saved_block_entity(key, false) else {
             return;
         };
         let state = self.world.block(pos[0], pos[1], pos[2]);
@@ -271,43 +372,6 @@ impl Game<'_> {
         let patch = block_entity_item::collected_components(&saved);
         (stack.damage, stack.extra) = item_data::decode_components(Some(&Tag::Compound(patch)));
         self.spawn_item_own(stack, pos.map(|v| f64::from(v) + 0.5), 10);
-    }
-
-    /// `BlockItem.updateBlockStateFromTag`: the properties of the item's
-    /// `block_state` component (a hive's honey level, a statue's pose) set on
-    /// the block just placed at `pos`. Returns the state it has now.
-    pub(super) fn apply_item_block_state(
-        &mut self,
-        pos: [i32; 3],
-        state: BlockStateId,
-        stack: &ItemStack,
-    ) -> Result<BlockStateId> {
-        let Some(Tag::Compound(saved)) =
-            stack.data().and_then(|d| d.other("minecraft:block_state"))
-        else {
-            return Ok(state);
-        };
-        let Some(current) = self.pack.assets.registry.state(state) else {
-            return Ok(state);
-        };
-        // Only the properties the block has.
-        let props: Vec<(String, String)> = saved
-            .iter()
-            .filter_map(|(k, v)| match v {
-                Tag::String(v) => Some((k.to_string_lossy(), v.to_string_lossy())),
-                _ => None,
-            })
-            .filter(|(k, v)| current.properties.get(k).is_some_and(|old| old != v))
-            .collect();
-        let props: Vec<(&str, &str)> = props.iter().map(|(k, v)| (&**k, &**v)).collect();
-        match self.with_props(state, &props) {
-            Some(new) if !props.is_empty() && new != state => {
-                // `level.setBlock(pos, modifiedState, 2)`: no neighbour pass.
-                self.level_set_with_flags(pos, new, flags::UPDATE_CLIENTS)?;
-                Ok(new)
-            }
-            _ => Ok(state),
-        }
     }
 
     /// `BlockItem.updateBlockEntityComponents` on a client's level, for the
@@ -324,6 +388,25 @@ impl Game<'_> {
         self.apply_placed_item(pos, &stack, false);
     }
 
+    /// Ensure the selected block's entity exists before applying the original stack's data.
+    pub(super) fn apply_block_item_data(
+        &mut self,
+        pos: [i32; 3],
+        state: BlockStateId,
+        stack: &ItemStack,
+        game_master: bool,
+    ) {
+        let key = (pos[0], pos[1], pos[2]);
+        if !self.world.block_entities.stateful_entity(state.0)
+            && let Some(entity) = self.new_block_entity_for_state(state)
+        {
+            self.world.block_entities.insert(key, entity);
+        }
+        if self.world.block_entities.get(&key).is_some() {
+            self.apply_placed_item(pos, stack, game_master);
+        }
+    }
+
     /// `BlockItem.updateCustomBlockEntityTag` and `updateBlockEntityComponents`
     /// for the block entity just placed at `pos` from `stack`; `game_master`:
     /// the placer can use game master blocks (a dispenser can't).
@@ -334,28 +417,36 @@ impl Game<'_> {
         game_master: bool,
     ) {
         let key = (pos[0], pos[1], pos[2]);
-        self.pending.banner.remove(&pos);
-        let Some(saved) = self.saved_block_entity(key) else {
+        self.pending.clear(pos);
+        let state = self.world.block(pos[0], pos[1], pos[2]);
+        self.sculk_place_entity(state);
+        let Some(saved) = self.saved_block_entity(key, false) else {
             return;
         };
-        let placed = block_entity_item::place(&saved, &components(stack), game_master);
+        let (placed, custom_data_loaded) =
+            block_entity_item::place_with_load_result(&saved, &components(stack), game_master);
         if placed == saved {
             return;
         }
         let block = self.world.block(pos[0], pos[1], pos[2]);
         let name = &self.res.facts().get(block).name;
-        let Some((_, mut entity)) = save::decode_block_entity_for_block(&placed, name) else {
+        let previous = self.world.block_entities.get(&key);
+        let Some((_, mut entity)) = save::decode_block_entity_replacing(&placed, name, previous)
+        else {
             return;
         };
         // The new crafter's state flag (CrafterBlock.newBlockEntity), which
         // its saved data has no part of.
         if let (BlockEntity::Crafter(new), Some(BlockEntity::Crafter(old))) =
-            (&mut entity, self.world.block_entities.get(&key))
+            (&mut entity, previous)
         {
             new.state_triggered = old.state_triggered;
         }
         self.load_block_name(key, &entity, &placed);
         self.world.block_entities.insert(key, entity);
+        if custom_data_loaded {
+            self.notify_block_entity_load_additional(key);
+        }
         self.update_spawner_display(key);
     }
 }
@@ -363,6 +454,47 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::{clone_item, picked_item};
+
+    #[test]
+    #[ignore = "daily"]
+    fn placed_sculk_item_data_survives_pending_placement() {
+        use crate::game::native_entity_refs::tests::with_game;
+        use std::sync::Arc;
+        use sunrise_client::{chunk::Chunk, items::ItemStack};
+        use sunrise_core::nbt::Tag;
+
+        with_game(|game| {
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            game.sculk_prepare();
+            for (block, field, value) in [
+                ("minecraft:sculk_sensor", "last_vibration_frequency", 6),
+                (
+                    "minecraft:calibrated_sculk_sensor",
+                    "last_vibration_frequency",
+                    11,
+                ),
+                ("minecraft:sculk_shrieker", "warning_level", 2),
+            ] {
+                let state = game.pack.assets.registry.default_state(block).unwrap();
+                let key = (2, 230, 11);
+                game.world.block_entities.remove(&key);
+                game.world.set(key.0, key.1, key.2, state).unwrap();
+                let mut stack = ItemStack::new(block, 1);
+                let patch = Tag::compound([(
+                    "minecraft:block_entity_data",
+                    Tag::compound([("id", Tag::String(block.into())), (field, Tag::Int(value))]),
+                )]);
+                (stack.damage, stack.extra) =
+                    sunrise_client::item_data::decode_components(Some(&patch));
+                game.apply_placed_item([2, 230, 11], &stack, false);
+                game.sculk_sync_index();
+                let saved = game.block_entity_nbt([2, 230, 11]).unwrap();
+                assert_eq!(saved.get(field), Some(&Tag::Int(value)), "{block}");
+            }
+        });
+    }
 
     #[test]
     fn a_potted_plant_picks_its_plant_and_an_empty_pot_the_pot() {
@@ -501,8 +633,8 @@ mod tests {
             }
             fn blocks(&self, _context: &mod_api::RegistrationContext, event: &mut BlocksEvent<'_>) {
                 event
-                    .blocks
-                    .push(mod_api::Block::new(CRATE, "minecraft:white_banner"));
+                    .register(mod_api::Block::new(CRATE, "minecraft:white_banner"))
+                    .unwrap();
             }
         }
         let mods: Mods = Arc::from([ModEntry::new("item_test", Box::new(TestMod))]);
@@ -623,7 +755,7 @@ mod tests {
                     let mut block = mod_api::Block::new(id, "minecraft:stone");
                     block.item = item;
                     block.pick_item = pick_item.map(Into::into);
-                    event.blocks.push(block);
+                    event.register(block).unwrap();
                 }
             }
         }
@@ -663,6 +795,115 @@ mod tests {
             assert_eq!(picked(2).as_deref(), Some("minecraft:diamond"));
             assert_eq!(picked(3).as_deref(), Some("pick_test:plain"));
             assert_eq!(picked(4), None);
+        });
+    }
+
+    /// A player's pick-block read gives what a pick takes: the block's own item (a crop's
+    /// seed), a block Part's answer in its place, and nothing for air, an unloaded position
+    /// or a player who is not here.
+    #[test]
+    #[ignore = "daily"]
+    fn the_clone_item_stack_read_gives_the_pick_answer() {
+        use crate::game::native_entity_refs::tests::run_fresh_cases;
+        use crate::game::native_guest_turn_tests::with_guests;
+        use mod_api::{BlockPart, CloneItemStackEvent, Hooks, Host, ItemStack, Registrar};
+        use std::sync::Arc;
+        use sunrise_client::chunk::Chunk;
+
+        if run_fresh_cases(
+            "game::block_items::tests::the_clone_item_stack_read_gives_the_pick_answer",
+            "SUNRISE_CLONE_STACK_READ_CHILD",
+            &["read"],
+        ) {
+            return;
+        }
+        /// Stone picks as a diamond, except with its data.
+        struct Diamond;
+        #[mod_api::sunrise_part]
+        impl BlockPart for Diamond {
+            fn clone_item_stack(
+                &self,
+                _: &dyn Host,
+                event: &mut CloneItemStackEvent<'_>,
+            ) -> Option<ItemStack> {
+                (!event.include_data).then(|| {
+                    ItemStack::new(
+                        mod_api::__private::item_key("minecraft:diamond").unwrap(),
+                        1,
+                    )
+                    .unwrap()
+                })
+            }
+        }
+        struct Mod;
+        #[mod_api::__subscriptions]
+        impl Hooks for Mod {
+            fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+                let stone = r.block_key("minecraft:stone");
+                r.block_part(stone, Diamond);
+            }
+        }
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new("picker", Box::new(Mod))].into();
+        crate::game::api_values::install_parts(&mods).unwrap();
+        mod_platform::testing::with_mods(mods, || {
+            with_guests(|game| {
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                let state = |name| game.pack.assets.registry.default_state(name).unwrap();
+                game.world.set(0, 64, 0, state("minecraft:wheat")).unwrap();
+                game.world.set(1, 64, 0, state("minecraft:stone")).unwrap();
+                game.world.set(3, 64, 0, state("minecraft:chest")).unwrap();
+                let player = game.player(12).unwrap();
+                let level = player.level(&*game).unwrap();
+                let pick = |game: &mut crate::game::Game<'_>,
+                            player: mod_api::PlayerRef,
+                            pos: [i32; 3],
+                            include_data: bool| {
+                    let stack = player.clone_item_stack(game, level, pos, include_data)?;
+                    let item = mod_api::__private::item_key_id(stack.item()).unwrap();
+                    Some((item.to_owned(), stack.count()))
+                };
+                let item = |id: &str| Some((id.to_owned(), 1));
+                assert_eq!(
+                    pick(game, player, [0, 64, 0], false),
+                    item("minecraft:wheat_seeds")
+                );
+                assert_eq!(
+                    pick(game, player, [1, 64, 0], false),
+                    item("minecraft:diamond")
+                );
+                assert_eq!(
+                    pick(game, player, [1, 64, 0], true),
+                    item("minecraft:stone")
+                );
+                // A chest's items and name stay off the read's stack with data:
+                // addBlockDataToItem comes after getCloneItemStack.
+                let mut items = vec![None; 27];
+                items[0] = Some(sunrise_client::items::ItemStack::new("minecraft:stone", 5));
+                game.world.block_entities.insert(
+                    (3, 64, 0),
+                    sunrise_client::containers::BlockEntity::Chest(items),
+                );
+                game.world
+                    .block_names
+                    .insert((3, 64, 0), sunrise_core::nbt::Tag::String("Loot".into()));
+                let chest = player
+                    .clone_item_stack(game, level, [3, 64, 0], true)
+                    .unwrap();
+                assert_eq!(
+                    mod_api::__private::item_key_id(chest.item()),
+                    Some("minecraft:chest")
+                );
+                assert!(chest.components().is_none(), "no block data");
+                assert_eq!(pick(game, player, [2, 64, 0], false), None, "air");
+                assert_eq!(pick(game, player, [4000, 64, 0], false), None, "unloaded");
+                let gone = mod_api::__private::game::player_ref(
+                    mod_api::EntityRef::new(player.entity().epoch(), player.entity().id() + 100),
+                    player.uuid(),
+                );
+                assert_eq!(pick(game, gone, [0, 64, 0], false), None, "stale");
+            });
         });
     }
 }
@@ -755,7 +996,12 @@ mod plain_name_overlay_tests {
                     assert!(source.get("lock").is_some());
                 }
                 let snapshot = game.with_entities([resident]).remove(0);
-                let encoded = save::encode(&snapshot, game.pack.assets.registry, game.res.biomes());
+                let encoded = save::encode(
+                    &snapshot,
+                    game.pack.assets.registry,
+                    game.res.biomes(),
+                    &Default::default(),
+                );
                 let Tag::List(entries) = encoded.tag.get("block_entities").unwrap() else {
                     panic!("actual saved entries")
                 };
@@ -805,7 +1051,12 @@ mod styled_name_model_tests {
     fn chunk_saved(game: &Game<'_>, pos: (i32, i32, i32)) -> Tag {
         let resident = game.world.chunks.get(&(0, 0)).unwrap();
         let snapshot = game.with_entities([resident]).remove(0);
-        let encoded = save::encode(&snapshot, game.pack.assets.registry, game.res.biomes());
+        let encoded = save::encode(
+            &snapshot,
+            game.pack.assets.registry,
+            game.res.biomes(),
+            &Default::default(),
+        );
         let Tag::List(entities) = encoded.tag.get("block_entities").unwrap() else {
             panic!("actual chunk entities")
         };
@@ -831,7 +1082,7 @@ mod styled_name_model_tests {
         assert_eq!(slots[26].as_ref().unwrap().count, 5);
         assert_eq!(&*slots[0].as_ref().unwrap().item, "minecraft:diamond");
         assert_eq!(&*slots[26].as_ref().unwrap().item, "minecraft:apple");
-        let no_raw = game.saved_block_entity(pos).unwrap();
+        let no_raw = game.saved_block_entity(pos, false).unwrap();
         let command = game.block_entity_nbt([pos.0, pos.1, pos.2]).unwrap();
         let chunk = chunk_saved(game, pos);
         for (route, saved) in [

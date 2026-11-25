@@ -299,12 +299,14 @@ pub fn on_damage(m: &mut Mob, source: &Damage) -> bool {
     }
     true
 }
-pub fn after_hurt(m: &mut Mob, source: &Damage) {
-    // A thrown potion's hit (`indirect_magic` with the potion as the direct
-    // entity, `Mob::damage_by`) and a projectile it dodges leave
-    // `Enderman.hurtServer` before the random chance:
-    // `repeatedlyTryToTeleport` replaces it.
-    if !dodges(m, source) && source.kind != super::DamageKind::IndirectMagic {
+pub fn after_hurt(m: &mut Mob, source: &Damage, explicit_direct: bool) {
+    // The built-in potion factory supplies a position and leaves the direct
+    // entity to `damage_by` to handle. A sourced command or a hit with no
+    // source at all is not inferred to be a potion based on its type alone.
+    let infer_potion = source.kind == super::DamageKind::IndirectMagic
+        && !explicit_direct
+        && source.from.is_some();
+    if !dodges(m, source) && !infer_potion {
         teleport_chance(m, source);
     }
 }
@@ -373,9 +375,11 @@ pub fn anim(m: &Mob, s: &State, p: &mut Poses) {
 struct FreezeWhenLookedAt;
 impl Goal for FreezeWhenLookedAt {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         JUMP | MOVE
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         if m.ai.target != Some(Who::Player) {
             return false;
@@ -385,9 +389,11 @@ impl Goal for FreezeWhenLookedAt {
         };
         m.distance_sqr(p.position) <= 256.0 && stared_at(m, cx.w)
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, _: &mut Cx) {
         m.nav_stop();
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         if let Some(p) = cx.w.selected_player() {
             let at = [p.position.x, p.eye[1], p.position.z];
@@ -405,9 +411,11 @@ struct LookForPlayer {
 }
 impl Goal for LookForPlayer {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         TARGET
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         let Some(p) = cx.w.selected_player() else {
             return false;
@@ -421,6 +429,7 @@ impl Goal for LookForPlayer {
             && m.sees(cx.w, Who::Player);
         self.pending
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, _: &mut Cx) {
         self.aggro = reduced(5);
         self.teleport = 0;
@@ -428,10 +437,12 @@ impl Goal for LookForPlayer {
         // only when a target is assigned.
         m.extra.flag2 = true;
     }
+    #[inline]
     fn stop(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.pending = false;
         m.set_ai_target(cx.w, None);
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         let Some(p) = cx.w.selected_player().cloned() else {
             return false;
@@ -447,6 +458,7 @@ impl Goal for LookForPlayer {
         // which has no range: the target is kept however far it goes.
         p.alive && !p.creative && !p.spectator && m.ai.target == Some(Who::Player)
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         let Some(p) = cx.w.selected_player().cloned() else {
             return;
@@ -484,15 +496,18 @@ impl Goal for LookForPlayer {
 struct TakeBlock;
 impl Goal for TakeBlock {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         0
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         // EndermanTakeBlockGoal.canUse: needs mobGriefing, checked before the draw.
         m.extra.carried.is_none()
             && cx.w.can_grief(m.id)
             && m.random.next_int_bound(reduced(20)).unwrap_or(1) == 0
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         let x = (m.position.x - 2.0 + m.random.next_double() * 4.0).floor() as i32;
         let y = (m.position.y + m.random.next_double() * 3.0).floor() as i32;
@@ -538,15 +553,18 @@ impl Goal for TakeBlock {
 struct LeaveBlock;
 impl Goal for LeaveBlock {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         0
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         // EndermanLeaveBlockGoal.canUse: needs mobGriefing, checked before the draw.
         m.extra.carried.is_some()
             && cx.w.can_grief(m.id)
             && m.random.next_int_bound(reduced(2000)).unwrap_or(1) == 0
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         let Some(carried) = m.extra.carried else {
             return;
@@ -616,6 +634,21 @@ mod tests {
         let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
         kind.species = Species::Enderman;
         Mob::new(1, Arc::new(kind), Vec3::ZERO, 0.0)
+    }
+
+    #[test]
+    fn explicit_indirect_magic_is_not_assumed_to_be_a_thrown_potion() {
+        let mut m = enderman();
+        m.random = sunrise_core::random::LegacyRandom::new(1);
+        let positioned = Damage::indirect_magic(None, [0.0; 3]);
+        after_hurt(&mut m, &positioned, false);
+        assert_eq!(m.extra.counter2, 0, "the built-in potion path handles this");
+        after_hurt(&mut m, &positioned, true);
+        assert_eq!(m.extra.counter2, 1, "an explicit hit at a position rolls");
+        m.extra.counter2 = 0;
+        m.random = sunrise_core::random::LegacyRandom::new(1);
+        after_hurt(&mut m, &Damage::of(DamageKind::IndirectMagic), false);
+        assert_eq!(m.extra.counter2, 1, "a hit without a source also rolls");
     }
 
     /// Enderman.hurtServer: a projectile makes a free enderman teleport away
@@ -733,6 +766,7 @@ mod tests {
             assert_eq!(free.position, Vec3::new(20.5, 0.0, 0.5), "no border");
 
             let w = MobWorld {
+                side: sunrise_client::motion::dry_side(),
                 goal_host: None,
                 border: Some(&border),
                 ..w.clone()
@@ -775,6 +809,7 @@ mod tests {
         let loot = LootData::load(&root, &PackOverlay::NONE, &defaults).unwrap();
         let death = |mob_drops| drops::Death {
             loot: &loot,
+            this_nbt: None,
             damage: None,
             player: None,
             player_killed: false,

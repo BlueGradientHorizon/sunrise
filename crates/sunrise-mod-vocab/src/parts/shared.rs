@@ -1,4 +1,5 @@
 //! Shared table state, cross-kind registration and common test fixtures only.
+use super::blocks::BlockHookParts;
 use super::*;
 use std::cell::Cell;
 use std::sync::{PoisonError, RwLock, atomic::AtomicU64};
@@ -16,6 +17,8 @@ pub struct Attached<P: ?Sized> {
     /// The part's kind, its Rust type's name: one part of each kind per thing.
     pub(crate) type_name: &'static str,
     pub(crate) part: Arc<P>,
+    /// Set if an isolated callback on this attachment panicked and was disabled for the session.
+    pub(crate) panicked: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl<P: ?Sized> Attached<P> {
@@ -26,6 +29,7 @@ impl<P: ?Sized> Attached<P> {
             order: self.order,
             type_name: self.type_name,
             part,
+            panicked: self.panicked.clone(),
         }
     }
     // hidden: the game's goal registration reads these (#1077)
@@ -59,15 +63,20 @@ pub struct Parts {
     pub(crate) key_mappings: Vec<(&'static str, crate::KeyRegistration)>,
     /// Settings by owner, in registration order (`Registrar::register_setting`).
     pub(crate) settings: Vec<(&'static str, crate::SettingSpec)>,
+    /// Config screen factories by owner, at most one each (`Registrar::register_config_screen`).
+    pub(crate) config_screens: Vec<crate::parts::settings::ConfigScreenRegistration>,
     /// Block parts, and block entity parts as the block parts they also are.
     pub(crate) blocks: HashMap<Box<str>, Vec<Attached<dyn BlockPart>>>,
-    /// Block entity parts by block, for the hooks asked by block (`block_entity`, `screen`).
+    /// Block entity parts by block, for the hooks asked by block (`block_entity`).
     pub(crate) block_entities: HashMap<Box<str>, Vec<Attached<dyn BlockEntityPart>>>,
     /// Block entity parts by block entity type, for the hooks asked by the entity
-    /// (`block_entity_tick`, `menu_button`): its type id need not be its block's id.
+    /// (`block_entity_tick`): its type id need not be its block's id.
     pub(crate) block_entity_kinds: HashMap<Box<str>, Vec<Attached<dyn BlockEntityPart>>>,
     pub(crate) items: HashMap<Box<str>, Vec<Attached<dyn ItemPart>>>,
+    /// The sole owner of main-hand client input for an item, independent of item hooks.
+    pub(crate) client_item_uses: HashMap<Box<str>, Attached<dyn crate::ClientItemUseBehavior>>,
     pub(crate) menus: HashMap<Box<str>, Vec<Attached<dyn MenuPart>>>,
+    pub(crate) effects: HashMap<Box<str>, Vec<Attached<dyn MobEffectPart>>>,
     pub(crate) fluids: HashMap<Box<str>, Vec<Attached<dyn FluidPart>>>,
     /// Entity parts by entity type id (`minecraft:zombie`, `mymod:robot`), for the goal
     /// registration at every `Mob` construction and the scoped hooks the entity
@@ -75,25 +84,30 @@ pub struct Parts {
     pub(crate) entities: HashMap<Box<str>, Vec<Attached<dyn EntityPart>>>,
     /// Capability providers by capability name, then by block entity type, in registration
     /// order.
-    pub(crate) capabilities: Capabilities<BlockProviderOf>,
+    pub(crate) capabilities: Capabilities<NativeCapabilityProvider>,
     /// Block capability providers by capability name, then by block, in registration order:
     /// those asked of a block whatever block entity it has, or none.
-    pub(crate) block_capabilities: Capabilities<BlockProviderOf>,
-    /// Canonical block capability metadata, retained independently of provider availability.
-    pub(crate) block_capability_metadata: HashMap<&'static str, (Arc<str>, Option<bool>)>,
+    pub(crate) block_capabilities: Capabilities<NativeCapabilityProvider>,
+    /// Canonical bindings by domain, retained independently of provider availability.
+    pub(crate) block_capability_metadata: HashMap<&'static str, CapabilityMetadata>,
+    #[allow(
+        dead_code,
+        reason = "the mirrored authoring input consumes only the item bindings during registration"
+    )]
+    pub(crate) item_capability_metadata: HashMap<&'static str, CapabilityMetadata>,
+    pub(crate) entity_capability_metadata: HashMap<&'static str, CapabilityMetadata>,
     /// Built-in declaration order followed by the order mods first mention a capability.
     pub(crate) block_capability_order: Vec<&'static str>,
     /// Explicit domains and declarations of the game's default providers.
     pub(crate) default_block_containers: HashMap<Box<str>, Vec<(usize, crate::ModContainer)>>,
     pub(crate) default_block_fluids: HashMap<Box<str>, Vec<(usize, crate::ModFluidTanks)>>,
     pub(crate) default_block_energy: HashMap<Box<str>, Vec<(usize, crate::ModEnergyBuffer)>>,
-    pub(crate) default_item_containers:
-        HashMap<Box<str>, Vec<(usize, Arc<dyn crate::ItemContainerProvider>)>>,
+    pub(crate) default_item_containers: HashMap<Box<str>, Vec<DefaultItemContainer>>,
     /// Item capability providers by capability name, then by item, in registration order.
-    pub(crate) item_capabilities: Capabilities<ItemProviderOf>,
+    pub(crate) item_capabilities: Capabilities<NativeCapabilityProvider>,
     /// Entity capability providers by capability name, then by entity type, in registration
     /// order.
-    pub(crate) entity_capabilities: Capabilities<EntityProviderOf>,
+    pub(crate) entity_capabilities: Capabilities<NativeCapabilityProvider>,
     /// The mods' own item places (`ItemPlace::Mod`), by provider name.
     pub(crate) place_providers: HashMap<&'static str, PlaceProviderPart>,
     /// The tooltip appenders, in registration order.
@@ -104,15 +118,21 @@ pub struct Parts {
     pub(crate) command_arguments: Vec<CommandArgumentInfo>,
     /// Separately declared mod recipe types.
     pub(crate) recipe_types: HashMap<Box<str>, usize>,
+    /// Code-defined particle types, indexed by their reserved common registry slots.
+    pub(crate) particle_types:
+        HashMap<crate::ParticleKey, (bool, Arc<dyn crate::__private::ParticleCodec>)>,
     /// Serializer IDs, their produced recipe types and retained owners.
     pub(crate) recipe_serializers:
-        HashMap<Box<str>, (usize, String, Arc<dyn crate::CraftingRecipeHandler>)>,
+        HashMap<Box<str>, (usize, String, crate::__private::InstalledRecipeSerializer)>,
     /// Entity selector tokens the mods registered, by name, in registration order.
     pub(crate) entity_selectors: Vec<EntitySelectorInfo>,
     /// Frozen raw payload declarations and their sole receiving owners.
     pub(crate) payloads: Option<Arc<crate::parts::payloads::Payloads>>,
-    /// Only the parts that override each scoped hook, resolved at load or reload.
-    pub(crate) hooks: Vec<Option<HookParts>>,
+    /// Only the parts that override each scoped hook, resolved at load or reload. Boxed: most of the
+    /// table is empty, and a slot holds eight maps.
+    pub(crate) hooks: Vec<Option<Box<HookParts>>>,
+    /// Who listens, as plain bits derived from `hooks` when the table is resolved.
+    pub(crate) listens: Arc<ListenIndex>,
 }
 
 // no wire: process-local registration and dispatch storage contains trait objects and owning-mod identities.
@@ -121,11 +141,13 @@ pub struct Parts {
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct HookParts {
     pub(crate) blocks: HashMap<Box<str>, Vec<Attached<dyn BlockPart>>>,
-    pub(crate) block_keys: HashMap<crate::BlockKey, Vec<Attached<dyn BlockPart>>>,
+    pub(crate) block_keys: HashMap<crate::BlockKey, BlockHookParts>,
     pub(crate) block_entities: HashMap<Box<str>, Vec<Attached<dyn BlockEntityPart>>>,
     pub(crate) block_entity_kinds: HashMap<Box<str>, Vec<Attached<dyn BlockEntityPart>>>,
     pub(crate) items: HashMap<Box<str>, Vec<Attached<dyn ItemPart>>>,
     pub(crate) menus: HashMap<Box<str>, Vec<Attached<dyn MenuPart>>>,
+    pub(crate) menu_owners: HashMap<Box<str>, HashMap<usize, Attached<dyn MenuPart>>>,
+    pub(crate) effects: HashMap<Box<str>, Vec<Attached<dyn MobEffectPart>>>,
     pub(crate) fluids: HashMap<Box<str>, Vec<Attached<dyn FluidPart>>>,
     pub(crate) entities: HashMap<Box<str>, Vec<Attached<dyn EntityPart>>>,
 }
@@ -134,7 +156,8 @@ pub struct HookParts {
 // hidden: a lookup's view of the registrar's table, not part of the mod surface
 // exhaustive: the four kinds of thing a capability is asked of
 #[doc(hidden)]
-#[derive(Clone, Copy, Debug, sunrise_mod_api_macros::Wire)]
+// no wire: internal capability table lookup selector.
+#[derive(Clone, Copy, Debug)]
 pub enum ProvidedBy {
     BlockEntity,
     Block,
@@ -447,7 +470,7 @@ pub fn prepare_parts(
             .iter()
             .map(|(name, attached)| {
                 crate::content::registry_keys::block_key(name)
-                    .map(|key| (key, attached.clone()))
+                    .map(|key| (key, BlockHookParts::new(name, attached)))
                     .ok_or_else(|| {
                         ResolvePartsError::Parts(vec![format!(
                             "block metadata unavailable for {name}"
@@ -456,6 +479,7 @@ pub fn prepare_parts(
             })
             .collect::<Result<_, _>>()?;
     }
+    parts.listens = Arc::new(ListenIndex::of(&parts.hooks));
     Ok(Some(parts))
 }
 
@@ -544,7 +568,7 @@ pub(crate) fn add_tagged<P: ?Sized>(
 
 impl Parts {
     pub(crate) fn for_hook(&self, hook: HookId) -> Option<&HookParts> {
-        self.hooks.get(hook as usize).and_then(Option::as_ref)
+        self.hooks.get(hook as usize).and_then(Option::as_deref)
     }
     pub(super) fn index_hooks(&mut self) {
         self.hooks = vec![None; HOOK_COUNT];
@@ -553,8 +577,7 @@ impl Parts {
                 for (key, parts) in &self.$field {
                     for part in parts {
                         for hook in part.part.$method().iter().flatten() {
-                            let table =
-                                self.hooks[*hook as usize].get_or_insert_with(HookParts::default);
+                            let table = self.hooks[*hook as usize].get_or_insert_with(Box::default);
                             table
                                 .$field
                                 .entry(key.clone())
@@ -570,24 +593,18 @@ impl Parts {
         index!(block_entity_kinds, block_entity_subscribed);
         index!(items, item_subscribed);
         index!(menus, menu_subscribed);
+        index!(effects, effect_subscribed);
         index!(fluids, fluid_subscribed);
         index!(entities, entity_subscribed);
-    }
-}
-
-/// Walk only this capability and type's registrations, once each even if a provider switches
-/// a mod off during the lookup. The table and the game's direct lookups share this path.
-pub(crate) fn next_provider<P: Clone>(
-    parts: &[CapabilityPart<P>],
-    index: &mut u32,
-) -> Option<(P, &'static str, bool)> {
-    while let Some(part) = parts.get(*index as usize) {
-        *index += 1;
-        if crate::mod_index_on(part.mod_index) {
-            return Some((part.provider.clone(), part.mod_id, part.before_game));
+        for table in self.hooks.iter_mut().flatten() {
+            for (menu, parts) in &table.menus {
+                let owners = table.menu_owners.entry(menu.clone()).or_default();
+                for part in parts {
+                    owners.entry(part.mod_index).or_insert_with(|| part.clone());
+                }
+            }
         }
     }
-    None
 }
 
 pub(crate) fn attached<'a, 'k, P: ?Sized>(
@@ -625,6 +642,7 @@ mod lookup_context_tests {
                 order: 0,
                 type_name: "DropObserver",
                 part: Arc::new(DropObserver(observed)),
+                panicked: Default::default(),
             }],
         );
         parts
@@ -642,7 +660,11 @@ mod lookup_context_tests {
     #[test]
     fn unsubscribed_scoped_dispatch_never_looks_up_parts() {
         struct Level;
-        impl crate::LevelHost for Level {}
+        impl crate::LevelHost for Level {
+            fn block_entity_data(&self, _: crate::BlockEntityRef) -> Option<crate::Compound> {
+                None
+            }
+        }
         struct Hook;
         #[mod_api::__subscriptions]
         impl crate::Hooks for Hook {}
@@ -651,8 +673,7 @@ mod lookup_context_tests {
             || {
                 super::super::install_input(super::super::installation::InstalledInput::default());
                 TEST_PART_LOOKUPS.set(0);
-                let state =
-                    crate::BlockState::from(crate::BlockStateRecord::new(crate::BlockKey(0), 0));
+                let state = crate::__private::block_state_from_ordinal(crate::BlockKey(0), 0);
                 let mut answer = false;
                 crate::dispatch_should_check_weak_power(
                     &Level,

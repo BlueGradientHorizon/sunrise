@@ -1,4 +1,3 @@
-// game-module-visibility: pub(crate)
 //! Cushions: `CushionItem.useOn` placement on the top face of a block,
 //! `Cushion.canBePlacedAt`/`survives`, `Cushion.interact` (sit),
 //! `BlockAttachedEntity.hurtServer` (break, dropping the matching colour),
@@ -7,7 +6,7 @@
 //! A cushion is a `BlockAttachedEntity`, not a block: it has no block state,
 //! only an entity whose `Pos` is the click point's height. Placement uses
 //! outline bounds, collision shapes and suffocation predicates.
-use super::{Game, Hit, InteractTarget, Keys, entity_culling::default_range, ray_box};
+use super::{Game, Hit, InteractTarget, Keys, entity_culling::default_range};
 use sunrise_client::actions::Action;
 use sunrise_client::entities::{Cushion, dye_index};
 use sunrise_client::items::ItemStack;
@@ -146,15 +145,20 @@ impl Game<'_> {
 impl Game<'_> {
     /// The cushion under the crosshair, its distance and the hit point.
     pub(super) fn cushion_hit(&self) -> Option<(usize, f64, [f64; 3])> {
+        if let Some(hit) = self.cached_entity_pick() {
+            let (entity, distance, point) = hit?;
+            let index = self.cushions.iter().position(|f| f.id == entity.id())?;
+            return Some((index, distance, point));
+        }
         let (eye, dir) = self.aim()?;
         let reach: f64 = self.entity_reach;
+        let (from, to) = super::pick_accumulator::pick_ray_segment(eye, dir, reach);
+        let mut pick = super::pick_accumulator::PickAccumulator::new(reach * reach);
         let mut best: Option<(usize, f64, [f64; 3])> = None;
         for (i, c) in self.cushions.iter().enumerate() {
-            let Some(d) = ray_box(eye, dir, reach, aabb(c.bounds())) else {
-                continue;
-            };
-            if best.is_none_or(|b| d < b.1) {
-                best = Some((i, d, std::array::from_fn(|k| eye[k] + dir[k] * d)));
+            if pick.consider_box(self, c.id, from, to, aabb(c.bounds())) {
+                let hit = pick.hovered.unwrap();
+                best = Some((i, hit.distance_sq.sqrt(), hit.point));
             }
         }
         best
@@ -289,7 +293,7 @@ impl Game<'_> {
         if self.cushion_in_fire(&self.cushions[placed]) {
             self.break_cushion(placed, false);
         }
-        self.audio.play(
+        self.play_audio(
             "minecraft:entity.cushion.place",
             Some([position.x, position.y, position.z]),
             0.75,
@@ -325,7 +329,7 @@ impl Game<'_> {
             return false;
         }
         // isSecondaryUseActive.
-        if self.keys.held(Action::Sneak) {
+        if self.held_mapping(Action::Sneak) {
             return false;
         }
         let id = self.cushions[i].id;
@@ -359,7 +363,7 @@ impl Game<'_> {
         };
         self.start_riding(id);
         let p = self.cushions[i].position;
-        self.audio.play(
+        self.play_audio(
             "minecraft:entity.cushion.sit",
             Some([p.x, p.y, p.z]),
             1.0,
@@ -390,14 +394,14 @@ impl Game<'_> {
     /// `BlockAttachedEntity.hurtServer`: `kill` (the `entity_die` event), then
     /// `Cushion.dropItem`.
     pub(super) fn break_cushion(&mut self, index: usize, by_player: bool) {
-        self.break_cushion_by(index, by_player.then_some(super::commands::Target::Player))
+        self.break_cushion_by(index, by_player.then_some(super::commands::Target::Player));
     }
     pub(super) fn break_cushion_by(
         &mut self,
         index: usize,
         source: Option<super::commands::Target>,
-    ) {
-        self.remove_cushion(index, source, true);
+    ) -> bool {
+        self.remove_cushion(index, source, true)
     }
     /// `BlockAttachedEntity.tick` on lost support: `discard()` and then
     /// `dropItem(level, null)`, which posts no game event.
@@ -411,18 +415,20 @@ impl Game<'_> {
         index: usize,
         source: Option<super::commands::Target>,
         killed: bool,
-    ) {
-        let c = self.cushions.remove(index);
-        let p = c.position;
-        self.world.modified.insert((c.pos[0] >> 4, c.pos[2] >> 4));
-        if self.riding == Some(c.id) {
-            self.dismount_removed_vehicle(p.y);
+    ) -> bool {
+        let id = self.cushions[index].id;
+        if self.target_removed(&super::commands::Target::Cushion(id)) {
+            return false;
         }
+        let Some(c) = self.take_removed_cushion(id) else {
+            return false;
+        };
+        let p = c.position;
         if killed {
             // BlockAttachedEntity.kill, before dropItem.
             self.entity_killed_event_by([p.x, p.y, p.z], source);
         }
-        self.audio.play(
+        self.play_audio(
             "minecraft:entity.cushion.break",
             Some([p.x, p.y, p.z]),
             1.0,
@@ -437,10 +443,11 @@ impl Game<'_> {
             .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS)
             || self.infinite_materials(source.as_ref())
         {
-            return;
+            return true;
         }
         let stack = c.item_stack_with_data();
         self.spawn_item(stack, [p.x, p.y, p.z], [0.0; 3], 10);
+        true
     }
     /// `Player.hasInfiniteMaterials` of a hurt's cause: the mode of the body in
     /// place, or of the guest the blast names.
@@ -457,15 +464,13 @@ impl Game<'_> {
     }
 
     /// `Entity.kill` of a cushion (`/kill`): gone with no drop, its rider let go.
-    pub(super) fn kill_cushion(&mut self, id: u32) {
-        let Some(i) = self.cushions.iter().position(|c| c.id == id) else {
-            return;
-        };
-        let c = self.cushions.remove(i);
-        self.world.modified.insert((c.pos[0] >> 4, c.pos[2] >> 4));
-        if self.riding == Some(c.id) {
-            self.dismount_removed_vehicle(c.position.y);
-        }
+    pub(super) fn take_removed_cushion(&mut self, id: u32) -> Option<Cushion> {
+        self.with_destroying_vehicle(super::commands::Target::Cushion(id), |game| {
+            let i = game.cushions.iter().position(|c| c.id == id)?;
+            let c = game.cushions.remove(i);
+            game.world.modified.insert((c.pos[0] >> 4, c.pos[2] >> 4));
+            Some(c)
+        })?
     }
 
     /// `Cushion.showBreakingParticles`: ten of the matching wool block.
@@ -492,7 +497,7 @@ impl Game<'_> {
             tint,
         );
         self.particles
-            .send_particles(&options, particle_at, [0.25, 0.0625, 0.25], 0.05, 10);
+            .send_particles(&options, particle_at, [0.25, 0.0625, 0.25], 0.05, 10, None);
     }
 
     /// `BlockAttachedEntity.tick`: survive and burn checks after the post-increment reaches 100.
@@ -574,7 +579,7 @@ impl Game<'_> {
             p.velocity = Vec3::ZERO;
             p.fall_distance = 0.0;
         }
-        self.audio.play(
+        self.play_audio(
             "minecraft:entity.cushion.get_up",
             Some([c.position.x, c.position.y, c.position.z]),
             1.0,
@@ -668,11 +673,10 @@ impl Game<'_> {
                 // Cushion's box is 1 wide.
                 let offset = sunrise_client::mobs::riders::vehicle_attachment(m, 1.0);
                 let at = Vec3::new(c.position.x, c.position.y + 0.25 - offset, c.position.z);
-                m.position = at;
-                m.previous = at;
+                sunrise_client::mobs::living::teleports::snap_to(m, at);
                 m.velocity = Vec3::ZERO;
                 m.fall_distance = 0.0;
-                m.on_ground = false;
+                m.ground.on_ground = false;
                 m.extra.passenger = true;
                 m.ai.nav.stop();
             }
@@ -715,6 +719,9 @@ impl Game<'_> {
         };
         let sprites = &self.gui.atlas.sprites;
         for c in &self.cushions {
+            if self.hides_as_camera(c.id) {
+                continue;
+            }
             let a = aabb(c.bounds());
             let (lo, hi) = (a.min_position(), a.max_position());
             let (lo, hi) = (

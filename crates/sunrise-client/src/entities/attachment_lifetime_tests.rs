@@ -20,7 +20,7 @@ static VALUE: AttachmentType<i32> = AttachmentType {
     default: || 0,
     codec: None,
     copy_on_death: false,
-    sync: false,
+    sync_codec: None,
 };
 
 fn exercise<T: Clone + Joined + HasAttachmentLifetime>(template: T) {
@@ -93,9 +93,11 @@ fn reusable_entity_lifetimes_cover_clone_moves_and_vec_destruction() {
         pos: [0; 3],
         facing: 0,
         variant: "minecraft:kebab".into(),
+        asset: None,
         width: 1,
         height: 1,
         check_interval: 0,
+        ticks: 0,
     });
     exercise(entity_nbt::cushion_from_nbt(&saved, 1).unwrap());
     exercise(entity_nbt::item_frame_from_nbt(&saved, 1).unwrap());

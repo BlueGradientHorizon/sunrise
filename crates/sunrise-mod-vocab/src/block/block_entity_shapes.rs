@@ -13,7 +13,7 @@
 ///   refused by name otherwise;
 /// - at most 64 boxes in each list, refused by name past that. Vanilla has no such limit;
 ///   this one bounds what a block entity makes every client receive and keep. Declared
-///   shape tables (`BlockShapes`) are held to 16 boxes each, a load-time limit of their own;
+///   shape tables (`BlockShapes`) sync nothing and have no box limit;
 /// - a box under 1e-7 thick on any axis is an empty box, as vanilla's `Shapes.create`
 ///   makes it, and is accepted.
 ///

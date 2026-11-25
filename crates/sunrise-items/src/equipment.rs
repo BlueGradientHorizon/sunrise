@@ -63,17 +63,17 @@ impl Equipment {
     }
     /// `EntityEquipment.CODEC` write: None when nothing is equipped, as
     /// `LivingEntity.addAdditionalSaveData` omits the key then.
-    pub fn write(&self) -> Option<Tag> {
+    pub fn write(&self, items: &crate::items::Items) -> Option<Tag> {
         let mut compound = Compound::new();
         for (slot, stack) in self.0.iter().enumerate() {
-            put(&mut compound, slot, stack.as_ref());
+            put(&mut compound, slot, stack.as_ref(), items);
         }
         (!compound.is_empty()).then_some(Tag::Compound(compound))
     }
     /// Sets the `equipment` key of an entity's save compound from `write`,
     /// removing a stale one when nothing is equipped.
-    pub fn store(&self, entity: &mut Compound) {
-        match self.write() {
+    pub fn store(&self, entity: &mut Compound, items: &crate::items::Items) {
+        match self.write(items) {
             Some(tag) => {
                 entity.insert("equipment".into(), tag);
             }
@@ -108,11 +108,18 @@ impl From<[Option<ItemStack>; 8]> for Equipment {
 }
 
 /// Sets or clears one slot of an `equipment` compound.
-fn put(compound: &mut Compound, slot: usize, stack: Option<&ItemStack>) {
+fn put(
+    compound: &mut Compound,
+    slot: usize,
+    stack: Option<&ItemStack>,
+    items: &crate::items::Items,
+) {
     let name = SLOT_NAMES[slot];
-    match stack {
+    // `EntityEquipment.CODEC` leaves out an empty stack (`ItemStack.isEmpty`: air or a count
+    // of zero), so a zero-count slot never reloads as an item.
+    match stack.filter(|stack| stack.count > 0 && &*stack.item != "minecraft:air") {
         Some(stack) => {
-            compound.insert(name.into(), item_to_nbt(stack));
+            compound.insert(name.into(), item_to_nbt(stack, items));
         }
         None => {
             compound.remove(&name.into());
@@ -126,16 +133,29 @@ mod tests {
     #[test]
     fn the_compound_round_trips_and_omits_empty_slots() {
         let mut e = Equipment::default();
-        assert!(e.write().is_none());
+        assert!(e.write(&crate::items::Items::empty()).is_none());
         let mut saddle = ItemStack::new("minecraft:saddle", 1);
         saddle.damage = 2;
         assert!(e.set(SADDLE, Some(saddle)));
         assert!(e.set(BODY, Some(ItemStack::new("minecraft:iron_horse_armor", 1))));
         assert!(!e.set(8, None));
-        let tag = e.write().unwrap();
+        let tag = e.write(&crate::items::Items::empty()).unwrap();
         assert!(tag.get("head").is_none() && tag.get("saddle").is_some());
         assert_eq!(Equipment::read(&tag), e);
         assert_eq!(e.take_all().count(), 2);
         assert!(e.is_empty());
+    }
+
+    #[test]
+    fn a_zero_count_or_air_slot_is_left_out() {
+        let items = crate::items::Items::empty();
+        let mut e = Equipment::default();
+        assert!(e.set(MAINHAND, Some(ItemStack::new("minecraft:trident", 0))));
+        assert!(e.set(OFFHAND, Some(ItemStack::new("minecraft:air", 1))));
+        assert!(e.write(&items).is_none());
+        assert!(e.set(HEAD, Some(ItemStack::new("minecraft:diamond_helmet", 1))));
+        let tag = e.write(&items).unwrap();
+        assert!(tag.get("mainhand").is_none() && tag.get("offhand").is_none());
+        assert!(tag.get("head").is_some());
     }
 }

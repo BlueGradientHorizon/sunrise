@@ -30,7 +30,7 @@ struct Refusals {
     other_sound: bool,
     stale_float: Option<f32>,
     stale_sound: bool,
-    zero_bound: Option<i32>,
+    zero_bound: i32,
 }
 
 struct Probe(Arc<Mutex<Handles>>);
@@ -44,7 +44,15 @@ impl Hooks for Probe {
     ) -> Flow {
         let mut handles = self.0.lock().unwrap();
         let attacker = handles.attacker.unwrap();
-        let pitch = 0.8 + attacker.next_float(level).unwrap() * 0.4;
+        let (roll, zero_bound) = attacker
+            .with_random(level, |rng| {
+                let roll = rng.next_float();
+                let zero_bound = rng.next_int_bound(0);
+                let _ = rng.next_double();
+                (roll, zero_bound)
+            })
+            .unwrap();
+        let pitch = 0.8 + roll * 0.4;
         assert!(level.play_sound_at(
             "minecraft:entity.player.attack.strong",
             [1.0, 64.0, 2.0],
@@ -61,7 +69,7 @@ impl Hooks for Probe {
         ));
         let (other, stale) = (handles.other.unwrap(), handles.stale.unwrap());
         handles.refused = Some(Refusals {
-            other_float: other.next_float(level),
+            other_float: other.with_random(level, |rng| rng.next_float()),
             other_sound: level.play_sound_from(
                 other,
                 "minecraft:entity.pig.ambient",
@@ -69,7 +77,7 @@ impl Hooks for Probe {
                 1.0,
                 1.0,
             ),
-            stale_float: stale.next_float(level),
+            stale_float: stale.with_random(level, |rng| rng.next_float()),
             stale_sound: level.play_sound_from(
                 stale,
                 "minecraft:entity.pig.ambient",
@@ -77,9 +85,9 @@ impl Hooks for Probe {
                 1.0,
                 1.0,
             ),
-            zero_bound: attacker.next_int(level, 0),
+            zero_bound,
         });
-        event.container.set_new_damage(0.0);
+        event.container.set_new_damage(0.0).unwrap();
         Flow::Cancel
     }
 }
@@ -96,6 +104,37 @@ fn check(attacker: i32, expected_at: [f64; 3], hit: impl FnOnce(&mut super::Game
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
+            // Server-level sounds need the live server hub's sound-seed stream.
+            // with_game constructs the game but does not open its server.
+            game.lan_host(
+                crate::game::lan::LanSettings {
+                    port: 0,
+                    guest_commands: false,
+                    force_game_mode: false,
+                },
+                sunrise_client::lan::NetConfig {
+                    listen: false,
+                    announce: false,
+                    lod_distance: 0,
+                    ..sunrise_client::lan::NetConfig::lan(0, String::new(), 2)
+                },
+                sunrise_client::lan::hub::HubConfig {
+                    default_game_mode: 0,
+                    guest_commands: false,
+                    force_game_mode: false,
+                    hardcore: false,
+                    view_distance: 2,
+                    simulation_distance: 2,
+                    dimension: game.dim.id().to_owned(),
+                    allow_flight: true,
+                    seed: 0,
+                    max_players: 2,
+                    integrated: true,
+                    levels: game.level_shapes.clone(),
+                    level_seeds: game.levels.runtime.seeds(),
+                },
+            )
+            .unwrap();
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             bind_local_player(game, 7, 7);
             game.set_game_mode(GameMode::Survival);
@@ -122,6 +161,7 @@ fn check(attacker: i32, expected_at: [f64; 3], hit: impl FnOnce(&mut super::Game
                     .clone()
             };
             let expected_pitch = 0.8 + attacker_random.next_float() * 0.4;
+            let _ = attacker_random.next_double();
             let mut seeds = LegacyRandom::new(0x5eed);
             let expected_seeds = [seeds.next_long(), seeds.next_long()];
             game.lan
@@ -146,7 +186,7 @@ fn check(attacker: i32, expected_at: [f64; 3], hit: impl FnOnce(&mut super::Game
             assert_eq!(sounds[1].at, expected_at);
             assert_eq!(sounds[1].volume, 0.5);
             assert_eq!([sounds[0].seed, sounds[1].seed], expected_seeds);
-            // One draw by the listener: the attacker's stream continues where the copy does.
+            // Two draws in one loan: the attacker's stream continues where the copy does.
             let after = if attacker == 7 {
                 game.player.as_mut().unwrap().random.next_int()
             } else {
@@ -167,7 +207,7 @@ fn check(attacker: i32, expected_at: [f64; 3], hit: impl FnOnce(&mut super::Game
                     other_sound: false,
                     stale_float: None,
                     stale_sound: false,
-                    zero_bound: None,
+                    zero_bound: 0,
                 })
             );
         });

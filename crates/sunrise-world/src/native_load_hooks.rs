@@ -1,19 +1,14 @@
 //! Callbacks into the executable for data-loading native trait mods.
-use crate::{
-    loot::{LootContext, LootStack, LootTags},
-    native_load_context::LoadContext,
-};
+use crate::{loot::LootTags, native_load_context::LoadContext};
 use serde_json::{Map, Value};
 use std::sync::OnceLock;
 
 /// Data-loading hooks, installed before any data loads. Earlier loads see no mods.
 pub struct NativeLoadHooks {
     pub item_ability_default: fn(&str, &str, &dyn LootTags) -> bool,
-    pub loot_ability: fn(&crate::loot::LootStack, &str, &mut bool),
+    pub loot_ability: fn(&dyn crate::loot::LootAbilityTool, &str, &dyn LootTags, &mut bool),
     pub loot_table_load: fn(&LoadContext, &str, &mut Value),
     pub modify_default_components: fn(&LoadContext, &str, &mut Map<String, Value>),
-    pub loot_function: fn(&str, &Value, &LootContext<'_>, &mut LootStack, &dyn LootTags),
-    pub loot_condition: fn(&str, &Value, &LootContext<'_>, &mut bool, &dyn LootTags),
 }
 
 static HOOKS: OnceLock<NativeLoadHooks> = OnceLock::new();
@@ -39,33 +34,14 @@ pub(crate) fn modify_default_components(
     }
 }
 
-pub(crate) fn loot_function(
-    kind: &str,
-    data: &Value,
-    ctx: &LootContext<'_>,
-    stack: &mut LootStack,
+pub(crate) fn loot_ability(
+    tool: &dyn crate::loot::LootAbilityTool,
+    ability: &str,
     tags: &dyn LootTags,
-) {
-    if let Some(hooks) = HOOKS.get() {
-        (hooks.loot_function)(kind, data, ctx, stack, tags);
-    }
-}
-
-pub(crate) fn loot_condition(
-    kind: &str,
-    data: &Value,
-    ctx: &LootContext<'_>,
     holds: &mut bool,
-    tags: &dyn LootTags,
 ) {
     if let Some(hooks) = HOOKS.get() {
-        (hooks.loot_condition)(kind, data, ctx, holds, tags);
-    }
-}
-
-pub(crate) fn loot_ability(tool: &crate::loot::LootStack, ability: &str, holds: &mut bool) {
-    if let Some(hooks) = HOOKS.get() {
-        (hooks.loot_ability)(tool, ability, holds);
+        (hooks.loot_ability)(tool, ability, tags, holds);
     }
 }
 

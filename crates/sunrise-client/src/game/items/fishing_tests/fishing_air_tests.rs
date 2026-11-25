@@ -46,7 +46,7 @@ fn cave_air_above_a_water_source_is_open_water_and_catches_treasure() {
 
     // The flag the hook's retrieval reads: `gameplay/fishing`'s treasure entry is
     // conditioned on `in_open_water`, so the cave's air decides whether treasure comes.
-    let loot = sunrise_client::structure_blocks::loot_data(
+    let loot = sunrise_world::loot::LootData::load(
         &game.options.resources,
         &game.pack_files(),
         game.res.item_defaults(),

@@ -3,8 +3,6 @@
 
 Usage:
   ignored_shards.py --matrix --all      `matrix=`, every shard and the daily-rows legs (the daily run)
-  ignored_shards.py --prepare PACKAGE [ARG...]   run what PACKAGE's tests need built first (PREPARE), with ARGs
-                                                 appended (`-j2`); nothing when it needs nothing
   ignored_shards.py --matrix BASE HEAD  `matrix=`, the shards this pull request must run
 
 The ignored-tests check is a matrix with one package per shard; this file is the single
@@ -12,12 +10,10 @@ place that names them. A shard is selected when a changed crate is its package o
 transitive dependency of it. Workspace-wide files, and any path no crate owns, select
 every shard; pushes to main always run everything (the `changes` job passes --all).
 crates/sunrise-client holds sunrise-client-lib's sources too (its [lib] path reaches
-into that tree), so that directory counts for both packages; the launcher is its own
-workspace (launcher/Cargo.lock) and selects nothing.
+into that tree), so that directory counts for both packages.
 """
 
 import json
-import subprocess
 import sys
 import tomllib
 from functools import lru_cache
@@ -38,17 +34,18 @@ SHARDS = ("sunrise-client", "sunrise-client-lib", "sunrise-client-render", "sunr
 # tests of every other package, and of the shard packages' targets their shard does not build (tools/ci/ignored_tests.py
 # daily_rows_groups). Coverage, not speed: without it those tests would run nowhere. Main's full matrix only.
 DAILY_ROWS = "daily-rows"
-# The leg that runs each workspace's daily rows. The launcher's get a leg of their own, on the same runner size: its
-# workspace builds GPUI and the launcher from nothing (25 minutes on 8 cores, measured cold), which does not fit beside
-# the other packages' groups in one 60-minute leg. Coverage, not spreading a slow job.
-DAILY_ROWS_LEGS = {".": DAILY_ROWS, "launcher": "daily-rows-launcher"}
-# What a package's tests need built that `cargo test` does not build itself, by package: the one command, run
-# before its tests by `verify` (dyna-ci.yml), the launcher job and the daily run (tools/ci/ignored_tests.py), so they
-# cannot drift. sunrise-mod-package's holder tests start the `holder_actor` example from beside their test executable
-# (target/debug/examples, the test profile's folder).
+# The leg that runs each workspace's daily rows.
+DAILY_ROWS_LEGS = {".": DAILY_ROWS}
+# What a package's ignored tests need built that `cargo test` does not build itself, by package: the command the daily
+# run (tools/ci/ignored_tests.py) runs before them. sunrise-mod-package's holder tests start the `holder_actor` example
+# from beside their test executable (target/debug/examples, the test profile's folder); every one of them is a daily
+# row, so `verify` builds nothing for them.
 PREPARE = {
     "sunrise-mod-package": ["cargo", "build", "--locked", "--profile", "test", "-p", "sunrise-mod-package",
                             "--features", "runtime-process", "--example", "holder_actor"],
+    # tests/shader_fuzz_cli.rs drives the `shader_fuzz` example through its command line.
+    "sunrise-render-shaderpack": ["cargo", "build", "--locked", "--profile", "test", "-p", "sunrise-render-shaderpack",
+                                  "--example", "shader_fuzz"],
 }
 # A package too big for one test process's memory runs as several legs, `PACKAGE#NofM` (tools/ci/ignored_tests.py
 # gives each test to exactly one leg). sunrise-client's single process was killed (signal 9) on three main runs.
@@ -58,11 +55,8 @@ LEGS = {"sunrise-client": 2}
 ROOT_WIDE_FILES = {"Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "rustfmt.toml", "clippy.toml"}
 # The crates directory whose sources build more than one of the shard packages.
 SHARED_SOURCES = {"sunrise-client": ("sunrise-client", "sunrise-client-lib")}
-# Workspaces of their own: nothing under them builds the shard packages.
-SEPARATE_WORKSPACES = ("launcher/",)
-# Every Cargo workspace whose tests the daily rows may name, by folder: the game's, and the launcher's own (its own
-# Cargo.lock; the daily-rows leg runs a launcher row from launcher/).
-WORKSPACES = (".", "launcher")
+# Every Cargo workspace whose tests the daily rows may name, by folder: the game's.
+WORKSPACES = (".",)
 
 
 def expand(packages):
@@ -152,8 +146,6 @@ def select(paths, dependencies):
     owners = set()
     for path in paths:
         if not (path.startswith("docs/") or path.endswith(".md")):
-            if any(path.startswith(prefix) for prefix in SEPARATE_WORKSPACES):
-                continue
             if ("/" not in path and path in ROOT_WIDE_FILES) or path.startswith(".cargo/"):
                 return list(SHARDS)
             if path.startswith("crates/") and path.count("/") >= 2:
@@ -169,12 +161,6 @@ def select(paths, dependencies):
 
 if __name__ == "__main__":
     arguments = sys.argv[1:]
-    if arguments[:1] == ["--prepare"] and len(arguments) >= 2:
-        command = PREPARE.get(arguments[1])
-        if command:
-            print("$ " + " ".join([*command, *arguments[2:]]), flush=True)
-            sys.exit(subprocess.run([*command, *arguments[2:]], cwd=ROOT).returncode)
-        sys.exit(0)
     every = arguments[:2] == ["--matrix", "--all"]
     selected = len(arguments) == 3 and arguments[0] == "--matrix"
     if every:

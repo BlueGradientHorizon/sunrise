@@ -83,15 +83,9 @@ impl ShaderOptions {
     }
 
     fn set(&mut self, name: &str, value: String) {
-        let Some(option) = self.options.get(name).filter(|o| o.values.contains(&value)) else {
-            return;
-        };
-        if value == option.default {
-            self.chosen.remove(name);
-        } else {
-            self.chosen.insert(name.to_owned(), value);
+        if sunrise_shaders::choose_option(&mut self.chosen, &self.options, name, value) {
+            self.changed = self.chosen != self.saved;
         }
-        self.changed = self.chosen != self.saved;
     }
 
     /// The option's next value (the previous one with `back`), wrapping around.
@@ -203,14 +197,6 @@ impl ShaderOptions {
         self.lang
             .get(&format!("{key}.comment"))
             .map(|c| Text::legacy(&c.replace("\\n", "\n")))
-    }
-
-    /// `Name: value`, in the pack's words, the value yellow when it is not the default.
-    pub fn option_label(&self, name: &str) -> Text {
-        Text::option_name_value(
-            self.named(&format!("option.{name}"), name),
-            self.value_text(name),
-        )
     }
 
     /// Option `name`'s caption in the pack's words.

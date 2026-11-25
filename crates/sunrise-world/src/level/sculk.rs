@@ -117,6 +117,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         self.emit(LevelEvent::Sound {
             pos,
             sound: sound.into(),
+            source: None,
             volume,
             pitch,
         });
@@ -408,7 +409,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         let mut state = b.default_of(b.named.sculk_vein);
         let mut any = false;
         for &face in faces {
-            if b.multiface_can_attach(self.state(rel(pos, face)), face) {
+            if self.multiface_can_attach_at(rel(pos, face), face) {
                 state = self.vein_with_face(state, face, true);
                 any = true;
             }
@@ -471,8 +472,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         if self.vein_has_face(old, face) {
             return false;
         }
-        self.b
-            .multiface_can_attach(self.state(rel(pos, face)), face)
+        self.multiface_can_attach_at(rel(pos, face), face)
     }
     /// `MultifaceBlock.getStateForPlacement` for the sculk vein.
     fn sculk_state_for_placement(
@@ -571,10 +571,11 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                         let growth_pos = above(pos);
                         let growth = self.sculk_random_growth(growth_pos);
                         self.set_block_and_update(growth_pos, growth);
-                        let sounds = self.b.data(growth).sounds.clone();
+                        let event = self.b.facts(growth).placement_sound.event.clone();
                         self.emit(LevelEvent::Sound {
                             pos,
-                            sound: sounds.place.clone(),
+                            sound: mod_api::__private::game::sound_event_name(event),
+                            source: None,
                             volume: 1.0,
                             pitch: 1.0,
                         });

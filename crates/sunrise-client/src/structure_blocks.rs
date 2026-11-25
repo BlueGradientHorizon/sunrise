@@ -2,14 +2,10 @@
 //! template containers): turned into client containers, with loot tables
 //! unpacked as `RandomizableContainer.unpackLootTable` would on first open.
 use crate::{containers::BlockEntity, items::ItemStack};
-use std::{
-    cell::RefCell,
-    path::Path,
-    sync::{Arc, Mutex},
-};
+use std::sync::Arc;
 use {
     sunrise_core::nbt::{Compound, JavaString, Tag},
-    sunrise_world::{item_defaults::ItemDefaults, loot::LootData, worldgen::generator::ProtoChunk},
+    sunrise_world::{loot::LootData, worldgen::generator::ProtoChunk},
 };
 
 /// The `custom_data` key holding an exploration map's search until the game
@@ -113,15 +109,6 @@ pub fn has_pending_map(item: &ItemStack) -> bool {
         .is_some_and(|custom| custom.get(PENDING_MAP).is_some())
 }
 
-/// The loot data and the [`loot_key`] it was loaded for; None until
-/// `loot_data` runs. `Some((_, None))` when the tables failed to load.
-struct LoadedLoot {
-    key: u64,
-    defaults_generation: u64,
-    data: Option<Arc<LootData>>,
-}
-static LOOT: Mutex<Option<LoadedLoot>> = Mutex::new(None);
-
 /// A world's atomically replaceable loot snapshot, shared by gameplay loot readers.
 #[derive(Clone, Default)]
 pub struct LootSnapshot(Arc<std::sync::RwLock<Option<Arc<LootData>>>>);
@@ -136,130 +123,6 @@ impl LootSnapshot {
     pub fn set(&self, loot: Option<Arc<LootData>>) {
         *self.0.write().unwrap_or_else(|e| e.into_inner()) = loot;
     }
-}
-
-thread_local! {
-    /// Loot data this thread keeps to itself, read ahead of [`LOOT`]. A game
-    /// never sets it: a test that installs a world pack's tables does, so the
-    /// tables reach its own rolls only and never a test running beside it
-    /// (each test runs on its own thread; #14266).
-    static THREAD_LOOT: RefCell<Option<Arc<LootData>>> = const { RefCell::new(None) };
-}
-
-fn thread_loot() -> Option<Arc<LootData>> {
-    THREAD_LOOT.with(|own| own.borrow().clone())
-}
-
-/// Load the loot data of `root` with `overlay` for this thread alone:
-/// [`loot_data`] and [`loaded_loot_data`] return it on this thread, while
-/// other threads keep the process's copy. For tests whose world has packs.
-pub fn load_thread_loot_data(
-    root: &Path,
-    overlay: &sunrise_world::loot::PackOverlay,
-    defaults: &ItemDefaults,
-) -> Option<Arc<LootData>> {
-    let data = load_loot(root, overlay, defaults).data;
-    THREAD_LOOT.with(|own| *own.borrow_mut() = data.clone());
-    data
-}
-
-/// The resource root and the packs' files the loot data was loaded from.
-fn loot_key(root: &Path, overlay: &sunrise_world::loot::PackOverlay) -> u64 {
-    use std::hash::{DefaultHasher, Hash, Hasher};
-    let mut hasher = DefaultHasher::new();
-    root.hash(&mut hasher);
-    overlay.files.hash(&mut hasher);
-    overlay.conditions.hash(&mut hasher);
-    hasher.finish()
-}
-
-fn load_loot(
-    root: &Path,
-    overlay: &sunrise_world::loot::PackOverlay,
-    defaults: &ItemDefaults,
-) -> LoadedLoot {
-    let data = match LootData::load(root, overlay, defaults) {
-        Ok(data) => Some(Arc::new(data)),
-        Err(e) => {
-            log::warn!("Sunrise: loot tables unavailable, structure containers stay empty: {e}");
-            None
-        }
-    };
-    LoadedLoot {
-        key: loot_key(root, overlay),
-        defaults_generation: defaults.generation(),
-        data,
-    }
-}
-
-/// Loot data of the resource root with the world's packs over it, loaded
-/// once per process (a world open with other packs, or `/reload`, loads it
-/// again).
-pub fn loot_data(
-    root: &Path,
-    overlay: &sunrise_world::loot::PackOverlay,
-    defaults: &ItemDefaults,
-) -> Option<Arc<LootData>> {
-    if let Some(own) = thread_loot() {
-        return Some(own);
-    }
-    let mut loot = LOOT.lock().unwrap_or_else(|e| e.into_inner());
-    if loot
-        .as_ref()
-        .is_none_or(|loaded| loaded.defaults_generation != defaults.generation())
-    {
-        *loot = Some(load_loot(root, overlay, defaults));
-    }
-    loot.as_ref().and_then(|loaded| loaded.data.clone())
-}
-
-/// [`loot_data`] for a world being opened: the copy already loaded when it
-/// came from the same root and packs (world generation loads it first, with
-/// no packs; a second copy held 8 MB for the whole run), else a fresh one.
-pub fn world_loot_data(
-    root: &Path,
-    overlay: &sunrise_world::loot::PackOverlay,
-    defaults: &ItemDefaults,
-) -> Option<Arc<LootData>> {
-    reuse_or_load(
-        &mut LOOT.lock().unwrap_or_else(|e| e.into_inner()),
-        root,
-        overlay,
-        defaults,
-    )
-}
-
-fn reuse_or_load(
-    loot: &mut Option<LoadedLoot>,
-    root: &Path,
-    overlay: &sunrise_world::loot::PackOverlay,
-    defaults: &ItemDefaults,
-) -> Option<Arc<LootData>> {
-    let key = loot_key(root, overlay);
-    if loot.as_ref().is_none_or(|loaded| {
-        loaded.key != key || loaded.defaults_generation != defaults.generation()
-    }) {
-        *loot = Some(load_loot(root, overlay, defaults));
-    }
-    loot.as_ref().and_then(|loaded| loaded.data.clone())
-}
-
-/// The loot data `loot_data` loaded, if it ran.
-pub fn loaded_loot_data(defaults: &ItemDefaults) -> Option<Arc<LootData>> {
-    if let Some(own) = thread_loot() {
-        return Some(own);
-    }
-    LOOT.lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .as_ref()
-        .filter(|loaded| loaded.defaults_generation == defaults.generation())
-        .and_then(|loaded| loaded.data.clone())
-}
-
-/// Let go of the loot data: for a preload no world used
-/// (game/world/world_loading.rs). The next `loot_data` loads it again.
-pub fn forget_loot_data() {
-    *LOOT.lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
 fn text(nbt: &Compound, key: &str) -> Option<String> {
@@ -299,10 +162,15 @@ fn generated_block_entity(block: &str, nbt: &Compound) -> Option<BlockEntity> {
     for axis in ["x", "y", "z"] {
         tag.insert(axis.into(), Tag::Int(0));
     }
+    let tag = Tag::Compound(tag);
+    // Declared types load with the same storage shape as placed and saved mod entities.
+    let decoded = if declared.is_some() {
+        crate::save::decode_block_entity_for_block(&tag, block)
+    } else {
+        crate::save::decode_block_entity(&tag)
+    };
     // A saved kind the client cannot decode keeps the block's own entity.
-    crate::save::decode_block_entity(&Tag::Compound(tag))
-        .map(|(_, entity)| entity)
-        .or(fallback)
+    decoded.map(|(_, entity)| entity).or(fallback)
 }
 
 /// Client block entities for the generated block entities of a chunk, and the
@@ -365,25 +233,72 @@ mod tests {
             ]
             .into(),
             vec!["test:machine".into()],
+            ["test:machine".into()],
         ))
         .unwrap();
-        let Tag::Compound(nbt) = sunrise_core::nbt::parse_snbt(
-            r#"{id:"minecraft:banner",energy:900L,LootTable:"test:loot",Items:[{Slot:0b,id:"minecraft:stone",count:3}]}"#,
-        ).unwrap().0 else {
-            panic!("not a compound");
-        };
-        for block in ["test:ornate_banner", "test:press"] {
-            let Some(BlockEntity::Mod(entity)) = generated_block_entity(block, &nbt) else {
-                panic!("declared type did not override {block}");
-            };
-            assert_eq!(entity.id(), "test:machine");
-            assert_eq!(entity.nbt.get(&"energy".into()), Some(&Tag::Long(900)));
-            assert_eq!(
-                entity.nbt.get(&"LootTable".into()),
-                Some(&Tag::String("test:loot".into()))
-            );
-            assert_eq!(entity.items[0].as_ref().unwrap().count, 3);
+        struct PressStorage;
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for PressStorage {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                let press = r.block_key("test:press");
+                r.block_container(
+                    &press,
+                    mod_api::ModContainer {
+                        slots: 256,
+                        ..Default::default()
+                    },
+                );
+            }
         }
+        let mods = vec![mod_api::ModEntry::new("test", Box::new(PressStorage))];
+        mod_platform::testing::with_mods(mods.into(), || {
+            mod_platform::__private::part_tests::install_parts_fixture(mod_api::__private::mods())
+                .unwrap();
+            let Tag::Compound(nbt) = sunrise_core::nbt::parse_snbt(
+                r#"{id:"minecraft:banner",energy:900L,LootTable:"test:loot",Items:[{Slot:0b,id:"minecraft:stone",count:3},{Slot:-1b,id:"minecraft:dirt",count:7}]}"#,
+            ).unwrap().0 else {
+                panic!("not a compound");
+            };
+            for block in ["test:ornate_banner", "test:press"] {
+                let generated = generated_block_entity(block, &nbt).unwrap();
+                let BlockEntity::Mod(entity) = &generated else {
+                    panic!("declared type did not override {block}");
+                };
+                assert_eq!(entity.id(), "test:machine");
+                assert_eq!(entity.nbt.get(&"energy".into()), Some(&Tag::Long(900)));
+                assert_eq!(
+                    entity.nbt.get(&"LootTable".into()),
+                    Some(&Tag::String("test:loot".into()))
+                );
+                if block == "test:ornate_banner" {
+                    assert!(entity.items.is_empty());
+                    assert_eq!(entity.nbt.get(&"Items".into()), nbt.get(&"Items".into()));
+                    continue;
+                }
+                assert_eq!(entity.items[0].as_ref().unwrap().count, 3);
+                let expected = ItemStack::new("minecraft:dirt", 7);
+                assert_eq!(
+                    entity.items.get(255).and_then(Option::as_ref),
+                    Some(&expected)
+                );
+                let saved = crate::save::block_entity_encode::encode(
+                    (3, 64, 5),
+                    &generated,
+                    block,
+                    &Default::default(),
+                );
+                let (pos, BlockEntity::Mod(reloaded)) =
+                    crate::save::decode_block_entity_for_block(&saved, block).unwrap()
+                else {
+                    panic!("generated press did not reload as a mod block entity");
+                };
+                assert_eq!(pos, (3, 64, 5));
+                assert_eq!(
+                    reloaded.items.get(255).and_then(Option::as_ref),
+                    Some(&expected)
+                );
+            }
+        });
     }
 
     #[test]
@@ -473,30 +388,22 @@ mod tests {
         assert_eq!(arrow.potion(), Some("minecraft:slowness"));
     }
 
-    /// Opening a world keeps the loot data world generation loaded when the
-    /// packs are the same, and loads it again when they differ.
+    /// Publishing a new world's pack snapshot does not change in-flight rolls.
     #[test]
-    fn a_world_open_reuses_loot_data_of_the_same_packs() {
+    fn loot_snapshot_retains_in_flight_data_on_publication() {
         use sunrise_world::loot::PackOverlay;
-        let root = std::env::temp_dir().join(format!("sunrise-loot-reuse-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("sunrise-loot-snapshot-{}", std::process::id()));
         std::fs::create_dir_all(root.join("data/minecraft/loot_table")).unwrap();
         std::fs::write(root.join("items.json"), "{}").unwrap();
         let defaults = sunrise_world::item_defaults::read(&root).unwrap();
-        let mut slot = None;
-        let first =
-            reuse_or_load(&mut slot, &root, &PackOverlay::NONE, &defaults).expect("loot data");
-        let again = reuse_or_load(&mut slot, &root, &PackOverlay::NONE, &defaults).unwrap();
-        assert!(Arc::ptr_eq(&first, &again));
+        let first = Arc::new(LootData::load(&root, &PackOverlay::NONE, &defaults).unwrap());
         let files = [(
             "loot_table/chests/x".to_owned(),
             vec![br#"{"pools": []}"#.to_vec()],
         )];
         let packs = PackOverlay::new(&files);
-        let other = reuse_or_load(&mut slot, &root, &packs, &defaults).unwrap();
-        assert!(!Arc::ptr_eq(&first, &other));
-        let next_defaults = sunrise_world::item_defaults::read(&root).unwrap();
-        let next = reuse_or_load(&mut slot, &root, &packs, &next_defaults).unwrap();
-        assert!(!Arc::ptr_eq(&other, &next));
+        let other = Arc::new(LootData::load(&root, &packs, &defaults).unwrap());
 
         let snapshot = LootSnapshot::default();
         let worker = snapshot.clone();

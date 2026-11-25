@@ -45,10 +45,8 @@ pub(in crate::game) struct PvpState {
     pub(in crate::game) boxes: Vec<(pvp_hud::WidgetId, [f32; 4])>,
     /// The HUD editor, while it is open.
     pub(in crate::game) editor: Option<crate::game::hud_editor::HudEditor>,
-    /// The open chat's box holds a chat search's query (Ctrl+F).
-    pub(in crate::game) chat_search: bool,
-    /// What the chat box held when the search borrowed it.
-    pub(in crate::game) chat_search_aside: String,
+    /// While the chat box holds the search query (Ctrl+F), its message text and draft state.
+    pub(in crate::game) chat_search_aside: Option<(String, bool)>,
 }
 /// `GuiGraphicsExtractor`'s grey for a detail line (an effect's time left).
 const DETAIL: u32 = 0xFF7F_7F7F;
@@ -129,18 +127,7 @@ impl Game<'_> {
         };
         let [x, y, z] = hit.pos;
         let state = self.world.block(x, y, z);
-        let facts = self.res.facts().get(state);
-        let offset = match facts.outline_offset {
-            true => self.pack.context.tables.offset(state, x, z),
-            false => None,
-        }
-        .unwrap_or([0.0; 3]);
-        let base = [f64::from(x), f64::from(y), f64::from(z)];
-        let context = self.context_outline(hit.pos, state, true, &self.be_anims);
-        let boxes = context.as_slice().iter().chain(match context {
-            Some(_) => &[][..],
-            None => &facts.outline[..],
-        });
+        let boxes = self.outline_boxes_iter(&self.world, state, &self.be_anims, hit.pos, true);
         let uv = sunrise_client::gfx::lightning::white_uv(&self.gui.atlas.font.white());
         let [a, r, g, b] = argb.to_be_bytes();
         let color = u32::from_le_bytes([r, g, b, a]);
@@ -152,7 +139,7 @@ impl Game<'_> {
                 } else {
                     shape[i] - OUT
                 };
-                (base[i] + offset[i] + v - camera[i]) as f32
+                (v - camera[i]) as f32
             };
             // Each face: the axis it faces along, its side, and its corners' other two axes.
             for axis in 0..3 {
@@ -213,14 +200,6 @@ impl Game<'_> {
     pub(in crate::game) fn pvp_hides_attack_indicator(&self) -> bool {
         let combat = self.settings.extras.pvp.combat;
         combat.legacy && !combat.indicator
-    }
-    /// Legacy rules: the hits a server resolves follow 1.8.9 (`legacy_rules.rs`).
-    pub(in crate::game) fn pvp_legacy_rules(&self) -> bool {
-        self.settings.extras.pvp.combat.rules
-    }
-    /// The server's legacy rules, from server.toml or the window's options.
-    pub(in crate::game) fn set_pvp_legacy_rules(&mut self, on: bool) {
-        self.settings.extras.pvp.combat.rules = on;
     }
     /// A sound Combat feel Legacy keeps quiet.
     pub(in crate::game) fn pvp_mutes_sound(&self, name: &str) -> bool {
@@ -303,7 +282,7 @@ impl Game<'_> {
     pub(in crate::game) fn pvp_effects_shown(&self) -> bool {
         self.settings.extras.pvp.hud.effects
     }
-    /// The HUD widgets that are on, after the minimap and before mods' boxes. Each rebuilds its
+    /// The HUD widgets that are on, before mods' boxes. Each rebuilds its
     /// lines only when what it shows changed.
     pub(in crate::game) fn draw_pvp_hud(&mut self, batch: &mut HudBatch, corners: &mut Corners) {
         let hud = self.settings.extras.pvp.hud;
@@ -792,7 +771,7 @@ impl Game<'_> {
                 }
                 Icon::Slot(slot) => {
                     if let Some(stack) = self.stack_in(*slot) {
-                        self.draw_item_model(batch, stack, ix, iy);
+                        self.draw_item_model(batch, stack, ix, iy, 0);
                     }
                 }
                 Icon::Sprite(name) => {

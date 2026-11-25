@@ -82,6 +82,12 @@ impl<W: FeatureWorld, R: RandomSource> WorldgenRandom for GrowRun<'_, '_, W, R> 
     fn next_boolean(&mut self) -> bool {
         self.run.random.next_boolean()
     }
+    fn next_int(&mut self) -> i32 {
+        self.run.random.next_int()
+    }
+    fn next_gaussian(&mut self) -> f64 {
+        self.run.random.next_gaussian()
+    }
 }
 
 #[derive(Clone, Debug)]

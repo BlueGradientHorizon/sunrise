@@ -31,7 +31,7 @@ impl Player for Stand<'_> {
     fn add(&mut self, stack: &mut ItemStack) -> bool {
         // The held stack lives in inventory slot 0 for Inventory.add.
         self.menu.set_player_item(0, self.hand.take());
-        let added = self.menu.give(self.env, stack);
+        let added = self.menu.give(self.env.items, stack);
         self.hand = self.menu.player_item(0).cloned();
         self.menu.set_player_item(0, None);
         added
@@ -44,8 +44,10 @@ impl Player for Stand<'_> {
                 .is_some_and(|h| h.same_item_same_components(stack))
     }
     fn drop_stack(&mut self, stack: ItemStack) {
-        self.events
-            .push(format!("drop {}", canon_stack(Some(&stack))));
+        self.events.push(format!(
+            "drop {}",
+            canon_stack(Some(&stack), self.env.items)
+        ));
     }
 }
 
@@ -160,7 +162,7 @@ pub fn main() -> sunrise_client::Result<()> {
                 stand
                     .menu
                     .player_item(i)
-                    .map(|s| format!("{i}={}", canon_stack(Some(s))))
+                    .map(|s| format!("{i}={}", canon_stack(Some(s), &items)))
             })
             .collect();
         out += &format!(

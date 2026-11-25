@@ -55,10 +55,12 @@ pub fn register(m: &mut Mob) {
 }
 /// AbstractCubeMob.setSize(size, true): the max health (size^2), movement
 /// speed (0.2 + 0.1 * size, in floats) and attack damage (size) bases, a
-/// magma cube's armor (size * 3), then the health back to the max.
-pub fn set_size(m: &mut Mob, size: i32) {
+/// magma cube's armor, then the health back to the max. The size is clamped
+/// to [`SIZES`] for all but the armor: `MagmaCube.setSize` sets it to the
+/// requested size * 3, unclamped.
+pub fn set_size(m: &mut Mob, requested: i32) {
     use super::finalize::{Attr, set_base};
-    let size = size.clamp(*SIZES.start(), *SIZES.end());
+    let size = requested.clamp(*SIZES.start(), *SIZES.end());
     m.extra.size = size;
     set_base(m, Attr::MaxHealth, f64::from(size * size));
     set_base(
@@ -68,7 +70,7 @@ pub fn set_size(m: &mut Mob, size: i32) {
     );
     set_base(m, Attr::AttackDamage, f64::from(size));
     if m.species() == super::Species::MagmaCube {
-        set_base(m, Attr::Armor, f64::from(size * 3));
+        set_base(m, Attr::Armor, f64::from(requested.wrapping_mul(3)));
     }
     m.health = super::finalize::max_health(m);
 }
@@ -153,7 +155,7 @@ pub fn move_control(m: &mut Mob, events: &mut Vec<MobEvent>) {
     }
     m.ai.mov.operation = Operation::Wait;
     let speed = (m.ai.mov.speed_modifier * m.movement_speed()) as f32;
-    if m.on_ground {
+    if m.ground.on_ground {
         m.set_speed(speed);
         let delay = m.extra.counter;
         m.extra.counter -= 1;
@@ -238,13 +240,13 @@ pub fn client_tick(m: &mut Mob, events: &mut Vec<MobEvent>) {
     m.anim.vo[SQUISH] = m.anim.v[SQUISH];
     m.anim.v[SQUISH] += (m.anim.v[TARGET_SQUISH] - m.anim.v[SQUISH]) * 0.5;
     let was = m.extra.flag2;
-    if m.on_ground && !was {
+    if m.ground.on_ground && !was {
         landing_splash(m, events);
         m.anim.v[TARGET_SQUISH] = -0.5;
-    } else if !m.on_ground && was {
+    } else if !m.ground.on_ground && was {
         m.anim.v[TARGET_SQUISH] = 1.0;
     }
-    m.extra.flag2 = m.on_ground;
+    m.extra.flag2 = m.ground.on_ground;
     // `AbstractCubeMob.decreaseSquish`; `MagmaCube` multiplies by 0.9.
     m.anim.v[TARGET_SQUISH] *= if m.species() == Species::MagmaCube {
         0.9
@@ -257,7 +259,7 @@ pub fn ai_step(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
     let v = &mut m.anim.v;
     v[SQUISH] += (v[TARGET_SQUISH] - v[SQUISH]) * 0.5;
     let was = m.extra.flag2;
-    if m.on_ground && !was {
+    if m.ground.on_ground && !was {
         landing_splash(m, events);
         let squish = match (m.species(), tiny(m)) {
             (Species::SulfurCube, _) => super::sulfur_cube::squish_sound(m),
@@ -270,10 +272,10 @@ pub fn ai_step(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
         let vol = super::ai::sound_volume(m);
         events.push(MobEvent::Sound(squish, m.center(), vol, pitch));
         m.anim.v[TARGET_SQUISH] = -0.5;
-    } else if !m.on_ground && was {
+    } else if !m.ground.on_ground && was {
         m.anim.v[TARGET_SQUISH] = 1.0;
     }
-    m.extra.flag2 = m.on_ground;
+    m.extra.flag2 = m.ground.on_ground;
     m.anim.v[TARGET_SQUISH] *= if m.species() == Species::MagmaCube {
         0.9
     } else {
@@ -394,15 +396,19 @@ pub fn scale(m: &Mob, alpha: f32) -> glam::Mat4 {
 pub(super) struct CubeFloat;
 impl Goal for CubeFloat {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         JUMP | MOVE
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, _: &mut Cx) -> bool {
         m.is_in_liquid()
     }
+    #[inline]
     fn every_tick(&self) -> bool {
         true
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, _: &mut Cx) {
         if m.random.next_float() < 0.8 {
             m.ai.jump = true;
@@ -417,16 +423,20 @@ struct CubeAttack {
 }
 impl Goal for CubeAttack {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         LOOK
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         m.target_info(cx.w)
             .is_some_and(|t| t.alive && !(t.is_player && t.creative))
     }
+    #[inline]
     fn start(&mut self, _: &mut Mob, _: &mut Cx) {
         self.tired = reduced(300);
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         if !m
             .target_info(cx.w)
@@ -437,9 +447,11 @@ impl Goal for CubeAttack {
         self.tired -= 1;
         self.tired > 0
     }
+    #[inline]
     fn every_tick(&self) -> bool {
         true
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         if let Some(t) = m.target_info(cx.w) {
             m.turn_to([t.position.x, t.eye_y, t.position.z], 10.0, 10.0);
@@ -456,13 +468,16 @@ pub(super) struct CubeRandomDirection {
 }
 impl Goal for CubeRandomDirection {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         LOOK
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, _: &mut Cx) -> bool {
         m.ai.target.is_none()
-            && (m.on_ground || m.is_in_liquid() || m.has_effect("minecraft:levitation"))
+            && (m.ground.on_ground || m.is_in_liquid() || m.has_effect("minecraft:levitation"))
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, _: &mut Cx) {
         self.next -= 1;
         if self.next <= 0 {
@@ -477,13 +492,16 @@ impl Goal for CubeRandomDirection {
 pub(super) struct CubeKeepJumping;
 impl Goal for CubeKeepJumping {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         JUMP | MOVE
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, _: &mut Cx) -> bool {
         // `CubeMobKeepOnJumpingGoal.canUse`: not while it is a passenger.
         !m.extra.passenger
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, _: &mut Cx) {
         set_wanted(m, 1.0);
     }
@@ -677,7 +695,7 @@ mod golem_touch_tests {
                 0.0,
             );
             set_size(&mut slime, 2);
-            slime.on_ground = true;
+            slime.ground.on_ground = true;
             slime.extra.flag2 = true;
             ai_step(&mut slime, &w, &mut events);
         });
@@ -765,7 +783,7 @@ mod keep_jumping_tests {
                     0.0,
                 );
                 m.no_ai = true;
-                m.on_ground = true;
+                m.ground.on_ground = true;
                 m.extra.flag2 = false;
                 let mut lr = crate::health::TestLevel::new(0);
                 let mut events = Vec::new();
@@ -777,5 +795,217 @@ mod keep_jumping_tests {
         if ran {
             assert_eq!(result, Some(true));
         }
+    }
+}
+
+#[cfg(test)]
+mod set_size_tests {
+    use super::Species;
+    use crate::{
+        entity_nbt::mob_from_nbt,
+        mobs::finalize::{Attr, base_value},
+    };
+    use std::sync::Arc;
+    use sunrise_core::nbt::Tag;
+
+    /// #2675: `AbstractCubeMob.readAdditionalSaveData` passes `Size + 1`;
+    /// the size, max health, speed and attack damage use it clamped to
+    /// 1..=127, while `MagmaCube.setSize` sets the armor from it unclamped.
+    #[test]
+    fn magma_cube_load_uses_unclamped_size_for_armor() {
+        let id = "minecraft:magma_cube";
+        let mut kind = crate::mobs::sensor_scan_tests::kind();
+        let ty = Arc::make_mut(&mut kind);
+        ty.id = id.into();
+        ty.species = Species::MagmaCube;
+        let types = [(id.into(), kind)].into();
+        // (saved Size, clamped size, armor base, max health base, speed base)
+        for (saved, clamped, armor, health, speed) in [
+            (-1, 1, 0.0, 1.0, 0.3_f32),
+            (-5, 1, -12.0, 1.0, 0.3),
+            (199, 127, 600.0, 16_129.0, 12.9),
+            // The first overflows Size + 1; the second only overflows the armor product.
+            (i32::MAX, 1, -2_147_483_648.0, 1.0, 0.3),
+            (715_827_882, 127, -2_147_483_647.0, 16_129.0, 12.9),
+        ] {
+            let tag = Tag::compound([("id", Tag::String(id.into())), ("Size", Tag::Int(saved))]);
+            let m = mob_from_nbt(&tag, &types, 1, None).unwrap();
+            assert_eq!(m.extra.size, clamped, "Size {saved}");
+            assert_eq!(base_value(&m, Attr::Armor), armor, "Size {saved}");
+            assert_eq!(base_value(&m, Attr::MaxHealth), health, "Size {saved}");
+            assert_eq!(
+                base_value(&m, Attr::MovementSpeed),
+                f64::from(speed),
+                "Size {saved}"
+            );
+            assert_eq!(
+                base_value(&m, Attr::AttackDamage),
+                f64::from(clamped),
+                "Size {saved}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod own_base_tests {
+    use crate::mobs::{Mob, MobType};
+    use std::collections::HashMap;
+    use std::fmt::Write as _;
+    use std::sync::Arc;
+    use sunrise_core::nbt::Tag;
+    use sunrise_world::{attribute_map::ValueKind, attributes::entity::Catalog};
+
+    fn mob_seed(m: &Mob) -> Vec<Tag> {
+        crate::entity_nbt::attribute_entries(m)
+            .into_iter()
+            .map(|(_, e)| e)
+            .collect()
+    }
+
+    fn check_reads(m: &Mob, catalog: &Arc<Catalog>, tokens: &[&str], prefix: &str, case: &str) {
+        for token in tokens {
+            let mut parts = token.split(' ');
+            assert_eq!(parts.next(), Some(prefix), "{case}: {token}");
+            let attr = parts.next().unwrap();
+            let actual = match (
+                m.extra
+                    .live
+                    .read(catalog, &m.kind.id, attr, ValueKind::Computed, || {
+                        mob_seed(m)
+                    }),
+                m.extra
+                    .live
+                    .read(catalog, &m.kind.id, attr, ValueKind::Base, || mob_seed(m)),
+            ) {
+                (Some(v), Some(b)) => {
+                    format!("{prefix} {attr} {:x} {:x}", v.to_bits(), b.to_bits())
+                }
+                (None, None) => format!("{prefix} {attr} none"),
+                other => panic!("{case} {attr}: inconsistent live read {other:?}"),
+            };
+            assert_eq!(actual, *token, "{case}");
+        }
+    }
+
+    fn saved_tokens(tag: &Tag, prefix: &str) -> Vec<String> {
+        let Some(Tag::List(list)) = tag.get("attributes") else {
+            return Vec::new();
+        };
+        let mut rows: Vec<(String, String)> = list
+            .iter()
+            .map(|a| {
+                let base = match a.get("base") {
+                    Some(Tag::Double(b)) => format!("{b:x}"),
+                    other => panic!("non-double base: {other:?}"),
+                };
+                let mut row = format!("base {base}");
+                if let Some(Tag::List(mods)) = a.get("modifiers") {
+                    for modifier in mods {
+                        let id = crate::save::text(modifier.get("id")).unwrap();
+                        let amount = match modifier.get("amount") {
+                            Some(Tag::Double(b)) => format!("{b:x}"),
+                            other => panic!("non-double modifier amount: {other:?}"),
+                        };
+                        let op = crate::save::text(modifier.get("operation")).unwrap();
+                        let _ = write!(row, " mod {id} {amount} {op}");
+                    }
+                }
+                (crate::save::text(a.get("id")).unwrap(), row)
+            })
+            .collect();
+        rows.sort();
+        rows.into_iter()
+            .map(|(id, row)| format!("{prefix} {id} {row}"))
+            .collect()
+    }
+
+    /// Replays the vanilla 26.3 cube load/save/reload cases `tools/test_mob_attribute_nbt_parity.py` records (#2676).
+    #[test]
+    #[ignore = "run by tools/test_mob_attribute_nbt_parity.py"]
+    fn a_cube_keeps_the_bases_its_own_size_set() {
+        let path = std::env::var("SUNRISE_MOB_ATTRIBUTE_NBT_WITNESS").expect(
+            "run through tools/test_mob_attribute_nbt_parity.py, which records the witness",
+        );
+        let witness = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!(
+                "cannot read {path} (run through tools/test_mob_attribute_nbt_parity.py, which records the witness): {e}"
+            )
+        });
+        let ran = crate::mobs::world::with_test_world(&[], |w, types| {
+            let types: HashMap<String, Arc<MobType>> = types
+                .types
+                .iter()
+                .map(|(id, kind)| (id.clone(), Arc::new(kind.clone())))
+                .collect();
+            let mut checked = 0usize;
+            for line in witness.lines() {
+                if line.is_empty() || line.starts_with('#') {
+                    continue;
+                }
+                let cols: Vec<&str> = line.split('\t').collect();
+                let (name, entity, snbt) = (cols[0], cols[1], cols[2]);
+                if !matches!(entity, "minecraft:slime" | "minecraft:magma_cube") {
+                    continue;
+                }
+                let mut expected_reads = Vec::new();
+                let mut expected_saved = Vec::new();
+                let mut expected_reload_reads = Vec::new();
+                let mut expected_reload_saved = Vec::new();
+                for token in &cols[3..] {
+                    if token.starts_with("read ") {
+                        expected_reads.push(*token);
+                    } else if token.starts_with("saved ") {
+                        expected_saved.push(*token);
+                    } else if token.starts_with("reload_read ") {
+                        expected_reload_reads.push(*token);
+                    } else if token.starts_with("reload_saved ") {
+                        expected_reload_saved.push(*token);
+                    } else {
+                        panic!("{name}: unexpected witness token: {token}");
+                    }
+                }
+                let tag = sunrise_core::nbt::parse_snbt(snbt).unwrap().0;
+                let m = crate::entity_nbt::mob_from_nbt(&tag, &types, 1, None).unwrap();
+                check_reads(&m, w.attributes, &expected_reads, "read", name);
+                let saved = crate::entity_nbt::mob_to_nbt(
+                    &m,
+                    [1, 2, 3, 4],
+                    None,
+                    None,
+                    |_| None,
+                    &Default::default(),
+                );
+                assert_eq!(saved_tokens(&saved, "saved"), expected_saved, "{name}");
+                assert!(
+                    !expected_reload_reads.is_empty() && !expected_reload_saved.is_empty(),
+                    "{name}: missing reload witness"
+                );
+                let again = crate::entity_nbt::mob_from_nbt(&saved, &types, 1, None).unwrap();
+                check_reads(
+                    &again,
+                    w.attributes,
+                    &expected_reload_reads,
+                    "reload_read",
+                    name,
+                );
+                let resaved = crate::entity_nbt::mob_to_nbt(
+                    &again,
+                    [1, 2, 3, 4],
+                    None,
+                    None,
+                    |_| None,
+                    &Default::default(),
+                );
+                assert_eq!(
+                    saved_tokens(&resaved, "reload_saved"),
+                    expected_reload_saved,
+                    "{name} reloaded"
+                );
+                checked += 1;
+            }
+            assert!(checked > 0, "no cube cases in 26.3 witness");
+        });
+        assert!(ran, "vanilla data is missing");
     }
 }

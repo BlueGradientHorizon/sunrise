@@ -12,6 +12,7 @@ use sunrise_core::{
     geometry::{Vec3, trig},
     random::RandomSource,
 };
+use sunrise_world::native_load_context::LoopContext;
 
 // Rabbit's transient state in Extra (none of these clocks are saved).
 const JUMP_TICKS: usize = 0;
@@ -107,12 +108,15 @@ impl RaidGarden {
 }
 impl Goal for RaidGarden {
     goal_clone!();
+    #[inline]
     fn name(&self) -> &'static str {
         "RaidGardenGoal"
     }
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE | JUMP
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         // MoveToBlockGoal.canUse draws the next delay only once the last one ran out.
         if self.block.next_start > 0 {
@@ -135,6 +139,7 @@ impl Goal for RaidGarden {
         self.can_raid = found.get();
         target
     }
+    #[inline]
     fn can_continue(&mut self, _: &mut Mob, cx: &mut Cx) -> bool {
         let (wants, raid) = (self.wants_to_raid, self.can_raid);
         self.can_raid
@@ -142,12 +147,15 @@ impl Goal for RaidGarden {
                 .block
                 .can_continue(cx.w, |w, p| raid_target(w, p, wants, raid))
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.block.start(m, cx.w);
     }
+    #[inline]
     fn every_tick(&self) -> bool {
         true
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.block.tick(m, cx.w);
         let b = self.block.block;
@@ -209,24 +217,31 @@ impl RabbitAvoid {
 }
 impl Goal for RabbitAvoid {
     goal_clone!();
+    #[inline]
     fn name(&self) -> &'static str {
         "RabbitAvoidEntityGoal"
     }
+    #[inline]
     fn flags(&self) -> u8 {
         self.0.flags()
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         m.extra.variant != EVIL && self.0.can_use(m, cx)
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         self.0.can_continue(m, cx)
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.0.start(m, cx)
     }
+    #[inline]
     fn stop(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.0.stop(m, cx)
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.0.tick(m, cx)
     }
@@ -330,7 +345,7 @@ pub fn server_ai_step(m: &mut Mob, target: Option<Vec3>) {
         m.extra.more_carrot_ticks =
             (m.extra.more_carrot_ticks - m.random.next_int_bound(3).unwrap_or(0)).max(0);
     }
-    if m.on_ground {
+    if m.ground.on_ground {
         if !m.extra.flag {
             m.ai.jumping = false;
             m.extra.ints[MOVE_DELAY] = if m.ai.mov.speed_modifier < 2.2 { 10 } else { 3 };
@@ -356,7 +371,7 @@ pub fn server_ai_step(m: &mut Mob, target: Option<Vec3>) {
             start_jumping(m);
         }
     }
-    m.extra.flag = m.on_ground;
+    m.extra.flag = m.ground.on_ground;
 }
 
 /// RabbitMoveControl.tick: wait on the ground and restore the last wanted speed in flight.
@@ -372,7 +387,7 @@ fn prepare_move(m: &mut Mob) {
             m.ai.mov.speed_modifier
         };
     }
-    if m.on_ground && !m.ai.jumping && !m.ai.jump {
+    if m.ground.on_ground && !m.ai.jumping && !m.ai.jump {
         m.ai.mov.speed_modifier = 0.0;
         m.set_speed(0.0);
     } else if m.ai.mov.has_wanted() || m.ai.mov.operation == Operation::Jumping {
@@ -417,8 +432,9 @@ fn jump_scale(m: &Mob) -> f32 {
             .as_ref()
             .filter(|p| !p.is_done())
             .is_some_and(|p| f64::from(p.next_node().y) > m.position.y + 0.5);
-    let high =
-        m.horizontal_collision || step || m.ai.jumping && m.ai.mov.wanted[1] > m.position.y + 0.5;
+    let high = m.ground.horizontal_collision
+        || step
+        || m.ai.jumping && m.ai.mov.wanted[1] > m.position.y + 0.5;
     let base = if high {
         0.5
     } else if m.ai.mov.speed_modifier <= 0.6 {
@@ -432,7 +448,7 @@ fn jump_scale(m: &Mob) -> f32 {
 /// Rabbit.jumpFromGround: ordinary small hops, larger hops toward raised terrain.
 pub fn jump(m: &mut Mob, w: &MobWorld) {
     let power = m.jump_power_with(w, jump_scale(m));
-    apply_jump(m, power);
+    apply_jump(m, w.loop_context, power);
 }
 
 #[cfg(test)]
@@ -440,9 +456,11 @@ fn jump_power(m: &Mob, block_factor: f32) -> f32 {
     m.attrs.jump_strength as f32 * jump_scale(m) * block_factor + m.jump_boost_power()
 }
 
-fn apply_jump(m: &mut Mob, power: f32) {
+fn apply_jump(m: &mut Mob, context: &LoopContext, power: f32) {
     if power > 1.0e-5 {
         m.velocity.y = f64::from(power).max(m.velocity.y);
+        // Rabbit.jumpFromGround: the super call, where NeoForge's LivingJumpEvent fires, comes first.
+        m.living_jumped(context);
     }
     if m.ai.mov.speed_modifier > 0.0
         && m.velocity.x * m.velocity.x + m.velocity.z * m.velocity.z < 0.01
@@ -477,12 +495,18 @@ mod tests {
     use serde_json::json;
     use std::{collections::HashMap, sync::Arc};
 
+    /// A client context: the installed test `living_jump` counts only server jumps for the menu test.
+    fn client_context() -> Arc<LoopContext> {
+        crate::test_resources::loop_context(sunrise_world::native_load_context::LoopSide::Client)
+    }
+
     fn rabbit() -> Mob {
         let model = Arc::new(Part::parse(
             "root",
             &json!({"children": {"head": {}, "left_hind_foot": {}}}),
         ));
         let kind = Arc::new(MobType {
+            type_key: Default::default(),
             shadow: None,
             id: "minecraft:rabbit".into(),
             species: Species::Rabbit,
@@ -590,7 +614,14 @@ mod tests {
         // Animal.addAdditionalSaveData / readAdditionalSaveData: "InLove" (#1396).
         let mut m = rabbit();
         m.extra.in_love = 570;
-        let tag = crate::entity_nbt::mob_to_nbt(&m, [0, 0, 0, 1], None, None, |_| None);
+        let tag = crate::entity_nbt::mob_to_nbt(
+            &m,
+            [0, 0, 0, 1],
+            None,
+            None,
+            |_| None,
+            &Default::default(),
+        );
         assert_eq!(tag.get("InLove"), Some(&sunrise_core::nbt::Tag::Int(570)));
         let types = HashMap::from([(m.kind.id.clone(), m.kind.clone())]);
         let back = crate::entity_nbt::mob_from_nbt(&tag, &types, 2, None).unwrap();
@@ -600,7 +631,7 @@ mod tests {
     #[test]
     fn landing_waits_then_real_hop_clock_moves_the_model() {
         let mut m = rabbit();
-        m.on_ground = true;
+        m.ground.on_ground = true;
         m.ai.mov.set_wanted(0.0, 0.0, 5.0, 0.6);
         server_ai_step(&mut m, None);
         assert_eq!(m.extra.ints[MOVE_DELAY], 10);
@@ -613,7 +644,7 @@ mod tests {
         assert!(m.ai.jumping);
         assert_eq!(m.extra.ints[JUMP_DURATION], 15);
         assert_eq!(m.anim.states[0].started, None);
-        apply_jump(&mut m, 0.2);
+        apply_jump(&mut m, &client_context(), 0.2);
         post_tick(&mut m);
         m.age = 1;
         base_tick(&mut m);
@@ -645,7 +676,7 @@ mod tests {
     #[test]
     fn panic_and_explicit_requests_use_their_own_hop_timing() {
         let mut m = rabbit();
-        m.on_ground = true;
+        m.ground.on_ground = true;
         m.ai.mov.set_wanted(0.0, 0.0, 5.0, 2.2);
         server_ai_step(&mut m, None);
         assert_eq!(m.extra.ints[MOVE_DELAY], 3);
@@ -702,7 +733,7 @@ mod tests {
     #[test]
     fn grounded_movement_waits_and_water_uses_its_hop_speed() {
         let mut m = rabbit();
-        m.on_ground = true;
+        m.ground.on_ground = true;
         m.ai.mov.set_wanted(0.0, 0.0, 5.0, 0.6);
         prepare_move(&mut m);
         assert_eq!(m.ai.mov.speed_modifier, 0.0);
@@ -729,7 +760,7 @@ mod tests {
         near(f64::from(jump_power(&m, 1.0)), 0.2);
         m.ai.mov.speed_modifier = 2.2;
         near(f64::from(jump_power(&m, 1.0)), 0.3);
-        m.horizontal_collision = true;
+        m.ground.horizontal_collision = true;
         near(f64::from(jump_power(&m, 1.0)), 0.5);
         m.attrs.jump_strength = 0.84;
         m.extra.effects.push(crate::mobs::StoredEffect::new(
@@ -738,12 +769,12 @@ mod tests {
             1,
         ));
         near(f64::from(jump_power(&m, 0.5)), 0.7);
-        apply_jump(&mut m, 0.2);
+        apply_jump(&mut m, &client_context(), 0.2);
         near(m.velocity.z, 0.1 / 3.25_f64.sqrt());
         near(m.velocity.y, 0.2 + 0.15 / 3.25_f64.sqrt());
         m.extra.age = -100;
         m.velocity = Vec3::ZERO;
-        apply_jump(&mut m, 0.2);
+        apply_jump(&mut m, &client_context(), 0.2);
         near(m.velocity.z, 0.1 / 1.25_f64.sqrt());
         near(m.velocity.y, 0.2 + 0.05 / 1.25_f64.sqrt());
         assert_eq!(m.extra.ints[CLIENT_JUMP_DURATION], 15);

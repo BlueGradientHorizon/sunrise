@@ -22,7 +22,7 @@ pub(crate) fn data_files(root: &Path, kind: &str, overlay: &PackOverlay) -> Hash
             files.insert(id.to_owned(), value);
         }
     }
-    files.retain(|id, value| overlay.conditions.admit_id(value, kind, id));
+    files.retain(|id, value| overlay.conditions.allows_id(value, kind, id));
     files
 }
 
@@ -34,6 +34,10 @@ impl Items {
             ("minecraft:block", &self.block_tags),
             ("minecraft:item", &self.item_tags),
             ("minecraft:fluid", &self.fluid_tags),
+            (
+                super::EntityTypeTags::REGISTRY,
+                self.entity_type_tags.members().as_ref(),
+            ),
         ]
         .into_iter()
         .map(|(registry, tags)| {

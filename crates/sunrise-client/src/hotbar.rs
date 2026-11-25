@@ -87,22 +87,22 @@ pub fn from_tag(mut tag: Tag, known: &dyn Fn(&str) -> bool) -> Vec<Hotbar> {
                 }
             }
             // Entries that are no stacks are dropped from their row.
-            for row in rows.values_mut() {
+            rows.for_each_mut(|_, row| {
                 if let Tag::List(items) = row {
                     items.retain(|i| {
                         matches!(i, Tag::Compound(_))
                             || (version > 3818 && matches!(i, Tag::String(_)))
                     });
                 }
-            }
+            });
         } else {
-            for row in rows.values_mut() {
+            rows.for_each_mut(|_, row| {
                 if let Tag::List(items) = row {
                     for item in items.iter_mut().filter(|i| matches!(i, Tag::String(_))) {
                         *item = Tag::Compound(Default::default());
                     }
                 }
-            }
+            });
         }
     }
     sunrise_world::datafix::update_hotbar(&mut tag);
@@ -122,14 +122,14 @@ pub fn load(path: &Path, known: &dyn Fn(&str) -> bool) -> Vec<Hotbar> {
 
 /// `HotbarManager.save`: the nine rows with the current data version, each
 /// stack as `ItemStack.OPTIONAL_CODEC` writes it (an empty one is `{}`).
-pub fn save(path: &Path, rows: &[Hotbar]) -> crate::Result<()> {
+pub fn save(path: &Path, rows: &[Hotbar], items: &crate::items::Items) -> crate::Result<()> {
     let mut entries = vec![(
         JavaString::from("DataVersion"),
         Tag::Int(sunrise_world::DATA_VERSION),
     )];
     for (i, row) in rows.iter().enumerate() {
         let stacks = row.iter().map(|s| match s {
-            Some(s) => save::item_to_nbt(s),
+            Some(s) => sunrise_items::item_nbt::item_to_nbt(s, items),
             None => Tag::compound(Vec::<(&str, Tag)>::new()),
         });
         entries.push((

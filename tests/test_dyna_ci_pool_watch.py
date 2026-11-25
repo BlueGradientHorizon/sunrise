@@ -112,5 +112,9 @@ class Watch(unittest.TestCase):
         self.assertFalse([path for path in requests if "/jobs?" in path])
 
 
+    def test_paginated_pages_are_read_without_slurp(self):
+        self.assertEqual(watch.pages('{"total_count": 2}\n{"total_count": 0}'), [{"total_count": 2}, {"total_count": 0}])
+
+
 if __name__ == "__main__":
     unittest.main()

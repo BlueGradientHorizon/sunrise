@@ -1,5 +1,6 @@
 //! `sunrise-ctl lan op`: a connected guest's operator level, which remote profiling checks.
 use super::Game;
+use super::owner_link::{ControlRequest, OwnerRequest};
 use sunrise_client::Result;
 
 impl Game<'_> {
@@ -22,7 +23,7 @@ impl Game<'_> {
         let name = (*name).to_owned();
         let found = match &self.integrated {
             Some(server) => server
-                .call(move |g| g.lan_set_op(&name, level))
+                .ask(|reply| OwnerRequest::Control(ControlRequest::SetOp { name, level, reply }))
                 .ok_or(super::integrated::NO_ANSWER)?,
             None => self.lan_set_op(&name, level),
         };
@@ -48,7 +49,7 @@ impl Game<'_> {
             return false;
         };
         host.hub.ops.insert(uuid, level);
-        host.hub.resend_commands();
+        self.resend_commands_filtered();
         true
     }
 }

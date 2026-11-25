@@ -38,7 +38,7 @@ fn flush_to_operator(
     game: &mut Game<'_>,
     receiver: &mpsc::Receiver<sunrise_client::lan::Out>,
 ) -> Vec<serde_json::Value> {
-    game.send_admin_feedback(None);
+    game.send_admin_feedback();
     for g in &game.lan.as_ref().unwrap().hub.guests {
         g.sender.flush();
     }
@@ -56,8 +56,9 @@ fn admin_line(message: serde_json::Value) -> serde_json::Value {
 }
 
 /// A LAN world the host opened, with one other operator (conn 7) connected.
-fn lan_game() -> (Game<'static>, mpsc::Receiver<sunrise_client::lan::Out>) {
-    let resources = Box::leak(Box::new(None));
+fn lan_game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> (Game<'a>, mpsc::Receiver<sunrise_client::lan::Out>) {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);
@@ -110,14 +111,18 @@ fn lan_game() -> (Game<'static>, mpsc::Receiver<sunrise_client::lan::Out>) {
     guest.placed = true;
     guest.loaded = true;
     guest.permission = 2;
-    game.lan.as_mut().unwrap().hub.guests.push(guest);
+    let hub = &mut game.lan.as_mut().unwrap().hub;
+    // An operator (`PlayerList.isOp`): listed in ops.json.
+    hub.ops.insert(7, 2);
+    hub.guests.push(guest);
     (game, rx)
 }
 
 #[test]
 #[ignore = "daily"]
 fn tick_status_lines_reach_the_other_operators() {
-    let (mut game, rx) = lan_game();
+    let mut resources = None;
+    let (mut game, rx) = lan_game(&mut resources);
     assert!(game.run_command("tick freeze"));
     assert_eq!(
         flush_to_operator(&mut game, &rx),

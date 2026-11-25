@@ -19,12 +19,16 @@ impl Game<'_> {
         if !partial.is_finite() {
             return None;
         }
-        // 1.8.9 had no attack cooldown.
-        if self.legacy_rules() {
-            return Some(1.0);
-        }
         let delay = sunrise_client::attack_strength::delay(self.main_hand_attack_speed());
         Some(((self.attack_ticks as f32 + partial) / delay).clamp(0.0, 1.0))
+    }
+
+    /// Sets the player in place's `attackStrengthTicker` to the fewest ticks for which
+    /// `getAttackStrengthScale(0.5)` is 1.0 with the main hand's attack speed.
+    pub(super) fn charge_attack_fully(&mut self) {
+        let delay = sunrise_client::attack_strength::delay(self.main_hand_attack_speed());
+        // The cast saturates: with no attack speed the delay is infinite and no ticker reaches it.
+        self.attack_ticks = (delay - 0.5).ceil() as u32;
     }
 
     /// `Player.isSweepAttack`: a charged, grounded sword hit below the movement
@@ -35,10 +39,6 @@ impl Game<'_> {
         crit: bool,
         target: &str,
     ) -> Option<[f64; 3]> {
-        // The sweep came with 1.9.
-        if self.legacy_rules() {
-            return None;
-        }
         // Player.getSpeed: the movement speed attribute as it is now (the
         // field is only refreshed by the local movement step, never for a
         // server's player).
@@ -70,8 +70,7 @@ impl Game<'_> {
         target: Option<(Aabb, mace::Spared)>,
         scale: f32,
     ) {
-        self.audio
-            .play("minecraft:entity.player.attack.sweep", from, 1.0, 1.0);
+        self.play_audio("minecraft:entity.player.attack.sweep", from, 1.0, 1.0);
         if let Some((area, mob)) = target {
             self.sweep_damage(area, mob, scale);
         }
@@ -114,16 +113,14 @@ impl Game<'_> {
         let player = self.player.as_ref();
         let from = player.map(|p| [p.position.x, p.position.y, p.position.z]);
         if full && player.is_some_and(|p| p.sprinting) {
-            self.audio
-                .play("minecraft:entity.player.attack.knockback", from, 1.0, 1.0);
+            self.play_audio("minecraft:entity.player.attack.knockback", from, 1.0, 1.0);
         }
         let crit = living.is_some() && crit;
         if let Some(at) = sweep {
             self.sweep_attack(at, from, Some((area, spared)), scale);
         }
         if crit {
-            self.audio
-                .play("minecraft:entity.player.attack.crit", from, 1.0, 1.0);
+            self.play_audio("minecraft:entity.player.attack.crit", from, 1.0, 1.0);
             if let Some(id) = living {
                 self.area_critical_hit(id, area, false);
             }
@@ -133,7 +130,7 @@ impl Game<'_> {
             } else {
                 "minecraft:entity.player.attack.weak"
             };
-            self.audio.play(sound, from, 1.0, 1.0);
+            self.play_audio(sound, from, 1.0, 1.0);
         }
         // Player.magicCrit: the enchantments added damage.
         if let Some(id) = magic {
@@ -176,6 +173,20 @@ impl Game<'_> {
         if self.spectator() {
             return false;
         }
+        if let Some(hit) = self.crosshair_entity_hit() {
+            if self.falling.iter().any(|f| f.id as i32 == hit.id) {
+                return false;
+            }
+            if let Some(tnt_id) = self
+                .tnts
+                .iter()
+                .find(|t| t.id as i32 == hit.id)
+                .map(|t| t.id)
+            {
+                self.strike_general_row(tnt_id, "minecraft:tnt");
+                return true;
+            }
+        }
         // A painting nearer than the targeted block and mob breaks instead.
         if let Some((i, d)) = self.painting_hit()
             && self.mob_hit().is_none_or(|m| d < m.1)
@@ -199,6 +210,7 @@ impl Game<'_> {
             || self.attack_boat()
             || self.attack_cart()
             || self.attack_dragon()
+            || self.attack_general_row()
         {
             return true;
         }
@@ -215,7 +227,59 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {}
+impl Game<'_> {
+    /// Whether the ray picked a general row and consumed the click.
+    fn attack_general_row(&mut self) -> bool {
+        let Some((eye, direction)) = self.aim() else {
+            return false;
+        };
+        let catalog = crate::game::general::general_type_catalog();
+        let Some((id, kind, distance)) = self
+            .resident_entities
+            .general
+            .rows
+            .iter()
+            .filter(|row| catalog.pickable(row.type_slot))
+            .filter_map(|row| {
+                let hit = crate::game::ray_box(
+                    eye,
+                    direction,
+                    self.entity_reach,
+                    crate::game::entity::Entity::bounds(row),
+                )?;
+                Some((row.id, catalog.key(row.type_slot), hit))
+            })
+            .min_by(|a, b| a.2.total_cmp(&b.2))
+        else {
+            return false;
+        };
+        if !self.before_block(distance)
+            || !self.held_range_allows(distance)
+            || self.mob_hit().is_some_and(|(_, d, _)| d <= distance)
+        {
+            return false;
+        }
+        self.strike_general_row(id, kind);
+        true
+    }
+
+    /// `Player.attack` on a named general row. A plain `Entity` declines `hurtServer`,
+    /// so the blow spends the charge and plays the no-damage sound, and hurts nothing.
+    pub(super) fn strike_general_row(&mut self, id: u32, kind: &str) {
+        let ((_, scale, _, _), admitted) = self.melee_damage_with_admission(kind, false, Some(id));
+        // Player.onAttack: the blow starts the attack strength again, hurt or not.
+        self.attack_ticks = 0;
+        if admitted {
+            if scale > 0.9 && self.player.as_ref().is_some_and(|p| p.sprinting) {
+                self.play_at_feet("minecraft:entity.player.attack.knockback");
+            }
+            self.sweep_decision(scale, false, kind);
+            self.play_at_feet("minecraft:entity.player.attack.nodamage");
+        }
+        self.post_piercing_attack();
+        self.swing_arm();
+    }
+}
 
 impl Game<'_> {
     /// `Player.attack` on a mob: the damage, knockback, sweep, particles and
@@ -235,24 +299,29 @@ impl Game<'_> {
             return;
         }
         let sweep = self.sweep_attack_position(scale, crit, &target_kind);
-        let (knockback, knockback_attack) = self.extra_knockback(&target_kind, scale);
+        let knockback_attack = scale > 0.9 && self.player.as_ref().is_some_and(|p| p.sprinting);
         let player = self.player.as_ref();
         let from = player.map(|p| [p.position.x, p.position.y, p.position.z]);
         if knockback_attack {
-            self.audio
-                .play("minecraft:entity.player.attack.knockback", from, 1.0, 1.0);
+            self.play_audio("minecraft:entity.player.attack.knockback", from, 1.0, 1.0);
         }
-        // LivingEntity.setLastHurtMob (tamed wolves join in).
-        self.combat.last_hurt_mob = Some((self.mobs[index].id, self.world.game_time));
         let old_health = self.mobs[index].health;
         let source = match from {
             Some(f) => self.attack_source(f),
             None => sunrise_client::mobs::Damage::of(sunrise_client::mobs::DamageKind::Generic),
         };
-        let landed = self.hurt_by_player(index, amount, source);
-        if landed && old_health > 0.0 && !self.mobs[index].alive() {
-            self.native_kill_event(index);
-        }
+        let (id, join) = (self.mobs[index].id, self.mobs[index].join);
+        let (landed, _) = self.hurt_by_player(index, amount, source);
+        let Some(index) = self
+            .mob_index
+            .find(&self.mobs, id)
+            .filter(|&i| self.mobs[i].join == join && !self.mobs[i].removed)
+        else {
+            if landed {
+                self.remember_player_target(Some(id));
+            }
+            return;
+        };
         if landed {
             let victim = self.mob_entity(&self.mobs[index]);
             self.player_hit(
@@ -279,34 +348,24 @@ impl Game<'_> {
             });
         }
         if landed {
+            let (knockback, _) = self.extra_knockback(&target_kind, id, scale, None);
             if knockback > 0.0 {
                 let (xd, zd) = self.extra_knockback_direction();
-                if self.legacy_rules() {
-                    let m = &mut self.mobs[index];
-                    let v = [m.velocity.x, m.velocity.y, m.velocity.z];
-                    let [x, y, z] = sunrise_client::legacy_combat::extra_knockback(
-                        v,
-                        f64::from(knockback),
-                        (xd, zd),
-                    );
-                    m.velocity = Vec3::new(x, y, z);
-                    m.needs_sync = true;
-                } else {
-                    let plan =
-                        self.prepare_knockback_credit(self.mobs[index].id as i32, None, &attack);
-                    let mut credit = plan.lend(&mut self.last_hurt_by_player);
-                    let level =
-                        crate::game::entity::damage_level_of!(self, &attack, &mut credit, None);
-                    self.mobs[index].knockback_full(
-                        level,
-                        f64::from(knockback),
-                        xd,
-                        zd,
-                        &source,
-                        amount,
-                        true,
-                    );
-                }
+                let aim = self.attacker_aim(source.attacker);
+                let plan = self.prepare_knockback_credit(self.mobs[index].id as i32, None, &attack);
+                let mut credit = plan.lend(&mut self.last_hurt_by_player);
+                self.mobs[index].attacker_aim = aim;
+                let level = crate::game::entity::damage_level_of!(self, &attack, &mut credit, None);
+                self.mobs[index].knockback_full(
+                    level,
+                    f64::from(knockback),
+                    xd,
+                    zd,
+                    &source,
+                    amount,
+                    true,
+                );
+                self.mobs[index].attacker_aim = None;
                 self.stop_sprint_after_extra_knockback();
             }
             let mob = &self.mobs[index];
@@ -349,6 +408,7 @@ impl Game<'_> {
                     [0.1, 0.0, 0.1],
                     0.2,
                     (actual * 0.5) as u32,
+                    None,
                 );
                 // The players a server serves are sent them too.
                 self.lan_send_particles(lan_particles::QueuedParticle {
@@ -362,7 +422,6 @@ impl Game<'_> {
                     randomization: 0,
                 });
             }
-            self.remember_mob_player_credit(self.mobs[index].id);
             let sound = if crit {
                 "minecraft:entity.player.attack.crit"
             } else if scale > 0.9 {
@@ -380,17 +439,25 @@ impl Game<'_> {
                 self.sweep_attack(at, from, Some(target), scale);
             }
             if crit || sweep.is_none() {
-                self.audio.play(sound, from, 1.0, 1.0);
+                self.play_audio(sound, from, 1.0, 1.0);
             }
+            self.remember_player_target(Some(id));
             // The hurt or death sound the mob raised (getHurtSound / getDeathSound,
-            // its voice pitch from its own random).
+            // its voice pitch from its own random). A sweep's own hurt/death
+            // listeners may have changed the entity list.
+            let Some(index) = self
+                .mob_index
+                .find(&self.mobs, id)
+                .filter(|&i| self.mobs[i].join == join && !self.mobs[i].removed)
+            else {
+                return;
+            };
             let queued = std::mem::take(&mut self.mobs[index].outbox);
             let mut infested = Vec::new();
             for event in queued {
                 match event {
                     sunrise_client::mobs::MobEvent::Sound(s, at, volume, pitch) => {
-                        self.audio
-                            .play(&format!("minecraft:{s}"), Some(at), volume, pitch);
+                        self.play_audio(&format!("minecraft:{s}"), Some(at), volume, pitch);
                     }
                     sunrise_client::mobs::MobEvent::Infested { at, velocities } => {
                         infested.push((at, velocities))
@@ -404,7 +471,12 @@ impl Game<'_> {
             for (at, velocities) in infested {
                 self.spawn_infested(at, velocities);
             }
-            self.weapon_hit(index);
+            if let Some(i) = self.mob_index.find(&self.mobs, id)
+                && self.mobs[i].join == join
+                && !self.mobs[i].removed
+            {
+                self.weapon_hit(i, source);
+            }
             // Player.attack: causeFoodExhaustion(0.1F) only when the hit hurt
             // (inside `if (wasHurt)`), after damageStatsAndHearts.
             if let Some(p) = self.player.as_mut()
@@ -413,8 +485,7 @@ impl Game<'_> {
                 p.cause_food_exhaustion(0.1);
             }
         } else {
-            self.audio
-                .play("minecraft:entity.player.attack.nodamage", from, 1.0, 1.0);
+            self.play_audio("minecraft:entity.player.attack.nodamage", from, 1.0, 1.0);
         }
     }
     /// `Player.attack`'s damage against `target_kind` (with the attack
@@ -438,10 +509,6 @@ impl Game<'_> {
         living: bool,
         victim: Option<u32>,
     ) -> ((f32, f32, bool, bool), bool) {
-        if self.legacy_rules() {
-            let hit = self.legacy_melee_damage(target_kind, living);
-            return (hit, hit.0 > 0.0);
-        }
         let hand_damage = self.attack_damage();
         // Riptide's spin replaces the attack damage attribute.
         let spin = self.player.as_ref().map_or(0.0, |p| p.auto_spin_attack_dmg);
@@ -455,7 +522,7 @@ impl Game<'_> {
         // enchantment damage: checked before the mace's smash bonus is added.
         let damaging = amount > 0.0 || enchant_bonus * scale > 0.0;
         // Item.getAttackDamageBonus (a mace's smash), before the critical hit.
-        amount += self.smash_damage_bonus(target_kind);
+        amount += self.smash_damage_bonus(target_kind, victim);
         let vanilla_crit = living && self.critical_attack(scale);
         let mut crit = vanilla_crit;
         let mut multiplier = if vanilla_crit { 1.5 } else { 1.0 };

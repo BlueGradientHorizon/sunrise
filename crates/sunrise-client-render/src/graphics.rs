@@ -12,7 +12,7 @@ pub const FILE: &str = "sunrise-graphics.txt";
 pub const HDR_MARKER: &str = "sunrise-hdr-pending";
 /// The marker's text for a window whose HDR output starts on `driver`
 /// (`gfx::output::window_driver`).
-pub fn hdr_marker_text(driver: &str) -> String {
+pub(crate) fn hdr_marker_text(driver: &str) -> String {
     format!("driver:{driver}\n")
 }
 /// The driver a marker names; empty for one written before markers named it.
@@ -53,7 +53,7 @@ pub enum HdrSetup {
 pub const PEAK_STEPS: u32 = 52;
 /// Peak Brightness's value at `step` of its scale, the slider's and calibration's: 200 to
 /// 2000 nits by 50, where most displays' peaks are, then up to PQ's 10 000 by 500.
-pub fn peak_nits_at(step: u32) -> u32 {
+pub(crate) fn peak_nits_at(step: u32) -> u32 {
     match step.min(PEAK_STEPS) {
         s @ 0..=36 => 200 + s * 50,
         s => 2000 + (s - 36) * 500,
@@ -61,7 +61,7 @@ pub fn peak_nits_at(step: u32) -> u32 {
 }
 /// Where `nits` sits on Peak Brightness's scale ([`peak_nits_at`]), between steps for a value
 /// off it.
-pub fn peak_step_of(nits: f32) -> f32 {
+pub(crate) fn peak_step_of(nits: f32) -> f32 {
     let step = if nits <= 2000.0 {
         (nits - 200.0) / 50.0
     } else {
@@ -72,11 +72,11 @@ pub fn peak_step_of(nits: f32) -> f32 {
 /// The steps of Paper White's and UI Brightness's scale: Auto (0), then 10 to 480 nits by 10.
 pub const NITS_STEPS: u32 = 48;
 /// Paper White's or UI Brightness's setting at slider position `v`, 0 to 1 ([`NITS_STEPS`]).
-pub fn nits_at(v: f32) -> u32 {
+pub(crate) fn nits_at(v: f32) -> u32 {
     (v * NITS_STEPS as f32).round() as u32 * 10
 }
 /// Where a Paper White or UI Brightness setting sits on its slider, 0 to 1.
-pub fn nits_position(nits: u32) -> f32 {
+pub(crate) fn nits_position(nits: u32) -> f32 {
     nits as f32 / (NITS_STEPS * 10) as f32
 }
 /// A saved Paper White or UI Brightness: Auto (0), or 10 to 480 nits.
@@ -340,17 +340,6 @@ pub enum Pacing {
     Precise,
 }
 
-/// The performance overlay drawn over the HUD.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum Overlay {
-    #[default]
-    Off,
-    /// Frames per second and frame time.
-    Fps,
-    /// The numbers and a graph of recent frame times.
-    Graph,
-}
-
 /// How finely far terrain is drawn (`FarDetail` in the LOD options).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum FarDetail {
@@ -536,10 +525,10 @@ impl Upscaling {
 static REDUCED_SUGGESTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// Whether the settings suggest Reduced far detail: set when the renderer
 /// starts, on the GPUs `lod_capped` names (far terrain slows them most).
-pub fn suggest_reduced_far_detail(on: bool) {
+pub(crate) fn suggest_reduced_far_detail(on: bool) {
     REDUCED_SUGGESTED.store(on, std::sync::atomic::Ordering::Relaxed);
 }
-pub fn reduced_far_detail_suggested() -> bool {
+pub(crate) fn reduced_far_detail_suggested() -> bool {
     REDUCED_SUGGESTED.load(std::sync::atomic::Ordering::Relaxed)
 }
 
@@ -584,10 +573,10 @@ static TRANSLUCENT_BATCHING_OFFERED: std::sync::atomic::AtomicBool =
 /// the renderer starts; not without indirect multi-draw or on OpenGL, which loops over a
 /// multi-draw's entries on the CPU, nor where vanilla frames draw flat (they read the section
 /// arena's translucent quads). Where it can't, the settings grey its switch out.
-pub fn offer_translucent_batching(on: bool) {
+pub(crate) fn offer_translucent_batching(on: bool) {
     TRANSLUCENT_BATCHING_OFFERED.store(on, std::sync::atomic::Ordering::Relaxed);
 }
-pub fn translucent_batching_offered() -> bool {
+pub(crate) fn translucent_batching_offered() -> bool {
     TRANSLUCENT_BATCHING_OFFERED.load(std::sync::atomic::Ordering::Relaxed)
 }
 
@@ -715,7 +704,7 @@ impl GpuCullingOffer {
 }
 static GPU_CULLING_OFFER: std::sync::atomic::AtomicU8 =
     std::sync::atomic::AtomicU8::new(GpuCullingOffer::Unsupported as u8);
-pub fn offer_gpu_culling(offer: GpuCullingOffer) {
+pub(crate) fn offer_gpu_culling(offer: GpuCullingOffer) {
     GPU_CULLING_OFFER.store(offer as u8, std::sync::atomic::Ordering::Relaxed);
 }
 pub fn gpu_culling_offer() -> GpuCullingOffer {
@@ -735,7 +724,7 @@ static GPU_CULLING_LOST: std::sync::atomic::AtomicBool = std::sync::atomic::Atom
 pub fn lose_gpu_culling() {
     GPU_CULLING_LOST.store(true, std::sync::atomic::Ordering::Relaxed);
 }
-pub fn gpu_culling_lost() -> bool {
+pub(crate) fn gpu_culling_lost() -> bool {
     GPU_CULLING_LOST.load(std::sync::atomic::Ordering::Relaxed)
 }
 
@@ -745,7 +734,7 @@ pub fn gpu_culling_lost() -> bool {
 pub const INTEGRATED_LOD_DISTANCE: u32 = 128;
 /// Whether `INTEGRATED_LOD_DISTANCE` applies to this adapter. Apple's GPUs
 /// are integrated too, with memory and bandwidth enough for every distance.
-pub fn lod_capped(info: &wgpu::AdapterInfo) -> bool {
+pub(crate) fn lod_capped(info: &wgpu::AdapterInfo) -> bool {
     info.device_type == wgpu::DeviceType::IntegratedGpu && !info.name.starts_with("Apple")
 }
 /// A LOD distance as far terrain uses it on this adapter.
@@ -765,7 +754,7 @@ impl Graphics {
     /// Whether the selected packs leave vanilla's block models in place.
     /// Sunrise's occlusion assumptions (entity and leaf culling) hold only
     /// for those: a pack can replace an opaque cube's model or a leaf's.
-    pub fn vanilla_models(&self, resource_packs: &[String]) -> bool {
+    pub(crate) fn vanilla_models(&self, resource_packs: &[String]) -> bool {
         resource_packs.iter().all(|id| id == "vanilla")
     }
     /// The same check including packs overlaid by the connected server.
@@ -805,13 +794,15 @@ impl Graphics {
 }
 #[derive(Clone, Debug, PartialEq)]
 pub struct Graphics {
+    /// Records no engine setting recognized; a registered store may replace them on save.
+    pub(crate) unclaimed: Vec<(String, String)>,
     pub preset: Preset,
     /// Distant surface terrain range, in chunks; 0 disables LODs.
     pub lod_distance: u32,
     /// How finely far terrain is drawn; Full unless the player picks Reduced.
     pub far_detail: FarDetail,
     /// Far terrain from servers' BlueMap web maps; no server has one unless
-    /// the player names it (`blueMap:` lines) or turns on auto-detect.
+    /// the player names it (`blueMap:` lines).
     pub blue_map: crate::bluemap::Settings,
     /// Skip sections hidden behind closed ones (vanilla's occlusion graph).
     pub cave_culling: bool,
@@ -849,7 +840,8 @@ pub struct Graphics {
     pub cache_copper_golem_statues: bool,
     /// Meshed sections uploaded per frame; 0 uploads all that are ready.
     pub chunk_updates: u32,
-    /// Section mesh bytes uploaded per frame, in KiB; 0 is unlimited.
+    /// Section mesh bytes uploaded per frame (`Renderer::mesh_upload_bytes`), in KiB; 0 is
+    /// unlimited.
     pub upload_budget_kib: u32,
     /// The block textures' video memory (their top mip level), in MiB; 0 leaves it to
     /// Sunrise (`sprites::DEFAULT_TEXTURE_BUDGET`). Applies when resources next load.
@@ -868,7 +860,6 @@ pub struct Graphics {
     /// Parallel Tick (Performance graphics, beside Worker Threads): applies from the next tick,
     /// and no preset sets it.
     pub parallel_tick: ParallelTickMode,
-    pub overlay: Overlay,
     /// World resolution as a percentage of the window's (50..=200).
     pub resolution_scale: u32,
     /// Dynamic Resolution: below 100%, `resolution_scale` is the floor, and the scale rises
@@ -941,6 +932,7 @@ pub struct Graphics {
 impl Default for Graphics {
     fn default() -> Self {
         Self {
+            unclaimed: Vec::new(),
             preset: Preset::Custom,
             lod_distance: 0,
             far_detail: FarDetail::Full,
@@ -972,7 +964,6 @@ impl Default for Graphics {
             pacing: Pacing::Efficient,
             workers: 0,
             parallel_tick: ParallelTickMode::Off,
-            overlay: Overlay::Off,
             resolution_scale: 100,
             dynamic_resolution: false,
             target_fps: 60,
@@ -1003,9 +994,13 @@ fn bool_text(v: bool) -> &'static str {
 }
 impl Graphics {
     pub fn load(dir: &Path) -> Self {
-        let mut g: Self = fs::read_to_string(dir.join(FILE))
-            .map(|t| Self::parse(&t))
-            .unwrap_or_default();
+        let text = fs::read_to_string(dir.join(FILE)).unwrap_or_default();
+        Self::load_text(dir, &text)
+    }
+
+    /// Load the shared settings text already read for the registered stores.
+    pub(super) fn load_text(dir: &Path, text: &str) -> Self {
+        let mut g = Self::parse(text);
         g.blue_map.servers = match fs::read_to_string(dir.join(crate::bluemap::SERVERS_FILE)) {
             Ok(text) => crate::bluemap::Settings::parse_servers(&text),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
@@ -1030,7 +1025,7 @@ impl Graphics {
     /// Whether HDR output is held back on a window whose graphics driver is `driver`
     /// (`gfx::output::window_driver`): the last start on it ended before HDR output
     /// showed a frame ([`Graphics::hdr_failed_start`]).
-    pub fn hdr_held(&self, driver: &str) -> bool {
+    pub(crate) fn hdr_held(&self, driver: &str) -> bool {
         self.hdr_failed_start
             .as_deref()
             .is_some_and(|failed| failed.is_empty() || failed == driver)
@@ -1049,7 +1044,7 @@ impl Graphics {
     /// `before`, as Undo brings it back, but never the hold on a driver HDR output failed to
     /// start on: that stays as it is now, and goes when Undo changes the mode, as any change of
     /// the mode drops it.
-    pub fn undone_to(&self, before: &Self) -> Self {
+    pub(crate) fn undone_to(&self, before: &Self) -> Self {
         Self {
             hdr_failed_start: self
                 .hdr_failed_start
@@ -1084,7 +1079,6 @@ impl Graphics {
                         g.blue_map.radius = radius;
                     }
                 }
-                "blueMapAutoDetect" => g.blue_map.auto_detect = flag(g.blue_map.auto_detect),
                 "caveCulling" => g.cave_culling = flag(g.cave_culling),
                 "gpuCulling" => g.gpu_culling = GpuCullingMode::parse(value, g.gpu_culling),
                 "entityCulling" => g.entity_culling = EntityCullingMode::parse(value),
@@ -1171,14 +1165,9 @@ impl Graphics {
                 "hdrSmoothGradients" => g.hdr_smooth_gradients = flag(g.hdr_smooth_gradients),
                 "graphicsApi" => g.api = GraphicsApi::from_name(value).unwrap_or_default(),
                 "pickedShaderPack" => g.shader_pack = value.to_owned(),
-                "overlay" => {
-                    g.overlay = match value {
-                        "fps" => Overlay::Fps,
-                        "graph" => Overlay::Graph,
-                        _ => Overlay::Off,
-                    }
-                }
-                _ => {}
+                // Keys older versions saved that no setting or store reads: dropped on the next save.
+                "level" | "shaderPack" | "hdrKey" | "cullLeaves" | "translucentBatching" => {}
+                key => g.unclaimed.push((key.to_owned(), value.to_owned())),
             }
         }
         // The share was 25 to 100% of Paper White. 100% is Auto, and so is any share of an
@@ -1194,7 +1183,7 @@ impl Graphics {
     }
     pub fn serialize(&self) -> String {
         let mut text = format!(
-            "preset:{}\nlodDistance:{}\nfarDetail:{}\ncaveCulling:{}\nentityCulling:{}\nentityCullingPrecheck:{}\nparticleCulling:{}\nleafCulling:{}\nopaqueIce:{}\nblockEntityCacheShulkerBoxes:{}\nblockEntityCacheSigns:{}\nblockEntityCacheDecoratedPots:{}\nblockEntityCacheBells:{}\nblockEntityCacheChests:{}\nblockEntityCacheBanners:{}\nblockEntityCacheCopperGolemStatues:{}\nchunkUpdates:{}\nuploadBudgetKiB:{}\ntextureBudgetMiB:{}\nsky:{}\nfog:{}\nweather:{}\nanimatedTextures:{}\nditherCutoutMips:{}\npresentMode:{}\nframePacing:{}\nworkers:{}\noverlay:{}\nresolutionScale:{}\ndynamicResolution:{}\ntargetFps:{}\nfxaa:{}\ntaa:{}\nupscaling:{}\nupscalingSharpness:{}\nscreenshotQuality:{}\nframeGeneration:{}\nhdr:{}\nhdrPaperWhite:{}\nhdrPeak:{}\nhdrBlackLevel:{}\nhdrUiNits:{}\nhdrLighting:{}\nbatteryMode:{}\nshadowCache:{}\ngraphicsApi:{}\npickedShaderPack:{}\nbatchTranslucent:{}\nhdrSmoothGradients:{}\ngpuCulling:{}\nparallelTick:{}\n",
+            "preset:{}\nlodDistance:{}\nfarDetail:{}\ncaveCulling:{}\nentityCulling:{}\nentityCullingPrecheck:{}\nparticleCulling:{}\nleafCulling:{}\nopaqueIce:{}\nblockEntityCacheShulkerBoxes:{}\nblockEntityCacheSigns:{}\nblockEntityCacheDecoratedPots:{}\nblockEntityCacheBells:{}\nblockEntityCacheChests:{}\nblockEntityCacheBanners:{}\nblockEntityCacheCopperGolemStatues:{}\nchunkUpdates:{}\nuploadBudgetKiB:{}\ntextureBudgetMiB:{}\nsky:{}\nfog:{}\nweather:{}\nanimatedTextures:{}\nditherCutoutMips:{}\npresentMode:{}\nframePacing:{}\nworkers:{}\nresolutionScale:{}\ndynamicResolution:{}\ntargetFps:{}\nfxaa:{}\ntaa:{}\nupscaling:{}\nupscalingSharpness:{}\nscreenshotQuality:{}\nframeGeneration:{}\nhdr:{}\nhdrPaperWhite:{}\nhdrPeak:{}\nhdrBlackLevel:{}\nhdrUiNits:{}\nhdrLighting:{}\nbatteryMode:{}\nshadowCache:{}\ngraphicsApi:{}\npickedShaderPack:{}\nbatchTranslucent:{}\nhdrSmoothGradients:{}\ngpuCulling:{}\nparallelTick:{}\n",
             self.preset.name(),
             self.lod_distance,
             self.far_detail.name(),
@@ -1225,11 +1214,6 @@ impl Graphics {
                 Pacing::Precise => "precise",
             },
             self.workers,
-            match self.overlay {
-                Overlay::Off => "off",
-                Overlay::Fps => "fps",
-                Overlay::Graph => "graph",
-            },
             self.resolution_scale,
             bool_text(self.dynamic_resolution),
             self.target_fps,
@@ -1260,19 +1244,34 @@ impl Graphics {
         text += &self.blue_map.serialize();
         text
     }
+    /// The settings stores of this file follow these lines (`sunrise_hooks::settings`).
     pub fn save(&self, dir: &Path) {
-        let _ = fs::write(dir.join(FILE), self.serialize());
+        use sunrise_hooks::settings::engine;
+        let mut text = self.serialize();
+        let mut stores = String::new();
+        engine::append(FILE, &mut stores);
+        let written = engine::keys(&stores);
+        for (key, value) in &self.unclaimed {
+            if !written.contains(&key.as_str()) {
+                text.push_str(key);
+                text.push(':');
+                text.push_str(value);
+                text.push('\n');
+            }
+        }
+        text.push_str(&stores);
+        let _ = fs::write(dir.join(FILE), text);
     }
     /// Paper white, in nits: the player's, or on Auto the desktop's SDR white as the
     /// system `reported` it for the renderer's display, else 203 (BT.2408's reference white).
-    pub fn paper_white_nits(&self, reported: Option<Reported>) -> u32 {
+    pub(crate) fn paper_white_nits(&self, reported: Option<Reported>) -> u32 {
         match self.hdr_paper_white {
             0 => reported.map_or(203, |r| r.paper_white),
             n => n,
         }
     }
     /// The HUD and menus' brightness, in nits: the player's, or on Auto paper white's.
-    pub fn ui_nits(&self, reported: Option<Reported>) -> u32 {
+    pub(crate) fn ui_nits(&self, reported: Option<Reported>) -> u32 {
         match self.hdr_ui_nits {
             0 => self.paper_white_nits(reported),
             n => n,
@@ -1280,14 +1279,14 @@ impl Graphics {
     }
     /// The peak the world's highlights reach, in nits: the player's, or on Auto
     /// what the system `reported`, else 1000.
-    pub fn peak_nits(&self, reported: Option<Reported>) -> u32 {
+    pub(crate) fn peak_nits(&self, reported: Option<Reported>) -> u32 {
         match self.hdr_peak {
             0 => reported.map_or(1000, |r| r.peak),
             n => n,
         }
     }
     /// How HDR is set up for the display the system `reported`.
-    pub fn hdr_setup(&self, reported: Option<Reported>) -> HdrSetup {
+    pub(crate) fn hdr_setup(&self, reported: Option<Reported>) -> HdrSetup {
         match reported {
             None => HdrSetup::Unknown,
             Some(_) if self.hdr_peak != 0 || self.hdr_paper_white != 0 => HdrSetup::Changed,
@@ -1297,7 +1296,7 @@ impl Graphics {
     }
     /// The black level, in nits. Not the system's: files from before saved 0 for that
     /// (Auto), and a reported black would lift every display's shadows by default.
-    pub fn black_level_nits(&self) -> f32 {
+    pub(crate) fn black_level_nits(&self) -> f32 {
         self.hdr_black_level as f32 / 100.0
     }
     /// Worker threads for chunk generation and meshing.
@@ -1464,6 +1463,25 @@ mod tests {
         dir
     }
 
+    #[test]
+    fn saving_without_a_store_preserves_its_setting() {
+        let dir = scratch("graphics-unclaimed");
+        fs::write(dir.join(FILE), "overlay:graph\n").unwrap();
+        let mut graphics = Graphics::load(&dir);
+        graphics.lod_distance = 12;
+        graphics.save(&dir);
+        let saved = fs::read_to_string(dir.join(FILE)).unwrap();
+        assert_eq!(Graphics::parse(&saved).lod_distance, 12);
+        assert_eq!(
+            saved
+                .lines()
+                .filter(|line| *line == "overlay:graph")
+                .count(),
+            1
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
     /// A start that finds the marker (HDR output took the last one down) keeps the mode the
     /// player chose and saves the driver the marker names; HDR Off saves nothing.
     #[test]
@@ -1535,12 +1553,12 @@ mod tests {
     #[test]
     fn round_trips() {
         let g = Graphics {
+            unclaimed: Vec::new(),
             preset: Preset::Balanced,
             lod_distance: 256,
             far_detail: FarDetail::Reduced,
             blue_map: crate::bluemap::Settings {
                 radius: 40,
-                auto_detect: true,
                 // In their own file (`bluemap::SERVERS_FILE`).
                 servers: Vec::new(),
             },
@@ -1570,7 +1588,6 @@ mod tests {
             pacing: Pacing::Precise,
             workers: 6,
             parallel_tick: ParallelTickMode::Auto,
-            overlay: Overlay::Graph,
             resolution_scale: 75,
             dynamic_resolution: false,
             target_fps: 60,
@@ -1883,15 +1900,15 @@ mod tests {
     #[test]
     fn lod_distance_is_opt_in_and_bounded() {
         assert_eq!(Graphics::default().lod_distance, 0);
-        for distance in [0, 64, 128, 256, 512, 1024, 65_536, crate::lod::MAX_CHUNKS] {
+        for distance in [0, 64, 128, 256, 512, 1024] {
             let g = Graphics::parse(&format!("lodDistance:{distance}\n"));
             assert_eq!(g.lod_distance, distance);
             assert_eq!(Graphics::parse(&g.serialize()), g);
         }
-        assert_eq!(
-            Graphics::parse("lodDistance:99999999\n").lod_distance,
-            crate::lod::MAX_CHUNKS
-        );
+        for old in ["4194304", "99999999"] {
+            let g = Graphics::parse(&format!("lodDistance:{old}\n"));
+            assert_eq!(g.lod_distance, 1024);
+        }
         assert_eq!(Graphics::parse("lodDistance:-1\n").lod_distance, 0);
         assert_eq!(Graphics::parse("lodDistance:invalid\n").lod_distance, 0);
     }

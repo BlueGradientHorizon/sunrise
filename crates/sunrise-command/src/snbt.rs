@@ -120,6 +120,44 @@ mod tests {
         }
         assert!(parse_fully(&item).is_ok());
     }
+
+    /// An error after multi-byte text reports Java's position and context: UTF-16 code units,
+    /// as `CommandSyntaxException.getCursor` and `getContext` count them, not bytes. A
+    /// character outside the Basic Multilingual Plane is two units, and the ten-unit window
+    /// can cut one in half (the kept half shows as U+FFFD).
+    #[test]
+    fn errors_after_multibyte_text_report_java_positions() {
+        // `{"éééé":[1e309]}`: the error is at `]`, Java index 14 (byte 18).
+        // The optional float suffix fails before the float conversion reports infinity.
+        let error = parse_fully("{\"éééé\":[1e309]}").unwrap_err();
+        assert_eq!(error.key, "argument.literal.incorrect");
+        assert_eq!(error.java_cursor(), 14);
+        assert_eq!(error.context().unwrap(), "...éé\":[1e309<--[HERE]");
+        // Five emoji are ten units: the error is at index 20, the window starts at the fifth.
+        let error = parse_fully("{\"😀😀😀😀😀\":[1e309]}").unwrap_err();
+        assert_eq!(error.java_cursor(), 20);
+        assert_eq!(error.context().unwrap(), "...😀\":[1e309<--[HERE]");
+        // One unit further, the window starts at the fifth emoji's second half.
+        let error = parse_fully("{\"😀😀😀😀😀a\":[1e309]}").unwrap_err();
+        assert_eq!(error.java_cursor(), 21);
+        assert_eq!(error.context().unwrap(), "...\u{FFFD}a\":[1e309<--[HERE]");
+        // Ten units or fewer before the cursor: no ellipsis.
+        let error = parse_fully("[1e309]").unwrap_err();
+        assert_eq!(error.java_cursor(), 6);
+        assert_eq!(error.context().unwrap(), "[1e309<--[HERE]");
+    }
+
+    /// The suggestion text carries the same UTF-16 position as `java_cursor`, not the byte one.
+    #[test]
+    fn with_context_translates_the_java_position() {
+        // The error is at `]`: byte 18, Java index 14.
+        let error = parse_fully("{\"éééé\":[1e309]}").unwrap_err();
+        assert_eq!(error.cursor, 18);
+        assert_eq!(
+            error.with_context().component()["with"][1].as_i64(),
+            Some(14)
+        );
+    }
 }
 
 #[cfg(test)]
@@ -219,6 +257,18 @@ mod suggestion_tests {
         assert_eq!(suggestions("{a"), [":"]);
         assert_eq!(suggestions("[1,"), ["]"]);
         assert_eq!(suggestions("{\"a"), ["\"", "'", "\\"]);
+    }
+
+    /// After multi-byte text, a suggestion's range is in bytes (what slicing needs) and its
+    /// start converts to UTF-16 units (what the client counts): `{"é` is four bytes, three units.
+    #[test]
+    fn a_suggestion_after_multibyte_text_converts_its_start_to_utf16() {
+        let input = "{\"é";
+        let mut builder = SuggestionsBuilder::new(input, 0);
+        suggest(&mut builder);
+        let quote = builder.out.iter().find(|s| s.text == "\"").unwrap();
+        assert_eq!(quote.range, (4, 4));
+        assert_eq!(crate::utf16_units(input, quote.range.0), 3);
     }
 
     /// Candidates must match the text typed at that position: nothing continues `\q`.

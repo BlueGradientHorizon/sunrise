@@ -75,7 +75,23 @@ impl Game<'_> {
     /// `Projectile.getOwner`: the owner as a resolved entity. None for no
     /// owner, one that is gone or in another level, or a stale handle.
     pub(super) fn projectile_owner(&self, projectile: ProjectileRef) -> Option<EntityRef> {
-        let target = match self.native_projectile_backing(projectile)? {
+        self.native_projectile_backing(projectile)?;
+        self.entity_owner(projectile.entity())
+    }
+
+    /// `TraceableEntity.getOwner`: a projectile's owner (`Projectile.getOwner`)
+    /// or a general row's, as a resolved entity. None for no owner or a kind
+    /// with none, one that is gone or in another level, or a stale handle.
+    pub(super) fn entity_owner(&self, entity: EntityRef) -> Option<EntityRef> {
+        let Some(backing) = self.native_projectile_backing(ProjectileRef::new(entity)) else {
+            let Target::General(id) = self.native_entity_target(entity)? else {
+                return None;
+            };
+            let rows = &self.resident_entities.general.rows;
+            let owner = rows.iter().find(|row| row.id == id)?.owner?;
+            return self.native_owner_entity(self.target_by_uuid(ints_uuid(owner))?);
+        };
+        let target = match backing {
             Backing::List(i) => {
                 let uuid = self.creatures.projectiles[i].owner_uuid?;
                 self.target_by_uuid(ints_uuid(uuid))?
@@ -330,8 +346,8 @@ impl Game<'_> {
         }
     }
 
-    /// `AbstractArrow.setBaseDamage`. False for a stale handle, a projectile
-    /// that is not an arrow, or a value that is not finite.
+    /// `AbstractArrow.setBaseDamage`: stores `damage` as supplied. False for a stale
+    /// handle or a projectile without an arrow's base damage.
     pub(super) fn projectile_set_base_damage(
         &mut self,
         projectile: ProjectileRef,
@@ -344,9 +360,6 @@ impl Game<'_> {
             let ProjectileKind::Arrow { base_damage, .. } = &mut p.kind else {
                 return false;
             };
-            if !damage.is_finite() {
-                return false;
-            }
             *base_damage = damage;
             true
         })
@@ -381,7 +394,9 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::super::{
-        fireworks::Rocket, native_entity_refs::tests::with_game, trident::ThrownTrident,
+        fireworks::Rocket,
+        native_entity_refs::tests::{fixture_resident_column, with_game},
+        trident::ThrownTrident,
     };
     use super::*;
     use mod_api::WorldEpoch;
@@ -406,6 +421,8 @@ mod tests {
             }
         }
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
+            fixture_resident_column(&mut game.world, (-1, 0));
             game.options.dedicated = Some(Vec::new());
             let boat_id = game.take_entity_id();
             game.boats.push(super::super::boats::Boat::new(
@@ -424,7 +441,7 @@ mod tests {
             let projectile = game.projectile(entity).unwrap();
             assert!(game.projectile_set_owner(projectile, Some(boat)));
             assert_eq!(game.projectile_owner(projectile), Some(boat));
-            let scene = Air(game.vehicle_targets());
+            let scene = Air(game.pickable_object_targets());
             let mut p = game.creatures.projectiles[0].clone();
             assert!(!p.left_owner);
             assert_eq!(p.owner, None, "a vehicle must not credit a living attacker");
@@ -456,6 +473,7 @@ mod tests {
     fn a_vehicle_owned_trident_does_not_scale_damage_as_a_living_attacker() {
         use sunrise_client::projectiles::Hit;
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             game.options.dedicated = Some(Vec::new());
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             game.world.health_rules.difficulty = sunrise_world::food::Difficulty::Easy;
@@ -504,6 +522,7 @@ mod tests {
     #[ignore = "daily"]
     fn projectile_handles_read_and_write_owner_deflection_and_arrow_state() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             game.options.dedicated = Some(Vec::new());
             let kind = game
                 .res
@@ -565,8 +584,9 @@ mod tests {
             );
             assert_eq!(handle.base_damage(game), Some(2.0));
             assert!(handle.set_base_damage(game, 7.5));
-            assert!(!handle.set_base_damage(game, f64::NAN));
             assert_eq!(handle.base_damage(game), Some(7.5));
+            assert!(handle.set_base_damage(game, f64::NAN));
+            assert!(handle.base_damage(game).unwrap().is_nan());
             assert_eq!(handle.critical(game), Some(false));
             assert!(handle.set_critical(game, true));
             assert!(game.creatures.projectiles[0].critical());
@@ -666,6 +686,7 @@ mod tests {
     #[ignore = "daily"]
     fn trident_and_rocket_handles_narrow_and_turn_with_their_own_random() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             game.options.dedicated = Some(Vec::new());
             let player = player(game);
             let id = game.take_entity_id();
@@ -760,7 +781,7 @@ mod tests {
             assert_eq!(rocket.owner(game), Some(boat));
             assert_eq!(game.rockets[0].owner, None);
             let saved = game.uuid_for(boat_id);
-            let tag = game.rockets[0].to_nbt([9; 4], None, None);
+            let tag = game.rockets[0].to_nbt([9; 4], None, None, game.res.items());
             let back = Rocket::from_nbt(
                 sunrise_client::entity_nbt::firework_rocket_from_nbt(&tag, None).unwrap(),
             );
@@ -772,6 +793,7 @@ mod tests {
     #[ignore = "daily"]
     fn deflection_follows_vanilla_for_wind_charges_owners_random_and_known_speed() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             game.options.dedicated = Some(Vec::new());
             let player = player(game);
             let kind = game
@@ -862,6 +884,7 @@ mod tests {
     #[ignore = "daily"]
     fn momentum_follows_a_boats_displacement_and_a_refused_blow_still_attacks() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             game.options.dedicated = Some(Vec::new());
             // A boat that moved along +Z while its velocity points along +X.
             let id = game.take_entity_id();

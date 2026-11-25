@@ -112,17 +112,11 @@ impl Game<'_> {
             Target::Mob(id) => self
                 .mobs
                 .iter()
-                .find(|mob| mob.id == id)
-                .map(|mob| sunrise_client::mobs::drops::loot_entity(mob, None)),
+                .any(|mob| mob.id == id)
+                .then(|| self.target_loot_entity(target)),
             _ => None,
         };
-        let loot = live_target.as_ref().and_then(|_| {
-            sunrise_client::structure_blocks::loot_data(
-                &self.options.resources,
-                &self.pack_files(),
-                self.res.item_defaults(),
-            )
-        });
+        let loot = live_target.as_ref().and_then(|_| self.server_loot.get());
         let matcher = |predicate: &serde_json::Value, entity: &sunrise_world::loot::LootEntity| {
             loot.as_ref()
                 .is_some_and(|data| data.entity_matches(predicate, Some(entity)))
@@ -253,17 +247,49 @@ impl Game<'_> {
         &mut self,
         target: Target,
     ) -> sunrise_world::loot::LootEntity {
-        match target {
-            Target::Mob(id) => {
-                if let Some(mob) = self.mobs.iter().find(|mob| mob.id == id) {
-                    return sunrise_client::mobs::drops::loot_entity(mob, None);
+        let mut entity = match target {
+            Target::Mob(id) => self
+                .mobs
+                .iter()
+                .find(|mob| mob.id == id)
+                .map(|mob| {
+                    // EntityPredicate's `vehicle`: the mob it rides, as at its death.
+                    let vehicle = mob
+                        .extra
+                        .mount
+                        .and_then(|mount| self.mobs.iter().find(|o| o.id == mount))
+                        .map(|o| sunrise_world::loot::LootEntity::new(&o.kind.id));
+                    sunrise_client::mobs::drops::loot_entity(mob, vehicle)
+                })
+                .unwrap_or_else(|| sunrise_world::loot::LootEntity::new(&self.target_type(target))),
+            _ => {
+                let mut entity = sunrise_world::loot::LootEntity {
+                    kind: self.target_type(target),
+                    living: target.is_living(),
+                    ..Default::default()
+                };
+                if entity.living {
+                    entity.equipment = mod_api::EquipmentSlot::ALL
+                        .into_iter()
+                        .zip(sunrise_world::loot::EQUIPMENT_SLOTS)
+                        .filter_map(|(slot, name)| {
+                            let stack = self.equipment_stack_for(target, slot)?;
+                            Some((name.to_owned(), super::creatures::to_loot(&stack.project())))
+                        })
+                        .collect();
                 }
+                entity
             }
-            Target::Player => return self.killer_loot_entity(None),
-            Target::Guest(conn) => return self.killer_loot_entity(Some(conn)),
-            _ => {}
+        };
+        if entity.nbt.is_none()
+            && self
+                .server_loot
+                .get()
+                .is_some_and(|data| data.copies_entity_nbt())
+        {
+            entity.nbt = self.command_target_nbt(target).map(std::sync::Arc::new);
         }
-        sunrise_world::loot::LootEntity::new(&self.target_type(target))
+        entity
     }
 
     /// One roll of `table` (`LootTable.getRandomItems`) with `origin` as ORIGIN (a

@@ -69,8 +69,13 @@ impl Game<'_> {
         if self.remote.is_some() || self.spectator() {
             return;
         }
-        self.native_on_equip(slot, new);
-        let Some(at) = self.player.as_ref().map(|p| p.position) else {
+        // The equip sound plays at the player: none for one in another level than this one.
+        let Some(at) = self
+            .player
+            .as_ref()
+            .filter(|_| self.acting_in_level_in_place())
+            .map(|p| p.position)
+        else {
             return;
         };
         let at = [at.x, at.y, at.z];
@@ -90,7 +95,7 @@ impl Game<'_> {
                 .iter()
                 .position(|s| *s == "player")
                 .unwrap_or(0);
-            self.audio.play_on(players, sound, Some(at), 1.0, 1.0);
+            self.play_audio_on(players, sound, Some(at), 1.0, 1.0);
         }
         if ARMOR.contains(&slot) {
             let event = if equippable.is_some() {
@@ -105,8 +110,17 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
-    /// Equipment attribute modifiers (LivingEntity.collectEquipmentChanges).
+    /// Equipment attribute modifiers (LivingEntity.collectEquipmentChanges). A guest's
+    /// change waits for its body tick's detectEquipmentUpdates (`equipment_changed`), so a
+    /// swap made and undone between two ticks leaves the modifiers it found.
     pub(super) fn apply_equipment(&mut self) {
+        if !self.lan_guest_swaps.is_empty() {
+            return;
+        }
+        self.put_equipment_modifiers();
+    }
+
+    pub(in crate::game) fn put_equipment_modifiers(&mut self) {
         let Some(player) = self.player.as_mut() else {
             return;
         };

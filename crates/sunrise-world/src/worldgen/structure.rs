@@ -3,32 +3,31 @@
 pub mod end_city;
 pub mod enhanced_terrain;
 pub mod features;
-pub mod formations;
 pub mod fortress;
 pub mod jigsaw;
 pub mod legacy;
 pub mod mansion;
 pub mod mineshaft;
+pub mod mod_elements;
+pub mod mod_processors;
 pub mod mod_types;
 pub mod monument;
 pub mod nether_fossil;
 pub mod ocean_ruin;
-pub mod piece_limited;
 pub mod processor;
 pub mod ruined_portal;
 pub(crate) mod saved_legacy;
 pub(crate) mod saved_templates;
 pub mod simple;
 pub mod start;
-pub mod start_checks;
 pub mod stronghold;
 pub mod template;
 pub mod temple;
 
+use crate::compression::Compression;
 use processor::ProcessorList;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
-    io::Read,
     path::{Path, PathBuf},
     sync::{Arc, OnceLock, RwLock},
 };
@@ -264,17 +263,9 @@ impl TemplateStore {
             None => sunrise_core::prepared_files::read(&file).ok(),
         };
         let loaded = bytes.and_then(|bytes| {
-            let mut raw = Vec::new();
-            flate2::read::GzDecoder::new(bytes.as_slice())
-                .read_to_end(&mut raw)
-                .ok()?;
-            StructureTemplate::from_bytes(
-                &raw,
-                Limits::templates(),
-                self.registry,
-                &self.transforms,
-            )
-            .ok()
+            let limits = Limits::templates();
+            let raw = Compression::Gzip.decode(&bytes, limits.max_bytes).ok()?;
+            StructureTemplate::from_bytes(&raw, limits, self.registry, &self.transforms).ok()
         });
         // StructureTemplateManager.getOrCreate: missing templates are empty.
         let mut loaded = loaded.unwrap_or_else(StructureTemplate::empty);
@@ -305,6 +296,14 @@ impl LazyTemplate {
             id: String::new(),
             store: None,
             cell: OnceLock::from(template),
+        }
+    }
+    /// The template's id, without reading its file
+    /// (`SinglePoolElement.getTemplateLocation`).
+    pub fn location(&self) -> &str {
+        match self.store {
+            Some(_) => &self.id,
+            None => &self.arc().location,
         }
     }
     /// The template (the resources' shared one: comparable by pointer).

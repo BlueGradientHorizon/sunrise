@@ -98,7 +98,7 @@ fn game<'a>(
     game.build_registries();
     game.set_allow_commands(true);
     game.native_lifecycle
-        .begin_open(Authority::IntegratedServer);
+        .begin_open(Some(Authority::IntegratedServer));
     // The player the command's `@s` is.
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 100.0, 8.5)).unwrap());
     game.world
@@ -136,7 +136,10 @@ fn game<'a>(
         &[],
         &[],
     );
-    game.world_tables = game.stage_world_tables(&stack, false, &root).unwrap().0;
+    game.world_tables = game
+        .stage_world_tables(&stack, false, &root)
+        .unwrap()
+        .tables;
     // The command's table argument knows the pack's tables, as after a world opens.
     game.sync_loot_table_ids();
     let level = game.level("minecraft:overworld").unwrap();
@@ -207,16 +210,11 @@ fn a_roll_is_the_engines_own_roll_for_the_same_seed_and_tool() {
                 after,
                 "seed {seed}: the same draws"
             );
-            // The command fills a slot per stack and merges nothing; the pearls
-            // are one stack of 40 there, split to stack size by the roll.
-            let mut rolled = lines(&rolled);
-            if let Some(i) = rolled
-                .iter()
-                .position(|l| l.starts_with("minecraft:ender_pearl"))
-            {
-                rolled.splice(i..i + 3, ["minecraft:ender_pearl x40 ".to_owned()]);
-            }
-            assert_eq!(rolled, by_command, "seed {seed}, tool {command_tool}");
+            assert_eq!(
+                lines(&rolled),
+                by_command,
+                "seed {seed}, tool {command_tool}"
+            );
         }
     }
 }
@@ -314,7 +312,7 @@ fn a_missing_table_and_a_stale_handle_are_none() {
     );
     // A handle of an earlier open.
     game.native_lifecycle
-        .begin_open(Authority::IntegratedServer);
+        .begin_open(Some(Authority::IntegratedServer));
     assert_eq!(
         game.level_roll_loot(level, "test:sift", ORIGIN, None, None),
         None

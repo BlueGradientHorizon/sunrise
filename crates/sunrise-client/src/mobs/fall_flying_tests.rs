@@ -85,7 +85,14 @@ fn a_saved_mob_writes_its_current_glide_flag() {
             ] {
                 let mut m = husk(types, true, None);
                 m.extra.fall_flying = gliding;
-                let tag = crate::entity_nbt::mob_to_nbt(&m, [168, 0, 0, 1], raw, None, |_| None);
+                let tag = crate::entity_nbt::mob_to_nbt(
+                    &m,
+                    [168, 0, 0, 1],
+                    raw,
+                    None,
+                    |_| None,
+                    &Default::default(),
+                );
                 assert_eq!(
                     flag(&tag),
                     Some(Tag::Byte(expected)),
@@ -111,7 +118,7 @@ fn a_mob_that_cannot_glide_stops_gliding_on_its_first_tick() {
                 for (chest, gliding) in [(None, false), (Some(431), false), (Some(0), true)] {
                     let mut m = husk(types, no_ai, chest);
                     tick_once(&mut m, w);
-                    assert!(!m.on_ground, "the husk is in the air");
+                    assert!(!m.ground.on_ground, "the husk is in the air");
                     assert_eq!(
                         m.extra.fall_flying, gliding,
                         "NoAI {no_ai}, elytra damage {chest:?}"
@@ -134,7 +141,7 @@ fn a_grounded_riding_or_levitating_mob_stops_gliding() {
         |w, types| {
             for no_ai in [false, true] {
                 let mut grounded = husk(types, no_ai, Some(0));
-                grounded.on_ground = true;
+                grounded.ground.on_ground = true;
                 let mut riding = husk(types, no_ai, Some(0));
                 riding.extra.mount = Some(99);
                 let mut levitating = husk(types, no_ai, Some(0));
@@ -189,7 +196,7 @@ fn a_glider_wears_on_the_twentieth_and_fortieth_glide_ticks() {
                 assert_eq!(m.extra.fall_fly_ticks, t, "tick {t}");
             }
             assert_eq!(worn_at, [20, 40]);
-            m.on_ground = true;
+            m.ground.on_ground = true;
             tick_once(&mut m, w);
             assert!(!m.extra.fall_flying);
             assert_eq!(m.extra.fall_fly_ticks, 0, "the count starts again");

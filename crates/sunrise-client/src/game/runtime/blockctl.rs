@@ -1,6 +1,7 @@
 //! Control-socket block commands for scripted tests: `setblock`, `fill`,
 //! `getblock` and `container` (list or put items in a block entity).
 use super::Game;
+use super::owner_link::{ControlRequest, OwnerRequest};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use sunrise_client::{Result, items::ItemStack};
@@ -73,9 +74,11 @@ impl Game<'_> {
         if ours && let Some(server) = &self.integrated {
             let owned: Vec<String> = words.iter().map(|w| (*w).to_owned()).collect();
             return server
-                .call(move |g| {
-                    let words: Vec<&str> = owned.iter().map(String::as_str).collect();
-                    g.in_owner_level(|g| g.block_command(&words).map_err(|e| e.to_string()))
+                .ask(|reply| {
+                    OwnerRequest::Control(ControlRequest::BlockCommand {
+                        words: owned,
+                        reply,
+                    })
                 })
                 .ok_or(super::integrated::NO_ANSWER)?
                 .map_err(Into::into);
@@ -84,7 +87,10 @@ impl Game<'_> {
         // it checks as the player's; `getblock` and `container` read what this
         // client has of it.
         if self.remote.is_some() && matches!(words.first(), Some(&("setblock" | "fill"))) {
-            self.send_signed_chat_input(&format!("/{}", words.join(" ")));
+            let command = words.join(" ");
+            if self.chat_abilities().allows(&format!("/{command}")) {
+                let _ = self.send_server_command(&command);
+            }
             return Ok(Some(json!({ "ok": true, "sent": true })));
         }
         let int = |i: usize| -> Result<i32> {
@@ -145,11 +151,11 @@ impl Game<'_> {
                         .get_mut(&key)
                         .ok_or("no container there")?;
                     let slot = entity
-                        .slots_mut()
-                        .iter_mut()
-                        .find(|s| s.is_none())
+                        .slots()
+                        .iter()
+                        .position(Option::is_none)
                         .ok_or("container is full")?;
-                    *slot = Some(ItemStack {
+                    *entity.slot_mut(slot).unwrap() = Some(ItemStack {
                         item: item.as_str().into(),
                         count,
                         damage: 0,
@@ -162,8 +168,7 @@ impl Game<'_> {
                     .get(&key)
                     .ok_or("no container there")?;
                 let slots: Vec<Value> = entity
-                    .clone()
-                    .slots_mut()
+                    .slots()
                     .iter()
                     .map(|s| {
                         s.as_ref().map_or(

@@ -277,15 +277,18 @@ fn nearest_target(m: &mut Mob, w: &MobWorld) -> Option<Who> {
 struct Ram;
 impl Goal for Ram {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE | LOOK
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         // `GoatAi.initRamActivity`: the ram activity wants the cooldown over,
         // no tempting player and no breed target, and `updateActivity` picks
         // RAM before IDLE: a goat being fed or bred only follows.
         ram_cooldown(m) <= 0 && !tempted(m, cx.w) && !breeding(m, cx.w)
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         let g = &m.extra.goat;
         match g.phase {
@@ -305,6 +308,7 @@ impl Goal for Ram {
             Phase::RamStart | Phase::Ram => g.ram_target.is_some() && g.time <= RAM_TIME_OUT,
         }
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         m.extra.goat.phase = Phase::Prepare;
         m.extra.goat.time = 0;
@@ -314,6 +318,7 @@ impl Goal for Ram {
             choose(m, cx.w, target);
         }
     }
+    #[inline]
     fn stop(&mut self, m: &mut Mob, cx: &mut Cx) {
         match m.extra.goat.phase {
             // PrepareRamNearestTarget.stop: no ram target, so the head comes
@@ -330,9 +335,11 @@ impl Goal for Ram {
         m.extra.goat.phase = Phase::Done;
         m.extra.goat.candidate = None;
     }
+    #[inline]
     fn every_tick(&self) -> bool {
         true
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         m.extra.goat.time += 1;
         match m.extra.goat.phase {
@@ -428,10 +435,12 @@ fn ram_tick(m: &mut Mob, cx: &mut Cx) {
                     amount,
                     from,
                     kind: "minecraft:mob_attack_no_aggro",
+                    wielder: None,
                 })),
             Who::Mob(id) => cx.events.push(MobEvent::AttackMob {
                 target: id,
                 amount,
+                remember_target: false,
                 // The same `noAggroMobAttack`: a ram angers no mob.
                 source: Damage {
                     kind: DamageKind::MobAttackNoAggro,
@@ -575,7 +584,7 @@ fn finish_ram(m: &mut Mob, events: &mut Vec<MobEvent>) {
 /// `Goat.addAdditionalSaveData` and the `GoatAi` brain memory Sunrise writes
 /// with it: the screaming flag, the missing horns and the long jump cooldown
 /// (`LONG_JUMP_COOLDOWN_TICKS`, an integer memory in the brain).
-pub fn write_nbt(m: &Mob, map: &mut sunrise_core::nbt::Compound) {
+pub fn write_nbt(m: &Mob, map: &mut crate::entity_nbt::EntityTagWriter) {
     use sunrise_core::nbt::Tag;
     map.insert(
         "IsScreamingGoat".into(),
@@ -652,7 +661,7 @@ mod long_jump_save_tests {
         let mut m = goat();
         assert_eq!(crate::mobs::frog::jump_cooldown(&m), None);
         crate::mobs::frog::set_jump_cooldown(&mut m, Some(57));
-        let saved = mob_to_nbt(&m, [1, 2, 3, 4], None, None, |_| None);
+        let saved = mob_to_nbt(&m, [1, 2, 3, 4], None, None, |_| None, &Default::default());
         assert_eq!(
             saved
                 .get("Brain")
@@ -669,7 +678,14 @@ mod long_jump_save_tests {
             "the reloaded cooldown"
         );
         // No cooldown writes no memory, even over a compound that names one.
-        let saved = mob_to_nbt(&goat(), [1, 2, 3, 4], Some(&saved), None, |_| None);
+        let saved = mob_to_nbt(
+            &goat(),
+            [1, 2, 3, 4],
+            Some(&saved),
+            None,
+            |_| None,
+            &Default::default(),
+        );
         assert_eq!(
             saved
                 .get("Brain")

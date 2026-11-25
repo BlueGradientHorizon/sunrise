@@ -1,13 +1,13 @@
 //! The item panel beside container screens: the items a recipe viewer mod
-//! lists (a native mod's `panel_items`, or WIT `interface browser`
-//! of a WebAssembly mod, docs/modding/src/how-to/content-mods.md), drawn as the game's own item slots
+//! lists through `panel_items`, drawn as the game's own item slots
 //! in pages right of the screen's window, with a search box under them. The
 //! mod says what the panel holds; the game pages it and tells the mod what
 //! the player clicked, typed, and which keys went down over an item
 //! (`native_panel_event`). The mouse wheel over the panel pages it, items
 //! or recipes, one page per notch and stopping at both ends, and the screen
-//! underneath doesn't hear that notch. With no mod showing a panel, each
-//! hook here returns after one check.
+//! underneath doesn't hear that notch. An item dragged off the list and let
+//! go over the screen comes to the mod as `Dropped` (`Held`). With no mod
+//! showing a panel, each hook here returns after one check.
 use super::{
     Game, Screen, native_hooks::PanelEvent as BrowserEvent, native_panel_recipes::RecipePage,
 };
@@ -15,7 +15,7 @@ use mod_api::{PanelStyle, Stack as BrowserStack};
 use sunrise_client::{
     hud::{HudBatch, rgba},
     items::ItemStack,
-    ui::EditBox,
+    ui::{EditBox, utf16_prefix},
 };
 
 /// One slot of the panel, in GUI pixels.
@@ -33,12 +33,131 @@ const CLASSIC_BUTTON: f32 = 20.0;
 
 /// Items a panel may hold.
 const ITEMS: usize = 8192;
+/// The search box's length, in UTF-16 code units as vanilla's `EditBox`
+/// counts it (Java's `String.length()`).
+const SEARCH_LENGTH: usize = 50;
+
+/// How far, in GUI pixels, the pointer moves with the left button held on
+/// one of the panel's items before the press becomes a drag. Vanilla's
+/// screens have no drag threshold (`AbstractContainerScreen` drags from the
+/// first move); a few pixels keep a click with a shaky hand a click.
+pub(super) const DRAG_THRESHOLD: f32 = 4.0;
 
 /// The browser's overlay selected while painting its contents.
 pub(super) enum BrowserTooltip {
     Text(String),
     Stack(ItemStack),
     Fluid(mod_api::FluidStack),
+    /// An item dragged off the panel (`Held`), drawn under the pointer.
+    Dragged(ItemStack),
+}
+
+/// A left press on one of the panel's items, from the press to its release:
+/// a click until the pointer moves `DRAG_THRESHOLD` away, then a drag of the
+/// item, drawn under the pointer, that its release drops on the screen
+/// (`PanelEvent::Dropped` to the panel's owner) or, back on the panel,
+/// cancels. It belongs to the menu open when it went down (`menu`): Escape,
+/// focus loss, and that menu closing or being replaced cancel it. Its
+/// release is the panel's whatever happened, and never reaches a screen.
+#[derive(Clone, Debug)]
+pub(super) struct Held {
+    /// Whose panel the item is on.
+    pub(super) owner: Owner,
+    /// The item's index in the mod's list, as the mod sent it, and as a stack.
+    pub(super) index: usize,
+    pub(super) sent: BrowserStack,
+    pub(super) stack: ItemStack,
+    /// Where the press went down, in GUI pixels.
+    pub(super) from: (f32, f32),
+    /// Whether it has become a drag.
+    pub(super) dragging: bool,
+    /// The menu open when it went down (`ScreenState::screen_instance`).
+    pub(super) menu: u64,
+    /// Cancelled: it draws nothing and its release sends nothing.
+    pub(super) cancelled: bool,
+}
+
+/// What the release of a `Held` press does.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) enum Release {
+    /// It never became a drag: the item's left click.
+    Click(usize),
+    /// A drag let go off the panel, at this point.
+    Drop(BrowserStack, (f32, f32)),
+    /// Nothing: a drag let go back on the panel, a cancelled press, or one
+    /// whose menu, panel or item went away under it.
+    Cancel,
+}
+
+/// The game as a `Held` press's release finds it.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Now<'a> {
+    /// The open menu (`ScreenState::screen_instance`).
+    pub(super) menu: u64,
+    /// Whose panel shows, if one does.
+    pub(super) owner: Option<&'a Owner>,
+    /// Whether the release is over the panel; None when it has no room.
+    pub(super) on_panel: Option<bool>,
+    /// The item at the pressed index of the shown list.
+    pub(super) at_index: Option<&'a BrowserStack>,
+}
+
+impl Held {
+    /// Whether it still counts on menu `menu`: not cancelled, and on the
+    /// menu it went down on.
+    fn live_on(&self, menu: u64) -> bool {
+        !self.cancelled && self.menu == menu
+    }
+    /// The pointer is at `cursor` with the button still held: true once the
+    /// press is a drag, which it stays until its release.
+    pub(super) fn moved(&mut self, cursor: (f32, f32)) -> bool {
+        let (dx, dy) = (cursor.0 - self.from.0, cursor.1 - self.from.1);
+        self.dragging |= dx * dx + dy * dy >= DRAG_THRESHOLD * DRAG_THRESHOLD;
+        self.dragging
+    }
+    /// It does nothing more; its release is still the panel's.
+    fn cancel(&mut self) {
+        self.cancelled = true;
+        self.dragging = false;
+    }
+    /// The button came up at `cursor`, with the game as `now` finds it. The
+    /// release point counts as a last move. A click needs the pressed item
+    /// still at its index; a drop sends the item as it was pressed.
+    pub(super) fn release(mut self, cursor: (f32, f32), now: Now<'_>) -> Release {
+        let Some(on_panel) = now.on_panel else {
+            return Release::Cancel;
+        };
+        if !self.live_on(now.menu) || now.owner != Some(&self.owner) {
+            Release::Cancel
+        } else if !self.moved(cursor) {
+            if now.at_index == Some(&self.sent) {
+                Release::Click(self.index)
+            } else {
+                Release::Cancel
+            }
+        } else if on_panel {
+            Release::Cancel
+        } else {
+            Release::Drop(self.sent, cursor)
+        }
+    }
+}
+
+/// The panel's overlay, in order: an item dragged off the list over
+/// everything, the settings button's label under it, then `rest` (the
+/// pointed item's or fluid's tooltip).
+fn browser_overlay(
+    dragged: Option<ItemStack>,
+    settings: Option<String>,
+    rest: impl FnOnce() -> Option<BrowserTooltip>,
+) -> Option<BrowserTooltip> {
+    if let Some(stack) = dragged {
+        Some(BrowserTooltip::Dragged(stack))
+    } else if let Some(label) = settings {
+        Some(BrowserTooltip::Text(label))
+    } else {
+        rest()
+    }
 }
 
 /// Whose panel it is: a native mod's id.
@@ -79,6 +198,9 @@ pub(super) struct Panel {
     pub(super) search: Option<EditBox>,
     /// The search text the mod last heard.
     sent: String,
+    /// A search text the panel's owner set (`panel_search`), cut to the box's
+    /// length: it stays out of the box until a frame draws that owner's box.
+    pending: Option<(Owner, String)>,
     /// Only while dispatching Search: an empty reply still needs an editable field.
     searching: bool,
     pub(super) recipes_settings_return: Option<Screen>,
@@ -87,15 +209,95 @@ pub(super) struct Panel {
     pub(super) transfer_warning: Option<(&'static str, &'static str)>,
     /// The mods that asked for another look than the recipe book's.
     styles: std::collections::BTreeMap<String, PanelStyle>,
+    /// A left press on an item, until its release: a click or a drag.
+    pub(super) held: Option<Held>,
 }
 
 impl Panel {
+    /// The item being dragged off `owner`'s panel on menu `menu`, if a drag
+    /// is on.
+    pub(super) fn dragged(&self, owner: &Owner, menu: u64) -> Option<&ItemStack> {
+        (self.held.as_ref())
+            .filter(|held| held.live_on(menu) && held.dragging && held.owner == *owner)
+            .map(|held| &held.stack)
+    }
+    /// Cancels the held press (Escape, focus loss, its menu closing): true
+    /// when it was a drag. Its release stays the panel's.
+    pub(super) fn cancel_press(&mut self) -> bool {
+        let Some(held) = self.held.as_mut().filter(|held| !held.cancelled) else {
+            return false;
+        };
+        let dragging = held.dragging;
+        held.cancel();
+        dragging
+    }
+    /// A button went down anywhere. A left one means the held press's
+    /// release never came, so it is forgotten; another cancels it.
+    pub(super) fn other_press(&mut self, left: bool) {
+        if left {
+            self.held = None;
+        } else {
+            self.cancel_press();
+        }
+    }
+    /// A mod's screen hook vetoed the held press's release: the press and
+    /// its dragged item go, and nothing is sent.
+    pub(super) fn release_vetoed(&mut self) {
+        self.held = None;
+    }
+    /// The pointer moved to `cursor` with menu `menu` open: true while a
+    /// press is held. A press from another menu is cancelled.
+    pub(super) fn press_moved(&mut self, cursor: (f32, f32), menu: u64) -> bool {
+        let Some(held) = self.held.as_mut() else {
+            return false;
+        };
+        if held.live_on(menu) {
+            held.moved(cursor);
+        } else {
+            held.cancel();
+        }
+        true
+    }
     /// `panel_style`.
     pub(super) fn set_style(&mut self, mod_id: &str, style: PanelStyle) {
         match style {
             PanelStyle::RecipeBook => self.styles.remove(mod_id),
             _ => self.styles.insert(mod_id.to_owned(), style),
         };
+    }
+    /// `panel_search`, called by mod `caller` (the mod whose hook or part is
+    /// running): `text`, cut to the box's length, waits for a frame that
+    /// draws mod `mod_id`'s search box (`deliver_search`). The box itself
+    /// doesn't change here. False, and nothing queued, unless the caller is
+    /// `mod_id` and owns the panel; a later call replaces an earlier one.
+    pub(super) fn set_search(&mut self, caller: Option<&str>, mod_id: &str, text: &str) -> bool {
+        let Some(shown) = self.native.as_ref() else {
+            return false;
+        };
+        if caller != Some(mod_id) || shown.owner.native_id() != mod_id {
+            return false;
+        }
+        self.pending = Some((shown.owner.clone(), utf16_prefix(text, SEARCH_LENGTH)));
+        true
+    }
+    /// On a frame that draws `owner`'s search box: the text `owner` queued
+    /// (`set_search`) goes into the box, its cursor at the end. True when the
+    /// box's text changed. A text queued by another owner is dropped, never
+    /// shown; one the box already holds leaves the box, its cursor and
+    /// selection, untouched.
+    fn deliver_search(&mut self, owner: &Owner) -> bool {
+        let Some((queued_by, text)) = self.pending.take() else {
+            return false;
+        };
+        if queued_by != *owner {
+            return false;
+        }
+        let search = self.search.get_or_insert_with(new_search_box);
+        if utf16_prefix(&text, search.max_length) == search.value {
+            return false;
+        }
+        search.set_value(&text);
+        true
     }
     /// How `owner`'s panel looks: Sunrise's own Recipes panel is the viewer's.
     fn style(&self, owner: &Owner) -> PanelStyle {
@@ -172,6 +374,11 @@ impl Panel {
             if shown.items.is_empty() && shown.recipes.is_none() && !keep_search {
                 self.native = None;
             }
+        }
+        // A queued search text is its owner's alone: gone with its panel.
+        let owner = self.native.as_ref().map(|s| &s.owner);
+        if self.pending.as_ref().is_some_and(|(o, _)| Some(o) != owner) {
+            self.pending = None;
         }
     }
 }
@@ -347,12 +554,27 @@ pub(super) fn wheel_turn(
     })
 }
 
+/// The panel's search box before it is first laid out.
+fn new_search_box() -> EditBox {
+    let mut edit = EditBox::new(0.0, 0.0, 0.0, 0.0);
+    edit.max_length = SEARCH_LENGTH;
+    edit.focused = false;
+    edit
+}
+
 impl Game<'_> {
     /// How mod `mod_id`'s panel draws its page buttons and search box from
     /// now on (`PanelStyle`; the recipe book's until it says). Kept for
     /// the session, whether or not its panel is showing.
     pub(in crate::game) fn panel_style(&mut self, mod_id: &str, style: PanelStyle) {
         self.panel.set_style(mod_id, style);
+    }
+    /// `panel_search`: the text in mod `mod_id`'s search box, heard as the
+    /// player's typing is when its box next draws. Only the mod whose hook or
+    /// part is running and owns the panel can set it.
+    pub(in crate::game) fn panel_search(&mut self, mod_id: &str, text: &str) {
+        let caller = mod_api::content::crash::current_native_mod();
+        self.panel.set_search(caller, mod_id, text);
     }
     fn browser_batch(&self) -> Option<HudBatch> {
         let r = self.renderer.as_ref()?;
@@ -367,8 +589,10 @@ impl Game<'_> {
         if !matches!(self.screen, Screen::Inventory | Screen::Creative) || self.title.is_some() {
             return None;
         }
-        let disabled = &self.settings.mods.disabled;
-        let Some(shown) = self.panel.shown(|id| !disabled.contains(id)) else {
+        let Some(shown) = self
+            .panel
+            .shown(|id| !self.mods.code_disabled(&self.settings.mods.disabled, id))
+        else {
             self.panel.of = None;
             self.panel.stacks.clear();
             return None;
@@ -397,8 +621,8 @@ impl Game<'_> {
     }
     /// What the panel shows now.
     fn panel_shown(&self) -> Option<&Shown> {
-        let disabled = &self.settings.mods.disabled;
-        self.panel.shown(|id| !disabled.contains(id))
+        self.panel
+            .shown(|id| !self.mods.code_disabled(&self.settings.mods.disabled, id))
     }
     /// The player did `event` on `owner`'s panel.
     pub(super) fn panel_event(&mut self, owner: &Owner, event: BrowserEvent) {
@@ -521,12 +745,7 @@ impl Game<'_> {
         })
     }
     fn browser_search(&mut self, layout: &Layout) -> &mut EditBox {
-        let search = self.panel.search.get_or_insert_with(|| {
-            let mut edit = EditBox::new(0.0, 0.0, 0.0, 0.0);
-            edit.max_length = 50;
-            edit.focused = false;
-            edit
-        });
+        let search = self.panel.search.get_or_insert_with(new_search_box);
         [search.x, search.y, search.width, search.height] = layout.search;
         search
     }
@@ -565,12 +784,7 @@ impl Game<'_> {
             } else if on {
                 let name = ["page_backward", "page_forward"][i];
                 let suffix = if hovered { "_highlighted" } else { "" };
-                batch.sprite(
-                    atlas,
-                    &format!("gui/sprites/recipe_book/{name}{suffix}"),
-                    x,
-                    y,
-                );
+                batch.sprite(atlas, &format!("recipe_book/{name}{suffix}"), x, y);
             } else {
                 continue;
             }
@@ -667,8 +881,16 @@ impl Game<'_> {
     /// Draw the browser's contents once, leaving its tooltip for the screen's
     /// overlay phase. The carried stack belongs to the enclosing screen.
     pub(super) fn draw_mod_browser(&mut self, batch: &mut HudBatch) -> Option<BrowserTooltip> {
-        self.browser_sync()?;
-        let layout = self.browser_layout(batch)?;
+        let owner = self.browser_sync()?;
+        let mut layout = self.browser_layout(batch)?;
+        // A search text the owner set (`panel_search`) goes into its box only
+        // now, with room for the box, and is heard through typing's own path,
+        // outside the mod's call; the list it sends back is drawn this frame.
+        if self.panel.deliver_search(&owner) {
+            self.browser_searched();
+            self.browser_sync()?;
+            layout = self.browser_layout(batch)?;
+        }
         let cursor = self.cursor;
         if self.panel.recipes.is_some() {
             self.draw_browser_recipes(batch, &layout);
@@ -699,6 +921,7 @@ impl Game<'_> {
         let mut search = search.clone();
         search.draw_with_skin(batch, &self.gui.atlas, None, skin);
         self.panel.search = Some(search);
+        let mut settings_label = None;
         if let Some(rect @ [x, y, width, height]) = layout.settings {
             let hovered = inside(cursor, rect);
             let atlas = &self.gui.atlas;
@@ -714,9 +937,9 @@ impl Game<'_> {
                 batch.sprite_scaled(atlas, icon, x + 2.0, y + 2.0, 16.0, 16.0, u32::MAX);
             } else {
                 let sprite = if hovered {
-                    "gui/sprites/widget/button_highlighted"
+                    "widget/button_highlighted"
                 } else {
-                    "gui/sprites/widget/button"
+                    "widget/button"
                 };
                 sunrise_client::ui::nine_slice(batch, atlas, sprite, x, y, width, height, u32::MAX);
                 batch.sprite_scaled(
@@ -732,17 +955,24 @@ impl Game<'_> {
             let label = sunrise_client::lang::get("options.title");
             sunrise_client::widgets::record(&label, rect, true);
             if hovered && self.carried.is_none() {
-                return Some(BrowserTooltip::Text(label));
+                settings_label = Some(label);
             }
         }
-        if self.carried.is_some() {
-            None
-        } else if let Some(stack) = self.browser_pointed_stack(&layout) {
-            Some(BrowserTooltip::Stack(stack.1))
-        } else {
-            self.recipe_fluid_hovered(&layout)
-                .map(BrowserTooltip::Fluid)
-        }
+        // The dragged item goes over everything, the settings button's label too.
+        let menu = self.screen_state.screen_instance;
+        let dragged = (self.panel.of.as_ref())
+            .and_then(|(owner, _)| self.panel.dragged(owner, menu))
+            .cloned();
+        browser_overlay(dragged, settings_label, || {
+            if self.carried.is_some() {
+                None
+            } else if let Some(stack) = self.browser_pointed_stack(&layout) {
+                Some(BrowserTooltip::Stack(stack.1))
+            } else {
+                self.recipe_fluid_hovered(&layout)
+                    .map(BrowserTooltip::Fluid)
+            }
+        })
     }
 
     pub(super) fn draw_mod_browser_tooltip(
@@ -760,6 +990,10 @@ impl Game<'_> {
             BrowserTooltip::Fluid(fluid) => {
                 self.draw_fluid_tooltip(batch, &fluid, self.cursor.0, self.cursor.1);
             }
+            BrowserTooltip::Dragged(stack) => {
+                // Under the pointer, as the carried stack is drawn.
+                self.draw_item(batch, &stack, self.cursor.0 - 8.0, self.cursor.1 - 8.0);
+            }
         }
     }
 
@@ -767,6 +1001,9 @@ impl Game<'_> {
     /// (its search box, page arrows, items or empty space; a click there
     /// never throws the carried stack).
     pub(super) fn mod_browser_press(&mut self, right: bool) -> bool {
+        // A left press whose release never came (the pointer left the window)
+        // ends here; a right press cancels the held one.
+        self.panel.other_press(!right);
         let Some(owner) = self.browser_sync() else {
             return false;
         };
@@ -830,11 +1067,29 @@ impl Game<'_> {
         };
         if let Some(to) = step {
             self.panel.page = to;
-            self.audio
-                .play("minecraft:ui.button.click", None, 0.25, 1.0);
+            self.play_audio("minecraft:ui.button.click", None, 0.25, 1.0);
             return true;
         }
-        if let Some((index, _)) = self.browser_hovered(&layout) {
+        if let Some((index, stack)) = self.browser_hovered(&layout) {
+            // A left press with nothing carried waits for its release: a
+            // click, or once the pointer moves away a drag of the item.
+            let sent = (self.panel_shown()).and_then(|shown| shown.items.get(index).cloned());
+            if !right
+                && self.carried.is_none()
+                && let Some(sent) = sent
+            {
+                self.panel.held = Some(Held {
+                    owner,
+                    index,
+                    sent,
+                    stack,
+                    from: cursor,
+                    dragging: false,
+                    menu: self.screen_state.screen_instance,
+                    cancelled: false,
+                });
+                return true;
+            }
             let event = BrowserEvent::Clicked {
                 index: index as u32,
                 right,
@@ -843,6 +1098,86 @@ impl Game<'_> {
             return true;
         }
         inside(cursor, layout.area)
+    }
+
+    /// The pointer moved with a press held on a panel item: it becomes a
+    /// drag once it is `DRAG_THRESHOLD` away, and is cancelled once its menu
+    /// is no longer the open one. True while a press is held: neither the
+    /// menu nor its slots hear the move.
+    pub(super) fn mod_browser_drag_move(&mut self) -> bool {
+        let menu = self.screen_state.screen_instance;
+        self.panel.press_moved(self.cursor, menu)
+    }
+
+    /// A left release: true when it ends a press on a panel item (`Held`),
+    /// which then clicks the item, drops it on the screen
+    /// (`PanelEvent::Dropped` to the panel's owner) or does nothing (`Now`:
+    /// a cancelled press, its menu closed or replaced, the panel gone or
+    /// changed hands, or the item no longer at its index). The release is
+    /// the panel's either way: no screen hears it, no slot click, no throw,
+    /// no quick craft.
+    pub(super) fn mod_browser_release(&mut self) -> bool {
+        if self.panel.held.is_none() {
+            return false;
+        }
+        let owner = self.browser_sync();
+        let on_panel = (self.browser_batch())
+            .and_then(|batch| self.browser_layout(&batch))
+            .map(|layout| inside(self.cursor, layout.area));
+        let Some(held) = self.panel.held.take() else {
+            return true;
+        };
+        let at_index = (self.panel_shown()).and_then(|shown| shown.items.get(held.index).cloned());
+        let now = Now {
+            menu: self.screen_state.screen_instance,
+            owner: owner.as_ref(),
+            on_panel,
+            at_index: at_index.as_ref(),
+        };
+        let event = match held.release(self.cursor, now) {
+            Release::Click(index) => BrowserEvent::Clicked {
+                index: index as u32,
+                right: false,
+            },
+            Release::Drop(stack, (x, y)) => BrowserEvent::Dropped { stack, x, y },
+            Release::Cancel => return true,
+        };
+        if let Some(owner) = owner {
+            self.panel_event(&owner, event);
+        }
+        true
+    }
+
+    /// A mod's screen hook vetoed the left release of a held press: the
+    /// dragged item goes away and nothing is sent.
+    pub(super) fn mod_browser_release_vetoed(&mut self) {
+        self.panel.release_vetoed();
+    }
+
+    /// A button went down (`left` or another): a held press whose release
+    /// never came is forgotten, or cancelled by another button.
+    pub(super) fn mod_browser_other_press(&mut self, left: bool) {
+        self.panel.other_press(left);
+    }
+
+    /// Escape: cancels a held press. True when that was a drag over its own
+    /// menu, and the screen stays open.
+    pub(super) fn mod_browser_drag_escape(&mut self) -> bool {
+        let dragging = self.mod_browser_dragging();
+        self.panel.cancel_press();
+        dragging
+    }
+
+    /// The window lost the focus: a held press is cancelled.
+    pub(super) fn mod_browser_focus_lost(&mut self) {
+        self.panel.cancel_press();
+    }
+
+    /// Whether an item is being dragged off the panel over the menu it was
+    /// pressed on: the screen's slots show no tooltip under it.
+    pub(super) fn mod_browser_dragging(&self) -> bool {
+        let menu = self.screen_state.screen_instance;
+        (self.panel.held.as_ref()).is_some_and(|held| held.live_on(menu) && held.dragging)
     }
 
     /// A wheel notch `d` on a container screen (positive is up): true when
@@ -877,32 +1212,24 @@ impl Game<'_> {
             && self.panel.search.as_ref().is_some_and(|s| s.focused)
     }
     /// A key press while the search box has focus.
-    pub(super) fn mod_browser_key(&mut self, event: &winit::event::KeyEvent) {
-        use winit::keyboard::PhysicalKey;
-        let shortcut = self.edit_shortcut(event);
-        let ctrl = self.has_control_down();
-        let shift = self.has_shift_down();
-        let types_text = self.types_text();
+    pub(super) fn mod_browser_key(
+        &mut self,
+        key: winit::keyboard::KeyCode,
+        shortcut: Option<sunrise_client::clipboard::EditShortcut>,
+    ) -> bool {
+        let (ctrl, shift) = (self.has_control_down(), self.has_shift_down());
         let Some(search) = self.panel.search.as_mut() else {
-            return;
+            return false;
         };
-        if let Some(shortcut) = shortcut {
+        let handled = if let Some(shortcut) = shortcut {
             search.shortcut(shortcut, &mut self.clipboard);
+            true
         } else {
-            let handled = match event.physical_key {
-                PhysicalKey::Code(code) => search.key(code, ctrl, shift),
-                _ => false,
-            };
-            if !handled
-                && types_text
-                && let Some(text) = &event.text
-            {
-                let text: String = text.chars().filter(|c| !c.is_control()).collect();
-                search.insert_text(&text);
-            }
-        }
+            search.key(key, ctrl, shift)
+        };
         search.reset_blink();
         self.browser_searched();
+        handled
     }
     /// Text typed (or one backspace) into the search box (`sunrise-ctl type`).
     pub(super) fn mod_browser_text(&mut self, text: Option<&str>, backspace: bool) {
@@ -923,6 +1250,10 @@ impl Game<'_> {
         };
         if search.value != self.panel.sent {
             let (owner, value) = (owner.clone(), search.value.clone());
+            // The player's edit is newer than a text the owner queued.
+            if matches!(&self.panel.pending, Some((o, _)) if *o == owner) {
+                self.panel.pending = None;
+            }
             self.panel.sent.clone_from(&value);
             self.panel.searching = true;
             self.panel.page = 0;
@@ -933,6 +1264,9 @@ impl Game<'_> {
     /// The container screen closed: the search box lets go of the keys.
     pub(super) fn mod_browser_closed(&mut self) {
         self.panel.transfer_warning = None;
+        // Closing the screen cancels a press on the panel; its release stays
+        // the panel's.
+        self.panel.cancel_press();
         if let Some(search) = self.panel.search.as_mut() {
             search.focused = false;
         }
@@ -1024,7 +1358,10 @@ pub(super) fn browser_stack(
 
 #[cfg(test)]
 mod tests {
-    use super::{BrowserStack, Owner, Panel, RecipePage};
+    use super::{
+        BrowserStack, BrowserTooltip, DRAG_THRESHOLD, Held, Now, Owner, Panel, RecipePage, Release,
+        browser_overlay,
+    };
     use crate::game::native_hooks::{NativeRecipeLayout, NativeRecipeResult, NativeRecipeView};
     use mod_api::FluidStack;
 
@@ -1072,6 +1409,381 @@ mod tests {
             note: String::new(),
             action: Some(true),
         }
+    }
+
+    /// `panel_search` as the panel sees it: only the running mod that owns
+    /// the panel queues a text, and the box changes only when that owner's
+    /// box draws (`deliver_search`).
+    #[test]
+    fn only_the_calling_owner_queues_a_search_and_its_box_takes_it() {
+        keys();
+        let mut panel = Panel::default();
+        let jei = Owner::Native("jei".into());
+        // No panel yet: nothing to set.
+        assert!(!panel.set_search(Some("jei"), "jei", "iron"));
+        panel.show_items("jei", vec![stack("minecraft:stone")]);
+
+        // The caller, not the id it names: another mod naming the owner's
+        // id, no running mod, and the owner naming another id are refused.
+        assert!(!panel.set_search(Some("ae2"), "jei", "iron"));
+        assert!(!panel.set_search(None, "jei", "iron"));
+        assert!(!panel.set_search(Some("jei"), "ae2", "iron"));
+        assert_eq!(panel.pending, None);
+
+        assert!(panel.set_search(Some("jei"), "jei", "iron"));
+        // Queued, not written: the box and what the mod heard are as they were.
+        assert!(panel.search.is_none());
+        assert_eq!(panel.sent, "");
+        // Another owner's frame never takes it, and drops it.
+        assert!(!panel.deliver_search(&Owner::Native("ae2".into())));
+        assert_eq!(panel.pending, None);
+        assert!(panel.search.is_none());
+
+        assert!(panel.set_search(Some("jei"), "jei", "iron"));
+        assert!(panel.deliver_search(&jei), "the owner's frame takes it");
+        let search = panel.search.as_ref().expect("a box made for the text");
+        assert_eq!((search.value.as_str(), search.cursor), ("iron", 4));
+        assert!(!panel.deliver_search(&jei), "delivered once");
+
+        // A later call replaces an earlier one.
+        panel.set_search(Some("jei"), "jei", "gold");
+        panel.set_search(Some("jei"), "jei", "");
+        assert!(panel.deliver_search(&jei), "clearing is a change");
+        assert_eq!(panel.search.as_ref().unwrap().value, "");
+    }
+
+    /// Another mod taking the panel, or the owner taking its panel away,
+    /// drops a queued text: it is never shown in another owner's box.
+    #[test]
+    fn a_queued_search_goes_with_its_owners_panel() {
+        keys();
+        let mut panel = Panel::default();
+        panel.show_items("jei", vec![stack("minecraft:stone")]);
+        panel.set_search(Some("jei"), "jei", "iron");
+        // Another mod clearing its own (empty) panel changes nothing.
+        panel.show_items("ae2", Vec::new());
+        assert!(panel.pending.is_some());
+        panel.show_items("ae2", vec![stack("minecraft:dirt")]);
+        assert_eq!(panel.pending, None);
+        assert!(!panel.deliver_search(&Owner::Native("ae2".into())));
+        panel.show_items("jei", vec![stack("minecraft:stone")]);
+        assert!(!panel.deliver_search(&Owner::Native("jei".into())));
+        assert!(panel.search.is_none());
+
+        panel.set_search(Some("jei"), "jei", "iron");
+        panel.show_items("jei", Vec::new());
+        assert_eq!(panel.pending, None);
+    }
+
+    /// The box counts its 50 in UTF-16 code units, as vanilla's does, and a
+    /// text it already holds (once cut to that) leaves its cursor and
+    /// selection where the player put them.
+    #[test]
+    fn a_search_the_box_already_holds_leaves_the_caret_and_selection() {
+        keys();
+        let mut panel = Panel::default();
+        let jei = Owner::Native("jei".into());
+        panel.show_items("jei", vec![stack("minecraft:stone")]);
+        // 1 + 2 x 25 = 51 units: the last emoji doesn't fit.
+        let long = format!("a{}", "😀".repeat(25));
+        panel.set_search(Some("jei"), "jei", &long);
+        assert!(panel.deliver_search(&jei));
+        let cut = format!("a{}", "😀".repeat(24));
+        assert_eq!(panel.search.as_ref().unwrap().value, cut);
+
+        let search = panel.search.as_mut().unwrap();
+        search.set_cursor(1, false);
+        search.set_cursor(3, true);
+        let caret = (search.cursor, search.highlight);
+        for same in [long.as_str(), cut.as_str()] {
+            panel.set_search(Some("jei"), "jei", same);
+            assert!(!panel.deliver_search(&jei), "no change");
+            let search = panel.search.as_ref().unwrap();
+            assert_eq!((search.cursor, search.highlight), caret);
+            assert_eq!(search.value, cut);
+        }
+    }
+
+    /// The menu every `held` press goes down on.
+    const MENU: u64 = 7;
+
+    fn held(owner: &str, index: usize) -> Held {
+        Held {
+            owner: Owner::Native(owner.into()),
+            index,
+            sent: stack("minecraft:stone"),
+            stack: sunrise_client::items::ItemStack::new("minecraft:stone", 1),
+            from: (100.0, 50.0),
+            dragging: false,
+            menu: MENU,
+            cancelled: false,
+        }
+    }
+
+    /// The release of a `held("jei", _)` press, with its menu still open,
+    /// jei's panel shown, `at_index` at the pressed index, and the pointer
+    /// `on_panel` or not.
+    fn release(
+        press: Held,
+        to: (f32, f32),
+        on_panel: bool,
+        at_index: Option<&BrowserStack>,
+    ) -> Release {
+        let jei = Owner::Native("jei".into());
+        press.release(
+            to,
+            Now {
+                menu: MENU,
+                owner: Some(&jei),
+                on_panel: Some(on_panel),
+                at_index,
+            },
+        )
+    }
+
+    /// A press stays a click until the pointer is `DRAG_THRESHOLD` away, in
+    /// any direction; then it is a drag, even if the pointer comes back.
+    #[test]
+    fn a_press_drags_only_past_the_threshold() {
+        keys();
+        let mut press = held("jei", 3);
+        let short = DRAG_THRESHOLD - 0.5;
+        for to in [(100.0, 50.0), (100.0 + short, 50.0), (100.0, 50.0 - short)] {
+            assert!(!press.moved(to), "{to:?} is still a click");
+        }
+        // 3 right and 3 down is 4.24 away.
+        assert!(!held("jei", 3).moved((102.0, 52.0)));
+        assert!(held("jei", 3).moved((103.0, 53.0)));
+        assert!(press.moved((100.0 - DRAG_THRESHOLD, 50.0)));
+        assert!(press.moved((100.0, 50.0)), "a drag stays a drag");
+    }
+
+    /// The release of a press: a click where it never moved far, a drop at
+    /// the release point off the panel, nothing back on it.
+    #[test]
+    fn a_release_clicks_drops_or_cancels() {
+        keys();
+        let stone = stack("minecraft:stone");
+        // A click, on the panel or (a shaky hand at its edge) just off it.
+        assert_eq!(
+            release(held("jei", 3), (101.0, 51.0), true, Some(&stone)),
+            Release::Click(3)
+        );
+        assert_eq!(
+            release(held("jei", 3), (102.0, 50.0), false, Some(&stone)),
+            Release::Click(3)
+        );
+        // Let go off the panel: the item, where it landed.
+        let mut dragged = held("jei", 3);
+        assert!(dragged.moved((60.0, 50.0)));
+        assert_eq!(
+            release(dragged.clone(), (40.5, 70.25), false, Some(&stone)),
+            Release::Drop(stack("minecraft:stone"), (40.5, 70.25))
+        );
+        // Back on the panel: nothing.
+        assert_eq!(
+            release(dragged, (100.0, 50.0), true, Some(&stone)),
+            Release::Cancel
+        );
+        // A release far from the press with no move between is a drag too.
+        assert_eq!(
+            release(held("jei", 0), (20.0, 20.0), false, Some(&stone)),
+            Release::Drop(stack("minecraft:stone"), (20.0, 20.0))
+        );
+    }
+
+    /// A deferred click is sent only while the shown list still has the
+    /// pressed item at its index; a drag drops the item captured at the
+    /// press, whatever the list holds now.
+    #[test]
+    fn a_deferred_click_needs_its_item_still_at_its_index() {
+        keys();
+        let (stone, dirt) = (stack("minecraft:stone"), stack("minecraft:dirt"));
+        assert_eq!(
+            release(held("jei", 3), (100.0, 50.0), true, Some(&stone)),
+            Release::Click(3)
+        );
+        // The list changed under the press: another item at 3, or none.
+        assert_eq!(
+            release(held("jei", 3), (100.0, 50.0), true, Some(&dirt)),
+            Release::Cancel
+        );
+        assert_eq!(
+            release(held("jei", 3), (100.0, 50.0), true, None),
+            Release::Cancel
+        );
+        // The same item id at another count is another stack.
+        let mut more = stack("minecraft:stone");
+        more.count = 2;
+        assert_eq!(
+            release(held("jei", 3), (100.0, 50.0), true, Some(&more)),
+            Release::Cancel
+        );
+        // A drag keeps the stone it picked up.
+        let mut dragged = held("jei", 3);
+        assert!(dragged.moved((60.0, 50.0)));
+        assert_eq!(
+            release(dragged, (30.0, 40.0), false, Some(&dirt)),
+            Release::Drop(stack("minecraft:stone"), (30.0, 40.0))
+        );
+    }
+
+    /// A press belongs to the menu open when it went down. Escape, focus
+    /// loss, a right press, and its menu closing or being replaced cancel
+    /// it: it draws nothing and its release sends nothing, but the press
+    /// stays held so that release is still the panel's. A vetoed release
+    /// drops it with nothing sent; a new left press forgets a press whose
+    /// release never came.
+    #[test]
+    fn a_press_is_bound_to_its_menu() {
+        keys();
+        let stone = stack("minecraft:stone");
+        let jei = Owner::Native("jei".into());
+        let at = |menu: u64, owner: Option<&'static str>, on_panel: Option<bool>| {
+            let mut press = held("jei", 3);
+            assert!(press.moved((60.0, 50.0)));
+            let owner = owner.map(|id| Owner::Native(id.into()));
+            press.release(
+                (30.0, 40.0),
+                Now {
+                    menu,
+                    owner: owner.as_ref(),
+                    on_panel,
+                    at_index: Some(&stack("minecraft:stone")),
+                },
+            )
+        };
+        assert_eq!(
+            at(MENU, Some("jei"), Some(false)),
+            Release::Drop(stack("minecraft:stone"), (30.0, 40.0))
+        );
+        // Released over a replacement menu, with the panel gone, owned by
+        // another mod, or with no room to show it: nothing.
+        assert_eq!(at(MENU + 1, Some("jei"), Some(false)), Release::Cancel);
+        assert_eq!(at(MENU, None, Some(false)), Release::Cancel);
+        assert_eq!(at(MENU, Some("ae2"), Some(false)), Release::Cancel);
+        assert_eq!(at(MENU, Some("jei"), None), Release::Cancel);
+
+        // Escape and focus loss: the first cancel of a drag says so (the
+        // Escape is the drag's), a second finds nothing to cancel.
+        for _ in ["Escape", "focus loss"] {
+            let mut panel = Panel {
+                held: Some(held("jei", 3)),
+                ..Panel::default()
+            };
+            assert!(panel.press_moved((60.0, 50.0), MENU));
+            assert!(panel.dragged(&jei, MENU).is_some());
+            assert!(panel.cancel_press());
+            assert!(!panel.cancel_press());
+            assert!(panel.dragged(&jei, MENU).is_none());
+            let press = panel.held.take().expect("its release is still the panel's");
+            assert_eq!(
+                release(press, (30.0, 40.0), false, Some(&stone)),
+                Release::Cancel
+            );
+        }
+        // A press that is not a drag yet cancels too, and leaves Escape to
+        // the screen.
+        let mut panel = Panel {
+            held: Some(held("jei", 3)),
+            ..Panel::default()
+        };
+        assert!(!panel.cancel_press());
+        assert_eq!(
+            release(
+                panel.held.take().unwrap(),
+                (100.0, 50.0),
+                true,
+                Some(&stone)
+            ),
+            Release::Cancel
+        );
+
+        // Its menu replaced: the first move over the new menu cancels it.
+        let mut panel = Panel {
+            held: Some(held("jei", 3)),
+            ..Panel::default()
+        };
+        assert!(panel.press_moved((60.0, 50.0), MENU));
+        assert!(panel.press_moved((50.0, 50.0), MENU + 1));
+        assert!(panel.dragged(&jei, MENU).is_none());
+        assert!(panel.dragged(&jei, MENU + 1).is_none());
+        let press = panel.held.take().unwrap();
+        assert!(press.cancelled);
+        assert_eq!(
+            release(press, (30.0, 40.0), false, Some(&stone)),
+            Release::Cancel
+        );
+        assert!(!panel.press_moved((50.0, 50.0), MENU), "no press, no move");
+
+        // A right press cancels it; a vetoed release drops it outright.
+        let mut panel = Panel {
+            held: Some(held("jei", 3)),
+            ..Panel::default()
+        };
+        panel.press_moved((60.0, 50.0), MENU);
+        panel.other_press(false);
+        assert!(panel.held.as_ref().unwrap().cancelled);
+        assert!(panel.dragged(&jei, MENU).is_none());
+        panel.release_vetoed();
+        assert!(panel.held.is_none());
+
+        // A left press with a press still held: that release never came.
+        let mut panel = Panel {
+            held: Some(held("jei", 3)),
+            ..Panel::default()
+        };
+        panel.other_press(true);
+        assert!(panel.held.is_none());
+    }
+
+    /// An item dragged off the list draws over the settings button: its
+    /// label shows only with no drag, and the pointed item's tooltip only
+    /// with neither.
+    #[test]
+    fn the_dragged_item_draws_over_the_settings_label() {
+        keys();
+        let stone = sunrise_client::items::ItemStack::new("minecraft:stone", 1);
+        let label = || Some("Options".to_owned());
+        let rest = || Some(BrowserTooltip::Text("Stone".into()));
+        assert!(matches!(
+            browser_overlay(Some(stone.clone()), label(), rest),
+            Some(BrowserTooltip::Dragged(s)) if s == stone
+        ));
+        assert!(matches!(
+            browser_overlay(None, label(), rest),
+            Some(BrowserTooltip::Text(t)) if t == "Options"
+        ));
+        assert!(matches!(
+            browser_overlay(None, None, rest),
+            Some(BrowserTooltip::Text(t)) if t == "Stone"
+        ));
+        assert!(browser_overlay(None, None, || None).is_none());
+    }
+
+    /// Only a drag on the shown panel's own owner draws its item; a press
+    /// that hasn't moved draws nothing.
+    #[test]
+    fn the_dragged_item_is_the_owners() {
+        keys();
+        let mut panel = Panel::default();
+        let jei = Owner::Native("jei".into());
+        assert!(panel.dragged(&jei, MENU).is_none());
+        panel.held = Some(held("jei", 1));
+        assert!(
+            panel.dragged(&jei, MENU).is_none(),
+            "a press is not a drag yet"
+        );
+        panel.held.as_mut().unwrap().moved((0.0, 0.0));
+        assert_eq!(
+            panel.dragged(&jei, MENU),
+            Some(&sunrise_client::items::ItemStack::new("minecraft:stone", 1))
+        );
+        assert!(
+            panel
+                .dragged(&Owner::Native("recipes".into()), MENU)
+                .is_none()
+        );
     }
 
     #[test]
@@ -1263,5 +1975,110 @@ mod tests {
             panel.shown(|_| true).is_none(),
             "an empty list cannot take ownership"
         );
+    }
+
+    /// Each `Search` the panel's mods heard: the mod it was for and the text.
+    static HEARD: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+    struct Listener;
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Listener {
+        fn panel_event(
+            &self,
+            _: &mut dyn mod_api::ClientHost,
+            event: &mut mod_api::PanelEventEvent<'_>,
+        ) {
+            if let mod_api::PanelEvent::Search(text) = event.event {
+                let heard = (event.mod_id.to_owned(), text.clone());
+                HEARD.lock().unwrap().push(heard);
+            }
+        }
+    }
+    /// `panel_search("jei", text)` through the host, as mod `caller`'s hook calls it.
+    fn search_as(game: &mut crate::game::Game<'_>, caller: &'static str, text: &str) {
+        use mod_api::content::crash::{ModCall, enter_native_mod};
+        let _call = enter_native_mod(ModCall {
+            id: caller,
+            hook: "panel_event",
+            part: None,
+        });
+        mod_api::prelude::RecipesClientHost::panel_search(game, "jei", text);
+    }
+    /// One frame of the panel on a window `size` pixels big: what the mods heard.
+    fn frame(game: &mut crate::game::Game<'_>, size: [u32; 2]) -> Vec<(String, String)> {
+        let mut batch = sunrise_client::hud::HudBatch::new(size, game.settings.gui_scale_inputs());
+        game.draw_mod_browser(&mut batch);
+        std::mem::take(&mut *HEARD.lock().unwrap())
+    }
+    fn heard(mod_id: &str, text: &str) -> Vec<(String, String)> {
+        vec![(mod_id.to_owned(), text.to_owned())]
+    }
+
+    /// `panel_search` in a game: only the owner's own call counts, and the
+    /// owner hears its text through the typing event on the first frame that
+    /// draws its box, on the first page; never in the call, never from
+    /// input before that frame, never on a frame without room for the box,
+    /// and never in another mod's box.
+    #[test]
+    #[ignore = "daily"]
+    fn a_queued_search_is_heard_by_its_owner_when_its_box_draws() {
+        use crate::game::Screen;
+        const WINDOW: [u32; 2] = [854, 480];
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
+            let mods: mod_api::Mods =
+                vec![mod_api::ModEntry::new("jei", Box::new(Listener))].into();
+            mod_platform::testing::with_mods(mods, || {
+                let many = vec![stack("minecraft:stone"); 300];
+                game.panel_items("jei", many.clone());
+                game.screen = Screen::Inventory;
+                assert!(game.title.is_none());
+                assert_eq!(frame(game, WINDOW), [], "nothing typed, nothing heard");
+
+                // Another mod naming the owner's id changes nothing.
+                search_as(game, "ae2", "iron");
+                assert_eq!(game.panel.pending, None);
+                // The owner's call is queued: the box and the page are as they were.
+                game.panel.page = 3;
+                search_as(game, "jei", "iron");
+                assert_eq!(std::mem::take(&mut *HEARD.lock().unwrap()), []);
+                assert_eq!(game.panel.search.as_ref().unwrap().value, "");
+
+                // Closed, the panel doesn't draw and the text waits; reopened,
+                // the owner hears it on the first page.
+                game.screen = Screen::Playing;
+                game.mod_browser_closed();
+                assert_eq!(frame(game, WINDOW), []);
+                game.screen = Screen::Inventory;
+                assert_eq!(frame(game, WINDOW), heard("jei", "iron"));
+                assert_eq!(game.panel.page, 0);
+                assert_eq!(game.panel.search.as_ref().unwrap().value, "iron");
+                assert_eq!(frame(game, WINDOW), [], "heard once");
+
+                // A window too narrow for the panel draws no box: the text waits.
+                search_as(game, "jei", "gold");
+                assert_eq!(frame(game, [200, 300]), []);
+                assert_eq!(game.panel.search.as_ref().unwrap().value, "iron");
+                assert_eq!(frame(game, WINDOW), heard("jei", "gold"));
+
+                // Another mod takes the panel before a frame: neither hears the
+                // text, and the owner coming back doesn't get it either.
+                search_as(game, "jei", "coal");
+                game.panel_items("ae2", vec![stack("minecraft:dirt")]);
+                assert_eq!(frame(game, WINDOW), []);
+                game.panel_items("jei", many);
+                assert_eq!(frame(game, WINDOW), []);
+                assert_eq!(game.panel.search.as_ref().unwrap().value, "gold");
+
+                // Input before the frame sends only what the player typed, and
+                // that newer edit wins over the queued text.
+                search_as(game, "jei", "dirt");
+                game.mod_browser_text(Some("s"), false);
+                assert_eq!(
+                    std::mem::take(&mut *HEARD.lock().unwrap()),
+                    heard("jei", "golds")
+                );
+                assert_eq!(frame(game, WINDOW), []);
+                assert_eq!(game.panel.search.as_ref().unwrap().value, "golds");
+            });
+        });
     }
 }

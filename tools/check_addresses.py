@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check that built-in outside addresses stay where docs/layers.md says (the "Built-in addresses" section).
 
-Reads the string literals of shipped Rust (every crate tools/layers.json doesn't call a tool, and the launcher),
+Reads the string literals of shipped Rust (every crate tools/layers.json doesn't call a tool),
 without tests, examples or #[cfg(test)] modules, and finds the hosts in them: a URL's host anywhere in a string,
 or a whole string that is a host name (`play.playsunrise.net`, `stun.l.google.com:19302`). Placeholders
 (`example.com`, `*.test`, `*.invalid`, `localhost`) and loopback, private and documentation IPs are skipped.
@@ -11,9 +11,7 @@ tools/addresses.json says where each host may be:
 - `not_addresses`: strings that look like hosts but are not contacted (a suffix matcher, a translation key);
 - `renamed_hosts`: a host's old name to its new one, so renaming a domain doesn't count as adding a host;
 - `allowed`: today's addresses outside a home, "path host". They only go away: with --base, a branch may move
-  an entry to another file but may not add a host nor grow the list. A changed sync-baseline declaration,
-  verified by merge_base.sync_provenance, may restore exact rows from that upstream commit's inventory;
-  only those newly restored rows are excluded from the growth comparison.
+  an entry to another file but may not add a host nor grow the list.
 
     python3 tools/check_addresses.py                     # the check
     python3 tools/check_addresses.py --base origin/main  # and nothing added since the base
@@ -157,7 +155,7 @@ def module_dir(path):
 def shipped_files():
     """The shipped Rust files, relative to the root, minus test modules."""
     layers = json.loads((ROOT / "tools" / "layers.json").read_text())["crates"]
-    roots = [ROOT / "launcher" / "src"]
+    roots = []
     for crate in sorted((ROOT / "crates").iterdir()):
         if (crate / "src").is_dir() and layers.get(crate.name) != "tool":
             roots.append(crate / "src")
@@ -226,7 +224,7 @@ def scan(files=None):
     return found
 
 
-def check(config, found, base=None, upstream_rows=frozenset()):
+def check(config, found, base=None):
     """(problems, notes)."""
     homes = set(config.get("homes", []))
     vanilla = set(config.get("vanilla", []))
@@ -236,7 +234,7 @@ def check(config, found, base=None, upstream_rows=frozenset()):
     for rel, host in sorted(found):
         if rel in homes or host in vanilla or any(host == h or host.endswith("." + h) for h in vanilla):
             continue
-        if host in not_addresses:
+        if host in not_addresses or f"{rel} {host}" in not_addresses:
             continue
         if (rel, host) in allowed:
             used.add((rel, host))
@@ -247,12 +245,10 @@ def check(config, found, base=None, upstream_rows=frozenset()):
         renamed = config.get("renamed_hosts", {})
         before = {(rel, renamed.get(host, host)) for rel, host in
                   (tuple(entry.split(" ", 1)) for entry in base.get("allowed", []))}
-        restored = (allowed - before) & upstream_rows
-        effective = allowed - restored
-        new_hosts = {host for _, host in effective} - {host for _, host in before}
+        new_hosts = {host for _, host in allowed} - {host for _, host in before}
         for host in sorted(new_hosts):
             problems.append(f"{host}: added to 'allowed' in {CONFIG_PATH}; new addresses go in a home ({DOC})")
-        if len(effective) > len(before):
+        if len(allowed) > len(before):
             problems.append(f"'allowed' in {CONFIG_PATH} grew from {len(before)} to {len(allowed)} entries; it only "
                             f"shrinks ({DOC})")
     notes = [f"{rel} {host}: no longer there; you can remove it from 'allowed' in {CONFIG_PATH}"
@@ -265,9 +261,9 @@ def base_config(base):
     merge_base = subprocess.run(["git", "merge-base", base, "HEAD"], capture_output=True, text=True, cwd=ROOT)
     if merge_base.returncode != 0:
         return None
-    shown = subprocess.run(["git", "show", f"{merge_base.stdout.strip()}:{CONFIG_PATH}"], capture_output=True,
-                           text=True, cwd=ROOT)
-    return json.loads(shown.stdout) if shown.returncode == 0 else None
+    # A baseline that is there but can't be read stops the check (merge_base.text_at).
+    text = _merge_base().text_at(merge_base.stdout.strip(), CONFIG_PATH, ROOT)
+    return json.loads(text) if text is not None else None
 
 
 def _merge_base():
@@ -276,13 +272,6 @@ def _merge_base():
     else:
         import merge_base
     return merge_base
-
-
-def restored_upstream_rows(base):
-    """Allow exact upstream rows only for a changed, verified sync declaration."""
-    config, errors = _merge_base().verified_sync_config(base, CONFIG_PATH)
-    rows = {tuple(row.split(" ", 1)) for row in config.get("allowed", [])} if config is not None else set()
-    return rows, errors
 
 
 def main(argv=None):
@@ -307,13 +296,6 @@ def main(argv=None):
         return 0
     base = base_config(args.base) if args.base else None
     problems, notes = check(config, found, base)
-    if args.base and (problems or config != base):
-        # Only a violation, or an inventory that differs from the base's, can need rows a verified sync restored:
-        # every other run stays off the network.
-        upstream_rows, provenance = restored_upstream_rows(args.base)
-        if upstream_rows or provenance:
-            problems, notes = check(config, found, base, upstream_rows)
-        problems = provenance + problems
     for note in notes:
         print(f"note: {note}")
     if problems:

@@ -128,7 +128,7 @@ pub(in crate::game) struct CommandExtras {
     /// Entities whose waypoint transmit range changed since they last ticked.
     pub waypoint_dirty: Vec<Target>,
     /// Attribute maps of living entities whose attributes Sunrise does not
-    /// model (an armor stand's, a mob's beyond its modelled three).
+    /// model (an armor stand's, a mob's beyond its own store's, `finalize::Attr`).
     pub attributes: HashMap<Target, sunrise_world::attributes::entity::EntityAttributes>,
     /// The `CommandResultCallback` results of the outermost source, when a
     /// harness records them.
@@ -181,7 +181,7 @@ fn civil(secs: i64) -> (i64, i64, i64, i64, i64, i64) {
 impl Game<'_> {
     /// CommandSourceStack.getPlayerOrException.
     pub(super) fn source_player(&self) -> R<Target> {
-        match self.command_source.map(|s| s.entity) {
+        match self.command_source.as_ref().map(|s| s.entity) {
             None | Some(Some(Target::Player)) => Ok(Target::Player),
             _ => Err(err("permissions.requires.player", &[])),
         }
@@ -284,7 +284,7 @@ impl Game<'_> {
             self.set_camera(None);
             return;
         }
-        let sneaking = self.keys.held(Action::Sneak) && self.screen == super::Screen::Playing;
+        let sneaking = self.held_mapping(Action::Sneak) && self.screen == super::Screen::Playing;
         match self.target_position(t) {
             Some(p) if !sneaking => {
                 let rot = self.target_rotation(t);
@@ -302,7 +302,7 @@ impl Game<'_> {
 
     /// A guest's body is only `Player` during its turn; retained command state
     /// must use its connection so the next server tick still finds that body.
-    pub(super) fn waypoint_target(&self, t: Target) -> Target {
+    pub(in crate::game) fn waypoint_target(&self, t: Target) -> Target {
         match t {
             Target::Player => self.lan_acting.map_or(t, Target::Guest),
             _ => t,
@@ -328,6 +328,20 @@ impl Game<'_> {
                 })
                 .unwrap_or(0.0);
         }
+        // A mob's is in its own store, an Invisibility effect's stored
+        // modifier among the others (`Mob::set_effect_modifiers`).
+        if let Target::Mob(id) = t {
+            return self
+                .mobs
+                .iter()
+                .find(|m| m.id == id && !m.removed)
+                .map_or(0.0, |m| {
+                    sunrise_client::mobs::finalize::value(
+                        m,
+                        sunrise_client::mobs::finalize::Attr::WaypointTransmitRange,
+                    )
+                });
+        }
         let catalog = self.motion.attributes.clone();
         let Some(key) = catalog.id("minecraft:waypoint_transmit_range") else {
             return 0.0;
@@ -343,7 +357,7 @@ impl Game<'_> {
     /// `/waypoint modify` re-tracks its waypoint whatever its range.
     fn waypoint_transmitters(&mut self) -> Vec<Target> {
         if self.cmds.waypoints.is_none() {
-            let tracked = if self.transmit_range(Target::Player) > 0.0 {
+            let tracked = if self.lan.is_none() && self.transmit_range(Target::Player) > 0.0 {
                 vec![self.waypoint_target(Target::Player)]
             } else {
                 Vec::new()
@@ -358,6 +372,7 @@ impl Game<'_> {
         self.cmds.waypoints = Some(alive.clone());
         alive
             .into_iter()
+            .filter(|t| self.target_level(*t) == self.dim)
             .map(|t| match t {
                 Target::Guest(conn) if self.lan_acting == Some(conn) => Target::Player,
                 _ => t,
@@ -373,13 +388,23 @@ impl Game<'_> {
         }
         self.waypoint_transmitters();
         for t in dirty {
-            let on = self.transmit_range(t) > 0.0;
-            if let Some(tracked) = self.cmds.waypoints.as_mut() {
-                tracked.retain(|x| *x != t);
-                if on {
-                    tracked.push(t);
-                }
-            }
+            self.update_waypoint_transmitter(t);
+        }
+    }
+    /// `LivingEntity.onAttributeUpdated`: change the manager's tracked set.
+    pub(in crate::game) fn update_waypoint_transmitter(&mut self, target: Target) {
+        let on = self.transmit_range(target) > 0.0;
+        self.set_waypoint_transmitter(target, on);
+    }
+
+    pub(in crate::game) fn set_waypoint_transmitter(&mut self, target: Target, on: bool) {
+        let tracked = self.cmds.waypoints.get_or_insert_default();
+        tracked.retain(|t| *t != target);
+        if on {
+            tracked.push(target);
+        }
+        if let Target::Guest(conn) = target {
+            self.lan_set_waypoint_transmitting(conn, on);
         }
     }
     pub(in crate::game) fn waypoint_icon(&self, t: Target) -> Icon {
@@ -813,7 +838,7 @@ impl Game<'_> {
                 key: NameOrId::Name(name.clone()),
                 kind: "name",
                 argument: Text::literal(name),
-                source: self.command_source,
+                source: self.command_source.clone(),
             });
             return Ok(1);
         }
@@ -828,7 +853,7 @@ impl Game<'_> {
                 key: NameOrId::Id(id),
                 kind: "id",
                 argument: Text::literal(sunrise_protocol::crypto::uuid_string(id)),
-                source: self.command_source,
+                source: self.command_source.clone(),
             });
             return Ok(1);
         }
@@ -1118,7 +1143,7 @@ impl Game<'_> {
         };
         for line in lines {
             out.push_str(&format!("{}[C] {line}", indent(depth + 1)));
-            match self.execute_line(line, source) {
+            match self.execute_line(line, source.clone()) {
                 Ok(v) => out.push_str(&format!(" -> {v}\n")),
                 Err(e) => {
                     out.push('\n');
@@ -1212,10 +1237,10 @@ impl Game<'_> {
     }
     /// `VersionCommand`.
     pub(super) fn cmd_version(&mut self) -> R<i32> {
-        if !self.command_source.is_some_and(|s| s.silent) {
-            self.system_message(Text::translate("commands.version.header", &[]));
+        if !self.command_source.as_ref().is_some_and(|s| s.silent) {
+            self.command_system_message(Text::translate("commands.version.header", &[]));
             for line in self.version_lines() {
-                self.system_message(line);
+                self.command_system_message(line);
             }
         }
         Ok(1)
@@ -1371,7 +1396,7 @@ mod waypoint_icon_save_tests {
             &mut level.player_extra,
         );
         // The player's file: `locator_bar_icon` is `{style, color}`.
-        let saved = level.player_tag();
+        let saved = level.player_tag(&Default::default());
         assert_eq!(
             saved.get("locator_bar_icon"),
             Some(&Tag::compound([
@@ -1409,15 +1434,30 @@ mod waypoint_icon_save_tests {
     #[test]
     fn a_player_with_no_icon_saves_no_key_and_a_reset_takes_it_out() {
         let mut level = Level::default();
-        assert!(level.player_tag().get("locator_bar_icon").is_none());
+        assert!(
+            level
+                .player_tag(&Default::default())
+                .get("locator_bar_icon")
+                .is_none()
+        );
         // The default icon on a player with no file writes nothing, not even a file.
         Game::save_waypoint_icon(&Icon::default(), &mut level.player_extra);
         assert!(level.player_extra.is_none());
         Game::save_waypoint_icon(&icon("minecraft:default", Some(1)), &mut level.player_extra);
-        assert!(level.player_tag().get("locator_bar_icon").is_some());
+        assert!(
+            level
+                .player_tag(&Default::default())
+                .get("locator_bar_icon")
+                .is_some()
+        );
         // `/waypoint modify ... reset` leaves the default icon: the key goes.
         Game::save_waypoint_icon(&Icon::default(), &mut level.player_extra);
-        assert!(level.player_tag().get("locator_bar_icon").is_none());
+        assert!(
+            level
+                .player_tag(&Default::default())
+                .get("locator_bar_icon")
+                .is_none()
+        );
     }
 
     #[test]

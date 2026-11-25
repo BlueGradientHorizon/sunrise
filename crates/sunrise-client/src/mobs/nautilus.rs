@@ -14,8 +14,8 @@ use super::{
 use crate::blocks::Fluid;
 use crate::health::DamageLevel;
 use std::collections::HashMap;
+use std::ops::ControlFlow;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
-use sunrise_world::move_gate::MoveGate;
 
 // Nautilus state: `tame`/`owner`, the saddle, `head` the body armour,
 // `variant` the zombie's variant (0 temperate, 1 warm), `anim_ticks` the
@@ -167,21 +167,23 @@ fn sound(m: &Mob, name: &'static str, events: &mut Vec<MobEvent>) {
     events.push(MobEvent::Sound(name, m.center(), 1.0, 1.0));
 }
 /// `AbstractNautilus.travelInWater`: its own speed, no fluid drag but 0.9.
-pub fn travel(
+pub(super) fn travel(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     input: Vec3,
     events: &mut Vec<MobEvent>,
-) -> bool {
-    if !m.fluids.in_water {
-        return false;
-    }
+    pause: bool,
+) -> ControlFlow<super::living::TravelPause> {
     let speed = m.ai.speed;
     m.move_relative(speed, input);
-    m.do_move(w, level, events, &mut MoveGate::new());
-    m.velocity = Vec3::new(m.velocity.x * 0.9, m.velocity.y * 0.9, m.velocity.z * 0.9);
-    true
+    m.travel_move(w, level, events, pause, |m, _, _, _| {
+        m.set_velocity(Vec3::new(
+            m.velocity.x * 0.9,
+            m.velocity.y * 0.9,
+            m.velocity.z * 0.9,
+        ));
+    })
 }
 /// `tickRidden` and `getRiddenInput`: turn half way to the rider, swim along
 /// their look, faster in water (`getRiddenSpeed`), and dash on the jump.
@@ -504,18 +506,23 @@ impl Charge {
 }
 impl Goal for Charge {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE | LOOK
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, _: &mut Cx) -> bool {
         m.ai.target.is_some() && m.extra.counter2 <= 0 && m.extra.in_love <= 0
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         self.still_ok(m, cx)
     }
+    #[inline]
     fn every_tick(&self) -> bool {
         true
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.start = m.position;
         let Some(t) = m.ai.target.and_then(|who| cx.w.target_info(who)) else {
@@ -545,12 +552,14 @@ impl Goal for Charge {
             sound(m, name, cx.events);
         }
     }
+    #[inline]
     fn stop(&mut self, m: &mut Mob, cx: &mut Cx) {
         m.extra.counter2 = TIME_BETWEEN_ATTACKS;
         if let super::TargetChange::Set(target) = cx.w.change_target(m, true, None) {
             m.ai.target = target;
         }
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         let Some(who) = m.ai.target else { return };
         let Some(t) = cx.w.target_info(who) else {
@@ -566,12 +575,13 @@ impl Goal for Charge {
         let amount = m.attrs.attack_damage;
         cx.events.push(match who {
             Who::Player => {
-                cx.w.route_player_event(MobEvent::AttackPlayer(amount, from))
+                cx.w.route_player_event(MobEvent::AttackPlayer(amount, from, None))
             }
             Who::Mob(id) => MobEvent::AttackMob {
                 target: id,
                 amount,
                 source: super::Damage::mob(m.id, from),
+                remember_target: false,
             },
         });
         let level = |e: &str| {
@@ -657,7 +667,7 @@ pub fn anim(m: &Mob, s: &State, p: &mut Poses, animations: &HashMap<String, Anim
 }
 /// `TamableAnimal.addAdditionalSaveData`: owner and ordered Sitting, plus
 /// the saddle, the zombie's variant and the brain's attack cooldown.
-pub fn to_nbt(m: &Mob, map: &mut sunrise_core::nbt::Compound) {
+pub fn to_nbt(m: &Mob, map: &mut crate::entity_nbt::EntityTagWriter) {
     use sunrise_core::nbt::Tag;
     if let Some(owner) = m.extra.owner {
         map.insert("Owner".into(), Tag::IntArray(owner.to_vec()));
@@ -741,13 +751,25 @@ mod tests {
                     assert_eq!(m.extra.owner, owner);
                     assert_eq!(m.extra.sitting, expected, "{id} {owner:?} {sitting:?}");
                     // No raw compound: this must come from the modeled flag.
-                    let saved =
-                        crate::entity_nbt::mob_to_nbt(&m, [5, 6, 7, 8], None, None, |_| None);
+                    let saved = crate::entity_nbt::mob_to_nbt(
+                        &m,
+                        [5, 6, 7, 8],
+                        None,
+                        None,
+                        |_| None,
+                        &Default::default(),
+                    );
                     assert_eq!(saved.get("Sitting"), Some(&Tag::Byte(i8::from(expected))));
                     // A stale raw flag must not override a later model change.
                     m.extra.sitting = !expected;
-                    let saved =
-                        crate::entity_nbt::mob_to_nbt(&m, [5, 6, 7, 8], Some(&raw), None, |_| None);
+                    let saved = crate::entity_nbt::mob_to_nbt(
+                        &m,
+                        [5, 6, 7, 8],
+                        Some(&raw),
+                        None,
+                        |_| None,
+                        &Default::default(),
+                    );
                     assert_eq!(saved.get("Sitting"), Some(&Tag::Byte(i8::from(!expected))));
                 }
             }
@@ -1007,7 +1029,14 @@ mod cooldown_memory_tests {
         })
     }
     fn saved(m: &Mob, stale: Option<&Tag>) -> Tag {
-        crate::entity_nbt::mob_to_nbt(m, [140, 1, 0, 7], stale, None, |_| None)
+        crate::entity_nbt::mob_to_nbt(
+            m,
+            [140, 1, 0, 7],
+            stale,
+            None,
+            |_| None,
+            &Default::default(),
+        )
     }
     #[test]
     fn decoded_cooldown_presence_ttl_and_model_mutation_save_without_raw() {

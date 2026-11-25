@@ -124,13 +124,24 @@ def watch(api, cancel, clock, sleep, repo, me, stall, label=LABEL):
     return 1
 
 
+def pages(text):
+    """The JSON values `gh api --paginate` prints, one per page, as a list (tools/release_train.py `json_pages`: this
+    job checks out this file alone). The runners' gh, Ubuntu's 2.45, has no --slurp."""
+    decoder, found, at = json.JSONDecoder(), [], len(text) - len(text.lstrip())
+    while at < len(text):
+        page, end = decoder.raw_decode(text, at)
+        found.append(page)
+        at = len(text) - len(text[end:].lstrip())
+    return found
+
+
 def gh(*args):
     return subprocess.run(["gh", *args], check=True, capture_output=True, text=True).stdout
 
 
 def main():
     repo = os.environ["GITHUB_REPOSITORY"]
-    return watch(lambda path: json.loads(gh("api", "--paginate", "--slurp", path)),
+    return watch(lambda path: pages(gh("api", "--paginate", path)),
                  lambda run: gh("run", "cancel", "-R", repo, str(run)), time.time, time.sleep, repo,
                  int(os.environ["GITHUB_RUN_ID"]), int(os.environ.get("STALL_MINUTES", "20")) * 60,
                  os.environ.get("POOL_LABEL", LABEL))

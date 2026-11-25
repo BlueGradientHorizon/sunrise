@@ -2,7 +2,7 @@
 use std::sync::Arc;
 use sunrise_core::nbt::Tag;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Hash)]
 pub enum Holder<T> {
     Named(Arc<str>),
     Direct(T),
@@ -17,12 +17,12 @@ impl<T> From<&str> for Holder<T> {
         Self::Named(name.into())
     }
 }
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Hash)]
 pub struct Material {
     pub palette_id: Arc<str>,
     pub description: Tag,
 }
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Hash)]
 pub struct Pattern {
     pub asset_id: Arc<str>,
     pub description: Tag,
@@ -96,4 +96,10 @@ pub fn to_nbt(trim: &Trim) -> Tag {
         ]),
     };
     Tag::compound([("material", material), ("pattern", pattern)])
+}
+
+/// Whether `value` is a payload the modeled `minecraft:trim` component takes: a loot editor
+/// refuses any other shape instead of clearing the modeled trim while keeping the patch.
+pub fn payload_ok(value: &Tag) -> bool {
+    from_nbt(value).is_some()
 }

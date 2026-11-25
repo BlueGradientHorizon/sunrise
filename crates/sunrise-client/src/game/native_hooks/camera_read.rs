@@ -11,8 +11,6 @@ impl Drop for ProjectionFrame {
 }
 
 /// Helpers for native mods, kept as stable as the hook points.
-// Native mods use these; nothing in Sunrise does.
-#[allow(dead_code)]
 impl Game<'_> {
     pub(in crate::game) fn activate_projection_frame(&self) -> ProjectionFrame {
         ProjectionFrame(PROJECT_VIEW.replace(self as *const Self as usize))
@@ -29,11 +27,12 @@ impl Game<'_> {
             return None;
         }
         let camera = self.native_camera_frame.as_ref()?;
-        sunrise_client::camera::project_point(
+        sunrise_client::camera::project_point_rolled(
             &camera.projection,
             camera.position,
             camera.yaw,
             camera.pitch,
+            camera.roll,
             at,
         )
     }
@@ -59,9 +58,5 @@ impl Game<'_> {
         };
         self.remote_set_camera(id);
         true
-    }
-    /// Collision boxes in block-local coordinates with an empty collision context.
-    pub(in crate::game) fn block_collision(&self, pos: [i32; 3]) -> Vec<[f64; 6]> {
-        self.native_block_collision_in(&self.world, pos)
     }
 }

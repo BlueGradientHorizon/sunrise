@@ -17,8 +17,10 @@ use sunrise_core::{geometry::Vec3, random::RandomSource};
 // Vex state: `flag` charging, `counter2` the owner's mob id (0 none),
 // `home` the bound origin, `egg_time` the life left (-1 unlimited).
 
+/// The `Vex` constructor and `registerGoals`. Gravity stays on: `Vex.tick`
+/// turns it off only after its first `super.tick()`, so a new vex with AI
+/// falls for one tick.
 pub fn register(m: &mut Mob) {
-    m.no_gravity = true;
     m.ai.mov.kind = super::control::MoveKind::Custom;
     m.extra.set_main_hand(Some("minecraft:iron_sword".into()));
     if m.extra.egg_time == 0 {
@@ -57,12 +59,15 @@ fn set_wanted(m: &mut Mob, at: [f64; 3], speed: f64) {
 struct Charge;
 impl Goal for Charge {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE
     }
+    #[inline]
     fn every_tick(&self) -> bool {
         true
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         let Some(t) = m.target_info(cx.w).filter(|t| t.alive) else {
             return false;
@@ -71,9 +76,11 @@ impl Goal for Charge {
             && m.random.next_int_bound(reduced(7)).unwrap_or(1) == 0
             && m.distance_sqr(t.position) > 4.0
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         has_wanted(m) && m.extra.flag && m.target_info(cx.w).is_some_and(|t| t.alive)
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         if let Some(t) = m.target_info(cx.w) {
             set_wanted(m, [t.position.x, t.eye_y, t.position.z], 1.0);
@@ -86,9 +93,11 @@ impl Goal for Charge {
             1.0,
         ));
     }
+    #[inline]
     fn stop(&mut self, m: &mut Mob, _cx: &mut Cx) {
         m.extra.flag = false;
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         let (Some(who), Some(t)) = (m.ai.target, m.target_info(cx.w)) else {
             return;
@@ -106,15 +115,19 @@ impl Goal for Charge {
 struct RandomMove;
 impl Goal for RandomMove {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, _cx: &mut Cx) -> bool {
         !has_wanted(m) && m.random.next_int_bound(reduced(7)).unwrap_or(1) == 0
     }
+    #[inline]
     fn can_continue(&mut self, _m: &mut Mob, _cx: &mut Cx) -> bool {
         false
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         // Ticked once: the goal never continues.
         let origin = m.extra.home.unwrap_or([
@@ -164,9 +177,11 @@ pub fn owner(m: &Mob, lookup: Option<&dyn super::WhoLookup>) -> Option<u32> {
 struct CopyOwnerTarget;
 impl Goal for CopyOwnerTarget {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         super::goals::TARGET
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         let seen = owner(m, cx.w.who_lookup).and_then(|owner| {
             cx.w.others
@@ -176,9 +191,11 @@ impl Goal for CopyOwnerTarget {
         });
         seen.is_some_and(|t| t != Who::Mob(m.id) && copyable(cx.w, t))
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         m.target_info(cx.w).is_some_and(|t| t.alive)
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         let target = owner(m, cx.w.who_lookup).and_then(|owner| {
             cx.w.others
@@ -223,8 +240,12 @@ pub fn move_control(m: &mut Mob) {
     m.yaw = yaw;
     m.body_yaw = yaw;
 }
-/// `Vex` travel with `noPhysics`: straight through blocks, air friction.
-pub fn travel(m: &mut Mob, w: &super::MobWorld) -> bool {
+/// `Vex` travel with `noPhysics`: straight through blocks, air friction, and
+/// `LivingEntity.travelInAir`'s gravity — the effective gravity comes off the
+/// moved velocity's y, then the `0.91F`/`0.98F` drags widen from float. While
+/// the `NoGravity` of the tick's end stands, `effective_gravity` is 0 and the
+/// vex keeps gliding (`Vex.tick` sets the flag only after `super.tick()`).
+pub fn travel(m: &mut Mob, w: &super::MobWorld) {
     let from = m.position;
     m.position = m.position.add_vector(m.velocity);
     super::living::section_writes::record_with(
@@ -234,13 +255,13 @@ pub fn travel(m: &mut Mob, w: &super::MobWorld) -> bool {
         m.position,
         w.section_writer.clone(),
     );
-    m.velocity = Vec3::new(
-        m.velocity.x * 0.91,
-        m.velocity.y * 0.98,
-        m.velocity.z * 0.91,
-    );
-    m.on_ground = false;
-    true
+    let y = m.velocity.y - m.effective_gravity();
+    m.set_velocity(Vec3::new(
+        m.velocity.x * f64::from(0.91_f32),
+        y * f64::from(0.98_f32),
+        m.velocity.z * f64::from(0.91_f32),
+    ));
+    m.ground.on_ground = false;
 }
 /// `Vex.tick`: the limited life costs a heart a second once spent.
 pub fn ai_step(m: &mut Mob, w: &super::MobWorld, level: &mut DamageLevel<'_>) {
@@ -316,7 +337,7 @@ pub fn texture(m: &Mob) -> &'static str {
 /// loaded with stands when the owner is gone.
 pub fn write_nbt(
     m: &Mob,
-    map: &mut sunrise_core::nbt::Compound,
+    map: &mut crate::entity_nbt::EntityTagWriter,
     uuid_of: &mut impl FnMut(u32) -> Option<[i32; 4]>,
 ) {
     use sunrise_core::nbt::Tag;
@@ -377,12 +398,73 @@ mod owner_save_tests {
         Mob::new(1, kind, Vec3::ZERO, 0.0)
     }
 
+    /// The `Vex` constructor leaves `DATA_NO_GRAVITY` at its default, false:
+    /// only the end of `Vex.tick` sets it.
+    #[test]
+    fn a_new_vex_has_gravity_until_its_first_tick() {
+        assert!(!vex().no_gravity);
+    }
+
+    /// The first tick of a vex with AI (`travel` runs only under
+    /// `isEffectiveAi`): the constructor's gravity is still on, so the
+    /// travel step turns a standing vex's `Motion[1]` into
+    /// `(0 - 0.08) * 0.98F` without moving it yet, and the tick's end (which
+    /// is where vanilla's `Vex.tick` sets the flag after `super.tick()`)
+    /// saves `NoGravity:1b`. A vex summoned with `NoGravity:1b` — the
+    /// gravity-disabled control — keeps `Motion[1]` at 0. The travel pin is
+    /// on a vex with no goal drift yet (its goals may draw a drift target on
+    /// a first tick, as vanilla's 1-in-4 `VexRandomMoveGoal` can), which is
+    /// the stationary vex the fix is about.
+    #[test]
+    #[ignore = "daily"]
+    fn a_vexs_first_tick_falls_and_then_saves_no_gravity() {
+        use crate::mobs::world::with_test_world;
+        with_test_world(&[], |w, _| {
+            for with_gravity in [true, false] {
+                let mut vex = vex();
+                register(&mut vex);
+                vex.no_gravity = !with_gravity;
+                travel(&mut vex, w);
+                if with_gravity {
+                    // The moved velocity was 0, so the first tick has not
+                    // moved it yet, and `travelInAir` leaves the gravity
+                    // step in the float-widened drag.
+                    assert_eq!(vex.position, Vec3::ZERO, "no motion yet");
+                    assert_eq!(
+                        vex.velocity.y.to_bits(),
+                        (-0.08_f64 * f64::from(0.98_f32)).to_bits(),
+                        "the first tick's Motion[1]"
+                    );
+                } else {
+                    assert_eq!(vex.velocity.y, 0.0, "NoGravity vex never falls");
+                }
+            }
+            // One whole tick saves the flag: the vex's own ai tick, whose
+            // end is `Vex.tick`'s setNoGravity(true) (AI or not).
+            let mut vex = vex();
+            register(&mut vex);
+            vex.persistent = true;
+            let mut test_level = crate::health::TestLevel::new(0);
+            let mut events = Vec::new();
+            crate::mobs::ai::tick(&mut vex, w, &mut test_level.level(), &mut events);
+            assert!(vex.no_gravity, "the tick's end set the flag");
+            let saved = mob_to_nbt(&vex, [0; 4], None, None, |_| None, &Default::default());
+            assert_eq!(saved.get("NoGravity"), Some(&Tag::Byte(1)));
+        });
+    }
+
     /// `Level.getEntity(uuid)` for the test: `Game` answers this with
     /// `Game::who_by_uuid`.
     struct Level(HashMap<[i32; 4], Who>);
     impl WhoLookup for Level {
         fn who_by_uuid(&self, uuid: [i32; 4]) -> Option<Who> {
             self.0.get(&uuid).copied()
+        }
+
+        fn mob_uuid(&self, id: u32) -> Option<[i32; 4]> {
+            self.0
+                .iter()
+                .find_map(|(&uuid, &who)| (who == Who::Mob(id)).then_some(uuid))
         }
     }
 
@@ -400,7 +482,7 @@ mod owner_save_tests {
         summoned.extra.counter2 = EVOKER as i32;
         assert_eq!(owner(&summoned, None), Some(EVOKER), "the evoker's id");
         let uuid_of = |id: u32| (id == EVOKER).then_some(evoker_uuid);
-        let saved = mob_to_nbt(&summoned, [0; 4], None, None, uuid_of);
+        let saved = mob_to_nbt(&summoned, [0; 4], None, None, uuid_of, &Default::default());
         assert_eq!(
             saved.get("owner"),
             Some(&Tag::IntArray(evoker_uuid.to_vec()))
@@ -421,7 +503,7 @@ mod owner_save_tests {
         assert_eq!(owner(&back, None), None, "a level with no UUIDs");
         // A save read again keeps the reference even when nothing in the level
         // answers for it, as `EntityReference` does.
-        let again = mob_to_nbt(&back, [0; 4], None, None, |_| None);
+        let again = mob_to_nbt(&back, [0; 4], None, None, |_| None, &Default::default());
         assert_eq!(
             again.get("owner"),
             Some(&Tag::IntArray(evoker_uuid.to_vec()))
@@ -451,7 +533,14 @@ mod owner_save_tests {
         assert_eq!(loaded.extra.owner, Some([9, 9, 9, 9]));
         loose.extra.owner = None;
         loose.extra.counter2 = 0;
-        let saved = mob_to_nbt(&loose, [0; 4], Some(&stale), None, |_| None);
+        let saved = mob_to_nbt(
+            &loose,
+            [0; 4],
+            Some(&stale),
+            None,
+            |_| None,
+            &Default::default(),
+        );
         assert_eq!(saved.get("owner"), None, "no owner, no key");
     }
     /// `VexCopyOwnerTargetGoal.canUse` runs the owner's target through
@@ -477,6 +566,7 @@ mod owner_save_tests {
                     target.seen(None, &crate::items::Items::empty()),
                 ];
                 let world = crate::mobs::MobWorld {
+                    side: sunrise_client::motion::dry_side(),
                     others: &seen,
                     ..w.clone()
                 };

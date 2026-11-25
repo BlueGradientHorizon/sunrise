@@ -114,10 +114,6 @@ pub fn state(m: &Mob) -> Option<&State> {
 pub fn state_mut(m: &mut Mob) -> &mut State {
     m.extra.raider.get_or_insert_with(Box::default)
 }
-/// `Raider.getCurrentRaid() != null`.
-pub fn in_raid(m: &Mob) -> bool {
-    state(m).is_some_and(|s| s.raid_id.is_some())
-}
 pub fn has_active_raid(m: &Mob) -> bool {
     state(m).is_some_and(|s| s.active_raid)
 }
@@ -302,9 +298,11 @@ fn companions(m: &Mob, w: &MobWorld) -> Vec<u32> {
 }
 impl Goal for LongDistancePatrol {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         let Some(s) = state(m) else { return false };
         cx.w.game_time >= s.patrol_cooldown_until
@@ -313,6 +311,7 @@ impl Goal for LongDistancePatrol {
             && s.patrol_target.is_some()
             && !s.has_rider()
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         if !m.ai.nav.is_done() {
             return;
@@ -397,9 +396,11 @@ impl ObtainBanner {
 }
 impl Goal for ObtainBanner {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         if !Self::can_pick_up_banner(m) {
             return false;
@@ -420,12 +421,14 @@ impl Goal for ObtainBanner {
         s.unreachable_banners.push((item, now + 600));
         false
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, _cx: &mut Cx) -> bool {
         !m.ai.nav.is_done()
             && state(m).is_some_and(|s| {
                 s.banner_at.is_some() && s.active_raid && !s.raid_over && can_be_leader(m.species())
             })
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         m.nav_move_to_path(cx.w, self.path_to_banner.take(), 1.15);
     }
@@ -444,15 +447,19 @@ impl PathfindToRaid {
 }
 impl Goal for PathfindToRaid {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, _cx: &mut Cx) -> bool {
         m.ai.target.is_none() && state(m).is_some_and(|s| !s.has_rider() && Self::valid(s))
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, _cx: &mut Cx) -> bool {
         state(m).is_some_and(Self::valid)
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         let Some(c) = state(m).map(|s| s.raid_center) else {
             return;
@@ -501,9 +508,11 @@ impl MoveThroughVillage {
 }
 impl Goal for MoveThroughVillage {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, _cx: &mut Cx) -> bool {
         if self.visited.len() > 2 {
             self.visited.remove(0);
@@ -526,6 +535,7 @@ impl Goal for MoveThroughVillage {
         self.poi = Some(near[m.random.next_int_bound(near.len() as i32).unwrap_or(0) as usize]);
         true
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, _cx: &mut Cx) -> bool {
         let Some(p) = self.poi else { return false };
         !m.ai.nav.is_done()
@@ -533,6 +543,7 @@ impl Goal for MoveThroughVillage {
             && !close_to_center(p, m.position, f64::from(m.width()) + self.distance)
             && !self.stuck
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         m.ai.no_action_time = 0;
         if let Some(p) = self.poi {
@@ -544,6 +555,7 @@ impl Goal for MoveThroughVillage {
         }
         self.stuck = false;
     }
+    #[inline]
     fn stop(&mut self, m: &mut Mob, _cx: &mut Cx) {
         if let Some(p) = self.poi
             && close_to_center(p, m.position, self.distance)
@@ -551,6 +563,7 @@ impl Goal for MoveThroughVillage {
             self.visited.push(p);
         }
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         let Some(p) = self.poi else { return };
         if !m.ai.nav.is_done() {
@@ -578,20 +591,25 @@ impl Goal for MoveThroughVillage {
 pub struct Celebration;
 impl Goal for Celebration {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, _cx: &mut Cx) -> bool {
         m.alive()
             && m.ai.target.is_none()
             && state(m).is_some_and(|s| s.raid_loss && s.raid_id.is_some())
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, _cx: &mut Cx) {
         state_mut(m).celebrating = true;
     }
+    #[inline]
     fn stop(&mut self, m: &mut Mob, _cx: &mut Cx) {
         state_mut(m).celebrating = false;
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         if m.random
             .next_int_bound(super::goals::reduced(100))
@@ -652,9 +670,11 @@ fn shout_range(m: &Mob, w: &MobWorld) -> Vec<u32> {
 }
 impl Goal for HoldGroundAttack {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE | LOOK
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, _cx: &mut Cx) -> bool {
         let Some(s) = state(m) else { return false };
         s.raid_id.is_none()
@@ -663,6 +683,7 @@ impl Goal for HoldGroundAttack {
             && !m.ai.aggressive
             && m.ai.last_hurt_by != Some(Who::Player)
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         m.ai.nav.stop();
         if let Some(target) = m.ai.target {
@@ -675,6 +696,7 @@ impl Goal for HoldGroundAttack {
             }
         }
     }
+    #[inline]
     fn stop(&mut self, m: &mut Mob, cx: &mut Cx) {
         if let Some(target) = m.ai.target {
             for id in shout_range(m, cx.w) {
@@ -687,9 +709,11 @@ impl Goal for HoldGroundAttack {
             m.ai.aggressive = true;
         }
     }
+    #[inline]
     fn every_tick(&self) -> bool {
         true
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         let Some(t) = m.target_info(cx.w) else { return };
         if m.distance_sqr(t.position) > self.hostile_radius_sqr {
@@ -707,7 +731,7 @@ impl Goal for HoldGroundAttack {
 }
 
 /// The saved fields (`PatrollingMonster` and `Raider.addAdditionalSaveData`).
-pub fn write_nbt(m: &Mob, map: &mut sunrise_core::nbt::Compound) {
+pub fn write_nbt(m: &Mob, map: &mut crate::entity_nbt::EntityTagWriter) {
     let Some(s) = state(m) else { return };
     match s.patrol_target {
         Some(p) => {
@@ -792,6 +816,7 @@ mod tests {
         assert!(
             with_test_world(&seen, |w, _| {
                 let indexed = MobWorld {
+                    side: sunrise_client::motion::dry_side(),
                     others_grid: Some(&grid),
                     ..w.clone()
                 };
@@ -834,7 +859,8 @@ mod tests {
                 .is_some_and(|d| d.ominous_banner)
         );
         assert!(is_captain(&m));
-        let saved = crate::entity_nbt::mob_to_nbt(&m, [0; 4], None, None, |_| None);
+        let saved =
+            crate::entity_nbt::mob_to_nbt(&m, [0; 4], None, None, |_| None, &Default::default());
         let chances = saved.get("drop_chances").unwrap();
         assert_eq!(
             chances.get("head"),
@@ -945,7 +971,7 @@ mod tests {
                     Vec3::new(0.5, 1.0, 0.5),
                     0.0,
                 );
-                m.on_ground = true;
+                m.ground.on_ground = true;
                 m.extra.raider = Some(Box::default());
                 let s = state_mut(&mut m);
                 s.active_raid = true;

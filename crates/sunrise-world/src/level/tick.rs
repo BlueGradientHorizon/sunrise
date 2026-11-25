@@ -42,7 +42,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                 }
                 Class::HangingMoss => {
                     let above_state = self.above_state(pos);
-                    if !(b.multiface_can_attach(above_state, Direction::Up)
+                    if !(self.multiface_can_attach_at(above(pos), Direction::Up)
                         || b.is_block(above_state, block))
                     {
                         self.destroy_block(pos, true, 512);
@@ -73,6 +73,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                         self.emit(LevelEvent::Sound {
                             pos,
                             sound: "minecraft:block.composter.ready".into(),
+                            source: None,
                             volume: 1.0,
                             pitch: 1.0,
                         });
@@ -379,9 +380,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                         {
                             let next = self.growing_plant_grow_into_state(state);
                             self.set_block_and_update(growth, next);
-                            // The hook gets the new head as the original state.
-                            let grown = self.state(growth);
-                            self.level.crop_grow_post(growth, grown);
+                            self.level.crop_grow_post(growth, state);
                         }
                     }
                 }
@@ -471,7 +470,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                             let age = b.table.int(state, p.age);
                             if age == 15 {
                                 self.set_block_and_update(above(pos), b.default_of(block));
-                                self.level.crop_grow_post(above(pos), b.default_of(block));
+                                self.level.crop_grow_post(above(pos), state);
                                 self.set_block(pos, b.table.set_int(state, p.age, 0), 260);
                             } else {
                                 self.set_block(pos, b.table.set_int(state, p.age, age + 1), 260);
@@ -607,6 +606,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         self.emit(LevelEvent::Sound {
             pos,
             sound: "minecraft:block.big_dripleaf.tilt_down".into(),
+            source: None,
             volume: 1.0,
             pitch,
         });
@@ -1057,9 +1057,11 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
     fn farmland_random_tick(&mut self, state: BlockStateId, pos: BlockPos) {
         let b = self.b;
         let moisture = b.table.int(state, b.props.moisture);
-        let mut near_water = self.level.has_water_ticket(pos);
         // IBlockExtension.canBeHydrated: the farmland's parts, looked up once.
-        let asks = !near_water && self.level.asks_can_be_hydrated(state);
+        let asks = self.level.asks_can_be_hydrated(state);
+        let held = asks && self.level.hold_farmland_hydration(state);
+        // Switching a mod off removes its tickets, so any remaining ticket can still water it.
+        let mut near_water = self.level.has_water_ticket(pos);
         if !near_water {
             'search: for x in -4..=4 {
                 for y in 0..=1 {
@@ -1071,13 +1073,18 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                             self.level
                                 .before_can_be_hydrated(state, pos, fluid, at, &mut hydrates);
                         }
-                        if hydrates.unwrap_or_else(|| b.is_water_fluid(fluid.kind())) {
+                        if hydrates.unwrap_or_else(|| !held && b.is_water_fluid(fluid.kind())) {
                             near_water = true;
                             break 'search;
                         }
                     }
                 }
             }
+        }
+        // Without a ticket or an explicit answer from an earlier Part, held farmland
+        // neither dries nor takes on moisture from the template's rain rule.
+        if held && !near_water {
+            return;
         }
         if !near_water && !self.level.is_raining_at(above(pos)) {
             if moisture > 0 {
@@ -1352,13 +1359,13 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                 let ccw_face = b.table.bool(state, self.direction_prop(ccw));
                 let cw_test = rel(test, cw);
                 let ccw_test = rel(test, ccw);
-                if cw_face && b.multiface_can_attach(self.state(cw_test), cw) {
+                if cw_face && self.multiface_can_attach_at(cw_test, cw) {
                     self.set_block(
                         test,
                         b.table.set_bool(default, self.direction_prop(cw), true),
                         2,
                     );
-                } else if ccw_face && b.multiface_can_attach(self.state(ccw_test), ccw) {
+                } else if ccw_face && self.multiface_can_attach_at(ccw_test, ccw) {
                     self.set_block(
                         test,
                         b.table.set_bool(default, self.direction_prop(ccw), true),
@@ -1368,7 +1375,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                     let opposite = direction.opposite();
                     if cw_face
                         && self.is_empty_block(cw_test)
-                        && b.multiface_can_attach(self.rel_state(pos, cw), opposite)
+                        && self.multiface_can_attach_at(rel(pos, cw), opposite)
                     {
                         self.set_block(
                             cw_test,
@@ -1378,7 +1385,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                         );
                     } else if ccw_face
                         && self.is_empty_block(ccw_test)
-                        && b.multiface_can_attach(self.rel_state(pos, ccw), opposite)
+                        && self.multiface_can_attach_at(rel(pos, ccw), opposite)
                     {
                         self.set_block(
                             ccw_test,
@@ -1387,12 +1394,12 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                             2,
                         );
                     } else if self.random().next_float() < 0.05
-                        && b.multiface_can_attach(self.state(above(test)), Direction::Up)
+                        && self.multiface_can_attach_at(above(test), Direction::Up)
                     {
                         self.set_block(test, b.table.set_bool(default, p.up, true), 2);
                     }
                 }
-            } else if b.multiface_can_attach(edge, direction) {
+            } else if self.multiface_can_attach_at(test, direction) {
                 self.set_block(
                     pos,
                     b.table
@@ -1403,7 +1410,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
             return;
         }
         if direction == Direction::Up && pos.y < self.level.max_y() - 1 {
-            if b.multiface_can_attach(self.state(above_pos), Direction::Up) {
+            if self.multiface_can_attach_at(above_pos, Direction::Up) {
                 self.set_block(pos, b.table.set_bool(state, p.up, true), 2);
                 return;
             }
@@ -1414,7 +1421,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                 let mut above_state = state;
                 for d in HORIZONTAL {
                     if self.random().next_boolean()
-                        || !b.multiface_can_attach(self.state(rel(above_pos, d)), d)
+                        || !self.multiface_can_attach_at(rel(above_pos, d), d)
                     {
                         above_state = b.table.set_bool(above_state, self.direction_prop(d), false);
                     }
@@ -1562,7 +1569,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
             self.level_event(1034, pos, 0);
         }
     }
-    /// `ServerLevel.tickPrecipitation` at a column whose top (motion-blocking
+    /// The effects of `ServerLevel.tickPrecipitation` at a column whose top (motion-blocking
     /// heightmap) position and biome answers are supplied by the caller.
     pub(crate) fn precipitation_tick(&mut self, info: Precipitation) {
         let b = self.b;
@@ -1690,74 +1697,10 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         let chance = (older + 1) as f32 / (older + same + 1) as f32;
         let modifier = if own == 0 { 0.75 } else { 1.0 };
         if self.random().next_float() < chance * chance * modifier
-            && let Some(next) = self.copper_next(state)
+            && let Some(next) = b.weathering_next(state)
         {
             self.set_block_and_update(pos, next);
         }
-    }
-    /// `WeatheringCopper.getNext`: the world's `neoforge:oxidizables` value
-    /// (`DataMapHooks.getNextOxidizedStage`), else by registry naming.
-    pub(crate) fn copper_next(&self, state: BlockStateId) -> Option<BlockStateId> {
-        let b = self.b;
-        let name = &*b.table.info(b.block(state)).name;
-        if let Some(next) = b.read_block_maps(|maps| {
-            maps.next_oxidation(name)
-                .and_then(|n| b.table.block_by_name(n))
-        }) {
-            return Some(b.table.with_properties_of(next, state));
-        }
-        let path = name.strip_prefix("minecraft:")?;
-        let next = if path == "copper_block" {
-            "exposed_copper".to_owned()
-        } else if let Some(rest) = path.strip_prefix("exposed_") {
-            format!("weathered_{rest}")
-        } else if let Some(rest) = path.strip_prefix("weathered_") {
-            format!("oxidized_{rest}")
-        } else if path.starts_with("oxidized_") || path.starts_with("waxed_") {
-            return None;
-        } else {
-            format!("exposed_{path}")
-        };
-        let block = b.table.block_by_name(&format!("minecraft:{next}"))?;
-        Some(b.table.with_properties_of(block, state))
-    }
-    /// `WeatheringCopper.getPrevious` (and `getFirst` by repeating it) by
-    /// registry naming: the block one oxidation step back.
-    fn copper_previous_name(path: &str) -> Option<String> {
-        if let Some(rest) = path.strip_prefix("oxidized_") {
-            Some(format!("weathered_{rest}"))
-        } else if let Some(rest) = path.strip_prefix("weathered_") {
-            Some(format!("exposed_{rest}"))
-        } else {
-            path.strip_prefix("exposed_").map(|rest| {
-                if rest == "copper" {
-                    "copper_block".to_owned()
-                } else {
-                    rest.to_owned()
-                }
-            })
-        }
-    }
-    /// One oxidation step back, or all of them: the world's
-    /// `neoforge:oxidizables` inverse (`DataMapHooks.getPreviousOxidizedStage`)
-    /// first, else by registry naming.
-    fn copper_stepped(&self, state: BlockStateId, all_the_way: bool) -> Option<BlockStateId> {
-        let b = self.b;
-        let previous = |name: &str| -> Option<String> {
-            b.read_block_maps(|maps| maps.previous_oxidation(name).map(str::to_owned))
-                .or_else(|| {
-                    let path = Self::copper_previous_name(name.strip_prefix("minecraft:")?)?;
-                    Some(format!("minecraft:{path}"))
-                })
-        };
-        let start: &str = &b.table.info(b.block(state)).name;
-        let name = if all_the_way {
-            first_stage(start, previous)?
-        } else {
-            previous(start)?
-        };
-        let block = b.table.block_by_name(&name)?;
-        Some(b.table.with_properties_of(block, state))
     }
     /// `LightningBolt.clearCopperOnLightningStrike`: the struck copper goes
     /// back to unoxidized, then 3 to 5 random walks of up to 8 steps each
@@ -1773,7 +1716,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         if !(weathering || waxed) {
             return;
         }
-        if weathering && let Some(first) = self.copper_stepped(state, true) {
+        if weathering && let Some(first) = b.first_weathering_stage(state) {
             self.set_block_and_update(struck, first);
         }
         for _ in 0..self.rand_int(3) + 3 {
@@ -1791,7 +1734,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                     if b.data(state)
                         .implements(super::classes::Interface::WeatheringCopper)
                     {
-                        if let Some(previous) = self.copper_stepped(state, false) {
+                        if let Some(previous) = b.weathering_previous(state) {
                             self.set_block_and_update(candidate, previous);
                         }
                         self.level_event(3002, candidate, -1);
@@ -1845,59 +1788,89 @@ pub struct Precipitation {
 }
 
 impl Behaviours {
+    /// `WeatheringCopper.getAge`, in vanilla weather-state order. No age for
+    /// a block that does not implement WeatheringCopper, including waxed variants.
+    pub fn weathering_age(&self, state: BlockStateId) -> Option<u8> {
+        let data = self.data(state);
+        data.implements(super::classes::Interface::WeatheringCopper)
+            .then_some(data.weather)
+    }
+
+    /// `WeatheringCopper.getNext`: the world's `neoforge:oxidizables` mapping
+    /// first; otherwise the next vanilla stage, with shared properties copied.
+    pub fn weathering_next(&self, state: BlockStateId) -> Option<BlockStateId> {
+        if let Some(next) = self.mapped(state, super::BlockMaps::next_oxidation) {
+            return Some(next);
+        }
+        self.weathering_age(state)?;
+        let path = self.table.name(state).strip_prefix("minecraft:")?;
+        let next = if path == "copper_block" {
+            "exposed_copper".to_owned()
+        } else if let Some(rest) = path.strip_prefix("exposed_") {
+            format!("weathered_{rest}")
+        } else if let Some(rest) = path.strip_prefix("weathered_") {
+            format!("oxidized_{rest}")
+        } else if path.starts_with("oxidized_") || path.starts_with("waxed_") {
+            return None;
+        } else {
+            format!("exposed_{path}")
+        };
+        let block = self.table.block_by_name(&format!("minecraft:{next}"))?;
+        Some(self.table.with_properties_of(block, state))
+    }
+
+    /// `WeatheringCopper.getPrevious`: the world's `neoforge:oxidizables`
+    /// inverse first; otherwise the previous vanilla stage, with shared properties copied.
+    pub fn weathering_previous(&self, state: BlockStateId) -> Option<BlockStateId> {
+        let name = self.weathering_previous_name(self.table.name(state))?;
+        let block = self.table.block_by_name(&name)?;
+        Some(self.table.with_properties_of(block, state))
+    }
+
+    fn weathering_previous_name(&self, name: &str) -> Option<String> {
+        if let Some(mapped) =
+            self.read_block_maps(|maps| maps.previous_oxidation(name).map(str::to_owned))
+        {
+            return Some(mapped);
+        }
+        let path = name.strip_prefix("minecraft:")?;
+        let data = self.block_data(self.table.block_by_name(name)?);
+        if !data.implements(super::classes::Interface::WeatheringCopper) {
+            return None;
+        }
+        let previous = if let Some(rest) = path.strip_prefix("oxidized_") {
+            format!("weathered_{rest}")
+        } else if let Some(rest) = path.strip_prefix("weathered_") {
+            format!("exposed_{rest}")
+        } else {
+            let rest = path.strip_prefix("exposed_")?;
+            if rest == "copper" {
+                "copper_block".to_owned()
+            } else {
+                rest.to_owned()
+            }
+        };
+        Some(format!("minecraft:{previous}"))
+    }
+
+    fn first_weathering_stage(&self, state: BlockStateId) -> Option<BlockStateId> {
+        let name = first_stage(self.table.name(state), |name| {
+            self.weathering_previous_name(name)
+        })?;
+        let block = self.table.block_by_name(&name)?;
+        Some(self.table.with_properties_of(block, state))
+    }
+
     /// Run due scheduled ticks for the level's current game time, in vanilla
     /// order: block ticks then fluid ticks (65536 each at most).
     pub fn tick_scheduled<L: LevelAccess + ?Sized>(&self, level: &mut L, ticks: &mut Ticks) {
-        let time = level.game_time();
-        ticks.handling_tick = true;
-        {
-            let level_ref: &L = level;
-            if ticks
-                .blocks
-                .begin_tick(time, 65536, |chunk: ChunkPos| {
-                    level_ref.is_ticking_chunk(chunk)
-                })
-                .is_err()
-            {
-                ticks.handling_tick = false;
+        for fluids in [false, true] {
+            if !self.scheduled_begin(level, ticks, fluids) {
                 return;
             }
+            while self.scheduled_step(level, ticks, fluids) {}
+            self.scheduled_finish(ticks, fluids);
         }
-        while let Ok(Some(tick)) = ticks.blocks.next_tick() {
-            let mut sim = self.sim(level, ticks);
-            let state = sim.state(tick.pos);
-            sunrise_threads::work::set_chunk(tick.pos.x >> 4, tick.pos.z >> 4);
-            sunrise_threads::work::set_block(self.block(state).0);
-            if u32::from(self.block(state).0) == tick.kind.0 {
-                sim.tick_due_block(state, tick.pos);
-            }
-        }
-        let _ = ticks.blocks.finish_tick();
-        {
-            let level_ref: &L = level;
-            if ticks
-                .fluids
-                .begin_tick(time, 65536, |chunk: ChunkPos| {
-                    level_ref.is_ticking_chunk(chunk)
-                })
-                .is_err()
-            {
-                ticks.handling_tick = false;
-                return;
-            }
-        }
-        while let Ok(Some(tick)) = ticks.fluids.next_tick() {
-            let mut sim = self.sim(level, ticks);
-            let state = sim.state(tick.pos);
-            sunrise_threads::work::set_chunk(tick.pos.x >> 4, tick.pos.z >> 4);
-            sunrise_threads::work::set_block(self.block(state).0);
-            let fluid = self.fluid(state).kind();
-            if TickTypeId(fluid.tick_id()) == tick.kind {
-                sim.fluid_tick(tick.pos);
-            }
-        }
-        let _ = ticks.fluids.finish_tick();
-        ticks.handling_tick = false;
     }
     /// `tick_scheduled` one tick at a time, for a caller that must act on
     /// each tick's side effects before the next runs (as vanilla runs them
@@ -1913,16 +1886,29 @@ impl Behaviours {
         let time = level.game_time();
         ticks.handling_tick = true;
         let level_ref: &L = level;
+        let hold_blocks = !fluids && level_ref.has_held_block_ticks();
         let queue = if fluids {
             &mut ticks.fluids
         } else {
             &mut ticks.blocks
         };
-        let ok = queue
-            .begin_tick(time, 65536, |chunk: ChunkPos| {
+        let ok = if hold_blocks {
+            queue.begin_tick_where(
+                time,
+                65536,
+                |chunk: ChunkPos| level_ref.is_ticking_chunk(chunk),
+                |tick| {
+                    let state = level_ref.block_state(tick.pos);
+                    u32::from(self.block(state).0) != tick.kind.0
+                        || !level_ref.hold_block_tick(state)
+                },
+            )
+        } else {
+            queue.begin_tick(time, 65536, |chunk: ChunkPos| {
                 level_ref.is_ticking_chunk(chunk)
             })
-            .is_ok();
+        }
+        .is_ok();
         if !ok {
             ticks.handling_tick = false;
         }
@@ -1948,15 +1934,25 @@ impl Behaviours {
                 sim.fluid_tick(tick.pos);
             }
         } else {
-            let Ok(Some(tick)) = ticks.blocks.next_tick() else {
+            let Some(tick) = ticks.blocks.peek_next_tick() else {
                 return false;
             };
-            let mut sim = self.sim(level, ticks);
-            let state = sim.state(tick.pos);
+            let state = level.block_state(tick.pos);
+            let block = self.block(state);
             sunrise_threads::work::set_chunk(tick.pos.x >> 4, tick.pos.z >> 4);
-            sunrise_threads::work::set_block(self.block(state).0);
-            if u32::from(self.block(state).0) == tick.kind.0 {
-                sim.tick_due_block(state, tick.pos);
+            sunrise_threads::work::set_block(block.0);
+            let matches = u32::from(block.0) == tick.kind.0;
+            if matches && level.has_held_block_ticks() && level.hold_block_tick(state) {
+                // Park it before marking it as run. A removed chunk has no queue
+                // in which to park it, but its block body must still not run.
+                if !ticks.blocks.hold_next_tick() {
+                    let _ = ticks.blocks.next_tick();
+                }
+            } else {
+                let _ = ticks.blocks.next_tick();
+                if matches {
+                    self.sim(level, ticks).tick_due_block(state, tick.pos);
+                }
             }
         }
         true
@@ -1977,7 +1973,7 @@ impl Behaviours {
     /// is the minimum Y of the lowest such section from `min_y` up, as the
     /// chunk is now: vanilla asks as it reaches each section, so the ticks of
     /// the sections below count.
-    pub fn tick_chunk_random<L: LevelAccess + ?Sized>(
+    pub fn tick_chunk_random<L: LevelAccess>(
         &self,
         level: &mut L,
         ticks: &mut Ticks,
@@ -1993,7 +1989,7 @@ impl Behaviours {
     /// as its random tick would do nothing. The draws are the same. After a
     /// position that did tick, the section is asked for again (its blocks may
     /// have changed): a mask is only trusted for the blocks as they are.
-    pub fn tick_chunk_random_masked<L: LevelAccess + ?Sized>(
+    pub fn tick_chunk_random_masked<L: LevelAccess>(
         &self,
         level: &mut L,
         ticks: &mut Ticks,
@@ -2009,9 +2005,7 @@ impl Behaviours {
         for _ in 0..speed {
             if level.random().next_int_bound(48).unwrap_or(1) == 0 {
                 let pos = ticks.block_random_pos(min_x, 0, min_z, 15);
-                if let Some(info) = level.precipitation(pos) {
-                    self.sim(level, ticks).precipitation_tick(info);
-                }
+                self.tick_precipitation(level, ticks, pos);
             }
         }
         let mut from = level.min_y();

@@ -87,40 +87,39 @@ impl Game<'_> {
         }
         true
     }
-    /// `LivingEntity.getItemBlockingWith` and the inputs of `applyItemBlocking`
-    /// for an attack from `from` (`DamageSource.getSourcePosition`).
+    /// `LivingEntity.getItemBlockingWith`: the blocking component of the active
+    /// item after its use delay, shared by damage and the player's body turn.
+    pub(super) fn player_blocking_component(
+        &self,
+    ) -> Option<std::borrow::Cow<'_, sunrise_client::items::BlocksAttacks>> {
+        let (slot, ticks) = self.using?;
+        let component = self.blocks_attacks(self.stack_in(slot)?)?;
+        block_delay_passed(&component, ticks).then_some(component)
+    }
+
+    /// Inputs of `applyItemBlocking` for an attack from `from` (`DamageSource.getSourcePosition`).
     pub(super) fn player_blocking(
         &self,
         from: Option<[f64; 3]>,
         damage_type: &str,
         pierce: bool,
     ) -> Option<Blocking> {
-        let (slot, ticks) = self.using?;
-        let component = self.blocks_attacks(self.stack_in(slot)?)?;
-        if !block_delay_passed(&component, ticks) {
-            return None;
-        }
+        let component = self.player_blocking_component()?;
         let tags = &self.stations().enchantments.damage_tags;
         let matches = |spec: &str| match spec.strip_prefix('#') {
             Some(tag) => tags.get(tag).is_some_and(|t| t.contains(damage_type)),
             None => spec == damage_type,
         };
         let p = self.player.as_ref()?;
+        // LivingEntity.applyItemBlocking: Math.acos of the flattened direction against
+        // calculateViewVector(0, yHeadRot), or (float)Math.PI with no source position.
         let angle = match from {
-            Some(src) => {
-                // calculateViewVector(0, yHeadRot) against the flattened direction.
-                let yaw = (-self.yaw).to_radians();
-                let view = [yaw.sin() as f64, yaw.cos() as f64];
-                let (dx, dz) = (src[0] - p.position.x, src[2] - p.position.z);
-                let len = (dx * dx + dz * dz).sqrt();
-                let to = if len < 1.0e-4 {
-                    [0.0, 0.0]
-                } else {
-                    [dx / len, dz / len]
-                };
-                (to[0] * view[0] + to[1] * view[1]).acos()
-            }
-            None => f64::from(std::f32::consts::PI),
+            Some(src) => sunrise_world::view_direction::blocking_angle(
+                sunrise_core::geometry::Vec3::new(src[0], src[1], src[2]),
+                p.position,
+                self.yaw,
+            ),
+            None => sunrise_world::view_direction::BLOCKING_FALLBACK_ANGLE,
         };
         let (threshold, base, factor) = component.item_damage;
         Some(Blocking {
@@ -175,17 +174,19 @@ impl Game<'_> {
             && let Some(sound) = &component.block_sound
         {
             let pitch = 0.8 + self.world.random.next_float() * 0.4;
-            self.audio.play(sound, at, 1.0, pitch);
+            self.play_audio(sound, at, 1.0, pitch);
         }
         // BlocksAttacks.hurtBlockingItem counts use even when nothing is blocked.
         if !outcome.blocking_item_used {
             return;
         }
-        if self.remote.is_none() {
+        // `ItemStack.hurtAndBreak` does nothing for `hasInfiniteMaterials`, its
+        // `ITEM_USED` award included: a creative player's shield counts no use.
+        if self.remote.is_none() && !self.creative {
             self.award_stat("used", &stack.item, 1);
         }
-        // ItemDamageFunction.apply (or what a native mod set, kept only for a hit
-        // the event left blocked), then hurtAndBreak.
+        // Component wear can apply even when no damage was blocked. A mod's wear
+        // override applies only when the hook leaves the hit blocked.
         let item_damage = outcome.shield_damage;
         if item_damage > 0 && !self.creative {
             let (updated, broken) = self.damage_stack(&stack, item_damage, true);
@@ -200,6 +201,7 @@ impl Game<'_> {
                         sunrise_core::equipment_slot::EquipmentSlot::MainHand
                     };
                     self.player_equipment_broke(hand, &broken);
+                    self.player_item_destroyed(&stack, self.item_slot_hand(slot));
                     self.award_stat("broken", &broken.item, 1);
                     return;
                 }
@@ -338,7 +340,7 @@ impl Game<'_> {
             self.stop_active_item_use();
             if let Some(sound) = &component.disabled_sound {
                 let pitch = 0.8 + self.world.random.next_float() * 0.4;
-                self.audio.play(sound, at, 0.8, pitch);
+                self.play_audio(sound, at, 0.8, pitch);
             }
         }
     }

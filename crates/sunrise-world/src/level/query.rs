@@ -199,8 +199,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         state: BlockStateId,
         pos: BlockPos,
     ) -> super::data::ShapeInfo {
-        // A block entity's published shape stands over the declared one.
-        if let Some(shape) = self.level.published_collision_shape(pos, state) {
+        if let Some(shape) = self.signals().positioned_collision(pos, state) {
             return super::data::analyse_shape(&shape).unwrap_or_default();
         }
         if self.b.facts(state).shape >= 0 {
@@ -216,7 +215,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         }
     }
     /// `Block.canSupportRigidBlock(level, below)`.
-    pub fn can_support_rigid_block(&self, pos: BlockPos) -> bool {
+    pub(crate) fn can_support_rigid_block(&self, pos: BlockPos) -> bool {
         self.signals().can_support_rigid_block(pos)
     }
     /// Rigid support from the neighbour state supplied by a shape update,
@@ -225,14 +224,14 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         self.signals().can_support_rigid_block_on(pos, state)
     }
     /// `Block.canSupportCenter(level, pos, direction)`.
-    pub fn can_support_center(&self, pos: BlockPos, direction: Direction) -> bool {
+    pub(crate) fn can_support_center(&self, pos: BlockPos, direction: Direction) -> bool {
         self.signals().can_support_center(pos, direction)
     }
-    pub fn is_empty_block(&self, pos: BlockPos) -> bool {
+    pub(crate) fn is_empty_block(&self, pos: BlockPos) -> bool {
         self.signals().is_empty_block(pos)
     }
     /// `LevelReader.isWaterAt`: the fluid at `pos` is in the water tag.
-    pub fn is_water_at(&self, pos: BlockPos) -> bool {
+    pub(crate) fn is_water_at(&self, pos: BlockPos) -> bool {
         self.signals().is_water_at(pos)
     }
 }
@@ -241,6 +240,12 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
 impl<L: LevelAccess + ?Sized> Sim<'_, L> {
     pub fn sturdy(&self, pos: BlockPos, direction: Direction) -> bool {
         self.signals().sturdy(pos, direction)
+    }
+    pub(crate) fn collision_face_full_at(&self, pos: BlockPos, direction: Direction) -> bool {
+        self.signals().collision_face_full_at(pos, direction)
+    }
+    pub(crate) fn multiface_can_attach_at(&self, pos: BlockPos, direction: Direction) -> bool {
+        self.signals().multiface_can_attach_at(pos, direction)
     }
     pub fn is_redstone_conductor(&self, state: BlockStateId, _pos: BlockPos) -> bool {
         self.signals().is_redstone_conductor(state, _pos)
@@ -370,21 +375,61 @@ impl<L: super::signal_access::SignalAccess + ?Sized> Signals<'_, L> {
             .is_face_sturdy(&mut world, [pos.x, pos.y, pos.z], direction, support)
             .ok()
     }
-    /// `isFaceSturdy` of a block whose block entity published its shape: that shape stands
-    /// over the declared one. None for every other cell.
-    fn published_support(
+    /// Position-specific collision overrides the ordinary cached shape and its metadata.
+    /// A publication wins over the declared default, even if that default has an offset.
+    pub(super) fn positioned_collision(
+        &self,
+        pos: BlockPos,
+        state: BlockStateId,
+    ) -> Option<VoxelShape> {
+        self.level
+            .published_collision_shape(pos, state)
+            .or_else(|| {
+                let limits = self.b.facts(state).collision_offset?;
+                let shape = self.b.collision_shape(state)?;
+                let offset = sunrise_core::random::column_offset(limits, pos.x, pos.z);
+                Some(crate::collision::translate_shape(shape, offset))
+            })
+    }
+
+    /// `isFaceSturdy` when the block's collision depends on its column or its block entity.
+    fn positioned_support(
         &self,
         pos: BlockPos,
         state: BlockStateId,
         direction: Direction,
         support: SupportType,
     ) -> Option<bool> {
-        let shape = self.level.published_collision_shape(pos, state)?;
+        let shape = self.positioned_collision(pos, state)?;
         Some(support.is_supporting(&shape, direction).unwrap_or(false))
+    }
+    /// `Block.isFaceFull(state.getCollisionShape(level, pos), direction)` of the cell at `pos`.
+    pub(crate) fn collision_face_full_at(&self, pos: BlockPos, direction: Direction) -> bool {
+        let state = self.state(pos);
+        match self.positioned_collision(pos, state) {
+            Some(shape) => super::data::analyse_shape(&shape)
+                .is_ok_and(|info| info.full_faces & (1 << direction as u8) != 0),
+            None => self.b.collision_face_full(state, direction),
+        }
+    }
+    /// `MultifaceBlock.canAttachTo(level, direction, pos, state)` for the cell at `pos`.
+    pub(crate) fn multiface_can_attach_at(&self, pos: BlockPos, direction: Direction) -> bool {
+        let state = self.state(pos);
+        let face = direction.opposite();
+        match self.positioned_collision(pos, state) {
+            Some(shape) => {
+                SupportType::Full
+                    .is_supporting(&shape, face)
+                    .unwrap_or(false)
+                    || super::data::analyse_shape(&shape)
+                        .is_ok_and(|info| info.full_faces & (1 << face as u8) != 0)
+            }
+            None => self.b.multiface_can_attach(state, direction),
+        }
     }
     pub fn sturdy(&self, pos: BlockPos, direction: Direction) -> bool {
         let state = self.state(pos);
-        if let Some(sturdy) = self.published_support(pos, state, direction, SupportType::Full) {
+        if let Some(sturdy) = self.positioned_support(pos, state, direction, SupportType::Full) {
             return sturdy;
         }
         if let Some(sturdy) = self.moving_block_supports(pos, state, direction, SupportType::Full) {
@@ -396,14 +441,15 @@ impl<L: super::signal_access::SignalAccess + ?Sized> Signals<'_, L> {
         self.b.is_face_sturdy(self.support_state(pos), direction)
     }
     /// `Block.canSupportRigidBlock(level, below)`.
-    pub fn can_support_rigid_block(&self, pos: BlockPos) -> bool {
+    pub(crate) fn can_support_rigid_block(&self, pos: BlockPos) -> bool {
         self.can_support_rigid_block_on(pos, self.state(pos))
     }
     /// `state.isFaceSturdy(level, pos, UP, RIGID)`: `state` with the live block
     /// entity at `pos`, as `DiodeBlock.canSurviveOn` asks of a shape update's
     /// neighbour. A retracting piston's base is a `moving_piston` here.
     pub(super) fn can_support_rigid_block_on(&self, pos: BlockPos, state: BlockStateId) -> bool {
-        if let Some(rigid) = self.published_support(pos, state, Direction::Up, SupportType::Rigid) {
+        if let Some(rigid) = self.positioned_support(pos, state, Direction::Up, SupportType::Rigid)
+        {
             return rigid;
         }
         if let Some(rigid) =
@@ -418,14 +464,14 @@ impl<L: super::signal_access::SignalAccess + ?Sized> Signals<'_, L> {
             .is_face_sturdy_rigid(self.support_state_for(pos, state), Direction::Up)
     }
     /// `Block.canSupportCenter(level, pos, direction)`.
-    pub fn can_support_center(&self, pos: BlockPos, direction: Direction) -> bool {
+    pub(crate) fn can_support_center(&self, pos: BlockPos, direction: Direction) -> bool {
         let state = self.support_state(pos);
         if direction == Direction::Down && self.b.in_set(state, &self.b.tags.unstable_bottom_center)
         {
             return false;
         }
         let raw = self.state(pos);
-        if let Some(center) = self.published_support(pos, raw, direction, SupportType::Center) {
+        if let Some(center) = self.positioned_support(pos, raw, direction, SupportType::Center) {
             return center;
         }
         if let Some(center) = self.moving_block_supports(pos, raw, direction, SupportType::Center) {
@@ -436,15 +482,15 @@ impl<L: super::signal_access::SignalAccess + ?Sized> Signals<'_, L> {
         }
         self.b.is_face_sturdy_center(state, direction)
     }
-    pub fn is_empty_block(&self, pos: BlockPos) -> bool {
+    pub(crate) fn is_empty_block(&self, pos: BlockPos) -> bool {
         self.b.is_air(self.state(pos))
     }
     /// `LevelReader.isWaterAt`: the fluid at `pos` is in the water tag.
-    pub fn is_water_at(&self, pos: BlockPos) -> bool {
+    pub(crate) fn is_water_at(&self, pos: BlockPos) -> bool {
         self.b.is_water_fluid(self.b.fluid(self.state(pos)).kind())
     }
     pub fn is_redstone_conductor(&self, state: BlockStateId, _pos: BlockPos) -> bool {
-        self.b.has_flag(state, state_flags::CONDUCTOR)
+        self.b.is_redstone_conductor(state)
     }
     pub(crate) fn above_state(&self, pos: BlockPos) -> BlockStateId {
         self.state(above(pos))

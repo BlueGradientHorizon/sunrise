@@ -58,6 +58,22 @@ impl<L: LevelAccess + ?Sized> FeatureWorld for LevelFeatureWorld<'_, '_, L> {
 }
 
 impl<L: LevelAccess + ?Sized> PlacementContext for LevelFeatureWorld<'_, '_, L> {
+    fn block_registry(&self) -> Option<&'static crate::registry::BlockRegistry> {
+        Some(self.features.registry())
+    }
+    fn has_template_liquid_override(&self, state: BlockStateId) -> bool {
+        self.sim.level.has_place_liquid_part(state)
+    }
+    fn place_template_liquid(
+        &mut self,
+        position: [i32; 3],
+        state: BlockStateId,
+        fluid: FluidState,
+    ) -> Option<bool> {
+        self.sim
+            .level
+            .place_liquid(self.sim.ticks, pos(position), state, fluid)
+    }
     /// `BlockEntity.loadWithComponents` on the block a template just placed.
     fn set_block_entity(
         &mut self,
@@ -301,6 +317,21 @@ impl<L: LevelAccess + ?Sized> PlacementContext for LevelFeatureWorld<'_, '_, L> 
             .and_then(|name| self.features.biome_id(name))
             .ok_or(PlacementQueryError::Unavailable)
     }
+    fn biome_key(&mut self, position: [i32; 3]) -> Result<mod_api::BiomeKey, PlacementQueryError> {
+        self.sim
+            .level
+            .biome_name(pos(position))
+            .and_then(|name| {
+                self.sim
+                    .b
+                    .mod_biome_keys()
+                    .current()
+                    .view(name)
+                    .ok()
+                    .map(|view| view.key().clone())
+            })
+            .ok_or(PlacementQueryError::Unavailable)
+    }
     fn block_state(&mut self, position: [i32; 3]) -> Result<BlockStateId, PlacementQueryError> {
         Ok(self.sim.state(pos(position)))
     }
@@ -310,6 +341,13 @@ impl<L: LevelAccess + ?Sized> PlacementContext for LevelFeatureWorld<'_, '_, L> 
         tag: &str,
     ) -> Result<bool, PlacementQueryError> {
         let state = self.sim.state(pos(position));
+        Ok(self.in_tag(state, tag))
+    }
+    fn state_matches_tag(
+        &mut self,
+        state: BlockStateId,
+        tag: &str,
+    ) -> Result<bool, PlacementQueryError> {
         Ok(self.in_tag(state, tag))
     }
     fn max_y(&mut self) -> Result<i32, PlacementQueryError> {

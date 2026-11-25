@@ -5,63 +5,108 @@ Create a project, edit its JSON files, then build and run it.
 
 ## Create and package your mod
 
+Install the tool first ([Install the mod tool](../start/install-tool.md)).
+
 ```sh
-# A prebuilt binary for Linux x86_64/aarch64, macOS x86_64/arm64 or Windows x86_64:
-cargo binstall --git https://github.com/sunrise-org/sunrise cargo-sunrise-mod
-# Or build it from source, without cargo-binstall:
-cargo install --git https://github.com/sunrise-org/sunrise cargo-sunrise-mod
 cargo sunrise-mod new my-mod        # a content mod: manifest, one block with its model, loot and recipe
 cd my-mod
 cargo sunrise-mod run               # build my-mod.smod, then start the game with it turned on
 cargo sunrise-mod build             # only build: target/sunrise-mod/my_mod.smod
-cargo sunrise-mod check target/sunrise-mod/my_mod.smod   # the registry's checks; --json for JSON
+cargo sunrise-mod check             # validate the project before release
 ```
 
 - `new <path> [--name "Name"]` writes the content template. `--template native` writes
-  a flat native mod instead, and `--template wasm` a wasm one: `sunrise-mod.toml`, root `Cargo.toml`
+  a flat native mod instead: `sunrise-mod.toml`, root `Cargo.toml`
   and `src/lib.rs`, and empty `assets/` and `data/` directories. The mod is pinned to the build of the current
-  Nightly (players have it), or to `--sunrise`'s: `nightly-<YYYY-MM-DD>`, or a commit sha (7 hex digits are enough when
-  they name one build). A native mod pins it in `[native] sunrise`, a wasm mod in `Cargo.toml`'s
-  `[package.metadata.sunrise] sdk`. `Cargo.toml` names the API by path,
-  `sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }`, the only form the tool and the launcher
-  take. Every other form is refused under `E_SDK_SOURCE`, naming why: the old git form, a version alone (Cargo
+  Nightly (players have it), or to `--sunrise`'s: a game release's tag (`nightly-<YYYY-MM-DD>`, a Stable tag such as
+  `26.3-0.1.0`, or `dev-<YYYY-MM-DD>-<short sha>`), or a commit sha (7 hex digits are enough when they name one build). The native mod pins it in `[native] sunrise`. `Cargo.toml` names the API by path,
+  `sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }`, the only form a build
+  takes. Every other form is refused under `E_SDK_SOURCE`, naming why: the old git form, a version alone (Cargo
   would take the crate from crates.io, where anyone can publish its name), another source, or another path. `new` fetches that build's SDK into `.sunrise/sdk/`,
   and every command that compiles the mod fetches it again when it is missing or another build's, so a fresh clone
   works after one command; your editor needs that first command too. `.sunrise/` is in the template's `.gitignore`
   and is never packed. The fetch checks Sunrise's signature on the release and every file against its `sdk.json`;
   `SUNRISE_SDK_BASE` (a URL or a folder) reads the releases from a mirror instead. When that Nightly has no SDK,
-  `new` says so and asks for `--sunrise`. `update` repins a native mod the same way
+  `new` asks for `--sunrise`. `pin [<build>]` moves a native mod to another build (the current Nightly by default)
   ([the SDK in a mod project](../reference/sdk/03-in-a-project.md)). Its root `impl Hooks` uses
-  `#[mod_api::sunrise_mod]`. Compile it with `sunrise-launcher native-build <path> --trust-native-code`
+  `#[mod_api::sunrise_mod]`. Compile it with `cargo sunrise-mod build`
   ([writing hooks](../start/writing-hooks.md)). Any other `--template` is refused.
 - `build` packs the checked project into `target/sunrise-mod/<id>.smod`: `sunrise-mod.toml`, `assets/`,
-  `data/`, optional `icon.png` and, for code, the root Cargo project. It validates content with the same
-  checks as the game; without `--wasm`, it does not compile code. Native code requires both `Cargo.toml` and `[native]`; inconsistent
-  declarations and a manifest without capability `registries` are refused.
-- `run` builds, then starts `sunrise-client` (on `PATH`, or `--game PATH`, or `SUNRISE_CLIENT`) with
-  `--dev-mod target/sunrise-mod/<id>.smod`, always on. Arguments after `--` go to the game. The game reads content once
-  at start, so rebuild and run again after an edit.
-- `check <file>` runs what the registry runs: the file's size and SHA-256, its manifest and content, and a signature
-  with `--key <public key> --signature <file>.minisig`. It reads `.smod`, `.spack`, resource pack `.zip`
-  and `.sshader` files.
-- `registry build|review|check|list|release|page` is the registry repository's CI ([the registry index](../reference/registry-index.md)).
-- `use-jar <path>` records an original Java jar as an external asset/data source, without copying it into the mod
-  ([Java jars as external assets](#java-jars-as-external-assets)).
+  `data/`, optional `icon.png` and, for code, the root Cargo project. It reads content with the game's own package
+  rules and runs the reference checks of `check` below. If `target/` or `target/sunrise-mod/` is a symlink, the build
+  refuses it without touching the previous package. Otherwise, once the build reaches output cleanup, it removes the
+  previous `<id>.smod` before running the reference checks. Earlier failures, such as a manifest or SDK error,
+  can leave the previous package in place. A content build compiles nothing; a native build compiles against the pinned SDK. Native code requires
+  both `Cargo.toml` and `[native]`; inconsistent declarations and a manifest without capability `registries` are refused.
+- For content mods, `run` builds, then starts `sunrise-client` (on `PATH`, or `--game PATH`, or `SUNRISE_CLIENT`) with
+  `--dev-mod target/sunrise-mod/<id>.smod`, always on. Native projects use the pinned SDK's game. Use `--jars <dir>`
+  to choose a folder of [original Java jars](#java-jars-as-external-assets). Arguments after `--` go to the game.
+  The game reads content once at start, so run again after an edit.
+- `check` in a project folder runs the package rules, the render pipeline shader checks and offline reference checks.
+  It checks references to IDs in namespaces the manifest owns, not to vanilla or other mods. It checks these forms:
+  - Models in blockstate `variants` and `multipart`, model `parent` and `textures` fields, and model references in
+    item definitions. The game's model decoder reads one model and ignores trailing input.
+  - Ingredients and results in built-in shaped, shapeless, cooking, stonecutting, smithing and transmute recipes.
+    Recipe `#tag` ingredients, custom recipe types, components and other opaque data are not checked.
+  - Tag `values` are checked for direct IDs under `tags/block`, `tags/item`, `tags/fluid` (including
+    `flowing_` forms) and `tags/entity_type`. Required nested `#tag` references are checked in those folders
+    plus `tags/worldgen/biome` and `tags/worldgen/structure`. Tag files can be in any namespace, including
+    `minecraft`; other tag folders, optional entries and removals are not checked.
+  - Loot item entries' `name` and block-state conditions' `block` fields. Recipes, tags, loot tables and loot pools
+    that `neoforge:conditions` may disable are left alone.
+
+  A missing reference is an **error** (exit 1) only when the tool has enough information to confirm it. When a
+  manifest lists `[[jar]]`, `check` and `build` read each jar from the local jar store (fetching any missing jar
+  from Modrinth) and resolve references, blockstates, loot tables, item definitions and English names against the
+  mod and its jars together. If a jar cannot be fetched (for example offline), the tool prints a note and skips
+  the checks that jar could satisfy; `build` still succeeds offline. Otherwise, it can **warn** without failing: a
+  dependency's jar or atlas source may supply the resource, an inline composite child may override a texture, or a
+  local recipe filter may remove the recipe or swap the reference.
+  The tool does not fetch dependencies or check registry entries declared in code.
+  It also checks for blockstates on blocks with `render_shape` set to `MODEL` and warns about missing local loot
+  tables, item definitions or English names, or registry content on a client-only package. Reference diagnostics name
+  the source file, the relevant field or member index, and the ID.
+- `check <file>` reads `.smod`, `.spack`, resource pack `.zip` and `.sshader` files. A `.smod` also
+  needs its [release attestation](../reference/sdk/05-commands.md#check-a-released-package).
+- To release a mod to the registry, follow [Publishing your mod](publish.md).
+- `use-jar <path | modrinth-url | <project> <version>>` records and caches an original Java jar as an external
+  asset/data source, without copying it into the mod ([Java jars as external assets](#java-jars-as-external-assets)).
+
+## Vegetation behaviour is independent of the template
+
+Set `properties.vegetation` to `true` in block JSON or in a code declaration's
+`BlockProperties` to give a block `VegetationBlock` survival, even on a glass or
+stairs template. Placement refuses unsupported ground and a neighbour update
+removes an unsupported plant. The default support is `minecraft:supports_vegetation`
+on both sides. Templates that already inherit `VegetationBlock` keep their own
+checks, such as crop light requirements.
+
+On the server, the soil's `can_sustain_plant` answer decides first. If it returns
+`None`, the plant's `may_place_on` Part can override the ground rule. Neither
+registering a Part for a block nor registering one on a tag changes what kind
+of block it is. The client predicts using the default rule without running these
+server Parts.
 
 ## Declare content in code
 
+For a complete example with Rust and resource files, see
+[Register a block with a model](world/register-a-block.md).
+
 Code mods declare content through `BlocksEvent` and `ItemsEvent`, using API-owned
 `mod_api::Block` and `mod_api::Item` records. Start with `Block::new(id, template)` or
-`Item::new(id, template)`, passing identifier strings, then set the overrides. These records are unvalidated; admission reports malformed values with the content loader's refusal messages.
-These are load-time declarations, not live registry entries. The game admits them
-with the content-file checks, atomically for each namespace, before resources load.
-A block's `item` defaults to true, in code as in a file: `Block::with_item(false)` gives it none. Each mod receives its own declaration
-batch. New identifiers from code—including block entity types and other registrar
-declarations—may use any namespace owned by that mod's manifest. Bare names use
-the mod ID; an explicit owned namespace stays unchanged. An unowned namespace
-refuses registration with a diagnostic naming both the mod and namespace. This
-is identical for native and wasm mods. Attaching a Part to an existing vanilla or
-foreign block or item is a reference, not a new declaration, and remains allowed.
+`Item::new(id, template)`, passing identifier strings, then set the overrides and call
+`event.register(declaration)`. Invalid IDs return a typed `DeclarationError`; the remaining checks
+run before resources load. These are load-time declarations, not live registry entries. The game
+admits them with the content-file checks, atomically for each owner.
+A block's `item` defaults to true, in code as in a file: `Block::with_item(false)` gives it none.
+Code registry declarations keep a valid explicit namespace, regardless of who supplies files
+in it. Bare names use the submitting mod ID. Exact duplicates and reserved built-in keys are
+still refused according to the registry, and diagnostics identify the submitting mod. A host
+cannot re-declare a key already declared by a content package it serves. Files and assets keep
+manifest namespace checks and `served_by` delegation requires `[native] serves_content = true`
+(see [Manifest reference](../reference/manifest.md#sunrise-modtoml)). A host runtime should use
+`context.mods()` to identify the delegating packages it recognizes. Attaching a Part to an
+existing vanilla or foreign block or item is a reference, not a new declaration.
 
 Code declarations carry component patches as `Vec<(String, Option<Tag>)>`:
 `Some(tag)` sets the named component and `None` removes it (without a `!` prefix).
@@ -74,15 +119,17 @@ No declaration conversion runs per tick.
 
 Implement `BlockPart::remove_block` for a block that leaves a support or another
 state behind when removed. This server-only replacement receives the dimension,
-position, removed state and `moved_by_piston`. Answer `Some(state)` to choose the
-replacement, or `None` to keep vanilla's fluid block (air when dry). Only the
-removed block's own Part is called, not the replacement block's Part.
+position, removed state, `moved_by_piston` and `replacement`: the exact state
+written if the listener leaves `answer` unanswered, the fluid's legacy block
+(air when dry, water for a waterlogged block). Answer `Some(state)` to choose a
+different state, or `None` to keep `replacement`. Only the removed block's own Part is called, not the
+replacement block's Part.
 
 The chosen state goes through the normal `setBlock` effects with flags 3, plus
 64 for piston movement. An unknown or unregistered state is refused with a
 reason and the vanilla replacement is written. This covers `Level.removeBlock`,
 not every direct `setBlock` or the separate `destroyBlock` path. The level view
-is read-only while answering, on both native and wasm.
+is read-only while answering.
 
 ## The manifest
 
@@ -97,10 +144,9 @@ license_url = "https://..."  # optional: makes the license a link
 credits = "..."              # optional: thanks, shown under the authors
 homepage = "https://..."     # optional: the Mods screen's Homepage button
 issues = "https://..."       # optional: the Mods screen's Issues button
-api = "0.2"                  # content mods
 side = "both"
-capabilities = ["registries"]
 namespaces = []              # optional: more namespaces the mod's files use (below)
+served_by = "my_runtime"     # optional (content only): native runtime mod with serves_content = true
 
 [properties]                 # optional: values other mods read (reference/manifest.md)
 tier = 3
@@ -108,18 +154,15 @@ tier = 3
 
 The optional fields fill the game's Mods screen, which lists every mod with its icon, name, version, id, license,
 authors, credits and description, as NeoForge's mod list does. A link must be `http` or `https` and at most 2048
-characters; the others are plain text. The screen has no switch: a mod runs or not by what the launcher and
-`sunrise-mods.txt` say.
+characters; the others are plain text. The screen has no switch: a mod runs or not by what
+`sunrise-mods.txt` says ([installing and using mods](../players/installing-mods.md)).
 
-Unknown keys are refused, so a typo is an error, not a silently ignored permission. The shared manifest
-uses exactly `api = "0.2"` and `capabilities = ["registries"]`, with `side = "client"` (the default), `"both"` or `"server"`.
-Code mods add `[native]` for exact build pins and optional raw injections ([Injections](../concepts/injections.md)); their id and version come only
-from this manifest, not Cargo metadata ([Native mods](native-mods/02-the-package.md)). Both content and code mods support `[dependencies]`: use `base = "^1.2"` for a required dependency or
+Unknown keys are refused, so a typo is an error that names the nearest valid key. `side` is `"client"` (the default), `"both"` or `"server"`.
+`api` and `capabilities` are not written: `cargo sunrise-mod build` puts `api = "0.2"` and `capabilities = ["registries"]` into the package. A manifest that does write them must write exactly those values, and is refused with both values otherwise.
+Native code mods add `[native]` for exact build pins. Their id and version come only from this manifest,
+not Cargo metadata ([Native mods](native-mods/02-the-package.md)). Both content and code mods support `[dependencies]`: use `base = "^1.2"` for a required dependency or
 `extra = { version = "^2", optional = true }` for an optional one. Missing required dependencies, incompatible installed versions and cycles refuse startup. Content layers load after their dependencies; an absent optional dependency is ignored. Both kinds may include a fixed-name `icon.png` at the top level, with no
 manifest key: a valid square PNG, at most 512 × 512 pixels and 256 KiB encoded ([Mod files](../reference/manifest.md)).
-Use `cargo sunrise-mod build --wasm` to build a Rust mod as `mod.wasm`. A wasm package
-requires a matching `[wasm]` declaration. Loading refuses an undeclared or missing module, a module
-over 64 MiB, invalid WebAssembly or shared-group structure, or bytes that do not match the declared SHA-512.
 
 ### Java jars as external assets
 
@@ -127,22 +170,36 @@ From a content or native mod's project folder:
 
 ```sh
 cargo sunrise-mod use-jar /path/to/original-mod.jar
+cargo sunrise-mod use-jar https://modrinth.com/mod/<project>/version/<version>
+cargo sunrise-mod use-jar <project> <version>
 ```
 
-The command reads NeoForge or Fabric metadata and appends a `[[jar]]` table to `sunrise-mod.toml` with the original
-`id`, `version` and the exact file's `sha512` (128 lowercase hexadecimal characters). It does not infer identity
-from the filename, rename the Java mod to the Sunrise mod's namespace, or run Java code. An unknown jar, invalid
-identity, unresolved version or file larger than the shared 512 MiB hash limit is refused without changing the manifest.
+When given a Modrinth version page URL or a `<project> <version>` pair, `use-jar` downloads the verified jar from
+Modrinth's CDN into the local jar store before inspecting it. The command reads NeoForge or Fabric metadata and
+appends a `[[jar]]` table to `sunrise-mod.toml` with the original `id`, `version` and the exact file's `sha512`
+(128 lowercase hexadecimal characters). It does not infer identity from the filename, rename the Java mod to the
+Sunrise mod's namespace, or run Java code. An unknown jar, invalid identity, unresolved version or file larger than
+the shared 512 MiB hash limit is refused without changing the manifest.
 
 The original manifest text, comments and existing list order are preserved. Listing the same hash and identity again
 leaves the file byte-for-byte unchanged; a hash already listed with another ID or version is an error to correct,
 not another entry. Use `[[jar]]` tables rather than an inline `jar = [...]` array when adding further jars with the command.
 The list is ordered: new references are appended, not sorted.
 
-Jar bytes stay external. The launcher finds the exact hash locally or asks before downloading that exact file from
-Modrinth. Its `assets/` and `data/` are passive pack layers below the Sunrise mod's own files; a player-local runtime
-cache is not part of the mod package. Do not copy a jar or its extracted files into the mod's source or `.smod`.
-A jar reference supplies assets and data, not the original Java behavior: port that behavior through the mod API.
+`use-jar` stores the exact file as `<sha512>.jar` in the usual game home's `jars/` directory (`SUNRISE_HOME` if set,
+otherwise `sunrise` in your platform's data folder). `check` and `build` read cached jars from that store (fetching
+missing ones from Modrinth when online) so resource references resolve against the mod and its jars together. Run
+`cargo sunrise-mod run` after adding the jar; `run` verifies
+and stages only the jars in your manifest in `target/sunrise-mod/run/home/jars/` before building. The first run copies
+each original while checking its SHA-512, using space for one extra copy per jar. Later runs still verify the original.
+On Unix, `run` reuses a matching staged copy only after checking its link count to confirm it is independent.
+On other platforms, it writes a fresh copy. Editing or replacing the original cannot change the staged bytes.
+Leave the game's `--home` unset to use this development home; the staging path must not go through directory links.
+To read originals from a different folder, supply its `<sha512>.jar` files with `cargo sunrise-mod run --jars <dir>`.
+
+Jar bytes stay external. The original's `assets/` and `data/` are passive pack layers below the Sunrise mod's own
+files. Do not copy a jar or its extracted files into the mod's source or `.smod`. A jar reference supplies assets
+and data, not the original Java behavior: port that behavior through the mod API.
 
 ### Content mods (API 0.2)
 
@@ -155,12 +212,26 @@ NeoForge's `IClientFluidTypeExtensions`; the fluid needs no block, and a recipe 
 object makes it exist in the world: `{"world": {}}` adds the block `<id>:<path>`, a copy of `minecraft:water` that flows
 with vanilla's fluid simulation, and the bucket item `<id>:<path>_bucket`, which needs its model as any item does. `world`
 takes `tick_delay` (1 or more, default 5), `drop_off` (1 to 7, default 1), `slope_find_distance` (1 to 4, default 4),
-`source_conversion` (default false) and `bucket` (default true). The fluid is in no vanilla fluid tag, so entities don't
+`source_conversion` (default false), `bucket` (default true) and `flowing`, the flowing form's id in the fluid's
+namespace and not the fluid's own id (default `<id>:flowing_<path>`). Beside `world`, `bucket_item` names the item that
+holds a bucket of the fluid (`Fluid.getBucket`): the generated bucket's id, in the fluid's namespace, or, for a tank-only
+fluid or one with `"bucket": false`, an item the mod declares itself, which keeps the fluid through its own parts. An
+empty bucket fills to that item from any fluid handler, with the bucket's fill sound, and a generated bucket empties
+back into one. An item no item has, or the game's bucket of another fluid such as `minecraft:water_bucket`, is no
+bucket of it. A fluid file may also state NeoForge's
+`FluidType` numbers, which other mods read through `FluidTypeProperties`: `temperature` and `density` (any signed
+32-bit integer, defaults 300 and 1000), `viscosity` (0 or more, default 1000) and `light_level` (0 to 15, default 0,
+whether or not the fluid has a block). A file without `world` declares no
+fluid by itself; its numbers describe the tank-only fluid a native mod declares in code with `declare_fluid`. The fluid is in no vanilla fluid tag, so entities don't
 swim in it or get pushed by it. In the world it draws its `sprite`, a block atlas texture such as `mymod:block/oil`, times
 its `tint`; with neither it looks like water, and a `tint` alone colours water's textures. A client mod's
-`register_fluid_models` hook collects `mod_api::FluidModel` values with separate flowing and overlay sprites.
-It is collected again before each resource bake, so a resource reload can change model identifiers as well as textures. Far terrain (LOD) omits mod fluids. LAN and dedicated server players play with them when they run the same mods: a client whose mods add different
-content is refused when it joins, with the reason.
+`register_fluid_models` hook accepts `mod_api::FluidModel` values with separate flowing and overlay sprites via
+`event.register(model)`. The hook runs again before each resource bake, so a resource reload can change model
+identifiers as well as textures. Far terrain (LOD) omits mod fluids. LAN and dedicated server players play with
+them when they run the same mods: a client whose mods add different content is refused when it joins, with
+the reason.
+
+#### Join compatibility and package sides
 
 Every Sunrise server checks loaded mods in the configuration phase (`sunrise_protocol::mod_list`, channel
 `sunrise:mod_list`), including when its own list is empty. Only the ids and versions of `side = "both"` mods cross
@@ -172,11 +243,12 @@ server), but it is never compared at join, so players joining need not have it. 
 load when it carries what every joining client must know: registry declarations (`data/<id>/sunrise/`, or blocks,
 items, block entity types and fluids its code declares), a listener on a client-side hook, a part that listens to one,
 a required payload the server sends to clients, or a synced attachment type it declares.
-For attachments, “carries” means **declares**: a server package may use another loaded package A's synced
+For attachments, “carries” means **declares**: a server package may look up and use another loaded package A's synced
 attachment, because clients compare A and decode the value through A. If A is itself a server package, A is the
-declarer refused by name. Attachment load checks declaration conflicts (including foreign namespaces) first,
-then undeclared uses naming the calling package and id, then server-package declarations; no content is admitted
-after a refusal. See [attachments](../concepts/attachments.md) for the shared native and wasm declaration API.
+declarer refused by name. Attachment load checks registration refusals (invalid descriptors, duplicate IDs, and stale
+part-state keys) first, then server-package synced declarations (matched by the declaring package's owner ID
+regardless of attachment namespace); no content is admitted after a refusal. See [attachments](../concepts/attachments.md)
+for the declaration API.
 Assets, lang and data vanilla syncs itself (recipes, loot, tags) are allowed. Where a hook runs is still the hook's own side: the manifest says what a client must have, not where a
 hook runs. A vanilla or other
 non-Sunrise client is refused when the server needs both-side mods, with their names and versions and an English
@@ -193,6 +265,8 @@ check without an extra ping. The server sends its list only to an identified Sun
 either list is empty. Vanilla clients receive no mod-list payload, and clients do not disclose their mod
 identities to servers that have not identified themselves as Sunrise. Nothing here repeats per tick.
 
+#### Blocks
+
 A block names its template and what differs from it:
 
 ```json
@@ -202,11 +276,15 @@ A block names its template and what differs from it:
 ```
 
 A fence gate needs no kind of its own: a block whose template is a vanilla `minecraft:*_fence_gate` is a
-`FenceGateBlock`, with the template wood's open and close sounds. `"open_sound"` and `"close_sound"` (sound event ids,
-such as `"minecraft:block.chain.break"` or a sound of the mod's own `sounds.json`) replace them, as a gate built with its
-own `WoodType` has, and they are what opening by hand, a redstone signal and a wind-charge or other explosion toggle all
-play. Either key needs a `*_fence_gate` template and a `namespace:path` id, or the load fails naming the file; leaving
-both out keeps the wood's sounds.
+`FenceGateBlock`, with the template wood's open and close sounds. `"open_sound"` and `"close_sound"` accept a sound
+event id, such as `"minecraft:block.chain.break"` or a sound of the mod's own `sounds.json`, to replace that sound at
+all three sites. They also accept an object, for example `"open_sound": {"use": "rope:open", "redstone": "rope:powered"}`:
+`use` is a player's interaction (including client prediction), `explosion` is an unpowered gate triggered by an
+explosion, and `redstone` is a power change that changes the open state. A missing site keeps the **template wood's**
+sound, not another site's override. Code declarations use `GateSound::All` or `GateSound::Sites` with
+`on_use`, `on_explosion`, and `on_redstone`. Both keys need a `*_fence_gate` template; unknown sites and invalid
+`namespace:path` sound ids fail the load naming the file and key. Leaving both keys out keeps the wood's sounds.
+Pitch draws, volume, sound source, player exclusion and game events are unchanged.
 
 A block gets a block item of its own id by default. `"item": false` gives it none: pick-block takes nothing and
 `Block.asItem` is air (what a block drops comes from its loot table). `"block_item": "<item id>"` (with `"item": false`) makes the block
@@ -218,6 +296,14 @@ Pick-block takes the block's item by default. `"pick_item": "<item id>"` names a
 `block_item`: vanilla's `getCloneItemStack`, which lets a mature crop pick its seed while `Block.asItem` stays what it
 is (air for `"item": false`). It is an item of the mod or a vanilla one, and the load fails naming the block when no
 such item exists. A sign's wall form picks its sign's item through `wall_block`, so it declares no `pick_item`.
+
+`"suspicious_stew_effects": [{"id": "minecraft:night_vision", "duration": 100}]` makes the block a suspicious stew
+source. Entries are applied in order; duration is in ticks and defaults to 160 when omitted. An unknown mob effect is
+reported when content loads. Native `Block` declarations give the same list as `(effect ID, duration in ticks)` pairs.
+Food & Drinks and Search show one stew for each distinct list, and feeding the block's item to a brown mooshroom
+lets you milk it into that stew. The item must place the block: neither `block_item` nor `pick_item` makes an item
+place it. This does not add a crafting recipe. To craft the stew, supply a `minecraft:crafting_shapeless` recipe with
+the block's item, a bowl and two `#minecraft:mushrooms`, and set `minecraft:suspicious_stew_effects` on the result.
 
 `push_reaction` sets vanilla's `BlockBehaviour.Properties.pushReaction` to `"PUSH_PULL"`, `"PUSH"`, `"POPPED"`, `"IMMOVEABLE"`, or `"IGNORE_ENTITY"`.
 
@@ -238,7 +324,41 @@ covers stay hidden unless it also sets `occludes`.
 of the blocks beside it are drawn, so a thin panel or a block drawn by its block entity on a full-cube template
 doesn't leave a hole in the floor under it. It is not a solid render either, so light passes it as it passes
 leaves: dampened by 1, or not at all if skylight passes down; special template light rules remain inherited.
-Unset or `true` preserves the template's ability to occlude, using the declared outline when one is supplied.
+`occludes: true` occludes whatever the template does, using the declared outline when supplied, otherwise the
+template's published occlusion shape. A full shape is a solid render with light dampening 15; a partial or empty
+shape is not. Unset preserves the template's ability to occlude. Skylight-down and special template light rules
+remain inherited. Partial declared outlines retain the existing directional shape-light occlusion rule.
+
+`offset` takes `NONE`, `XZ` or `XYZ` (`OffsetType` in code drafts).
+`NONE` disables an inherited offset. `XZ` jitters horizontally; `XYZ` also moves downward.
+An explicit mode defaults to maximum horizontal displacement 0.25 and, for `XYZ`, maximum downward
+displacement 0.2. Optional `max_horizontal_offset` (finite 0 to 0.25) and `max_vertical_offset`
+(finite 0 to 0.2) set these limits; `XZ` ignores the vertical limit. Without `offset`, the template's
+mode and default limits are inherited, and supplied maxima adjust that mode without enabling one.
+
+The model and **declared** outline, collision and interaction shapes follow the same column seed
+(`BlockState.getOffset`, x and z only), including declared entity-context variants. Shape caches stay
+block-local; the position is applied at query time. The occlusion cache uses the outline after applying
+its column offset at `(0, 0, 0)`, as vanilla's state cache does.
+This works on both sides and does not require a hook.
+
+`instrument` takes any vanilla `NoteBlockInstrument` constant name (for example `HARP` or `FLUTE`);
+code declarations use `NoteInstrument`. A note block reads ordinary instruments from the block
+below it and head instruments (`ZOMBIE` through `CUSTOM_HEAD`) from the block above it. `CUSTOM_HEAD`
+is silent without a skull block entity above the note block with a `note_block_sound`.
+`ignited_by_lava` sets lava's ignition flag; a subscribed per-position `ignited_by_lava` hook still answers
+first. `replaceable` controls replacement by block placement and by features that check replaceability;
+the usual refusal when the hand holds the block's own item still applies. `skip_same_block_faces: true`
+hides model faces against any state of this same block, as glass does; `false` disables the template's render
+definition skip rule. Leaf and ice graphics options can still hide faces based on the template class.
+Unset values inherit the template. These are load-time properties on both sides, with no new hook.
+
+`spawn_rule` sets which mobs spawn on the block (`BlockBehaviour.Properties.isValidSpawn`): `default` is vanilla's
+(a sturdy top face and light emission below 14), `always` and `never` answer for every mob, and `ocelot_or_parrot`
+only for those two. It is read once at load into the block's spawn tables, so it is one answer per state; `default`
+uses the template's top face and the declared `light` or `state_light` (the template's when none is declared), not a
+`dynamic_light` cell's (sunrise-org/sunrise#5518: a declared shape doesn't change the top face yet). Unset keeps
+the template's rule. In code, `BlockProperties::spawn_rule` takes the same rules as `SpawnRule`.
 
 `destroy_overlay: false` hides the breaking crack (`destroy_stage_0` to `9`) on the block, for one broken by use
 (a feast or a cake taken apart bite by bite). It is read once at load into the block's facts, and only the overlay
@@ -255,6 +375,35 @@ it) calls `LevelRef::check_light(host, pos)` when that changes (`LevelLightEngin
 again and relights, and clients ask their own parts again as its light update reaches them. The flag is per block,
 as it sits on the block's row: every state of the block is asked, so a block with only some states that vary pays
 the ask for all of them. Light that depends only on the state needs no part: use `light` or `state_light`.
+
+A mod can [query a candidate state's source light](world/block-state-facts.md#contextual-light-emission)
+with `LevelRef::get_light_emission`. It returns the raw Part answer or the declared light, with no
+relight. This differs from `LevelRef::brightness`, which reads the light the engine has propagated.
+
+##### Per-state light
+
+Blocks in JSON and code can set `state_light`, which overrides `properties.light`.
+Use `properties` for an ordered list of state property names, `values` for
+comma-separated value tuples mapped to emission (0 to 15), and `default` for
+unmatched states. Without a default, every state must match a tuple.
+For example, `"state_light":{"properties":["lit"],"values":{"true":15},"default":0}`
+makes a lamp dark when unlit and emit 15 when lit. Code uses `mod_api::StateLight`
+with the same `properties`, `values` and `default` fields on `Block::state_light`.
+
+A block that joins its neighbours in six directions (a cable, a pipe) copies
+`minecraft:chorus_plant`, vanilla's `PipeBlock`, and names the block tag it
+connects to besides itself:
+
+```json
+{ "template": "minecraft:chorus_plant", "connects_to": "#mymod:cable_connects" }
+```
+
+It keeps the chorus plant's six sides but none of its rules: it needs no
+support, and each side is joined when the block there is the same block or in
+the tag, on placement and whenever that neighbour changes. Its shapes are the
+chorus plant's (10 pixels across) unless it sets `"thickness"`, 2 to 14
+pixels: its outline and collision are then built as `PipeBlock` builds its
+own, a core and an arm to each joined side.
 
 A block copies its template's states. It can also declare state properties of
 its own, which its template does not have — how a pipe says which sides it
@@ -280,6 +429,22 @@ A declared name may not be one the template already has, and `default_state`
 takes one value per declared property too, so a block's default is exactly one
 state of its own. Every combination has to fit in the states a world holds
 (2^20), so a declaration that would not is refused when the mods load.
+
+A declared **boolean** `waterlogged` also makes the block a `SimpleWaterloggedBlock`: buckets fill and drain it,
+water can flow into it, and draining breaks it if it cannot survive dry. This applies even to a stone template.
+The default placement takes `waterlogged` from source water at the target cell (flowing water leaves it dry); a shape update schedules the contained
+water's tick. A block's `state_for_placement` or `update_shape` Part answer replaces the corresponding default.
+A double plant keeps its template's class and companion-half behaviour, so this declares a two-high water plant:
+
+```json
+{ "template": "minecraft:tall_grass",
+  "state_properties": { "waterlogged": { "type": "boolean" } },
+  "default_state": { "waterlogged": "true" } }
+```
+
+The placed half takes source water at its cell; the companion half uses the water tag at its own cell, so an upper half above the water line is dry. An enum named `waterlogged`,
+a template that already has that property, a standalone liquid block such as `minecraft:lava`, or an
+always-water template (`seagrass`, `tall_seagrass`, `kelp`, `kelp_plant`, `bubble_column`) is refused.
 
 A block with template `minecraft:farmland` may set `"base_block": "namespace:block"` to choose the block it becomes when it dries out, is trampled, or has a solid block placed above it. The ID must name a registered block; without the key, the template's dirt base is used.
 
@@ -328,8 +493,14 @@ outline passes skylight without attenuation when dry, but attenuates it by 1 whe
 
 Movement collision is independently selectable with `collision_shapes`; it does not change the outline,
 render solidity, occlusion or lighting. Both take the same table format. Boxes are
-`[minX,minY,minZ,maxX,maxY,maxZ]` in block units (one block is 1), at most 16 per shape.
+`[minX,minY,minZ,maxX,maxY,maxZ]` in block units (one block is 1), any number per shape, as in vanilla.
 Coordinates must be finite and each minimum must not exceed its maximum. `[]` is an empty shape.
+
+A declared shape also decides the block's legacy solid bit (`BlockState.isSolid`, which attachment
+survival such as wall signs and torches reads): it is calculated from `collision_shapes`, else from
+`shapes`, as vanilla does for any block (bounding-box average size at least 0.7291666666666666, or at least a block tall). A
+template that forces solidity on or off keeps its answer, and a block that declares no shape keeps the
+template's. This is not render solidity and not sturdy-face support.
 
 ```json
 {
@@ -357,7 +528,7 @@ block's `thickness` outline). Omitted `collision_shapes` preserves the existing 
 outline also becomes collision, otherwise the template collision is retained. An explicit collision
 table can be used without an outline override, and overrides `thickness` collision too.
 
-### Entity-context shape declarations
+##### Entity-context shape declarations
 
 Native declarations use the same fields on `mod_api::Block`, with API-owned
 `ShapeEntityKind::{Item, Player, Living, Other}` keys and `BlockShapes` values.
@@ -398,7 +569,29 @@ and player selection uses its own outline channel. Callers without a captured
 entity class retain ordinary shapes. These declarations select state/class-only
 geometry, not arbitrary world-dependent block behavior or native callbacks.
 
-### Shapes a block entity publishes
+##### Scaffolding's context collision
+
+A block that is stood on like scaffolding and dropped through while sneaking (a metal
+scaffolding) sets `"context_collision": "scaffolding"` (`Block::context_collision =
+Some(ContextCollision::Scaffolding)`), whatever its template. Entities then collide with it as
+with `minecraft:scaffolding` (`ScaffoldingBlock.getCollisionShape`), which takes the same rule:
+solid on top unless the entity is descending, nothing below the top, and in a `bottom` state
+that is not supported (`distance` above 0) a floor 2 pixels high under an entity above the block
+below. Placement checks see no collision. Its states need scaffolding's `distance` (0 to 7) and
+`bottom` (`false`, `true`) properties, from a `minecraft:scaffolding` template or declared in
+`state_properties`; loading refuses the block, by name, otherwise. Climbing is the
+`minecraft:climbable` block tag, and what keeps `distance` and `bottom` up to date is the
+template's behaviour: neither comes from this field. A `collision_context_shapes` entry for an
+entity class stands over the rule for that class, as it does over the block's other shapes.
+
+```json
+{
+  "template": "minecraft:scaffolding",
+  "context_collision": "scaffolding"
+}
+```
+
+##### Shapes a block entity publishes
 
 A block whose geometry depends on what is inside it (a cable bus with attached parts, a table
 showing its tools) sets `"shapes_from_block_entity": true` (`Block::shapes_from_block_entity`).
@@ -411,17 +604,25 @@ the first publish.
 This differs from NeoForge, where `getShape` is asked for on every query: here a shape is
 **published when it changes, not asked for per query**, and a port of a `getShape` override calls
 `set_shapes` wherever that state changes (a part attached, a lid opened). Physics, selection,
-ray casts and support read the published value at the position; nothing calls into the mod.
+ray casts (outline and collider, over a dynamic template's shape too), support, the floor a
+mob's path stands on, its move control's jump, the height of an evoker's fangs, a panicking mob's
+search for water and whether a summoned iron golem can stand there read the published value at
+the position; nothing calls into the mod.
 Face sturdiness and multiface attachment between neighbouring blocks (placement, survival,
-shape updates, as for lichen and sculk veins) still read the declared shape until #1654.
-Shapes that depend on the querying entity are not covered; `outline_context_shapes` and
-`collision_context_shapes` stay declared, and a published shape stands over them.
+shape updates, as for lichen and sculk veins) read the published collision shape at the position too.
+The sturdy floor an evoker's fangs look for under them still reads the declared shape.
+Fluid passage reads it as well: water and lava pass between two cells by their collision shapes at
+their positions. A publish, a clear and an aborted publish (the old shapes put back) each notify the
+block's neighbours, so a fluid beside it reads the new shape; publishing an unchanged value notifies nothing.
+Shapes that depend on the querying entity are not published: a part answers them per query
+(next section), and a published shape stands over the declared `outline_context_shapes` and
+`collision_context_shapes`.
 
 - **Checks**, refused by name with a `BlockEntityShapesError` and never clamped: every
   coordinate finite and each minimum at most its maximum; at most 64 boxes in each list.
   Vanilla has no box limit; 64 bounds what a block entity makes every client receive and
-  keep, while a declared shape table (`shapes`, above) holds 16 boxes, a load-time limit of
-  its own. There is no coordinate range. A box under 1e-7 thick on an axis is an empty box,
+  keep, while a declared shape table (`shapes`, above) syncs nothing and has no box limit.
+  There is no coordinate range. A box under 1e-7 thick on an axis is an empty box,
   as in vanilla.
 - **Reach**: collision finds boxes only within one cell of the block, one axis at a time (a
   state that publishes is always scanned that way); a box beyond that is stored and sent but
@@ -437,6 +638,54 @@ Shapes that depend on the querying entity are not covered; `outline_context_shap
   repair. They are dropped when the block entity is removed or its block changes. The key they
   are kept under is the engine's: `replace_data` and `merge_data` leave them alone, and a
   payload that carries it has it ignored.
+
+##### Shapes that depend on the querying entity
+
+A block part can give a block another collision shape for the entity that asks, as vanilla's
+`getCollisionShape(state, level, pos, context)` does: `BlockPart::collision_shape(context, event)`
+sets `*event.shape = Some(shape)` for the state `event.state` at `event.pos`.
+Build the shape with `VoxelShape::try_from_boxes(&boxes)` using block-local
+`[min_x, min_y, min_z, max_x, max_y, max_z]`, or use `VoxelShape::empty()` to remove collision. This is the one place the engine calls a
+mod in the middle of physics, for the blocks whose parts opt in; everything else, and every
+published shape, is read without a call. It reverses the rule above for those blocks only.
+
+`event.query` is a `CollisionQuery`, vanilla's `EntityCollisionContext` as it was when the query
+was made: `entity()` (the entity's id, `None` for the empty, position and cache contexts),
+`kind()`, `is_descending()`, `is_placement()`, `always_collide_with_fluid()`,
+`is_above(shape, pos, default)`, `is_holding_item(item)` and `can_stand_on_fluid(above, fluid)`.
+
+- **Ordering.** `None`, the starting value, keeps whatever the block would otherwise have: its
+  declared shape, a context-keyed one, or the one its block entity published. `Some` replaces
+  that for this query only. The per-state shape cache stays the empty-context answer, so a block
+  that is large there is still scanned in the cells around its own.
+- **Who asks.** Entity movement (step-up retries included), placement checks and projectile
+  paths, on the thread that owns the level: the server tick, and the client's own prediction. A
+  guest's move is checked by the server with the same entity id. Fluid passage and face-support
+  checks never ask. Another thread (the mesher, world generation) reads the normal shape.
+- **Once a tick.** A part is asked once for each distinct question in a tick: the state, the
+  position and every input of the query (entity, kind, height, descending, placement, held item)
+  make one question. A step-up retry or a second sweep reads the first answer, so the shape cannot change
+  in the middle of a move.
+- **No re-entry.** The query holds the entity's state from before the move, and a collision query
+  made inside the callback gets the empty-context answer, never a nested call.
+- **No `Host`.** A move holds the level's collision data and cannot lend a `Host`, as for
+  `entity_move`. The part answers from the query and from state it keeps itself. A
+  rule that needs more (a belt's set of carried entities; powder snow's fall distance) tracks that
+  state in the mod, keyed by `query.entity()`. If a mod needs an entity read it cannot track, one
+  captured field is added to `CollisionQuery`; the `Host` is not reopened.
+- **The client must sync that state.** The client asks the same question for its own prediction,
+  so a mod whose rule reads its own state must send it to the client. If the two disagree the
+  server corrects the player's position (the usual "moved wrongly" correction), never a kick.
+- **Bounds.** The constructor rejects non-finite or inverted bounds and unions it cannot
+  represent as a voxel grid. These in-process answers have no box-count cap; this does not
+  change the separate saved and networked block-entity shape format.
+- **Faults.** If a Part panics, only that invocation's answer is discarded. The next Part sees
+  the previous answer, or `None` if no earlier Part answered. A failed shape construction
+  returns an error to its caller without changing the answer.
+- **Cost.** Nothing for a block without such a part. An opted-in block costs one call per
+  distinct question in a tick.
+
+#### Items
 
 An item copies its template's data components, with `max_stack_size` and
 `rarity` changed, and any other 26.3 component set or removed in
@@ -472,8 +721,9 @@ Code mods can also register a namespaced custom pose once in `Hooks::register` t
 `Registrar::register_arm_pose("mymod:flip", uses_both_arms, affects_offhand)`. Keep its
 `CustomArmPose` token and return `ArmPose::Custom(token)` from `get_arm_pose`. The two
 flags independently control the humanoid's two-arm ordering and whether the other
-hand's pose gives way. The token carries these flags as Wire data, so the pose's
-flag getters do not require a registration table inside a wasm guest. Duplicate, malformed and foreign-namespace ids refuse registration.
+hand's pose gives way. The token carries both flags. Any valid explicit `namespace:path` is
+accepted with ownership attributed to the registering mod; duplicate and malformed ids refuse
+registration.
 
 In `arm_pose_transform`, match `event.pose` to that token and set `event.angles.right`
 or `event.angles.left` to absolute `[pitch, yaw, roll]` in radians. `event.right_arm`
@@ -483,7 +733,6 @@ physical-arm application order and do not run for a suppressed pose.
 Each non-finite angle leaves the base model component unchanged. The transform runs
 only for selected registered poses, on local players, remote players and humanoid mobs;
 swing and mob-specific animations run afterward and can change those angles.
-Native and wasm mods use the same registration, token and Wire angle value.
 
 For a change to an intermediate vanilla pose (including `item`), listen to
 `humanoid_setup_anim` instead. This client hook runs inside each actual humanoid
@@ -491,22 +740,26 @@ setup-animation invocation, after head, walk and riding setup but before arm
 priority and posing. Its read-only `ClientHost` and `event.humanoid` provide both
 held stacks, selected poses and `is_using_item`. `event.partial_tick` and optional
 `event.game_time` are captured for that draw; game time is absent outside a level.
-Use `event.parts.get(HumanoidPart::RightArm)` to read `[position, rotation]`, then
-`set_rotation` or `set_position` to change it. Positions are local texels and
-rotations are radians. A non-finite component is refused while other finite
-components apply; scale and visibility are not changed. Later ITEM, attack,
-crouch, bob and swim animation still apply. Armor stands then replace rotations
-with their saved pose, preserving position edits. Their armor models run the same
-setup independently. A model can animate more than
-once per frame, so listeners must not treat this as a once-per-entity frame
-notification or advance simulation from it. Native and wasm use the same finite
-part snapshot, with no callback or stack snapshot when nobody subscribes.
+`event.parts` is a `&mut dyn HumanoidPose` borrowed for this invocation's callback, not an
+owned or serializable snapshot. Use `event.parts.get(HumanoidPart::RightArm)` to read
+`[position, rotation]`, then `set_rotation` or `set_position` on that same view. The head, hat,
+body, arms and legs are editable if present; sleeves, jacket and pants are not. Positions are
+local texels and rotations are radians. Writes apply all three components
+immediately on any present editable part, matching `HumanoidModel.setupAnim`
+with no finiteness gate, so later listeners see those edits. Scale and visibility
+are not changed. Later ITEM, attack, crouch, bob and swim animation still apply.
+Armor stands then replace rotations with their saved pose, preserving position
+edits. Their armor models run the same setup independently. A model can animate
+more than once per frame, so listeners must not treat this as a once-per-entity
+frame notification or advance simulation from it. When nobody subscribes, there
+is no callback or held-stack snapshot. To read
+the completed animation, use a [layer's or Post hook's final model](client/model-drawing.md#read-the-final-body-model).
 
 ```json
 { "template": "minecraft:stick", "arm_pose": "toot_horn" }
 ```
 
-An item can place a block by naming it with `block`, whether it is a vanilla block or a declared mod block:
+An item can place any registered block by naming it with `block`, including a block another package declares:
 
 ```json
 { "template": "minecraft:wheat_seeds", "block": "ruby:crop" }
@@ -536,11 +789,18 @@ round-trip through saved NBT; negative zero is not supported. A key such as
 
 `crafting_remainder` names what the item leaves in the crafting grid when a
 recipe uses it, as a milk bucket leaves a bucket (vanilla's
-`Item.Properties.craftRemainder`, not a data component): a vanilla item or
-one of the mod's own, refused at load otherwise. It holds on the crafting
-table, the inventory grid, the crafter and as furnace fuel (the last of the stack leaves it in
-the fuel slot, a stack with more left drops it), not in a brewing stand. What the item leaves once eaten
-or drunk is the `minecraft:use_remainder` component instead:
+`Item.Properties.craftRemainder`, not a data component). It can name any registered item except
+`minecraft:air`; omit the field for no remainder. `block` and `crafting_remainder` in a file take
+`namespace:path`, and Sunrise resolves both against the completed registries at startup. A missing
+target refuses loading with the declaring item, field and missing ID. If your pack needs another package
+to register that target, declare the package as required in `[dependencies]`; registry namespaces do not
+identify packages or set their load order. This also applies to items and item-bearing blocks
+registered by a serving host or a package it serves (`served_by`).
+
+A crafting remainder works on the crafting table, the inventory grid, the crafter and as furnace
+fuel (the last of the stack leaves it in the fuel slot, a stack with more left drops it), not in a
+brewing stand. What the item leaves once eaten or drunk is the `minecraft:use_remainder` component
+instead:
 
 ```json
 { "template": "minecraft:mushroom_stew", "crafting_remainder": "minecraft:bowl" }
@@ -558,20 +818,10 @@ have no `max_stack_size` or `rarity` keys, so those two go in `components` here
     "minecraft:damage_resistant": { "types": "#minecraft:is_fire" } } }
 ```
 
-A block that joins its neighbours in six directions (a cable, a pipe) copies
-`minecraft:chorus_plant`, vanilla's `PipeBlock`, and names the block tag it
-connects to besides itself:
+Unknown component types fail content loading unless a code mod registers them.
+Item-id-specific behaviour does not follow a template: a copy of the trident does not throw.
 
-```json
-{ "template": "minecraft:chorus_plant", "connects_to": "#mymod:cable_connects" }
-```
-
-It keeps the chorus plant's six sides but none of its rules: it needs no
-support, and each side is joined when the block there is the same block or in
-the tag, on placement and whenever that neighbour changes. Its shapes are the
-chorus plant's (10 pixels across) unless it sets `"thickness"`, 2 to 14
-pixels: its outline and collision are then built as `PipeBlock` builds its
-own, a core and an arm to each joined side.
+#### Creative tabs
 
 A mod's creative inventory tabs are `data/<id>/sunrise/creative_tab/*.json`:
 a title, the item on the tab's button, and its items in order (items the game
@@ -588,13 +838,51 @@ lang file's `itemGroup.<mod id>.<file name>` (`creative_tab/gems.json` →
 `itemGroup.ruby.gems`) translates any title. A mod's items join the search tab
 under their names.
 
-A file only makes new tabs. To put items into a tab the mod doesn't own, such as
-vanilla's `minecraft:ingredients` or another mod's, a native mod listens to the
-client hook `build_creative_mode_tab_contents` (NeoForge's
-`BuildCreativeModeTabContentsEvent`) and pushes its stacks for that `tab`.
+A file only makes new tabs. To edit a registered tab's contents, listen to
+`build_creative_mode_tab_contents` (NeoForge's `BuildCreativeModeTabContentsEvent`). It fires for every tab on the
+logical side building its catalog. Match `event.tab` (for example, `minecraft:ingredients`)
+and edit `event.output` directly; its methods do not take a Host. To append a count-one
+`stack` to both lists, call
+`event.output.insert(CreativeTabPlacement::Last, stack, CreativeTabVisibility::Both)`.
+You can also insert first, before or after a matching stack, or remove a matching stack.
+Matching ignores counts and uses exact item and components. Edits to both lists
+change parent first; a search error does not undo the parent edit. Feature
+filtering happens after listeners finish.
 
-Unknown component types fail content loading unless a code mod registers them.
-Item-id-specific behaviour does not follow a template: a copy of the trident does not throw.
+Read the current entries in order with
+`event.output.entries(CreativeTabList::Parent, &mut |entry| { /* read entry */ })`.
+Use `entry.item()`, `entry.count()` or `entry.damage()` without copying the stack;
+call `entry.project()` to copy the full stack when you need its components or want to
+keep it. `event.output.remove_if(visibility, &mut |entry| predicate)` visits each
+entry of the selected lists once and keeps survivors in their original order.
+Neither the editor nor a borrowed entry can outlive its callback. Refused edits
+return a typed error and are logged. A panic disables just that mod's creative-build
+callback for the session. Completed edits remain visible to later listeners, and
+the action that requested the catalog can continue.
+
+From either side of an open world, call
+`host.creative_tabs(CreativeTabPermissions::Normal)` to read the catalog for
+ordinary players, or request `Operator` explicitly to include operator
+generator output. The choice does not grant permission. During setup and reload,
+the read returns `CreativeTabReadError::Unavailable`. The returned snapshot includes
+every registered tab, even empty or special tabs. Use
+`tab.contains(host, &stack)` for exact membership in that tab's search list and
+`snapshot.tabs_showing(host, &stack)` for category tabs that display it. Use the
+originating world's Host so redundant component patches compare against its
+item prototypes. The game
+builds only on demand, keeps one complete snapshot per side, and does not
+rebuild just because tags changed. A same-parameter read from a build listener
+sees completed tabs and the previous contents of the remaining tabs;
+a different-parameter read returns `CreativeTabReadError::Reentrant`.
+
+With a shared `&dyn Host`, use `host.built_creative_tabs()` to read the last
+completed snapshot without firing any build callbacks. It returns `Ok(None)`
+before that side's first completed build and `CreativeTabReadError::Unavailable`
+outside a live world. It does not change the snapshot's build permissions.
+Each tab's `display_name` is a translatable component for its `itemGroup.*` key,
+with the catalog's `title` as its text fallback.
+
+#### Mob effects
 
 A mod effect is declared in `data/<id>/sunrise/mob_effect/<name>.json` with what vanilla's `MobEffect` takes: its
 category (`beneficial`, `harmful` or `neutral`) and its RGB colour (0 to `0xFFFFFF`), which its particles take:
@@ -618,6 +906,8 @@ which returns `EffectCategory::Beneficial`, `Harmful` or `Neutral`. For an activ
 instance, use `active_effect.id.category(host)`. The read works on both sides and
 returns `None` before the effect registry is complete; it never guesses a category.
 
+#### Entity types
+
 A mod entity type is declared in `data/<id>/sunrise/entity_type/<name>.json`. It copies a vanilla type:
 `minecraft:snowball`, a thrown item projectile, or a living mob (below). A thrown type's `item` is one of the mod's own
 items (one type per item), and `damage` (0 by default) is what a hit deals to anything it hits, as `thrown` damage from
@@ -636,7 +926,8 @@ chunk, `/summon <id>:<name>` makes one, and it has its template's row in `entity
 it. A world opened without the
 mod keeps the saved ones as they are, frozen in place. A dispenser does not throw it.
 
-A code mod can launch a thrown type with
+A code mod can spawn a thrown type at a position with a velocity of its own through
+`LevelRef::spawn_entity` with `SpawnBody::Thrown` ([spawning from a level](world/spawning.md#spawning-from-a-level)), or launch one with
 `host.spawn_projectile_from_rotation(owner, &entity_type, &stack, offset, power, inaccuracy)`.
 This is the owner-based `Projectile.spawnProjectileFromRotation` operation, not a summon:
 ownership is set before shooting and the existing launch hook runs after insertion.
@@ -665,14 +956,23 @@ admission errors name the file. Radius 0 disables its shadow. Radius follows `mi
 baby age scaling and the template's extra baby factors; cube sizes, pufferfish and dragon retain
 their renderer rules. The usual visibility, 32-block radius cap and distance fade still apply.
 
+A living type can set `allowed_in_peaceful` to `false` to prevent summons and spawns
+in Peaceful and to have existing mobs of that type despawn there. Its spawn egg
+shows the disabled-in-Peaceful line. Set it to `true` to allow the type in Peaceful
+without changing the template's other spawn rules or AI. If omitted, the type
+inherits its template's setting. Thrown types cannot set this key.
+
 A living type copies a mob, the way NeoForge's `EntityType.Builder.of(Zombie::new, ...)` makes a type of a vanilla
-class: `minecraft:zombie`, `minecraft:villager`, `minecraft:wandering_trader`, or one of the tameable mobs
+class: `minecraft:zombie`, `minecraft:skeleton`, `minecraft:drowned`, `minecraft:villager`,
+`minecraft:wandering_trader`, or one of the tameable mobs
 (`TamableAnimal`), `minecraft:wolf`, `minecraft:cat` and `minecraft:parrot`. A tameable type tames with its template's
 item, then sits, follows and teleports to its owner, and fights for it, as its template does. Its owner, sitting state
 and its template's own fields (a wolf's collar, a cat's or a parrot's variant) save and load under the type's id. A
 tamed wolf type's hits are its owner's, as a wolf's are. A parrot type rides a player's shoulder and comes back off
 as itself; drawing it there is its mod's (an [entity layer](client/entity-layers.md)), as vanilla draws only its own
-parrot there. Every living type is tracked to clients as far, and as often, as its template. It has no `item` or
+parrot there. A skeleton type draws and shoots the bow it holds, keeps out of the sun and flees wolves, and one that holds none
+fights in melee; a drowned type goes to water, swims, and throws a trident it holds or fights in melee, as a drowned
+does. Every living type is tracked to clients as far, and as often, as its template. It has no `item` or
 `damage`. `attributes`
 sets default attribute values that differ from its template's (`EntityAttributeCreationEvent`), by attribute id, and
 only for attributes the template has; one it lacks stops the content root's build:
@@ -702,15 +1002,85 @@ only that slot. Omission and `"none"` are different: a villager with no step ove
 plays `minecraft:block.stone.step` on stone. Invalid ids stop content admission,
 with the entity and sound slot in the error. These four slots cover ordinary ambient,
 hurt, death and footstep playback; additional events such as trading interactions or
-projectile attacks keep their existing sounds. Native and wasm packages use this same
-content definition and resource table.
+projectile attacks keep their existing sounds.
+
+`sounds.step` also takes an object, `{"sound": "<id>", "volume": v, "pitch": p}`: the mob plays its own step at that
+volume and pitch, as a Java mob overriding `playStepSound` with `playSound(step, v, p)` does. A plain step id plays at
+the block step's volume 0.15 and pitch 1.0. Three numbers take the place of what vanilla's sound methods return for the
+template:
+
+```json
+{
+  "template": "minecraft:zombie",
+  "sounds": {
+    "step": { "sound": "bird:step", "volume": 1.0, "pitch": 0.9 },
+    "volume": 0.6,
+    "voice_pitch": 0.8,
+    "ambient_interval": 160
+  }
+}
+```
+
+- `volume` is `LivingEntity.getSoundVolume()`, the volume of the ambient, hurt and death sounds.
+- `voice_pitch` is the base of `LivingEntity.getVoicePitch()` in place of 1.0: the random spread of ±0.2 still applies,
+  and a baby's pitch is still raised by the template's factor (1.5 for most mobs), now times the base.
+- `ambient_interval` is `Mob.getAmbientSoundInterval()`, in ticks: after each ambient or hurt sound, and after a
+  merchant's trade, the ambient sound's timer starts again from minus this value. Any int is accepted, as vanilla
+  accepts any; the arithmetic on it wraps as Java's does.
+
+Each omitted key keeps the template's value. `volume`, `voice_pitch` and the step's `volume` and `pitch` must be
+finite as a float; another number, or a step given in another form than an id, `"none"` or that object, stops
+content admission, with the file and the key in the error.
+
+A code mod can also use `Registrar::declare_entity_attributes(path, template, attributes)` during registration.
+That declaration starts from the vanilla template's attribute row, replacing the content row's overrides.
+Declared bases remain available to base-value reads, but computed values and spawn fields clamp them to each
+attribute's vanilla range (for example, `minecraft:max_health` is clamped to 1–1024).
+
+To give an existing type, vanilla or a mod's, an attribute it lacks, a code mod calls
+`Registrar::modify_entity_attributes(entity, attributes)` (NeoForge's `EntityAttributeModificationEvent`) during
+registration. Each attribute takes its base, or with `None` the attribute's own default. It changes the type's
+default after every declared set, so entities created after load have it; a later addition of the same attribute
+wins. A mod's type needs its declared set first: one that only a content file defines has no attribute row to add
+to. An attribute the game does not know, or a type without an attribute row, stops the resource load:
+
+```rust,ignore
+registrar.modify_entity_attributes(
+    "minecraft:zombie",
+    vec![("minecraft:luck".to_string(), Some(2.5))],
+)?;
+```
+
+It is a mob of its template's class under its own id, `<id>:<name>`: the template's size, model, texture, sounds and
+behaviour, with its own attributes. It saves what its template's class saves under its own id (a zombie's `IsBaby`,
+`CanBreakDoors` and conversion times) and loads back as itself. Its entity data is its template's class's. Its loot
+table is its own, `<id>:entities/<name>` (vanilla's `EntityType.getDefaultLootTable`). It is not in vanilla's entity type
+tags (`#minecraft:undead`, `#minecraft:zombies`...) unless the mod adds it. Its row in `entity-types.json` is its
+template's, with `template` added and its attributes in place of the template's. To draw a custom model or texture,
+a client mod registers a renderer for it ([entity renderers](client/entity-renderers.md)); the content declaration
+inherits the template's goals.
+
+Daylight burning follows the type's own id, not its template. To make a type burn in sunlight,
+add its id to `data/minecraft/tags/entity_type/burn_in_daylight.json`. Leaving it out does not
+make it immune to ordinary fire.
+
+##### Passenger attachment points
+
+An entity type can set `passenger_attachments` to seat offsets relative to its feet.
+A list of exactly three plain numbers is **one** `[x, y, z]` point, not three heights.
+For multiple seats use nested points, for example `[[1, 2, 3], [-1, 4, 5]]`.
+Seats follow passenger order; extra passengers use the last point. Offsets scale with
+the entity and rotate with its yaw.
+
+#### Custom attributes
 
 A code mod can also register an attribute type of its own with `Registrar::declare_attribute(path, default,
 min, max, syncable, sentiment, tooltip)` (vanilla's `RangedAttribute` in the attribute registry). Only both-side
 packages may declare attributes; client-only packages refuse with `WrongSide` so extra
 client mods cannot shift packet IDs. `mod_api::Sentiment` is `Positive`, `Negative`, or `Neutral`.
-The id lands in the
-mod's namespace, the bounds and default follow `RangedAttribute`'s own checks, `syncable` decides whether the
+A bare `path` uses the
+mod's namespace while an explicit valid `namespace:path` keeps its namespace (built-in and duplicate keys refuse),
+the bounds and default follow `RangedAttribute`'s own checks, `syncable` decides whether the
 value syncs to clients, and `sentiment` (POSITIVE by default) colors the attribute's tooltip lines. The declared
 attributes append after the vanilla ones in the attribute catalog — sorted by declaring mod id, then attribute
 id, so the network ids are the same on every side running the same mods — before entity attribute rows resolve,
@@ -749,75 +1119,228 @@ check it already passes at join: a client without the mod cannot join. A save ke
 the mod is there; once it is gone, the load clamps the base into the bounds and logs it, once per attribute in each
 world load.
 
+#### Custom datapack registries
+
 A code mod can declare a datapack registry of its own with `Registrar::declare_datapack_registry(path, sync,
 fields)` (NeoForge's `DataPackRegistryEvent.NewRegistry`).
-`path` lands in the mod's namespace (`spell` of `example` is `example:spell`), and `fields` is a flat record
-schema: `Bool`, `Int { min, max }`, `Float { min, max }`, `Text { max_len }`, `Identifier` or `Reference { registry }`,
-each required or given a default. Entry `addon:fire` is `data/addon/example/spell/fire.json`
-(`DatapackRegistryDeclaration::entry_file`), the registry's namespace being a folder as NeoForge's modded
-registries have it. The game decodes entries against the schema without running mod code, so native and wasm
-mods get the same bounds: an undeclared key, a missing required key, a wrong type or an out-of-range value fails
-the entry, and a default never stands in for invalid data. The engine adds no entry-size or field-count limit
-of its own. Only both-side packages may declare registries. The game loads entries from mod content and enabled data packs.
+A bare `path` uses the mod's namespace (`spell` of `example` is `example:spell`), while a valid explicit key keeps its
+namespace. Built-in and duplicate registry keys are refused. `fields` is the
+entry's record schema. Its scalar kinds are `Bool`, `Int { min, max }`, `Float { min, max }`, `Text { max_len }`,
+`Identifier` and `Reference { registry }`, and they nest, as vanilla's codecs do:
 
-Use the host's `level_datapack_entries(level, registry)` to list sorted entry IDs,
-`level_datapack_handle(level, registry, entry)` to obtain a `DatapackHandle`, and
-`level_datapack_read(level, &handle)` to copy decoded fields in schema order as
-`Vec<(String, DatapackValue)>`. Reads do not access disk. Handles fail with
-`StaleGeneration` after a reload or `WrongSession` in another world session.
-Unknown registries and stale or parked levels return `UnknownRegistry`; absent entries return
-`MissingEntry`. Listing returns `None` for an unavailable level or registry. Clients see only
-registries declared `Required` or `Optional` that their server sends at join and reload.
+- `List { of, min_len, max_len }` is a JSON array (`Codec.list`, `sizeLimitedListOf`);
+- `Map { key, value }` is a JSON object with `Text`, `Identifier` or `Reference` keys (`Codec.unboundedMap`).
+  `as_map` returns a file's pairs in file order, and a default's in its declared order, on the server and on clients. Two keys naming the same id (`zombie` and
+  `minecraft:zombie`) are a duplicate. A text map key with `max_len: 0` accepts only the empty key;
+- `Record { fields }` is a nested object with the same field rules as the entry's own (a nested
+  `RecordCodecBuilder`);
+- `Dispatch { key, variants }` is an object whose `key` field (usually `type`) names one of the
+  `DatapackVariant`s the schema lists, with that variant's fields beside it (`Codec.dispatch`). The id reads as
+  vanilla's `byNameCodec` reads one (`growing` is `minecraft:growing`), and an id no variant declares fails the
+  entry. `variant_id` names the variant, and `get` reads its fields. Only the declaring mod lists variants; there
+  is no way for another mod to add one.
 
-A code mod can also use `Registrar::declare_entity_attributes(path, template, attributes)` during registration.
-That declaration starts from the vanilla template's attribute row, replacing the content row's overrides.
-Declared bases remain available to base-value reads, but computed values and spawn fields clamp them to each
-attribute's vanilla range (for example, `minecraft:max_health` is clamped to 1–1024).
-
-To give an existing type, vanilla or a mod's, an attribute it lacks, a code mod calls
-`Registrar::modify_entity_attributes(entity, attributes)` (NeoForge's `EntityAttributeModificationEvent`) during
-registration. Each attribute takes its base, or with `None` the attribute's own default. It changes the type's
-default after every declared set, so entities created after load have it; a later addition of the same attribute
-wins. A mod's type needs its declared set first: one that only a content file defines has no attribute row to add
-to. An attribute the game does not know, or a type without an attribute row, stops the resource load:
+Each field, at any depth, is required (`DatapackField::required`), given a default (`with_default`) or optional with
+no default (`DatapackField::optional`, `optionalFieldOf`), which reads as `None` when left out. An optional kind
+stands only for a whole field, never inside a list, a map or another optional. Defaults are checked against their
+kinds at every depth, and an id or reference default is normalised wherever it sits (`stone` is `minecraft:stone`,
+map keys included).
+A list has no per-list count limit unless its `max_len` sets one. Local loading does not impose network byte or
+collection limits; the declared schema and the JSON parser's nesting limit still apply. Read nested values with `as_list`, `as_map`, `get` and the scalar accessors (`as_int`, `as_text`...):
 
 ```rust,ignore
-registrar.modify_entity_attributes(
-    "minecraft:zombie",
-    vec![("minecraft:luck".to_string(), Some(2.5))],
-)?;
+let int = |min, max| DatapackFieldKind::Int { min, max };
+r.declare_datapack_registry("model", DatapackRegistrySync::Required, vec![
+    DatapackField::required("entity", DatapackFieldKind::Identifier),
+    DatapackField::required("drops", DatapackFieldKind::List {
+        of: Box::new(DatapackFieldKind::Record { fields: vec![
+            DatapackField::required("item", DatapackFieldKind::Identifier),
+            DatapackField::with_default("count", int(1, 64), DatapackValue::Int(1)),
+        ] }),
+        min_len: 1,
+        max_len: None,
+    }),
+    DatapackField::with_default("tiers", DatapackFieldKind::Map {
+        key: DatapackKeyKind::Text { max_len: 16 },
+        value: Box::new(DatapackFieldKind::Record { fields: vec![
+            DatapackField::required("data_per_kill", int(0, 1000)),
+        ] }),
+    }, DatapackValue::Map(Vec::new())),
+    DatapackField::optional("color", DatapackFieldKind::Text { max_len: 7 }),
+])?;
+// Later, from an entry's values: the count of its second drop, the data a superior kill gives.
+let count = entry.get("drops").and_then(|d| d.as_list()?.get(1)?.get("count")?.as_int());
+let data = entry.get("tiers").and_then(|t| t.get("superior")?.get("data_per_kill")?.as_int());
 ```
 
-It is a mob of its template's class under its own id, `<id>:<name>`: the template's size, model, texture, sounds and
-behaviour, with its own attributes. It saves what its template's class saves under its own id (a zombie's `IsBaby`,
-`CanBreakDoors` and conversion times) and loads back as itself. Its entity data is its template's class's. Its loot
-table is its own, `<id>:entities/<name>` (vanilla's `EntityType.getDefaultLootTable`). It is not in vanilla's entity type
-tags (`#minecraft:undead`, `#minecraft:zombies`...) unless the mod adds it. Its row in `entity-types.json` is its
-template's, with `template` added and its attributes in place of the template's. To draw a custom model or texture,
-a client mod registers a renderer for it ([entity renderers](client/entity-renderers.md)); the content declaration
-inherits the template's goals.
+Entry `addon:fire` is `data/addon/example/spell/fire.json`
+(`DatapackRegistryDeclaration::entry_file`), the registry's namespace being a folder as NeoForge's modded
+registries have it. The game decodes entries against the schema without running mod code: an undeclared key, a missing required key, a wrong type, an out-of-range value or a list
+of the wrong length fails the entry, at any depth, and a default never stands in for invalid data. The error names
+the value's path (`drops[3].item`, `tiers.basic.data_per_kill`); a key with a character other than letters, digits,
+`_`, `:`, `/` and `-` is quoted as the file spells it (`tiers["basic.data_per_kill"]`). A reference resolves against
+the whole candidate set wherever it sits. A feature type's config (`register_feature_type`) uses the same scalar kinds
+but stays a flat record: a nested or `Reference` config field is refused at registration.
+
+The game selects the winning resource from mod content and enabled data packs before it reads the file or
+evaluates [its conditions](items/conditional-data.md#registry-conditions). If two registry directories contain
+that path, each interprets it relative to its own directory. A false condition omits the winner, without a
+lower-pack fallback. An unreadable winner refuses the load and names its pack and file. After conditions pass,
+the game decodes the entry against `fields`. When a resource has `neoforge:conditions`, write its schema object
+inside `neoforge:value` or write its fields beside the conditions array. In the second form the outer
+`neoforge:conditions` key is not a schema field. Tags resolve against admitted entries.
+
+Client-only packages cannot declare datapack registries. A `side = "server"` package can declare
+`DatapackRegistrySync::ServerOnly` (entries and tags are never sent) or `DatapackRegistrySync::Optional`
+(entries and tags go only to clients that offer the same registry and schema). Neither declaration by itself
+requires the client to install the mod; the package must still meet the join-content rule for everything else
+it declares. Use `DatapackRegistrySync::Required` with `side = "both"` when joining clients must have the
+registry. A server-only package declaring a `Required` registry is refused at load, naming the registry. A both-side
+declarer using a server-only `served_by` namespace for a required registry gets `WrongSide` at registration.
+
+A client's offer lists only synchronized registries and their schemas. It must fit one vanilla
+serverbound custom payload (32,767 bytes); an oversized offer stops the join rather than acting as an empty
+offer. The server encodes only the registries negotiated for that client. Each fragment, including its header,
+fits vanilla's clientbound custom payload limit (1 MiB); the combined encoded snapshot can be up to 128 MiB
+(NeoForge's default split-packet limit). There is no separate registry, entry, tag or tag-member count limit.
+After a successful local reload commits, a connection that negotiated a snapshot receives it before the reload's
+mod messages. If the snapshot cannot be sent or validated, only that connection ends. The client never activates
+a partial snapshot, and the server keeps the new local generation.
+
+Use `level.visit_datapack_entries(host, registry, &mut visit)` to borrow entry IDs in
+lexical order. The callback takes an `&str` and returns `ControlFlow::Continue(())` to
+keep visiting or `ControlFlow::Break(())` to stop. Copy an ID only if you need to keep it.
+Use `level.datapack_read(host, registry, entry_id, &mut visit)` to borrow one published
+entry through a callback. For example, keep only the `power` number:
+
+```rust,ignore
+let mut power = None;
+level.datapack_read(host, "example:spell", "addon:fire", &mut |entry| {
+    if let Some(mod_api::DatapackValue::Int(value)) = entry.get("power") {
+        power = Some(*value);
+    }
+})?;
+```
+
+Read `entry.values` in schema order or use `entry.get(name)` by field name. The active registry
+set stays pinned until the visitor returns, with no registry lock held and no disk access. Keep
+IDs to look up again, or copy only the fields you need to retain as a snapshot.
+
+The visitor runs once on success, never on error. On the logical server, both the active
+dimension and any loaded parked server dimension are accepted (matching vanilla
+`Level.registryAccess()`); stale epochs and unloaded dimensions are refused. Unknown or
+unavailable registries, stale or unloaded levels, and a missing published set give
+`UnknownRegistry`; a registry without the entry gives `MissingEntry`. A host without a backend
+returns `Unavailable`. The ID visit returns `Ok(Break(()))` on early stop or `Ok(Continue(()))`
+on completion, including for an empty registry. Once a client receives a valid snapshot at join
+or reload, it reads those entries; any of its declared registries omitted from the snapshot have
+no entries there. Resolve `host.level(event.dimension)` in `client_level_load` or
+`client_level_unload` to read the available synchronized registries through the entering or
+retiring level. Unload still sees its old configuration during a server reconfiguration; the
+next Load sees the new set. A retiring `LevelRef` is stale after Unload.
+
+#### Block entity containers
+
+A code mod declares a block entity's `ModContainer` with `Registrar::block_container`.
+Registration refuses more than 256 slots because the saved `Items` list uses an unsigned byte for
+each slot index (vanilla's `ItemStackWithSlot.CODEC`). Content files can declare menu layouts, not
+saved block container storage. The container's `faces` say which slots each side reaches; `inputs`
+lists the slots insertion may use, and `outputs` the slots items may leave through a side.
+Per-slot `insert_rules` provide static admission, with missing entries treated as `Any`.
+
+Registration validates the declared shape: `slots` must be at most 256, every index in
+`faces`, `inputs` and `outputs` must be strictly below `slots`, and `insert_rules.len()` must be at
+most `slots`. Malformed declarations are refused at registration rather than clamped or filtered.
+An optional `menu` opens only when the menu type is supported and its slot count matches `slots`;
+an unsupported or mismatched menu is ignored without changing `slots`. Structure templates and chunk saves both load these entries against the placed
+block's declared container shape.
+
+For state-dependent admission, implement `BlockEntityPart::can_place_item`
+(vanilla's `Container.canPlaceItem`). Its `CanPlaceItemEvent` gives the server part the block
+entity's own `pos` and current block `state`, its saved data and slots, the queried slot index,
+and the offered stack. Parts shared by several blocks can branch on `state.block()`. To filter
+by a property without a Host in this query, resolve matching `BlockState` values in a hook with
+block metadata and keep them for comparison here. Returning
+`Some(true)` or `Some(false)` replaces the declared rule for that slot; `None` keeps it. Face
+and input-slot rules and stack limits still apply. Hoppers and hopper minecarts, droppers,
+default `ITEMS` and `STORAGE` insertion, and nonempty offers from `/loot insert` and
+`/loot replace block` use this query. `/item replace block` keeps its direct slot-write behavior.
+The default `STORAGE.space_for` does not ask the part: for subscribed slots it counts
+physical room after face and input checks. An actual insert asks with its remaining offer
+before applying the stack limit.
+
+For state-dependent extraction, implement `BlockEntityPart::can_take_item_through_face`
+(vanilla's `WorldlyContainer.canTakeItemThroughFace`). Its `CanTakeItemThroughFaceEvent` gives the
+same entity, `pos` and `state`, the queried slot, the stack in it and the `face` it would leave
+through. Returning `Some(true)` or `Some(false)` replaces whether `outputs` lists the slot; `None`
+keeps it. The face's slots still bound which slots are asked. A hopper pulling from below and
+`ITEMS` and `STORAGE` extracts through a side use this query; an extract with no side skips the
+face rules, as NeoForge's unsided item handler does, and menus use `menu_slot_rules`.
+
+`can_place_item` has no Host; `can_take_item_through_face` gets a read-only one. Either query
+may run for a slot that is never written. Seed a filter from the
+accepted write, not from the query. Default `ITEMS` and `STORAGE` writes to these slots emit
+`contents_changed` once per backing block on commit. During a handled `menu_quick_move`, the notice
+waits for the clicked source to settle and only runs if the original backing container is still there.
+If the hook declines or its reply is refused, its tentative writes emit no notice. Ordinary click routing,
+if it runs, can still emit notices for its own writes. A write to the same block from its active notice
+still applies without a second notice. If your provider
+writes directly to storage it owns, issue `set_changed` explicitly or seed the filter in the
+provider. Menu clicks and quick-move still use the declared rules and `menu_slot_rules`
+(vanilla's `Slot.mayPlace`); they do not ask the block entity part.
 
 #### Menu types
 
-A mod menu type (vanilla's `MenuType`) is declared in `data/<id>/sunrise/menu/<name>.json`: its container's slot count
-(1 to 256), the data slots its menu syncs (`ContainerData`, 0 to 256, 0 by default), and the slots players only take
-from (`results`, as a furnace's result slot):
+A mod menu type (vanilla's `MenuType`) is declared in `data/<id>/sunrise/menu/<name>.json`: its layout's slot count,
+the data slots its menu syncs (`ContainerData`, 0 by default), and the slots players only take from
+(`results`, as a furnace's result slot). The layout and any appended player inventory can total up to
+32,768 slots (indices 0 to 32,767 in vanilla's signed-short container packets). A menu type does not
+allocate a block's saved item slots.
 
 ```json
-{ "slots": 9, "data_slots": 2, "results": [7, 8] }
+{ "slots": 9, "data_slots": 2, "results": [7, 8], "inputs": [0, 1] }
 ```
+
+A status or control screen that has no item slots at all can omit the player inventory group too:
+
+```json
+{ "slots": 0, "player_inventory": false, "data_slots": 2 }
+```
+
+`player_inventory` defaults to `true`. Result, crafting, linked-slot and recipe-book mappings name declared
+container slots, never the optional player group. A mapping to an absent slot is refused at load.
+The `data_slots` count is separate from `slots`. Larger declarations can be stored on the server,
+but each sync packet retains its index range: 0 through 32,767 for a block-backed menu and
+0 through 65,535 for the negotiated blockless payload.
+
+For blockless opens, an optional `owned_slots` array declares [transient menu storage](../concepts/capabilities/menu-slots.md#menu-owned-slots).
+It must contain exactly `slots` entries, each the maximum stack size (1–99) of that slot.
+Types declaring `owned_slots` are blockless-only and cannot declare `crafting`; they may declare `results` for take-only output slots whose non-result inputs return to the player on close.
+A block container cannot bind an owned-slot type as its menu.
+
+The optional menu `inputs` list marks machine feeds, including fuel, as `Input`
+in [`MenuRef::slot_kinds`](../concepts/capabilities/menu-slots.md). Indices start at zero and
+must be unique and below `slots`; they cannot overlap `results`, the crafting grid,
+or its result slot. Both linked and unlinked slots can be inputs. Omit the list (or
+use `[]`) to leave ordinary slots as `Storage`. The role does not change which items
+a slot accepts or how clicks and item transfers work.
 
 It is the menu type `<id>:<name>`, with its network id after vanilla's. A mod block's container opens it when its
 `menu` names it with as many slots ([native mods](native-mods.md), `r.block_container(&block, container)`). The menu holds
-its slots, then the player's 36. A shift-click from the inventory goes to the first slots with room, never a result
+its slots, then the player's 36 if `player_inventory` is on. A shift-click from the inventory goes to the first slots with room, never a result
 slot, and one on the container goes to the inventory, as a chest's does. `results` fence players only: hoppers follow the
-container's faces and `inputs`, so leave result slots out of `inputs`. The data slots are the block entity's `data`
-(16-bit on the network, as vanilla's), all sent when it opens, then each change. A Sunrise client shows it through the
-mod's own screen (`screen`); without one it closes again. Clients join a server only with the same mods' menu
+block entity container's faces and insertion rules, not the menu's `inputs` list. A block-backed menu syncs the block entity's
+`data` (16-bit on the network, as vanilla's). A [blockless menu](world/machine-menu-data.md#blockless-status-menus)
+gets its initial data from its opener and syncs subsequent signed `i32` changes without reopening. A Sunrise client shows it through the
+mod's [registered screen factory](world/machine-menu-data.md#the-menus-screen). If the factory is missing,
+the client warns and keeps its current menu. `player.open_mod_menu` can open the same type without a block.
+A recipe-book binding applies to either opening; the screen factory supplies its geometry and book.
+Clients join a server only with the same mods' menu
 types, as with its blocks, and a client that isn't Sunrise's is never sent one: the block opens nothing for it. Its
-clicks run on the server's vanilla menu engine (`menu::Kind::Mod`), shift-clicks routed as `ChestMenu`'s, and a native
-mod can decide what a slot takes in code with `menu_slot_rules` ([hook notes](https://github.com/sunrise-org/sunrise/blob/main/crates/sunrise-mod-vocab/src/hooks/menu_slot_rules.rs))
-and how far away the menu stays open with `menu_still_valid` ([hook notes](https://github.com/sunrise-org/sunrise/blob/main/crates/sunrise-mod-vocab/src/hooks/menu_still_valid.rs)).
+clicks run on the server's vanilla menu engine (`menu::Kind::Mod`), shift-clicks routed as `ChestMenu`'s, and buttons
+reach the type's `MenuPart::menu_button` on both block-backed and blockless openings. A native mod can decide what a
+slot takes in code with `menu_slot_rules` ([hook notes](https://github.com/sunrise-org/sunrise/blob/main/crates/sunrise-mod-vocab/src/hooks/menu_slot_rules.rs))
+and whether the menu stays open, with or without a backing block, with [`menu_still_valid`](../concepts/capabilities/menu-slots.md#keeping-a-mod-menu-open).
 The declaration specifies per-slot rules through `results`; clicks are handled by the server.
 
 ##### Lending ingredients and linking containers
@@ -844,20 +1367,20 @@ impl mod_api::Hooks for Machine {
 `player` is the requesting player's UUID; their state is not swapped in. The
 engine uses the player's inventory first, then answered containers in mod/push
 order. It silently skips the open machine itself, duplicate positions (first
-wins), missing or non-lendable containers, and anything after 64 accepted
-containers. Chest-like block entities (including barrels, shulkers, hoppers,
+wins), and missing or non-lendable containers. There is no container-count cap.
+Chest-like block entities (including barrels, shulkers, hoppers,
 dispensers and droppers) and mod containers' declared slots can lend. No answer
 keeps vanilla placement. The engine owns ingredient removal, container
 write-back and `container_changed` notifications, not the listener.
 
 `menu_links` has the same input fields and an append-only `links` output for menu
-types declaring linked slots. It silently skips `pos`, duplicate positions, missing
-or non-lendable containers, and positions after 64 accepted containers
-(`MAX_MENU_LINKS`), preserving first-accepted answer order. It refreshes the named containers' displayed items
+types declaring linked slots. It silently skips `pos`, duplicate positions, and missing
+or non-lendable containers, preserving first-accepted answer order with no container-count
+cap. It resolves distinct live lendable storage and refreshes the named containers' displayed items
 in the same server tick. `recipe_sources` is asked per player action, never per
 tick; `menu_links` is asked per open linked mod menu each tick, only when a mod
 subscribes. With no listener its tick path does no work or allocation. Both hooks
-are public server collect hooks with identical native and wasm behavior.
+are public server collect hooks.
 
 #### Namespaces and limits
 
@@ -866,6 +1389,11 @@ The fence: files go in the mod's own namespaces (`assets/<id>/`,
 (`data/minecraft/tags/`), to the convention tags NeoForge and Fabric mods
 share (`data/c/tags/`), and sources added to vanilla's atlases
 (`assets/minecraft/atlases/`), which follow vanilla's own as a reload appends them.
+Packages of every kind may also add to the declared [`sunrise:` extension tags](extension-tags.md),
+by writing exactly the listed registry and tag path under `data/sunrise/tags/`.
+Other `data/sunrise/` and all `assets/sunrise/` files remain refused; the namespace cannot be claimed.
+Generated `sunrise:class/*` tags are refused by name: attach a part with `block_part_tag` instead.
+The SDK surface's `extension_tags` lists these same declarations, and `sdk diff` treats a removed tag as breaking.
 Templates and `sounds` name vanilla blocks; unknown keys are refused.
 
 Some Java mods ship their files under other names than their mod id (Towns and Towers, mod id `t_and_t`, under
@@ -873,25 +1401,30 @@ Some Java mods ship their files under other names than their mod id (Towns and T
 
 ```toml
 id = "t_and_t"
-api = "0.2"
-capabilities = ["registries"]
 namespaces = ["kaisyn", "towns_and_towers"]
 ```
 
 A listed namespace is the mod's as its id is: its `assets/` and `data/` files load, and the game reads its tags,
 recipes, names and loot. Blocks, items, creative tabs, mob effects, entity types and menu types may be declared in
-`data/<owned_namespace>/sunrise/`. The same owned set governs code declarations.
-For example, a package with ID `ported_farmersdelight` and
-`namespaces = ["farmersdelight"]` can declare `farmersdelight:cooking_pot`
-and its `farmersdelight:` block entity type without changing saved-world IDs.
-The namespace collision fence applies. `minecraft`, `c` and
-`sunrise` cannot be listed. Two mods that are on may not own the same namespace (one's id or listed namespace being
-the other's): the game keeps the first in load order and leaves the other's content out, with "mods A and B both use
-the namespace N; turn one of them off" in the log. Paths use vanilla's resource characters, at most 65,536 files, 16
-MiB each and 512 MiB in all. A mod whose content is refused is left out, with the reason in the log. The game reads
-this content into its block and item tables (`sunrise_client::mod_content`, [modpacks.md](https://github.com/sunrise-org/sunrise/blob/main/docs/modpacks.md)). A tag entry
+`data/<owned_namespace>/sunrise/`. This file rule does not restrict the IDs used for code-declared
+blocks, items, and block entity types. For example, a package with ID `ported_farmersdelight` can
+register a code-declared `farmersdelight:cooking_pot` without changing its saved-world ID;
+its `farmersdelight:` asset and data files still require `namespaces = ["farmersdelight"]`.
+`minecraft`, `c` and `sunrise` cannot be listed. When two packages list the same extra namespace, the first
+admitted package owns it; the game leaves the later package's content out and logs the conflict. A package's
+primary namespace is its ID. Listing another package's ID as an extra namespace is a load error, regardless of
+load order.
+
+Paths use vanilla's resource characters, at most 65,536 files, 16 MiB each and 512 MiB in all. A mod whose
+content is refused is left out, with the reason in the log. The game reads this content into its block and item
+tables (`sunrise_client::mod_content`, [modpacks.md](https://github.com/sunrise-org/sunrise/blob/main/docs/modpacks.md)). A tag entry
 naming an id nobody registers (a block a port left out, another mod's item) is dropped, so the rest of the tag
-loads; vanilla would drop the whole tag.
+loads; vanilla would drop the whole tag. In a block or item tag, an entry naming a `#minecraft:…` tag that neither
+vanilla nor an installed mod defines is also dropped. The warning names the entry and its file; an optional
+entry (`"required": false`) is dropped silently. If the base has no tag folder for that registry, the reference is
+left in place.
+
+#### Tags and enchantments
 
 Tags merge as a data pack's do. Every mod's file for one tag (vanilla's `data/minecraft/tags/`, the convention
 `data/c/tags/`, or another mod's) adds its values after vanilla's and the mods' before it, in load order. A file with
@@ -924,9 +1457,11 @@ Enchantments use vanilla files at `data/<namespace>/enchantment/<name>.json` (su
 table, the anvil, loot, commands and the registry a server sends its players, whose data no client knows, so it is
 always sent. An enchantment reaches the enchanting table through vanilla's tags (`data/minecraft/tags/enchantment/
 in_enchanting_table.json` and the others), which a mod adds to as any tag. A world's data pack replaces a mod's
-enchantment of the same id. What an enchantment does beyond vanilla's effect components is the mod's code: a native
-hook reads the held stack's enchantments, or claims a `post_attack` effect of its own kind
-([enchantment effect kinds](items/enchantment-effect-kinds.md)).
+enchantment of the same id. A native mod can register a codec for a custom value or entity effect kind, then use
+that kind in a vanilla effect component in the enchantment definition. See
+[enchantment effect kinds](items.md#custom-enchantment-effect-kinds).
+
+#### Worldgen additions, biome modifiers and custom biomes
 
 A mod adds to structure sets, template pools and processor lists that are not its own (vanilla's villages, another
 mod's houses) with a set, pool or processor list file in its own namespace holding `sunrise:add_to`, a key vanilla data
@@ -945,7 +1480,9 @@ do on NeoForge and Fabric, and `sunrise-port-pack carry` writes the last two fro
 
 A mod's own configured and placed features (`data/<ns>/worldgen/feature/`, `placed_feature/`) generate in
 biomes it does not own (vanilla's) through NeoForge's biome modifiers, files in `data/<ns>/neoforge/biome_modifier/`
-(older Forge mods: `data/<ns>/forge/biome_modifier/`, `forge:` types). `add_features` appends its `features` to one
+(older Forge mods: `data/<ns>/forge/biome_modifier/`, `forge:` types). Pack precedence picks
+one effective file; a code declaration of its registry key is refused, not applied a second time.
+`add_features` appends its `features` to one
 generation `step` of every biome in `biomes`; `remove_features` takes them out of its `steps` (every step when it lists
 none); `none` does nothing. `biomes` and `features` are an id, a `#tag` or a list of ids; `biomes` may also be
 NeoForge's `any`, `or`, `and` or `not`. Every addition comes before every removal, each in mod and file order, and a
@@ -1010,7 +1547,7 @@ the keys it leaves out stay:
       "additions": { "sound": "minecraft:ambient.warped_forest.additions", "tick_chance": 0.0111 },
       "mood": { "sound": "minecraft:ambient.warped_forest.mood", "tick_delay": 6000, "block_search_extent": 8, "offset": 2.0 }
     },
-    "minecraft:audio/background_music": { "default": { "sound": "zinc:music.dunes", "min_delay": 12000, "max_delay": 24000 } },
+    "minecraft:audio/background_music": { "default": { "sound": { "sound_id": "zinc:music.dunes" }, "min_delay": 12000, "max_delay": 24000 } },
     "minecraft:audio/music_volume": 0.5
   }
 }
@@ -1020,8 +1557,10 @@ The particle list also accepts `{ "argument": [...] }`.
 
 | Value | Validation |
 |---|---|
-| Particle or sound | Namespaced ID |
-| Particle `probability`, music volume | 0 to 1 |
+| Particle | Namespaced ID |
+| Sound | Registered vanilla sound ID string, or inline `{ "sound_id": "<ns>:<path>" }` (optional `"range"`) for any sound including custom mod sounds |
+| Particle `probability` | 0 to 1 |
+| Music volume | 0 to 1, or a float environment-attribute modifier object (e.g. `{ "modifier": "multiply", "argument": 0.5 }`) |
 | Ambient additions | One object or a list; any finite `tick_chance` |
 | Ambient mood | Requires sound, `tick_delay`, `block_search_extent` and `offset` |
 | Music `default`, `creative`, `underwater` | Requires sound and nonnegative `min_delay` and `max_delay`; delays need not be ordered |
@@ -1056,22 +1595,16 @@ A code mod declares the same modifiers without a file: `Registrar::declare_biome
 `AddSpawnCosts`, `RemoveSpawnCosts`, `AddCarvers`, `RemoveCarvers` or `ModifyBiome`, whose `Option` fields are the
 values above). `BiomeModifier::json` renders it as the file above, so a declared modifier and
 a shipped one are applied by the same code, in the same order (additions first, then removals, then modifications, mods in dispatch
-order, declarations in registration order). An id outside the mod's namespace or that is not a file path, a repeated
-id, an empty list, a name that is not namespaced, an unknown generation step, a spawner of weight 0 or with its
-smallest group above its largest, a spawn cost that is not finite, a climate number that is not finite, a colour above
-0xFFFFFF and a temperature modifier other than `none` or `frozen` refuse the mods at startup, naming the mod.
+order, declarations in registration order). A bare path uses the declaring mod's namespace, while an explicit valid
+`namespace:path` keeps its namespace. A malformed id, a repeated id, an empty list, a name that is not namespaced, an
+unknown generation step, a spawner of weight 0 or with its smallest group above its largest, a spawn cost that is not
+finite, a climate number that is not finite, a colour above 0xFFFFFF and a temperature modifier other than `none` or
+`frozen` refuse the mods at startup, naming the mod.
 Declared modifiers apply when the world loads, through the same content loader as file modifiers, to both the
 generator and the game's biome table, including when no data pack is enabled.
 
-A modifier changes a biome that already generates. To add a mod's own biomes to the Overworld or the Nether, a code mod
-declares a **biome region** instead: `Registrar::declare_biome_region(path, region)` takes a `BiomeRegion` (its
-`dimension`, `minecraft:overworld` or `minecraft:nether`; a `weight` from 1 to 1000 against vanilla's 10; and its
-`points`, the same `BiomePoint`s as a mod dimension's). An area belongs to one region, and the region's own points
-choose the biome there. A malformed or repeated id, an id outside the mod's namespace, another dimension, a weight
-outside 1 to 1000, no points or an invalid point refuse the mods at startup, naming the mod. A new world records the
-declared regions in `data/sunrise/biome_regions.dat`, and from then on that record decides: a changed or added region
-reaches an existing world only when its owner opts in, and a world whose region's mod is missing asks before it opens
-(a dedicated server reads `[biome_regions] missing = "refuse" | "vanilla"` in `server.toml`).
+A modifier changes a biome that already generates. To add a mod's own biomes to the Overworld or the Nether,
+declare a [biome region](content-mods/biome-regions.md) instead.
 
 The modifiers rewrite the biomes when the content root builds, and the generator orders every biome's features as
 vanilla's `FeatureSorter` does, so an added feature takes its place in that order (its random seed follows from it). A
@@ -1085,7 +1618,10 @@ that replaces a biome keeps the mods' changes too.
 
 **A biome of your own.** A mod's `data/<ns>/worldgen/biome/<path>.json` (any namespace but `minecraft`) adds a biome.
 The game loads it into its biome table after vanilla's biomes, sorted by path and then namespace, so vanilla's biome ids
-never move. A joining client receives it in the biome registry with its data even when it has the vanilla pack, builds
+never move. The content build puts it in the content root's biome bundle as `<ns>:<path>`, after vanilla's biomes and
+in namespace then path order; a file in the `minecraft` namespace is ignored, since mods cannot replace vanilla's
+biomes. Biome tags keep the mod's ids, biome modifiers apply over vanilla's biomes and the mods' together (a modifier
+reaches a mod biome through its tag and never drops it), and `/locate biome` and `/place` suggest it. A joining client receives it in the biome registry with its data even when it has the vanilla pack, builds
 it from that data, and plays its colours, ambient particles, ambient sounds and music from it; a client with the same
 mod already has it. Its network id is its place in the registry sorted by path, then namespace, as in vanilla.
 Saved worlds name a column's biomes, not their ids: a world saved before the mod existed holds only vanilla names and
@@ -1110,36 +1646,20 @@ radius. `kernel_size` 0 is none.
     "top": "carve", "bottom": "none", "rigid_junctions": true, "inflate": true } }
 ```
 
-### Passenger attachment points
+#### Custom block-state definition types
 
-An entity type can set `passenger_attachments` to seat offsets relative to its feet.
-A list of exactly three plain numbers is **one** `[x, y, z]` point, not three heights.
-For multiple seats use nested points, for example `[[1, 2, 3], [-1, 4, 5]]`.
-Seats follow passenger order; extra passengers use the last point. Offsets scale with
-the entity and rotate with its yaw.
-
-### Custom block-state definition types
-
-Register a type id with `Hooks::register_block_state_models` before client resources
-load. Set `neoforge:definition_type` to that id in the blockstate JSON, and answer
-`Hooks::instantiate_block_state_definition` on every load and reload. Read the whole
-file from `event.config` and enumerate `event.states` in registry order. Append a
-`BlockStateModelPick::Model` for each state you choose, with its index, model id,
-quarter turns and UV-lock setting; append `Refuse` with a reason to reject a file.
-See the generated hook notes for a powered-block example.
+Register a definition provider with `Hooks::register_block_state_models` before client resources
+load (`event.register(id, provider)`). Set `neoforge:definition_type` to that id in the
+blockstate JSON; the bound provider runs directly on every load and reload. Read the whole
+file from `input.config`, the block identifier from `input.block`, and enumerate `input.states`
+in registry order. Return `Ok(picks)` with a `BlockStateModelPick::Model` for each state you
+choose (its index, model id, quarter turns and UV-lock setting), or `Err(reason)` to reject a
+file. Any valid `<namespace>:<path>` identifier (including `minecraft:`) is accepted, and a
+later registration for the same id replaces an earlier one. See the generated hook notes for a
+powered-block example.
 
 A state not picked inherits the lower pack layer's selection when present;
 otherwise it draws no model. Pack layers bind independently. An unknown type,
 explicit refusal, invalid model, out-of-range state, duplicate state or answer
 with no picks rejects the whole layer with a diagnostic, leaving lower layers
 available. Vanilla `variants` and `multipart` remain available for ordinary files.
-
-## Per-state light
-
-Blocks in JSON and code can set `state_light`, which overrides `properties.light`.
-Use `properties` for an ordered list of state property names, `values` for
-comma-separated value tuples mapped to emission (0 to 15), and `default` for
-unmatched states. Without a default, every state must match a tuple.
-For example, `"state_light":{"properties":["lit"],"values":{"true":15},"default":0}`
-makes a lamp dark when unlit and emit 15 when lit. Code uses `mod_api::StateLight`
-with the same `properties`, `values` and `default` fields on `Block::state_light`.

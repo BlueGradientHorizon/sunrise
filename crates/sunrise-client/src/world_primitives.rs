@@ -1,5 +1,5 @@
 //! What a client mod draws in the world each frame through `native_world_primitives`
-//! (docs/native-mods.md): lines, box outlines, filled boxes, beacon-style beams and text facing
+//! (docs/modding/src/how-to/native-mods.md): lines, box outlines, filled boxes, beacon-style beams and text facing
 //! the camera, in world coordinates with ARGB colours. The game tessellates them
 //! (`game/world_primitives.rs`) and the renderer draws them with its own pipelines
 //! (`gfx::world_primitives`), so a mod never touches wgpu for them.
@@ -69,9 +69,6 @@ pub enum PrimitiveShape {
 /// Where text with `scale_with_distance` has the size it keeps.
 pub const TEXT_REFERENCE_DISTANCE: f64 = 8.0;
 
-/// The tallest beam drawn, as a beacon's last section.
-pub const MAX_BEAM_HEIGHT: u32 = 2048;
-
 impl WorldPrimitives {
     /// Adds a primitive, depth tested unless it says otherwise.
     pub fn push(&mut self, shape: PrimitiveShape) -> &mut WorldPrimitive {
@@ -94,23 +91,6 @@ impl WorldPrimitives {
             color,
             width,
         })
-    }
-    pub fn box_outline(
-        &mut self,
-        min: [f64; 3],
-        max: [f64; 3],
-        color: u32,
-        width: f32,
-    ) -> &mut WorldPrimitive {
-        self.push(PrimitiveShape::BoxOutline {
-            min,
-            max,
-            color,
-            width,
-        })
-    }
-    pub fn filled_box(&mut self, min: [f64; 3], max: [f64; 3], color: u32) -> &mut WorldPrimitive {
-        self.push(PrimitiveShape::FilledBox { min, max, color })
     }
     pub fn beam(&mut self, base: [f64; 3], height: u32, color: u32) -> &mut WorldPrimitive {
         self.push(PrimitiveShape::Beam {

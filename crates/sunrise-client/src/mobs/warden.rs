@@ -3,7 +3,7 @@
 //! tendril animations, the model and its emissive layers. Its brain
 //! (`WardenAi`) is in `warden_brain`.
 use super::{
-    Damage, DamageKind, Mob, MobEvent, MobWorld, Species, TargetChange, Who,
+    Damage, Mob, MobEvent, MobWorld, Species, TargetChange, Who,
     anim::{Poses, State},
     keyframes::Animation,
     path::PathType,
@@ -15,10 +15,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     f32::consts::PI,
 };
-use sunrise_core::{
-    geometry::{Vec3, trig::Mth},
-    random::RandomSource,
-};
+use sunrise_core::geometry::{Vec3, trig::Mth};
 use sunrise_protocol::entity_data::PositionSource;
 
 pub const EMERGE_DURATION: i64 = warden_brain::EMERGE_DURATION as i64;
@@ -126,7 +123,7 @@ pub enum AngerLevel {
     Angry,
 }
 impl AngerLevel {
-    pub fn by_anger(anger: i32) -> Self {
+    pub(crate) fn by_anger(anger: i32) -> Self {
         if anger >= 80 {
             Self::Angry
         } else if anger >= 40 {
@@ -142,7 +139,7 @@ impl AngerLevel {
             Self::Angry => 80,
         }
     }
-    pub fn is_angry(self) -> bool {
+    pub(crate) fn is_angry(self) -> bool {
         self == Self::Angry
     }
     pub fn ambient_sound(self) -> &'static str {
@@ -152,7 +149,7 @@ impl AngerLevel {
             Self::Angry => "entity.warden.angry",
         }
     }
-    pub fn listening_sound(self) -> &'static str {
+    pub(crate) fn listening_sound(self) -> &'static str {
         match self {
             Self::Calm => "entity.warden.listening",
             _ => "entity.warden.listening_angry",
@@ -177,6 +174,12 @@ pub struct AngerManagement {
     /// mob's own random would shift that stream's parity.
     conversion_delay: i32,
     highest: i32,
+    /// The UUID of the player `Who::Player` stands for in `anger` (#486):
+    /// vanilla keys a player suspect by its entity, so a save names that
+    /// player. Recorded when a player raises the anger or is found again by
+    /// UUID; `None` when no player suspect is known, and then a save writes
+    /// no pair for it rather than a made-up UUID.
+    player: Option<[i32; 4]>,
 }
 /// `AngerManagement.CONVERSION_DELAY`: anger ticks between two lookups of the
 /// suspects that are away.
@@ -227,8 +230,7 @@ impl AngerManagement {
             }
         }
         for who in dropped {
-            self.anger.remove(&who);
-            self.suspects.retain(|s| *s != who);
+            self.forget(who);
         }
         self.sort_and_update_highest();
     }
@@ -241,7 +243,19 @@ impl AngerManagement {
     fn convert_from_uuids(&mut self, by_uuid: impl Fn([i32; 4]) -> Option<Who>) {
         let away = std::mem::take(&mut self.unloaded);
         for (uuid, anger) in away {
-            match by_uuid(uuid) {
+            let who = by_uuid(uuid);
+            if who == Some(Who::Player) {
+                // `Who::Player` already stands for another player: that one's
+                // anger is not this one's, so this pair stays away.
+                if self.player.is_some_and(|other| other != uuid)
+                    && self.anger.contains_key(&Who::Player)
+                {
+                    self.unloaded.insert(uuid, anger);
+                    continue;
+                }
+                self.player = Some(uuid);
+            }
+            match who {
                 Some(who) if self.anger.contains_key(&who) => {
                     *self.anger.entry(who).or_default() += anger;
                 }
@@ -300,10 +314,46 @@ impl AngerManagement {
         self.sort_and_update_highest();
         current
     }
+    /// `increaseAnger` for a player suspect, whose entity is the player with
+    /// `uuid` (`None`: one the world can't name). Another identity than the one
+    /// `Who::Player` stands for, a change to or from `None` included, is another
+    /// entity: the old one's live anger goes under its own UUID when it has one,
+    /// and the binding is forgotten. As vanilla, the increase is capped first, and
+    /// a new suspect then gets the anger kept under its UUID while it was away
+    /// (`angerByUuid.removeInt(entity.getUUID())`), uncapped.
+    pub(crate) fn increase_player(&mut self, uuid: Option<[i32; 4]>, amount: i32) -> i32 {
+        if self.player != uuid
+            && let Some(anger) = self.anger.get(&Who::Player).copied()
+        {
+            if let Some(old) = self.player {
+                *self.unloaded.entry(old).or_default() += anger;
+            }
+            self.forget(Who::Player);
+        }
+        let new_suspect = !self.anger.contains_key(&Who::Player);
+        self.player = uuid;
+        let mut current = self.increase(Who::Player, amount);
+        if new_suspect && let Some(kept) = uuid.and_then(|uuid| self.unloaded.remove(&uuid)) {
+            current += kept;
+            self.anger.insert(Who::Player, current);
+            self.sort_and_update_highest();
+        }
+        current
+    }
+    /// The UUID of the player suspect, when it is known.
+    pub fn player_uuid(&self) -> Option<[i32; 4]> {
+        self.player
+    }
     pub fn clear(&mut self, who: Who) {
+        self.forget(who);
+        self.sort_and_update_highest();
+    }
+    fn forget(&mut self, who: Who) {
         self.anger.remove(&who);
         self.suspects.retain(|s| *s != who);
-        self.sort_and_update_highest();
+        if who == Who::Player {
+            self.player = None;
+        }
     }
     /// `getActiveAnger`: the target's anger, or the highest when there is none.
     pub fn active_anger(&self, target: Option<Who>) -> i32 {
@@ -313,14 +363,37 @@ impl AngerManagement {
         }
     }
     /// `getActiveEntity`: the first suspect that can still be targeted.
-    pub fn active_entity(&self, can_target: impl Fn(Who) -> bool) -> Option<Who> {
+    pub(crate) fn active_entity(&self, can_target: impl Fn(Who) -> bool) -> Option<Who> {
         self.suspects.iter().copied().find(|w| can_target(*w))
     }
-    pub fn anger_of(&self, who: Who) -> i32 {
+    pub(crate) fn anger_of(&self, who: Who) -> i32 {
         self.anger.get(&who).copied().unwrap_or(0)
     }
     pub fn suspects(&self) -> &[Who] {
         &self.suspects
+    }
+}
+
+/// `ATTACK_TARGET` stores an entity, not a loan of whichever player the tick sees.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct AttackTarget {
+    pub(super) who: Who,
+    pub(super) player_id: Option<u32>,
+}
+
+impl AttackTarget {
+    pub(super) fn new(who: Who, player_id: Option<u32>) -> Self {
+        Self {
+            who,
+            player_id: if who == Who::Player { player_id } else { None },
+        }
+    }
+
+    fn id(self) -> Option<u32> {
+        match self.who {
+            Who::Mob(id) => Some(id),
+            Who::Player => self.player_id,
+        }
     }
 }
 
@@ -333,23 +406,27 @@ pub struct Warden {
     /// `getClientAngerLevel`, synchronised once a second.
     pub client_anger: i32,
     /// Attackers noted by `hurtServer` and not yet reacted to.
-    hurt_by: Vec<(Option<Who>, bool)>,
+    hurt_by: Vec<(Option<AttackTarget>, bool)>,
 }
 impl Warden {
     pub fn target(&self) -> Option<Who> {
-        self.brain.mem.attack_target.value()
+        self.brain.mem.target()
+    }
+    pub fn has_pending_hurt(&self) -> bool {
+        !self.hurt_by.is_empty()
     }
 }
 
 pub fn register(m: &mut Mob) {
-    // The brain at construction, with the mob's own type id so a mod part's
-    // behaviors join it (#824).
-    let id = m.kind.id.clone();
+    // The brain at construction; authoritative mobs stage mod behaviors for it
+    // when `attach_mod_parts` runs.
+    let generation = m.next_brain_generation();
     let st = Warden {
-        brain: Brain::new(&id, 0),
+        brain: Brain::new(generation, 0),
         ..Warden::default()
     };
     m.extra.warden = Some(Box::new(st));
+    m.stage_brain_behaviors(super::mod_behaviors::BehaviorTarget::Warden(generation));
     m.ai.nav.can_float = true;
     m.set_malus(PathType::UnpassableRail, 0.0);
     m.set_malus(PathType::Damaging, 8.0);
@@ -370,13 +447,18 @@ pub fn delay_sensors(m: &mut Mob) {
 /// A brain whose `RunOne` shuffles with `seed` (vanilla seeds it from the
 /// clock; harnesses seed both sides alike), its sensors delayed again.
 pub fn init_brain(m: &mut Mob, seed: i64) {
+    let generation = m.next_brain_generation();
+    let mut built = false;
     if let Some(st) = m.extra.warden.as_mut() {
         let mem = std::mem::take(&mut st.brain.mem);
-        let id = m.kind.id.clone();
-        st.brain = Brain::new(&id, seed);
+        st.brain = Brain::new(generation, seed);
         st.brain.mem = mem;
+        built = true;
     }
     delay_sensors(m);
+    if built {
+        m.stage_brain_behaviors(super::mod_behaviors::BehaviorTarget::Warden(generation));
+    }
 }
 /// `Warden.finalizeSpawn`: a minute until it digs back down; a summoned
 /// warden climbs out of the ground first.
@@ -403,10 +485,6 @@ fn sound(m: &Mob, name: &'static str, volume: f32, pitch: f32, events: &mut Vec<
     if !m.silent {
         events.push(MobEvent::Sound(name, at(m), volume, pitch));
     }
-}
-/// `LivingEntity.getVoicePitch` for an adult.
-fn voice_pitch(m: &mut Mob) -> f32 {
-    (m.random.next_float() - m.random.next_float()) * 0.2 + 1.0
 }
 fn closer_than(m: &Mob, p: Vec3, horizontal: f64, vertical: f64) -> bool {
     let (dx, dy, dz) = (p.x - m.position.x, p.y - m.position.y, p.z - m.position.z);
@@ -439,15 +517,18 @@ pub fn can_be_targeted(m: &Mob) -> bool {
 }
 
 /// `Warden.canTargetEntity`: living, neither creative nor spectator, not a
-/// warden, not an ally, not invulnerable, alive.
-pub fn can_target(w: &MobWorld, warden: u32, who: Who) -> bool {
+/// warden, not an armor stand, not an ally, not invulnerable, alive.
+pub(crate) fn can_target(w: &MobWorld, warden: u32, who: Who) -> bool {
     let targetable = match who {
         Who::Player => w
             .selected_player()
             .is_some_and(|p| p.alive && !p.creative && !p.spectator),
-        Who::Mob(id) => w
-            .seen(id)
-            .is_some_and(|s| s.alive && s.species != Species::Warden && !s.invulnerable),
+        Who::Mob(id) => {
+            w.seen(id)
+                .is_some_and(|s| s.alive && s.species != Species::Warden && !s.invulnerable)
+                || w.dragon
+                    .is_some_and(|(dragon, target)| dragon == id && target.alive)
+        }
     };
     targetable && !allied(&w.teams, warden, Some(who))
 }
@@ -475,18 +556,25 @@ pub(super) fn increase_anger(
         return;
     };
     let maybe_switch = st.target() != Some(Who::Player);
-    let new = st.anger.increase(who, amount);
+    let new = match who {
+        // The selected player's verified identity: `None` where the view
+        // stands for nobody the world can name (no UUID yet, a fake player).
+        Who::Player => st
+            .anger
+            .increase_player(w.selected_player_identity().map(|(uuid, _)| uuid), amount),
+        Who::Mob(_) => st.anger.increase(who, amount),
+    };
     if who == Who::Player
         && maybe_switch
         && AngerLevel::by_anger(new).is_angry()
         && warden_brain::mem(m).attack_target.present()
         && let TargetChange::Set(target) = w.change_target(m, true, None)
     {
-        warden_brain::mem(m).attack_target.set_opt(target);
+        warden_brain::mem(m).set_target(target, w.selected_player_identity().map(|(_, id)| id));
     }
     if play_sound && pose(m) != Pose::Roaring {
         let level = anger_level(m);
-        let pitch = voice_pitch(m);
+        let pitch = m.voice_pitch();
         sound(m, level.listening_sound(), 10.0, pitch, events);
     }
 }
@@ -500,7 +588,7 @@ pub(super) fn entity_angry_at(m: &Mob, w: &MobWorld) -> Option<Who> {
     }
 }
 /// `Warden.getAngerLevel`.
-pub fn anger_level(m: &Mob) -> AngerLevel {
+pub(crate) fn anger_level(m: &Mob) -> AngerLevel {
     m.extra.warden.as_ref().map_or(AngerLevel::Calm, |s| {
         AngerLevel::by_anger(s.anger.active_anger(s.target()))
     })
@@ -509,28 +597,27 @@ pub fn anger_level(m: &Mob) -> AngerLevel {
 // ---- damage ----
 
 /// `Warden.isInvulnerableTo`: while digging or emerging.
-pub fn accepts_damage(m: &Mob, source: &Damage) -> bool {
+pub(crate) fn accepts_damage(m: &Mob, source: &Damage) -> bool {
     !(digging_or_emerging(m) && !source.kind.bypasses_invulnerability())
 }
 /// `Warden.hurtServer`'s reaction, handled at the warden's next tick.
-pub fn hurt(m: &mut Mob, source: &Damage) {
+pub fn hurt(m: &mut Mob, source: &Damage, attack: &crate::health::Attack) {
     if m.no_ai || digging_or_emerging(m) {
         return;
     }
-    let direct = !matches!(
-        source.kind,
-        DamageKind::Arrow
-            | DamageKind::Thrown
-            | DamageKind::Fireball
-            | DamageKind::WitherSkull
-            | DamageKind::WindCharge
-    );
+    let direct = attack.is_direct(source);
     if let Some(st) = m.extra.warden.as_mut() {
-        st.hurt_by.push((source.attacker, direct));
+        let attacker = source.attacker.map(|who| {
+            AttackTarget::new(
+                who,
+                u32::try_from(attack.attacker).ok().filter(|id| *id != 0),
+            )
+        });
+        st.hurt_by.push((attacker, direct));
     }
 }
 /// The rest of `Warden.hurtServer`.
-fn handle_hurt(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
+pub fn handle_hurt(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
     let hurt = m
         .extra
         .warden
@@ -541,17 +628,17 @@ fn handle_hurt(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
         increase_anger(
             m,
             w,
-            attacker,
+            attacker.map(|target| target.who),
             AngerLevel::Angry.minimum() + ON_HURT_ANGER_BOOST,
             false,
             events,
         );
         if !warden_brain::mem(m).attack_target.present()
-            && let Some(who) = attacker
-            && let Some(p) = position_of(w, who)
+            && let Some(target) = attacker
+            && let Some(p) = position_of(w, target.who)
             && (direct || m.distance_sqr(p) < 25.0)
         {
-            warden_brain::set_attack_target(m, w, who);
+            warden_brain::set_attack_target(m, w, target);
         }
     }
 }
@@ -587,7 +674,7 @@ pub(super) fn do_hurt_target(
         event: 4,
         at: at(m),
     });
-    let pitch = voice_pitch(m);
+    let pitch = m.voice_pitch();
     sound(m, "entity.warden.attack_impact", 10.0, pitch, events);
     warden_brain::mem(m).sonic_boom_cooldown.set_ttl((), 40);
     let mut cx = warden_brain::cx(w, level, events);
@@ -596,13 +683,19 @@ pub(super) fn do_hurt_target(
 
 /// The brain's attack target (`Warden.getTarget` before `asValidTarget`).
 pub fn brain_target(m: &Mob) -> Option<Who> {
-    warden_brain::mem_ref(m).and_then(|mem| mem.attack_target.value())
+    warden_brain::mem_ref(m)?.target()
+}
+
+/// Identity in the raw brain slot, before the caller checks the live entity.
+/// A probe without a verified player can still model the AI view, but cannot name an entity.
+pub fn brain_target_id(m: &Mob) -> Option<u32> {
+    warden_brain::mem_ref(m)?.attack_target.value()?.id()
 }
 
 // ---- vibrations ----
 
 /// `Warden.VibrationUser.canReceiveVibration`.
-pub fn can_receive_vibration(m: &Mob, _now: i64, ctx: &Context) -> bool {
+pub(crate) fn can_receive_vibration(m: &Mob, _now: i64, ctx: &Context) -> bool {
     let Some(st) = m.extra.warden.as_ref() else {
         return false;
     };
@@ -727,7 +820,7 @@ fn receive_vibration(m: &mut Mob, w: &MobWorld, info: Info, events: &mut Vec<Mob
         event: 61,
         at: at(m),
     });
-    let pitch = voice_pitch(m);
+    let pitch = m.voice_pitch();
     sound(m, "entity.warden.tendril_clicks", 5.0, pitch, events);
     let origin = [
         info.pos[0].floor() as i32,
@@ -849,7 +942,9 @@ pub fn server_ai_step(
     });
     let target_change = target_change.map(|original| match w.change_target(m, true, None) {
         TargetChange::Keep => original,
-        TargetChange::Set(target) => target,
+        TargetChange::Set(target) => {
+            target.map(|who| AttackTarget::new(who, w.selected_player_identity().map(|(_, id)| id)))
+        }
     });
     if let Some(st) = m.extra.warden.as_mut() {
         st.brain.update_activity();
@@ -861,7 +956,7 @@ pub fn server_ai_step(
 /// `SonicBoom.tick`: face the target; once the sound delay is over, the
 /// beam, the sound, the damage and the knockback.
 pub(super) fn tick_sonic_boom(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
-    let Some(target) = warden_brain::mem(m).attack_target.value() else {
+    let Some(target) = warden_brain::mem(m).target() else {
         return;
     };
     if let Some(t) = w.target_info(target) {
@@ -947,7 +1042,7 @@ fn heartbeat(m: &mut Mob) -> bool {
 pub fn client_tick(m: &mut Mob, events: &mut Vec<MobEvent>) {
     m.anim.vo = m.anim.v;
     if heartbeat(m) && !m.silent {
-        let pitch = voice_pitch(m);
+        let pitch = m.voice_pitch();
         events.push(MobEvent::LocalSound(
             "entity.warden.heartbeat",
             at(m),
@@ -1034,7 +1129,7 @@ pub fn describe(m: &Mob) -> Option<serde_json::Value> {
     }))
 }
 /// `Warden.getHeartBeatDelay`.
-pub fn heart_beat_delay(client_anger: i32) -> i32 {
+pub(crate) fn heart_beat_delay(client_anger: i32) -> i32 {
     let anger = client_anger as f32 / AngerLevel::Angry.minimum() as f32;
     40 - (anger.clamp(0.0, 1.0) * 30.0).floor() as i32
 }
@@ -1047,10 +1142,10 @@ pub fn ambient_sound(m: &Mob) -> Option<&'static str> {
     }
 }
 /// `getTendrilAnimation` / `getHeartAnimation` at the partial tick.
-pub fn tendril_animation(m: &Mob, partial: f32) -> f32 {
+pub(crate) fn tendril_animation(m: &Mob, partial: f32) -> f32 {
     m.anim.lerp(TENDRIL, partial) / 10.0
 }
-pub fn heart_animation(m: &Mob, partial: f32) -> f32 {
+pub(crate) fn heart_animation(m: &Mob, partial: f32) -> f32 {
     m.anim.lerp(HEART, partial) / 10.0
 }
 
@@ -1242,6 +1337,83 @@ mod tests {
         assert_eq!(a.active_anger(None), 120);
     }
 
+    /// #486: the player suspect is the player who raised the anger. Another
+    /// player keeps the first one's anger under the first one's UUID, and a
+    /// player found again by UUID is the one the suspect stands for.
+    #[test]
+    fn a_player_suspect_keeps_its_own_uuid() {
+        let (alice, bob) = ([1, 2, 3, 4], [5, 6, 7, 8]);
+        let mut a = AngerManagement::default();
+        assert_eq!(a.increase_player(Some(alice), 35), 35);
+        assert_eq!(a.increase_player(Some(alice), 33), 68);
+        assert_eq!(a.player_uuid(), Some(alice));
+        assert_eq!(a.increase_player(Some(bob), 35), 35);
+        assert_eq!(a.player_uuid(), Some(bob));
+        assert_eq!(a.anger_of(Who::Player), 35);
+        assert_eq!(a.unloaded().collect::<Vec<_>>(), vec![(alice, 68)]);
+
+        let mut back = AngerManagement::from_saved([(alice, 50)]);
+        back.tick(|_| true, |uuid| (uuid == alice).then_some(Who::Player));
+        assert_eq!(back.player_uuid(), Some(alice));
+        assert_eq!(back.anger_of(Who::Player), 49);
+        back.clear(Who::Player);
+        assert_eq!(back.player_uuid(), None);
+    }
+
+    /// A lookup by UUID never hands another player's anger to the player
+    /// `Who::Player` stands for: the host found again stays away while the
+    /// suspect is a guest.
+    #[test]
+    fn a_player_found_by_uuid_does_not_take_another_players_anger() {
+        let (alice, bob) = ([1, 2, 3, 4], [5, 6, 7, 8]);
+        let mut a = AngerManagement::default();
+        a.increase_player(Some(alice), 68);
+        a.increase_player(Some(bob), 35);
+        a.tick(|_| true, |uuid| (uuid == alice).then_some(Who::Player));
+        assert_eq!(a.player_uuid(), Some(bob));
+        assert_eq!(a.anger_of(Who::Player), 34);
+        assert_eq!(a.unloaded().collect::<Vec<_>>(), vec![(alice, 67)]);
+    }
+
+    /// `increaseAnger` adds the anger kept under the player's UUID while it was
+    /// away (`angerByUuid.removeInt`): one pair per player, never two.
+    #[test]
+    fn a_returning_players_kept_anger_is_added() {
+        let bob = [5, 6, 7, 8];
+        let mut a = AngerManagement::from_saved([(bob, 80)]);
+        assert_eq!(a.increase_player(Some(bob), 35), 115);
+        assert_eq!(a.unloaded().count(), 0);
+        assert_eq!(a.player_uuid(), Some(bob));
+    }
+
+    /// `increaseAnger` caps the increase at 150 first and adds the kept anger
+    /// after, uncapped: a saved 140 plus 35 is 175, nothing lost.
+    #[test]
+    fn kept_anger_is_added_after_the_cap() {
+        let bob = [5, 6, 7, 8];
+        let mut a = AngerManagement::from_saved([(bob, 140)]);
+        assert_eq!(a.increase_player(Some(bob), 35), 175);
+        assert_eq!(a.anger_of(Who::Player), 175);
+        assert_eq!(a.active_anger(None), 175);
+        assert_eq!(a.unloaded().count(), 0);
+    }
+
+    /// A player the world can't name is another entity: Alice's anger goes
+    /// under her UUID when it can't be named, the anonymous anger is its own,
+    /// and Alice coming back gets her kept anger, not the anonymous one.
+    #[test]
+    fn an_unnamed_player_is_another_suspect() {
+        let alice = [1, 2, 3, 4];
+        let mut a = AngerManagement::default();
+        a.increase_player(Some(alice), 50);
+        assert_eq!(a.increase_player(None, 20), 20);
+        assert_eq!(a.player_uuid(), None);
+        assert_eq!(a.unloaded().collect::<Vec<_>>(), vec![(alice, 50)]);
+        assert_eq!(a.increase_player(Some(alice), 10), 60);
+        assert_eq!(a.player_uuid(), Some(alice));
+        assert_eq!(a.unloaded().count(), 0);
+    }
+
     #[test]
     fn a_single_suspect_sets_the_highest_anger() {
         let mut a = AngerManagement::default();
@@ -1270,6 +1442,116 @@ mod tests {
         ] {
             assert_eq!(Pose::from_code(p.code()), p);
         }
+    }
+
+    #[test]
+    fn hurt_checks_causing_and_direct_entities_not_damage_type() {
+        use crate::health::{Attack, DirectEntity, TestLevel};
+        use crate::mobs::{DamageKind, NamedDamage};
+        use std::sync::Arc;
+
+        let mut test_level = TestLevel::new(0);
+        let warden = || {
+            let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
+            kind.id = "minecraft:warden".into();
+            kind.species = Species::Warden;
+            kind.max_health = 500.0;
+            let mut m = Mob::new(1, Arc::new(kind), Vec3::ZERO, 0.0);
+            register(&mut m);
+            m
+        };
+        let mob_projectile = DamageKind::Named(NamedDamage::new(
+            "minecraft:mob_projectile",
+            NamedDamage::IS_PROJECTILE,
+        ));
+
+        // 1. Vary damage type with fixed same causing & direct entity: always recorded as direct.
+        let same_mob = Attack {
+            attacker: 5,
+            direct: Some(5),
+            direct_kind: Some(DirectEntity::Living),
+            ..Default::default()
+        };
+        for kind in [
+            mob_projectile,
+            DamageKind::Arrow,
+            DamageKind::Fireball,
+            DamageKind::MobAttack,
+            DamageKind::Generic,
+        ] {
+            let mut m = warden();
+            let source = Damage {
+                kind,
+                attacker: Some(Who::Mob(5)),
+                from: None,
+                attacker_species: None,
+            };
+            assert!(m.damage(&mut test_level.level().attacked_by(&same_mob), 1.0, source));
+            assert_eq!(
+                m.extra.warden.as_ref().unwrap().hurt_by,
+                [(Some(AttackTarget::new(Who::Mob(5), None)), true)],
+                "same causing and direct entity must be direct for {kind:?}"
+            );
+        }
+
+        // 2. Vary entities with fixed melee damage types: different direct & causing entities
+        // (such as a projectile carrying a melee damage type) are recorded as indirect.
+        let indirect_mob = Attack {
+            attacker: 5,
+            direct: Some(12),
+            direct_kind: Some(DirectEntity::Arrow),
+            ..Default::default()
+        };
+        let indirect_player = Attack {
+            attacker: 7,
+            direct: Some(12),
+            direct_kind: Some(DirectEntity::Projectile),
+            ..Default::default()
+        };
+        let mob = AttackTarget::new(Who::Mob(5), None);
+        let player = AttackTarget::new(Who::Player, Some(7));
+        for (attack, target, kind) in [
+            (&indirect_mob, mob, DamageKind::MobAttack),
+            (&indirect_mob, mob, DamageKind::Thorns),
+            (&indirect_player, player, DamageKind::PlayerAttack),
+            (&indirect_player, player, DamageKind::MaceSmash),
+        ] {
+            let mut m = warden();
+            let source = Damage {
+                kind,
+                attacker: Some(target.who),
+                from: None,
+                attacker_species: None,
+            };
+            assert!(m.damage(&mut test_level.level().attacked_by(attack), 1.0, source));
+            assert_eq!(
+                m.extra.warden.as_ref().unwrap().hurt_by,
+                [(Some(target), false)],
+                "different causing and direct entity must be indirect for {kind:?}"
+            );
+        }
+
+        // 3. Hurt cooldown rejection still runs Warden.hurtServer's reaction.
+        let mut m = warden();
+        m.invulnerable = 20;
+        m.last_hurt = 10.0;
+        let before = m.health;
+        let source = Damage {
+            kind: mob_projectile,
+            attacker: Some(Who::Mob(5)),
+            from: None,
+            attacker_species: None,
+        };
+        assert!(
+            !m.damage(&mut test_level.level().attacked_by(&same_mob), 1.0, source),
+            "hit within hurt cooldown should return false"
+        );
+        assert_eq!(m.health, before);
+        assert_eq!(
+            m.extra.warden.as_ref().unwrap().hurt_by,
+            [(Some(mob), true)],
+            "Warden still reacts to a hit rejected on hurt cooldown"
+        );
     }
 }
 
