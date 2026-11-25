@@ -3526,6 +3526,12 @@ struct Game<'a> {
     /// Controller connection notices.
     controller_notice: sunrise_client::controller_notice::NoticeSlot,
     focused: bool,
+    /// The pointer is over the window, as the window system last told (its enter and leave
+    /// events, or a move inside it).
+    window_hovered: bool,
+    /// The window is fully hidden (`WindowEvent::Occluded`): covered, on another desktop, or
+    /// minimized where the system reports that.
+    window_occluded: bool,
     /// The visible window of a game an agent started, until a person clicks into it: its
     /// pointer grab stays inside the game as `--offscreen`'s does, so the person's pointer is
     /// never taken, hidden or moved, and their keys and mouse don't reach the game.
@@ -14237,6 +14243,8 @@ impl<'a> Game<'a> {
             regrab_on_refocus: false,
             controller_notice: Default::default(),
             focused: true,
+            window_hovered: false,
+            window_occluded: false,
             unclaimed_window: false,
             unclaimed_modifiers: None,
             focus_after_run: None,
