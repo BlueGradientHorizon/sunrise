@@ -4,7 +4,10 @@ use sunrise_client::items::ItemStack;
 
 impl Game<'_> {
     /// `MultiPlayerGameMode.sameDestroyTarget`'s item half for `began`.
-    pub(in crate::game) fn same_destroying_item(&self, began: &Option<ItemStack>) -> bool {
+    pub(in crate::game::client_side) fn same_destroying_item(
+        &self,
+        began: &Option<ItemStack>,
+    ) -> bool {
         let held = self.held();
         let same = match (began, held) {
             (None, None) => true,

@@ -732,6 +732,7 @@ client	native_entity_layers::tests	impl Hooks for Registrant	-	#[cfg(test)]	trai
 client	native_entity_motion_client	impl Game<'_>	client_entity_bounding_box	-	method	game	called
 client	native_entity_motion_client	impl Game<'_>	client_entity_eye_height	-	method	game	called
 client	native_entity_motion_client	impl Game<'_>	client_entity_velocity	-	method	game	called
+client	native_entity_refs_client	impl Game<'_>	client_entity_kind	-	method	game	called
 client	native_entity_refs_client	impl Game<'_>	client_entity_level	-	method	game	called
 client	native_entity_refs_client	impl Game<'_>	client_item_entity	-	method	game	called
 client	native_entity_refs_client	impl Game<'_>	client_level_visit_entities_in	-	method	game	called
@@ -4371,7 +4372,6 @@ server	native_entity_moves	impl Game<'_>	entity_teleport_to	-	method	generated	c
 server	native_entity_moves	impl Game<'_>	entity_teleport_to_level	-	method	generated,test	called
 server	native_entity_physics	impl Game<'_>	entity_no_physics	-	method	generated	called
 server	native_entity_physics	impl Game<'_>	entity_set_no_physics	-	method	generated	called
-server	native_entity_refs	impl Game<'_>	entity_kind	-	method	generated,test	called
 server	native_entity_refs	impl Game<'_>	entity_rotation	-	method	generated,test	called
 server	native_entity_refs	impl Game<'_>	entity_uuid	-	method	generated,test	called
 server	native_entity_refs	impl Game<'_>	level_block_break_speed	-	method	generated	called
@@ -4399,6 +4399,7 @@ server	native_entity_refs	impl Game<'_>	native_entity_target_with_location	-	met
 server	native_entity_refs	impl Game<'_>	native_level_write_allowed	-	method	game	called
 server	native_entity_refs	impl Game<'_>	native_level_write_position	-	method	game	called
 server	native_entity_refs	impl Game<'_>	native_list_levels	-	method	game	called
+server	native_entity_refs	impl Game<'_>	server_entity_kind	-	method	game	called
 server	native_entity_refs	impl Game<'_>	server_entity_level	-	method	game	called
 server	native_entity_refs	impl Game<'_>	server_entity_residency	-	method	game	called
 server	native_entity_refs	impl Game<'_>	server_level_visit_entities_in	-	method	game	called

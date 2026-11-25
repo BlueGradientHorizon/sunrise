@@ -315,6 +315,7 @@ hand_server	server	hand-authored server role-split module	game/items/hand_server
 hanging_refind_tests	game	touches neither ClientState nor ServerState fields	game/entities/hanging_refind_tests.rs
 headless	client	role-reachability:client	game/runtime/headless.rs
 held_items	game	common dual-role module	game/items/held_items.rs
+held_items_client	client	hand-authored client role-split module	game/items/held_items_client.rs
 held_items_server	server	hand-authored server role-split module	game/items/held_items_server.rs
 highlight_tip_tests	client	touches only ClientState fields	game/interface/highlight_tip_tests.rs
 hit	game	touches neither ClientState nor ServerState fields	game/interface/hit.rs
