@@ -1,21 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::durability::Wearer;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::durability::World;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::durability::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::convert::Infallible;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::items::ItemStack;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_world::item_durability::{
-    self, DurabilityStack, DurabilityWorld,
-};
+use super::Game;
+use crate::game::durability::Wearer;
+use sunrise_client::items::ItemStack;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `damage_stack` for the stack the living entity `id` wears.

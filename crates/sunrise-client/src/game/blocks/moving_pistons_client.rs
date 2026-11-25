@@ -1,15 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::moving_pistons::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client_render::{
-    block_entity_reach::Reach, render_geometry::Vertex,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_world::{
-    piston_shape::MovingPistonState, registry::BlockStateId,
-};
+use super::Game;
+use sunrise_client_render::{block_entity_reach::Reach, render_geometry::Vertex};
+use sunrise_world::{piston_shape::MovingPistonState, registry::BlockStateId};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// One `MovingBlockRenderState`: the baked model at `at` (camera-relative),

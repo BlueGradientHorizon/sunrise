@@ -1,21 +1,5 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use crate::game::{
-    lan_actions::GuestCommand,
-    native_entity_refs::tests::with_client_game,
-    native_guest_turn_tests::with_guests,
-    stations::{Kind, Station},
-};
-#[allow(unused_imports)]
-use sunrise_client::lan::{Out, PlayerSender};
-#[allow(unused_imports)]
-use sunrise_mod_package::content::RECIPE_PRIORITIES_PATH;
-#[allow(unused_imports)]
-use sunrise_protocol::{
-    buf::Reader,
-    packets::recipes::{HolderSet, SlotDisplay, UpdateRecipes},
-};
+use crate::game::stations::{Kind, Station};
 
 pub(in crate::game) fn cut_pack(root: &std::path::Path) -> impl Fn(&str, &str) {
     let pack = root.join("datapacks/cuts");

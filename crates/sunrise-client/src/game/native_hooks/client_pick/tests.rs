@@ -1,8 +1,5 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use mod_api::{ClientHost, ClientPickEvent, CrosshairTarget, Hooks};
-#[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
 
 #[derive(Default)]

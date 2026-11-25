@@ -2,20 +2,9 @@
 //! fight. It floats, growing and turning (`OminousItemSpawnerRenderer`), for
 //! 60 to 120 ticks, then falls as an item or is fired straight down as a
 //! projectile (`spawnItem`). Saved with its chunk's entities (persist.rs).
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
-use sunrise_assets::item_model::DisplayContext;
-#[allow(unused_imports)]
-use sunrise_client::{
-    block_entity_render::vertex_light,
-    item_render,
-    items::ItemStack,
-    mesher::Vertex,
-    particles::{ParticleOptions, ParticleType},
-};
-#[allow(unused_imports)]
-use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_client::items::ItemStack;
+use sunrise_core::geometry::Vec3;
 
 /// `TICKS_BEFORE_ABOUT_TO_SPAWN_SOUND`.
 pub(in crate::game) const ABOUT_TO_SPAWN: i64 = 36;

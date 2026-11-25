@@ -1,56 +1,16 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_entity_refs::tests::{
-    bind_local_player, with_game,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::placement_context_tests::Directional;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::placement_context_tests::Invalid;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::placement_context_tests::Move;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::placement_context_tests::Notice;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::placement_context_tests::Parts;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::placement_context_tests::PlacementSubstitution;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::placement_context_tests::Refuse;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::placement_context_tests::SourceSpy;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::placement_context_tests::Substitute;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::placement_context_tests::Survival;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::placement_context_tests::VetoProbe;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::placement_context_tests::VetoTrace;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::placement_context_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{Game, GuestUse, Hit};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{
-    BlockPart, BlockState, Hooks, ItemPart, LevelSide, MustSurviveEvent, PlacementContextEvent,
-    PlacementSource, Registrar, StateForPlacementEvent,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{items::ItemStack, motion::PlayerMotion};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::{
+use crate::game::native_entity_refs::tests::{bind_local_player, with_game};
+use crate::game::native_hooks::placement_context_tests::Notice;
+use crate::game::native_hooks::placement_context_tests::PlacementSubstitution;
+use crate::game::native_hooks::placement_context_tests::SourceSpy;
+use crate::game::native_hooks::placement_context_tests::VetoProbe;
+use crate::game::native_hooks::placement_context_tests::VetoTrace;
+use crate::game::{GuestUse, Hit};
+use mod_api::PlacementSource;
+use std::sync::{Arc, Mutex};
+use sunrise_client::{items::ItemStack, motion::PlayerMotion};
+use sunrise_core::{
     geometry::{Direction, Vec3},
-    nbt::Tag,
     position::BlockPos,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_world::level::{
-    PlaceContext, PlacementSource as EnginePlacementSource,
 };
 
 #[test]

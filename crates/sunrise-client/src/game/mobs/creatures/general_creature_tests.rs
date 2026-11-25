@@ -1,12 +1,7 @@
-#[allow(unused_imports)]
 use super::mob_effect_instance;
-#[allow(unused_imports)]
 use super::thrown_item_axes;
-#[allow(unused_imports)]
 use super::thrown_item_quad;
-#[allow(unused_imports)]
 use super::{ProjectileKind, is_item_billboard};
-#[allow(unused_imports)]
 use sunrise_client::camera::CameraType;
 
 /// The component-wise lowest and highest corner of the quad.

@@ -1,9 +1,5 @@
-#[allow(unused_imports)]
-use super::tests::{WeaponProbe, isolated};
-#[allow(unused_imports)]
+use super::tests::isolated;
 use super::*;
-#[allow(unused_imports)]
-use std::sync::{Arc, Mutex};
 
 pub(in crate::game) fn fixture(
     expected: Option<ItemStack>,

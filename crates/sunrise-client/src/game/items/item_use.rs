@@ -5,15 +5,12 @@
 //! `native_living_entity_use_item_start`, `native_living_entity_use_item_finish`),
 //! and each tick and the release of a use (`native_living_entity_use_item_tick`,
 //! `native_on_use_tick`, `native_living_entity_use_item_stop`, `native_release_using`).
-#[allow(unused_imports)]
 use super::{Game, shield::OFFHAND_SLOT};
-#[allow(unused_imports)]
 use sunrise_client::{
     first_person::Hand,
     items::{ItemInfo, ItemStack},
     mobs::spear_use,
 };
-#[allow(unused_imports)]
 use sunrise_core::use_animation::UseAnimation;
 
 thread_local! {
@@ -453,14 +450,11 @@ pub(in crate::game) fn use_pose(
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::{
         bow_release_power, consumes_at_once, count_down, duration_leaving, held, release_parts,
         start_of, tick_left, ticks_left, use_counter_leaving, use_pose,
     };
-    #[allow(unused_imports)]
     use sunrise_client::first_person::ItemPose;
-    #[allow(unused_imports)]
     use sunrise_core::use_animation::UseAnimation;
 
     /// A mob's use counter is 1 on the tick it starts and a bow's use lasts

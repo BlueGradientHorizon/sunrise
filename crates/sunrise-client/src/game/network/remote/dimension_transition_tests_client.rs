@@ -1,6 +1,3 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::dimension_transition_tests::*;
-
 #[test]
 #[ignore = "daily"]
 fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {

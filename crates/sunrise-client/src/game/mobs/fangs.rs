@@ -1,16 +1,9 @@
 //! Evoker fangs (`EvokerFangs`): rising out of the floor after a delay,
 //! biting what stands on them for 6 damage, sinking back after 22 ticks.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use std::sync::Arc;
-#[allow(unused_imports)]
-use sunrise_client::mobs::{Part, Species, anim::Poses};
-#[allow(unused_imports)]
-use sunrise_client::particles::{ParticleOptions, ParticleType};
-#[allow(unused_imports)]
+use sunrise_client::mobs::{Part, Species};
 use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
 use sunrise_core::random::{LegacyRandom, RandomSource};
 
 #[derive(Clone, Debug)]

@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use sunrise_client::particles::TrackingBody;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `recreateFromPacket`: yRot and xRot from the packet, the body and head

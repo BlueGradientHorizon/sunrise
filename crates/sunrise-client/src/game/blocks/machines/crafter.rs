@@ -2,9 +2,7 @@
 //! `CrafterScreen`): redstone-triggered crafting of its 3x3 grid, ejecting
 //! the result and remainders into the container in front or as items, the
 //! crafting animation ticks, and the menu with its toggleable slots.
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use serde_json::Value;
 #[allow(unused_imports)]
 use sunrise_client::{
@@ -12,8 +10,6 @@ use sunrise_client::{
     containers::Crafter,
     menu::{Maps as _, Menu},
 };
-#[allow(unused_imports)]
-use sunrise_protocol::packets::play::{self, Serverbound as S};
 
 /// `CrafterBlock`'s crafting animation length.
 pub(in crate::game) const CRAFTING_TICKS: i32 = 6;

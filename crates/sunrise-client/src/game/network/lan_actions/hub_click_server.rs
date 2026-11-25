@@ -1,15 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::hub_click::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{
-    lan_menus::ClickReply, stacked_on_other::Pickup,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::cell::RefCell;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::menu::StackedOutcome;
+use super::*;
+use crate::game::{lan_menus::ClickReply, stacked_on_other::Pickup};
+use std::cell::RefCell;
+use sunrise_client::menu::StackedOutcome;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Run the prepared click with the LAN host lifted out of the game, the game lent to it as

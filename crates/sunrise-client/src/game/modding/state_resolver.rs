@@ -3,8 +3,3 @@
 //! meshing workers) dispatches to no mod. A table is built when parts install (world load,
 //! `/reload`) or when its owner refreshes it, never per tick or per frame, and only where a part
 //! subscribes: with none, there is no table and every reader keeps the block's own answer.
-
-#[allow(unused_imports)]
-use super::{BlockStateId, Game};
-#[allow(unused_imports)]
-use mod_api::{__private::has_scoped_hook, HookId};

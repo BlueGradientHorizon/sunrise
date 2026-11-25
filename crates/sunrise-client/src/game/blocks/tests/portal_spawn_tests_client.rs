@@ -1,23 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::nether_portal::portal_spawn_tests::game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::nether_portal::portal_spawn_tests::portal_on;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::nether_portal::portal_spawn_tests::spawned;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::nether_portal::portal_spawn_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::chunk::Chunk;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::motion::PlayerMotion;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::position::ChunkPos;
+use crate::game::server_side::nether_portal::portal_spawn_tests::game;
+use crate::game::server_side::nether_portal::portal_spawn_tests::portal_on;
+use crate::game::server_side::nether_portal::portal_spawn_tests::spawned;
 
 /// On obsidian the piglin spawns, grunts (`EntityType.spawn`'s
 /// `Mob.playAmbientSound`: its ambient sound at its feet, volume 1.0, at its

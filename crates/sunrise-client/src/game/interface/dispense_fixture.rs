@@ -3,16 +3,12 @@
 //! every case (a dispenser or dropper with items, blocks and target entities
 //! around it) through `dispense_from` on a fresh headless world and prints what
 //! changed in the format of `VanillaDispenserOracle`.
-#[allow(unused_imports)]
 use super::{
     Game,
     dispenser::{Slot, body_equipment_species, mob_set_slot, mob_slot_item},
 };
-#[allow(unused_imports)]
 use serde_json::Value;
-#[allow(unused_imports)]
 use std::{cell::RefCell, collections::HashMap, fmt::Write as _, io::Write as _, sync::Arc};
-#[allow(unused_imports)]
 use sunrise_client::{
     Result,
     chunk::Chunk,
@@ -28,9 +24,7 @@ use sunrise_client::{
     motion::PlayerMotion,
     projectiles::ProjectileKind,
 };
-#[allow(unused_imports)]
 use sunrise_core::{position::BlockPos, random::RandomSource};
-#[allow(unused_imports)]
 use sunrise_world::{level::Ticks, registry::BlockStateId};
 
 thread_local! {

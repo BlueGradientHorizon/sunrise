@@ -1,14 +1,8 @@
 //! Real receiver, mod dispatcher and window input regressions for debt 59.
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use crate::game::WindowKeyInput;
-#[allow(unused_imports)]
 use mod_api::MouseScrollingEvent;
-#[allow(unused_imports)]
-use sunrise_client::{items::ItemStack, keybinds::VanillaMappingSlot, preedit, widgets};
-#[allow(unused_imports)]
-use winit::{dpi::PhysicalPosition, event::Ime, keyboard::PhysicalKey, window::WindowId};
+use winit::{keyboard::PhysicalKey, window::WindowId};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(in crate::game) enum Cancel {

@@ -3,14 +3,11 @@
 //! `ProjectileDeflection.AIM_DEFLECT` instead of hurting anything. It flies on
 //! along the player's view and is the player's now (`Projectile.deflect`
 //! sets the owner), so a ghast it meets dies of it (`Ghast.isReflectedFireball`).
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use sunrise_client::{
     mobs::Who,
     projectiles::{Projectile, ProjectileKind, Turn},
 };
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
 
 /// `AbstractHurtingProjectile.getPickRadius`: the crosshair finds it a block

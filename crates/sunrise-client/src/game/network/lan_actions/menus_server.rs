@@ -1,5 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
+use super::*;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `ContainerEntity.isChestVehicleStillValid`: the chest minecart or chest

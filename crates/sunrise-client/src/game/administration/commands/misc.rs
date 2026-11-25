@@ -1,17 +1,7 @@
 //! `/random` (RandomCommand) and `/teammsg` (TeamMsgCommand).
-#[allow(unused_imports)]
-use super::{Arg, Context, Game, R, Target, err};
-#[allow(unused_imports)]
-use crate::game::chat::PLAYER_NAME;
-#[allow(unused_imports)]
-use sunrise_client::{
-    clock::SprintReport,
-    text::{self, Text},
-};
-#[allow(unused_imports)]
+use super::{Arg, Context, Game, R, err};
+use sunrise_client::{clock::SprintReport, text::Text};
 use sunrise_core::java_number::format_fixed;
-#[allow(unused_imports)]
-use sunrise_core::random::RandomSource;
 
 pub(in crate::game) fn millis(nanos: u64) -> String {
     format_fixed(f64::from(nanos as f32 / 1_000_000.0), 1)

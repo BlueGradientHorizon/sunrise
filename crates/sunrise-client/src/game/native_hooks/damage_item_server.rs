@@ -1,12 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::durability::Wearer;
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::damage_item::DISPATCHES;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::damage_item::*;
+use super::*;
+use crate::game::durability::Wearer;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The parts' answer for `loss` points of wear on `stack`, worn or used by

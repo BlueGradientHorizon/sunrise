@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::client_information_updated::*;
+use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
 impl Game<'_, crate::game::server_side::ServerState> {

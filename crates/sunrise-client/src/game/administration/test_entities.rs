@@ -2,9 +2,7 @@
 //! `StructureUtils.clearSpaceForStructure`'s and `GameTestInfo.succeed`'s
 //! entity removal, and the force-loaded chunks of
 //! `TestInstanceBlockEntity.forceLoadChunks` and `GameTestRunner`'s release.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use sunrise_core::bounding_box::BoundingBox;
 
 #[allow(unused_imports)]

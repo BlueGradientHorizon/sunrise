@@ -3,21 +3,10 @@
 //! hosted server's tracker both name. Two leads on one fence share it, a
 //! knot made again after its last lead went is a new entity, and the same
 //! fence position in another level is another knot.
-#[allow(unused_imports)]
 use crate::game::*;
-#[allow(unused_imports)]
-use std::sync::{Arc, atomic::AtomicI32, mpsc};
-#[allow(unused_imports)]
-use sunrise_client::{
-    chunk::Chunk,
-    lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
-    mobs::leash::Holder,
-    motion::PlayerMotion,
-};
-#[allow(unused_imports)]
+use std::sync::Arc;
+use sunrise_client::{chunk::Chunk, mobs::leash::Holder, motion::PlayerMotion};
 use sunrise_core::position::ChunkPos;
-#[allow(unused_imports)]
-use sunrise_protocol::packets::configuration::ClientInformation;
 
 pub(in crate::game) const PIG: &str = "0000609a-0000-0000-0000-000000000001";
 pub(in crate::game) const OTHER_PIG: &str = "0000609a-0000-0000-0000-000000000003";

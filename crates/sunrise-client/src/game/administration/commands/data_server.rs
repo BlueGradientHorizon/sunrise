@@ -1,36 +1,16 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Arg, Context, Game, R, Target, err};
-#[allow(unused_imports)]
+use super::{Game, R, Target, err};
 pub(in crate::game::server_side) use crate::game::commands::data::DataRef;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::data::empty;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::data::place_summoned;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::data::set_key;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::data::stored_block_entity_data;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::data::strip_finalize_tree;
-#[allow(unused_imports)]
+use crate::game::commands::data::set_key;
+use crate::game::commands::data::strip_finalize_tree;
 pub(in crate::game::server_side) use crate::game::commands::data::summon_type_name;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::data::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
+use sunrise_client::{
     containers::BlockEntity,
-    data_cmd::{self, Op, path_error},
     entity_nbt,
-    nbt_path::NbtPath,
     save::{self, random_uuid},
-    scoreboard_cmd::{Holder, Tracker, format_list},
-    snbt,
     text::Text,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::nbt::{Compound, JavaString, Tag, parse_snbt};
+use sunrise_core::nbt::{Compound, Tag};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `Entity.load` of new data (`EntityDataAccessor.setData`): the entity is
@@ -1159,16 +1139,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::data::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_entity_refs::tests::with_game;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_core::geometry::Vec3;
+    use super::*;
+    use crate::game::native_entity_refs::tests::with_game;
+    use sunrise_core::geometry::Vec3;
 
     /// `EntityDataAccessor.setData` keeps the entity's id and UUID: a
     /// `/data merge` that carries a different UUID does not take, and a
@@ -1260,18 +1233,9 @@ pub(in crate::game) mod fire_tests;
 
 #[cfg(test)]
 pub(in crate::game) mod modern_literal_tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::data::modern_literal_tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::execute::ExecState;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::{
-        Audio, Options, Progress, Settings, load_resources,
-    };
+    use super::*;
+    use crate::game::commands::execute::ExecState;
+    use crate::game::{Options, Progress, Settings, load_resources};
 
     #[test]
     #[ignore = "daily"]
@@ -1387,27 +1351,10 @@ pub(in crate::game) mod modern_literal_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod falling_live_adoption_tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::data::falling_live_adoption_tests::with_game;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::data::falling_live_adoption_tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::{
-        Audio, Game, Options, Progress, Settings, commands::Target, load_resources,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use std::sync::Arc;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_client::chunk::Chunk;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_core::nbt::Tag;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_core::{
-        geometry::Vec3,
-        position::{BlockPos, ChunkPos},
-    };
+    use crate::game::commands::Target;
+    use crate::game::commands::data::falling_live_adoption_tests::with_game;
+    use sunrise_core::nbt::Tag;
+    use sunrise_core::{geometry::Vec3, position::BlockPos};
 
     #[test]
     #[ignore = "daily"]

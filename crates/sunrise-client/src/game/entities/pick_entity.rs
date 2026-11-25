@@ -2,15 +2,10 @@
 #[path = "pick_sections.rs"]
 pub(in crate::game) mod pick_sections;
 
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use super::pick_ray::{PickAccumulator, PickCandidate, pick_ray_segment};
-#[allow(unused_imports)]
 use mod_api::{BlockPos, CrosshairTarget, EntityRef};
-#[allow(unused_imports)]
-use sunrise_client::{items::ItemStack, save::uuid_text};
-#[allow(unused_imports)]
+use sunrise_client::save::uuid_text;
 use sunrise_core::geometry::{Aabb, Vec3};
 
 pub(in crate::game) use crate::game::pick_entity_common::{
@@ -266,20 +261,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    use super::Game;
-    #[allow(unused_imports)]
     use crate::game::commands::Target;
-    #[allow(unused_imports)]
-    use crate::game::creatures::SpawnSite;
-    #[allow(unused_imports)]
-    use crate::game::dragon::dragon_part_id;
-    #[allow(unused_imports)]
-    use crate::game::native_entity_refs::tests::with_game;
-    #[allow(unused_imports)]
-    use sunrise_client::{items::ItemStack, motion::PlayerMotion};
-    #[allow(unused_imports)]
-    use sunrise_core::geometry::Vec3;
 
     #[test]
     fn tnt_and_falling_blocks_have_no_entity_pick_result() {

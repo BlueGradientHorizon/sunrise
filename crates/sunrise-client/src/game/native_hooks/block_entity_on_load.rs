@@ -1,12 +1,4 @@
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-use super::block_entity_client_tick::ClientBlockEntityAccess;
-#[allow(unused_imports)]
-use super::block_entity_tick::ResidentBlockEntityAccess;
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use mod_api::{BlockEntityClientScope, BlockEntityScope, BlockEntitySideScope};
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Drain attachment notices before either logical side runs block entity tickers.

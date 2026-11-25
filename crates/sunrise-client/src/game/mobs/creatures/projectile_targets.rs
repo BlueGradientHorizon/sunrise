@@ -1,23 +1,7 @@
 //! Single-source-of-truth live pickable target query and non-mob projectile hit dispatch.
-#[allow(unused_imports)]
-use super::super::{
-    Game, commands::Target, entity::Entity as _, lan_mobs::guest_bounds, minecarts::CartHit,
-};
-#[allow(unused_imports)]
-use super::ProjWorld;
-#[allow(unused_imports)]
-use sunrise_client::arrows::ArrowTargets;
-#[allow(unused_imports)]
-use sunrise_client::mobs::{MobWorld, Who};
-#[allow(unused_imports)]
-use sunrise_client::projectiles::{
-    Projectile, ProjectileKind, ProjectileWorld, TargetCandidate, TargetOrder,
-};
-#[allow(unused_imports)]
-use sunrise_core::{
-    geometry::{Aabb, Vec3},
-    position::BlockPos,
-};
+use sunrise_client::mobs::Who;
+use sunrise_client::projectiles::{Projectile, ProjectileKind};
+use sunrise_core::geometry::{Aabb, Vec3};
 
 /// Per-projectile target filters (`canHitEntity` overrides).
 #[derive(Clone, Copy, Debug, Default)]

@@ -1,19 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::block_entity_anims::AnimTick;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::block_entity_anims_common::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    block_entities::Pos,
-    block_entity_anim::{EndGateway, Ticker},
-    block_entity_render::BlockAnim,
-    containers::BlockEntity,
-    save::number,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::nbt::Tag;
+use super::Game;
+use super::block_entity_anims::AnimTick;
+use sunrise_client::{block_entity_anim::Ticker, block_entity_render::BlockAnim};
+use sunrise_core::nbt::Tag;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Start a tick of animated block entities, dropping stale owners and removed pots.

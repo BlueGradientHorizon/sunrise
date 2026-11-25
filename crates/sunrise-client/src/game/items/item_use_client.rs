@@ -1,51 +1,9 @@
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{Game, shield::OFFHAND_SLOT};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::item_use::ASKING_USE_ANIMATION;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::item_use::AskingUseAnimation;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::item_use::ItemUseState;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::item_use::bow_release_power;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::item_use::consumes_at_once;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::item_use::count_down;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::item_use::duration_leaving;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::item_use::hand_of;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::item_use::held;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::item_use::interact_vibrations;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::item_use::release_parts;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::item_use::remaining_of;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::item_use::set_remaining;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::item_use::start_of;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::item_use::tick_left;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::item_use::ticks_left;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::item_use::use_counter_leaving;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::item_use::use_pose;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::item_use::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    first_person::Hand,
-    items::{ItemInfo, ItemStack},
-    mobs::spear_use,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::use_animation::UseAnimation;
+use super::{Game, shield::OFFHAND_SLOT};
+#[cfg(test)]
+use crate::game::server_side::item_use::ItemUseState;
+use crate::game::server_side::item_use::hand_of;
+use sunrise_client::items::{ItemInfo, ItemStack};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// What `Item.finishUsingItem` leaves in the hand on a server's client: a
@@ -125,17 +83,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use super::{
-        bow_release_power, consumes_at_once, count_down, duration_leaving, held, release_parts,
-        start_of, tick_left, ticks_left, use_counter_leaving, use_pose,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::item_use::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use sunrise_client::first_person::ItemPose;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use sunrise_core::use_animation::UseAnimation;
+    use sunrise_core::use_animation::UseAnimation;
 
     pub(in crate::game) fn stand_in_first_person(game: &mut crate::game::ClientGame<'_>) {
         game.player = Some(

@@ -1,11 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::creatures::local_sound_event_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
-    Audio, Game, Options, Progress, Settings, load_resources,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::mobs::MobEvent;
+use crate::game::{Options, Progress, Settings, load_resources};
+use sunrise_client::mobs::MobEvent;
 
 #[test]
 #[ignore = "daily"]

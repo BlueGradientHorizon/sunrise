@@ -1,9 +1,6 @@
 //! `/tellraw` (TellRawCommand) and `/title` (TitleCommand).
-#[allow(unused_imports)]
 use super::{Arg, Context, Game, R, Target, err};
-#[allow(unused_imports)]
 use sunrise_client::{lan::data::component_nbt, text::Text};
-#[allow(unused_imports)]
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// `EntitySelector.COMPILABLE_CODEC` (`CompilableString.CommandParserHelper.apply`):

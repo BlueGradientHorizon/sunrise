@@ -5,27 +5,17 @@
 //! while paused or frozen; a type that didn't declare them never; a copy removed or whose column
 //! the server forgets not again; and a server, the world's own ticks, never. A spawner between
 //! them in the ticker list ticks between them, from the same list.
-#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
-#[allow(unused_imports)]
 use crate::game::world_loading::WorldRequest;
-#[allow(unused_imports)]
 use mod_api::{
     BlockEntityClientTickEvent, BlockEntityClientTicksEvent, BlockEntityDataReceivedEvent,
     BlockEntityPart, BlockPart, BlocksEvent, ClientHost, ClientTickPostEvent, ClientTickPreEvent,
     Hooks, HostSide, LevelTickPostEvent, LevelTickPreEvent, Registrar, RegistrationContext,
 };
-#[allow(unused_imports)]
 use std::path::{Path, PathBuf};
-#[allow(unused_imports)]
-use std::sync::Arc;
-#[allow(unused_imports)]
 use std::sync::Mutex;
-#[allow(unused_imports)]
 use std::time::{Duration, Instant};
-#[allow(unused_imports)]
 use sunrise_client::containers::BlockEntity;
-#[allow(unused_imports)]
 use sunrise_core::nbt::{Compound, Tag};
 
 pub(in crate::game) const HUM: &str = "client_tick_probe:hum";

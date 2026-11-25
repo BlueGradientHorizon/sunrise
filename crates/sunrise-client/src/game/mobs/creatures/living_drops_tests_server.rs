@@ -1,9 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::living_drops_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::ServerHost;
+use super::*;
+use mod_api::ServerHost;
 
 /// `LivingDropsEvent` hears a copper golem's preserved equipment with the
 /// rest of its drops and can cancel it, and an armor stand's break

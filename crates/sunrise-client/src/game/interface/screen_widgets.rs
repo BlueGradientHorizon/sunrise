@@ -2,11 +2,9 @@
 //! engine-owned buttons, local `EditBox` text fields, and custom [`ScreenWidget`]
 //! instances with synchronous callback execution via temporary ownership extraction.
 
-#[allow(unused_imports)]
 #[cfg(feature = "client")]
 use crate::game::host::draw::GameDrawContext;
 use crate::game::{Game, api_values::TryIntoEngine};
-#[allow(unused_imports)]
 use mod_api::{
     __private::game::CallbackOwner,
     ScreenView, ScreenWidget, ScreenWidgetId, ScreenWidgets,
@@ -15,11 +13,8 @@ use mod_api::{
         is_allowed_chat_character,
     },
 };
-#[allow(unused_imports)]
 use std::cell::{Cell, RefCell};
-#[allow(unused_imports)]
 use std::time::Instant;
-#[allow(unused_imports)]
 use sunrise_client::{
     clipboard::EditShortcut,
     hud::HudBatch,
@@ -29,7 +24,6 @@ use sunrise_client::{
     ui::{self, EditBox},
     widgets::{self, Kind, Narratable, Target},
 };
-#[allow(unused_imports)]
 use winit::keyboard::KeyCode;
 
 pub(in crate::game) struct MountedWidgetsInner {

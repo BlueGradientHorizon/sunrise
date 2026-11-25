@@ -1,35 +1,17 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::last_hurt_mob_tests::MOB;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::last_hurt_mob_tests::MOB_AGE;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::last_hurt_mob_tests::PIG;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::last_hurt_mob_tests::PLAYER;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::last_hurt_mob_tests::PLAYER_AGE;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::last_hurt_mob_tests::WOLF;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::last_hurt_mob_tests::add_mob;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::last_hurt_mob_tests::arrow;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::last_hurt_mob_tests::living;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::last_hurt_mob_tests::shoot;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::last_hurt_mob_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_entity_refs::tests::{
-    bind_local_player, run_fresh_cases, with_game,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{EntityRef, LivingRef};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
+use super::*;
+use crate::game::creatures::last_hurt_mob_tests::MOB;
+use crate::game::creatures::last_hurt_mob_tests::MOB_AGE;
+use crate::game::creatures::last_hurt_mob_tests::PIG;
+use crate::game::creatures::last_hurt_mob_tests::PLAYER;
+use crate::game::creatures::last_hurt_mob_tests::PLAYER_AGE;
+use crate::game::creatures::last_hurt_mob_tests::WOLF;
+use crate::game::creatures::last_hurt_mob_tests::add_mob;
+use crate::game::creatures::last_hurt_mob_tests::arrow;
+use crate::game::creatures::last_hurt_mob_tests::living;
+use crate::game::creatures::last_hurt_mob_tests::shoot;
+use crate::game::native_entity_refs::tests::{bind_local_player, run_fresh_cases, with_game};
+use mod_api::{EntityRef, LivingRef};
+use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
 
 #[test]
 #[ignore = "daily"]

@@ -1,16 +1,7 @@
 //! `Wolf.mobInteract` for the owner of a tame wolf (#12939): an item of
 //! `#wolf_collar_dyes` only ever dyes the collar, so one of the colour the collar
 //! already has does nothing, while another item still makes it sit or stand.
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use std::sync::Arc;
-#[allow(unused_imports)]
-use sunrise_client::chunk::Chunk;
-#[allow(unused_imports)]
-use sunrise_client::mobs::Mob;
-#[allow(unused_imports)]
-use sunrise_core::position::ChunkPos;
 
 pub(in crate::game) const WOLF: u32 = 50;
 

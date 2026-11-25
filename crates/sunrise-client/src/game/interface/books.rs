@@ -3,30 +3,18 @@
 //! pixels, 1024 characters, 100 pages), signing it into a written book,
 //! reading written books, and lecterns (placing a book, turning its pages
 //! with a redstone pulse, the comparator output and taking the book).
-#[allow(unused_imports)]
-use super::{Game, chat::PLAYER_NAME, screen_info};
-#[allow(unused_imports)]
+use super::{Game, screen_info};
 use sunrise_client::{
-    containers::{BlockEntity, Lectern},
+    containers::BlockEntity,
     first_person::Hand,
     hud::{HudBatch, rgba},
-    item_data::{StackData, WrittenBook},
+    item_data::StackData,
     items::ItemStack,
-    menu::{Kind, Menu},
-    mobs::Who,
     text::Text,
     ui,
     widgets::{self, Narratable, ScreenInfo},
 };
-#[allow(unused_imports)]
-use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
-use sunrise_core::position::BlockPos;
-#[allow(unused_imports)]
-use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
-#[allow(unused_imports)]
-use sunrise_world::level::flags as level_flags;
-#[allow(unused_imports)]
+use sunrise_protocol::packets::play::{self, Serverbound as S};
 use winit::keyboard::KeyCode;
 
 pub(in crate::game) const BLACK: u32 = 0xFF00_0000;
@@ -1437,12 +1425,7 @@ pub(in crate::game) mod title_box_tests {
 }
 #[cfg(feature = "client")]
 #[cfg(test)]
-pub(in crate::game) mod lectern_books_tag_tests {
-    #[allow(unused_imports)]
-    use super::super::game_tests::tests::server_game;
-    #[allow(unused_imports)]
-    use sunrise_client::{containers::BlockEntity, items::ItemStack};
-}
+pub(in crate::game) mod lectern_books_tag_tests {}
 
 #[cfg(feature = "client")]
 #[cfg(test)]

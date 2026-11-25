@@ -1,61 +1,20 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{
-    Dim, Game, chat::PLAYER_NAME, lan_actions::DisplacedPlayer, stats::Stats,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::advancements::AdvState;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::advancements::PlayerEntityState;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::advancements::RemoteNode;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::advancements::RemoteTree;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::advancements::TagSources;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::advancements::Tags;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::advancements::Toast;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::advancements::TravelMarks;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::advancements::View;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::advancements::adv_name;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::advancements::item_view;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::advancements::text_of;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::advancements::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{GameMode, ProgressType};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use serde_json::Value;
-#[allow(unused_imports)]
+use super::Game;
+use crate::game::server_side::advancements::RemoteNode;
+use crate::game::server_side::advancements::RemoteTree;
+use crate::game::server_side::advancements::Toast;
+use crate::game::server_side::advancements::text_of;
+use crate::game::server_side::advancements::*;
+use serde_json::Value;
+use std::sync::Arc;
 #[cfg(test)]
-pub(in crate::game::client_side) use std::time::Instant;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::Arc,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    advancements::{self as adv, EntityView, Frame, ItemView, Progress, Tree},
-    effects::PlayerEffects,
-    hud::{HudBatch, rgba},
+use std::time::Instant;
+use sunrise_client::{
+    advancements::{self as adv, Frame, Progress, Tree},
+    hud::HudBatch,
     items::ItemStack,
-    motion::PlayerMotion,
-    text::{self, Style, Text},
+    text::Text,
     toasts::Slide,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::random::RandomSource;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::packets::play::Clientbound as C;
 
 #[path = "icons_client.rs"]
 pub(in crate::game) mod icons;
@@ -324,10 +283,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::advancements::tests::*;
+    use super::*;
 
     #[test]
     #[ignore = "daily"]

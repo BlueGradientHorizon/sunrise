@@ -1,6 +1,4 @@
 //! Core gameplay regression tests.
-#[allow(unused_imports)]
-use mod_api::ServerHost;
 #[test]
 #[ignore = "daily"]
 fn client_option_snapshots_follow_settings() {
@@ -90,9 +88,7 @@ fn weather_follows_the_dimension_type_not_the_id() {
     assert!(!w(true, false, true)); // the End is named by id
 }
 
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use sunrise_client::container_screen::{Button, Clicks, Release, Target};
 
 #[test]
@@ -325,7 +321,6 @@ fn a_snuffed_candle_and_candle_cake_smoke_at_vanillas_offsets() {
     );
 }
 
-#[allow(unused_imports)]
 use sunrise_client::keymapping::{KeyAction, SNEAK, SPRINT, ToggleKeys};
 
 /// A guest's interact packet names its entity and the server keeps it:

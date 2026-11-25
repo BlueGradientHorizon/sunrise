@@ -1,9 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{BlockStateId, Game};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::state_resolver::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{__private::has_scoped_hook, HookId};
+use super::{BlockStateId, Game};
+use mod_api::{__private::has_scoped_hook, HookId};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `ask` for each of the first `states` block states and each fluid index below `fluids`,

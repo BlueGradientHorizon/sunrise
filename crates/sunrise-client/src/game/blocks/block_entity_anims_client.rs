@@ -1,36 +1,13 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::block_entity_anims::AnimTick;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::block_entity_anims::PLAYER;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::block_entity_anims::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    block_entity_anim::{
-        BellEntity, ConduitServer, ConduitTarget, EndGateway, Shulker, ShulkerStatus, Ticker,
-        closer_to_center_than,
-    },
-    block_entity_render::BlockAnim,
-    collisions::{SceneCollisions, no_collision_empty},
+use super::Game;
+use crate::game::server_side::block_entity_anims::AnimTick;
+use crate::game::server_side::block_entity_anims::PLAYER;
+use sunrise_client::{
+    block_entity_anim::{BellEntity, ConduitTarget, Ticker},
     containers::BlockEntity,
-    effects::EffectInstance,
-    mobs::{Damage, DamageKind},
     particles::{ParticleOptions, ParticleType},
-    save::number,
     skins,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{
-    geometry::{Aabb, Vec3},
-    position::BlockPos,
-    random::RandomSource,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_gameplay::container_openers::recheck_opener_count;
+use sunrise_core::geometry::{Aabb, Vec3};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `SkullBlockRenderer.getPlayerSkin`: the skin sprite of the profile of

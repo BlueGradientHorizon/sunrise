@@ -1,17 +1,11 @@
 //! `TestCommand`'s `locate`, `pos` and `create`.
-#[allow(unused_imports)]
 use super::{Arg, Context, Game, R, err};
-#[allow(unused_imports)]
 use crate::game::test_instances::TestDef;
-#[allow(unused_imports)]
 use sunrise_client::{
     containers::BlockEntity,
     test_instance_block::{Status, TestInstanceBlock},
     text::{self, ClickEvent, Style, Text},
 };
-#[allow(unused_imports)]
-use sunrise_protocol::packets::play::{self, Clientbound as C};
-#[allow(unused_imports)]
 use sunrise_world::worldgen::structure::Rotation;
 
 pub(in crate::game) type Pos = (i32, i32, i32);

@@ -1,40 +1,12 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::knot_identity_tests::AT_FENCE;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::knot_identity_tests::OTHER_PIG;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::knot_identity_tests::PIG;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::knot_identity_tests::game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::knot_identity_tests::knot_uuid;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::knot_identity_tests::knots;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::knot_identity_tests::mob;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::knot_identity_tests::step;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::knot_identity_tests::summon_pig;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::knot_identity_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::{Arc, atomic::AtomicI32, mpsc};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    chunk::Chunk,
-    lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
-    mobs::leash::Holder,
-    motion::PlayerMotion,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::position::ChunkPos;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_protocol::packets::configuration::ClientInformation;
+use crate::game::commands::knot_identity_tests::game;
+use crate::game::commands::knot_identity_tests::knot_uuid;
+use crate::game::commands::knot_identity_tests::knots;
+use crate::game::commands::knot_identity_tests::step;
+use crate::game::commands::knot_identity_tests::summon_pig;
+use crate::game::*;
+use std::sync::{Arc, atomic::AtomicI32, mpsc};
+use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
+use sunrise_protocol::packets::configuration::ClientInformation;
 
 #[test]
 #[ignore = "daily"]

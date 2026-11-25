@@ -2,26 +2,16 @@
 //! answering it calls that part inside the pick (after the block's own effects, before its
 //! fluid's, the next pick and the rain), with the level's random itself: the part's draws and
 //! `add_particle`'s limiter roll move one stream in call order.
-#[allow(unused_imports)]
 use crate::game::{
-    Game, native_client_session::tests::logged_client, native_entity_refs::tests::with_client_game,
+    native_client_session::tests::logged_client, native_entity_refs::tests::with_client_game,
 };
-#[allow(unused_imports)]
 use mod_api::{
     AnimateTickEvent, BlockPart, BlockPos, ClientHost, Hooks, ModEntry, ParticleOptions, Registrar,
     RegistrationContext,
 };
-#[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
-use sunrise_client::{chunk::Chunk, motion::PlayerMotion, particles::ParticleType};
-#[allow(unused_imports)]
-use sunrise_core::{
-    geometry::Vec3,
-    random::{LegacyRandom, RandomSource as _},
-};
-#[allow(unused_imports)]
-use sunrise_world::registry::BlockStateId;
+use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
+use sunrise_core::geometry::Vec3;
 
 /// One call the part heard: its position and block, its draw before and after its particle,
 /// and whether the particle was submitted.

@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::item_actions::*;
+use super::*;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Asks the mods whether the acting guest may empty `stack` at `pos`

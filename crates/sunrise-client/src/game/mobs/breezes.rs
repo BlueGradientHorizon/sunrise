@@ -1,13 +1,7 @@
 //! Breeze particles (`Breeze.tick`): block dust at its feet while it stands,
 //! a burst of twenty while it slides and a short trail along a long jump.
-#[allow(unused_imports)]
 use super::{BlockStateId, Game};
-#[allow(unused_imports)]
-use sunrise_client::{
-    blocks::RenderShape,
-    mobs::{Mob, Species, breeze},
-    particles::{ParticleOptions, ParticleType},
-};
+use sunrise_client::mobs::Mob;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `Breeze.emitGroundParticles`'s block: `getInBlockState`, else
@@ -40,19 +34,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    use super::*;
-    #[allow(unused_imports)]
-    use crate::game::{Audio, Options, Progress, Settings, entity::Entity, load_resources};
-    #[allow(unused_imports)]
-    use std::sync::Arc;
-    #[allow(unused_imports)]
-    use sunrise_client::chunk::Chunk;
-    #[allow(unused_imports)]
-    use sunrise_client::mobs::Mob;
-    #[allow(unused_imports)]
+    use crate::game::entity::Entity;
     use sunrise_core::geometry::Vec3;
-    #[allow(unused_imports)]
     use sunrise_core::random::LegacyRandom;
 
     #[allow(unused_imports)]

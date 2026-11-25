@@ -1,19 +1,12 @@
 //! Client ticks of mod block entities (`ClientLevel.tickBlockEntities`): the client's own
 //! ticker list, made from `native_block_entity_client_ticks`.
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use crate::game::api_values::TryIntoApi;
-#[allow(unused_imports)]
 use mod_api::{
     BlockEntityClientAccess, BlockEntityClientScope, BlockEntityReadView, BlockEntityRef,
     ClientHost, ResidentBlockEntityReadOnly,
 };
-#[allow(unused_imports)]
-use sunrise_client::animate_tick::campfire_particle_tick;
-#[allow(unused_imports)]
 use sunrise_client::{block_entities::Ticking, containers::BlockEntity};
-#[allow(unused_imports)]
 use sunrise_core::nbt::Compound;
 
 /// Shared read-only resident view backing for client and level-load block-entity scopes.

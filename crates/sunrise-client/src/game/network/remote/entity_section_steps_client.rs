@@ -1,7 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
+use super::Game;
+use sunrise_core::geometry::Vec3;
 
 #[cfg(feature = "client")]
 pub(in crate::game) fn player_teleport(

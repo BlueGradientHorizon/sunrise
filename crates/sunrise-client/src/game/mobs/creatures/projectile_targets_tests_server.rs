@@ -1,63 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets_tests::Case;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets_tests::DropSnap;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets_tests::GameEventSnap;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets_tests::ProjSnap;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets_tests::TargetSnap;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets_tests::TickSnap;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets_tests::TrackedProj;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets_tests::TrackedTarget;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets_tests::Witness;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets_tests::bits;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets_tests::check_case;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets_tests::load_witness;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets_tests::reset_arena;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets_tests::run_family;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets_tests::run_witness_armor_stand_targets;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets_tests::run_witness_falling_block_targets;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets_tests::run_witness_item_frame_targets;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets_tests::run_witness_leash_knot_targets;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets_tests::run_witness_painting_and_cushion_targets;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets_tests::setup_game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets_tests::summon_projectile;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets_tests::vec_bits;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{Game, commands::Target};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use serde::Deserialize;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::collections::BTreeMap;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::path::PathBuf;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::mobs::{Who, leash::Holder};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::geometry::{Aabb, Vec3};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::random::{LegacyRandom, RandomSource};
+use crate::game::commands::Target;
+use crate::game::creatures::projectile_targets_tests::TrackedTarget;
+use sunrise_core::geometry::{Aabb, Vec3};
 
 pub(in crate::game) fn clear_entities(game: &mut crate::game::ServerGame<'_>) {
     game.mobs.clear();

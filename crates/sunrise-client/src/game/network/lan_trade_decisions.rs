@@ -1,29 +1,15 @@
 //! A subscribed guest's merchant result click is one savepoint. Each take has its own
 //! frozen menu plan, collect and apply; a later refusal aborts every earlier iteration.
-#[allow(unused_imports)]
 use super::{
     Game,
-    decided_action::{DecidedTarget, Epoch},
-    lan_trading::{MerchantRun, opaque_villager},
-    stacked_on_other::Pickup,
     trading::MadeMaps,
     transactions::{
         After,
-        decision::{Identity, OwnerStamp, Reply, Side},
+        decision::{Identity, OwnerStamp},
     },
 };
-#[allow(unused_imports)]
-use std::{cell::RefCell, collections::HashMap};
-#[allow(unused_imports)]
-use sunrise_client::{
-    advancements::Advancement,
-    items::ItemStack,
-    lan::conn::transaction_packets::Scope,
-    menu::{Input, Menu, StackedOutcome},
-    merchant::Event,
-};
-#[allow(unused_imports)]
-use sunrise_protocol::packets::play;
+use std::collections::HashMap;
+use sunrise_client::{advancements::Advancement, items::ItemStack, menu::Menu};
 
 /// The live owner's generation covers its slots, offer list, selection, and packet snapshot.
 /// The action's player epoch separately covers the cursor and player-owned destinations.

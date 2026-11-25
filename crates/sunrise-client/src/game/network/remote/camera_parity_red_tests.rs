@@ -1,36 +1,16 @@
-#[allow(unused_imports)]
-use crate::game::remote::RemoteDimensionEntry;
-#[allow(unused_imports)]
-use crate::game::{
-    Game, native_entity_refs::tests::with_client_game, native_lifecycle::NativeLifecycle,
-};
-#[allow(unused_imports)]
+use crate::game::native_entity_refs::tests::with_client_game;
 use serde_json::Value;
-#[allow(unused_imports)]
 use std::sync::Arc;
-#[allow(unused_imports)]
 use sunrise_client::{
-    camera::CameraType,
     chunk::{Chunk, Light},
-    debug_entries::Status,
-    debug_overlay::Displayer,
-    effects::EffectInstance,
-    environment::Sky,
     items::ItemStack,
-    level_loading::Reason,
-    motion::PlayerMotion,
-    options_file::V as OptV,
     screen_effects::Blend,
 };
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
 use sunrise_protocol::{
     buf::pack_degrees,
-    connection::Pipe,
-    entity_data::{Value as EntityDataValue, serializer},
-    item::Stack as WireStack,
-    packets::play::{self, Clientbound as C, SpawnInfo},
+    entity_data::Value as EntityDataValue,
+    packets::play::{self, Clientbound as C},
 };
 
 pub(in crate::game) fn parity_witness() -> Value {

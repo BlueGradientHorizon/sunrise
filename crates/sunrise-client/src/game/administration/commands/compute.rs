@@ -1,21 +1,15 @@
 //! `/compute` (ComputeCommand): context number providers
 //! (`context_int_provider`, `context_float_provider`) evaluated in a loot
 //! context of the source, optionally with a block or a target entity.
-#[allow(unused_imports)]
 use super::{Arg, Context, Game, R, Target, err};
-#[allow(unused_imports)]
 use serde_json::Value;
-#[allow(unused_imports)]
 use std::borrow::Cow;
-#[allow(unused_imports)]
 use sunrise_client::providers::{ConditionContext, Evaluation};
-#[allow(unused_imports)]
 use sunrise_client::{
     advancements::{self as adv, EntityView},
     command::CommandError,
     text::Text,
 };
-#[allow(unused_imports)]
 use sunrise_core::java_number::float_to_string;
 
 /// The loot context parameters of `LootContextSources`.
@@ -242,11 +236,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::*;
-    #[allow(unused_imports)]
     use serde_json::json;
-    #[allow(unused_imports)]
     use std::collections::BTreeMap;
 
     /// A world with nothing in it: the entity conditions under test read none of it.

@@ -1,18 +1,11 @@
-#[allow(unused_imports)]
 use super::{DataRef, Target};
-#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::{
     bind_local_player, prepare_entity_ticking_neighborhood, with_game,
 };
-#[allow(unused_imports)]
 use std::collections::HashSet;
-#[allow(unused_imports)]
 use sunrise_client::motion::PlayerMotion;
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
 use sunrise_core::position::ChunkPos;
 
 pub(in crate::game) fn read_witness() -> String {

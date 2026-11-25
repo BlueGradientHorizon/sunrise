@@ -1,24 +1,17 @@
 //! Common entity helpers shared by client and server (`PlacementWorld`, spawn/placement checks,
 //! body motion/restitution/item contacts, suffocation, dismount, critical check, and sound wrapper).
-#[allow(unused_imports)]
 use super::{Game, Hit, entity::Entity as _};
-#[allow(unused_imports)]
 use crate::game::server_side::{
     armor_stands::overlaps as stand_overlaps, cushions::aabb as cushion_aabb,
 };
-#[allow(unused_imports)]
 use std::sync::Arc;
-#[allow(unused_imports)]
 use sunrise_client::{
     collisions::SceneCollisions,
     cushion::blocks_in,
     entities::{ArmorStand, ItemEntity, Painting},
     items::ItemStack,
-    mobs::Mob,
 };
-#[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Vec3};
-#[allow(unused_imports)]
 use sunrise_gameplay::painting_variants::{painting_coexists, painting_facing};
 
 pub(in crate::game) struct PlacementWorld<'a, 'r, S: crate::game::Side>(

@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use super::*;
 
 /// The creative-slot wire codec bounds a stack's count to 1..=99; an item whose

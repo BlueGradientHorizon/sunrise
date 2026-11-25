@@ -1,16 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{Game, maps::MapBanner};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::banners::layer_textures;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::banners::map_banner;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::banners::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    banner::{self, BannerLayer},
-    containers::BlockEntity,
-};
+use super::Game;
+use crate::game::banners::layer_textures;
+use sunrise_client::containers::BlockEntity;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The pattern textures and tints of the banner at `pos`, bottom first.

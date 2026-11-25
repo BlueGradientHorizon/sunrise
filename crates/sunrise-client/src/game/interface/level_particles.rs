@@ -4,18 +4,9 @@
 //! waxing (3003), wax off (3004) and scraping (3005), plus the smoke, drips,
 //! egg and dragon fireball particles of 1501, 1502, 1504, 2006, 2009, 2012
 //! and 3009.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
-use sunrise_client::items::ItemStack;
-#[allow(unused_imports)]
-use sunrise_client::particles::{self, ParticleOptions, ParticleType};
-#[allow(unused_imports)]
-use sunrise_core::{geometry::trig, position::BlockPos, random::RandomSource};
-#[allow(unused_imports)]
+use sunrise_core::position::BlockPos;
 use sunrise_world::level::LevelEvent;
-#[allow(unused_imports)]
-use sunrise_world::registry::BlockStateId;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerLevel.globalLevelEvent`: heard by every player on the server

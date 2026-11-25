@@ -1,9 +1,6 @@
 //! `ServerGamePacketListenerImpl.handleAttack`'s checks between the target's lookup and
 //! `Player.attack`: the world border, the attack range, and the targets no player may attack.
-#[allow(unused_imports)]
-use super::*;
-#[allow(unused_imports)]
-use sunrise_protocol::{packets::configuration::UpdateTags, text::translatable};
+use sunrise_protocol::packets::configuration::UpdateTags;
 
 /// `AbstractArrow.isAttackable`: the arrow's type (`type_id`) is in
 /// `#minecraft:redirectable_projectile`, as the server sent its tags to the players, a world's
@@ -27,22 +24,10 @@ pub(in crate::game) fn arrow_attackable(tags: &UpdateTags, type_id: Option<i32>)
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::*;
-    #[allow(unused_imports)]
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
-    #[allow(unused_imports)]
-    use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    #[allow(unused_imports)]
-    use sunrise_client::chunk::Chunk;
-    #[allow(unused_imports)]
-    use sunrise_client::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
-    #[allow(unused_imports)]
-    use sunrise_core::position::ChunkPos;
-    #[allow(unused_imports)]
-    use sunrise_protocol::packets::configuration::{
-        ClientInformation, RegistryTags, TagEntry, UpdateTags,
-    };
+    use std::sync::mpsc;
+    use sunrise_client::lan::Out;
+    use sunrise_protocol::packets::configuration::{RegistryTags, TagEntry, UpdateTags};
 
     pub(in crate::game) fn tags(redirectable: &[i32]) -> UpdateTags {
         UpdateTags {

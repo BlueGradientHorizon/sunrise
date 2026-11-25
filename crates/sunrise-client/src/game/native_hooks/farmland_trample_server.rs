@@ -1,9 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::farmland_trample::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_world::block_landing::FarmlandTrample;
+use super::*;
+use sunrise_world::block_landing::FarmlandTrample;
 
 /// The hook point. It does nothing in Sunrise.
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -69,64 +65,17 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_entity_refs::tests::with_game;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::farmland_trample::tests::AfterTrap;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::farmland_trample::tests::Body;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::farmland_trample::tests::Choice;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::farmland_trample::tests::FIELD;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::farmland_trample::tests::Gardener;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::farmland_trample::tests::HEALTHY_WRITE;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::farmland_trample::tests::LANDING;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::farmland_trample::tests::LANDING_Y;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::farmland_trample::tests::LISTENER_WRITE;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::farmland_trample::tests::Moment;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::farmland_trample::tests::OTHER;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::farmland_trample::tests::OUTSIDE;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::farmland_trample::tests::Observe;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::farmland_trample::tests::Trace;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::farmland_trample::tests::WALKING;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::farmland_trample::tests::land;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::farmland_trample::tests::land_with_later_packet;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::farmland_trample::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_item_places::tests::{
-        guest, open_to_lan,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use mod_api::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use std::sync::{Arc, Mutex};
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_client::{
-        chunk::Chunk, lan::guest::InboxItem, motion::PlayerMotion,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_core::geometry::Vec3;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_protocol::packets::{
-        Empty, play, play::Serverbound as S,
-    };
+    use super::*;
+    use crate::game::native_entity_refs::tests::with_game;
+    use crate::game::native_hooks::farmland_trample::tests::Choice;
+    use crate::game::native_hooks::farmland_trample::tests::FIELD;
+    use crate::game::native_hooks::farmland_trample::tests::Gardener;
+    use crate::game::native_hooks::farmland_trample::tests::LANDING;
+    use crate::game::native_hooks::farmland_trample::tests::LANDING_Y;
+    use crate::game::native_hooks::farmland_trample::tests::Trace;
+    use mod_api::*;
+    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
+    use sunrise_core::geometry::Vec3;
 
     #[test]
     #[ignore = "daily"]

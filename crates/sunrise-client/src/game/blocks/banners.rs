@@ -1,9 +1,7 @@
 //! Placed banners (`BannerBlockEntity`): the pattern layers move from the
 //! banner item to the block when placed and back to the dropped item when
 //! broken (`copy_components` in the banner loot tables).
-#[allow(unused_imports)]
-use super::{Game, maps::MapBanner};
-#[allow(unused_imports)]
+use super::maps::MapBanner;
 use sunrise_client::{
     banner::{self, BannerLayer},
     containers::BlockEntity,

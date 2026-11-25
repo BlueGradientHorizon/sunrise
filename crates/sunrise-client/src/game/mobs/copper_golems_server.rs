@@ -1,17 +1,8 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::level_sounds::LevelSound;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::copper_golems::RECHECK_TICKS;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::copper_golems::golem_preserved_equipment;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::copper_golems::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::SoundSource;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
+use super::Game;
+use super::level_sounds::LevelSound;
+use crate::game::copper_golems::RECHECK_TICKS;
+use mod_api::SoundSource;
+use sunrise_client::{
     containers::BlockEntity,
     items::ItemStack,
     mobs::{
@@ -19,12 +10,9 @@ pub(in crate::game::server_side) use sunrise_client::{
         transport_items::{held, set_held},
     },
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::nbt::{Compound, Tag};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::random::RandomSource;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_world::chunk::BlockState;
+use sunrise_core::nbt::{Compound, Tag};
+use sunrise_core::random::RandomSource;
+use sunrise_world::chunk::BlockState;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// A copper golem opened or closed a chest half: the counter changes, the

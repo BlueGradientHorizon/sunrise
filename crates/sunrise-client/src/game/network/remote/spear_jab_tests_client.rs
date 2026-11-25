@@ -1,15 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::spear_jab_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    chunk::Chunk, items::ItemStack, motion::PlayerMotion,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::packets::play;
+use std::sync::Arc;
+use sunrise_client::{chunk::Chunk, items::ItemStack, motion::PlayerMotion};
+use sunrise_core::geometry::Vec3;
+use sunrise_protocol::packets::play;
 
 /// `MultiPlayerGameMode.piercingAttack`: a spear's jab sends its STAB action and nothing else,
 /// even with the look changed since the last move packet, so the 20-tick position reminder

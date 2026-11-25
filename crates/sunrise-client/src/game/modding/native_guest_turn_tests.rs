@@ -1,28 +1,21 @@
 //! Real-game regressions for native handles used during a guest's turn.
 
-#[allow(unused_imports)]
 use super::lan::LanSettings;
-#[allow(unused_imports)]
 use mod_api::{
     __private::{HookPanicReport, take_hook_panics},
     EntityMoveEvent, Flow, Hooks, LoopContext, MoveCause,
     prelude::*,
 };
-#[allow(unused_imports)]
 use std::panic::{AssertUnwindSafe, catch_unwind};
-#[allow(unused_imports)]
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicI32, AtomicUsize, Ordering},
 };
-#[allow(unused_imports)]
 use sunrise_client::{
     lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
     mobs::Mob,
 };
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
 use sunrise_protocol::packets::configuration::ClientInformation;
 
 pub(in crate::game) fn with_guests(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {

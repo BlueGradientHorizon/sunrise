@@ -1,15 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{
-    ClientHost, InteractionAttempt, InteractionKey, InteractionKeyMappingTriggeredEvent,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::interaction_event_tests::interaction_key_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::interaction_event_tests::interaction_key_tests::KeyControl;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::interaction_event_tests::interaction_key_tests::FirstSilent;
+use super::*;
+use crate::game::remote::interaction_event_tests::interaction_key_tests::FirstSilent;
+use crate::game::remote::interaction_event_tests::interaction_key_tests::KeyControl;
+use mod_api::{InteractionAttempt, InteractionKey};
 
 #[test]
 #[ignore = "daily"]

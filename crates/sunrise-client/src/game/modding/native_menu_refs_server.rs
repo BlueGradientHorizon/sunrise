@@ -1,14 +1,10 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{
+use super::{
     Game,
     lan_crafting::{load_player, machine_menu},
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::__private::game::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{EntityRef, MenuRef, MenuSlotBacking, PlayerRef};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
+use mod_api::__private::game::*;
+use mod_api::{EntityRef, MenuRef, MenuSlotBacking, PlayerRef};
+use sunrise_client::{
     containers::BlockEntity,
     items::ItemStack,
     lan::{
@@ -492,33 +488,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::super::api_values::TryIntoApi;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::super::{
-        lan::LanSettings, native_entity_refs::tests::with_game,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::native_menu_refs::tests::PANEL;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::native_menu_refs::tests::Panel;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::native_menu_refs::tests::guest;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::native_menu_refs::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use std::sync::{
-        Arc, Mutex,
-        atomic::{AtomicI32, AtomicUsize},
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_client::lan::{
-        Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_protocol::packets::configuration::ClientInformation;
+    use super::super::api_values::TryIntoApi;
+    use super::super::{lan::LanSettings, native_entity_refs::tests::with_game};
+    use super::*;
+    use crate::game::client_side::native_menu_refs::tests::guest;
+    use sunrise_client::lan::{NetConfig, hub::HubConfig};
 
     #[test]
     #[ignore = "daily"]

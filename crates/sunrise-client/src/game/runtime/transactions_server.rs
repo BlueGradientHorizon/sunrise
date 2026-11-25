@@ -1,10 +1,5 @@
 //! Server-side transaction commit, rollback, and journal handlers.
-#[allow(unused_imports)]
-use super::{
-    BlockEntity, BlockStateId, Dim, Game, lan_mount_menu::MountClickWindow, machines::HopperState,
-    maps::MapData,
-};
-#[allow(unused_imports)]
+use super::{BlockEntity, Game, lan_mount_menu::MountClickWindow};
 use crate::game::transactions::{
     After, AttachmentKey, BlockReplay, ClosingPhase, DeferredEffect, JournaledPlayer, Kept,
     KeptAttachments, KeptClick, KeptEquipment, KeptMenus, KeptMobEffects, KeptMobHealth,
@@ -12,22 +7,16 @@ use crate::game::transactions::{
     PlayerStorageHome, Pos, QuickMoveNotice, SaveChunkScope, StorageSettlement, entities,
     take_replay_row,
 };
-#[allow(unused_imports)]
 use mod_api::TransactionLifecycle;
-#[allow(unused_imports)]
 use std::collections::{HashMap, HashSet};
-#[allow(unused_imports)]
 use sunrise_client::{
     block_entities::BlockEntityIdentity,
     fast_hash::FxHashSet,
     items::ItemStack,
     join_seq::{JoinSeq, Joined as _},
-    menu::QuickCraftDrag,
     mobs::Mob,
 };
-#[allow(unused_imports)]
 use sunrise_core::position::BlockPos;
-#[allow(unused_imports)]
 use sunrise_mod_runtime::attachments::Holder;
 
 /// Takes the commit it pushed, and any a listener's left, off the stack when it ends, however

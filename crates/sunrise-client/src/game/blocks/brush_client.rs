@@ -1,28 +1,17 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{
-    Game, Hit, decorated_pot,
+use super::{
+    Game, Hit,
     item_draw::{BlockItemDraw, block_entity_pose},
     view_vector,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::brush::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
+use sunrise_client::{
     block_entity_render::vertex_light,
     camera::rotate_degrees,
     containers::BlockEntity,
     mesher::Vertex,
     particles::{ParticleOptions, ParticleType},
-    save,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client_render::block_entity_reach::Reach;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::random::RandomSource;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_gameplay::brushing::{
-    Brushing, USE_DURATION, completion_state,
-};
+use sunrise_client_render::block_entity_reach::Reach;
+use sunrise_core::random::RandomSource;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Level event 3008 (`LevelEventHandler`): the finished block's sound

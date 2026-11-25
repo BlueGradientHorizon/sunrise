@@ -1,5 +1,4 @@
 //! Client crack state belongs to one level and expires independently of new updates.
-#[allow(unused_imports)]
 use super::{Game, Mining};
 
 pub(in crate::game) struct ClientCrack {

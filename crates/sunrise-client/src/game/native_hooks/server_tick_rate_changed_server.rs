@@ -1,24 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::server_tick_rate_changed::*;
-
 #[cfg(test)]
 pub(in crate::game) mod server_tick_rate_changed_tests {
-    #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_guest_turn_tests::with_guests;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{Hooks, ModEntry, ServerHost, ServerTickRateChangedEvent};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_platform::testing::with_mods;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::server_tick_rate_changed::server_tick_rate_changed_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::server_tick_rate_changed::server_tick_rate_changed_tests::Scheduler;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::server_tick_rate_changed::server_tick_rate_changed_tests::with_scheduler;
+    use crate::game::native_hooks::server_tick_rate_changed::server_tick_rate_changed_tests::with_scheduler;
 
     /// The hook comes before the wait is adjusted: a listener that sets another rate decides
     /// the wait, here 40 ticks a second keeping the 6000 that 10 would have halved.

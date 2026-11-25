@@ -1,404 +1,48 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tick::ResidentBlockEntityAccess;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::build_creative_mode_tab_contents::CreativeCache;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::client_pick::ClientPick;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::fire::{
-    ConnectsToCall, EntityChangeBlockPreCall, HotbarAttackIndicatorProgressCall,
-    ItemAfterVerticalCollisionCall, PlayerPongCall, PreRemoveSideEffectsCall, UpdateShapeCall,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{BlockEntityDataSource, BlockEntityRef, ClockAdjustment};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::native_data_maps::DataMapType;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{
-    native_block_entity_draw::BlockEntityDraw,
-    native_mob_draw::{MobRender, PlayerRender},
-    native_panel_recipes::RecipePage,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{
-    Game, GameLevel, LevelDimension, Screen,
-    execution_role::{self, ExecutionRole},
-    mod_api_host,
-    native_configs::ConfigFile,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::__private::game::{
-    BlockStateDefinitionRegistration, ItemModelRegistration, ItemTintSourceRegistration,
-    JsonAnimationTypeRegistration, LayerDefinitionRegistration, ModelLoaderRegistration,
-    ParticleGroupRegistration, PresetEditorFactoryRegistration, RangeSelectPropertyRegistration,
-    SelectPropertyRegistration, SpriteSourceRegistration, StandaloneModelRegistration,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::GameMode;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::GameTests;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::game::{PhantomSpawnResult, Shake, SleepProblem};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{
-    self, Answered, BlockPlacement, BlockTintSources, CauldronFluidContents, CauldronInteractions,
-    ClientAudioOptions, ClientChatOptions, ClientGraphicsOptions, ClientGuiOptions,
-    ClientInputOptions, ClientMiningPrediction, ClientModifiers, ClientReloadListeners,
-    ColorResolvers, EnchantmentDamageEffects, EnchantmentInfo, EntityLayers, EntityRef,
-    EntityRenderers, GameRuleActor, GuiLayerRegistrar, HandDrawContext, HandRender, InsideEffects,
-    InteractionAttempt, InteractionKey, ItemEntityRef, LifecycleContext, LivingRef, LoadConditions,
-    NoteBlockChange, ParticleProviders, PathComputationType, Placement, PlayerRef,
-    PoiTypeExtensions, RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenWidgets,
-    ScreenshotImage, ServerReloadListeners, ServerTickPhase, SpecialModelRenderers,
-    TicketController, ToolUse, VillagerProfessions, WorldPhase,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{
-    ActiveEffect, AttachmentStore, BlockClick, BlockUpdateFlags, BonemealSource, ChunkRef,
-    FluidStack, ItemClick, LevelRef, LogicalSide, NeighbourUpdate, TooltipElement, TriState,
-    UsePhase,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{
-    BlockKey, DebugEntry, DebugRenderer, EffectKey, FrameModel, FrameModelEdit, MapDecorationType,
-    SkullModel, TextureAtlasRegistration,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{
-    BlockRim, ClientPacket, ClientPayload, ColoredLight, ContainerLootFilled, ExplosionStart,
-    ItemFished, LootDrops, PanelEvent, PortalShape, ScreenView,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{
-    CameraType, Despawn, Identifier, MobRef, PermissionLevel, RailShape, SoundPlay, SoundRef,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::{
-    fs,
-    path::{Path, PathBuf},
-    sync::Arc,
-    time::Duration,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::block_contact::Pending;
-#[allow(unused_imports)]
+use super::native_data_maps::DataMapType;
+use super::{Game, GameLevel};
+use crate::game::api_values::TryIntoApi;
 #[cfg(test)]
-pub(in crate::game::server_side) use sunrise_client::mobs::Damage;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    atlas_sources::qualified,
-    biome::{BiomeColors, SpawnEntry},
+use crate::game::native_hooks::BLOCK_CONTACT_HOOKS;
+use crate::game::native_hooks::ContentsChangedGuard;
+use crate::game::native_hooks::HitLevel;
+use crate::game::native_hooks::LiveDamageRead;
+use crate::game::native_hooks::apply_menu_button_cursor;
+use crate::game::native_hooks::block_entity_tick::ResidentBlockEntityAccess;
+use crate::game::native_hooks::mob_kind;
+use crate::game::native_hooks::mod_menu;
+use crate::game::native_hooks::property_change;
+use crate::game::native_hooks::*;
+use mod_api::EffectKey;
+use mod_api::{
+    self, BlockPlacement, EntityRef, GameRuleActor, LifecycleContext, Placement, PlayerRef,
+    ServerTickPhase, WorldPhase,
+};
+use mod_api::{BlockEntityRef, ClockAdjustment};
+use mod_api::{BlockUpdateFlags, LevelRef, LogicalSide, TriState, UsePhase};
+use mod_api::{ExplosionStart, LootDrops};
+use std::sync::Arc;
+use sunrise_client::block_contact::Pending;
+use sunrise_client::containers::ModBlockEntity as EngineBlockEntity;
+use sunrise_client::health::mob_source;
+#[cfg(test)]
+use sunrise_client::mobs::Damage;
+use sunrise_client::{
     block_entities::Pos,
-    chat::ChatSource,
-    containers::{
-        BlockEntity, MOD_MENUS, ModBlockEntityFields, ModContainer, ModEnergyBuffer, ModFluidTanks,
-    },
-    crafting::{Ingredient, recipe_result},
-    extras::Corner,
-    extras_hud::Corners,
+    containers::{BlockEntity, ModContainer, ModEnergyBuffer, ModFluidTanks},
     fast_hash::FxHashMap,
     first_person::Hand,
-    health::{
-        Attack, DamageContainer, DamageHooks, DamageLevel, HurtSource, Hurting, Knock, ShieldBlock,
-        Victim,
-    },
-    hud::{HudBatch, rgba},
+    health::{Attack, HurtSource},
     items::ItemStack,
-    keybinds,
     merchant::MerchantOffer,
     mobs::Who,
-    mod_list::{self, Installed, KeyMapping, NativePage, NativeSetting, NativeSettingValue},
-    music::{Music, MusicLayer},
-    particles::{ParticleOptions, ParticleType},
     text::Text,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client_core::gamerules::Value as GameRuleValue;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client_core::suggestion::Suggestion;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::{
-    connection_kind::ConnectionKind,
-    geometry::Direction,
-    position::BlockPos,
-    ticks::{ScheduleResult, TickPriority},
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_world::level::{BonemealCheck, PlaceContext};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use winit::{event::MouseButton, keyboard::KeyCode};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use {
-    sunrise_core::{
-        nbt::{Compound, Tag},
-        use_animation::UseAnimation,
-    },
-    sunrise_world::{
-        fluid::FluidKind,
-        level::{LevelAccess, PlacementContext, Ticks},
-        registry::{BlockRegistry, BlockStateId},
-    },
-};
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::add_attribute_tooltips::HookedAttributeTooltips;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::base::LevelView;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::bounce_restitution::install_block_contact_hooks;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::living_change_target::NativeHookHost;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::ModBlockEntity;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::sound_and_shader_helpers::{finite, finite_params, local_sound_ok};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::sound_and_shader_helpers::{level_sound_playable, mod_sound_ok, sound_id};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::add_section_geometry::native_add_section_geometry;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::base::{another_mods, startup_setting};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::base::{
-    native_block_entity_update_tag, native_blocks, native_component_types, native_items,
-    native_menu_button, native_menu_quick_move, native_standalone_models,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_client_tick::native_block_entity_client_tick;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_data_received::native_block_entity_data_received;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_on_load::native_block_entity_on_load;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_on_load::{authoritative_world_for_mods, world_for_mods};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tick::native_block_entity_tick;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_type_add_blocks::native_block_entity_type_add_blocks;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::can_place_item::native_can_place_item;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::client_pick::native_can_rider_interact;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::create_skull_models::native_create_skull_models;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::extend_poi_types::native_extend_poi_types;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::general_entity_tick::native_general_entity_tick;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::map_decoration_types::native_map_decoration_types;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::math::startup_math_profile;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::menu_slot_take::native_menu_slot_take;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::on_entity_item_update::native_on_entity_item_update;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::piston_push_reaction::native_piston_push_reaction;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_block_state_models::native_register_block_state_models;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_block_tint_sources::native_register_block_tint_sources;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_cauldron_fluid_content::native_register_cauldron_fluid_content;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_cauldron_interaction::native_register_cauldron_interaction;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_client_item_extensions::native_register_client_item_extensions;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_client_tooltip_component_factories::native_register_client_tooltip_component_factories;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_color_resolvers::native_register_color_resolvers;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_debug_entries::native_register_debug_entries;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_debug_renderers::native_register_debug_renderers;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_dimension_transition_screen::native_register_dimension_transition_screen;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_enchantment_damage_effects::native_register_enchantment_damage_effects;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_entity_layers::native_register_entity_layers;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_entity_renderers::native_register_entity_renderers;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_entity_spectator_shaders::native_register_entity_spectator_shaders;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_fluid_models::native_register_fluid_models;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_gui_layers::native_register_gui_layers;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_item_models::native_register_item_models;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_item_tint_sources::native_register_item_tint_sources;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_json_animation_types::native_register_json_animation_types;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_layer_definitions::native_register_layer_definitions;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_load_conditions::native_register_load_conditions;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_model_loaders::native_register_model_loaders;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_particle_groups::native_register_particle_groups;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_particle_providers::native_register_particle_providers;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_preset_editors::native_register_preset_editors;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_range_select_item_model_property::native_register_range_select_item_model_property;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_render_pipelines::native_register_render_pipelines;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_select_item_model_property::native_register_select_item_model_property;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_special_model_renderer::native_register_special_model_renderer;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_sprite_sources::native_register_sprite_sources;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_texture_atlases::native_register_texture_atlases;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_villager_professions::native_register_villager_professions;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::system_helpers::{mod_data_root, native_config_dir};
-#[allow(unused_imports)]
-#[cfg(test)]
-pub(in crate::game::server_side) use crate::game::native_hooks::level_helpers::block_entity_for_block;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::screen_build::ObservedScreen;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::api_values::{TryIntoApi, TryIntoEngine};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::screen_chars::chars_to_type;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::containers::ModBlockEntity as EngineBlockEntity;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::screen_view::{screen_view_for_mod, screen_view_with_id};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_world::level::flags;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::camera_pose::bounded_shake;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::camera_pose::hand_pose_matrix;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::living_death::hurt_server_args;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::health::mob_source;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::ContentsChangedGuard;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::apply_menu_button_cursor;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::ScreenDecision;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::title_target_id;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::observed_overlay_id;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::SHAKE_MAX_DEGREES;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::SHAKE_MAX_OFFSET;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::shake_pose;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::OpenNativeScreen;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::OpenNativeMenu;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::SlotMoves;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::NativePlayer;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::NativeRecipeLayout;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::NativeRecipeResult;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::NativeRecipeView;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::NativeRecipeStack;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::NativeRecipeKind;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::NativeRecipe;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::NativeItem;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::NativeRecipes;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::ScreenMousePostKind;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::ScreenMousePost;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::ScreenMousePre;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::use_totem;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::HitLevel;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::invulnerability_check;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::engine_reduction;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::LiveDamageRead;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::LiveDamageContainer;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::incoming_damage;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::damage_pre;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::damage_post;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::shield_block;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::knockback;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::DAMAGE_HOOKS;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::BLOCK_CONTACT_HOOKS;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::mod_particles_ok;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::dimension_id;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::mob_kind;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_use_result;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::BlockClickAnswer;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::BonemealAsk;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::debug_takes;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::mod_menu;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::with_property;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::property_change;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::config_dir;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::NativeItemEntity;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::box_meets;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::mod_screen_opens;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::client_packet_view;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::serverbound_packet_view;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::packet_types;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::packet_view;
+use sunrise_client_core::gamerules::Value as GameRuleValue;
+use sunrise_client_core::suggestion::Suggestion;
+use sunrise_core::{geometry::Direction, position::BlockPos};
+use sunrise_world::level::PlaceContext;
+use sunrise_world::level::flags;
+use {sunrise_core::nbt::Compound, sunrise_world::registry::BlockStateId};
 
 #[path = "base_server.rs"]
 pub(in crate::game) mod base;

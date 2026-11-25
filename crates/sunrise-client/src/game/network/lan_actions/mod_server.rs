@@ -1,68 +1,31 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{
-    Dim, Game, GuestUse, Hit, InteractTarget, Mining, Screen,
-    building_players::{BuildingPlayer, HubBodies, shared},
-    lan::LanHost,
-    lan_crafting::MenuRemoval,
-    level_sounds::LevelSound,
+use super::{
+    Dim, Game, GuestUse, Hit, InteractTarget, Mining, building_players::BuildingPlayer,
+    lan::LanHost, lan_crafting::MenuRemoval, level_sounds::LevelSound,
     respawn_anchor::RespawnConfig,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::BUILDING_CACHE;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::GuestCommand;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::GuestPlay;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::ItemRules;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::MenuOpen;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::RECIPE_CHECK_COST;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::RECIPE_CHECK_LIMIT;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::StopDig;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::TurnRefused;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::building_cache;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::building_player;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::building_players;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::bundle_inventory_slot;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::equipment_changed;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::eye_columns;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::first_spin_target;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::guest_within_entity_range;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::refresh_building_player;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::reset_use_attack_strength;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::stop_dig;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::swing_packet;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::touching_unloaded_chunk;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::turns::{
-    CombatPlayer, DisplacedPlayer,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::visible_aim_point;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{ActionRefused, GameMode, SoundSource};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
+use crate::game::lan_actions::GuestCommand;
+use crate::game::lan_actions::GuestPlay;
+use crate::game::lan_actions::ItemRules;
+use crate::game::lan_actions::MenuOpen;
+use crate::game::lan_actions::RECIPE_CHECK_LIMIT;
+use crate::game::lan_actions::StopDig;
+use crate::game::lan_actions::TurnRefused;
+use crate::game::lan_actions::building_cache;
+use crate::game::lan_actions::building_players;
+use crate::game::lan_actions::bundle_inventory_slot;
+use crate::game::lan_actions::equipment_changed;
+use crate::game::lan_actions::eye_columns;
+use crate::game::lan_actions::first_spin_target;
+use crate::game::lan_actions::guest_within_entity_range;
+use crate::game::lan_actions::refresh_building_player;
+use crate::game::lan_actions::reset_use_attack_strength;
+use crate::game::lan_actions::stop_dig;
+use crate::game::lan_actions::swing_packet;
+use crate::game::lan_actions::touching_unloaded_chunk;
+use crate::game::lan_actions::turns::CombatPlayer;
+use crate::game::lan_actions::visible_aim_point;
+use mod_api::{ActionRefused, GameMode, SoundSource};
+use sunrise_client::{
     containers::BlockEntity,
     entities::Experience,
     first_person::{Hand, SwingAnimation},
@@ -75,20 +38,15 @@ pub(in crate::game::server_side) use sunrise_client::{
     motion::{MotionEvent, MotionWorld, PlayerMotion},
     pose::Dimensions,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::{
+use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::RandomSource,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_protocol::{
+use sunrise_protocol::{
     packets::play::{self, Clientbound as C, Serverbound as S},
     text::literal,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_world::entity_move::EntityMoveWorld;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use winit::keyboard::KeyCode;
+use sunrise_world::entity_move::EntityMoveWorld;
 
 #[path = "attack_checks_server.rs"]
 pub(in crate::game) mod attack_checks;
@@ -200,16 +158,8 @@ impl GuestPlay {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::{eye_columns, reset_use_attack_strength};
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::api_values::TryIntoApi;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::lan_actions::tests::StopMenu;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::lan_actions::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_client::pose::Pose;
+    use crate::game::api_values::TryIntoApi;
+    use crate::game::lan_actions::tests::StopMenu;
 
     #[test]
     #[ignore = "daily"]
@@ -1038,24 +988,11 @@ pub(in crate::game) mod tests {
 
 #[cfg(test)]
 pub(in crate::game) mod respawn_world_point_tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::lan_actions::respawn_world_point_tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::{
-        Audio, Game, Options, Progress, Settings, load_resources,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_client::lan::{
-        Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_core::geometry::Vec3;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_protocol::packets::{
-        configuration::ClientInformation, play::Clientbound,
-    };
+    use crate::game::{Options, Progress, Settings, load_resources};
+    use std::sync::{Arc, atomic::AtomicI32, mpsc};
+    use sunrise_client::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
+    use sunrise_core::geometry::Vec3;
+    use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
 
     /// PlayerList.respawn sends world respawn data, independently of the personal landing.
     #[test]
@@ -1196,35 +1133,19 @@ pub(in crate::game) mod respawn_world_point_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod guest_close_listener_tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::lan_actions::guest_close_listener_tests::close;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::lan_actions::guest_close_listener_tests::open;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::lan_actions::guest_close_listener_tests::reset_listener;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::lan_actions::guest_close_listener_tests::selected;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::lan_actions::guest_close_listener_tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::{
-        Audio, Options, Progress, Settings, load_resources,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_client::{
+    use super::*;
+    use crate::game::lan_actions::guest_close_listener_tests::close;
+    use crate::game::lan_actions::guest_close_listener_tests::open;
+    use crate::game::lan_actions::guest_close_listener_tests::reset_listener;
+    use crate::game::lan_actions::guest_close_listener_tests::selected;
+    use crate::game::{Options, Progress, Settings, load_resources};
+    use std::sync::{Arc, atomic::AtomicI32, mpsc};
+    use sunrise_client::{
         chunk::Chunk,
-        containers::BlockEntity,
         lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
-        sculk::Info,
     };
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_core::position::ChunkPos;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_protocol::packets::configuration::ClientInformation;
+    use sunrise_core::position::ChunkPos;
+    use sunrise_protocol::packets::configuration::ClientInformation;
 
     #[test]
     #[ignore = "daily"]

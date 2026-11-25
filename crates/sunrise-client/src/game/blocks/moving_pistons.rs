@@ -1,12 +1,7 @@
 //! `PistonHeadRenderer`: while a piston moves them, blocks are
 //! `minecraft:moving_piston` block entities (drawn as nothing by the chunk
 //! mesher); this draws each moved block at its interpolated offset.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
-use sunrise_client_render::{block_entity_reach::Reach, render_geometry::Vertex};
-#[allow(unused_imports)]
-use sunrise_world::{piston_shape::MovingPistonState, registry::BlockStateId};
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The section holding the block at `p` (`SectionPos.blockToSection`).

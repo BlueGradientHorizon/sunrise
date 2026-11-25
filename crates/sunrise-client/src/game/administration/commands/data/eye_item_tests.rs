@@ -1,10 +1,5 @@
-#[allow(unused_imports)]
 use super::{DataRef, Target};
-#[allow(unused_imports)]
-use crate::game::native_entity_refs::tests::with_game;
-#[allow(unused_imports)]
 use std::path::PathBuf;
-#[allow(unused_imports)]
 use sunrise_core::nbt::{Tag, parse_snbt};
 
 pub(in crate::game) fn load_witness() -> String {

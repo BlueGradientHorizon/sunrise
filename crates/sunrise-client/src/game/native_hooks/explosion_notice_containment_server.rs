@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::explosion_notice_containment::*;
+use super::*;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     // A notice cannot veto removal. Recover from a failed native callback just

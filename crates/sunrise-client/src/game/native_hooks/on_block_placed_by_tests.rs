@@ -1,26 +1,13 @@
 //! Post-placement notices through the actual player and dispenser block-item paths.
-#[allow(unused_imports)]
-use crate::game::native_entity_refs::tests::{bind_local_player, run_fresh_cases, with_game_at};
-#[allow(unused_imports)]
-use crate::game::{Game, GuestUse, Hit};
-#[allow(unused_imports)]
 use mod_api::{
     BlockEntityPart, BlockPart, Hooks, HostBlockStates, ItemPart, OnBlockPlacedByEvent, ServerHost,
 };
-#[allow(unused_imports)]
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
-#[allow(unused_imports)]
-use sunrise_client::{
-    chunk::Chunk, containers::BlockEntity, items::ItemStack, motion::PlayerMotion,
-};
-#[allow(unused_imports)]
-use sunrise_core::{
-    geometry::{Direction, Vec3},
-    nbt::{Compound, Tag},
-};
+use sunrise_client::items::ItemStack;
+use sunrise_core::nbt::{Compound, Tag};
 
 pub(in crate::game) const CRATE: &str = "placed_probe:crate";
 pub(in crate::game) const SKULL: &str = "minecraft:wither_skeleton_skull";

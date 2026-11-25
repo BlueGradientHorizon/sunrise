@@ -2,23 +2,11 @@
 //! the mod host, with enchantments from a world datapack. Expected values come
 //! from vanilla's formulas run on copies of the randoms involved.
 #![cfg(test)]
-#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::with_game;
-#[allow(unused_imports)]
 use mod_api::Identifier;
-#[allow(unused_imports)]
 use serde_json::{Value, json};
-#[allow(unused_imports)]
-use sunrise_client::{
-    items::ItemStack,
-    mobs::{Mob, Who},
-    projectiles::{Projectile, ProjectileKind},
-};
-#[allow(unused_imports)]
-use sunrise_core::{
-    geometry::Vec3,
-    random::{LegacyRandom, RandomSource},
-};
+use sunrise_client::{items::ItemStack, mobs::Mob};
+use sunrise_core::{geometry::Vec3, random::RandomSource};
 
 /// A world whose datapack defines `spawn_test:<name>` for each
 /// `(name, projectile_spawned effects)`.

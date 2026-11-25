@@ -1,20 +1,17 @@
 //! Beehives and bee nests in the game (`crate::beehive` holds their logic):
 //! their server tick, bees going in, and the bees let out, angry, when a
 //! player breaks the hive or fire reaches it.
-#[allow(unused_imports)]
 use super::{Game, item_abilities::ability};
-#[allow(unused_imports)]
 use sunrise_client::{
     Result,
-    beehive::{self, Beehive, BeehiveExt, HiveHost, Release},
+    beehive::{self, Beehive, BeehiveExt, Release},
     containers::BlockEntity,
     items::ItemStack,
-    mobs::{Mob, Who, bee},
+    mobs::{Who, bee},
 };
-#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, Vec3},
-    random::{LegacyRandom, RandomSource},
+    random::RandomSource,
 };
 #[allow(unused_imports)]
 use {sunrise_core::nbt::Tag, sunrise_world::registry::BlockStateId};

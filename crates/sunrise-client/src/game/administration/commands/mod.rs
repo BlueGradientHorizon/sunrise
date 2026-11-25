@@ -33,24 +33,19 @@ pub(in crate::game) mod test_runs;
 pub(in crate::game) mod text_commands;
 pub(in crate::game) mod world_cmds;
 
-#[allow(unused_imports)]
-use super::{Dim, Game, chat::PLAYER_NAME, vehicle_teleport::TeleportMotion};
-#[allow(unused_imports)]
+use super::{Dim, Game};
 use sunrise_client::{
     command::{
         Arg, CommandError, Context, Reader,
-        args::{BlockInput, Coordinates, GameMode, ItemInput, Selector},
+        args::{BlockInput, Coordinates, ItemInput, Selector},
         vanilla::DIFFICULTIES,
     },
     gamerules::{self, Value},
     items::ItemStack,
-    text::{self, Style, Text},
+    text::{self, Text},
 };
-#[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, java_number::float_to_string, random::RandomSource};
-#[allow(unused_imports)]
 use sunrise_protocol::packets::play::{self, Clientbound as C};
-#[allow(unused_imports)]
 use sunrise_world::registry::BlockStateId;
 
 #[allow(unused_imports)]
@@ -2341,23 +2336,16 @@ pub(in crate::game) mod summon_bolt_tests;
 
 #[cfg(test)]
 pub(in crate::game) mod peaceful_tests {
-    #[allow(unused_imports)]
-    use super::{Arg, Context, Game};
-    #[allow(unused_imports)]
+    use super::{Arg, Context};
     use crate::game::{execution_role::ExecutionRole, native_entity_refs::tests as fixture};
-    #[allow(unused_imports)]
     use std::sync::{Arc, OnceLock};
-    #[allow(unused_imports)]
     use sunrise_client::{
         chunk::Chunk,
         items::ItemStack,
         mod_content::{self, ContentMod},
     };
-    #[allow(unused_imports)]
     use sunrise_command::ParsedArg;
-    #[allow(unused_imports)]
     use sunrise_core::nbt::Tag;
-    #[allow(unused_imports)]
     use sunrise_mod_package::{Content, Package, enabled::EnabledMods};
 
     pub(in crate::game) const TRADER: &str = "peaceful_test:trader";

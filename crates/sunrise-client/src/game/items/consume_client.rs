@@ -1,20 +1,12 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::consume::{
-    ItemConsumable, USE_ITEM_COMPLETE_EVENT,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::convert::Infallible;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
+use super::Game;
+use crate::game::server_side::consume::ItemConsumable;
+use std::convert::Infallible;
+use sunrise_client::{
     items::ItemStack,
     particles::{ParticleOptions, ParticleType},
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::random::LegacyRandom;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_world::consumable::EmissionWorld;
+use sunrise_core::random::LegacyRandom;
+use sunrise_world::consumable::EmissionWorld;
 
 struct ClientEmitter<'a, 'g>(&'a mut Game<'g, crate::game::client_side::ClientState>);
 

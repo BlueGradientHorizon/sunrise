@@ -1,9 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::player_identity::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::PlayerRef;
+use super::Game;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Retires the local player body and associated residency/client state.

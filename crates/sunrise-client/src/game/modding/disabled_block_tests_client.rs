@@ -1,78 +1,11 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::disabled_block_tests::*;
-
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use super::super::{
-        Dim, Game, Hit,
-        api_values::{TryIntoApi, TryIntoEngine},
-        native_entity_refs::tests as fixture,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::disabled_block_tests::tests::CARPET;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::disabled_block_tests::tests::ConflictingCode;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::disabled_block_tests::tests::DISPENSER;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::disabled_block_tests::tests::DISPENSER_SLOT;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::disabled_block_tests::tests::DispenseNotices;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::disabled_block_tests::tests::Earlier;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::disabled_block_tests::tests::EnabledPrefix;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::disabled_block_tests::tests::HydratesWithAnyFluid;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::disabled_block_tests::tests::HydratesWithLava;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::disabled_block_tests::tests::HydratesWithWater;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::disabled_block_tests::tests::Machine;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::disabled_block_tests::tests::Observer;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::disabled_block_tests::tests::Owner;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::disabled_block_tests::tests::POS;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::disabled_block_tests::tests::Plant;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::disabled_block_tests::tests::Probe;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::disabled_block_tests::tests::Soil;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::disabled_block_tests::tests::Survival;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::disabled_block_tests::tests::ToolProbe;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::disabled_block_tests::tests::place_dispenser;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::disabled_block_tests::tests::with_inert_block;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::disabled_block_tests::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use mod_api::{
-        BlockPart, BlockToolModificationEvent, CanBeHydratedEvent, DispenseMethodEvent, Dispensed,
-        Flow, Hooks, Host, LevelWriteHost, Registrar, RegistrationContext, ServerHost,
-        TickBlockEvent, ToolAbility, ToolModifiedStateEvent,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use std::sync::{
-        Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use sunrise_client::{chunk::Chunk, items::ItemStack};
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use sunrise_core::{position::BlockPos, ticks::TickPriority};
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use sunrise_world::{
-        level::{BlockMapValue, BlockMaps, Landing, LevelAccess},
-        registry::BlockStateId,
-    };
+    use crate::game::server_side::disabled_block_tests::tests::DISPENSER;
+    use crate::game::server_side::disabled_block_tests::tests::DISPENSER_SLOT;
+    use crate::game::server_side::disabled_block_tests::tests::place_dispenser;
+    use crate::game::server_side::disabled_block_tests::tests::with_inert_block;
+    use std::sync::atomic::Ordering;
+    use sunrise_client::items::ItemStack;
 
     #[test]
     #[ignore = "daily"]

@@ -1,9 +1,6 @@
 //! Common entity-pick types and queries shared by client crosshair picking and server entity picks.
-#[allow(unused_imports)]
 use super::{Game, Hit, pick_ray::PickCandidate};
-#[allow(unused_imports)]
 use sunrise_client::items::ItemStack;
-#[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Vec3};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

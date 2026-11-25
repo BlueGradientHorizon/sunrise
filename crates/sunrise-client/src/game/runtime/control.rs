@@ -1,26 +1,16 @@
 //! Commands from the control socket (`sunrise-ctl`), run on the game thread.
-#[allow(unused_imports)]
 use super::event_loop::EventLoopCtl;
-#[allow(unused_imports)]
 use super::owner_link::{ControlRequest, OwnerRequest};
-#[allow(unused_imports)]
 use super::{Game, Screen};
-#[allow(unused_imports)]
 use serde_json::{Value, json};
-#[allow(unused_imports)]
 use std::{
     sync::mpsc::Sender,
     time::{Duration, Instant},
 };
-#[allow(unused_imports)]
 use sunrise_client::gfx::pack_timing;
-#[allow(unused_imports)]
 use sunrise_client::held::Source;
-#[allow(unused_imports)]
 use sunrise_client::{Result, items::ItemStack};
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
 use winit::{event::MouseButton, keyboard::KeyCode};
 
 /// The control protocol's version (`docs/api/stability.md`): before 1.0 an

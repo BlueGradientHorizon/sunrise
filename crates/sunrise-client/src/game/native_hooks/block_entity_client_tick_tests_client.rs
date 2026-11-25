@@ -1,77 +1,25 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_entity_refs::tests::{
-    run_fresh_cases, with_game_role_client,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::CHUNK;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::CRATE;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::CRATE_AT;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::EVENTS;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::HUM;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::HUMS;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::Hum;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::OTHER;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::Probe;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::QUIET;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::QUIET_AT;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::Quiet;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::SPAWNER_AT;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::TICK_PARTICLES;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::frame;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::install;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::note;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::prepared_root;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::record;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::request;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::rpm;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::rpm_of;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::take_events;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::ticked;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::world_loading::WorldRequest;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{
-    BlockEntityClientTickEvent, BlockEntityClientTicksEvent, BlockEntityDataReceivedEvent,
-    BlockEntityPart, BlockPart, BlocksEvent, ClientHost, ClientTickPostEvent, ClientTickPreEvent,
-    Hooks, HostSide, LevelTickPostEvent, LevelTickPreEvent, Registrar, RegistrationContext,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::path::{Path, PathBuf};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::Mutex;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::time::{Duration, Instant};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::containers::BlockEntity;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::nbt::{Compound, Tag};
+use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_role_client};
+use crate::game::native_hooks::block_entity_client_tick_tests::CHUNK;
+use crate::game::native_hooks::block_entity_client_tick_tests::CRATE;
+use crate::game::native_hooks::block_entity_client_tick_tests::CRATE_AT;
+use crate::game::native_hooks::block_entity_client_tick_tests::EVENTS;
+use crate::game::native_hooks::block_entity_client_tick_tests::HUM;
+use crate::game::native_hooks::block_entity_client_tick_tests::HUMS;
+use crate::game::native_hooks::block_entity_client_tick_tests::OTHER;
+use crate::game::native_hooks::block_entity_client_tick_tests::QUIET;
+use crate::game::native_hooks::block_entity_client_tick_tests::QUIET_AT;
+use crate::game::native_hooks::block_entity_client_tick_tests::SPAWNER_AT;
+use crate::game::native_hooks::block_entity_client_tick_tests::TICK_PARTICLES;
+use crate::game::native_hooks::block_entity_client_tick_tests::frame;
+use crate::game::native_hooks::block_entity_client_tick_tests::install;
+use crate::game::native_hooks::block_entity_client_tick_tests::prepared_root;
+use crate::game::native_hooks::block_entity_client_tick_tests::rpm;
+use crate::game::native_hooks::block_entity_client_tick_tests::take_events;
+use crate::game::native_hooks::block_entity_client_tick_tests::ticked;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use sunrise_client::containers::BlockEntity;
+use sunrise_core::nbt::{Compound, Tag};
 
 #[test]
 #[ignore = "daily"]

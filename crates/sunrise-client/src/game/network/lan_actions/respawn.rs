@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use crate::game::{commands::Target, server_travel::SpawnAction};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerPlayer.die` → `Entity.awardKillScore` on the entity the dying

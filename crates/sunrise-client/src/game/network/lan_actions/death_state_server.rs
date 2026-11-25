@@ -1,15 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::death_state::FatalSource;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::death_state::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{Game, api_values::TryIntoApi};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::HurtSource;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{health::AcceptedHit, items::ItemStack};
+use crate::game::lan_actions::death_state::FatalSource;
+use crate::game::{Game, api_values::TryIntoApi};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// A veto belongs to the guest's living body, not its replaceable combat history.

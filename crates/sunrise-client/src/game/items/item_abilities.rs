@@ -1,9 +1,7 @@
 //! Item abilities (`ItemAbility`): what a stack can do, asked where vanilla checks the item
 //! kind for an action. Vanilla's answer comes first, then the parts of the stack's item
 //! (`ItemPart::can_perform_action`, NeoForge's `IItemExtension.canPerformAction`).
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use sunrise_client::items::{ItemInfo, ItemStack};
 
 /// The abilities the game asks, plain case-sensitive names, like a mod's own.

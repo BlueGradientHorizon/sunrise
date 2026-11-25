@@ -3,20 +3,15 @@
 //! made from, then of an arrow's weapon, run on it
 //! (`EnchantmentHelper.onProjectileSpawned`). One path for every spawn site:
 //! bows, crossbows, thrown items, dispensers, mobs and the mod host.
-#[allow(unused_imports)]
 use super::{Game, enchant_effects::look_impulse};
-#[allow(unused_imports)]
 use serde_json::Value;
-#[allow(unused_imports)]
 use sunrise_client::{
     enchant::{EffectContext, level_value},
     items::ItemStack,
     projectiles::Projectile,
 };
-#[allow(unused_imports)]
 use sunrise_world::worldgen::value_provider::FloatProvider;
 
-#[allow(unused_imports)]
 use super::projectile_spawned_validation::{requirements_supported, valid_ranges};
 
 pub(in crate::game) const COMPONENT: &str = "minecraft:projectile_spawned";

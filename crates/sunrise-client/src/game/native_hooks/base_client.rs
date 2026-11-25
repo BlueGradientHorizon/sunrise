@@ -1,29 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::LevelView;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::another_mods;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::native_block_entity_update_tag;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::native_blocks;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::native_component_types;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::native_items;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::native_menu_button;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::native_menu_quick_move;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::native_standalone_models;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::startup_setting;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::ModBlockEntity;
+use super::*;
+use mod_api::ModBlockEntity;
 
 /// The hook points. Each does nothing in Sunrise.
 impl Game<'_, crate::game::client_side::ClientState> {

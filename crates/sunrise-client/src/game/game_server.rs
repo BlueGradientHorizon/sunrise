@@ -1,184 +1,13 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::api_values::TryIntoApi;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_state::ClientState;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::condition_reload_state::PreparedWorldReload;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::event_loop::EventLoopCtl;
-#[allow(unused_imports)]
-#[cfg(test)]
-pub(in crate::game::server_side) use crate::game::hud_render::block_outline_drawn;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::hud_render::{
-    debug_crosshair_drawn, is_game_master_block,
+use crate::game::hud_render::is_game_master_block;
+use crate::game::*;
+use std::sync::Arc;
+use sunrise_client::{
+    Result, containers::BlockEntity, entities::Experience, first_person::Hand, items::ItemStack,
+    save::Level,
 };
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-#[cfg(test)]
-pub(in crate::game::server_side) use crate::game::inventory_input::drop_whole_stack;
-#[allow(unused_imports)]
-#[cfg(test)]
-pub(in crate::game::server_side) use crate::game::key_codes::drop_held_behind_dialog;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::key_codes::{
-    follow_named_keymap, gameplay_has_keyboard, glfw_button, glfw_modifiers, keyboard_button,
-};
-#[allow(unused_imports)]
-#[cfg(feature = "client")]
-pub(in crate::game::server_side) use crate::game::loading_screen::{
-    App, Loading, leave_fullscreen_after, run_event_loop,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::loading_screen::{
-    preflight_resources, unclean_start_recovery,
-};
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::loading_window::{
-    build_renderer, loading_frame, loading_renderer, prepare_renderer_textures, start_client_game,
-};
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::motion_ids::{motion_at, motion_block_entity};
-#[allow(unused_imports)]
-#[cfg(test)]
-pub(in crate::game::server_side) use crate::game::resource_load::load_resources;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::resource_load::{
-    Progress, StartupLoadContext, launch_world, load_resources_for_mods, load_resources_sync,
-    named_scope, synchronous_startup,
-};
-#[allow(unused_imports)]
-#[cfg(feature = "client")]
-pub(in crate::game::server_side) use crate::game::resource_loader::{run_loading, write_report};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::resource_loader::{
-    EntityModels, GameCpuResources, Loaded, LoaderMsg, PendingWorldEntry, WorldRestLoader,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::server_side::loading_server::start_dedicated_game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::server_state::ServerState;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::subtitles::{Subtitles, in_game_ui, subtitles};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-    sync::{
-        Arc,
-        atomic::{AtomicU32, Ordering},
-        mpsc::{Receiver, TryRecvError},
-    },
-    thread::JoinHandle,
-    time::{Duration, Instant},
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::actions::Action as Mapping;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::held::Source;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::random_source;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::spans::{startup, time as span};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    Result,
-    assets::{Assets, RenderAssets},
-    audio::Audio,
-    biome::Biomes,
-    block_entity_render::{
-        self, BlockEntityRenderer, CacheOptions, Scene as BlockEntityScene, StaticCacheFrameStats,
-        StaticSectionSnapshot,
-    },
-    blocks::{BlockFacts, Fluid},
-    clock::FixedStep,
-    collisions,
-    containers::{BlockEntity, Providers},
-    crafting::Recipes,
-    creative::{Creative, Names},
-    entities::{Experience, ExperienceOrb, ItemEntity},
-    environment::Environment,
-    first_person::{Hand, SwingAnimation},
-    furnace::FurnaceCooking,
-    gfx::{Frame, Renderer},
-    graphics::EntityCullingMode,
-    hud::{HudAtlas, HudBatch, rgba},
-    hud_layout, hud_overlays,
-    items::{ItemStack, Items},
-    keymapping::{KeyAction, SNEAK, SPRINT},
-    light::LightTables,
-    mesher::{MeshTables, Vertex},
-    mobs::{Mob, MobType, MobTypes},
-    models,
-    motion::{MotionResources, PlayerMotion},
-    mouse::{LookOptions, MouseLook},
-    particles::Particle,
-    save::{Level, Persistent, SaveDir},
-    settings::Settings,
-    spans,
-    sprint::Keys,
-    streaming::{Streaming, WorkerContext},
-    testgen::TestTerrain,
-    title::{Action, Title},
-    vanillagen::VanillaTerrain,
-    world::World,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client_gameplay::frame_autotune;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client_gameplay::occlusion_culling;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client_render::block_entity_reach::Reach;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::{
-    biome::{BiomeZoom, obfuscate_seed},
-    geometry::{Aabb, Direction},
-    position::BlockPos,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::{geometry::Vec3, random::RandomSource};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_gameplay::lan::idle as lan_idle;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_gameplay::{
-    interaction_shapes, item_areas, mob_index, tick_profile,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_mod_package::selection::{Argument, LaunchArguments};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use winit::{
-    application::ApplicationHandler,
-    error::EventLoopError,
-    event::{DeviceEvent, DeviceId, ElementState, MouseButton, MouseScrollDelta, WindowEvent},
-    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
-    keyboard::{KeyCode, PhysicalKey},
-    window::{CursorGrabMode, Window, WindowId},
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use {
-    sunrise_core::dimension::Dimension as LevelDimension,
-    sunrise_world::{
-        block_collision::BlockCollisionRegistry,
-        collision_context::{CollisionContext, CollisionEntity, CollisionItem},
-        entity_move::MoverType,
-        entity_obstruction::{EntityIdentity, EntityObstructionWorld, ObstructionEntity},
-        fluid::FluidState,
-        level::{
-            Behaviours, BucketContent, EntityQuery, Landing, LevelAccess, LevelEvent, PlaceContext,
-            PlacementContext, PlayerContext, PlayerEffect, RandomTickMaskUpdate, Ticks,
-            flags as level_flags,
-        },
-        registry::BlockStateId,
-    },
-};
+use sunrise_core::{geometry::Aabb, position::BlockPos};
+use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_world::level::{Behaviours, BucketContent, LevelEvent, PlayerEffect, Ticks};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The UUID of the player acting: the guest whose turn it is, else the host.
@@ -2503,8 +2332,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod nested_orb_spawn_tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::nested_orb_spawn_tests::*;
 
     #[test]
     #[ignore = "daily"]

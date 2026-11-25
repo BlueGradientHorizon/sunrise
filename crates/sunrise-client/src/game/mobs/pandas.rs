@@ -2,17 +2,11 @@
 //! (`Mob.aiStep`, `Panda.pickUpItem`), the bamboo a player gives them
 //! (`Panda.mobInteract`), the start a sneeze gives the grown pandas about,
 //! and the crumbs and the sneeze a window draws.
-#[allow(unused_imports)]
-#[cfg(feature = "client")]
-use super::pickups::{Collector, Taken};
 use super::Game;
-#[allow(unused_imports)]
 use sunrise_client::{
     items::ItemStack,
     mobs::{Species, panda},
-    particles::{ParticleOptions, ParticleType},
 };
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
 
 impl Game<'_, crate::game::server_side::ServerState> {

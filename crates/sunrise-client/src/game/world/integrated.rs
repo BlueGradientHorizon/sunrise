@@ -8,9 +8,8 @@
 //!
 //! Every single-player world runs this way; LAN guests and dedicated servers
 //! use the same server code.
-#[allow(unused_imports)]
 use super::{
-    Dim, Game, Options, PackResources, Resources, UiResources, WorldIcon,
+    Dim, Game, Options, PackResources, Resources, UiResources,
     execution_role::ExecutionRole,
     lan::{
         LanSettings, Owner,
@@ -31,23 +30,17 @@ use std::{
     thread::JoinHandle,
     time::{Duration, Instant},
 };
-#[allow(unused_imports)]
 use sunrise_client::level_loading::{STATUS_RADIUS, Stage};
-#[allow(unused_imports)]
 use sunrise_client::spans::startup;
-#[allow(unused_imports)]
 use sunrise_client::{
     Result,
-    audio::Audio,
     chunk_io::Reports,
     lan::{Lan, MAX_PLAYERS, NetConfig, OwnerProfile, hub::HubConfig},
     settings::Settings,
     title::WorldOptions,
 };
-#[allow(unused_imports)]
 use sunrise_protocol::connection::Pipe;
-#[allow(unused_imports)]
-use sunrise_protocol::{crypto::offline_uuid, text::translatable};
+use sunrise_protocol::text::translatable;
 
 #[path = "integrated/capture.rs"]
 pub(in crate::game) mod capture;

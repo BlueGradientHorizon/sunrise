@@ -1,10 +1,5 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use mod_api::{BlockPart, FallOnEvent, Hooks, LevelRandomHost, ModEntry, Registrar};
-#[allow(unused_imports)]
-use mod_platform::testing::with_mods;
-#[allow(unused_imports)]
+use mod_api::{BlockPart, FallOnEvent, Hooks, LevelRandomHost, Registrar};
 use std::sync::{Arc, Mutex};
 
 /// What the part on stone heard of a landing: entity, kind, block, fall and damage. It
@@ -43,9 +38,6 @@ pub(in crate::game) static LOAN_VALUE: mod_api::AttachmentType<i32> = mod_api::A
     copy_on_death: false,
     sync: false,
 };
-
-#[allow(unused_imports)]
-use sunrise_core::random::RandomSource as _;
 
 pub(in crate::game) struct LoanPart(pub(in crate::game) std::sync::Arc<()>);
 #[mod_api::sunrise_part]

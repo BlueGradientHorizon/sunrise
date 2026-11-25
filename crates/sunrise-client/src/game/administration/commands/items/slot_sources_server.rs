@@ -1,25 +1,8 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Game, Owner, R, err};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::items::slot_sources::expand;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::items::slot_sources::id;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::items::slot_sources::limit;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::items::slot_sources::typed_source;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::items::slot_sources::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use serde_json::Value;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::collections::BTreeSet;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::datapack::DataStore;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::nbt::Tag;
+use super::{Game, R, err};
+use crate::game::commands::items::slot_sources::expand;
+use crate::game::commands::items::slot_sources::id;
+use crate::game::commands::items::slot_sources::typed_source;
+use serde_json::Value;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Literal ranges retain priority; all remaining consumers resolve the same holder snapshot.

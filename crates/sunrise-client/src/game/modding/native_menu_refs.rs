@@ -1,11 +1,7 @@
 //! Handles to supported menus: client reads and clicks.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use mod_api::__private::game::*;
-#[allow(unused_imports)]
 use mod_api::{DragKind, LevelReadError, MenuClick, MenuRef, MouseButton, PlayerRef, SwapWith};
-#[allow(unused_imports)]
 use sunrise_client::{items::ItemStack, menu::Input};
 
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -265,20 +261,13 @@ pub(in crate::game) fn client_click_ops(
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    use super::super::api_values::TryIntoApi;
-    #[allow(unused_imports)]
-    use super::super::{lan::LanSettings, native_entity_refs::tests::with_game};
-    #[allow(unused_imports)]
+    use super::super::native_entity_refs::tests::with_game;
     use super::*;
-    #[allow(unused_imports)]
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicI32, AtomicUsize},
     };
-    #[allow(unused_imports)]
-    use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
-    #[allow(unused_imports)]
+    use sunrise_client::lan::{Joined, PlayerSender, guest::Guest};
     use sunrise_protocol::packets::configuration::ClientInformation;
 
     pub(in crate::game) const PANEL: &str = "test:panel";

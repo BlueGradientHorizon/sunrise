@@ -1,11 +1,5 @@
-#[allow(unused_imports)]
-use super::super::{C, Game, Vec3, play};
-#[allow(unused_imports)]
-use crate::game::{
-    native_entity_refs::tests::with_client_game, native_hotbar_slot::hotbar_slot_tests::logged_in,
-};
-#[allow(unused_imports)]
-use sunrise_client::particles::ParticleType;
+use super::super::C;
+use crate::game::native_entity_refs::tests::with_client_game;
 
 pub(in crate::game) fn with_isolated_client(
     name: &str,

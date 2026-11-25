@@ -4,16 +4,11 @@
 //! a mod reaches every area through them and the handles.
 // The generated impls convert error types that are already equal; TODO(#2273): make the generator skip it.
 #![allow(clippy::useless_conversion, clippy::unit_arg)]
-#[allow(unused_imports)]
-use super::api_values::{ItemBoundary, TryIntoApi, TryIntoEnginePreservingCount};
 #[cfg(feature = "client")]
-#[allow(unused_imports)]
 use super::ClientGame;
-#[allow(unused_imports)]
 use super::ServerGame;
-#[allow(unused_imports)]
+use super::api_values::{ItemBoundary, TryIntoApi, TryIntoEnginePreservingCount};
 use mod_api::__private::game::*;
-#[allow(unused_imports)]
 use mod_api::*;
 
 pub(crate) mod draw;

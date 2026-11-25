@@ -2,22 +2,15 @@
 //! player (health, food, xp, deaths, kills, statistics), score holders for
 //! entities, the selector options `scores=`, `team=` and `tag=`, the
 //! commands' [`Env`] and the sidebar.
-#[allow(unused_imports)]
 use super::{Game, chat::PLAYER_NAME, commands::Target};
-#[allow(unused_imports)]
 use mod_api::EntityTags;
-#[allow(unused_imports)]
 use std::collections::{HashMap, HashSet};
-#[allow(unused_imports)]
-use sunrise_client::actions::Action;
 #[allow(unused_imports)]
 use sunrise_client::{
     command::{
         Context,
         args::{IntRange, Selector},
     },
-    hud::HudBatch,
-    hud_layout, hud_overlays,
     lan::{guest::Guest, playerdata::ints_uuid},
     save::{self, uuid_from_text, uuid_text},
     scoreboard::{self as sb, Comp, Scoreboard, literal},
@@ -25,9 +18,7 @@ use sunrise_client::{
     tab_list::TabPlayer,
     text::Text,
 };
-#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
 use sunrise_gameplay::stats::{StatScoreChange, StatScoreOp};
 
 /// What `ServerPlayer` last recorded for the criteria that follow the player.

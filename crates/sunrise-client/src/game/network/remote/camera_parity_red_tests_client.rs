@@ -1,65 +1,23 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::RemoteDimensionEntry;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::camera_parity_red_tests::add_entity;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::camera_parity_red_tests::add_entity_with_data;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::camera_parity_red_tests::add_player_info;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::camera_parity_red_tests::entity_type_id;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::camera_parity_red_tests::hex_f32;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::camera_parity_red_tests::hex_f64;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::camera_parity_red_tests::make_chunk;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::camera_parity_red_tests::parity_witness;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::camera_parity_red_tests::run_block_outline_requires_player_camera_26_3;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::camera_parity_red_tests::run_camera_entity_excluded_from_pick_for_all_pickable_kinds_26_3;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::camera_parity_red_tests::run_culling_near_plane_uses_max_of_fov_and_option_fov_26_3;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::camera_parity_red_tests::run_frozen_camera_partial_tick_matches_26_3_witness;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::camera_parity_red_tests::run_spectated_rider_mount_attributes_26_3;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::camera_parity_red_tests::sync_interaction_size;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::camera_parity_red_tests::vec3_bits_expected;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::camera_parity_red_tests::vec3_from_bits;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::camera_parity_red_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
+use crate::game::remote::RemoteDimensionEntry;
+use crate::game::remote::tests::camera_parity_red_tests::add_entity;
+use crate::game::remote::tests::camera_parity_red_tests::add_entity_with_data;
+use crate::game::remote::tests::camera_parity_red_tests::hex_f32;
+use crate::game::remote::tests::camera_parity_red_tests::hex_f64;
+use crate::game::remote::tests::camera_parity_red_tests::make_chunk;
+use crate::game::remote::tests::camera_parity_red_tests::parity_witness;
+use crate::game::remote::tests::camera_parity_red_tests::sync_interaction_size;
+use crate::game::remote::tests::camera_parity_red_tests::vec3_bits_expected;
+use crate::game::{
     Game, native_entity_refs::tests::with_client_game, native_lifecycle::NativeLifecycle,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use serde_json::Value;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    camera::CameraType,
-    chunk::{Chunk, Light},
-    debug_entries::Status,
-    debug_overlay::Displayer,
-    effects::EffectInstance,
-    environment::Sky,
-    items::ItemStack,
-    level_loading::Reason,
-    motion::PlayerMotion,
-    options_file::V as OptV,
-    screen_effects::Blend,
+use std::sync::Arc;
+use sunrise_client::{
+    camera::CameraType, debug_entries::Status, debug_overlay::Displayer, effects::EffectInstance,
+    environment::Sky, items::ItemStack, level_loading::Reason, motion::PlayerMotion,
+    options_file::V as OptV, screen_effects::Blend,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::{
+use sunrise_core::geometry::Vec3;
+use sunrise_protocol::{
     buf::pack_degrees,
     connection::Pipe,
     entity_data::{Value as EntityDataValue, serializer},

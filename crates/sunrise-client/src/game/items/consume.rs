@@ -2,25 +2,17 @@
 //! its particles and sounds, and `TeleportRandomlyConsumeEffect` (chorus
 //! fruit) for players and foxes. The level random stands in for the player's
 //! own, as for every other player draw.
-#[allow(unused_imports)]
 use super::{Dim, Game};
-#[allow(unused_imports)]
 use crate::game::api_values::TryIntoApi;
-#[allow(unused_imports)]
 use crate::game::collision_source::Mover;
-#[allow(unused_imports)]
 use std::convert::Infallible;
-#[allow(unused_imports)]
 use sunrise_client::{
     items::{ConsumeEffect, ItemInfo, ItemStack},
     mobs::Who,
-    particles::{ParticleOptions, ParticleType},
 };
-#[allow(unused_imports)]
 use sunrise_core::{
     geometry::Vec3, position::BlockPos, random::LegacyRandom, random::RandomSource,
 };
-#[allow(unused_imports)]
 use {
     sunrise_core::use_animation::UseAnimation,
     sunrise_world::{

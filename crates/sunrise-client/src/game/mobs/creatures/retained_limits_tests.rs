@@ -1,26 +1,9 @@
-#[allow(unused_imports)]
-use crate::game::{
-    Game,
-    native_entity_refs::tests::{run_fresh_cases, with_game},
-    native_guest_turn_tests::with_guests,
+use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
 };
-#[allow(unused_imports)]
-use mod_api::__private::{HookPanicReport, take_hook_panics};
-#[allow(unused_imports)]
-use std::{
-    path::PathBuf,
-    sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    },
-};
-#[allow(unused_imports)]
-use sunrise_client::{
-    chunk::Chunk,
-    mobs::{Mob, Who},
-    motion::PlayerMotion,
-};
-#[allow(unused_imports)]
+use sunrise_client::mobs::Mob;
 use sunrise_core::geometry::Vec3;
 
 pub(in crate::game) const ZOMBIE: u32 = 71;

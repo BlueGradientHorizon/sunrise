@@ -1,14 +1,8 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::inventory_slots::MOD_MENU_SLOT_BASE;
+use super::*;
+use crate::game::inventory_slots::MOD_MENU_SLOT_BASE;
 #[cfg(test)]
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::inventory_slots::SLOT_POSITIONS;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::inventory_slots::container_slot_index;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::inventory_slots::*;
+use crate::game::inventory_slots::SLOT_POSITIONS;
+use crate::game::inventory_slots::container_slot_index;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn craft_result(&self) -> Option<ItemStack> {

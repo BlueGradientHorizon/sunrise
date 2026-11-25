@@ -1,15 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::entity_initialization::EntityInitialization;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::entity_initialization::TransferredEntityState;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::entity_initialization::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::Holder;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::collections::{HashMap, HashSet};
+use super::Game;
+use mod_api::Holder;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_bind_constructed_entity_attachments(&mut self, _id: u32) {}

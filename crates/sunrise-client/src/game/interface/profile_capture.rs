@@ -1,35 +1,22 @@
 //! Captures (docs/perf-platform.md §4.1): `sunrise-ctl profile`, `/profiler` and `SUNRISE_PROFILE`. The window writes its own side; in single player the server thread writes its side into the same file.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use super::integrated::{
     NO_ANSWER,
     capture::{Live, ServerSide, Target},
 };
-#[allow(unused_imports)]
 use super::memory::{MEMORY_EVERY_S, PendingMemory};
-#[allow(unused_imports)]
 use super::owner_link::OwnerRequest;
-#[allow(unused_imports)]
 use super::perf_remote::Served;
-#[allow(unused_imports)]
 use super::profile_lines::{self as lines, Notice};
-#[allow(unused_imports)]
 use crate::Result;
-#[allow(unused_imports)]
 use std::collections::VecDeque;
-#[allow(unused_imports)]
 use std::path::{Path, PathBuf};
-#[allow(unused_imports)]
 use std::sync::{
     Arc,
     mpsc::{Receiver, Sender, TryRecvError},
 };
-#[allow(unused_imports)]
 use std::task::Poll;
-#[allow(unused_imports)]
 use std::time::{Duration, Instant};
-#[allow(unused_imports)]
 use sunrise_client::client_perf::{
     self, ClientPerf,
     request::{
@@ -37,15 +24,10 @@ use sunrise_client::client_perf::{
         Started, Status, Stopped, Traced,
     },
 };
-#[allow(unused_imports)]
 use sunrise_client::command::{Arg, CommandError, Dispatcher, PROFILER_GPU, Registries};
-#[allow(unused_imports)]
 use sunrise_client::perf_net::Link;
-#[allow(unused_imports)]
 use sunrise_client::server_perf::{self, TickDetail, WorldCounts};
-#[allow(unused_imports)]
 use sunrise_client::spans::{self, Span};
-#[allow(unused_imports)]
 use sunrise_perf_format::{
     files,
     v1::{BenchResult, ClientSettings, StopReason, Trigger},

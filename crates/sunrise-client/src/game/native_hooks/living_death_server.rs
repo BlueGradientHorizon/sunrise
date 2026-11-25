@@ -1,11 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::living_death::capture_hit;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::living_death::hurt_server_args;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::living_death::*;
+use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
 impl Game<'_, crate::game::server_side::ServerState> {

@@ -1,19 +1,8 @@
 #![cfg(test)]
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use crate::game::{Audio, Options, Progress, Settings, load_resources};
-#[allow(unused_imports)]
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-#[allow(unused_imports)]
-use sunrise_client::{
-    chunk::Chunk,
-    lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig},
-};
-#[allow(unused_imports)]
+use sunrise_client::lan::{Joined, Out, PlayerSender, guest::Guest};
 use sunrise_protocol::packets::configuration::ClientInformation;
-#[allow(unused_imports)]
-use sunrise_world::registry::BlockStateId;
 
 pub(in crate::game) fn observer(
     conn: u32,

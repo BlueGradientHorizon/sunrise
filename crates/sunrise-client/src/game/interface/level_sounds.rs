@@ -1,15 +1,11 @@
 //! Level sound requests on each logical side: the mods' `PlayLevelSoundEvent`,
 //! then server broadcast or client playback.
 
-#[allow(unused_imports)]
 use std::borrow::Cow;
 
-#[allow(unused_imports)]
 use mod_api::{HookId, Identifier, SoundSource};
 
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use super::native_hooks::level_sound_playable;
 
 /// A sound the server's level is about to play, as vanilla asked for it.

@@ -1,20 +1,6 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use crate::game::{
-    commands::{Target, entity_pitch},
-    general::GeneralRow,
-    transactions::OpenTransactions,
-};
-#[allow(unused_imports)]
-use mod_api::{
-    EntityRef, EntityServerAccess, EntityServerScope, EntitySubjectView, ResidentGeneralEntity,
-    ServerHost,
-};
-#[allow(unused_imports)]
-use sunrise_client::lan::playerdata::ints_uuid;
-#[allow(unused_imports)]
-use sunrise_core::geometry::Vec3;
+use crate::game::{general::GeneralRow, transactions::OpenTransactions};
+use mod_api::EntityRef;
 
 pub(in crate::game) struct ResidentGeneralRow<'a> {
     pub(in crate::game) row: &'a mut GeneralRow,
@@ -40,9 +26,4 @@ pub(in crate::game) fn native_general_entity_tick(
 }
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    use super::*;
-    #[allow(unused_imports)]
-    use crate::game::{api_values::test_snapshot, native_entity_refs::tests::with_game};
-}
+pub(in crate::game) mod tests {}

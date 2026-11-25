@@ -1,27 +1,11 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{Game, Lerp, Remote};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::general::general_type_catalog;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::general::RemoteGeneral;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::general::RemoteGenerals;
-#[allow(unused_imports)]
+use super::{Game, Remote};
+use crate::game::general::general_type_catalog;
+use crate::game::remote::general::RemoteGeneral;
+use crate::game::remote::general::RemoteGenerals;
 pub(in crate::game::client_side) use crate::game::remote::general::tick_remote_general;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::general::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use indexmap::IndexMap;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::collections::HashMap;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::join_seq::JoinSeq;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::{Aabb, Vec3};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_mod_runtime::attachments::{Attachments, Holder};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::general_entity::{self, Message};
+use sunrise_client::join_seq::JoinSeq;
+use sunrise_mod_runtime::attachments::{Attachments, Holder};
+use sunrise_protocol::general_entity::{self, Message};
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {

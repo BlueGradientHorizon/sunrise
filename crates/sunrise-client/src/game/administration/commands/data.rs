@@ -1,19 +1,16 @@
 //! `/data` (DataCommands), `/tag` (TagCommand) and `/summon` with NBT: entity,
 //! block entity and storage data accessors over the game state.
-#[allow(unused_imports)]
 use super::{Arg, Context, Game, R, Target, err};
-#[allow(unused_imports)]
 use sunrise_client::{
     containers::BlockEntity,
     data_cmd::{self, Op, path_error},
     entity_nbt,
     nbt_path::NbtPath,
-    save::{self, random_uuid},
+    save::{self},
     scoreboard_cmd::{Holder, Tracker, format_list},
     snbt,
     text::Text,
 };
-#[allow(unused_imports)]
 use sunrise_core::nbt::{Compound, JavaString, Tag, parse_snbt};
 
 /// A `DataAccessor`.
@@ -1041,12 +1038,7 @@ pub(in crate::game) fn strip_finalize_tree(tag: &mut Tag) {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    use super::*;
-    #[allow(unused_imports)]
     use crate::game::native_entity_refs::tests::with_game;
-    #[allow(unused_imports)]
-    use sunrise_core::geometry::Vec3;
 
     /// `lan_guest_joined`'s placement-only pass, between a forced write and
     /// the tracker pass, must not spend the marks in either dimension.
@@ -1647,14 +1639,7 @@ pub(in crate::game) mod arrow_owner_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod modern_literal_tests {
-    #[allow(unused_imports)]
-    use super::*;
-    #[allow(unused_imports)]
-    use crate::game::commands::execute::ExecState;
-    #[allow(unused_imports)]
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
-}
+pub(in crate::game) mod modern_literal_tests {}
 
 #[cfg(test)]
 pub(in crate::game) mod bell_command_identity_tests {
@@ -1759,19 +1744,10 @@ pub(in crate::game) mod bell_command_identity_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod falling_live_adoption_tests {
-    #[allow(unused_imports)]
-    use crate::game::{Audio, Game, Options, Progress, Settings, commands::Target, load_resources};
-    #[allow(unused_imports)]
+    use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    #[allow(unused_imports)]
     use sunrise_client::chunk::Chunk;
-    #[allow(unused_imports)]
-    use sunrise_core::nbt::Tag;
-    #[allow(unused_imports)]
-    use sunrise_core::{
-        geometry::Vec3,
-        position::{BlockPos, ChunkPos},
-    };
+    use sunrise_core::position::ChunkPos;
     pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();

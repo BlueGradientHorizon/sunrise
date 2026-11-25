@@ -1,27 +1,15 @@
-#[allow(unused_imports)]
-use super::*;
-#[allow(unused_imports)]
-use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
-#[allow(unused_imports)]
-use mod_api::__private::{HookPanicReport, take_hook_panics};
-#[allow(unused_imports)]
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
-#[allow(unused_imports)]
 use sunrise_client::{
-    chunk::Chunk,
     join_seq::JoinSeq,
     join_seq::residency::{
-        Change, Journal, Kind, Owner,
+        Owner,
         table::{EntityLookup, EntityTable, SourceEntity},
     },
 };
-#[allow(unused_imports)]
-use sunrise_core::random::{LegacyRandom, RandomSource};
-#[allow(unused_imports)]
-use sunrise_mod_runtime::attachments::{AttachmentType, Holder};
+use sunrise_mod_runtime::attachments::AttachmentType;
 
 pub(in crate::game) const LEVEL_VALUE: AttachmentType<i32> = AttachmentType {
     namespace: "mob-panic-test",

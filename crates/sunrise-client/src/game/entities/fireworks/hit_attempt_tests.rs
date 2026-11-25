@@ -1,22 +1,10 @@
 //! Real skull, rocket, command and zero-damage projectile entries.
-#[allow(unused_imports)]
-use super::*;
-#[allow(unused_imports)]
-use crate::game::native_entity_refs::tests::{bind_local_player, with_game};
-#[allow(unused_imports)]
 use mod_api::{
     EnderPearlTeleportEvent, EntityInvulnerabilityCheckEvent, Flow, Hooks, LevelSide, ServerHost,
 };
-#[allow(unused_imports)]
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
-};
-#[allow(unused_imports)]
-use sunrise_client::{
-    command::args::GameMode,
-    motion::PlayerMotion,
-    projectiles::{Hit, Projectile, ProjectileKind, ThrownType},
 };
 
 pub(in crate::game) struct Probe(pub(in crate::game) Arc<AtomicUsize>);

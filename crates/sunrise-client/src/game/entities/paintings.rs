@@ -2,17 +2,10 @@
 //! variant choice (or the stack's `painting/variant`), `HangingEntity.survives`
 //! checks every 100 ticks, breaking by attack (`dropItem`), saving, and
 //! `PaintingRenderer` quads.
-#[allow(unused_imports)]
-use super::{Game, Hit, entity_culling::default_range};
-#[allow(unused_imports)]
+use super::{Game, Hit};
 use std::sync::Arc;
-#[allow(unused_imports)]
-use sunrise_client::{entities::Painting, items::ItemStack, mesher::Vertex, random_source};
-#[allow(unused_imports)]
-use sunrise_core::{
-    geometry::{Aabb, Vec3},
-    random::RandomSource,
-};
+use sunrise_client::{entities::Painting, items::ItemStack, random_source};
+use sunrise_core::random::RandomSource;
 
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay::painting_variants::{

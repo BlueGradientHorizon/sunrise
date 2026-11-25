@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
@@ -26,13 +25,4 @@ impl Game<'_, crate::game::server_side::ServerState> {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod menu_extra_data_tests {
-    #[allow(unused_imports)]
-    use sunrise_client::title::Mode;
-    #[allow(unused_imports)]
-    use sunrise_protocol::{
-        connection::Pipe,
-        menu_extra::CHANNEL,
-        packets::{configuration::CustomPayload, play::Clientbound as C},
-    };
-}
+pub(in crate::game) mod menu_extra_data_tests {}

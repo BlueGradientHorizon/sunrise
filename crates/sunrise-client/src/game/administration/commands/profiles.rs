@@ -7,14 +7,11 @@
 //! Also `/stop`, `/save-all`, `/save-off` and `/save-on` (StopCommand,
 //! SaveAllCommand, SaveOffCommand, SaveOnCommand), on the switches the lists
 //! share.
-#[allow(unused_imports)]
 use super::{Arg, Context, Game, R, Target, err};
-#[allow(unused_imports)]
 use sunrise_client::{
     server::user_lists::{BanEntry, NameAndId, OpEntry, WhiteEntry},
     text::Text,
 };
-#[allow(unused_imports)]
 use sunrise_protocol::text::translatable;
 
 impl Game<'_, crate::game::server_side::ServerState> {

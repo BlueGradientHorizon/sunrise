@@ -2,21 +2,12 @@
 //! own (`Entity.random`, `LivingEntity.createItemStackToDrop`) or a client's
 //! (`ClientPacketListener.random`), never the level's, whose draws are what
 //! random ticks, leaf decay and spawns come from.
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use crate::game::game_tests::tests::server_game;
-#[allow(unused_imports)]
-use crate::game::{Audio, Options, Progress, Settings, load_resources};
-#[allow(unused_imports)]
 use std::sync::Arc;
-#[allow(unused_imports)]
 use sunrise_client::chunk::Chunk;
-#[allow(unused_imports)]
 use sunrise_client::entities::{ExperienceOrb, ItemEntity};
-#[allow(unused_imports)]
 use sunrise_client::items::ItemStack;
-#[allow(unused_imports)]
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// A game with the player standing at 8.5 70 8.5 in a ticking chunk, with the

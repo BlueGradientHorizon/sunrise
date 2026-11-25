@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
@@ -17,11 +16,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
 #[cfg(test)]
 pub(in crate::game) mod camera_type_tests {
-    #[allow(unused_imports)]
-    use mod_api::{CameraType, CameraTypeCycleEvent, ClientHost, Hooks, ModEntry};
-    #[allow(unused_imports)]
-    use mod_platform::testing::with_mods;
-    #[allow(unused_imports)]
+    use mod_api::{CameraType, CameraTypeCycleEvent, ClientHost, Hooks};
     use std::sync::{Arc, Mutex};
 
     /// Skips the front view: F5 goes first person, behind, first person.

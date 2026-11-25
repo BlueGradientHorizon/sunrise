@@ -1,28 +1,9 @@
-#[allow(unused_imports)]
-use crate::game::{
-    Game,
-    execution_role::ExecutionRole,
-    native_client_session::tests::logged_client,
-    native_entity_refs::tests::{fixture_root, run_fresh_cases, with_game_role_and_facts},
-};
-#[allow(unused_imports)]
+use crate::game::native_entity_refs::tests::run_fresh_cases;
 use mod_api::{
     AddDestroyEffectsEvent, AddHitEffectsEvent, BlockPart, BlockPos, BlockShapeKind, ClientHost,
-    Direction, Flow, Hooks, ModEntry, ParticleKey, ParticleOptions, Registrar, RegistrationContext,
+    Direction, Flow, Hooks, ParticleKey, ParticleOptions, Registrar, RegistrationContext,
 };
-#[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
-use sunrise_client::{
-    chunk::Chunk,
-    motion::PlayerMotion,
-    particles::{ParticleLevel, requested_count},
-};
-#[allow(unused_imports)]
-use sunrise_core::{
-    geometry::Vec3,
-    random::{LegacyRandom, RandomSource as _},
-};
 
 pub(in crate::game) type Calls = Arc<Mutex<Vec<(String, BlockPos, Option<Direction>)>>>;
 pub(in crate::game) struct Effects {

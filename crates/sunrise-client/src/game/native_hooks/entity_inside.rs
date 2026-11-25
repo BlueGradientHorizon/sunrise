@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
@@ -117,7 +116,6 @@ pub(in crate::game) mod entity_inside_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod sweep_tests {
-    #[allow(unused_imports)]
     use super::*;
 
     /// The `entity_inside` part the player's sweep tests install: it draws the

@@ -1,22 +1,6 @@
 //! `handlePlayerPositionChange`: a move that goes up ends the guest's fall.
-#[allow(unused_imports)]
-use super::guest;
-#[allow(unused_imports)]
-use crate::game::Game;
-#[allow(unused_imports)]
-use std::{path::Path, sync::Arc};
-#[allow(unused_imports)]
+use sunrise_client::items::ItemStack;
 use sunrise_client::lan::guest::InboxItem;
-#[allow(unused_imports)]
-use sunrise_client::{
-    advancements::Tree,
-    chunk::Chunk,
-    items::ItemStack,
-    lan::{NetConfig, hub::HubConfig},
-};
-#[allow(unused_imports)]
-use sunrise_core::position::ChunkPos;
-#[allow(unused_imports)]
 use sunrise_protocol::packets::{Empty, play, play::Serverbound as S};
 
 pub(in crate::game) const NAME: &str = "GuestBodyTest";

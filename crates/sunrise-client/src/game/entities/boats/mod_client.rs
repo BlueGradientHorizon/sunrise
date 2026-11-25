@@ -1,65 +1,11 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{
-    Game, InteractTarget, entity::Entity, entity_culling::at, view_vector,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boats::BUBBLE_DOWN_EVENT;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boats::BUBBLE_TIME;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boats::BUBBLE_UP_EVENT;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boats::Boat;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boats::BoatModels;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boats::CHEST_SLOTS;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boats::DrivenLerp;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boats::HEIGHT;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boats::LERP_STEPS;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boats::Status;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boats::WIDTH;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boats::any_boat_wood;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boats::put_ticks_frozen;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boats::saved_ticks_frozen;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boats::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::{collections::HashMap, f32::consts::PI, sync::Arc};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::entity_rules::EntityRules;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    blocks::Fluid,
-    collisions::{EntityCollisions, SceneCollisions, no_collision_with_context},
-    items::ItemStack,
-    mesher::Vertex,
-    mobs::{
-        Part,
-        anim::Poses,
-        leash::{Holder, Pending},
-        riders,
-    },
-    motion::{BubbleColumn, RiddenBoat, bubble_column_at},
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{
-    geometry::{Aabb, ShapeOp, Vec3, VoxelShape},
-    position::BlockPos,
-    random::{LegacyRandom, RandomSource},
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_world::collision_context::CollisionContext;
+use super::{Game, entity_culling::at, view_vector};
+use crate::game::server_side::boats::Boat;
+use crate::game::server_side::boats::HEIGHT;
+use crate::game::server_side::boats::Status;
+use crate::game::server_side::boats::WIDTH;
+use std::{f32::consts::PI, sync::Arc};
+use sunrise_client::{mesher::Vertex, mobs::anim::Poses};
+use sunrise_core::{geometry::Vec3, random::RandomSource};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `AbstractBoat.tick` advances the oars even when this client does not move the hull.

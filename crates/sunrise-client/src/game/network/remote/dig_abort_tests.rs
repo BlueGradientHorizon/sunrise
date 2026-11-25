@@ -1,20 +1,8 @@
-#[allow(unused_imports)]
-use crate::game::{Hit, native_entity_refs::tests::with_client_game};
-#[allow(unused_imports)]
-use mod_api::{ClientHost, ClientMiningPredictEvent, ClientPacketSendEvent, Flow, Hooks, ModEntry};
-#[allow(unused_imports)]
-use mod_platform::testing::with_mods;
-#[allow(unused_imports)]
+use mod_api::{ClientHost, ClientMiningPredictEvent, ClientPacketSendEvent, Flow, Hooks};
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
-#[allow(unused_imports)]
-use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
-#[allow(unused_imports)]
-use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
-use sunrise_protocol::connection::Pipe;
 
 pub(in crate::game) struct CountActions {
     pub(in crate::game) packets: Arc<AtomicUsize>,

@@ -7,7 +7,6 @@ pub(in crate::game) mod carrying;
 #[cfg(test)]
 #[path = "piston_push/restitution_tests.rs"]
 pub(in crate::game) mod restitution_tests;
-#[allow(unused_imports)]
 use super::{
     Game,
     entity::{Entity, EntityHandle, with_entity, with_entity_mut},

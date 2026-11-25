@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use super::*;
 
 /// The hurt sound of a `ClientboundDamageEventPacket`'s damage type, by its

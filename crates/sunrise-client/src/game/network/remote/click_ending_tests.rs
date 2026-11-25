@@ -1,6 +1,3 @@
-#[allow(unused_imports)]
-use super::*;
-#[allow(unused_imports)]
 use crate::game::remote::use_ends_click;
 
 /// `FireworkRocketItem.use` is SUCCESS while gliding: the main hand's

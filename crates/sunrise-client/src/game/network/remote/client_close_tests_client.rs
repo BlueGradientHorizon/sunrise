@@ -1,17 +1,9 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::super::{C, Game, ItemStack, S, Screen, Tag, play};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_close_tests::chest;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_close_tests::close;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_close_tests::deliver;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_close_tests::isolated;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_close_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
+use super::super::{C, Game, ItemStack, S, Screen, Tag, play};
+use crate::game::remote::tests::client_close_tests::chest;
+use crate::game::remote::tests::client_close_tests::close;
+use crate::game::remote::tests::client_close_tests::deliver;
+use crate::game::remote::tests::client_close_tests::isolated;
+use crate::game::{
     native_entity_refs::tests::with_client_game,
     native_hotbar_slot::hotbar_slot_tests::{logged_in, sent},
 };

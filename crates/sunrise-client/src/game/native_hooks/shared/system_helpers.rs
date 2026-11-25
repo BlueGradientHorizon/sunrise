@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use super::*;
 
 /// Helpers for native mods, kept as stable as the hook points.

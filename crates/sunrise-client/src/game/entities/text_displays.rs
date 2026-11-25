@@ -1,9 +1,6 @@
 //! Server text displays: metadata, interpolation, billboard transforms and world text.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use sunrise_assets::item_model::DisplayContext;
-#[allow(unused_imports)]
 use sunrise_client::{
     gfx::{
         TEXT_POLYGON_OFFSET_OVERLAY, TEXT_POLYGON_OFFSET_SOLID_OVERLAY, TRANSLUCENT_DRAW_FLIP,
@@ -14,9 +11,7 @@ use sunrise_client::{
     text::Text,
     text_display::{self, CachedQuads, TextDisplayData},
 };
-#[allow(unused_imports)]
 use sunrise_protocol::entity_data::Value;
-#[allow(unused_imports)]
 use sunrise_world::registry::BlockStateId;
 
 /// What a display shows besides its transformation: its text (in `data`),
@@ -1511,7 +1506,6 @@ pub(in crate::game::client_side) fn has_special_model(block: &str) -> bool {
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::*;
     #[test]
     fn culled_display_keeps_quads_across_frame_rollover() {

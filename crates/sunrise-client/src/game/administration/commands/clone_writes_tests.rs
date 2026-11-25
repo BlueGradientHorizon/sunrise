@@ -1,13 +1,9 @@
 //! `/clone` counts what it wrote and needs every column of both boxes loaded
 //! (`CloneCommands.clone`: `Level.setBlock`'s result is the count, and
 //! `Level.hasChunksAt` covers the whole box, not just its corners).
-#[allow(unused_imports)]
 use super::super::*;
-#[allow(unused_imports)]
 use std::sync::Arc;
-#[allow(unused_imports)]
 use sunrise_client::chunk::Chunk;
-#[allow(unused_imports)]
 use sunrise_core::position::ChunkPos;
 
 pub(in crate::game) fn game<'a>(

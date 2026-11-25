@@ -1,16 +1,13 @@
 //! What villagers do with each other and with the player: gossip and
 //! reputation, sharing food and wares, picking up dropped items, making
 //! babies, calling iron golems and the prices they ask.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use sunrise_client::{
     gossip::{self, GossipType},
     items::ItemStack,
     merchant::TradeFeedback,
     mobs::{Mob, Species, entity_sounds::full_id, spawning, villager, villager_brain},
 };
-#[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 
 pub(in crate::game::server_side) fn block_of(p: Vec3) -> [i32; 3] {

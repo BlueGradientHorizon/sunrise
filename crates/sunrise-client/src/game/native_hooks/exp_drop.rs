@@ -1,7 +1,5 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use crate::game::spill::{BlockDropEntity, BlockDrops};
+use crate::game::spill::BlockDropEntity;
 impl GameLevel<'_> {
     pub(in crate::game) fn native_exp_drop(&self, call: super::fire::ExpDropCall<'_>) {
         self.fire_exp_drop(call);

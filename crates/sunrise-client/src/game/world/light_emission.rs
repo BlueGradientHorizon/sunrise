@@ -1,7 +1,5 @@
 //! Role-neutral dynamic light emission queries for the level in place.
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use sunrise_client::fast_hash::FxHashMap;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {

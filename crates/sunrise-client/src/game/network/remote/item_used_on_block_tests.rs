@@ -1,9 +1,6 @@
 //! ITEM_USED_ON_BLOCK after the block phase sees the stack copied before it (#2940).
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use serde_json::json;
-#[allow(unused_imports)]
 use sunrise_client::advancements as a;
 
 /// One `item_used_on_block` advancement per stick count the tool must have.

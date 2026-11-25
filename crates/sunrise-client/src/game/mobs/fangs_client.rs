@@ -1,27 +1,8 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fangs::FangState;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fangs::Fangs;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fangs::Party;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fangs::fang_attack_pitch;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fangs::fang_crit;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fangs::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::mobs::{Part, Species, anim::Poses};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::particles::{ParticleOptions, ParticleType};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::random::{LegacyRandom, RandomSource};
+use super::Game;
+use crate::game::server_side::fangs::fang_attack_pitch;
+use crate::game::server_side::fangs::fang_crit;
+use sunrise_client::mobs::anim::Poses;
+use sunrise_client::particles::{ParticleOptions, ParticleType};
 
 fn p_zrot(p: &mut Poses, part: &str, v: f32) {
     p.zrot(part, v);

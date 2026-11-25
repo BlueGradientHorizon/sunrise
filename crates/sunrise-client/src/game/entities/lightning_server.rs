@@ -1,5 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{
+use super::{
     Game,
     commands::Target,
     entity::{
@@ -7,28 +6,17 @@ pub(in crate::game::server_side) use super::{
     },
     minecarts::CartHit,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::lightning::Bolt;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::lightning::StrikeState;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::lightning::thunder_strike_column;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::lightning::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::advancements::EntityView;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::mobs::{Damage, DamageKind, Species};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::random_source;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::{
+use crate::game::client_side::lightning::Bolt;
+use crate::game::client_side::lightning::StrikeState;
+use crate::game::client_side::lightning::thunder_strike_column;
+use crate::game::client_side::lightning::*;
+use sunrise_client::advancements::EntityView;
+use sunrise_client::mobs::{Damage, DamageKind, Species};
+use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_world::level::Ticks;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerLevel.findLightningRod`: `PoiManager.findClosest` over the
@@ -1037,24 +1025,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::lightning::tests::Spare;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::lightning::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_entity_refs::tests::collect_entities_in;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use mod_api::{self, ServerHost};
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use std::sync::Arc;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_client::mobs::{
-        Anim, Brain, Mob, MobType, Part, Species,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_core::geometry::Vec3;
+    use super::*;
+    use crate::game::native_entity_refs::tests::collect_entities_in;
+    use mod_api::{self, ServerHost};
+    use std::sync::Arc;
+    use sunrise_client::mobs::Mob;
+    use sunrise_core::geometry::Vec3;
 
     #[test]
     #[ignore = "daily"]

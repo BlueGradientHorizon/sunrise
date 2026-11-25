@@ -1,15 +1,7 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use crate::game::{
-    native_entity_refs::tests::with_client_game, native_guest_turn_tests::with_guests,
-};
-#[allow(unused_imports)]
-use std::sync::mpsc::{Receiver, channel};
-#[allow(unused_imports)]
-use sunrise_client::lan::{Out, PlayerSender, guest::InboxItem};
-#[allow(unused_imports)]
-use sunrise_protocol::{buf::Reader, connection::ConnReader};
+use std::sync::mpsc::Receiver;
+use sunrise_client::lan::Out;
+use sunrise_protocol::buf::Reader;
 
 pub(in crate::game) const OWNER: u32 = 12;
 pub(in crate::game) const START: Vec3 = Vec3::new(4.5, 64.0, 4.5);

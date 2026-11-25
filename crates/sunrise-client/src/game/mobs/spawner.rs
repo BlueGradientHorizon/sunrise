@@ -2,28 +2,21 @@
 //! `clientTick` for every spawner (`mobs::spawner`), the mobs they add, a
 //! spawn egg used on one (`SpawnEggItem.useOn`), their events and the mob
 //! spinning inside (`SpawnerRenderer`).
-#[allow(unused_imports)]
 use super::{
     Game,
     creatures::{Finalized, SpawnReason},
     persist::SpawnTree,
 };
-#[allow(unused_imports)]
 use std::collections::HashMap;
-#[allow(unused_imports)]
 use sunrise_client::{
     Result,
     containers::BlockEntity,
     mobs::{
         Mob, Who,
-        spawner::{SpawnDataExt, Spawner, SpawnerAdded, SpawnerEvent, SpawnerExt, SpawnerSpawn},
+        spawner::{Spawner, SpawnerAdded, SpawnerEvent, SpawnerExt, SpawnerSpawn},
         trial_spawner::{TrialSpawnerExt, TrialState},
     },
-    particles::{ParticleOptions, ParticleType},
 };
-#[allow(unused_imports)]
-use sunrise_client_render::block_entity_reach::Reach;
-#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
 #[allow(unused_imports)]
 use sunrise_core::{

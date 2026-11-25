@@ -1,10 +1,5 @@
 //! What a frame draws behind the screens: the title panorama, the level loading background, the
 //! menu blur and transparent background, the world border wall, and the screens' render events.
-#[allow(unused_imports)]
-use super::*;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-use crate::game::host::draw::GameDrawContext;
 
 /// `view` with no regions: a cancelled render drew nothing beside the panel.
 pub(in crate::game) fn without_regions<'a>(

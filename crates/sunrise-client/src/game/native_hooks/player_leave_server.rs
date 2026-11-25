@@ -1,9 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::player_leave::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::lan::guest::Guest;
+use super::Game;
+use sunrise_client::lan::guest::Guest;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The leave lines of a guest the hub removed and broadcast the leave line of, and whether
@@ -91,39 +87,19 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod player_leave_tests {
-    #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{
-        Dim, Game, native_entity_refs::tests::run_fresh_cases,
-        native_guest_turn_tests::with_guests, native_item_places::tests::guest,
+    use crate::game::native_hooks::player_leave::player_leave_tests::FLAG;
+    use crate::game::native_hooks::player_leave::player_leave_tests::Heard;
+    use crate::game::native_hooks::player_leave::player_leave_tests::Leave;
+    use crate::game::native_hooks::player_leave::player_leave_tests::SAVED;
+    use crate::game::native_hooks::player_leave::player_leave_tests::VALUE;
+    use crate::game::{
+        Dim, native_entity_refs::tests::run_fresh_cases, native_guest_turn_tests::with_guests,
+        native_item_places::tests::guest,
     };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{
-        Hooks, ModEntry, PlayerBedLeaveEvent, PlayerLoggedOutEvent, Registrar, ServerHost,
-    };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::lan::{NetEvent, playerdata};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::nbt::{Compound, Tag};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_mod_runtime::attachments::{
-        AttachmentCodec, AttachmentError, AttachmentType, Holder,
-    };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::player_leave::player_leave_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::player_leave::player_leave_tests::FLAG;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::player_leave::player_leave_tests::SAVED;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::player_leave::player_leave_tests::ASLEEP;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::player_leave::player_leave_tests::VALUE;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::player_leave::player_leave_tests::Heard;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::player_leave::player_leave_tests::Leave;
+    use mod_api::ModEntry;
+    use std::sync::{Arc, Mutex};
+    use sunrise_client::lan::{NetEvent, playerdata};
+    use sunrise_mod_runtime::attachments::Holder;
 
     /// Two guests, 12 then 13, a listener on both hooks, and guest 12's connection closing as
     /// the hub hears it (`NetEvent::Left`, `Hub::remove_guest`). `prepare` sets the guests up

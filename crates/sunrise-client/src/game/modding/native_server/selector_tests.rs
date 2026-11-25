@@ -1,14 +1,9 @@
 //! Acceptance tests through the registered native command dispatcher and real server selectors.
 
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use mod_api::{CommandArgumentValue as Value, CommandInvocation};
-#[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
 use sunrise_client::mobs::Mob;
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
 
 pub(in crate::game) struct SelectorCommands(pub(in crate::game) Arc<Mutex<Vec<CommandInvocation>>>);

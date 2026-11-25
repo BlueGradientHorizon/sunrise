@@ -1,20 +1,18 @@
 //! The player's `CombatTracker`: the damage taken lately, who dealt it and
 //! where the player fell from, turned into the vanilla death message.
-#[allow(unused_imports)]
 use super::{Game, commands_common::Target};
 
 #[cfg(test)]
 #[path = "tests/infested_roll_tests.rs"]
 pub(in crate::game) mod infested_roll_tests;
-#[allow(unused_imports)]
 use sunrise_client::{
     health::{Attack, HealthEvent},
     mobs::{Damage, Mob, Species, Who, stuck::Stuck},
     motion::MotionEvent,
-    particles::{ParticleOptions, ParticleType},
+    particles::ParticleType,
     text::Text,
 };
-#[allow(unused_imports)]
+#[cfg(test)]
 use sunrise_core::random::RandomSource;
 
 /// `EntityEvent.DROWN_PARTICLES`: broadcast with the drowning damage.

@@ -1,15 +1,10 @@
-#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::with_game;
-#[allow(unused_imports)]
 use mod_api::*;
-#[allow(unused_imports)]
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
-#[allow(unused_imports)]
 use sunrise_client::chunk::Chunk;
-#[allow(unused_imports)]
 use sunrise_core::position::BlockPos;
 
 pub(in crate::game) type Notices = Arc<Mutex<Vec<(BlockPos, BlockPos)>>>;

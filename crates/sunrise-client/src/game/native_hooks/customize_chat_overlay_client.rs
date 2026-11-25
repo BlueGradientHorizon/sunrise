@@ -1,30 +1,17 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::customize_chat_overlay::*;
+#[cfg(test)]
+use super::*;
 
 #[cfg(test)]
 pub(in crate::game) mod customize_chat_overlay_tests {
-    #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_entity_refs::tests::with_client_game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{ClientHost, CustomizeChatOverlayEvent, Hooks, ModEntry};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_platform::testing::with_mods;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::hud::HudBatch;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::text::Text;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::customize_chat_overlay::customize_chat_overlay_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::customize_chat_overlay::customize_chat_overlay_tests::Seen;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::customize_chat_overlay::customize_chat_overlay_tests::Lift;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::customize_chat_overlay::customize_chat_overlay_tests::chat_top;
+    use crate::game::native_entity_refs::tests::with_client_game;
+    use crate::game::native_hooks::customize_chat_overlay::customize_chat_overlay_tests::Lift;
+    use crate::game::native_hooks::customize_chat_overlay::customize_chat_overlay_tests::Seen;
+    use crate::game::native_hooks::customize_chat_overlay::customize_chat_overlay_tests::chat_top;
+    use mod_api::ModEntry;
+    use mod_platform::testing::with_mods;
+    use std::sync::Arc;
+    use sunrise_client::hud::HudBatch;
+    use sunrise_client::text::Text;
 
     /// `CustomizeGuiOverlayEvent.Chat`: the mod gets vanilla's place (0, GUI height - 40) and the
     /// GUI size, focused or not, and the chat is drawn where it moved it. With the chat hidden

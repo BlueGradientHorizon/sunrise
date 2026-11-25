@@ -1,22 +1,13 @@
 //! #795, the mob slice: a handle fired inside a mob's own tick resolves the
 //! mob the tick holds out of the game, without a copy or a placeholder.
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use crate::game::Dim;
-#[allow(unused_imports)]
-use crate::game::native_entity_refs::tests::with_game;
-#[allow(unused_imports)]
 use mod_api::{
     Despawn, EntityTickListenedEvent, EntityTickPreEvent, HostSide, ModEntry, ServerHost,
 };
-#[allow(unused_imports)]
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU32, Ordering},
 };
-#[allow(unused_imports)]
-use sunrise_client::chunk::Chunk;
 
 /// The `mob_despawn` facts a listener reads through its handle: its own
 /// position, and another mob's through a nested lookup.

@@ -1,9 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::interaction_event_tests::item_fallthrough_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::interaction_event_tests::item_fallthrough_tests::with_packet_game;
+use super::*;
+use crate::game::remote::interaction_event_tests::item_fallthrough_tests::with_packet_game;
 
 pub(in crate::game) fn assert_block_item_before_fallthrough(
     item: &str,

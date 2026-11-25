@@ -2,10 +2,6 @@
 //! `Gui.tick` on every tick the game isn't paused, and `Hud.tick` eases the vignette there
 //! (`updateVignetteBrightness`). Only the vignette moved off the level's tick: the player's own
 //! screen effects (the portal's, Nausea's, the water vision) still tick with it.
-#[allow(unused_imports)]
-use crate::game::item_entities::thrown_items_tests::with_remote_game;
-#[allow(unused_imports)]
-use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// `Hud.vignetteBrightness` in vanilla 26.3 at the end of matched client ticks, as float bits:
 /// the player's eye at sky light 15 at noon (the target is 0), read by a temporary hook in the

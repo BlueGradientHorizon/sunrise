@@ -2,26 +2,18 @@
 //! falling, `interactAt` equipment swaps by clicked height, the two-hit break
 //! of `hurtServer` (creative breaks at once), and `ArmorStandRenderer` with
 //! the default pose, the hit wobble and humanoid armor layers.
-#[allow(unused_imports)]
 use super::entity::Entity;
-#[allow(unused_imports)]
 use super::{Game, InteractTarget};
-#[allow(unused_imports)]
 use std::{collections::HashMap, sync::Arc};
-#[allow(unused_imports)]
 use sunrise_assets::resource_source::ResourceSource;
-#[allow(unused_imports)]
 use sunrise_client::{
     Result,
-    cit::{Hand, Kind, Rule},
     entities::ArmorStand,
     items::ItemStack,
     join_seq::JoinSeq,
-    mesher::Vertex,
-    mobs::{Mob, Part, Species, Who, anim::Poses},
-    trims::{TrimOverride, TrimRegistry, TrimTexture},
+    mobs::{Part, Species, Who, anim::Poses},
+    trims::{TrimOverride, TrimRegistry},
 };
-#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::RandomSource,
@@ -2583,9 +2575,7 @@ pub(in crate::game) mod postbaseline_lodestone_controls {
 
 #[cfg(test)]
 pub(in crate::game) mod setup_anim_tests {
-    #[allow(unused_imports)]
     use super::*;
-    #[allow(unused_imports)]
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     pub(in crate::game) static HEARD: AtomicUsize = AtomicUsize::new(0);

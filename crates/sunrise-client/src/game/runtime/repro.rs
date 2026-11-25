@@ -15,19 +15,12 @@
 //!   world/                single player only: the world when it started
 //!   README.txt
 //! ```
-#[allow(unused_imports)]
 use super::event_loop::EventLoopCtl;
-#[allow(unused_imports)]
 use super::input_trace::{InputOrigin, TraceEvent, TraceKind};
-#[allow(unused_imports)]
 use super::owner_link::{ControlRequest, OwnerRequest};
-#[allow(unused_imports)]
 use super::{Game, Screen};
-#[allow(unused_imports)]
 use serde::Deserialize;
-#[allow(unused_imports)]
 use serde_json::{Value, json};
-#[allow(unused_imports)]
 use std::{
     fs,
     io::{self, BufWriter, Write},
@@ -36,13 +29,9 @@ use std::{
     thread,
     time::{Duration, Instant, SystemTime},
 };
-#[allow(unused_imports)]
 use sunrise_client::{Result, gamepad::Button, keybinds, text::Text, title::world_management};
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
 use sunrise_system::scrub::Scrubber;
-#[allow(unused_imports)]
 use winit::{
     dpi::PhysicalPosition,
     event::{DeviceId, ElementState, MouseScrollDelta, TouchPhase, WindowEvent},

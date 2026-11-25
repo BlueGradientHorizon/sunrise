@@ -1,22 +1,16 @@
 //! Server-side jukebox simulation, record insertion/ejection, ticking, and tests.
+use super::Game;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::jukebox_common::{
-    jukebox_playable, jukebox_signals, song_of_record,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
+use crate::game::jukebox_common::{jukebox_playable, jukebox_signals, song_of_record};
+use sunrise_client::{
     block_entity_item,
     containers::{BlockEntity, Jukebox},
     items::ItemStack,
     mobs::Who,
     particles::ParticleType,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::{position::BlockPos, random::RandomSource};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_world::level::flags as level_flags;
+use sunrise_core::{position::BlockPos, random::RandomSource};
+use sunrise_world::level::flags as level_flags;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     #[inline(always)]

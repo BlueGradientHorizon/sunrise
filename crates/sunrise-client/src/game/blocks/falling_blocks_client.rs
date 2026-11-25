@@ -1,8 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
+use super::*;
 use crate::game::FallingBlock;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::falling_blocks::*;
 use sunrise_client::{Result, collisions};
 use sunrise_core::geometry::Vec3;
 use sunrise_world::{

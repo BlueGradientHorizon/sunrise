@@ -1,7 +1,5 @@
 //! Shared raycast pick core and role-dispatched crosshair targeting wrappers.
-#[allow(unused_imports)]
 use super::{Game, Hit};
-#[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Vec3};
 
 #[derive(Clone, Copy, Debug)]

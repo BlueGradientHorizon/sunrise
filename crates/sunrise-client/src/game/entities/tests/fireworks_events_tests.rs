@@ -1,19 +1,13 @@
 //! `FireworkRocketEntity.explode`'s game event and sound gate, and the
 //! `ITEM_USED` an `useOn` counts. Prepared resources only.
-#[allow(unused_imports)]
-use super::Game;
-#[allow(unused_imports)]
-use crate::game::{Audio, Options, Progress, Settings, load_resources};
-#[allow(unused_imports)]
+use crate::game::{Options, Progress, Settings, load_resources};
 use std::sync::Arc;
-#[allow(unused_imports)]
 use sunrise_client::{
     chunk::Chunk,
     items::ItemStack,
     mobs::Who,
-    particles::{FireworkExplosion, FireworkShape, ParticleLevel},
+    particles::{FireworkExplosion, FireworkShape},
 };
-#[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, position::ChunkPos, random::LegacyRandom};
 
 pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {

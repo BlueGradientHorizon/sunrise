@@ -4,24 +4,18 @@
 //! container clicks, `ServerboundContainerButtonClickPacket`, the content and
 //! data slot sync after each (`broadcastChanges`), and the inputs back into
 //! the inventory when the menu closes (`AbstractContainerMenu.clearContainer`).
-#[allow(unused_imports)]
 use super::{
     Game,
     stations::{Kind as StationKind, Station},
 };
-#[allow(unused_imports)]
 use crate::game::{api_values::TryIntoApi, transactions::After};
-#[allow(unused_imports)]
 use mod_api::item::menu::AnvilCraftInputs;
-#[allow(unused_imports)]
 use sunrise_client::{
     containers::BlockEntity,
     items::ItemStack,
     menu::{GrindstoneTakeEdits, Kind, Menu, QuickCraftDrag},
 };
-#[allow(unused_imports)]
 use sunrise_core::random::RandomSource;
-#[allow(unused_imports)]
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// A guest's open workstation menu.

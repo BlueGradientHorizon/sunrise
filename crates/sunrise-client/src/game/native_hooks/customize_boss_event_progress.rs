@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use super::*;
 
 #[cfg(feature = "client")]
@@ -20,23 +19,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
 #[cfg(test)]
 pub(in crate::game) mod customize_boss_event_progress_tests {
-    #[allow(unused_imports)]
-    use crate::game::{api_values::TryIntoApi, native_entity_refs::tests::run_fresh_cases};
-    #[allow(unused_imports)]
     use mod_api::{
         BossBarColor, ClientHost, CustomizeBossEventProgressEvent, Flow, Hooks, ModEntry,
-        text::TextFormError,
     };
-    #[allow(unused_imports)]
     use mod_platform::testing::with_mods;
-    #[allow(unused_imports)]
     use std::sync::{Arc, Mutex};
-    #[allow(unused_imports)]
     use sunrise_client::hud_layout::GuiDraw;
-    #[allow(unused_imports)]
-    use sunrise_core::nbt::Tag;
-    #[allow(unused_imports)]
-    use sunrise_protocol::packets::play::{BossAction, BossEvent};
 
     pub(in crate::game) type Seen = Arc<Mutex<Vec<(u128, BossBarColor, i32, i32, i32)>>>;
 

@@ -3,22 +3,15 @@
 //! menu slot shows (ender chest, crafting grid, a mod's chest menu). Mods read and write
 //! them through `ItemPlace`'s `with_stack`, `insert` and `extract`, which come here for these
 //! places; a block entity's slots, a stack inside an item and a mod's own places go through their handlers.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use super::api_values::component_edit::{GearEdits, prepare_component_edit};
-#[allow(unused_imports)]
 use super::native_server::PlayerRead;
-#[allow(unused_imports)]
 use super::transactions::{After, DeferredEffect};
-#[allow(unused_imports)]
 use mod_api::__private::game::*;
-#[allow(unused_imports)]
 use mod_api::{
     CraftedByError, EquipmentSlot, ItemComponentEditor, ItemPlace, ItemPlaceEditError,
     ItemStackView, LivingRef, MenuSlotBacking, TransactionContext,
 };
-#[allow(unused_imports)]
 use sunrise_client::{
     first_person::Hand,
     items::{ItemStack, Items},
@@ -981,31 +974,21 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::super::BlockEntity;
-    #[allow(unused_imports)]
     use super::super::api_values::TryIntoApi;
-    #[allow(unused_imports)]
     use super::super::native_entity_refs::tests::with_game;
-    #[allow(unused_imports)]
     use mod_api::HostTransaction;
-    #[allow(unused_imports)]
     use mod_api::ServerHost;
-    #[allow(unused_imports)]
     use mod_api::{
         CraftedByError, ENTITY_AUTOMATION, ENTITY_ITEMS, ItemPlace, ItemPlaceEditError,
         ItemResource, MenuRef, TransactionError,
     };
-    #[allow(unused_imports)]
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    #[allow(unused_imports)]
     use sunrise_client::{
         items::ItemStack,
         lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
     };
-    #[allow(unused_imports)]
     use sunrise_core::geometry::Direction;
-    #[allow(unused_imports)]
     use sunrise_protocol::packets::configuration::ClientInformation;
 
     /// A world open to LAN on a dedicated server, as a guest's actions run.

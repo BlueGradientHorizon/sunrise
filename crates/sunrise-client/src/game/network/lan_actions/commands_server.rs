@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::commands::*;
+use super::*;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Commands.performCommand for a guest, with the message arguments it

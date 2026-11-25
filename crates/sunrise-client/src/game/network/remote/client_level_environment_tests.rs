@@ -1,13 +1,9 @@
-#[allow(unused_imports)]
 use crate::game::{
-    Dim, Game, Progress, native_entity_refs::tests::with_uncached_client_game as with_client_game,
+    Dim, Progress, native_entity_refs::tests::with_uncached_client_game as with_client_game,
     packs::stage_pack,
 };
-#[allow(unused_imports)]
 use std::sync::Arc;
-#[allow(unused_imports)]
 use sunrise_client::environment::Sample;
-#[allow(unused_imports)]
 use sunrise_protocol::{
     connection::Pipe,
     packets::play::{self, Clientbound as C},

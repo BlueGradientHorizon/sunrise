@@ -1,36 +1,12 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_entity_refs::tests::with_client_game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hotbar_slot::hotbar_slot_tests::logged_in;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::gamemode_actions_tests::add_entity;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::gamemode_actions_tests::outgoing;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::gamemode_actions_tests::ranged_stick;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::gamemode_actions_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::InteractionAttempt;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::time::Duration;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    chunk::Chunk, first_person::Hand, items::ItemStack,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::connection::ConnReader;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::packets::{
-    configuration::Ping,
-    play::{self, Clientbound as C, Serverbound as S},
-};
+use crate::game::native_entity_refs::tests::with_client_game;
+use crate::game::native_hotbar_slot::hotbar_slot_tests::logged_in;
+use crate::game::remote::gamemode_actions_tests::add_entity;
+use crate::game::remote::gamemode_actions_tests::outgoing;
+use crate::game::remote::gamemode_actions_tests::ranged_stick;
+use mod_api::InteractionAttempt;
+use std::sync::Arc;
+use sunrise_client::{chunk::Chunk, first_person::Hand, items::ItemStack};
+use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
 
 #[test]
 #[ignore = "daily"]

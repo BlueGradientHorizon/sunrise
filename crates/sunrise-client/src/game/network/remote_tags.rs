@@ -1,12 +1,8 @@
 //! The server's tags on this client (`ClientPacketListener.handleUpdateTags`, and configuration's
 //! `RegistryDataCollector`): install gameplay tags, then notify native mods.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use std::sync::Arc;
-#[allow(unused_imports)]
 use sunrise_client::items::{Items, TagRegistry};
-#[allow(unused_imports)]
 use sunrise_protocol::{item::Names, packets::configuration::UpdateTags, registry::SyncedNames};
 
 /// The registries whose tags the tag helpers read.
@@ -135,20 +131,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use crate::game::native_entity_refs::tests::with_client_game;
-    #[allow(unused_imports)]
     use mod_api::{Hooks, Identifier, ModEntry, TagMembers, TagsUpdateCause, TagsUpdatedEvent};
-    #[allow(unused_imports)]
     use mod_platform::__private::part_tests::block_key;
-    #[allow(unused_imports)]
     use std::sync::{Arc, Mutex};
-    #[allow(unused_imports)]
     use sunrise_protocol::packets::{
         configuration::{RegistryTags, TagEntry, UpdateTags},
         play::{self, Clientbound as C},
     };
-    #[allow(unused_imports)]
     use sunrise_protocol::registry::Builtin;
 
     /// What a listener read of the tags during its notice.

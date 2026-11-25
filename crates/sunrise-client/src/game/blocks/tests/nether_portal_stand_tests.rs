@@ -4,13 +4,9 @@
 //! stand's `noPhysics` enter nothing), and `LocalPlayer.handlePortalTransitionEffect`
 //! closes only the screens whose `Screen.isAllowedInPortal` is false.
 
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use crate::game::game_tests::tests::server_game;
-#[allow(unused_imports)]
 use sunrise_client::entities::ArmorStand;
-#[allow(unused_imports)]
 use sunrise_client::motion::PlayerMotion;
 
 /// `ArmorStand`'s portal: stone at `y`, nether portal blocks at `y + 1` and

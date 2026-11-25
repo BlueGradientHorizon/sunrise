@@ -1,9 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::resolve_player_skin::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{HookId, PlayerModel, PlayerSkinOverride};
+use super::Game;
+use mod_api::{HookId, PlayerModel, PlayerSkinOverride};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Install the resolved appearance on the render-only avatar and return the original pair.

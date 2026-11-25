@@ -1,17 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::substitute_inline_images::substitute;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::substitute_inline_images::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{Answered, HookId, InlineImageReplacement};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::collections::BTreeMap;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::hud::HudAtlas;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::text::{InlineObject, Text};
+use super::Game;
+use mod_api::HookId;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Only a subscribed client lays out substituted images. Atlas, dynamic sprite geometry and

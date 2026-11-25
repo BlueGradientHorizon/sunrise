@@ -1,39 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::lan::LanSettings;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_guest_turn_tests::PanicOnDamage;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_guest_turn_tests::PanicOnFood;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_guest_turn_tests::register_test_menu;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_guest_turn_tests::with_guests;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_guest_turn_tests::with_guests_at;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_guest_turn_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{
-    __private::{HookPanicReport, take_hook_panics},
-    EntityMoveEvent, Flow, Hooks, LoopContext, MoveCause,
-    prelude::*,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::panic::{AssertUnwindSafe, catch_unwind};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicI32, AtomicUsize, Ordering},
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
-    mobs::Mob,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::packets::configuration::ClientInformation;
+use crate::game::server_side::native_guest_turn_tests::with_guests;
+use std::sync::Arc;
 
 #[test]
 #[ignore = "daily"]

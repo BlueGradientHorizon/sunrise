@@ -1,9 +1,5 @@
 //! A key press while a world is open (`KeyboardHandler.keyPress` and the gameplay mappings).
-#[allow(unused_imports)]
-use super::inventory_input::drop_whole_stack;
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use sunrise_client::keybinds::VanillaMappingSlot;
 
 pub(in crate::game) const GUI_KEYS: [&str; 5] = [
@@ -265,17 +261,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
 #[cfg(test)]
 pub(in crate::game) mod swap_hands_tests {
-    #[allow(unused_imports)]
-    use crate::game::native_entity_refs::tests::{with_client_game, with_game};
-    #[allow(unused_imports)]
     use mod_api::{Flow, Hooks, PlayerSwapHandsEvent, ServerHost};
-    #[allow(unused_imports)]
     use std::sync::{
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     };
-    #[allow(unused_imports)]
-    use sunrise_client::items::ItemStack;
 
     /// Puts a torch in the off hand instead of the sword, or cancels; counts the calls.
     pub(in crate::game) struct Torch(

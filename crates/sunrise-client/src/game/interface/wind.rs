@@ -1,33 +1,23 @@
 //! Wind charges: the item a player throws (`WindChargeItem`), the charges
 //! breezes shoot, and the burst they make (`ServerExplosion` with
 //! `TRIGGER_BLOCK`: no damage, only knockback and the blocks that react).
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use super::entity::{Blast, Entity as _, for_each_entity_mut};
-#[allow(unused_imports)]
 use std::collections::BTreeSet;
-#[allow(unused_imports)]
 use sunrise_client::advancements::EntityView;
-#[allow(unused_imports)]
 use sunrise_client::chunk::LevelShape;
-#[allow(unused_imports)]
 use sunrise_client::join_seq::Joined as _;
-#[allow(unused_imports)]
 use sunrise_client::{
     Result,
     items::ItemStack,
     mobs::{Damage, DamageKind, Species, Who},
-    particles::{ParticleOptions, ParticleType},
     projectiles::{Hit, Projectile, ProjectileKind},
 };
-#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Direction, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
-#[allow(unused_imports)]
 use sunrise_world::level::{PlayerContext, classes::Class};
 
 /// `WindCharge.RADIUS` and the knockback multiplier of its damage calculator.

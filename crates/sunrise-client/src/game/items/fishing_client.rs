@@ -1,64 +1,15 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{
-    Game, billboard_axes, creatures::ProjectileHitter, lan_mobs::guest_bounds,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::EntityCollision;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::FISHING_TABLE;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::Hook;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::HookLerp;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::HookMedium;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::HookTarget;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::RemoteHook;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::SIZE;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::State;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::WARNED_TABLES;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::bite_impulse;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::near_plane_hand;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::push_remote_hook;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::remove_remote_hook_from;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::synchronized_random;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::advancements::EntityView;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::lan::entity::States;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    blocks::Fluid,
-    collisions::SceneCollisions,
-    gizmos::Line,
-    items::ItemStack,
-    mesher::Vertex,
-    particles::{ParticleOptions, ParticleType},
-    pose::Pose,
-    random_source,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{
-    geometry::{Aabb, BlockHit, Vec3, traverse_blocks, trig},
-    position::BlockPos,
-    random::{LegacyRandom, RandomSource},
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::entity_data::{Value, serializer};
+use super::{Game, billboard_axes};
+use crate::game::server_side::fishing::Hook;
+use crate::game::server_side::fishing::State;
+use crate::game::server_side::fishing::bite_impulse;
+use crate::game::server_side::fishing::near_plane_hand;
+use crate::game::server_side::fishing::push_remote_hook;
+use crate::game::server_side::fishing::remove_remote_hook_from;
+use crate::game::server_side::fishing::synchronized_random;
+use crate::game::server_side::fishing::*;
+use sunrise_client::{gizmos::Line, mesher::Vertex, pose::Pose};
+use sunrise_core::geometry::{Vec3, trig};
+use sunrise_protocol::entity_data::Value;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// FishingHookRenderer: camera-facing half-block quads centred on each bobber.

@@ -7,13 +7,10 @@
 //! The first attachment access of an entity not yet told tells it first, so no mod reads an
 //! attachment before the listeners have set it.
 
-#[allow(unused_imports)]
 use super::Game;
 pub(in crate::game) use crate::game::entity_initialization_common::EntityInitialization;
-#[allow(unused_imports)]
 use mod_api::Holder;
-#[allow(unused_imports)]
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 #[cfg(test)]
 #[path = "entity_initialization/tests.rs"]

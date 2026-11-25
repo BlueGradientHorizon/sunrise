@@ -2,13 +2,9 @@
 //! `ItemFrame.survives`, `interact` (put an item in, then rotate it),
 //! `hurtServer` (take the item out, then break the frame) and
 //! `ItemFrameRenderer` (the frame model and the item at a 45 degree step).
-#[allow(unused_imports)]
 use super::{Game, Hit, InteractTarget};
-#[allow(unused_imports)]
 use sunrise_assets::{bake::bake_model, item_model::OwnerState, resolve::ModelLibrary};
-#[allow(unused_imports)]
-use sunrise_client::{entities::ItemFrame, items::ItemStack, mesher::Vertex};
-#[allow(unused_imports)]
+use sunrise_client::{entities::ItemFrame, items::ItemStack};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,

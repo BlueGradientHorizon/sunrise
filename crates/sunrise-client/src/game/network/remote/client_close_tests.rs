@@ -1,10 +1,4 @@
-#[allow(unused_imports)]
-use super::super::{C, Game, ItemStack, S, Screen, Tag, play};
-#[allow(unused_imports)]
-use crate::game::{
-    native_entity_refs::tests::with_client_game,
-    native_hotbar_slot::hotbar_slot_tests::{logged_in, sent},
-};
+use super::super::{C, Tag, play};
 
 pub(in crate::game) fn isolated(name: &str, body: impl FnOnce()) {
     let test = if name.contains("::") {

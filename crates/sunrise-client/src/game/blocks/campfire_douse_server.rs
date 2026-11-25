@@ -1,15 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Game, Hit};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::campfire_douse::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    Result, animate_tick::make_campfire_smoke, items::ItemStack,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::position::BlockPos;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_world::chunk::BlockState;
+use super::{Game, Hit};
+use sunrise_client::{Result, items::ItemStack};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `CampfireBlock.useItemOn` with `held` in the hand that acts, the block

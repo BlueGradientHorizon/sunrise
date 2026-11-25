@@ -1,28 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{Game, perspective};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_state_shapes::Outline;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_state_shapes::collision_boxes;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_state_shapes::outline_boxes;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_state_shapes::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::BlockShapeKind;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    block_entity_anim::BlockEntityAnims, collisions::SceneCollisions, world::World,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{geometry::VoxelShape, position::BlockPos};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_world::{
-    block_collision::BlockCollisionRegistry,
-    collision::ShapeChannel,
-    collision_context::{CollisionContext, EntityContextKind},
-    registry::BlockStateId,
-};
+use super::Game;
+use crate::game::native_state_shapes::Outline;
+use sunrise_world::registry::BlockStateId;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn outline_edges_iter(

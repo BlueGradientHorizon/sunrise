@@ -2,13 +2,9 @@
 //! builds both from `{id:..}` through their `(EntityType, Level)` factory, so
 //! the orb is never unstuck, and an empty item is discarded while loading
 //! (`ItemEntity.readAdditionalSaveData`) yet the command still succeeds.
-#[allow(unused_imports)]
-use super::super::{Audio, Game, Options, Progress, Settings, execution_role, load_resources};
-#[allow(unused_imports)]
+use super::super::{Options, Progress, Settings, execution_role, load_resources};
 use std::sync::Arc;
-#[allow(unused_imports)]
 use sunrise_client::chunk::Chunk;
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
 
 pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {

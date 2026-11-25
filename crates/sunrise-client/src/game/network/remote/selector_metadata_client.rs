@@ -1,9 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::selector_metadata::hurt_sound_for;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::selector_metadata::*;
+use super::*;
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {

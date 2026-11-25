@@ -2,22 +2,14 @@
 //! Rust's orphan rule prevents foreign From/TryFrom implementations here.
 #[path = "api_values/ingredient.rs"]
 pub(in crate::game) mod ingredient_values;
-#[allow(unused_imports)]
 use mod_api::item::item_stack::{ItemStack as ApiStack, StackWriteError};
-#[allow(unused_imports)]
 use std::num::NonZeroU32;
-#[allow(unused_imports)]
 use std::sync::Arc;
-#[allow(unused_imports)]
 #[cfg(test)]
 use sunrise_client::parallel::ListenSnapshot;
-#[allow(unused_imports)]
 use sunrise_client::parallel::TickThread;
-#[allow(unused_imports)]
 use sunrise_core::nbt::{Compound, JavaString, Tag};
-#[allow(unused_imports)]
 use sunrise_core::random::{LegacyRandom, RandomSource as EngineRandom};
-#[allow(unused_imports)]
 use sunrise_items::items::{ItemStack as EngineStack, Items};
 #[path = "api_values/aggregates.rs"]
 pub(in crate::game) mod aggregates;

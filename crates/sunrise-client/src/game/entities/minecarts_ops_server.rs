@@ -1,13 +1,9 @@
 //! Server-side minecart operations split from common `minecarts.rs`, `minecarts/hit.rs`, and `minecarts/save_lending.rs`.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use crate::game::minecarts::{
     CART_KEY_Y, CartKind, Minecart, TNT_PRIME_EVENT, cart_is_destroyed, hit::CartHit,
 };
-#[allow(unused_imports)]
 use sunrise_client::{containers::BlockEntity, items::ItemStack, sound_engine::BLOCKS};
-#[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 
 impl Game<'_, crate::game::server_side::ServerState> {

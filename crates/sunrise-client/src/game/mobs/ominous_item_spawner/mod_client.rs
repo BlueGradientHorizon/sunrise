@@ -1,27 +1,14 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::ominous_item_spawner::ABOUT_TO_SPAWN;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::ominous_item_spawner::OminousItemSpawner;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::ominous_item_spawner::ROTATION_SPEED;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::ominous_item_spawner::TICKS_SCALING;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::ominous_item_spawner::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_assets::item_model::DisplayContext;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
+use super::Game;
+use crate::game::server_side::ominous_item_spawner::ROTATION_SPEED;
+use crate::game::server_side::ominous_item_spawner::TICKS_SCALING;
+use sunrise_assets::item_model::DisplayContext;
+use sunrise_client::{
     block_entity_render::vertex_light,
     item_render,
-    items::ItemStack,
     mesher::Vertex,
     particles::{ParticleOptions, ParticleType},
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_core::random::RandomSource;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `OminousItemSpawnerRenderer`: full-bright item growing over its first 50 ticks and turning.

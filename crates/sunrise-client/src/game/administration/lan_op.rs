@@ -1,10 +1,5 @@
 //! `sunrise-ctl lan op`: a connected guest's operator level, which remote profiling checks.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
-use super::owner_link::{ControlRequest, OwnerRequest};
-#[allow(unused_imports)]
-use sunrise_client::Result;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `sunrise-ctl lan op`: the connected guest `name` gets operator level `level`; false when none is called that.

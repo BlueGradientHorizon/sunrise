@@ -1,11 +1,5 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use crate::game::native_entity_refs::tests::{bind_local_player, run_fresh_cases, with_game};
-#[allow(unused_imports)]
-use mod_api::{EntityRef, LivingRef};
-#[allow(unused_imports)]
-use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
+use mod_api::LivingRef;
 
 pub(in crate::game) const PLAYER: u32 = 20;
 pub(in crate::game) const PIG: u32 = 71;

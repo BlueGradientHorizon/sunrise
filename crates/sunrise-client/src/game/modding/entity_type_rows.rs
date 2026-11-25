@@ -2,7 +2,6 @@
 //! mod type has its template's row). A living entity's row lists its default attributes, so a row
 //! with `attributes` is a living type (`LivingEntity`), and one without is not (a boat, an arrow, a
 //! display). Read once per root: the file doesn't change while the game runs.
-#[allow(unused_imports)]
 use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex, PoisonError},

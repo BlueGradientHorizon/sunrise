@@ -1,27 +1,8 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{
-    Game, Hit, InteractTarget, Keys, entity_culling::default_range,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::entity_common::PlacementWorld;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::cushions::aabb;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::cushions::snap_yaw;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::cushions::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::actions::Action;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::cushion::blocks_in;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::entities::{Cushion, dye_index};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::items::ItemStack;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::mobs::anim::Poses;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::{Aabb, Vec3};
+use super::{Game, entity_culling::default_range};
+use crate::game::server_side::cushions::aabb;
+use crate::game::server_side::cushions::snap_yaw;
+use sunrise_client::mobs::anim::Poses;
+use sunrise_core::geometry::Aabb;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `CushionRenderer`: the coloured model, rotated to the nearest

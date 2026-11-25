@@ -1,7 +1,5 @@
 //! World clocks shared by server and client, plus hub clock snapshot calculation.
-#[allow(unused_imports)]
 use super::{Game, chat_common::OVERWORLD_CLOCK};
-#[allow(unused_imports)]
 use sunrise_gameplay::world_clock::WorldClock;
 
 /// What the LAN hub's time packets carry, read from the clocks without touching the hub.

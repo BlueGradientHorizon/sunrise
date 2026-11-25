@@ -1,17 +1,11 @@
 //! Role-neutral block-entity animation events, ownership tracking, and state reads.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
-use super::block_entity_anims::AnimTick;
-#[allow(unused_imports)]
 use sunrise_client::{
     block_entities::Pos,
     block_entity_anim::{EndGateway, Ticker},
-    block_entity_render::BlockAnim,
     containers::BlockEntity,
     save::number,
 };
-#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {

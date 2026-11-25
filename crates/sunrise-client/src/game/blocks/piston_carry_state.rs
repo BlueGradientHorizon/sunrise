@@ -1,13 +1,10 @@
 //! Position-owned state follows the payload; observers are invalidated at the owning boundary.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use sunrise_client::{
     block_entities::Pos,
     chunk::PendingContainerLoot,
     world::{BlockEntityExtras, World},
 };
-#[allow(unused_imports)]
 use sunrise_core::nbt::{Compound, Tag};
 
 /// Mutable position-owned server data borrowed by the level adapter.

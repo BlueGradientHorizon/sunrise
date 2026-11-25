@@ -1,7 +1,6 @@
 //! The frame's world update (`update_world`): what arrived from the server, the chunks that
 //! streamed in and the meshes handed to the renderer, the columns that unload (their entities
 //! and block entities saved out first); and far terrain (`prepare_lod`, `clear_lod`).
-#[allow(unused_imports)]
 use super::*;
 
 impl Game<'_, crate::game::client_side::ClientState> {

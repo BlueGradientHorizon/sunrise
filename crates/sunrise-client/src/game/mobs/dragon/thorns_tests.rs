@@ -1,11 +1,8 @@
 //! Exercise the server's attack entry points with real enchantment data.
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use crate::game::*;
-#[allow(unused_imports)]
 use sunrise_client::{
-    mobs::{Damage, DamageKind, Mob, MobEvent, Who, finalize as f},
+    mobs::{Damage, Mob, MobEvent, Who, finalize as f},
     projectiles::{Hit, Projectile, ProjectileKind},
 };
 

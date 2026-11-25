@@ -1,26 +1,17 @@
 //! Prepared-resource regressions through real projectile collision, mob AI and server death.
-#[allow(unused_imports)]
-use crate::game::Game;
-#[allow(unused_imports)]
 use crate::game::api_values::TryIntoApi;
-#[allow(unused_imports)]
-use crate::game::native_entity_refs::tests::{bind_local_player, with_game};
-#[allow(unused_imports)]
+use crate::game::native_entity_refs::tests::with_game;
 use mod_api::{
     ArmorHurtEvent, Flow, HitHost, Hooks, HurtSource, LivingDeathEvent, LivingDropsEvent,
     LivingIncomingDamageEvent, ModEntry, ServerHost,
 };
-#[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
 use sunrise_client::{
     chunk::Chunk,
     items::ItemStack,
     mobs::{Mob, Who},
-    motion::PlayerMotion,
     projectiles::{Projectile, ProjectileKind},
 };
-#[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, nbt::Tag, position::ChunkPos};
 
 #[derive(Clone, Debug, PartialEq)]

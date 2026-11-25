@@ -5,45 +5,24 @@
 //! blocks, attacking and the commands all behave exactly as they do for the
 //! host, and every world change they cause reaches all players through the
 //! block log, the level events and the entity tracker.
-#[allow(unused_imports)]
 use super::{
-    Dim, Game, GuestUse, Hit, InteractTarget, Mining, Screen,
+    Dim, Game, Mining,
     building_players::{BuildingPlayer, HubBodies, shared},
     lan::LanHost,
-    lan_crafting::MenuRemoval,
-    level_sounds::LevelSound,
-    respawn_anchor::RespawnConfig,
 };
-#[allow(unused_imports)]
-use mod_api::{ActionRefused, GameMode, SoundSource};
+use mod_api::GameMode;
 #[allow(unused_imports)]
 use sunrise_client::{
-    containers::BlockEntity,
     entities::Experience,
     first_person::{Hand, SwingAnimation},
     items::ItemStack,
-    lan::{
-        guest::SPECTATOR,
-        hub::TickCtx,
-        menu::{Rules, Slots},
-    },
-    motion::{MotionEvent, MotionWorld, PlayerMotion},
+    lan::{guest::SPECTATOR, menu::Slots},
+    motion::PlayerMotion,
     pose::Dimensions,
 };
+use sunrise_core::geometry::Aabb;
 #[allow(unused_imports)]
-use sunrise_core::{
-    geometry::{Aabb, Vec3},
-    random::RandomSource,
-};
-#[allow(unused_imports)]
-use sunrise_protocol::{
-    packets::play::{self, Clientbound as C, Serverbound as S},
-    text::literal,
-};
-#[allow(unused_imports)]
-use sunrise_world::entity_move::EntityMoveWorld;
-#[allow(unused_imports)]
-use winit::keyboard::KeyCode;
+use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
 
 pub(in crate::game) mod attack_checks;
 pub(in crate::game) mod commands;

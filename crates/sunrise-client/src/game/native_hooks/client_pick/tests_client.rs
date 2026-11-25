@@ -1,45 +1,12 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::tests::CountPicks;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::tests::First;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::tests::Last;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::tests::OverwriteOrigin;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::tests::Policy;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::tests::RecordOrigins;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::tests::RegisterRiderPart;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::tests::RiderPart;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::tests::SelectOccludedEntity;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::tests::SelectedPick;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::tests::UnchangedAttack;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::tests::finish_login;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::tests::ranged_stack;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::tests::sent_actions;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::tests::sent_packets;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::tests::with_picked_cushion;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{
-    ClientHost, ClientPickEvent, CrosshairTarget, Hooks,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::{Arc, Mutex};
+use super::*;
+use crate::game::native_hooks::client_pick::tests::First;
+use crate::game::native_hooks::client_pick::tests::Last;
+use crate::game::native_hooks::client_pick::tests::Policy;
+use crate::game::native_hooks::client_pick::tests::RegisterRiderPart;
+use crate::game::native_hooks::client_pick::tests::finish_login;
+use crate::game::native_hooks::client_pick::tests::ranged_stack;
+use mod_api::CrosshairTarget;
+use std::sync::{Arc, Mutex};
 
 #[test]
 #[ignore = "daily"]

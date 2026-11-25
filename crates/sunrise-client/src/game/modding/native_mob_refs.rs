@@ -1,14 +1,10 @@
 //! Mob handles for native server mods.
-#[allow(unused_imports)]
 use super::{Game, commands::Target};
-#[allow(unused_imports)]
 use mod_api::{EntityRef, LivingRef, MobRef};
-#[allow(unused_imports)]
 use sunrise_client::{
     mobs::{self, Mob, MobWorld, Species, Who, ai::brain_target},
     scoreboard::Team,
 };
-#[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Axis};
 
 pub(in crate::game::server_side) fn warden_mob_target_bounds(mob: &Mob) -> Option<Aabb> {
@@ -914,15 +910,10 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::super::native_entity_refs::tests::with_game;
-    #[allow(unused_imports)]
     use super::*;
-    #[allow(unused_imports)]
     use mod_api::WorldEpoch;
-    #[allow(unused_imports)]
     use sunrise_client::{entities::ArmorStand, mobs::Mob};
-    #[allow(unused_imports)]
     use sunrise_core::geometry::Vec3;
 
     pub(in crate::game::server_side) fn add_mob(

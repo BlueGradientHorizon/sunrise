@@ -4,13 +4,7 @@
 //! armour's among them), `assignBaseValues` after a death. The new player is made once its
 //! position arrives, so what the server sends for it in between waits here, as vanilla's new
 //! `LocalPlayer` already holds it.
-#[allow(unused_imports)]
-use super::super::{Game, Result};
-#[allow(unused_imports)]
-use sunrise_client::{lan::attributes::apply, motion::PlayerMotion};
-#[allow(unused_imports)]
 use sunrise_protocol::packets::play::AttributeSnapshot;
-#[allow(unused_imports)]
 use sunrise_world::attributes::Instance;
 
 /// The respawn in progress (`Game::portals`).

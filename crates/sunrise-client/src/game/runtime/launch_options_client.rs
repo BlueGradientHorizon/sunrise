@@ -1,9 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::launch_options::Options;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::launch_options::*;
+use super::*;
+use crate::game::launch_options::Options;
 
 impl Options {
     /// Whether this `Game` is the process's client.

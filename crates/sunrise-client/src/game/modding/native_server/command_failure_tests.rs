@@ -1,19 +1,15 @@
-#[allow(unused_imports)]
 use crate::game::{
     in_own_process, lan_actions::GuestCommand, native_guest_turn_tests::with_guests,
 };
-#[allow(unused_imports)]
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
-#[allow(unused_imports)]
 use sunrise_client::{
     gamerules,
     lan::{Out, PlayerSender},
     text,
 };
-#[allow(unused_imports)]
 use sunrise_protocol::{
     buf::Reader, ids::play::clientbound::SYSTEM_CHAT, packets::play::Clientbound,
 };

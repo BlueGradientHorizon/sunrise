@@ -1,6 +1,3 @@
-#[allow(unused_imports)]
-use super::*;
-
 /// `Rabbit.getRandomRabbitVariant`: the biome's tags pick the split, and the
 /// `nextInt(100)` is drawn even where a tag decides alone (the gold rabbit),
 /// so a spawn's and a bred baby's level random move on by the same one draw.

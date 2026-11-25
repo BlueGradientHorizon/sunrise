@@ -1,13 +1,5 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use crate::game::{Audio, Options, Progress, Settings, load_resources};
-#[allow(unused_imports)]
-use std::sync::Arc;
-#[allow(unused_imports)]
-use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
-#[allow(unused_imports)]
-use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
+use sunrise_core::geometry::Vec3;
 pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     with_role_game(
         crate::game::execution_role::ExecutionRole::IntegratedServer,

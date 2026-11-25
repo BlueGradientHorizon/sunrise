@@ -1,34 +1,9 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::creatures::spawn_egg_mob_tests::posted;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::creatures::spawn_egg_mob_tests::spawn;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::creatures::spawn_egg_mob_tests::target;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::creatures::spawn_egg_mob_tests::watch;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::creatures::spawn_egg_mob_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
-    Audio, Game, InteractTarget, Options, Progress, Screen, Settings, execution_role,
-    load_resources,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::chunk::Chunk;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::items::ItemStack;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::mobs::{Mob, Species, Who};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::motion::PlayerMotion;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::position::ChunkPos;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::random::{LegacyRandom, RandomSource};
+use crate::game::{Options, Progress, Settings, execution_role, load_resources};
+use std::sync::Arc;
+use sunrise_client::chunk::Chunk;
+use sunrise_client::motion::PlayerMotion;
+use sunrise_core::geometry::Vec3;
+use sunrise_core::position::ChunkPos;
 
 pub(in crate::game) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,

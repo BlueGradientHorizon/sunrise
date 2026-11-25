@@ -1,6 +1,5 @@
 //! The world's save on a timer (`MinecraftServer.computeNextAutosaveInterval`,
 //! `onTickRateChanged`), the players' autosaves, and the world's metadata (level.dat).
-#[allow(unused_imports)]
 use super::*;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {

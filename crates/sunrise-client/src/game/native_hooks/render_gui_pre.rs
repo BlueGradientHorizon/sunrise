@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
@@ -13,10 +12,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
 #[cfg(test)]
 pub(in crate::game) mod local_sound_tests {
-    #[allow(unused_imports)]
-    use mod_api::{ClientHost, Flow, Hooks, ModEntry, RenderGuiPreEvent, SoundPlay};
-    #[allow(unused_imports)]
-    use mod_platform::testing::with_mods;
+    use mod_api::{ClientHost, Flow, Hooks, RenderGuiPreEvent, SoundPlay};
 
     pub(in crate::game) struct Mod;
     #[mod_api::__subscriptions]

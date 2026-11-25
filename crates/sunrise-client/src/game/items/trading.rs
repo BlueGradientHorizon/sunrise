@@ -2,21 +2,17 @@
 //! layout (276x166, drawn 50 px left of the usual 176-wide origin), offer
 //! buttons, payment slots, the result slot's `onTake`, villager experience and
 //! level-ups with new offers from the next trade set.
-#[allow(unused_imports)]
 use super::{
     Game,
-    stations::{INPUT, Kind, RESULT, Station},
+    stations::{Kind, Station},
 };
-#[allow(unused_imports)]
 use sunrise_client::mobs::{Mob, Species, render::VILLAGER_TYPES, villager};
-#[allow(unused_imports)]
 use sunrise_client::{
-    hud::HudBatch,
     items::ItemStack,
     merchant::{self, MerchantOffer, TradeContext, TradeFeedback},
     random_sequences::RandomSequences,
     text::Text,
-    widgets::{Cursor, request_cursor},
+    widgets::Cursor,
 };
 
 /// The merchant screen is 100 px wider than the 176-px menus it shares an origin with.

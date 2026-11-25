@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::death_weapon::*;
+use super::*;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn projectile_attack(&self, shot: &Projectile) -> Attack {

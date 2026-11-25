@@ -1,27 +1,19 @@
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use crate::game::native_entity_refs::tests::with_game;
-    #[allow(unused_imports)]
     use mod_api::{BlockEntityPart, BlockEntitySaveAdditionalEvent, Hooks, LevelHost, ModEntry};
-    #[allow(unused_imports)]
     use std::sync::atomic::{AtomicI32, Ordering};
-    #[allow(unused_imports)]
     use std::sync::{Arc, Mutex};
-    #[allow(unused_imports)]
     use sunrise_client::{
         chunk::{Chunk, LevelShape},
         containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields, SHAPES_KEY},
         save::SaveDir,
     };
-    #[allow(unused_imports)]
     use sunrise_core::{
-        nbt::{Compound, JavaString, Limits, Tag, read_named},
+        nbt::{Compound, JavaString, Limits, Tag},
         position::ChunkPos,
     };
-    #[allow(unused_imports)]
     use sunrise_mod_runtime::attachments::ATTACHMENTS_KEY;
-    #[allow(unused_imports)]
     use sunrise_world::region::RegionFile;
 
     thread_local! {

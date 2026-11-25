@@ -1,11 +1,8 @@
-#[allow(unused_imports)]
 use crate::game::{
     execution_role::ExecutionRole,
     native_entity_refs::tests::{run_fresh_cases, with_game_role, with_game_role_client},
 };
-#[allow(unused_imports)]
 use mod_api::*;
-#[allow(unused_imports)]
 use std::{
     collections::HashMap,
     sync::{
@@ -13,13 +10,11 @@ use std::{
         atomic::{AtomicBool, AtomicU8, Ordering},
     },
 };
-#[allow(unused_imports)]
 use sunrise_core::{
     geometry::Direction,
     position::{BlockPos, ChunkPos},
     random::LegacyRandom,
 };
-#[allow(unused_imports)]
 use sunrise_world::{
     level::{Behaviours, BlockEntityNeighbors, LevelAccess, PushReaction as EngineReaction, Ticks},
     registry::{BlockRegistry, BlockStateId},

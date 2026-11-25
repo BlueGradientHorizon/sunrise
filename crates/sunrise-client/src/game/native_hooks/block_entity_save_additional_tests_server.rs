@@ -1,47 +1,21 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_save_additional_tests::*;
-
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_entity_refs::tests::with_game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{BlockEntityPart, BlockEntitySaveAdditionalEvent, Hooks, LevelHost, ModEntry};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::atomic::{AtomicI32, Ordering};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-        chunk::{Chunk, LevelShape},
-        containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields, SHAPES_KEY},
-        save::SaveDir,
+    use crate::game::native_entity_refs::tests::with_game;
+    use crate::game::native_hooks::block_entity_save_additional_tests::tests::BreakObserver;
+    use crate::game::native_hooks::block_entity_save_additional_tests::tests::Mod;
+    use crate::game::native_hooks::block_entity_save_additional_tests::tests::SaveItemsMod;
+    use crate::game::native_hooks::block_entity_save_additional_tests::tests::saved_stack;
+    use mod_api::ModEntry;
+    use std::sync::atomic::{AtomicI32, Ordering};
+    use std::sync::{Arc, Mutex};
+    use sunrise_client::{
+        chunk::Chunk,
+        containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields},
     };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::{
-        nbt::{Compound, JavaString, Limits, Tag, read_named},
+    use sunrise_core::{
+        nbt::{Compound, Limits, Tag, read_named},
         position::ChunkPos,
     };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_mod_runtime::attachments::ATTACHMENTS_KEY;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_world::region::RegionFile;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_save_additional_tests::tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_save_additional_tests::tests::SAVED_AT;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_save_additional_tests::tests::Counter;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_save_additional_tests::tests::Mod;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_save_additional_tests::tests::SaveItemsPart;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_save_additional_tests::tests::saved_stack;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_save_additional_tests::tests::SaveItemsMod;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_save_additional_tests::tests::BreakObserver;
 
     #[test]
     #[ignore = "daily"]

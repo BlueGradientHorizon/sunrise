@@ -1,21 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{DataRef, Target};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::data::eye_item_tests::load_witness;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::data::eye_item_tests::parse_exact_snbt;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::data::eye_item_tests::saved_item;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::data::eye_item_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_entity_refs::tests::with_game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::path::PathBuf;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::nbt::{Tag, parse_snbt};
+use crate::game::commands::data::eye_item_tests::load_witness;
+use crate::game::commands::data::eye_item_tests::parse_exact_snbt;
+use crate::game::commands::data::eye_item_tests::saved_item;
+use crate::game::native_entity_refs::tests::with_game;
 
 pub(in crate::game) fn run_a_summoned_eye_saves_its_normalised_item_live_and_after_a_reload() {
     let witness = load_witness();

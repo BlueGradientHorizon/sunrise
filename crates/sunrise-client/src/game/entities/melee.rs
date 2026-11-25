@@ -1,6 +1,5 @@
 //! A player's melee attack (`Player.attack`): the attack strength, critical and sweep attacks, and
 //! what a hit on a target that is not a mob does.
-#[allow(unused_imports)]
 use super::*;
 
 #[cfg(test)]

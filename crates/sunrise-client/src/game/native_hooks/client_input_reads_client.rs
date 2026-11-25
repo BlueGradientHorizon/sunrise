@@ -1,11 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_input_reads::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use keybinds::VanillaMappingSlot;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{MappingError, VanillaKeyMappingRef};
+use super::*;
+use keybinds::VanillaMappingSlot;
+use mod_api::{MappingError, VanillaKeyMappingRef};
 
 /// Helpers for native mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.

@@ -1,10 +1,6 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use std::sync::Mutex;
-#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
 use sunrise_mod_runtime::attachments::{
     AttachmentType, Attachments, HasAttachmentLifetime, Holder, index::AttachmentIndex,
 };

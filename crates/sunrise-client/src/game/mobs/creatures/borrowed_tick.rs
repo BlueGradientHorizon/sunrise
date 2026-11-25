@@ -1,5 +1,4 @@
 //! Resumable borrowed mob-tick region; the caller owns final restoration.
-#[allow(unused_imports)]
 use super::*;
 
 /// Route each player event to the player selected when it was emitted.

@@ -1,29 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Game, billboard_axes};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::names::BACKGROUND;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::names::NAME_TAG_UNIT;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::names::NameTag;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::names::NameTagLayouts;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::names::NameTagLine;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::names::name_component;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::names::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    block_entity_render::vertex_light,
-    hud::{HudAtlas, HudBatch, HudVertex},
-    mesher::Vertex,
-    mobs::{Mob, Who},
-    save::uuid_text,
-    scoreboard as sb,
-    text::Text,
-};
+use super::Game;
+use sunrise_client::mobs::Who;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// A named name tag names the mob under the crosshair.

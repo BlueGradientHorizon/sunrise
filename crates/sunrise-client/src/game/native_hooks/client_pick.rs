@@ -1,9 +1,6 @@
 //! The one stored pick, refreshed before tick inputs and frame extraction.
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use crate::game::{Dim, view_vector};
-#[allow(unused_imports)]
+use crate::game::Dim;
 use mod_api::CrosshairTarget;
 
 #[cfg(test)]

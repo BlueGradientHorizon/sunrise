@@ -2,23 +2,12 @@
 //! ([`LivingBody`]): the `LivingRef` reads (docs/modding/src/how-to/native-mods.md, "Entity
 //! and level handles") find the body their handle names and call these, and a hit's
 //! `LivingView` calls the same ones on the body the hit lends, so both answer alike.
-#[allow(unused_imports)]
-use super::Game;
-#[allow(unused_imports)]
-use super::commands::Target;
-#[allow(unused_imports)]
 use super::native_living_effects::{active_effect, mob_effect};
-#[allow(unused_imports)]
 use mod_api::{ActiveEffect, EquipmentSlot};
-#[allow(unused_imports)]
 use std::sync::Arc;
-#[allow(unused_imports)]
 use sunrise_client::health::{FixedBody, LivingBody, PlayerBody, PlayerHealthRead};
-#[allow(unused_imports)]
 use sunrise_client::mobs::finalize::{self, EquipmentRead};
-#[allow(unused_imports)]
 use sunrise_world::attribute_map::ValueKind;
-#[allow(unused_imports)]
 use sunrise_world::attributes::entity::Catalog;
 
 /// `LivingEntity.getHealth`.

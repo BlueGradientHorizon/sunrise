@@ -1,48 +1,18 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Arg, Context, Game, R, Target, err, wrap_degrees};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::world_cmds::command_operation;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::world_cmds::holder;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::world_cmds::java_double_text;
-#[allow(unused_imports)]
+use super::{Arg, Context, Game, R, Target, err};
+use crate::game::commands::world_cmds::holder;
 pub(in crate::game::server_side) use crate::game::commands::world_cmds::look_at;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::world_cmds::num;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::world_cmds::operation_named;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::world_cmds::playsound_placement;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::world_cmds::take_new_reinforcements;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::world_cmds::text_error;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::world_cmds::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::living_attributes::AttributeWrite;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::minecarts::CartHit;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    mobs::{Damage, DamageKind, MobEvent, NamedDamage, Who, finalize},
-    scoreboard_cmd::{Holder, Tracker},
-    settings::SOUND_SOURCES,
+use crate::game::commands::world_cmds::num;
+use crate::game::commands::world_cmds::take_new_reinforcements;
+use crate::game::commands::world_cmds::text_error;
+use crate::game::minecarts::CartHit;
+use sunrise_client::{
+    mobs::{Damage, Who},
+    scoreboard_cmd::Tracker,
     text::Text,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::random::RandomSource;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_protocol::packets::play::{self, Clientbound as C};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_world::attribute_map::ValueKind;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_world::damage_source::Catalog as DamageCatalog;
+use sunrise_core::nbt::Tag;
+use sunrise_core::random::RandomSource;
+use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// ServerRecipeBook.addRecipes/removeRecipes for the player in place: how
@@ -1000,16 +970,9 @@ pub(in crate::game) mod attribute_missing_tests;
 
 #[cfg(test)]
 pub(in crate::game) mod allay_owner_damage_tests {
-    #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_entity_refs::tests::with_game_at;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::mobs::{Damage, Mob};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::world_cmds::allay_owner_damage_tests::*;
+    use crate::game::native_entity_refs::tests::with_game_at;
+    use sunrise_client::mobs::{Damage, Mob};
+    use sunrise_core::geometry::Vec3;
 
     #[test]
     #[ignore = "daily"]
@@ -1083,26 +1046,10 @@ pub(in crate::game) mod registered_damage_tests;
 
 #[cfg(test)]
 pub(in crate::game) mod datapack_damage_tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::world_cmds::datapack_damage_tests::run_a_datapack_damage_type_hurts_a_mob;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::world_cmds::datapack_damage_tests::run_a_datapack_types_tags_reach_the_mob_hurt_path;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::world_cmds::datapack_damage_tests::with_pack;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::world_cmds::datapack_damage_tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::{
-        commands::Target, native_entity_refs::tests::with_game,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_client::mobs::Mob;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_core::geometry::Vec3;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_world::loot::PackOverlay;
+    use crate::game::commands::world_cmds::datapack_damage_tests::with_pack;
+    use crate::game::{commands::Target, native_entity_refs::tests::with_game};
+    use sunrise_client::mobs::Mob;
+    use sunrise_core::geometry::Vec3;
 
     pub(in crate::game) fn pig(game: &mut crate::game::ServerGame<'_>, id: u32, at: Vec3) {
         game.side.next_entity = game.side.next_entity.max(id);
@@ -1157,22 +1104,9 @@ pub(in crate::game) mod datapack_damage_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod vehicle_damage_command_tests {
-    #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::chunk::Chunk;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::position::ChunkPos;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::world_cmds::vehicle_damage_command_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::world_cmds::vehicle_damage_command_tests::with_game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::world_cmds::vehicle_damage_command_tests::attribute_chat_count;
+    use crate::game::commands::world_cmds::vehicle_damage_command_tests::attribute_chat_count;
+    use crate::game::commands::world_cmds::vehicle_damage_command_tests::with_game;
+    use std::sync::Arc;
 
     pub(in crate::game::server_side) fn attribute_guests(
         game: &mut crate::game::ServerGame<'_>,

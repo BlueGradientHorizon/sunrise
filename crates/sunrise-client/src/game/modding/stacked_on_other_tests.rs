@@ -5,20 +5,13 @@
 //! This hook's cancellation is an override result, not an abort: a cancelled, handled click
 //! sets the stacks the listener names and is Applied. The abort outcomes are a stale read, an
 //! invalid answer and a failing listener; each undoes every write the listener made.
-#[allow(unused_imports)]
-use crate::game::native_entity_refs::tests::with_game;
-#[allow(unused_imports)]
 use crate::game::native_guest_turn_tests::with_guests;
-#[allow(unused_imports)]
 use mod_api::item::menu::{ClickedStackResult, StackResult};
-#[allow(unused_imports)]
 use mod_api::{
     Flow, Hooks, HostSide, HostTransaction, ItemPlace, ItemResource, ItemStackedOnOtherEvent,
     ModEntry, Mods,
 };
-#[allow(unused_imports)]
 use std::cell::RefCell;
-#[allow(unused_imports)]
 use sunrise_client::{items::ItemStack, menu::Input};
 
 /// What the listener does.
@@ -1206,11 +1199,8 @@ fn an_outer_abort_after_an_applied_lan_click_restores_the_guest_and_the_containe
 }
 
 pub(in crate::game) mod item_part_tests {
-    #[allow(unused_imports)]
     use super::*;
-    #[allow(unused_imports)]
     use mod_api::item::menu::StackedOnOtherDirection;
-    #[allow(unused_imports)]
     use mod_api::{ItemPart, Registrar, RegistrationContext};
 
     #[derive(Clone, Default)]

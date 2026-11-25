@@ -1,28 +1,18 @@
 //! `WitherBoss.hurtServer` and `Shulker.hurtServer` inspect the direct AbstractArrow,
 //! not the damage type: ThrownTrident extends AbstractArrow but /damage does not.
-#[allow(unused_imports)]
-use crate::game::Game;
-#[allow(unused_imports)]
 use crate::game::api_values::TryIntoApi;
-#[allow(unused_imports)]
-use crate::game::native_entity_refs::tests::{bind_local_player, with_game};
-#[allow(unused_imports)]
+use crate::game::native_entity_refs::tests::with_game;
 use mod_api::{
     Flow, HitHost, Hooks, HurtSource, LivingDeathEvent, LivingIncomingDamageEvent, ModEntry,
     ServerHost,
 };
-#[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
 use sunrise_client::{
-    chunk::Chunk,
     items::ItemStack,
     mobs::{Mob, Who},
-    motion::PlayerMotion,
     projectiles::{Projectile, ProjectileKind},
 };
-#[allow(unused_imports)]
-use sunrise_core::{geometry::Vec3, nbt::Tag, position::ChunkPos};
+use sunrise_core::{geometry::Vec3, nbt::Tag};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(in crate::game) struct Hit {

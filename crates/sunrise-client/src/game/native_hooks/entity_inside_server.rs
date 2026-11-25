@@ -1,28 +1,11 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::entity_inside::*;
+#[cfg(test)]
+use super::*;
 
 #[cfg(test)]
 pub(in crate::game) mod sweep_tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::entity_inside::sweep_tests::InsideMod;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::entity_inside::sweep_tests::InsidePart;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::entity_inside::sweep_tests::arrow_shot;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::entity_inside::sweep_tests::install_inside_mod;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::entity_inside::sweep_tests::item_at_blocks;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::entity_inside::sweep_tests::sweep_game_player;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::entity_inside::sweep_tests::sweep_game_player_runs;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::entity_inside::sweep_tests::*;
+    use crate::game::native_hooks::entity_inside::sweep_tests::InsidePart;
+    use crate::game::native_hooks::entity_inside::sweep_tests::install_inside_mod;
+    use crate::game::native_hooks::entity_inside::sweep_tests::item_at_blocks;
 
     /// A killing write stops the item's flush: the walk still reaches both blocks,
     /// the writes after the destruction never apply.

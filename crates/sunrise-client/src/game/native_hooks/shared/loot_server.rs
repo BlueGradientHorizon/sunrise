@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::loot::*;
+use super::*;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The mods' say on a broken block's drops (`native_loot_drops`).

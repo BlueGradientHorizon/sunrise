@@ -1,11 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tables::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::{collections::HashMap, sync::Arc};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::items::EntityTypeTags;
+use super::super::Game;
+use std::{collections::HashMap, sync::Arc};
+use sunrise_client::items::EntityTypeTags;
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {

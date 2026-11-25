@@ -1,6 +1,4 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use sunrise_client::items::BlockLootRoll;
 
 impl GameLevel<'_> {
@@ -98,20 +96,9 @@ impl GameLevel<'_> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::*;
-    #[allow(unused_imports)]
-    use crate::game::api_values::TryIntoApi;
-    #[allow(unused_imports)]
-    use crate::game::native_entity_refs::tests::with_game;
-    #[allow(unused_imports)]
-    use mod_api::{EnchantedBlockLootEvent, Hooks, LevelHost, ModEntry};
-    #[allow(unused_imports)]
-    use mod_platform::testing::with_mods;
-    #[allow(unused_imports)]
+    use mod_api::{EnchantedBlockLootEvent, Hooks, LevelHost};
     use std::sync::{Arc, Mutex};
-    #[allow(unused_imports)]
-    use sunrise_core::random::{LegacyRandom, RandomSource};
 
     #[derive(Debug, PartialEq)]
     pub(in crate::game) struct Read {

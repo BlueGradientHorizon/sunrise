@@ -1,19 +1,8 @@
 //! ServerPlayer.tick precedes the connection phase, including across levels.
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use crate::game::levels::{ServerTickPhase, server_tick_phases};
-#[allow(unused_imports)]
-use crate::game::native_entity_refs::tests::with_game;
-#[allow(unused_imports)]
-use crate::game::native_item_places::tests::{guest, open_to_lan};
-#[allow(unused_imports)]
 use mod_api::{HostSide, ServerHost};
-#[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
-use sunrise_client::chunk::Chunk;
-#[allow(unused_imports)]
 use sunrise_world::registry::BlockRegistry;
 
 /// A stub for two levels, each with one connection mining one block. Drive

@@ -1,60 +1,17 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::BANNER_WHITE;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::DECORATION_TYPES;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::Decoration;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::FRAME;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::Framed;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::HOST;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::Holder;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::Key;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::MapBanner;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::MapData;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::MapFrame;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::Maps;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::PLAYER;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::PLAYER_OFF_LIMITS;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::PLAYER_OFF_MAP;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::StaticDecoration;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::decoration_pose;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::decoration_pose_at;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::map_id;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::packed_rgba;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::shown_on_frame;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::collections::HashMap;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    blocks::{Fluid, MAP_COLORS},
-    hud::{HudBatch, MAP_SLOTS, Rect, map_slot_sprite},
-    items::ItemStack,
+use super::Game;
+use crate::game::server_side::maps::Decoration;
+use crate::game::server_side::maps::Key;
+use crate::game::server_side::maps::MapData;
+use crate::game::server_side::maps::decoration_pose;
+use crate::game::server_side::maps::decoration_pose_at;
+use crate::game::server_side::maps::map_id;
+use crate::game::server_side::maps::packed_rgba;
+use crate::game::server_side::maps::shown_on_frame;
+use crate::game::server_side::maps::*;
+use sunrise_client::{
+    hud::{HudBatch, Rect, map_slot_sprite},
     mesher::Vertex,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::nbt::{JavaString, Tag};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `renderMap`: map `id` at pose `m`, its background (with a 7-pixel

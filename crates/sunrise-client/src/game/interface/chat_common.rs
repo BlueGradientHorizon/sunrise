@@ -1,15 +1,11 @@
 //! Common command registries, resource-id caches, permissions, and shared helpers.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
-#[allow(unused_imports)]
 use sunrise_client::command::Registries;
-#[allow(unused_imports)]
 use sunrise_world::{
     heightmap::{HeightmapState, HeightmapType},
     registry::{BlockRegistry, BlockStateId},

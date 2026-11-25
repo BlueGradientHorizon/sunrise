@@ -3,26 +3,21 @@
 //! blows it up anywhere else (`useWithoutItem`), and respawning goes to it
 //! (`ServerPlayer.findRespawnAndUseSpawnBlock`, `PlayerList.respawn`),
 //! using a charge.
-#[allow(unused_imports)]
 use super::{Dim, Game};
-#[allow(unused_imports)]
 use mod_api::client::first_person::Hand;
-#[allow(unused_imports)]
 use sunrise_client::{
     Result,
     blocks::Fluid,
     collisions::{SceneCollisions, no_collision_empty},
     items::ItemStack,
     mobs::Who,
-    stand_up::{StandUpLevel, StandUpType, bed_forward, stand_up_fallback},
+    stand_up::{StandUpLevel, StandUpType, stand_up_fallback},
     text::Text,
 };
-#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, Axis, Vec3, VoxelShape},
     position::BlockPos,
 };
-#[allow(unused_imports)]
 use sunrise_world::{
     collision_context::CollisionContext, level::data::state_flags, registry::BlockStateId,
 };

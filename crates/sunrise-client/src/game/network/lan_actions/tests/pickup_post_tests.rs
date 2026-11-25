@@ -1,20 +1,11 @@
 //! `item_picked_up_post` on whole and partial pickups through the game's own pickup
 //! paths, the host's player (`tick_dropped_items`) and a LAN guest (`guest_pickups`),
 //! with literal counts.
-#[allow(unused_imports)]
-use crate::game::{Game, native_entity_refs::tests::collect_all_entities};
-#[allow(unused_imports)]
+use crate::game::native_entity_refs::tests::collect_all_entities;
 use mod_api::{Hooks, ItemPickedUpEvent, ItemPickedUpPostEvent, ModEntry, ServerHost, TriState};
-#[allow(unused_imports)]
 use mod_platform::testing::with_mods;
-#[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
 use sunrise_client::items::ItemStack;
-#[allow(unused_imports)]
-use sunrise_client::motion::PlayerMotion;
-#[allow(unused_imports)]
-use sunrise_core::geometry::Vec3;
 
 #[derive(Default)]
 pub(in crate::game) struct State {

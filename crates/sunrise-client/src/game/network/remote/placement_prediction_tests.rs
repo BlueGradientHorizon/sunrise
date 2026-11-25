@@ -1,11 +1,8 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use crate::game::{
     native_connection_groups::ReceivedGroup,
     native_entity_refs::tests::{with_game_role, with_game_role_client},
 };
-#[allow(unused_imports)]
 use mod_api::{
     BlockPart, BlockState, CanSurviveEvent, CanSustainPlantEvent, FenceGateInWallEvent, Hooks,
     LevelSide, MayPlaceOnEvent, Registrar, StateForPlacementEvent,

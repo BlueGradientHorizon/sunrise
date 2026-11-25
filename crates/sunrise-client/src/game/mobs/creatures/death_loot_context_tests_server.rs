@@ -1,21 +1,9 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::death_loot_context_tests::BlockTool;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::death_loot_context_tests::CancelOnce;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::death_loot_context_tests::ChangeKillerHand;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::death_loot_context_tests::Nested;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::death_loot_context_tests::Observation;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::death_loot_context_tests::Probe;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::death_loot_context_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::{Arc, Mutex};
+use super::*;
+use crate::game::creatures::death_loot_context_tests::CancelOnce;
+use crate::game::creatures::death_loot_context_tests::ChangeKillerHand;
+use crate::game::creatures::death_loot_context_tests::Nested;
+use crate::game::creatures::death_loot_context_tests::Probe;
+use std::sync::{Arc, Mutex};
 
 #[test]
 #[ignore = "daily"]

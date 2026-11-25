@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::tick::*;
+use super::*;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn advance_guest_entity_clock(&mut self, conn: u32) {

@@ -1,21 +1,11 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::storage_common::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
+use super::Game;
+use sunrise_client::{
     containers::{BlockEntity, is_chest_block},
-    items::ItemStack,
     text::Text,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::random::RandomSource;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_gameplay::chests::{
-    chest_connected_pos, is_shulker_box,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_gameplay::chests::{chest_half, facing_step};
+use sunrise_core::random::RandomSource;
+use sunrise_gameplay::chests::facing_step;
+use sunrise_gameplay::chests::is_shulker_box;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Closing it copies the items back and keeps the block entity, as vanilla's

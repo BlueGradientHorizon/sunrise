@@ -1,17 +1,8 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::use_hand::scaffolding_inside_tests::name;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::use_hand::scaffolding_inside_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{Game, Hit, game_tests::tests::server_game};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    command::args::GameMode, items::ItemStack, motion::PlayerMotion,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use winit::keyboard::KeyCode;
+use crate::game::server_side::use_hand::scaffolding_inside_tests::name;
+use crate::game::server_side::use_hand::scaffolding_inside_tests::*;
+use crate::game::{Hit, game_tests::tests::server_game};
+use sunrise_client::{command::args::GameMode, items::ItemStack, motion::PlayerMotion};
+use sunrise_core::geometry::Vec3;
 
 /// A player standing inside a scaffolding block, looking straight up: the eye
 /// is inside the block's outline (a full block while scaffolding is in hand),

@@ -3,18 +3,13 @@
 //! (`Registrar::fluid_interaction`) and the files of content mods
 //! (`data/<id>/sunrise/fluid_interaction/`), resolved against the open world's tags and
 //! installed on its behaviours for `LiquidBlock.shouldSpreadLiquid`.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use std::sync::Arc;
-#[allow(unused_imports)]
 use sunrise_items::items::Items;
-#[allow(unused_imports)]
 use sunrise_mod_package::content::{
     FluidInteraction,
     fluid_interaction::{BlockMatch, Neighbour},
 };
-#[allow(unused_imports)]
 use sunrise_world::{
     fluid::FluidKind,
     level::{

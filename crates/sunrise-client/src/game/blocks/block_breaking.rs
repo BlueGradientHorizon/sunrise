@@ -1,7 +1,6 @@
 //! Breaking blocks: a held tool mining a block, `break_block` and the player's break with its drops
 //! (`Block.popResource` for a broken block), the destroy-progress cracks shown to everyone, and a
 //! bundle dropping its content.
-#[allow(unused_imports)]
 use super::*;
 
 impl Game<'_, crate::game::client_side::ClientState> {

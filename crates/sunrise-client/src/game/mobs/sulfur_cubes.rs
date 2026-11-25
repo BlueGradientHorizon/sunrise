@@ -2,17 +2,13 @@
 //! `remove`): feeding babies, swallowing a held block, shearing it back
 //! out, lighting an explosive one, swallowing blocks from the ground and
 //! splitting into two babies.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use sunrise_client::{
     items::ItemStack,
-    mesher::Vertex,
-    mobs::{Mob, Species, Who, sulfur_cube},
+    mobs::{Species, Who, sulfur_cube},
     projectiles::Projectile,
     text::Text,
 };
-#[allow(unused_imports)]
 use sunrise_core::position::BlockPos;
 
 impl Game<'_, crate::game::server_side::ServerState> {

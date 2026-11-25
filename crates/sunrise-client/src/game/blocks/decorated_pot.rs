@@ -2,19 +2,9 @@
 //! entities): the loot table a trial chamber pot holds, rolled into its item
 //! the first time the item is read (`RandomizableContainer.unpackLootTable`),
 //! and `DecoratedPotBlock.useItemOn` / `useWithoutItem`.
-#[allow(unused_imports)]
 use super::{Game, spill};
-#[allow(unused_imports)]
-use sunrise_client::{
-    items::ItemStack,
-    mobs::Who,
-    particles::{ParticleOptions, ParticleType},
-    random_sequences::RandomSequences,
-    save,
-};
-#[allow(unused_imports)]
+use sunrise_client::{random_sequences::RandomSequences, save};
 use sunrise_core::random::LegacyRandom;
-#[allow(unused_imports)]
 use {
     sunrise_core::nbt::Tag,
     sunrise_world::loot::{ContainerLootContext, LootData},

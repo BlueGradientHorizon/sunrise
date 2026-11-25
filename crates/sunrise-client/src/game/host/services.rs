@@ -1,12 +1,8 @@
 //! The game's implementations of the mod API's service traits.
-#[allow(unused_imports)]
 #[cfg(feature = "client")]
 use crate::game::ClientGame;
-#[allow(unused_imports)]
-use crate::game::{ServerGame, api_values::TryIntoEngine};
-#[allow(unused_imports)]
+use crate::game::ServerGame;
 use mod_api::*;
-#[allow(unused_imports)]
 use std::sync::Arc;
 
 #[cfg(feature = "client")]

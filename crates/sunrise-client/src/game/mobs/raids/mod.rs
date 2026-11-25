@@ -2,13 +2,9 @@
 //! their waves, boss bar, victory and the raiders' bookkeeping. The rules are
 //! `sunrise_client::patrol` and `sunrise_client::raid`; this is the game's
 //! side of them.
-#[allow(unused_imports)]
 use super::{Dim, Game, creatures::Finalized};
-#[allow(unused_imports)]
 use std::collections::{HashMap, HashSet};
-#[allow(unused_imports)]
 use sunrise_client::mobs::villager as mobs_villager;
-#[allow(unused_imports)]
 use sunrise_client::{
     effects::{EffectInstance, OmenTick},
     lan::playerdata::ints_uuid,
@@ -21,14 +17,11 @@ use sunrise_client::{
     raid::{self, Action, BarName, RaidLevel, RaidPlayer, RaiderInfo, RaiderType, Raids, Spawn},
     random_source,
 };
-#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
 use sunrise_core::{
     geometry::Vec3,
     random::{LegacyRandom, LevelRandom, RandomSource},
 };
-#[allow(unused_imports)]
 use sunrise_gameplay::village_siege::{SiegeLevel, VillageSiege};
 
 /// Patrol and raid state owned by the game.

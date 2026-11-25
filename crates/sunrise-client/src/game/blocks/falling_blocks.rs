@@ -1,6 +1,5 @@
 //! Falling block entities (`FallingBlockEntity.tick`): one block's tick (`tick_one_falling`), its move
 //! (`fall_step`) and the item entity it leaves as a drop (`drop_falling_block`, `Entity.spawnAtLocation`).
-#[allow(unused_imports)]
 use super::*;
 
 impl Game<'_, crate::game::server_side::ServerState> {

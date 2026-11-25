@@ -2,11 +2,8 @@
 //! pumpkin or jack o'lantern on two snow blocks makes a snow golem, and on a
 //! T of four iron blocks (arms along X or Z, nothing beside the legs) an iron
 //! golem. Players placing the pumpkin and dispensers share it.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use sunrise_client::Result;
-#[allow(unused_imports)]
 use sunrise_client::block_pattern::{
     IRON_GOLEM_BASE, IRON_GOLEM_FULL, SNOW_GOLEM_BASE, SNOW_GOLEM_FULL,
 };

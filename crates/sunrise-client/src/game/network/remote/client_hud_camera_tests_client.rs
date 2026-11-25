@@ -1,55 +1,20 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::RemoteDimensionEntry;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_hud_camera_tests::GROUPS;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_hud_camera_tests::Groups;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_hud_camera_tests::LOCAL;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_hud_camera_tests::MOB;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_hud_camera_tests::SIZE;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_hud_camera_tests::Sprite;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_hud_camera_tests::WATCHED;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_hud_camera_tests::attributes;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_hud_camera_tests::data;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_hud_camera_tests::drawn_groups;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_hud_camera_tests::group_of;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_hud_camera_tests::id;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_hud_camera_tests::mount;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_hud_camera_tests::num;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_hud_camera_tests::run_hud_bars_follow_the_camera_player_like_26_3;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_hud_camera_tests::spawn;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_hud_camera_tests::vanilla_groups;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_hud_camera_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
+use crate::game::remote::RemoteDimensionEntry;
+use crate::game::remote::tests::client_hud_camera_tests::LOCAL;
+use crate::game::remote::tests::client_hud_camera_tests::MOB;
+use crate::game::remote::tests::client_hud_camera_tests::WATCHED;
+use crate::game::remote::tests::client_hud_camera_tests::attributes;
+use crate::game::remote::tests::client_hud_camera_tests::data;
+use crate::game::remote::tests::client_hud_camera_tests::drawn_groups;
+use crate::game::remote::tests::client_hud_camera_tests::id;
+use crate::game::remote::tests::client_hud_camera_tests::mount;
+use crate::game::remote::tests::client_hud_camera_tests::num;
+use crate::game::remote::tests::client_hud_camera_tests::spawn;
+use crate::game::{
     Game, native_entity_refs::tests::with_client_game, native_lifecycle::NativeLifecycle,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::collections::BTreeMap;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    items::ItemStack, level_loading::Reason, motion::PlayerMotion,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::{
+use sunrise_client::{items::ItemStack, level_loading::Reason, motion::PlayerMotion};
+use sunrise_core::geometry::Vec3;
+use sunrise_protocol::{
     connection::Pipe,
     entity_data::{Value, serializer},
     item::Stack,

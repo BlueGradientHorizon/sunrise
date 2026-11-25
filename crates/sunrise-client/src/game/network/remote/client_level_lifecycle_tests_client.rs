@@ -1,8 +1,3 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::client_has_level;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_level_lifecycle_tests::*;
-
 /// #12148: a proxy moves the player to its next server. The last server's
 /// columns stay until the next Login, but Reconfigured already put in the
 /// next server's biome table, shorter when only the last server had a

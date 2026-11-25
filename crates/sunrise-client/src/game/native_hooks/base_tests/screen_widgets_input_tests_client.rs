@@ -1,35 +1,12 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::WindowKeyInput;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::MouseScrollingEvent;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{items::ItemStack, keybinds::VanillaMappingSlot, preedit, widgets};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use winit::{dpi::PhysicalPosition, event::Ime, keyboard::PhysicalKey, window::WindowId};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_widgets_tests::input_routing::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_widgets_tests::input_routing::Cancel;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_widgets_tests::input_routing::Seen;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_widgets_tests::input_routing::State;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_widgets_tests::input_routing::Declining;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_widgets_tests::input_routing::Observe;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_widgets_tests::input_routing::flow;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_widgets_tests::input_routing::with_input_game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_widgets_tests::input_routing::take;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_widgets_tests::input_routing::send;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_widgets_tests::input_routing::key;
+use super::*;
+use crate::game::native_hooks::base::screen_widgets_tests::input_routing::Cancel;
+use crate::game::native_hooks::base::screen_widgets_tests::input_routing::Seen;
+use crate::game::native_hooks::base::screen_widgets_tests::input_routing::key;
+use crate::game::native_hooks::base::screen_widgets_tests::input_routing::send;
+use crate::game::native_hooks::base::screen_widgets_tests::input_routing::take;
+use crate::game::native_hooks::base::screen_widgets_tests::input_routing::with_input_game;
+use sunrise_client::{items::ItemStack, keybinds::VanillaMappingSlot, preedit, widgets};
+use winit::{dpi::PhysicalPosition, event::Ime};
 
 #[test]
 #[ignore = "daily"]

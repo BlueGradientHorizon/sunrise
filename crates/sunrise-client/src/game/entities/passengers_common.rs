@@ -1,16 +1,11 @@
 //! Common passenger attachment and seating helpers shared by server and client.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use crate::game::server_side::{passengers::Riders, tnt::tnt_seat};
-#[allow(unused_imports)]
 use std::collections::HashMap;
-#[allow(unused_imports)]
 use sunrise_client::{
     camera::wrap_degrees,
     mobs::{drops::is_animal, riders},
 };
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {

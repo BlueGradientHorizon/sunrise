@@ -1,15 +1,8 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::chat::ChatTrust;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::chat::Decoration;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::chat::chat_type_decorate;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::chat::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::chat::{ChatSource, Tag as ChatTag};
+use super::*;
+use crate::game::remote::chat::ChatTrust;
+use crate::game::remote::chat::Decoration;
+use crate::game::remote::chat::chat_type_decorate;
+use sunrise_client::chat::{ChatSource, Tag as ChatTag};
 
 impl ChatTrust {
     /// `ChatTrustLevel.createTag`.

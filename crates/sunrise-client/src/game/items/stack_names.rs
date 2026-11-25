@@ -1,7 +1,5 @@
 //! Common item-stack display name and rarity colour helpers.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use sunrise_client::items::ItemStack;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {

@@ -1,5 +1,4 @@
 //! Recorded projectile weapons and the death-loot producer.
-#[allow(unused_imports)]
 use super::*;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {

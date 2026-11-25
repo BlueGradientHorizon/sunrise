@@ -1,7 +1,6 @@
 //! The startup's resource load: the stages the loading screen shows, the
 //! scoped threads each step runs on, and the core, gameplay and pack tables
 //! read from the prepared resources.
-#[allow(unused_imports)]
 use super::{resource_tables::PackParts, *};
 
 #[cfg(test)]

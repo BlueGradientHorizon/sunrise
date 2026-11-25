@@ -1,38 +1,19 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::enchanted_block_loot::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::items::BlockLootRoll;
+#[cfg(test)]
+use super::*;
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::api_values::TryIntoApi;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_entity_refs::tests::with_game;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::enchanted_block_loot::tests::Fortune;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::enchanted_block_loot::tests::POS;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::enchanted_block_loot::tests::ROLLS;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::enchanted_block_loot::tests::Read;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_hooks::enchanted_block_loot::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use mod_api::{
-        EnchantedBlockLootEvent, Hooks, LevelHost, ModEntry,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use mod_platform::testing::with_mods;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use std::sync::{Arc, Mutex};
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_core::random::{LegacyRandom, RandomSource};
+    use super::*;
+    use crate::game::api_values::TryIntoApi;
+    use crate::game::native_entity_refs::tests::with_game;
+    use crate::game::native_hooks::enchanted_block_loot::tests::Fortune;
+    use crate::game::native_hooks::enchanted_block_loot::tests::POS;
+    use crate::game::native_hooks::enchanted_block_loot::tests::ROLLS;
+    use crate::game::native_hooks::enchanted_block_loot::tests::Read;
+    use mod_api::ModEntry;
+    use mod_platform::testing::with_mods;
+    use std::sync::{Arc, Mutex};
+    use sunrise_core::random::{LegacyRandom, RandomSource};
 
     /// gravel.json's `table_bonus` is `[0.1, 0.14285715, 0.25, 1.0]`: at
     /// level 3 every break gives flint, at level 0 few do. The answer reaches

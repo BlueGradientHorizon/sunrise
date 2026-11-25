@@ -1,28 +1,11 @@
 //! The leave notification shared by closed connections and kicked fake players.
 
-#[allow(unused_imports)]
-use super::Game;
-#[allow(unused_imports)]
-use sunrise_client::lan::guest::Guest;
-
 #[cfg(test)]
 pub(in crate::game) mod player_leave_tests {
-    #[allow(unused_imports)]
-    use crate::game::{
-        Dim, Game, native_entity_refs::tests::run_fresh_cases,
-        native_guest_turn_tests::with_guests, native_item_places::tests::guest,
-    };
-    #[allow(unused_imports)]
-    use mod_api::{
-        Hooks, ModEntry, PlayerBedLeaveEvent, PlayerLoggedOutEvent, Registrar, ServerHost,
-    };
-    #[allow(unused_imports)]
+    use crate::game::native_entity_refs::tests::run_fresh_cases;
+    use mod_api::{Hooks, PlayerBedLeaveEvent, PlayerLoggedOutEvent, Registrar, ServerHost};
     use std::sync::{Arc, Mutex};
-    #[allow(unused_imports)]
-    use sunrise_client::lan::{NetEvent, playerdata};
-    #[allow(unused_imports)]
     use sunrise_core::nbt::{Compound, Tag};
-    #[allow(unused_imports)]
     use sunrise_mod_runtime::attachments::{
         AttachmentCodec, AttachmentError, AttachmentType, Holder,
     };

@@ -1,42 +1,16 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Arg, Context, Game, R, Target, err};
-#[allow(unused_imports)]
+use super::{Arg, Context, Game, R, Target, err};
 pub(in crate::game::server_side) use crate::game::commands::items::Owner;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::commands::items::Slot;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::items::SlotCandidate;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::items::contents::Component;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::items::edit_components;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::items::list_operation;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::items::matches_name;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::items::merge_compound;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::items::mob_slot;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::items::player_slot_names;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::items::set_custom_data;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::items::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    command::{CommandError, args::ItemInput},
-    containers::BlockEntity,
-    furnace::FurnaceCooking,
-    items::ItemStack,
-    scoreboard_cmd::{Holder, Tracker},
+use crate::game::commands::items::edit_components;
+use crate::game::commands::items::list_operation;
+use crate::game::commands::items::mob_slot;
+use crate::game::commands::items::set_custom_data;
+use crate::game::commands::items::*;
+use sunrise_client::{
+    containers::BlockEntity, furnace::FurnaceCooking, items::ItemStack, scoreboard_cmd::Tracker,
     text::Text,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::nbt::Tag;
+use sunrise_core::nbt::Tag;
 
 #[path = "items/slot_sources_server.rs"]
 pub(in crate::game) mod slot_sources;
@@ -999,24 +973,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod mob_equipment_command_tests {
-    #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::{Target, data::DataRef};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::chunk::Chunk;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::position::ChunkPos;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::items::mob_equipment_command_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::items::mob_equipment_command_tests::with_game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::items::mob_equipment_command_tests::actor;
+    use crate::game::commands::items::mob_equipment_command_tests::with_game;
 
     #[test]
     #[ignore = "daily"]
@@ -1134,12 +1091,7 @@ pub(in crate::game::server_side) use crate::game::commands::items::mob_equipment
 
 #[cfg(test)]
 pub(in crate::game) mod registered_slot_source_read_tests {
-    #[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::items::registered_slot_source_read_tests::*;
+    use super::*;
 
     #[test]
     #[ignore = "daily"]
@@ -1241,14 +1193,8 @@ pub(in crate::game::server_side) use crate::game::commands::items::registered_sl
 
 #[cfg(test)]
 pub(in crate::game) mod registered_slot_source_preservation_tests {
-    #[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::items::registered_slot_source_preservation_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::items::registered_slot_source_preservation_tests::count;
+    use super::*;
+    use crate::game::commands::items::registered_slot_source_preservation_tests::count;
 
     /// A command the player types runs as them (`CommandSourceStack.getEntity`),
     /// so `source:"this"` is their own slots without an `execute as`.

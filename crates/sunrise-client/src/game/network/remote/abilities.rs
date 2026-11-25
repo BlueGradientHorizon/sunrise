@@ -1,7 +1,5 @@
 //! Client-side `LocalPlayer.abilities` and `PlayerInfo` game mode sync (`ClientPacketListener`).
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use sunrise_client::lan::abilities::PlayerAbilities;
 
 /// `Abilities.walkingSpeed` before the server sends one.

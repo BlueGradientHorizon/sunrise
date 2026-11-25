@@ -1,13 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::attack_checks::arrow_attackable;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::attack_checks::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_protocol::{
-    packets::configuration::UpdateTags, text::translatable,
-};
+use super::*;
+use crate::game::lan_actions::attack_checks::arrow_attackable;
+use sunrise_protocol::text::translatable;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether a guest's attack on entity `id` ends before `Player.attack` (handleAttack).
@@ -84,32 +77,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::lan_actions::attack_checks::tests::disconnects;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::lan_actions::attack_checks::tests::tags;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::lan_actions::attack_checks::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::{
-        Audio, Options, Progress, Settings, load_resources,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_client::chunk::Chunk;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_client::lan::{
-        Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_core::position::ChunkPos;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_protocol::packets::configuration::{
-        ClientInformation, RegistryTags, TagEntry, UpdateTags,
-    };
+    use super::*;
+    use crate::game::lan_actions::attack_checks::tests::disconnects;
+    use crate::game::{Options, Progress, Settings, load_resources};
+    use std::sync::{Arc, atomic::AtomicI32, mpsc};
+    use sunrise_client::chunk::Chunk;
+    use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
+    use sunrise_core::position::ChunkPos;
+    use sunrise_protocol::packets::configuration::ClientInformation;
 
     /// handleAttack disconnects a player who attacks a dropped item, an experience orb,
     /// themselves, an arrow or a thrown trident (`invalid_entity_attacked`); a pig is

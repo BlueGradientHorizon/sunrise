@@ -1,19 +1,14 @@
 //! The sign editing screen (`SignEditScreen` / `HangingSignEditScreen`):
 //! opened when a sign is placed, four lines limited to the sign's line
 //! width, Up/Down/Enter move between lines, Escape or Done closes.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use sunrise_client::{
     containers::BlockEntity,
     hud::{HudBatch, rgba},
-    items::ItemStack,
     signs::editor_sprite,
     ui::EditBox,
 };
-#[allow(unused_imports)]
 use sunrise_protocol::packets::play::{self, Serverbound as S};
-#[allow(unused_imports)]
 use winit::keyboard::KeyCode;
 
 pub(in crate::game) struct SignEditor {

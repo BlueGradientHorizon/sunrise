@@ -1,26 +1,18 @@
-#[allow(unused_imports)]
-use crate::game::native_entity_refs::tests::{bind_local_player, with_game};
-#[allow(unused_imports)]
-use crate::game::{Game, GuestUse, Hit};
-#[allow(unused_imports)]
+use crate::game::native_entity_refs::tests::with_game;
 use mod_api::{
     BlockPart, BlockState, Hooks, ItemPart, LevelSide, MustSurviveEvent, PlacementContextEvent,
     PlacementSource, Registrar, StateForPlacementEvent,
 };
-#[allow(unused_imports)]
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
-#[allow(unused_imports)]
 use sunrise_client::{items::ItemStack, motion::PlayerMotion};
-#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Direction, Vec3},
     nbt::Tag,
     position::BlockPos,
 };
-#[allow(unused_imports)]
 use sunrise_world::level::{PlaceContext, PlacementSource as EnginePlacementSource};
 
 pub(in crate::game) struct Move;

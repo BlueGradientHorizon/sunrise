@@ -1,41 +1,17 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::lifecycle_tests_shared::BookMod;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::lifecycle_tests_shared::BoundBookMod;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::lifecycle_tests_shared::BoundBookScreen;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::lifecycle_tests_shared::BoundLayoutEdit;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::lifecycle_tests_shared::KEY;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::lifecycle_tests_shared::MENU;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::lifecycle_tests_shared::OpeningProbe;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::lifecycle_tests_shared::REOPENED_MENU;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::lifecycle_tests_shared::ReopenedMod;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::lifecycle_tests_shared::STONE;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::lifecycle_tests_shared::ScreenTrace;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::lifecycle_tests_shared::geometry;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::lifecycle_tests_shared::receive;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::lifecycle_tests_shared::with_bound_menu_type;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::lifecycle_tests_shared::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::{Mutex, OnceLock};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::recipe_book::{
-    BookFlags, settings_codec, settings_sync::Message,
-};
+use super::lifecycle_tests_shared::BookMod;
+use super::lifecycle_tests_shared::BoundBookMod;
+use super::lifecycle_tests_shared::BoundLayoutEdit;
+use super::lifecycle_tests_shared::KEY;
+use super::lifecycle_tests_shared::MENU;
+use super::lifecycle_tests_shared::REOPENED_MENU;
+use super::lifecycle_tests_shared::ReopenedMod;
+use super::lifecycle_tests_shared::STONE;
+use super::lifecycle_tests_shared::ScreenTrace;
+use super::lifecycle_tests_shared::geometry;
+use super::lifecycle_tests_shared::receive;
+use super::lifecycle_tests_shared::with_bound_menu_type;
+use super::*;
+use sunrise_client::recipe_book::{BookFlags, settings_sync::Message};
 
 /// Slot moves and hides keep the catalogue and nonce. An in-place open of
 /// the same numeric window discards both, as well as the old layout.

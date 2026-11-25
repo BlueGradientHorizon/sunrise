@@ -1,7 +1,6 @@
 //! Mod-supplied repository sources. Discovery owns the metadata and retained
 //! readers; selection and resource/data reloads use the ordinary pack paths.
-#[allow(unused_imports)]
-use super::{Game, api_values::TryIntoEngine, mods::ModsState};
+use super::{api_values::TryIntoEngine, mods::ModsState};
 use mod_api::{
     HookId, PackDiscoveryContext, PackFinderError, PackFinders, PackPosition, PackRegistration,
     PackSource, PackType,

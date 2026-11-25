@@ -1,54 +1,11 @@
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Game, Lerp, Remote};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::general::general_type_catalog;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::general::RemoteGeneral;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::general::RemoteGenerals;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::general::tick_remote_general;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::general::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use indexmap::IndexMap;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::collections::HashMap;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::join_seq::JoinSeq;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::geometry::{Aabb, Vec3};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_mod_runtime::attachments::{Attachments, Holder};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_protocol::general_entity::{self, Message};
+use sunrise_core::geometry::Vec3;
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::remote::general::tests::Declare;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::remote::general::tests::FUEL;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::remote::general::tests::attachment_message;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::remote::general::tests::row_ids;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::remote::general::tests::rows;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::remote::general::tests::spawn;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::remote::general::tests::spawn_facing;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::remote::general::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_mod_runtime::attachments::Holder;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_protocol::packets::play::{
-        self, Clientbound as C,
-    };
+    use super::*;
+    use crate::game::remote::general::tests::Declare;
+    use crate::game::remote::general::tests::spawn;
 
     #[test]
     #[ignore = "daily"]

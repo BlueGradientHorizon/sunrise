@@ -1,21 +1,12 @@
 //! Atomic play packet bundle dispatch against the recorded 26.3 witness.
-#[allow(unused_imports)]
-use crate::game::{native_entity_refs::tests::with_client_game, remote::RemoteDimensionEntry};
-#[allow(unused_imports)]
+use crate::game::native_entity_refs::tests::with_client_game;
 use std::time::{Duration, Instant};
-#[allow(unused_imports)]
-use sunrise_client::{
-    level_loading::Reason, motion::PlayerMotion, multiplayer, net::Session, title::Mode,
-};
-#[allow(unused_imports)]
-use sunrise_core::{geometry::Vec3, nbt::Tag};
-#[allow(unused_imports)]
+use sunrise_client::net::Session;
 use sunrise_protocol::{
     connection::Pipe,
-    entity_data::{PaintingHolder, PaintingVariant, Value, serializer},
     packets::{
         Empty, configuration as cfg,
-        play::{self, Clientbound as C, Serverbound as S, SpawnInfo},
+        play::{self, Clientbound as C, Serverbound as S},
     },
 };
 

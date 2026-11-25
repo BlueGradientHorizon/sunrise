@@ -11,7 +11,6 @@ pub(in crate::game) mod breeding;
 #[cfg(test)]
 pub(in crate::game) mod last_hurt_mob_tests;
 pub(in crate::game) mod living_draw;
-#[allow(unused_imports)]
 use living_draw::LivingFrame;
 #[cfg(test)]
 pub(in crate::game) mod mob_dispatch_panic_tests;
@@ -36,56 +35,26 @@ pub(in crate::game) mod spawn_egg_mob_tests;
 pub(in crate::game) mod spectator_view_tests;
 pub(in crate::game) mod world_view;
 #[allow(unused_imports)]
-use super::api_values::{TryIntoApi, TryIntoEngine};
-#[allow(unused_imports)]
-use super::level_sounds::LevelSound;
-#[allow(unused_imports)]
-use super::piston_push::Lid;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-use super::native_mob_draw::PlayerRender;
-#[allow(unused_imports)]
-use super::{
-    Dim, Game, InteractTarget,
-    entity_culling::EntityCullDecision,
-    native_projectiles::{Impact, PendingImpact, ProjectileHit, projectile_impact_event},
-    view_vector,
-};
-#[allow(unused_imports)]
-use mod_api::{EquipmentSlot, LootDrops, SoundSource};
-#[allow(unused_imports)]
+use super::api_values::TryIntoApi;
+use super::{Dim, Game, InteractTarget, native_projectiles::Impact, view_vector};
 use std::sync::Arc;
-#[allow(unused_imports)]
-use sunrise_assets::item_model::DisplayContext;
-#[allow(unused_imports)]
-use sunrise_client::actions::Action;
 #[allow(unused_imports)]
 use sunrise_client::{
     Result,
     arrows::EntityHit,
     blocks::Fluid,
     crafting::Recipes,
-    fast_hash::FxHashMap,
-    graphics::EntityCullingMode,
-    health::{Attack, HealthEvent, HurtSource, Hurting, Knock},
+    health::{Attack, HurtSource, Hurting, Knock},
     items::{ItemStack, Items},
-    join_seq::JoinSeq,
     mesher::Vertex,
     mobs::{
         Damage, DamageKind, Mob, MobEvent, MobWorld, PlayerView, Seen, SpawnSetup, Species, Who,
-        ai::{eating_sound, eating_sound_is_bound, feed_animal, takes_food},
-        entity_sounds::full_id,
-        finalize::Group,
         spawning::{self, BiomeFacts},
     },
-    particles::{ParticleOptions, ParticleType},
     projectiles::{Hit, Projectile, ProjectileKind},
 };
-#[allow(unused_imports)]
-use sunrise_client_render::render_geometry::EntitySpan;
-#[allow(unused_imports)]
 use sunrise_core::{
-    geometry::{Aabb, Direction, Vec3, trig::Mth},
+    geometry::{Aabb, Vec3},
     position::BlockPos,
     random::RandomSource,
 };

@@ -1,7 +1,5 @@
-#[allow(unused_imports)]
 use crate::game::commands::items::Slot;
-#[allow(unused_imports)]
-use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+use crate::game::{Options, Progress, Settings, load_resources};
 
 pub(in crate::game) fn with_game(check: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());

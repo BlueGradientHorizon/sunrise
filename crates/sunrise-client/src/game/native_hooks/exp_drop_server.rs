@@ -1,11 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::exp_drop::LiveBlockEntity;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::exp_drop::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::spill::{BlockDropEntity, BlockDrops};
+use super::*;
+use crate::game::native_hooks::exp_drop::LiveBlockEntity;
+use crate::game::spill::{BlockDropEntity, BlockDrops};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn entity_block_dropped(

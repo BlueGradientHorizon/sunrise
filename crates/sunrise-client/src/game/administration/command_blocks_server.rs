@@ -1,25 +1,18 @@
 //! Server-side command-block execution, ticks, chaining, and edit packet handling.
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::command_blocks_common::Pos;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Game, commands::execute::Source};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
+use super::command_blocks_common::Pos;
+use super::{Game, commands::execute::Source};
+use sunrise_client::{
     command_block::{self, CommandBlock, Mode},
     items::ItemStack,
     text::Text,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::position::BlockPos;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_gameplay::command_blocks::{
+use sunrise_core::position::BlockPos;
+use sunrise_gameplay::command_blocks::{
     CommandBlockEdit, CommandBlockTransition, command_block_mut, conditional, facing_step,
     facing_yaw, mark_condition_met, offset, set_powered,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_protocol::packets::play::{self, Clientbound as C};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use {
+use sunrise_protocol::packets::play::{self, Clientbound as C};
+use {
     sunrise_core::nbt::Tag,
     sunrise_world::{chunk::BlockState, level::flags},
 };

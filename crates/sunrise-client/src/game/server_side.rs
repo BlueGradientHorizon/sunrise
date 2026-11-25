@@ -1,6 +1,5 @@
 //! Server-owned fields of [`super::Game`].
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
+use super::*;
 
 #[path = "network/lan_actions/acting_state.rs"]
 pub(in crate::game) mod acting_state;

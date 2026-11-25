@@ -2,15 +2,11 @@
 //! vehicles, the jockeys that spawn mounted (chicken jockeys, spider
 //! jockeys, strider jockeys, zombie horsemen) and the skeleton horse trap.
 //! Saving riders under `Passengers` lives in `persist.rs`.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use std::collections::HashMap;
-#[allow(unused_imports)]
 use sunrise_client::mobs::{Species, riders};
-#[allow(unused_imports)]
 use sunrise_core::{
-    geometry::{Aabb, Vec3},
+    geometry::Vec3,
     random::{LegacyRandom, RandomSource},
 };
 

@@ -1,36 +1,8 @@
+use super::Game;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use super::level_sounds::LevelSound;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{Game, commands_common::Target};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::trident::Catcher;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::trident::remote_tick;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::trident::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{__private::TransactionFrame, SoundSource};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    arrows::{Pickup, back_off, clip_block_hit},
-    collisions::SceneCollisions,
-    enchant::EffectContext,
-    items::ItemStack,
-    join_seq::JoinSeq,
-    mesher::Vertex,
-    mobs::{Damage, DamageKind, Species, Who, anim::Poses},
-    projectiles::{Hit, ProjectileWorld},
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{
-    geometry::{Aabb, Vec3, traverse_blocks},
-    position::BlockPos,
-    random::RandomSource,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_gameplay::trident::{
-    HALF, ThrownTrident, breeze_deflect,
-};
+use sunrise_client::{arrows::Pickup, mesher::Vertex, mobs::anim::Poses};
+use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_gameplay::trident::{HALF, ThrownTrident};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// ThrownTridentRenderer.

@@ -1,11 +1,6 @@
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use super::movement::stepped_move;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::entity::Entity;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::motion::*;
+use super::*;
+use crate::game::entity::Entity;
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {

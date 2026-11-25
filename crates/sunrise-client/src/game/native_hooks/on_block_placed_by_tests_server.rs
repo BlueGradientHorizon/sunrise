@@ -1,42 +1,18 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_entity_refs::tests::{
-    bind_local_player, run_fresh_cases, with_game_at,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::on_block_placed_by_tests::CRATE;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::on_block_placed_by_tests::Crate;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::on_block_placed_by_tests::Notice;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::on_block_placed_by_tests::Probe;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::on_block_placed_by_tests::SKULL;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::on_block_placed_by_tests::crate_stack;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::on_block_placed_by_tests::shulker_stack;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::on_block_placed_by_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{Game, GuestUse, Hit};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{
-    BlockEntityPart, BlockPart, Hooks, HostBlockStates, ItemPart, OnBlockPlacedByEvent, ServerHost,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
+use crate::game::native_entity_refs::tests::{bind_local_player, run_fresh_cases, with_game_at};
+use crate::game::native_hooks::on_block_placed_by_tests::CRATE;
+use crate::game::native_hooks::on_block_placed_by_tests::Notice;
+use crate::game::native_hooks::on_block_placed_by_tests::Probe;
+use crate::game::native_hooks::on_block_placed_by_tests::SKULL;
+use crate::game::native_hooks::on_block_placed_by_tests::crate_stack;
+use crate::game::native_hooks::on_block_placed_by_tests::shulker_stack;
+use crate::game::{GuestUse, Hit};
+use std::sync::{Arc, atomic::Ordering};
+use sunrise_client::{
     chunk::Chunk, containers::BlockEntity, items::ItemStack, motion::PlayerMotion,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::{
+use sunrise_core::{
     geometry::{Direction, Vec3},
-    nbt::{Compound, Tag},
+    nbt::Tag,
 };
 
 #[test]

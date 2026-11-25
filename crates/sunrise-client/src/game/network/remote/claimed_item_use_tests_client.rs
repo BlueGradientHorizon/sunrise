@@ -1,43 +1,19 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{C, Game, PlayerMotion, S, Vec3, play};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::claimed_item_use_tests::CUSTOM_DATA;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::claimed_item_use_tests::Call;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::claimed_item_use_tests::Calls;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::claimed_item_use_tests::OWNER;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::claimed_item_use_tests::Phase;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::claimed_item_use_tests::RecordUse;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::claimed_item_use_tests::SHIELD;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::claimed_item_use_tests::STICK;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::claimed_item_use_tests::with_owner;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::claimed_item_use_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
-    Hit, Screen,
+use super::{C, PlayerMotion, Vec3, play};
+use crate::game::remote::claimed_item_use_tests::CUSTOM_DATA;
+use crate::game::remote::claimed_item_use_tests::Call;
+use crate::game::remote::claimed_item_use_tests::OWNER;
+use crate::game::remote::claimed_item_use_tests::Phase;
+use crate::game::remote::claimed_item_use_tests::SHIELD;
+use crate::game::remote::claimed_item_use_tests::STICK;
+use crate::game::remote::claimed_item_use_tests::with_owner;
+use crate::game::{
+    Screen,
     native_entity_refs::tests::{with_client_game, with_game},
-    native_hotbar_slot::hotbar_slot_tests::{logged_in, sent},
+    native_hotbar_slot::hotbar_slot_tests::logged_in,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{
-    ClientHost, ClientItemUseBehavior, Hooks, ItemKey, Registrar, RegistrationContext,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    chunk::Chunk, interaction_input::Button, items::ItemStack,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::nbt::{JavaString, Tag};
+use std::sync::Arc;
+use sunrise_client::{interaction_input::Button, items::ItemStack};
+use sunrise_core::nbt::{JavaString, Tag};
 
 #[test]
 #[ignore = "daily"]

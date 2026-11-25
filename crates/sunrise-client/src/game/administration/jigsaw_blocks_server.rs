@@ -1,20 +1,11 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::jigsaw_blocks::Pos;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::jigsaw_blocks::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
+use super::Game;
+use crate::game::jigsaw_blocks::Pos;
+use sunrise_client::{
     containers::BlockEntity,
-    jigsaw_block::{self, JigsawBlock, JointType},
+    jigsaw_block::{JigsawBlock, JointType},
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_protocol::packets::play;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use {
-    sunrise_core::nbt::Tag, sunrise_world::worldgen::generator::JigsawQuery,
-};
+use sunrise_protocol::packets::play;
+use {sunrise_core::nbt::Tag, sunrise_world::worldgen::generator::JigsawQuery};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn jigsaw_block_mut(&mut self, pos: Pos) -> Option<&mut JigsawBlock> {

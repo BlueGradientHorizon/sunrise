@@ -1,8 +1,6 @@
 //! The game's shared read-only tables: `Resources` (blocks, items, recipes, mob types, biomes),
 //! `UiResources` and `PackResources`.
-#[allow(unused_imports)]
 use super::{api_values::TryIntoApi, *};
-#[allow(unused_imports)]
 use std::path::Path;
 
 pub(in crate::game) fn load_animate_tables(

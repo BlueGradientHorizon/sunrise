@@ -1,9 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::cauldrons::is_under_water;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::cauldrons::*;
+use super::*;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// What the cauldron at `pos` answers to `held` on a client, which only

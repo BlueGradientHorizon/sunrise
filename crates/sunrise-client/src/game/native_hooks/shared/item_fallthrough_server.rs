@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::item_fallthrough::*;
+use super::*;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn use_item_fallthrough(

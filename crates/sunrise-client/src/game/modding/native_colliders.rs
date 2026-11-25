@@ -5,29 +5,22 @@
 //! The server keeps a [`ColliderEntry`] by entity id beside the entity's attachments, and a
 //! client keeps what its tracking server sent in `Remote::colliders`. A level with no colliders
 //! holds empty maps, so nothing else in the game pays for them.
-#[allow(unused_imports)]
 use super::{
     Dim, Game,
     commands::Target,
     remote_vehicles::{PassengerSeat, passenger_root},
 };
-#[allow(unused_imports)]
 use mod_api::{Collider, ColliderError, EntityRef};
-#[allow(unused_imports)]
 use std::collections::{HashMap, HashSet};
-#[allow(unused_imports)]
 use sunrise_client::{
     colliders::{ColliderState, valid_rotation},
     fast_hash::FxHashMap,
 };
-#[allow(unused_imports)]
 use sunrise_core::{
     geometry::Vec3,
     nbt::{Compound, Tag},
 };
-#[allow(unused_imports)]
 use sunrise_mod_runtime::attachments::{Attachments, Holder};
-#[allow(unused_imports)]
 use sunrise_protocol::collider_sync::{self, Message};
 
 /// The save key of an entity's collider, beside its attachments.

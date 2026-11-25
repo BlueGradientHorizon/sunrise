@@ -1,105 +1,28 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::api_values::TryIntoApi;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::commands::Target;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{
-    Game,
-    creatures::{Finalized, SpawnSite},
-    potions::{Victim, mob_can_be_affected},
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::ADJACENCY;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::AMBIENT_INTERVAL;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::BODY;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::BREATH_WAIT;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::Breath;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::Crystal;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::CrystalDamage;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::DirectHit;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::Dragon;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::DragonHitOrigin;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::FIGHT_FILE;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::Fight;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::FightPlayer;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::FightWho;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::Hurt;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::MAX_HEALTH;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::PART_SIZES;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::Path;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::PathBox;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::Phase;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::Push;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::Respawn;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::SPECIAL;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::breath_expired;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::breath_puffs;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::dragon_part_id;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::dragon_part_index;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::dragon_part_wire_id;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::wrap;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::DragonPhase;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    health::{DamageContainer, DamageLevel, HurtSource, Hurting, Knock, Reduction},
+use super::Game;
+use super::api_values::TryIntoApi;
+use crate::game::server_side::dragon::Dragon;
+#[cfg(test)]
+use crate::game::server_side::dragon::FightWho;
+use crate::game::server_side::dragon::PART_SIZES;
+use crate::game::server_side::dragon::Phase;
+#[cfg(test)]
+use crate::game::server_side::dragon::SPECIAL;
+use crate::game::server_side::dragon::breath_puffs;
+use crate::game::server_side::dragon::dragon_part_id;
+use crate::game::server_side::dragon::dragon_part_index;
+use crate::game::server_side::dragon::wrap;
+use sunrise_client::{
     hud::HudBatch,
     hud_layout, hud_overlays,
     mesher::Vertex,
-    mobs::{Damage, DamageKind, Who},
     particles::{ParticleOptions, ParticleType},
-    projectiles::{Projectile, ProjectileKind},
-    random_source,
-    text::Text,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client_core::nbt_value;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client_gameplay::dragon_render::{
-    dissolve_color, dissolve_mask, dragon_rays,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::position::BlockPos;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{
+use sunrise_client_gameplay::dragon_render::{dissolve_color, dissolve_mask, dragon_rays};
+use sunrise_core::{
     geometry::{Aabb, Vec3, trig},
-    jmath,
-    random::{LegacyRandom, RandomSource},
+    random::RandomSource,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::entity_data::Value;
+use sunrise_protocol::entity_data::Value;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The boss bars' draws on a `w` x `h` GUI.

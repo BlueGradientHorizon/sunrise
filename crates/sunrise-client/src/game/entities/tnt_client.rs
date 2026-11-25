@@ -1,25 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{Game, entity::Entity};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::tnt::PrimedTnt;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::tnt::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::entity_rules::EntityRules;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::lan::playerdata::uuid_ints;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    Result, collisions::SceneCollisions, items::ItemStack, mesher::Vertex, mobs::Who, text::Text,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{
-    geometry::{Aabb, Vec3},
-    position::BlockPos,
-    random::RandomSource,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_world::level::flags as level_flags;
+use super::Game;
+use crate::game::server_side::tnt::PrimedTnt;
+use sunrise_client::mesher::Vertex;
+use sunrise_core::position::BlockPos;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `TntRenderer`: swelling over the last 10 ticks and flashing white every 5 ticks.

@@ -1,39 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{
-    Dim, Game,
-    commands_common::{R, Target, err},
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::bossbars::BossState;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::bossbars::Offer;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::bossbars::Scope;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::bossbars::Viewer;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::bossbars::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::collections::{HashMap, HashSet};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    boss_overlay,
-    bossbar::{self, BossBars},
-    command::{Arg, Context},
-    mobs::Species,
-    save,
-    scoreboard::{self as sb, Comp, canonical_component, json_to_tag},
-    scoreboard_cmd::format_list,
-    text::Text,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{
-    identifier::Identifier, java_hash_map::JavaHashMap, nbt::Tag,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::packets::play::{
-    self, BossAction, Clientbound as C,
-};
+use super::Game;
+use sunrise_client::boss_overlay;
+use sunrise_protocol::packets::play::{self};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientPacketListener.handleBossUpdate`.

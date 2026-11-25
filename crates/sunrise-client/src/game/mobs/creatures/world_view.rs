@@ -1,5 +1,4 @@
 //! The immutable world view used by mob simulation.
-#[allow(unused_imports)]
 use super::*;
 
 /// Side-specific inputs supplied to [`Game::mob_world_base_with`] by server or client.

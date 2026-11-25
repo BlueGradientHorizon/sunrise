@@ -7,24 +7,14 @@
 //! `Player.stabAttack`). The hit's feedback (`onKineticHit`) reaches the
 //! players around as entity event 2. A left click jabs instead
 //! (`PiercingWeapon.attack`), which Lunge turns into a dash.
-#[allow(unused_imports)]
-use super::{Game, view_vector};
+use super::Game;
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_client::spear::hits_in_reach;
-#[allow(unused_imports)]
 use sunrise_client::{
     attack_strength::delay,
-    collisions::SceneCollisions,
-    first_person::Hand,
-    items::ItemStack,
-    mobs::Damage,
-    spear::{HIT_FEEDBACK_TICKS, Kinetic, REACH},
+    spear::{HIT_FEEDBACK_TICKS, Kinetic},
 };
-#[allow(unused_imports)]
-use sunrise_core::{
-    geometry::{Aabb, Vec3, traverse_blocks},
-    position::BlockPos,
-};
+use sunrise_core::geometry::Aabb;
 
 /// The key of this window's own player in `Game::kinetic_feedback`.
 pub(in crate::game) const OWN: i32 = i32::MIN;

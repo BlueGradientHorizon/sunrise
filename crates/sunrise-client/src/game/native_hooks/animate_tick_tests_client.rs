@@ -1,37 +1,12 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::animate_tick_tests::Call;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::animate_tick_tests::Calls;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::animate_tick_tests::Hearts;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::animate_tick_tests::Register;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::animate_tick_tests::with_hearts;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::animate_tick_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
-    Game, native_client_session::tests::logged_client, native_entity_refs::tests::with_client_game,
+use crate::game::native_hooks::animate_tick_tests::with_hearts;
+use crate::game::{
+    native_client_session::tests::logged_client, native_entity_refs::tests::with_client_game,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{
-    AnimateTickEvent, BlockPart, BlockPos, ClientHost, Hooks, ModEntry, ParticleOptions, Registrar,
-    RegistrationContext,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    chunk::Chunk, motion::PlayerMotion, particles::ParticleType,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{
-    geometry::Vec3,
-    random::{LegacyRandom, RandomSource as _},
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_world::registry::BlockStateId;
+use mod_api::BlockPos;
+use std::sync::Arc;
+use sunrise_client::particles::ParticleType;
+use sunrise_core::random::{LegacyRandom, RandomSource as _};
+use sunrise_world::registry::BlockStateId;
 
 pub(in crate::game::client_side) fn level_random(
     game: &mut crate::game::ClientGame<'_>,

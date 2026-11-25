@@ -2,28 +2,14 @@
 //! (`vault`), the block's state as it changes, the rewards it ejects, the
 //! keys players insert (`VaultBlock.useItemOn`) and the display item spinning
 //! inside (`VaultRenderer`).
-#[allow(unused_imports)]
-use super::{
-    Game,
-    item_draw::{BlockItemDraw, block_entity_pose},
-};
-#[allow(unused_imports)]
-use sunrise_assets::item_model::DisplayContext;
-#[allow(unused_imports)]
+use super::Game;
 use sunrise_client::{
     Result,
     block_entities::BlockEntityLease,
-    block_entity_render::vertex_light,
-    camera::rotate_degrees,
     containers::BlockEntity,
-    item_render,
     items::ItemStack,
-    mesher::Vertex,
     vault::{Vault, VaultEvent, VaultLevel, VaultPlayer, VaultState},
 };
-#[allow(unused_imports)]
-use sunrise_client_render::block_entity_reach::Reach;
-#[allow(unused_imports)]
 use sunrise_core::random::{LegacyRandom, LevelRandom};
 
 pub(in crate::game) type Pos = (i32, i32, i32);

@@ -1,22 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::machines::crafter::CRAFTING_TICKS;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::machines::crafter::RESULT_SLOT;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::machines::crafter::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use serde_json::Value;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    advancements as adv,
-    containers::Crafter,
-    hud::{HudBatch, rgba},
-    menu::{Maps as _, Menu},
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::packets::play::{self, Serverbound as S};
+use super::*;
+use crate::game::server_side::machines::crafter::RESULT_SLOT;
+use sunrise_client::hud::{HudBatch, rgba};
+use sunrise_protocol::packets::play::{self, Serverbound as S};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The grid's current recipe result (`CrafterMenu.refreshRecipeResult`).

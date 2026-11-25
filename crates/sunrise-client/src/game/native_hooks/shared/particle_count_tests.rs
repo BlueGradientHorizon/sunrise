@@ -1,14 +1,5 @@
-#[allow(unused_imports)]
-use super::super::pickups::{Collector, Taken};
-#[allow(unused_imports)]
 use mod_api::ClientHost;
-#[allow(unused_imports)]
-use std::time::Duration;
-#[allow(unused_imports)]
 use sunrise_client::entities::ExperienceOrb;
-#[allow(unused_imports)]
-use sunrise_client::particles::{FireworkExplosion, ParticleOptions, ParticleType};
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
 
 pub(in crate::game) fn orb(at: Vec3) -> ExperienceOrb {

@@ -1,17 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::powder_snow::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::powder_snow::{
-    HeldSlot, added, extinguish_pitch,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    Result, cauldron, items::ItemStack, mobs::Who,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::{position::BlockPos, random::RandomSource};
+use super::Game;
+use crate::game::powder_snow::extinguish_pitch;
+use sunrise_client::{Result, items::ItemStack, mobs::Who};
+use sunrise_core::position::BlockPos;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Entity.playEntityOnFireExtinguishedSound

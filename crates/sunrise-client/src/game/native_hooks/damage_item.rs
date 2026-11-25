@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use crate::game::durability::Wearer;
 
 #[cfg(test)]
 thread_local! {

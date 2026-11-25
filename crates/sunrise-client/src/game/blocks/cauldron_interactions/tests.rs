@@ -1,15 +1,10 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::{bind_local_player, run_fresh_cases, with_game_at};
-#[allow(unused_imports)]
 use mod_api::{
     BlockUpdateFlags, CauldronDecision, CauldronUse, Hooks, ItemPlace, ItemResource, ServerHost,
     StatType,
 };
-#[allow(unused_imports)]
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-#[allow(unused_imports)]
 use sunrise_client::cauldron::{Outcome, interactions::Entry};
 
 pub(in crate::game) const POS: [i32; 3] = [0, 64, 0];

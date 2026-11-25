@@ -6,16 +6,12 @@
 #[cfg(test)]
 use super::held_items::in_attack_range;
 use super::held_items::{attack_range_contains, attack_reach};
-#[allow(unused_imports)]
-use super::{Game, Mining, minecarts::CartKind};
-#[allow(unused_imports)]
+use super::{Game, minecarts::CartKind};
 use sunrise_client::{
-    Result,
     attack_strength::HeldStack,
-    first_person::{Hand, HandWorld, Hit, SwingAnimation, UseResult, swing_duration},
+    first_person::{Hand, SwingAnimation, swing_duration},
     items::ItemStack,
 };
-#[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Vec3};
 
 /// The point a `ServerboundInteractPacket` carries: `EntityHitResult.getLocation()

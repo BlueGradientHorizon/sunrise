@@ -1,7 +1,6 @@
-#[allow(unused_imports)]
 use super::Game;
 #[allow(unused_imports)]
-use mod_api::{HookId, PlayerModel, PlayerSkinOverride};
+use mod_api::PlayerSkinOverride;
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {

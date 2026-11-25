@@ -1,7 +1,6 @@
 //! Weather and sky light for the player's level: whether it can have weather, the rain and thunder
 //! levels, where it rains or snows (`Level.isRainingAt`, the motion-blocking height), the weather's
 //! effects each tick and `Level.getSkyDarken` with `isDarkOutside`.
-#[allow(unused_imports)]
 use super::*;
 
 /// `ClientLevel.getPrecipitationAt`: a loaded column's biome and the level's sea level

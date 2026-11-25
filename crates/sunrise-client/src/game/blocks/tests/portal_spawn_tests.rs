@@ -3,17 +3,11 @@
 //! so (glowstone's 15 light, bedrock's `never`), and `EntityType.spawn` plays
 //! the new piglin's ambient sound once it is in the level, before the spawn
 //! sets its portal cooldown.
-#[allow(unused_imports)]
 use super::super::*;
-#[allow(unused_imports)]
 use std::sync::Arc;
-#[allow(unused_imports)]
 use sunrise_client::chunk::Chunk;
-#[allow(unused_imports)]
 use sunrise_client::motion::PlayerMotion;
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
 use sunrise_core::position::ChunkPos;
 
 pub(in crate::game) fn game<'a>(

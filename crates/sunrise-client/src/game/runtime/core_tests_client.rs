@@ -1,17 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::core_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::ServerHost;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::container_screen::{
-    Button, Clicks, Release, Target,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::keymapping::{
-    KeyAction, SNEAK, SPRINT, ToggleKeys,
-};
+use super::*;
 
 #[path = "incoming_tests/pet_order_client.rs"]
 pub(in crate::game) mod pet_order_tests;

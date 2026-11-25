@@ -6,22 +6,18 @@
 //! (`Kind::Mount`) with the mount's saddle, body item and chest copied in and
 //! written back, and the slots go to the client after each change, as
 //! `broadcastChanges` does.
-#[allow(unused_imports)]
 use super::{
     Dim, Game,
     lan::LanHost,
-    lan_actions::guest_within_entity_range,
     lan_crafting::GuestMenuEffects,
     mount_menu::{mount_columns, shows_body},
     transactions::{After, SaveChunkScope},
 };
-#[allow(unused_imports)]
 use sunrise_client::{
     items::ItemStack,
     menu::{Kind, Menu, QuickCraftDrag},
     mobs::nautilus,
 };
-#[allow(unused_imports)]
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// A guest's open mount menu.

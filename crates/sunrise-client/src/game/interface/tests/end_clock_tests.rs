@@ -1,9 +1,6 @@
 //! `/time` addresses the clock the End runs on: the one `World.end_clock`
 //! ticks and `world_clocks.dat` saves (`ServerClockManager.getInstance`).
-#[allow(unused_imports)]
-use crate::game::{Audio, Dim, Game, Options, Progress, Settings, execution_role, load_resources};
-#[allow(unused_imports)]
-use crate::save::Level;
+use crate::game::{Dim, Options, Progress, Settings, execution_role, load_resources};
 
 pub(in crate::game) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,

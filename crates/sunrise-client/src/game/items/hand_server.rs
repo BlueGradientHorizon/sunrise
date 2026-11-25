@@ -1,26 +1,8 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Game, Mining, minecarts::CartKind};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::hand::BreakSpeedDispatch;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::hand::HarvestDispatch;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::hand::OFFHAND;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::hand::interact_location;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::hand::matches_for_swap;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::hand::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    Result,
-    attack_strength::HeldStack,
-    first_person::{Hand, HandWorld, Hit, SwingAnimation, UseResult, swing_duration},
+use super::Game;
+use sunrise_client::{
+    first_person::{Hand, SwingAnimation, swing_duration},
     items::ItemStack,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::geometry::{Aabb, Vec3};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The item whose attack damage and speed modifiers the player has (`attack_item`).

@@ -6,14 +6,12 @@
 //! objective displayed below names. Other players' names (on a LAN host
 //! or a server) show whenever `LivingEntityRenderer.shouldShowName` allows,
 //! and the player's own in third person with the `ownNameTag` extra.
-#[allow(unused_imports)]
 use super::{Game, billboard_axes};
-#[allow(unused_imports)]
 use sunrise_client::{
     block_entity_render::vertex_light,
     hud::{HudAtlas, HudBatch, HudVertex},
     mesher::Vertex,
-    mobs::{Mob, Who},
+    mobs::Mob,
     save::uuid_text,
     scoreboard as sb,
     text::Text,

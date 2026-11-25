@@ -1,9 +1,6 @@
 //! A custom crafting remainder reaches the normal server toss moment.
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use std::result::Result;
-#[allow(unused_imports)]
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize, Ordering},

@@ -1,19 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::ClientPick;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::ClientPickEntityAccess;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::ResidentClientPickEntity;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::native_can_rider_interact;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{Dim, view_vector};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::CrosshairTarget;
+use super::*;
+use crate::game::native_hooks::client_pick::ResidentClientPickEntity;
+use crate::game::view_vector;
+use mod_api::CrosshairTarget;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The sole mod-output geometry boundary. Occlusion is intentionally not reapplied.

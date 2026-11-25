@@ -1,9 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{Game, QueuedChat, QueuedChatKind, Remote, Signature};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::chat_queue::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::time::{Duration, Instant};
+use super::{Game, QueuedChat, QueuedChatKind, Remote, Signature};
+use std::time::{Duration, Instant};
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {

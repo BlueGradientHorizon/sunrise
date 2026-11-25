@@ -1,11 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::use_hand::bow_enchantment_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
-    Audio, Game, Options, Progress, Settings, load_resources,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::items::ItemStack;
+use crate::game::{Options, Progress, Settings, load_resources};
 
 /// A game on the prepared resources with a creative player (as `crossbow.rs`).
 pub(in crate::game) fn game_with_player<'a>(

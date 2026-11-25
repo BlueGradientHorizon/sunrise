@@ -1,7 +1,5 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use sunrise_client::tab_list::{TabPlayer, default_skin};
+use sunrise_client::tab_list::default_skin;
 
 impl Remote {
     /// `PlayerInfo.getSkin`: resolved skin or the profile's default, independent of listing.

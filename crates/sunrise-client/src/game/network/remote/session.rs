@@ -1,8 +1,6 @@
-#[allow(unused_imports)]
 use super::*;
 
-#[allow(unused_imports)]
-use sunrise_protocol::packets::configuration::{ClientInformation, Transfer};
+use sunrise_protocol::packets::configuration::ClientInformation;
 
 /// Connection already started; its eventual packets still belong to the next listener.
 pub(in crate::game) struct RemoteOpening {

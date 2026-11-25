@@ -1,28 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_vanilla_reads_tests::PLAYER;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_vanilla_reads_tests::add;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_vanilla_reads_tests::join;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_vanilla_reads_tests::spawn;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_vanilla_reads_tests::tick_count;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_vanilla_reads_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
-    Game, Screen, native_entity_refs::tests::with_client_game,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::ClientHost;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::chunk::Chunk;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::{
-    connection::{ConnReader, ConnWriter},
-    packets::play::{self, Clientbound as C},
-};
+use crate::game::{Game, Screen};
+use sunrise_client::chunk::Chunk;
+use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// The server's teleport that makes the local player, on a stone floor, with the level loaded.
 pub(in crate::game) fn stand(

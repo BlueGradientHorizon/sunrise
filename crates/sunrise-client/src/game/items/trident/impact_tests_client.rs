@@ -1,18 +1,11 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::trident::impact_tests::aim_trident_at_wall;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::trident::impact_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
+use super::*;
+use crate::game::server_side::trident::impact_tests::aim_trident_at_wall;
+use crate::game::{
     native_entity_refs::tests::run_fresh_cases,
     native_projectiles::impact_probe::{Action, with_probe},
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::atomic::Ordering;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::mobs::Mob;
+use std::sync::atomic::Ordering;
+use sunrise_client::mobs::Mob;
 
 #[test]
 #[ignore = "daily"]

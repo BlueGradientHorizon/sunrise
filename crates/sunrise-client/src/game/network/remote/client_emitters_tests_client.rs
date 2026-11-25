@@ -1,29 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::super::{C, Game, play};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_emitters_tests::add_entity;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_emitters_tests::animate;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_emitters_tests::deliver;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_emitters_tests::registry_id;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_emitters_tests::with_isolated_client;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_emitters_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
-    native_entity_refs::tests::with_client_game, native_hotbar_slot::hotbar_slot_tests::logged_in,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::particles::ParticleType::{
-    self, Crit, EnchantedHit,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::random::{LegacyRandom, RandomSource};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::entity_data::{Value, serializer};
+use super::super::Game;
+use sunrise_client::particles::ParticleType::{self};
+use sunrise_core::random::{LegacyRandom, RandomSource};
 
 // Capture the level requests, before the limiter or providers consume random
 // draws. The expected sequence uses the 26.3 TrackingEmitter sampling contract

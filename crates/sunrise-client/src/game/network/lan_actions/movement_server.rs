@@ -1,9 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::movement::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::position::BlockPos;
+use super::*;
+use sunrise_core::position::BlockPos;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `Player.canGlide`: not flying, airborne, not riding, no levitation, and

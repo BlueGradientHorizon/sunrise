@@ -1,26 +1,10 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use crate::game::native_entity_refs::tests::{fixture_root, with_client_game, with_game_role};
-#[allow(unused_imports)]
-use crate::game::{execution_role::ExecutionRole, lan::LanHost};
-#[allow(unused_imports)]
+use crate::game::execution_role::ExecutionRole;
+use crate::game::native_entity_refs::tests::{fixture_root, with_game_role};
 use mod_api::prelude::ItemsHost;
-#[allow(unused_imports)]
-use mod_api::{BuildCreativeModeTabContentsEvent, Hooks, HostSide, ModEntry};
-#[allow(unused_imports)]
+use mod_api::{BuildCreativeModeTabContentsEvent, Hooks, HostSide};
 use std::sync::Mutex;
-#[allow(unused_imports)]
-use sunrise_client::lan::{
-    Lan, NetConfig,
-    chunks::ChunkEncoder,
-    data::SyncData,
-    hub::{Hub, HubConfig},
-};
-#[allow(unused_imports)]
 use sunrise_core::nbt::{Compound, Tag};
-#[allow(unused_imports)]
-use sunrise_world::loot::PackOverlay;
 
 #[derive(Default)]
 pub(in crate::game) struct Seen {

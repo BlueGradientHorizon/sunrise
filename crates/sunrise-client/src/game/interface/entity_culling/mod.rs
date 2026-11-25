@@ -1,6 +1,5 @@
 //! Entity mesh occlusion and view-distance checks.
 #[cfg(feature = "client")]
-#[allow(unused_imports)]
 use super::particle_culling::section_scene;
 use super::{
     Game, Vertex,

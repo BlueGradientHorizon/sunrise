@@ -1,22 +1,9 @@
 // 26.3 witness: real Hud, recorded into `.local` by `tools/test_camera_parity.py`.
-#[allow(unused_imports)]
-use crate::game::remote::RemoteDimensionEntry;
-#[allow(unused_imports)]
-use crate::game::{
-    Game, native_entity_refs::tests::with_client_game, native_lifecycle::NativeLifecycle,
-};
-#[allow(unused_imports)]
+use crate::game::native_entity_refs::tests::with_client_game;
 use std::collections::BTreeMap;
-#[allow(unused_imports)]
-use sunrise_client::{items::ItemStack, level_loading::Reason, motion::PlayerMotion};
-#[allow(unused_imports)]
-use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
 use sunrise_protocol::{
-    connection::Pipe,
     entity_data::{Value, serializer},
-    item::Stack,
-    packets::play::{self, Clientbound as C, SpawnInfo},
+    packets::play::{self, Clientbound as C},
 };
 
 pub(in crate::game) const SIZE: [u32; 2] = [427, 240];

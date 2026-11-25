@@ -1,13 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
+use super::*;
 pub(in crate::game::server_side) use crate::game::creatures::death_weapon::tests::WeaponProbe;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::creatures::death_weapon::tests::isolated;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::death_weapon::tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex};
 
 #[test]
 #[ignore = "daily"]

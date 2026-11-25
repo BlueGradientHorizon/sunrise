@@ -7,16 +7,12 @@
 #[path = "recipe_book/mod_screen.rs"]
 pub(in crate::game) mod mod_screen;
 
-#[allow(unused_imports)]
 use super::{Game, Screen};
-#[allow(unused_imports)]
 use mod_api::{RecipeTransferCheck, RecipeTransferResult};
-#[allow(unused_imports)]
 use std::{
     hash::{Hash, Hasher},
     time::{Duration, Instant},
 };
-#[allow(unused_imports)]
 use sunrise_client::{
     containers::{BlockEntity, FurnaceKind},
     hud::{HudBatch, Rect, rgba},

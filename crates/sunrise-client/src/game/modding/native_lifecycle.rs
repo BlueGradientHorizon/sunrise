@@ -2,16 +2,13 @@
 //! A paused pass
 //! observes nothing; a frozen world reports `world_running: false` except during a step.
 
-#[allow(unused_imports)]
 use std::sync::atomic::{AtomicU64, Ordering};
 
-#[allow(unused_imports)]
 use super::{
     Game,
     execution_role::ExecutionRole,
     scheduled_tasks::{ScheduledTasks, ServerTask, dispose_pending_task, report_failure, run_all},
 };
-#[allow(unused_imports)]
 use mod_api::{ScheduleError, TaskId};
 // Their old home, for mixin code that names them here.
 #[allow(unused_imports)]

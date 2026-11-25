@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
@@ -20,18 +19,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
 #[cfg(test)]
 pub(in crate::game) mod customize_chat_overlay_tests {
-    #[allow(unused_imports)]
-    use crate::game::native_entity_refs::tests::with_client_game;
-    #[allow(unused_imports)]
-    use mod_api::{ClientHost, CustomizeChatOverlayEvent, Hooks, ModEntry};
-    #[allow(unused_imports)]
-    use mod_platform::testing::with_mods;
-    #[allow(unused_imports)]
+    use mod_api::{ClientHost, CustomizeChatOverlayEvent, Hooks};
     use std::sync::{Arc, Mutex};
-    #[allow(unused_imports)]
     use sunrise_client::hud::HudBatch;
-    #[allow(unused_imports)]
-    use sunrise_client::text::Text;
 
     pub(in crate::game) type Seen = Arc<Mutex<Vec<(i32, i32, bool, i32, i32)>>>;
 

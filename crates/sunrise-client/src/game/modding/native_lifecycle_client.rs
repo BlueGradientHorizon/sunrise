@@ -1,27 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{
-    Game,
-    execution_role::ExecutionRole,
-    scheduled_tasks::{ScheduledTasks, ServerTask, dispose_pending_task, report_failure, run_all},
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_lifecycle::NEXT_EPOCH;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_lifecycle::NativeLifecycle;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_lifecycle::OpenAttempt;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_lifecycle::OpenState;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_lifecycle::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{
-    Authority, LifecycleContext, ServerTickPhase, TickId, WorldEpoch, WorldPhase,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{ScheduleError, TaskId};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::atomic::{AtomicU64, Ordering};
+use super::Game;
+use mod_api::Authority;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_lifecycle_open_started(&mut self) {

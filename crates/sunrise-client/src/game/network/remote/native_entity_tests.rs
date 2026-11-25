@@ -1,22 +1,8 @@
 //! A window joined to a server through memory, fed the server's packets as
 //! it would receive them: what its native mods read of the entities and the
 //! menu the server showed it.
-#[allow(unused_imports)]
-use crate::game::{
-    Audio, Game, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
-};
-#[allow(unused_imports)]
-use mod_api::EquipmentSlot;
-#[allow(unused_imports)]
 use std::sync::Arc;
-#[allow(unused_imports)]
-use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
-use sunrise_protocol::entity_data::Value;
-#[allow(unused_imports)]
-use sunrise_protocol::item::{Component, Stack, component};
-#[allow(unused_imports)]
-use sunrise_protocol::packets::play::{self, Clientbound as C};
+use sunrise_protocol::packets::play::{self};
 
 pub(in crate::game) fn spawn(dimension: &str) -> play::SpawnInfo {
     play::SpawnInfo {

@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use crate::game::remote::{Tracked, entity_sound_state, seat_passengers};
 
 /// `ClientPacketListener.handleSetEntityPassengersPacket`: the vehicle

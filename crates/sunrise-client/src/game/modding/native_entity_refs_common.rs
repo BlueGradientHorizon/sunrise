@@ -1,9 +1,6 @@
 //! Dual-role entity and level handle lookups shared across server and client roles.
-#[allow(unused_imports)]
 use super::{Game, commands::Target, remote::Remote, text_displays::Shows};
-#[allow(unused_imports)]
 use mod_api::{DimensionKey, EntityRef, LevelRef};
-#[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Vec3};
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {

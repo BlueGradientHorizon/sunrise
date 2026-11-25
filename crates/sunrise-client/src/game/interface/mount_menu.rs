@@ -7,12 +7,7 @@
 //! server the screen shows the server's menu (`ClientboundMountScreenOpenPacket`)
 //! and its clicks go out as container clicks; a server's players get theirs
 //! from game/network/lan_mount_menu.rs.
-#[allow(unused_imports)]
-use super::{
-    Game, Screen,
-    transactions::{After, SaveChunkScope},
-};
-#[allow(unused_imports)]
+use super::{Game, Screen};
 use sunrise_client::{
     hud::{HudBatch, rgba},
     items::ItemStack,

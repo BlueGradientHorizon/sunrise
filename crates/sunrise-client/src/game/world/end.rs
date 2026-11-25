@@ -2,30 +2,23 @@
 //! gateway travel, the obsidian arrival platform, the exit portal and the End
 //! sky. The dragon fight itself lives in game/mobs/dragon.rs: the podium is
 //! inactive until the dragon dies.
-#[allow(unused_imports)]
-use super::{Dim, Game, Resources, remote::Remote};
-#[allow(unused_imports)]
+use super::{Dim, Game};
 use sunrise_client::{
     Result,
     containers::BlockEntity,
-    environment::Environment,
-    gfx::CelestialBody,
     items::ItemStack,
     mesher::Vertex,
     mobs::Who,
-    particles::{ParticleOptions, ParticleType},
     projectiles::{Projectile, ProjectileKind},
     vanillagen::VanillaTerrain,
     world_spawn::PlayerSpawnFinder,
 };
-#[allow(unused_imports)]
 use sunrise_core::{
     geometry::Vec3,
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
 };
 
-#[allow(unused_imports)]
 use std::{collections::HashMap, sync::Arc};
 
 /// `TicketType.PORTAL`'s timeout, in ticks.

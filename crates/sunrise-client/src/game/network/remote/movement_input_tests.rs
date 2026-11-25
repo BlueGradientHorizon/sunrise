@@ -1,13 +1,8 @@
 //! Exercise the real local-player movement caller with and without a native listener.
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::with_client_game;
-#[allow(unused_imports)]
 use mod_api::{ClientHost, Hooks, MovementInputUpdateEvent};
-#[allow(unused_imports)]
 use sunrise_client::motion::PlayerMotion;
-#[allow(unused_imports)]
 use winit::keyboard::KeyCode;
 
 pub(in crate::game) struct Native;

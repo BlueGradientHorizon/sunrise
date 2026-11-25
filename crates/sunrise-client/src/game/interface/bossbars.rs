@@ -1,14 +1,10 @@
 //! `/bossbar` (BossBarCommands) and drawing the custom boss bars.
-#[allow(unused_imports)]
 use super::{
     Dim, Game,
     commands_common::{R, Target, err},
 };
-#[allow(unused_imports)]
 use std::collections::{HashMap, HashSet};
-#[allow(unused_imports)]
 use sunrise_client::{
-    boss_overlay,
     bossbar::{self, BossBars},
     command::{Arg, Context},
     mobs::Species,
@@ -17,9 +13,7 @@ use sunrise_client::{
     scoreboard_cmd::format_list,
     text::Text,
 };
-#[allow(unused_imports)]
 use sunrise_core::{identifier::Identifier, java_hash_map::JavaHashMap, nbt::Tag};
-#[allow(unused_imports)]
 use sunrise_protocol::packets::play::{self, BossAction, Clientbound as C};
 
 #[derive(Default)]

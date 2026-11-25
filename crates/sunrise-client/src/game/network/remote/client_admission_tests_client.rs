@@ -1,25 +1,10 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::super::{C, Game, play};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_admission_tests::add_entity;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_admission_tests::deliver;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_admission_tests::registry_id;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_admission_tests::roundtrip;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_admission_tests::with_isolated_client;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_admission_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
-    native_entity_refs::tests::with_client_game, native_hotbar_slot::hotbar_slot_tests::logged_in,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::sound_engine::{SoundEntity, SoundInstance};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::random::LegacyRandom;
+use super::super::{C, play};
+use crate::game::native_hotbar_slot::hotbar_slot_tests::logged_in;
+use crate::game::remote::tests::client_admission_tests::add_entity;
+use crate::game::remote::tests::client_admission_tests::deliver;
+use crate::game::remote::tests::client_admission_tests::with_isolated_client;
+use sunrise_client::sound_engine::{SoundEntity, SoundInstance};
+use sunrise_core::random::LegacyRandom;
 
 #[test]
 #[ignore = "daily"]

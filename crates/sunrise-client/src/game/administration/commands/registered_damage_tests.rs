@@ -1,11 +1,8 @@
-#[allow(unused_imports)]
-use crate::game::{Game, native_entity_refs::tests::with_game};
-#[allow(unused_imports)]
+use crate::game::native_entity_refs::tests::with_game;
 use sunrise_client::{
     health::{damage_type, source_damage_type},
     mobs::{Damage, DamageKind, NamedDamage as Tags, Who, gear},
 };
-#[allow(unused_imports)]
 use sunrise_world::damage_source::Catalog;
 
 #[path = "registered_damage_tests/creaking_borrowed.rs"]

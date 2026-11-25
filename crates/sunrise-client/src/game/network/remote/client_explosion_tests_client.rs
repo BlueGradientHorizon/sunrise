@@ -1,19 +1,9 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::super::{C, Game, Vec3, play};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_explosion_tests::registry_id;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_explosion_tests::roundtrip;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_explosion_tests::with_isolated_client;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_explosion_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
-    native_entity_refs::tests::with_client_game, native_hotbar_slot::hotbar_slot_tests::logged_in,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::particles::ParticleType;
+use super::super::{C, Vec3, play};
+use crate::game::native_hotbar_slot::hotbar_slot_tests::logged_in;
+use crate::game::remote::tests::client_explosion_tests::registry_id;
+use crate::game::remote::tests::client_explosion_tests::roundtrip;
+use crate::game::remote::tests::client_explosion_tests::with_isolated_client;
+use sunrise_client::particles::ParticleType;
 
 #[test]
 #[ignore = "daily"]

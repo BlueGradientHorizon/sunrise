@@ -31,36 +31,27 @@
 //! health and absorption, and the attribute modifier rows the effects own.
 //! An entity added inside one goes at an abort, one removed is only marked until the root
 //! commit, and mods hear of joins and leaves at the root commit (`transactions/entities.rs`).
-#[allow(unused_imports)]
 use super::{
     BlockEntity, BlockStateId, Dim, Game, lan_mount_menu::MountClickWindow, machines::HopperState,
     maps::MapData,
 };
-#[allow(unused_imports)]
 use mod_api::{
     __private::TransactionFrame, LevelRef, TransactionContext, TransactionLifecycle,
     TransactionScopeError,
 };
-#[allow(unused_imports)]
 use std::collections::{BTreeMap, HashMap};
-#[allow(unused_imports)]
 use sunrise_client::{
     block_entities::BlockEntityIdentity,
     effects::EffectInstance,
-    fast_hash::FxHashSet,
     items::ItemStack,
     living_attributes::ModifierChanges,
     menu::QuickCraftDrag,
-    mobs::{Mob, StoredEffect, finalize::EffectModifierUndo, gear::Gear},
+    mobs::{StoredEffect, finalize::EffectModifierUndo, gear::Gear},
     world::{BlockEntityExtras, ModifiedChunks, World},
 };
-#[allow(unused_imports)]
-use sunrise_core::{geometry::Vec3, position::BlockPos, random::LegacyRandom};
-#[allow(unused_imports)]
+use sunrise_core::{geometry::Vec3, random::LegacyRandom};
 use sunrise_items::equipment::Equipment;
-#[allow(unused_imports)]
 use sunrise_mod_runtime::attachments::{AttachmentQueryScopes, Attachments, Holder};
-#[allow(unused_imports)]
 use sunrise_world::level::flags;
 
 #[path = "transactions/decision.rs"]
@@ -1760,22 +1751,15 @@ pub(in crate::game) mod player_tests;
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::super::api_values::TryIntoApi;
-    #[allow(unused_imports)]
-    use super::super::{Audio, BlockEntity, Game, Options, Progress, Settings, load_resources};
-    #[allow(unused_imports)]
+    use super::super::{BlockEntity, Options, Progress, Settings, load_resources};
     use mod_api::HostTransaction;
-    #[allow(unused_imports)]
     use mod_api::ServerHost;
-    #[allow(unused_imports)]
     use mod_api::{
         Authority, BlockSide, BlockUpdateFlags, FLUIDS, FluidStack, ITEMS, ItemResource,
         TransactionContext, TransactionError,
     };
-    #[allow(unused_imports)]
     use std::{sync::Arc, time::Instant};
-    #[allow(unused_imports)]
     use sunrise_client::{chunk::Chunk, items::ItemStack};
 
     #[test]

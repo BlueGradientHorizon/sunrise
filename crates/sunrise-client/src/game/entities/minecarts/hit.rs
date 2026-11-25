@@ -1,9 +1,6 @@
 //! `VehicleEntity.hurtServer`'s `DamageSource` as far as a minecart reads it,
 //! and the tail of an accepted hit: the `ENTITY_DAMAGE` game event, the drop's
 //! `CustomName` (`destroy`) and `chestVehicleDestroyed`'s angry piglins.
-#[allow(unused_imports)]
-use super::*;
-#[allow(unused_imports)]
 use crate::game::commands::Target;
 
 /// The `DamageSource` a cart took. `VehicleEntity.hurtServer` attributes its

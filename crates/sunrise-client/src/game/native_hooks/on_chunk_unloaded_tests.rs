@@ -1,26 +1,16 @@
 //! `on_chunk_unloaded` through a real game (#3145): a chunk with two mod block entities and a
 //! vanilla chest leaves the world when its `/forceload` ticket goes, through the game's own
 //! streaming, save and unload; the chunk comes back from its saved data; then the world closes.
-#[allow(unused_imports)]
-use crate::game::native_entity_refs::tests::{
-    run_fresh_cases, with_game_at, with_game_role_client,
-};
-#[allow(unused_imports)]
+use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_role_client};
 use crate::game::world_loading::WorldRequest;
-#[allow(unused_imports)]
 use mod_api::{
     BlockEntityPart, BlockPart, BlocksEvent, Hooks, HostSide, OnChunkUnloadedEvent, Registrar,
     RegistrationContext,
 };
-#[allow(unused_imports)]
 use std::path::Path;
-#[allow(unused_imports)]
 use std::sync::Mutex;
-#[allow(unused_imports)]
 use std::time::{Duration, Instant};
-#[allow(unused_imports)]
 use sunrise_client::containers::BlockEntity;
-#[allow(unused_imports)]
 use sunrise_core::nbt::{Compound, Tag};
 
 pub(in crate::game) const POT: &str = "unload_probe:pot";

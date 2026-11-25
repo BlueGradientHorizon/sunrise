@@ -2,21 +2,10 @@
 //! and the block entity's `cookTick` (lit) and `cooldownTick` (unlit). The
 //! items drawn on the fire are `campfire_geometry`'s; a server's clients get
 //! them through the block entity's update tag (`lan::chunks::entity_tag`).
-#[allow(unused_imports)]
-use super::{
-    Game,
-    item_draw::{BlockItemDraw, block_entity_pose},
-};
-#[allow(unused_imports)]
-use sunrise_assets::item_model::DisplayContext;
-#[allow(unused_imports)]
+use super::Game;
 use sunrise_client::{
-    Result, block_entities::Pos, block_entity_render::vertex_light, camera::rotate_degrees,
-    containers::BlockEntity, items::ItemStack, mesher::Vertex, mobs::Who,
+    Result, block_entities::Pos, containers::BlockEntity, items::ItemStack, mobs::Who,
 };
-#[allow(unused_imports)]
-use sunrise_client_render::block_entity_reach::Reach;
-#[allow(unused_imports)]
 use sunrise_core::position::BlockPos;
 
 /// The `campfire_cooking` recipe kind (`RecipeType.CAMPFIRE_COOKING`).

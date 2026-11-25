@@ -7,31 +7,21 @@
 #[cfg(test)]
 #[path = "face_pick_tests.rs"]
 pub(in crate::game) mod face_pick_tests;
-#[allow(unused_imports)]
 use sunrise_client_gameplay::agent_navigation as navigation;
 
 #[cfg(feature = "client")]
-#[allow(unused_imports)]
 use super::event_loop::EventLoopCtl;
-#[allow(unused_imports)]
 use super::owner_link::{ControlRequest, OwnerRequest};
-#[allow(unused_imports)]
 use super::{Game, Screen};
-#[allow(unused_imports)]
 use navigation::{Cell, Node, Plan, Progress};
-#[allow(unused_imports)]
 use serde_json::{Value, json};
-#[allow(unused_imports)]
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     sync::mpsc::Sender,
     time::{Duration, Instant},
 };
-#[allow(unused_imports)]
 use sunrise_client::actions::Action;
-#[allow(unused_imports)]
 use sunrise_client::held::Source;
-#[allow(unused_imports)]
 use sunrise_client::{
     Result,
     block_entity_anim::Ticker,
@@ -39,11 +29,8 @@ use sunrise_client::{
     mobs::{Species, render::VILLAGER_TYPES},
     widgets,
 };
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
 use sunrise_world::registry::BlockStateId;
-#[allow(unused_imports)]
 use winit::{
     event::{DeviceId, ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent},
     keyboard::KeyCode,

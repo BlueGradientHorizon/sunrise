@@ -1,11 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::creatures::living_draw::LivingFrame;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::creatures::living_draw::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::mobs::render::FrameDraw;
+use super::*;
+use crate::game::creatures::living_draw::LivingFrame;
+use sunrise_client::mobs::render::FrameDraw;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Draws `mob` into `out` as the frame's mob pass does, or nothing when it is out of range,

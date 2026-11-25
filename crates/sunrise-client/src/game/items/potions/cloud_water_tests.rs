@@ -1,21 +1,5 @@
-#[allow(unused_imports)]
-use crate::game::commands::data::DataRef;
-#[allow(unused_imports)]
-use crate::game::dragon::Breath;
-#[allow(unused_imports)]
-use crate::game::native_entity_refs::tests::{
-    bind_local_player, prepare_entity_ticking_neighborhood, with_game,
-};
-#[allow(unused_imports)]
 use serde_json::Value;
-#[allow(unused_imports)]
-use sunrise_client::motion::PlayerMotion;
-#[allow(unused_imports)]
-use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
-use sunrise_core::position::ChunkPos;
 
 pub(in crate::game) fn read_witness() -> String {
     let raw = std::env::var_os("SUNRISE_CLOUD_WATER_WITNESS").unwrap_or_else(|| {

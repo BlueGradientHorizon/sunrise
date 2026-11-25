@@ -1,17 +1,9 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::selector_tests::SelectorCommands;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::selector_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{CommandArgumentValue as Value, CommandInvocation};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::mobs::Mob;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::geometry::Vec3;
+use super::*;
+use crate::game::native_server::selector_tests::SelectorCommands;
+use mod_api::CommandArgumentValue as Value;
+use std::sync::{Arc, Mutex};
+use sunrise_client::mobs::Mob;
+use sunrise_core::geometry::Vec3;
 
 /// One overworld cow (cow 1, tag `over`) and one nether cow (cow 2, tag `under`), then `lines`
 /// run as the first guest with the console's permission; each line's last invocation names the

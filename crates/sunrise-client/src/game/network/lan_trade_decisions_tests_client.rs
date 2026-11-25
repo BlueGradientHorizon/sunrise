@@ -1,74 +1,12 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{Game, native_guest_turn_tests::with_guests};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::Both;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::CALLS;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::COMPLETED;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::EditInPost;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::EffectWrite;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::FishBreath;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::IN_ACTION;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::Mod;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::PlayerWrite;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::RemoveHero;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::SCRIPT;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::SPEED;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::STACKED;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::STAGED_WRITES;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::Script;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::Stacked;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::USES;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::WORK_TICK;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::open;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::prepare_work;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::tick_work;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::work_screen;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::work_screen_mut;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{
-    Flow, Hooks, HostSide, HostTransaction, ItemPlace, ItemResource, ItemStackedOnOtherEvent,
-    ModEntry, Mods, PlayerTradeEvent, ServerHost, TradeWithVillagerEvent,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::cell::{Cell, RefCell};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::{Arc, mpsc};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::lan::{Out, PlayerSender};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    items::ItemStack,
-    merchant::{Session, Trader},
-    mobs::finalize::{self, Attr, Op},
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::packets::play::{
-    Clientbound, ContainerClick,
-};
+use super::native_guest_turn_tests::with_guests;
+use crate::game::server_side::lan_trade_decisions_tests::RemoveHero;
+use crate::game::server_side::lan_trade_decisions_tests::open;
+use crate::game::server_side::lan_trade_decisions_tests::prepare_work;
+use crate::game::server_side::lan_trade_decisions_tests::tick_work;
+use crate::game::server_side::lan_trade_decisions_tests::work_screen;
+use crate::game::server_side::lan_trade_decisions_tests::work_screen_mut;
+use mod_api::{ModEntry, Mods};
+use sunrise_client::items::ItemStack;
 
 pub(in crate::game) fn restock_after_hero_change(test: &str, before_work: bool) {
     use sunrise_client::effects::EffectInstance;

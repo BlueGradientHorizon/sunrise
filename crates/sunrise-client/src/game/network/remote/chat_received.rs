@@ -1,6 +1,5 @@
 //! `ClientChatReceivedEvent` for the lines the server sends: the queued player
 //! message and the hook that may replace or cancel a line.
-#[allow(unused_imports)]
 use super::*;
 
 /// Receipt-time context for `ChatListener.handleMessage`. Its presentation,

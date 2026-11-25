@@ -1,13 +1,10 @@
 //! The content index captured for each package at startup, shared by registration and loading.
-#[allow(unused_imports)]
 use super::ModsState;
-#[allow(unused_imports)]
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
     sync::Arc,
 };
-#[allow(unused_imports)]
 use sunrise_mod_package::{
     Content, Manifest,
     content::{AdmittedContentSource, ContentSource, ReadError},

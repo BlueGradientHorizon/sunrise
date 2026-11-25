@@ -1,13 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::game_tests::tests::server_game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::nether_portal::stand_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::entities::ArmorStand;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::motion::PlayerMotion;
+use super::*;
 
 #[test]
 #[ignore = "daily"]

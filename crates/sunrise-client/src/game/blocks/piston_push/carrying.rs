@@ -3,7 +3,6 @@
 //! client carry/shove prediction lives in `piston_push_client.rs`.
 #[path = "shoving.rs"]
 mod shoving;
-#[allow(unused_imports)]
 use super::*;
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_client_render::moving_colliders::{self, Prepared};

@@ -1,35 +1,19 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::super::{
+use super::super::{
     Game, commands::Target, entity::Entity as _, lan_mobs::guest_bounds, minecarts::CartHit,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::ProjWorld;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets::NonMobHit;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets::ProjectileHitInfo;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets::TargetQuery;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets::extents;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets::is_pickable_projectile;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets::knot_bounds;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets::projectile_skips_no_physics;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::arrows::ArrowTargets;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::mobs::{MobWorld, Who};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::projectiles::{
+use super::ProjWorld;
+use crate::game::creatures::projectile_targets::NonMobHit;
+use crate::game::creatures::projectile_targets::ProjectileHitInfo;
+use crate::game::creatures::projectile_targets::TargetQuery;
+use crate::game::creatures::projectile_targets::extents;
+use crate::game::creatures::projectile_targets::is_pickable_projectile;
+use crate::game::creatures::projectile_targets::knot_bounds;
+use sunrise_client::arrows::ArrowTargets;
+use sunrise_client::mobs::{MobWorld, Who};
+use sunrise_client::projectiles::{
     Projectile, ProjectileKind, ProjectileWorld, TargetCandidate, TargetOrder,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::{
+use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
 };

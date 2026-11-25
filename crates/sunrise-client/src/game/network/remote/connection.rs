@@ -7,12 +7,8 @@
 //! in `connection_left` or `connection_ended`, whichever way: the player leaving, the game closing,
 //! a transfer, the server, the connection or this client ending it. A world the window plays
 //! itself never opens one.
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use sunrise_client::{multiplayer, title::Mode};
-#[allow(unused_imports)]
-use sunrise_hooks::connection::{By, Ended, Left, Retry, Server};
 
 /// The Disconnected screen's line about connecting again, while that screen shows.
 pub(in crate::game) fn retry_slot(

@@ -1,23 +1,17 @@
 //! Primed TNT (`PrimedTnt`): 80-tick fuse, gravity and drag, explosion of
 //! power 4, `TntRenderer` swell and white flash, and `TntBlock.useItemOn`
 //! (flint and steel / fire charge).
-#[allow(unused_imports)]
 use super::{Game, entity::Entity};
-#[allow(unused_imports)]
 use sunrise_client::entity_rules::EntityRules;
-#[allow(unused_imports)]
 use sunrise_client::lan::playerdata::uuid_ints;
-#[allow(unused_imports)]
 use sunrise_client::{
     Result, collisions::SceneCollisions, items::ItemStack, mobs::Who, text::Text,
 };
-#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
-#[allow(unused_imports)]
 use sunrise_world::level::flags as level_flags;
 
 #[derive(Clone, Debug)]
@@ -868,7 +862,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::*;
 
     #[test]

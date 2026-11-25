@@ -1,5 +1,4 @@
 //! Prepared cauldron callbacks and their server-side dispatch.
-#[allow(unused_imports)]
 use super::*;
 #[allow(unused_imports)]
 use mod_api::{
@@ -9,9 +8,7 @@ use mod_api::{
     },
     HookId,
 };
-#[allow(unused_imports)]
 use std::{cell::RefCell, collections::BTreeSet, sync::Arc};
-#[allow(unused_imports)]
 use sunrise_client::cauldron::interactions::Dispatcher;
 
 #[derive(Clone)]

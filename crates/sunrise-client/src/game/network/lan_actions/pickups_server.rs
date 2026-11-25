@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::pickups::*;
+use super::*;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `Player.aiStep` touching arrows in the guest's box grown by (1, 0.5, 1):

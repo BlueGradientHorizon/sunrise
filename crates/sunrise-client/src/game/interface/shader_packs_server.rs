@@ -1,75 +1,8 @@
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::native_shaders::{
-    fingerprint, outcome, refused, remember,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::remote_camera::CameraFogEffects;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Dim, Game, Screen};
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::shader_packs::BlockIdVotes;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::shader_packs::PackIds;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::shader_packs::PickedPack;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::shader_packs::TogglePlan;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::shader_packs::picks_material_pack;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::shader_packs::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::cell::RefCell;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::collections::{BTreeMap, HashMap};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::camera::CameraFluid;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::gfx::pack_uniforms::{
-    PackInputs, PlayerStatus, ViewEntity,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::mod_list::ModList;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::shader_options::ShaderOptions;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::text::Text;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client_render::render_geometry::EntitySpan;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_shader_api::Api;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_shaders::{
-    BlockIds, Macros, Pack, Properties, dimension_folder_named, load_post,
-};
-
 #[cfg(test)]
 pub(in crate::game) mod player_status_tests {
-    #[allow(unused_imports)]
-pub(in crate::game::server_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-        chunk::Chunk,
-        effects::EffectInstance,
-        motion::{MotionWorld, PlayerMotion},
-    };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::shader_packs::player_status_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::shader_packs::player_status_tests::stand_player;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::shader_packs::player_status_tests::rain_on_the_player;
+    use crate::game::client_side::shader_packs::player_status_tests::rain_on_the_player;
+    use crate::game::client_side::shader_packs::player_status_tests::stand_player;
+    use sunrise_client::{effects::EffectInstance, motion::MotionWorld};
 
     /// The player booleans only custom uniforms read follow the window's player (spec 3.4):
     /// `LivingEntity.isAlive`, `Entity.isCurrentlyGlowing` (the Glowing effect fallback),

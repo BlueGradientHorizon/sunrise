@@ -1,6 +1,4 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
 
 pub(in crate::game) type Observation = (String, i32, i32, Option<u32>);

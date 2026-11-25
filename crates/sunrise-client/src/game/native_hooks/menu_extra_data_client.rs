@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::menu_extra_data::*;
+use super::*;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The opener position for the currently shown mod menu, if known.
@@ -29,16 +26,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
 #[cfg(test)]
 pub(in crate::game) mod menu_extra_data_tests {
-    #[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::title::Mode;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::{
+    use sunrise_client::title::Mode;
+    use sunrise_protocol::{
         connection::Pipe,
         menu_extra::CHANNEL,
         packets::{configuration::CustomPayload, play::Clientbound as C},
     };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::menu_extra_data::menu_extra_data_tests::*;
 
     #[test]
     #[ignore = "daily"]

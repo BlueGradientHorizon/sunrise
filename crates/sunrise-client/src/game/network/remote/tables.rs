@@ -1,10 +1,4 @@
 //! The server's gameplay tags. Typed mod tag notices remain in remote_tags.
-#[allow(unused_imports)]
-use super::super::Game;
-#[allow(unused_imports)]
-use std::{collections::HashMap, sync::Arc};
-#[allow(unused_imports)]
-use sunrise_client::items::EntityTypeTags;
 
 #[cfg(test)]
 pub(in crate::game) mod tests {

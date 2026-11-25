@@ -1,16 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::entity_type_rows::EntityTypeRows;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::entity_type_rows::ROWS;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::entity_type_rows::entity_type_rows;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::entity_type_rows::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::{
-    path::{Path, PathBuf},
-    sync::{Arc, Mutex, PoisonError},
-};
+use crate::game::entity_type_rows::EntityTypeRows;
 
 impl EntityTypeRows {
     /// Whether `id` is an entity type.

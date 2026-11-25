@@ -1,35 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{Game, Hit, InteractTarget};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::frames::FrameModel;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::frames::FramedItem;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::frames::bake_frames;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::frames::center;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::frames::frame_owner;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::frames::hanging_drop_position;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::frames::sound;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::frames::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_assets::{
-    bake::bake_model, item_model::OwnerState, resolve::ModelLibrary,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    entities::ItemFrame, items::ItemStack, mesher::Vertex,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{
-    geometry::{Aabb, Vec3},
-    position::BlockPos,
-    random::RandomSource,
-};
+use super::Game;
+use crate::game::server_side::frames::FramedItem;
+use crate::game::server_side::frames::frame_owner;
+use sunrise_client::mesher::Vertex;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// ItemFrameRenderer: the frame model, then the item half size on its face.

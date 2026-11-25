@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use super::*;
 
 /// A click sent to a server: its slot, button and input, the slots it

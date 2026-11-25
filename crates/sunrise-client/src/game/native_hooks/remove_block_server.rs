@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::remove_block::*;
+use super::*;
 
 impl GameLevel<'_> {
     pub(in crate::game) fn removal_replacement(

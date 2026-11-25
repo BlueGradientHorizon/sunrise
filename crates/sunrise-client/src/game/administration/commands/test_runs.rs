@@ -4,19 +4,10 @@
 //! `clearthat`/`these`/`all` and `stop`, with `TestFinder`'s searches.
 //!
 //! Retries are `RetryOptions(numberOfTimes, untilFailed)`.
-#[allow(unused_imports)]
 use super::{Arg, Context, Game, R, err};
-#[allow(unused_imports)]
-use crate::game::{
-    Dim,
-    game_tests::{Grid, Info, Retry, RunnerOptions, verify_batches},
-    test_instances::TestDef,
-};
-#[allow(unused_imports)]
-use sunrise_client::text::{self, Text};
-#[allow(unused_imports)]
+use crate::game::game_tests::Retry;
+use sunrise_client::text::Text;
 use sunrise_core::bounding_box::BoundingBox;
-#[allow(unused_imports)]
 use sunrise_world::worldgen::structure::Rotation;
 
 pub(in crate::game) type Pos = (i32, i32, i32);

@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
@@ -17,24 +16,17 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::super::super::native_entity_refs::tests::with_game;
-    #[allow(unused_imports)]
     use super::*;
-    #[allow(unused_imports)]
     use mod_api::{
         Flow, Hooks, LivingDeathEvent, LivingDeathPostEvent, LivingDropsEvent,
         LivingExperienceDropEvent, MobKilledEvent, ModEntry, ServerHost,
     };
-    #[allow(unused_imports)]
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     };
-    #[allow(unused_imports)]
-    use sunrise_client::mobs::{DamageKind, Mob};
-    #[allow(unused_imports)]
-    use sunrise_core::geometry::Vec3;
+    use sunrise_client::mobs::DamageKind;
 
     #[derive(Default)]
     pub(in crate::game) struct Post {

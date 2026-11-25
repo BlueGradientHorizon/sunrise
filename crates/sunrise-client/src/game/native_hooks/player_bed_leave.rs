@@ -1,6 +1,3 @@
-#[allow(unused_imports)]
-use super::*;
-#[allow(unused_imports)]
 use std::cell::RefCell;
 
 thread_local! {

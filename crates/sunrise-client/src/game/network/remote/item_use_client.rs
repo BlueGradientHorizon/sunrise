@@ -1,11 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::item_use::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::first_person::Hand;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::items::ItemStack;
+use super::super::Game;
+use sunrise_client::first_person::Hand;
+use sunrise_client::items::ItemStack;
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -89,17 +84,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::remote::item_use::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::{
-        Audio, Game, Hit, Options, Progress, Settings, execution_role::ExecutionRole,
-        load_resources,
+    use crate::game::{
+        Audio, Hit, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
     };
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use sunrise_client::first_person::Hand;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use sunrise_client::items::ItemStack;
+    use sunrise_client::first_person::Hand;
+    use sunrise_client::items::ItemStack;
 
     #[test]
     #[ignore = "daily"]

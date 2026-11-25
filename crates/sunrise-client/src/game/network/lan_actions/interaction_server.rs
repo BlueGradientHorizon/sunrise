@@ -1,5 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
+use super::*;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn guest_drop_carried(&mut self, gi: usize) {

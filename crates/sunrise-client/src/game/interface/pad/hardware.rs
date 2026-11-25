@@ -1,18 +1,13 @@
 //! The real controllers (the `controllers` feature): gilrs' pads, and the DualSense's own output
 //! over HID: its rumble, adaptive triggers, lights and HD haptics. A build without the feature (the
 //! server build) has the stub in pad.rs instead, and only `sunrise-ctl pad`'s virtual pad.
-#[allow(unused_imports)]
 use super::{
     super::{Game, Screen},
     Connection, Pads,
 };
-#[allow(unused_imports)]
 use serde_json::{Value, json};
-#[allow(unused_imports)]
 use std::time::{Duration, Instant};
-#[allow(unused_imports)]
 use sunrise_client::controller_ui::Device;
-#[allow(unused_imports)]
 use sunrise_client::gamepad::{self, Button, GlyphStyle, PadState, Rumble, TriggerFeel};
 
 pub(in crate::game) mod face_buttons;

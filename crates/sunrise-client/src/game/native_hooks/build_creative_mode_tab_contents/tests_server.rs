@@ -1,44 +1,13 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_entity_refs::tests::{fixture_root, with_client_game, with_game_role};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{execution_role::ExecutionRole, lan::LanHost};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::prelude::ItemsHost;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{BuildCreativeModeTabContentsEvent, Hooks, HostSide, ModEntry};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::Mutex;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::lan::{
+use super::*;
+use crate::game::lan::LanHost;
+use crate::game::native_hooks::build_creative_mode_tab_contents::tests::definition;
+use sunrise_client::lan::{
     Lan, NetConfig,
     chunks::ChunkEncoder,
     data::SyncData,
     hub::{Hub, HubConfig},
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::nbt::{Compound, Tag};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_world::loot::PackOverlay;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::build_creative_mode_tab_contents::tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::build_creative_mode_tab_contents::tests::Seen;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::build_creative_mode_tab_contents::tests::Edit;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::build_creative_mode_tab_contents::tests::stack;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::build_creative_mode_tab_contents::tests::stone_key;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::build_creative_mode_tab_contents::tests::Observe;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::build_creative_mode_tab_contents::tests::definition;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::build_creative_mode_tab_contents::tests::replace_client_definition;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::build_creative_mode_tab_contents::tests::book_level;
+use sunrise_world::loot::PackOverlay;
 
 pub(in crate::game) fn install_dedicated_holders(
     game: &mut crate::game::ServerGame<'_>,

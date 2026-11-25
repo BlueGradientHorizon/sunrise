@@ -4,16 +4,13 @@
 //! game events and block changes) through its own sculk code on a fresh
 //! headless world, ticking in `ServerLevel.tick`'s order, and prints what
 //! changed after every tick in the format of `VanillaSculkOracle`.
-#[allow(unused_imports)]
 use super::{Game, dispense_fixture};
-#[allow(unused_imports)]
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Write as _,
     io::Write as _,
     sync::Arc,
 };
-#[allow(unused_imports)]
 use sunrise_client::{
     Result,
     chunk::{Chunk, MIN_Y},
@@ -23,16 +20,12 @@ use sunrise_client::{
     motion::PlayerMotion,
     sculk::{Info, SculkKind, WardenSpawnTracker},
 };
-#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Direction, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
-#[allow(unused_imports)]
 use sunrise_world::{chunk::BlockState, level::Ticks, registry::BlockStateId};
-#[allow(unused_imports)]
-use winit::keyboard::KeyCode;
 
 pub(in crate::game) struct MobSpec {
     pub(in crate::game) kind: String,

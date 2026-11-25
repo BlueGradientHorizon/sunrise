@@ -1,52 +1,11 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{
-    Game, commands::Target, mounts::steering_item, remote::Remote, remote_vehicles::passenger_root,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_entity_riding::RidingRead;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_entity_riding::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{
-    EntityRef, LeashHolder, LivingRef, StartRidingRefusal,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    lan::playerdata::ints_uuid,
-    mobs::{Mob, Species, equine, happy_ghast, leash::Holder, nautilus},
-};
-
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use super::super::{Game, commands::Target};
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_riding::tests::MountObserver;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_riding::tests::SeatMountObserver;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_riding::tests::SeatMountPayload;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_riding::tests::UnleashObserver;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_riding::tests::add_mob;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_riding::tests::take_one_lead;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_riding::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use mod_api::{
-        self, EntityMountEvent, EntityRef, EntityUnleashEvent, Flow, Hooks, LivingRef, ServerHost,
-        StartRidingRefusal,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use std::sync::{Arc, Mutex};
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use sunrise_client::chunk::Chunk;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use sunrise_client::mobs::Mob;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
+    use crate::game::server_side::native_entity_riding::tests::UnleashObserver;
+    use crate::game::server_side::native_entity_riding::tests::add_mob;
+    use crate::game::server_side::native_entity_riding::tests::take_one_lead;
+    use mod_api::{self};
+    use std::sync::{Arc, Mutex};
+    use sunrise_core::geometry::Vec3;
 
     #[test]
     #[ignore = "daily"]

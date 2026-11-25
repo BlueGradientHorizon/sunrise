@@ -1,9 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::screen_hovered_stack::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::creative::Creative;
+use super::*;
+use sunrise_client::creative::Creative;
 
 /// Helpers for native mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.

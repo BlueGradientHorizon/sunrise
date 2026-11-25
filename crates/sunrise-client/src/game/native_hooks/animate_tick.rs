@@ -1,15 +1,9 @@
 //! `Block.animateTick` for mod blocks: the parts of the blocks `ClientLevel.animateTick` picks,
 //! called inside the pick.
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use crate::game::api_values::block_state::block_listens;
-#[allow(unused_imports)]
 use std::cell::RefCell;
-#[allow(unused_imports)]
 use std::rc::Rc;
-#[allow(unused_imports)]
-use sunrise_core::random::LegacyRandom;
 
 /// The level's random (`ClientLevel.random`) while a client Part holds it as
 /// `event.random`: one stream for the part's draws and the game's own draws during the call

@@ -27,12 +27,8 @@ pub(in crate::game) mod selector_tests;
 #[path = "native_server/sidebar_tests.rs"]
 pub(in crate::game) mod sidebar_tests;
 
-#[allow(unused_imports)]
-use super::api_values::{TryIntoApi, TryIntoEngine};
-#[allow(unused_imports)]
-use super::{Dim, Game, commands::execute, respawn_anchor::RespawnConfig};
-#[allow(unused_imports)]
-use crate::game::level_control_hooks::LevelControl;
+use super::Game;
+use super::api_values::TryIntoEngine;
 #[allow(unused_imports)]
 pub(in crate::game) use argument_kinds::{CommandArguments, command_arguments};
 #[allow(unused_imports)]
@@ -40,41 +36,31 @@ use argument_kinds::{
     UNCENTERED, argument_type, bounded_parser, custom_parser, custom_value, dimension_value,
     nbt_value, parsed_type, parser, positional_value, resource_parser,
 };
-#[allow(unused_imports)]
 use mod_api::__private::game::*;
 #[allow(unused_imports)]
 pub(in crate::game) use registered_commands::NativeCommandState;
 // Their old home, for mixin code that names them here.
-#[allow(unused_imports)]
 use mod_api::LevelRef;
 #[allow(unused_imports)]
 use mod_api::{
     ActionOutcome, ActionRefused, FakeEffect, GameMode, GlobalPos, Identifier, PlayerAction,
-    PlayerActionSetup, PlayerFood, PlayerRef, PlayerRespawnConfig, ScopedActionResult, Sidebar,
-    TextFormError, VirtualHost,
+    PlayerActionSetup, PlayerFood, PlayerRef, PlayerRespawnConfig,
 };
-#[allow(unused_imports)]
 use serde_json::{Map, Value, json};
-#[allow(unused_imports)]
 use std::sync::{
-    LazyLock, Mutex, PoisonError,
+    Mutex, PoisonError,
     atomic::{AtomicBool, Ordering},
 };
-#[allow(unused_imports)]
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 #[allow(unused_imports)]
 use sunrise_client::{
-    command::{Arg, ArgType, Context, Dispatcher},
-    items::ItemStack,
-    lan::{
-        abilities::PlayerAbilities, data::component_nbt, guest::Guest, scoreboard::SidebarContents,
-    },
+    command::{Arg, ArgType, Dispatcher},
+    lan::{abilities::PlayerAbilities, data::component_nbt, guest::Guest},
     motion::PlayerMotion,
     text::Text,
 };
-#[allow(unused_imports)]
+#[cfg(test)]
 use sunrise_core::position::BlockPos;
-#[allow(unused_imports)]
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// The report's name of an operator level (`commands.json`'s
@@ -920,9 +906,7 @@ impl Drop for Acting {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::*;
-    #[allow(unused_imports)]
     use sunrise_client::items::ItemStack;
 
     /// Box bounds come from mod code: one that is not finite reads no orb and never
@@ -2897,13 +2881,8 @@ pub(in crate::game) mod tests {
 
 #[cfg(test)]
 pub(in crate::game) mod fake_action_tests {
-    #[allow(unused_imports)]
-    use super::super::Game;
-    #[allow(unused_imports)]
     use super::{Acting, ActionOutcome, ActionRefused, FakeEffect, PlayerAction};
-    #[allow(unused_imports)]
     use mod_api::{BlockHit, Hand, PlayerRef};
-    #[allow(unused_imports)]
     use sunrise_client::items::ItemStack;
 
     /// A server with a real guest (uuid 1) and a fake (uuid 2) standing at (0.5, 64, 0.5) on
@@ -2983,10 +2962,8 @@ pub(in crate::game) mod fake_action_tests {
         }
     }
 
-    #[allow(unused_imports)]
     use super::super::{
         boats::Boat, minecarts::CART_KEY_Y, minecarts::CartKind, minecarts::Minecart,
-        respawn_anchor::RespawnConfig, stations::Kind, stations::Station,
     };
 
     pub(in crate::game) fn held(

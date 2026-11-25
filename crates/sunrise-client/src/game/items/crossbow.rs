@@ -6,14 +6,12 @@
 //! finds the ammo for bows and crossbows.
 #[allow(unused_imports)]
 use super::{Game, shield::OFFHAND_SLOT, view_vector};
-#[allow(unused_imports)]
 use sunrise_client::{
     enchant::EffectContext,
     items::{ItemStack, Items},
     mobs::Who,
     projectiles::{Projectile, ProjectileKind},
 };
-#[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 
 pub(in crate::game) const CROSSBOW: &str = "minecraft:crossbow";
@@ -380,7 +378,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::*;
 
     #[allow(unused_imports)]

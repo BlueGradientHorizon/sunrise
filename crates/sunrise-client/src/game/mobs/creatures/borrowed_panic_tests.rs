@@ -1,25 +1,10 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
-#[allow(unused_imports)]
 use mod_api::__private::{HookPanicReport, take_hook_panics};
-#[allow(unused_imports)]
 use std::sync::{
     Mutex,
     atomic::{AtomicUsize, Ordering},
 };
-#[allow(unused_imports)]
-use sunrise_client::{
-    chunk::Chunk,
-    join_seq::residency::{
-        Change, Journal, Kind, Owner,
-        table::{EntityLookup, EntityTable, SourceEntity},
-    },
-};
-#[allow(unused_imports)]
-use sunrise_core::random::LegacyRandom;
-#[allow(unused_imports)]
 use sunrise_mod_runtime::attachments::{AttachmentType, Holder};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

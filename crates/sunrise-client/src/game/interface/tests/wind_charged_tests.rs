@@ -2,15 +2,10 @@
 //! body (`WindChargedMobEffect.onMobRemoved`) and for a silent source no sound
 //! at all (`ServerLevel.explode`'s `playSound`), and vehicles left alone by a
 //! mob's blast with mob griefing off (`VehicleEntity.ignoreExplosion`).
-#[allow(unused_imports)]
 use crate::game::commands::Target;
-#[allow(unused_imports)]
-use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
-#[allow(unused_imports)]
+use crate::game::{Options, Progress, Settings, load_resources};
 use std::sync::Arc;
-#[allow(unused_imports)]
 use sunrise_client::chunk::Chunk;
-#[allow(unused_imports)]
 use sunrise_world::food::Difficulty;
 
 pub(in crate::game) const BREEZE_BURST: &str = "minecraft:entity.breeze.wind_burst";

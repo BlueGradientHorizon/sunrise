@@ -1,23 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::super::super::Screen;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::prelude::ClientInputClientHost;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{
-    ClientHost, InteractionKeyMappingTriggeredEvent, MappingError, VanillaKeyMappingRef,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::OnceLock;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::interaction_event_tests::mapping_press_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::interaction_event_tests::mapping_press_tests::Heard;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::interaction_event_tests::mapping_press_tests::with_pressing_game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::interaction_event_tests::mapping_press_tests::sent;
+use super::*;
+use crate::game::remote::interaction_event_tests::mapping_press_tests::sent;
+use crate::game::remote::interaction_event_tests::mapping_press_tests::with_pressing_game;
 
 #[path = "input_burst_tests_server.rs"]
 pub(in crate::game) mod input_burst_tests;

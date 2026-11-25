@@ -1,21 +1,7 @@
-#[allow(unused_imports)]
-use super::super::combat::PlayerCredit;
-#[allow(unused_imports)]
 use super::super::native_entity_refs::tests::with_game;
-#[allow(unused_imports)]
-use super::super::native_item_places::tests::{guest, open_to_lan};
-#[allow(unused_imports)]
 use mod_api::ServerHost;
-#[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
-use sunrise_client::mobs::{Damage, DamageKind, Mob, Who};
-#[allow(unused_imports)]
-use sunrise_client::motion::PlayerMotion;
-#[allow(unused_imports)]
-use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
-use sunrise_core::random::{LegacyRandom, RandomSource};
+use sunrise_client::mobs::Damage;
 
 /// What the mod read through its handles, of one question.
 #[derive(Debug, PartialEq)]

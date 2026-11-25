@@ -1,10 +1,6 @@
 //! The game's side of the `draw` area (`sunrise-mod-api/src/host/draw.rs`).
 #[allow(unused_imports)]
-use crate::game::{
-    Game,
-    api_values::{TryIntoApi, TryIntoEngine},
-};
-#[allow(unused_imports)]
+use crate::game::api_values::{TryIntoApi, TryIntoEngine};
 use mod_api::{prelude::*, *};
 
 /// Borrow `minecraft:default` directly or format another font identifier.

@@ -1,13 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::end_clock_tests::game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::end_clock_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{
-    Audio, Dim, Game, Options, Progress, Settings, execution_role, load_resources,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::save::Level;
+use crate::game::client_side::chat::end_clock_tests::game;
+use crate::save::Level;
 
 /// `/time <line>`; the feedback it printed.
 pub(in crate::game::server_side) fn run(

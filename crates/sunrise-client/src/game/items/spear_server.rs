@@ -1,25 +1,16 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Game, view_vector};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::spear::OWN;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::spear::Target;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::spear::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::spear::hits_in_reach;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    attack_strength::delay,
+use super::{Game, view_vector};
+use crate::game::spear::OWN;
+use crate::game::spear::Target;
+use sunrise_client::spear::hits_in_reach;
+use sunrise_client::{
     collisions::SceneCollisions,
     first_person::Hand,
     items::ItemStack,
     mobs::Damage,
-    spear::{HIT_FEEDBACK_TICKS, Kinetic, REACH},
+    spear::{Kinetic, REACH},
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::{
-    geometry::{Aabb, Vec3, traverse_blocks},
+use sunrise_core::{
+    geometry::{Vec3, traverse_blocks},
     position::BlockPos,
 };
 

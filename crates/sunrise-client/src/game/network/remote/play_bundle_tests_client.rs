@@ -1,71 +1,13 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::super::Received;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{
-    connect_play_test, finish_play_test, offer_test_payloads, spawn_menu_test,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::DRAIN_LEN;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::DROPPABLE;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::Handler;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::MAIN;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::NETWORK;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::Probe;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::SERVER_ONLY;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::Witness;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::Work;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::accept_tcp;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::accept_transfer_login;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::connect_probe;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::login_cookie;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::transfer_to;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::wait_for_bundle;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::with_probe;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
-    native_entity_refs::tests::{run_fresh_cases, with_client_game},
-    viewed_worlds::tests::column,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{
-    HandlerThread, Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes,
-    PayloadContextError, PayloadHandleError, PayloadId, PayloadSendError, PayloadWork,
-    PayloadWorkStatus, Registrar,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::{
-    sync::{Arc, Mutex, mpsc},
-    thread::{self, JoinHandle, ThreadId},
-    time::{Duration, Instant},
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{net::Event, raw_payloads};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::{
-    connection::ConnReader,
+use crate::game::remote::tests::play_bundle_tests::connect_probe;
+use crate::game::remote::tests::play_bundle_tests::wait_for_bundle;
+use crate::game::remote::tests::play_bundle_tests::with_probe;
+use crate::game::viewed_worlds::tests::column;
+use sunrise_protocol::{
     connection_groups::{self, Cell, Entry, Section},
     packets::{
-        Empty, configuration as cfg,
+        Empty,
         custom_payload::CustomPayload,
-        handshake, login,
-        play::{self, Clientbound as C, Serverbound as S},
+        play::{self, Clientbound as C},
     },
 };
 

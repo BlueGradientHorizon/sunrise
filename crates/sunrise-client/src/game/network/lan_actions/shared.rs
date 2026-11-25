@@ -371,11 +371,7 @@ pub(in crate::game) fn reset_use_attack_strength(ticker: &mut u32, before: u32, 
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::{eye_columns, reset_use_attack_strength};
-    #[allow(unused_imports)]
-    use crate::game::api_values::TryIntoApi;
-    #[allow(unused_imports)]
     use sunrise_client::pose::Pose;
 
     pub(in crate::game) struct StopMenu(pub(in crate::game) Option<mod_api::GameMode>);
@@ -1570,18 +1566,7 @@ pub(in crate::game) mod pickup_xp_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod respawn_world_point_tests {
-    #[allow(unused_imports)]
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
-    #[allow(unused_imports)]
-    use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    #[allow(unused_imports)]
-    use sunrise_client::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
-    #[allow(unused_imports)]
-    use sunrise_core::geometry::Vec3;
-    #[allow(unused_imports)]
-    use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
-}
+pub(in crate::game) mod respawn_world_point_tests {}
 
 #[cfg(test)]
 pub(in crate::game) mod swing_echo_tests {
@@ -1784,23 +1769,8 @@ pub(in crate::game) fn touching_unloaded_chunk(
 
 #[cfg(test)]
 pub(in crate::game) mod guest_close_listener_tests {
-    #[allow(unused_imports)]
     use super::*;
-    #[allow(unused_imports)]
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
-    #[allow(unused_imports)]
-    use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    #[allow(unused_imports)]
-    use sunrise_client::{
-        chunk::Chunk,
-        containers::BlockEntity,
-        lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
-        sculk::Info,
-    };
-    #[allow(unused_imports)]
-    use sunrise_core::position::ChunkPos;
-    #[allow(unused_imports)]
-    use sunrise_protocol::packets::configuration::ClientInformation;
+    use sunrise_client::{containers::BlockEntity, sculk::Info};
 
     pub(in crate::game) fn selected(game: &crate::game::ServerGame<'_>) -> Option<Info> {
         let Some(BlockEntity::Sculk(sensor)) = game.world.block_entities.get(&(9, 100, 4)) else {

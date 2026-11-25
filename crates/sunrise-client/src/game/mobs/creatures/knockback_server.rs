@@ -1,13 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::knockback::apply_player_knockback;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::knockback::player_knockback_velocity;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::knockback::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::KnockbackEntry;
+use super::*;
+use crate::game::creatures::knockback::apply_player_knockback;
+use mod_api::KnockbackEntry;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `LivingEntity.knockback` on the player: pushed `power` away from the

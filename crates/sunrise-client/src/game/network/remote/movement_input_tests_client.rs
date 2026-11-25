@@ -1,21 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_entity_refs::tests::with_client_game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::movement_input_tests::Native;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::movement_input_tests::reset_player;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::movement_input_tests::tick;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::movement_input_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{ClientHost, Hooks, MovementInputUpdateEvent};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::motion::PlayerMotion;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use winit::keyboard::KeyCode;
+use super::*;
 
 #[path = "local_rotation_tests_client.rs"]
 pub(in crate::game) mod local_rotation_tests;

@@ -1,18 +1,8 @@
 //! `Bee.doHurtTarget`: the stinger, the calm-down and the sting sound follow
 //! only a hit that landed. A creative player, a raised shield and an
 //! invulnerable mob refuse it, and the bee keeps its stinger.
-#[allow(unused_imports)]
-use super::*;
-#[allow(unused_imports)]
-use sunrise_client::items::ItemStack;
-#[allow(unused_imports)]
-use sunrise_client::mobs::{Mob, Who, ai::do_hurt_target, bee, goals::Cx};
-#[allow(unused_imports)]
-use sunrise_client::motion::PlayerMotion;
-#[allow(unused_imports)]
+use sunrise_client::mobs::{Mob, Who, ai::do_hurt_target, goals::Cx};
 use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
-use sunrise_world::food::Difficulty;
 
 pub(in crate::game) fn spawn(
     game: &mut crate::game::ServerGame<'_>,

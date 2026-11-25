@@ -1,12 +1,9 @@
 //! `RaidCommand`: `/raid start|stop|check|spawnleader|setomen|glow|sound`.
-#[allow(unused_imports)]
 use super::{Game, R, Text, err};
-#[allow(unused_imports)]
 use sunrise_client::{
     command::{Arg, Context},
     mobs::raider,
 };
-#[allow(unused_imports)]
 use sunrise_core::random::RandomSource;
 
 impl Game<'_, crate::game::server_side::ServerState> {

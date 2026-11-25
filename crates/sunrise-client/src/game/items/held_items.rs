@@ -1,7 +1,6 @@
 //! The player's hands and what it wears: the stack in the acting hand (`getItemInHand`), the hand of
 //! the item in use and running code with the other hand acting, `Inventory.add`, and the worn glider
 //! and freeze-immune gear.
-#[allow(unused_imports)]
 use super::*;
 
 /// `Inventory.SLOT_OFFHAND`: the `using` slot of an off-hand item.

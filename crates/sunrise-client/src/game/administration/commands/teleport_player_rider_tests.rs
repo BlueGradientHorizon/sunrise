@@ -57,12 +57,7 @@ pub(in crate::game) mod teleport_player_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod fake_travel_tests {
-    #[allow(unused_imports)]
-    use super::super::super::Dim;
-    #[allow(unused_imports)]
-    use super::super::Target;
-}
+pub(in crate::game) mod fake_travel_tests {}
 
 #[cfg(test)]
 pub(in crate::game) mod teleport_rider_tests {

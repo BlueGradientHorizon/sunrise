@@ -4,13 +4,8 @@
 //! `getModifierValue`; all three use the cached instance or the type's supplier,
 //! so a failed lookup leaves the entity's attribute map — and the `attributes`
 //! list `LivingEntity.addAdditionalSaveData` writes — untouched.
-#[allow(unused_imports)]
-use crate::game::Game;
-#[allow(unused_imports)]
 use sunrise_client::motion::PlayerMotion;
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
 
 pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {

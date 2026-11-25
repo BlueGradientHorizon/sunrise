@@ -3,26 +3,19 @@
 //! the block events that drive them (`ClientboundBlockEventPacket` reaching
 //! `BlockEntity.triggerEvent`). The renderer reads the resulting state through
 //! [`Game::block_anim`] and [`Game::chest_lid`].
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use sunrise_client::{
     block_entity_anim::{
-        BellEntity, ConduitServer, ConduitTarget, EndGateway, Shulker, ShulkerStatus, Ticker,
+        BellEntity, ConduitServer, ConduitTarget, Shulker, ShulkerStatus, Ticker,
         closer_to_center_than,
     },
-    block_entity_render::BlockAnim,
     collisions::{SceneCollisions, no_collision_empty},
     containers::BlockEntity,
     effects::EffectInstance,
     mobs::{Damage, DamageKind},
-    particles::{ParticleOptions, ParticleType},
-    save::number,
-    skins,
 };
-#[allow(unused_imports)]
+#[cfg(test)]
 use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,

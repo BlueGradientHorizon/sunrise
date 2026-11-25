@@ -1,11 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::Target;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::minecarts::hit::CartHit;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::minecarts::hit::*;
+use super::*;
+use crate::game::commands::Target;
+use crate::game::minecarts::hit::CartHit;
 
 impl CartHit {
     /// The acting player's own hit (`Player.attack`'s `playerAttack`): its

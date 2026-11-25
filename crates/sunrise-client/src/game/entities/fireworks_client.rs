@@ -1,43 +1,14 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{
-    Game, Hit, dragon::FightWho, item_draw::owner_at, view_vector,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::fireworks::FIREWORK_EXPLODE_EVENT;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::fireworks::Rocket;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::fireworks::blast_damage;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::fireworks::fireworks_of;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::fireworks::rocket_draws;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::fireworks::use_on_passes;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::fireworks::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_assets::item_model::DisplayContext;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
+use super::{Game, item_draw::owner_at};
+#[cfg(test)]
+use crate::game::fireworks::FIREWORK_EXPLODE_EVENT;
+use crate::game::fireworks::Rocket;
+use sunrise_assets::item_model::DisplayContext;
+use sunrise_client::{
     block_entity_render::vertex_light,
-    collisions::SceneCollisions,
-    entity_nbt::RocketNbt,
-    items::ItemStack,
     mesher::Vertex,
-    mobs::{Damage, Species, Who},
-    particles::{FireworkExplosion, ParticleOptions, ParticleType},
-    projectiles::{Hit as ProjectileHit, ProjectileWorld},
-    random_source,
-    text::Text,
+    particles::{ParticleOptions, ParticleType},
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{
-    geometry::{Aabb, Vec3},
-    random::RandomSource,
-};
+use sunrise_core::random::RandomSource;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `FireworkEntityRenderer.submit`: ground item facing camera, lit at the rocket's probe.
@@ -130,8 +101,6 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::fireworks::tests::*;
 
     /// A flying rocket's vertices carry its own id for frame generation's and a temporal
     /// upscaler's motion vectors (`Frame::entity_motion`), so the motion matched between

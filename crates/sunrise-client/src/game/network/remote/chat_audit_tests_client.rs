@@ -1,44 +1,14 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{C, Game, Signature, Tag, play, secure_chat};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::chat_audit_tests::ALICE;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::chat_audit_tests::BOB;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::chat_audit_tests::SESSION;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::chat_audit_tests::add_sender;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::chat_audit_tests::add_signed_sender;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::chat_audit_tests::bound;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::chat_audit_tests::deliver_signed;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::chat_audit_tests::player_chat;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::chat_audit_tests::take_seen_update;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::chat_audit_tests::tracker_offset;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::chat_audit_tests::with_delayed_chat;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::chat_audit_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
-    in_own_process, native_entity_refs::tests::with_client_game,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    chat::{ChatAbilities, ChatOptions, ChatVisibility},
-    hud_layout::GuiDraw,
-    options_file::V,
-    tab_list::TabPlayer,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::rsa::{
-    RsaPrivateKey, RsaPublicKey, SignatureHash,
-};
+use super::{C, play, secure_chat};
+use crate::game::remote::chat_audit_tests::ALICE;
+use crate::game::remote::chat_audit_tests::BOB;
+use crate::game::remote::chat_audit_tests::add_signed_sender;
+use crate::game::remote::chat_audit_tests::deliver_signed;
+use crate::game::remote::chat_audit_tests::player_chat;
+use crate::game::remote::chat_audit_tests::take_seen_update;
+use crate::game::remote::chat_audit_tests::tracker_offset;
+use crate::game::remote::chat_audit_tests::with_delayed_chat;
+use sunrise_client::chat::{ChatAbilities, ChatOptions, ChatVisibility};
+use sunrise_protocol::rsa::RsaPrivateKey;
 
 #[test]
 #[ignore = "daily"]

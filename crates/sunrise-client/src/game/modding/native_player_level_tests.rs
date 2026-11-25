@@ -1,14 +1,9 @@
 //! A mod's write to a player in another level reaches their inventory at once. A give drops
 //! overflow in the player's level; a raw throw or block break still needs that level in place.
-#[allow(unused_imports)]
 use super::Dim;
-#[allow(unused_imports)]
 use super::native_entity_refs::tests::run_fresh_cases;
-#[allow(unused_imports)]
 use super::native_guest_turn_tests::with_guests;
-#[allow(unused_imports)]
 use mod_api::{HostTransaction, ItemPlace, ServerHost};
-#[allow(unused_imports)]
 use sunrise_client::{items::ItemStack, lan::playerdata};
 
 pub(in crate::game) const NETHER: &str = "minecraft:the_nether";

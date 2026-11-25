@@ -1,23 +1,15 @@
 //! The native travel decision affects real player reports and sends vanilla corrections.
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use crate::game::execution_role::ExecutionRole;
-#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::{fixture_root, with_game_role};
-#[allow(unused_imports)]
 use crate::game::native_item_places::tests::guest as online_guest;
-#[allow(unused_imports)]
 use mod_api::{EntityMoveEvent, Flow, Hooks, LivingTravelEvent, LoopContext, MoveCause};
-#[allow(unused_imports)]
 use std::sync::atomic::{AtomicUsize, Ordering};
-#[allow(unused_imports)]
 use sunrise_client::{
     chunk::Chunk,
     lan::{NetConfig, Out, hub::HubConfig},
 };
-#[allow(unused_imports)]
-use sunrise_protocol::packets::{Empty, play::Serverbound as S};
+use sunrise_protocol::packets::play::Serverbound as S;
 
 pub(in crate::game) const START: [f64; 3] = [3.0, 64.0, 5.0];
 pub(in crate::game) const ACCEPTED: [f64; 3] = [3.25, 64.0, 5.0];

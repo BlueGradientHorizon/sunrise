@@ -1,13 +1,10 @@
 //! Narrow, per-victim context prepared before the hit borrows its victim.
-#[allow(unused_imports)]
-use super::{Game, combat::PlayerCredit};
-#[allow(unused_imports)]
+use super::combat::PlayerCredit;
 use std::collections::HashMap;
-#[allow(unused_imports)]
 use sunrise_client::{
     health::{Attack, Hurting, KnockbackCredit},
     items::ItemStack,
-    mobs::{Damage, Mob, Species, Who},
+    mobs::{Damage, Mob, Who},
 };
 
 #[derive(Default)]

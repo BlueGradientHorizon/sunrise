@@ -1,18 +1,8 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::render_gui_pre::*;
-
 #[cfg(test)]
 pub(in crate::game) mod local_sound_tests {
-    #[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{ClientHost, Flow, Hooks, ModEntry, RenderGuiPreEvent, SoundPlay};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_platform::testing::with_mods;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::render_gui_pre::local_sound_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::render_gui_pre::local_sound_tests::Mod;
+    use crate::game::native_hooks::render_gui_pre::local_sound_tests::Mod;
+    use mod_api::ModEntry;
+    use mod_platform::testing::with_mods;
 
     /// A sound a screen hook plays through its read-only host is held, then played by the
     /// next audio update, before its tick.

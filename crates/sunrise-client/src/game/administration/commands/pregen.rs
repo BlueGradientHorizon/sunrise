@@ -3,17 +3,9 @@
 //! lives on the server and hands its band to the level's streaming, whose
 //! workers do the work; chunks behind the band unload and are saved as any
 //! chunk the players leave.
-#[allow(unused_imports)]
-use super::{CommandError, Context, Dim, Game, R};
-#[allow(unused_imports)]
+use super::{CommandError, Dim, Game};
 use std::time::{Duration, Instant};
-#[allow(unused_imports)]
-use sunrise_client::{
-    lan::data::component_nbt,
-    pregen::{Pregen, Shape},
-    text::{self, Text},
-};
-#[allow(unused_imports)]
+use sunrise_client::{lan::data::component_nbt, pregen::Pregen, text::Text};
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// How often the progress is reported.

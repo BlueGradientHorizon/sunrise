@@ -1,25 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::riptide_tests::OWNER;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::riptide_tests::START;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::riptide_tests::arena;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::riptide_tests::server_to_client;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::riptide_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{
-    native_entity_refs::tests::with_client_game, native_guest_turn_tests::with_guests,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::mpsc::{Receiver, channel};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::lan::{Out, PlayerSender, guest::InboxItem};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_protocol::{buf::Reader, connection::ConnReader};
+use super::*;
+use crate::game::remote::riptide_tests::OWNER;
+use sunrise_client::lan::guest::InboxItem;
+use sunrise_protocol::connection::ConnReader;
 
 /// Transfer the client's real play packets to the integrated server's normal
 /// connection drain. The test drives ticks without scheduling two game loops.

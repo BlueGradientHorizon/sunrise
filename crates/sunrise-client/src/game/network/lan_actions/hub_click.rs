@@ -3,11 +3,3 @@
 //! of a click had no `&Game` to be given. Here the game lifts the host out of itself for the
 //! click, so the click code and the game are separate values and the game is whole while the
 //! hub runs.
-#[allow(unused_imports)]
-use super::*;
-#[allow(unused_imports)]
-use crate::game::{lan_menus::ClickReply, stacked_on_other::Pickup};
-#[allow(unused_imports)]
-use std::cell::RefCell;
-#[allow(unused_imports)]
-use sunrise_client::menu::StackedOutcome;

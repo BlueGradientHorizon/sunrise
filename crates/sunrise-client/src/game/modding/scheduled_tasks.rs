@@ -1,12 +1,10 @@
 //! The delayed tasks mods scheduled in the running world (`schedule_task`): a queue counted in
 //! server ticks, owned by the world's lifecycle and dropped with it.
 
-#[allow(unused_imports)]
 use mod_api::{
     __private::game::{CallbackOwner, allocate_task_id},
     MAX_PENDING_TASKS, ScheduleError, ServerHost, TaskId,
 };
-#[allow(unused_imports)]
 use std::{
     collections::{BTreeMap, HashMap},
     panic::{AssertUnwindSafe, catch_unwind, resume_unwind},

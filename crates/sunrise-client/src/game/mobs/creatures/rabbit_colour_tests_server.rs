@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::rabbit_colour_tests::*;
+use super::*;
 
 /// `Rabbit.getBreedOffspring`: the baby starts as a fresh biome variant
 /// (`Rabbit.getRandomRabbitVariant`: the level's `nextInt(100)`), and unless

@@ -1,23 +1,17 @@
 //! ContainerOpenersCounter timing, including lost openers.
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    use super::super::{Game, lan_actions::MenuOpen, native_entity_refs::tests::run_fresh_cases};
-    #[allow(unused_imports)]
+    use super::super::{lan_actions::MenuOpen, native_entity_refs::tests::run_fresh_cases};
     use mod_api::{
         BlockState, BlockUpdateFlags, Flow, Hooks, HostBlockStates, MenuReplace,
         ModContainerViewersEvent, ModEntry, PlayerContainerOpenEvent, ServerHost, Text,
         VanillaGameEventEvent,
     };
-    #[allow(unused_imports)]
     use std::sync::{Arc, Mutex};
-    #[allow(unused_imports)]
     use sunrise_client::containers::{
         BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer,
     };
-    #[allow(unused_imports)]
     use sunrise_client::lan::menu::Slots;
-    #[allow(unused_imports)]
     use sunrise_core::nbt::Tag;
 
     pub(in crate::game) const POS: (i32, i32, i32) = (3, 64, 4);

@@ -1,43 +1,15 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{Game, chat::PLAYER_NAME, commands::Target};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::scoreboard::GameEnv;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::scoreboard::Recorded;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::scoreboard::ScoreState;
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::scoreboard::local_tab_players;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::scoreboard::tab_players_needed;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::scoreboard::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::EntityTags;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::collections::{HashMap, HashSet};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::actions::Action;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    command::{
-        Context,
-        args::{IntRange, Selector},
-    },
+use super::{Game, chat::PLAYER_NAME};
+use crate::game::server_side::scoreboard::tab_players_needed;
+use crate::game::server_side::scoreboard::*;
+use std::collections::HashMap;
+use sunrise_client::actions::Action;
+use sunrise_client::{
     hud::HudBatch,
     hud_layout, hud_overlays,
-    lan::{guest::Guest, playerdata::ints_uuid},
-    save::{self, uuid_from_text, uuid_text},
-    scoreboard::{self as sb, Comp, Scoreboard, literal},
-    scoreboard_cmd::{self, Env, Holder},
-    tab_list::TabPlayer,
-    text::Text,
+    lan::playerdata::ints_uuid,
+    save::uuid_text,
+    scoreboard::{self as sb},
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_gameplay::stats::{StatScoreChange, StatScoreOp};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `Hud.extractScoreboardSidebar` / `displayScoreboardSidebar`.

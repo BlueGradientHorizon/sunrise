@@ -1,5 +1,4 @@
 //! A native listener rewriting the real client prediction hand loop.
-#[allow(unused_imports)]
 use super::*;
 #[path = "predicted_use_tests/fixture.rs"]
 pub(in crate::game) mod fixture;

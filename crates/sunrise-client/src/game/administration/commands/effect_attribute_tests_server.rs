@@ -1,17 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::Game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::Target;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::world_cmds::effect_attribute_tests::with_game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::world_cmds::effect_attribute_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::chunk::Chunk;
+use crate::game::commands::Target;
+use crate::game::commands::world_cmds::effect_attribute_tests::with_game;
 
 /// `isTransmittingWaypoint` reads the range with Invisibility's modifier:
 /// the given zombie's 100 is hidden to 0, so its next waypoint check

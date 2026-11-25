@@ -1,6 +1,4 @@
 //! `RegistryAccess.lookup` and `HolderLookup.listElements` on the current side's actual tables.
-#[allow(unused_imports)]
-use super::Game;
 use mod_api::RegistryEntry;
 use std::{collections::BTreeMap, sync::Arc};
 use sunrise_client::{command::args::normalized, lan::data::SyncData};

@@ -1,6 +1,4 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use winit::keyboard::PhysicalKey;
 
 pub(in crate::game) fn preset_editor_key_code(physical: PhysicalKey) -> u32 {

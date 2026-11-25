@@ -3,15 +3,10 @@
 //! `carry_block_entity` and `land_block_entity`, the carried block entity in
 //! its moving piston's saved tag, and a client's copy. `BlockEntities` holds
 //! what is carried (`carry`, `land`).
-#[allow(unused_imports)]
 use super::{Game, GameLevel};
-#[allow(unused_imports)]
 use sunrise_client::{block_entities::Carried, save::ChunkExtras};
-#[allow(unused_imports)]
 use sunrise_core::{geometry::Direction, nbt::Tag, position::BlockPos};
-#[allow(unused_imports)]
 use sunrise_mod_runtime::attachments::{ATTACHMENTS_KEY, Attachments, attachment_compound};
-#[allow(unused_imports)]
 use sunrise_world::{level::MovingPiston, registry::BlockStateId};
 
 /// The moving piston's saved key for the block entity it carries, with its

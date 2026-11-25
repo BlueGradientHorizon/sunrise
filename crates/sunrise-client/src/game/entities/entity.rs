@@ -7,45 +7,26 @@
 //! `Game` end. The walk allocates nothing and dispatch is static: hot paths pay
 //! no vtable. A new kind is one line in `entity_lists!` and one `impl Entity`.
 
-#[allow(unused_imports)]
 use super::commands::Target;
-#[allow(unused_imports)]
 use super::persist::ChunkKey;
-#[allow(unused_imports)]
 use super::{FallingBlock, Game, general::GeneralRow};
-#[allow(unused_imports)]
 use super::{
     boats::Boat, fireworks::Rocket, minecarts::Minecart, tnt::PrimedTnt, trident::ThrownTrident,
 };
-#[allow(unused_imports)]
 use std::borrow::Cow;
-#[allow(unused_imports)]
 use std::collections::{HashMap, HashSet};
-#[allow(unused_imports)]
 use sunrise_client::collisions::{PowderSnowSubject, SceneCollisions};
 #[allow(unused_imports)]
-use sunrise_client::entities::{
-    ArmorStand, Cushion, ExperienceOrb, ItemEntity, ItemFrame, Painting,
-};
-#[allow(unused_imports)]
+use sunrise_client::entities::{ArmorStand, ExperienceOrb, ItemEntity, ItemFrame};
 use sunrise_client::entity_rules::EntityRules;
-#[allow(unused_imports)]
 use sunrise_client::join_seq::JoinSeq;
-#[allow(unused_imports)]
 use sunrise_client::join_seq::Joined as _;
-#[allow(unused_imports)]
 use sunrise_client::mobs::{Mob, Species};
-#[allow(unused_imports)]
 use sunrise_client::projectiles::{Projectile, ProjectileKind};
-#[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Direction, Vec3};
-#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
 use sunrise_core::position::BlockPos;
-#[allow(unused_imports)]
 use sunrise_core::random::RandomSource as _;
-#[allow(unused_imports)]
 use sunrise_world::{
     block_collision_scan::CollisionScanError, collision_context::CollisionContext,
     ground_support::GroundState, level::data::PushReaction, move_gate::MoveGate, piston_push,

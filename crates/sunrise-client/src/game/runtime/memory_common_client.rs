@@ -1,93 +1,16 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::Allocator;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::Cached;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::ChunkSend;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::Columns;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::Entities;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::FarTiles;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::Generation;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::Gpu;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::MB;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::MEMORY_EVERY_S;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::MemoryCancellation;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::MemoryInputs;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::MemoryReport;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::MemoryRows;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::PendingMemory;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::Players;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::Process;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::Queue;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::Renderer;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::ServerMemoryRequest;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::ServerSide;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::SharedSections;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::TOP;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::TOP_PLAYERS;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::census;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::flatten;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::flatten_report;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::mb;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::mb_signed;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::shared;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::unattributed;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::memory_common::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use serde::Serialize;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use serde_json::Value;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::collections::BTreeMap;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::{
+use crate::game::memory_common::MemoryCancellation;
+use crate::game::memory_common::MemoryRows;
+use crate::game::memory_common::PendingMemory;
+use crate::game::memory_common::ServerMemoryRequest;
+use crate::game::memory_common::ServerSide;
+use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
-    mpsc::{Receiver, Sender, channel, sync_channel},
+    mpsc::{channel, sync_channel},
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::task::Poll;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::thread::{Builder, JoinHandle};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::chunk::{Chunk, ColumnCensus, Section};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::fast_hash::FxHashSet;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::server_perf::MemoryCost;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client_render::gfx::RendererMemorySnapshot;
+use std::task::Poll;
+use std::thread::Builder;
+use sunrise_client::server_perf::MemoryCost;
 
 impl MemoryCancellation {
     pub(in crate::game) fn cancel(&mut self) {

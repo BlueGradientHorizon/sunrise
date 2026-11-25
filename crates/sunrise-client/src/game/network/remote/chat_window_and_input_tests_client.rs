@@ -1,14 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::chat_window_and_input_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
-    Audio, Game, Options, Progress, Screen, Settings, execution_role::ExecutionRole,
-    load_resources, native_entity_refs::tests::with_game,
+use crate::game::{
+    Audio, Options, Progress, Screen, Settings, execution_role::ExecutionRole, load_resources,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::connection::{Connection, Pipe};
 
 /// A mod's pre-filled chat opens only over the world, with its text
 /// typed in and nothing sent.

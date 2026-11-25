@@ -1,35 +1,15 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_enchantment_damage_effects::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_enchantment_damage_effects::native_register_enchantment_damage_effects;
+#[cfg(test)]
+use super::*;
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{
-        EnchantmentDamageContext, EnchantmentDamageEffect, Hooks, ModEntry,
-        RegisterEnchantmentDamageEffectsEvent, ServerHost,
-    };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_platform::testing::with_mods;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{mobs::Mob, motion::PlayerMotion};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_enchantment_damage_effects::tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_enchantment_damage_effects::tests::Observations;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_enchantment_damage_effects::tests::Effect;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::register_enchantment_damage_effects::tests::TestMod;
+    use super::*;
+    use crate::game::native_hooks::register_enchantment_damage_effects::tests::Observations;
+    use crate::game::native_hooks::register_enchantment_damage_effects::tests::TestMod;
+    use mod_api::ModEntry;
+    use mod_platform::testing::with_mods;
+    use sunrise_client::{mobs::Mob, motion::PlayerMotion};
+    use sunrise_core::geometry::Vec3;
 
     #[test]
     #[ignore = "daily"]

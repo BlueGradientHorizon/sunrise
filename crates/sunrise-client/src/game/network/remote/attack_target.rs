@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use super::*;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
@@ -11,24 +10,6 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    use crate::game::boats::Boat;
-    #[allow(unused_imports)]
-    use crate::game::dragon::Crystal;
-    #[allow(unused_imports)]
-    use crate::game::minecarts::{CartKind, Minecart};
-    #[allow(unused_imports)]
-    use crate::game::native_entity_refs::tests::with_client_game;
-    #[allow(unused_imports)]
-    use crate::game::native_hotbar_slot::hotbar_slot_tests::{logged_in, sent};
-    #[allow(unused_imports)]
-    use std::sync::Arc;
-    #[allow(unused_imports)]
-    use sunrise_client::projectiles::{Projectile, ProjectileKind};
-    #[allow(unused_imports)]
-    use sunrise_core::geometry::Vec3;
-    #[allow(unused_imports)]
-    use sunrise_protocol::packets::play::Serverbound as S;
 
     #[test]
     #[ignore = "daily"]

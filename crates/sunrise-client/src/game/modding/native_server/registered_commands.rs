@@ -3,18 +3,9 @@
 //! before its functions load, and on each `/reload`. The tree lives on `Game`, so a function
 //! line naming a mod command parses with no hub; a hub, once there is one, takes that same tree.
 
-#[allow(unused_imports)]
-use super::{
-    BaseTree, CommandArguments, CommandExecutorSlots, Game, command_arguments, command_tree_for,
-    register_command_nodes,
-};
-#[allow(unused_imports)]
-use mod_api::__private::{
-    CommandExecutor, RetainedCallback, mod_index, split_command_registration,
-};
-#[allow(unused_imports)]
+use super::{CommandArguments, CommandExecutorSlots};
+use mod_api::__private::{CommandExecutor, RetainedCallback};
 use serde_json::Value;
-#[allow(unused_imports)]
 use std::{collections::HashMap, sync::Arc};
 
 pub(in crate::game) struct RegisteredExecutor {

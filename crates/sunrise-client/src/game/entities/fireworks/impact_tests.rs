@@ -1,9 +1,6 @@
 //! Real rocket tick coverage for impact payloads and canceled explosions.
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use crate::game::native_projectiles::impact_probe::{Action, point, with_probe};
-#[allow(unused_imports)]
 use sunrise_client::mobs::Mob;
 
 pub(in crate::game) fn launch(game: &mut crate::game::ServerGame<'_>, lifetime: i32) {

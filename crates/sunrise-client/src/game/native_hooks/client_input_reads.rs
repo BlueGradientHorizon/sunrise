@@ -1,9 +1,4 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use keybinds::VanillaMappingSlot;
-#[allow(unused_imports)]
-use mod_api::{MappingError, VanillaKeyMappingRef};
 
 /// Helpers for native mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.

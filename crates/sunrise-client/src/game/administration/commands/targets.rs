@@ -1,6 +1,5 @@
 //! Target dispatch: the level, position and type a command's target names,
 //! by family. Moved out of `mod.rs` unchanged (#2791's discipline).
-#[allow(unused_imports)]
 use super::*;
 
 /// The network id of a target that is no player: its entity id.

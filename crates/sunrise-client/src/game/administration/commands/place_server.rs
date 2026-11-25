@@ -1,34 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Arg, Context, Game, R, err};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::place::num;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::place::read_template_data;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::place::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::structure_blocks::{
-    load_settings, template_size,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::OnceLock;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::text::Text;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::position::BlockPos;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use {
-    sunrise_core::{
-        nbt,
-        nbt::{Limits, Tag},
-    },
-    sunrise_world::{
-        compression::Compression,
-        worldgen::structure::{Mirror, Rotation, StateTransforms},
-    },
-};
+use super::{Game, R, err};
+use crate::game::commands::place::read_template_data;
+use sunrise_core::nbt::Tag;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `PlaceCommand.checkLoaded`: every chunk of the inclusive range.

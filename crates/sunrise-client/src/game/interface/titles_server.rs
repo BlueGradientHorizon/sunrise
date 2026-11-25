@@ -1,14 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::Game;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::titles::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::hud_overlays::Titles;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    hud::HudBatch, hud_layout, hud_overlays::HeldName, text::Text,
-};
+use super::Game;
+use sunrise_client::text::Text;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerPlayer.sendOverlayMessage`: queue an action-bar `SystemChat` packet.

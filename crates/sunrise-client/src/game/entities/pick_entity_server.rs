@@ -1,20 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::pick_ray::{
-    PickAccumulator, PickCandidate, pick_ray_segment,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::pick_entity_common::{
-    AttackRangePickResult, CrosshairDecision, CrosshairEntityHit, PickKind, aabb_extents,
-    knot_bounds,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{BlockPos, CrosshairTarget, EntityRef};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{items::ItemStack, save::uuid_text};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::geometry::{Aabb, Vec3};
+use super::Game;
+use crate::game::pick_entity_common::{CrosshairDecision, CrosshairEntityHit, PickKind};
 
 fn hanging_center((lo, hi): ([f64; 3], [f64; 3])) -> [f64; 3] {
     [
@@ -161,22 +146,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::Game;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::pick_entity::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::Target;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::creatures::SpawnSite;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::dragon::dragon_part_id;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_entity_refs::tests::with_game;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_client::{items::ItemStack, motion::PlayerMotion};
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_core::geometry::Vec3;
+    use crate::game::commands::Target;
+    use crate::game::creatures::SpawnSite;
+    use crate::game::dragon::dragon_part_id;
+    use crate::game::native_entity_refs::tests::with_game;
+    use sunrise_client::{items::ItemStack, motion::PlayerMotion};
+    use sunrise_core::geometry::Vec3;
 
     #[test]
     #[ignore = "daily"]

@@ -1,22 +1,17 @@
 //! `/item` (ItemCommands) and `if items`/`if slots`: addressing the item
 //! slots of the player, mobs, armor stands, item frames and containers.
-#[allow(unused_imports)]
 use super::{Arg, Context, Game, R, Target, err};
-#[allow(unused_imports)]
 use sunrise_client::{
     command::{CommandError, args::ItemInput},
     containers::BlockEntity,
-    furnace::FurnaceCooking,
     items::ItemStack,
-    scoreboard_cmd::{Holder, Tracker},
+    scoreboard_cmd::Holder,
     text::Text,
 };
-#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
 
 pub(in crate::game) mod contents;
 pub(in crate::game) mod slot_sources;
-#[allow(unused_imports)]
 use contents::Component;
 
 /// One addressable slot.
@@ -1013,15 +1008,10 @@ pub(in crate::game) mod stand_equip_event_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod mob_equipment_command_tests {
-    #[allow(unused_imports)]
     use crate::game::commands::{Target, data::DataRef};
-    #[allow(unused_imports)]
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
-    #[allow(unused_imports)]
+    use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    #[allow(unused_imports)]
     use sunrise_client::chunk::Chunk;
-    #[allow(unused_imports)]
     use sunrise_core::position::ChunkPos;
 
     pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
@@ -1772,14 +1762,10 @@ pub(in crate::game) mod component_modifier_tests {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod registered_slot_source_read_tests {
-    #[allow(unused_imports)]
-    use super::*;
-}
+pub(in crate::game) mod registered_slot_source_read_tests {}
 
 #[cfg(test)]
 pub(in crate::game) mod registered_slot_source_preservation_tests {
-    #[allow(unused_imports)]
     use super::*;
 
     #[allow(unused_imports)]

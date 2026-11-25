@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use super::*;
 
 /// Collect attributed world-preset editor factories once at client startup

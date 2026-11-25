@@ -9,29 +9,18 @@
 //! A server keeps one level per dimension. Entity portal processes and
 //! cooldowns follow their level; shared `Arrival`s hold each traveller's
 //! saved compound until its destination chunks are loaded.
-#[allow(unused_imports)]
 use super::entity::{Entity as _, entity_lists_of, for_each_entity};
-#[allow(unused_imports)]
-use super::{Dim, Game, Result, Screen};
-#[allow(unused_imports)]
+use super::{Dim, Game, Result};
 use std::collections::HashMap;
-#[allow(unused_imports)]
 use sunrise_client::fast_hash::FxHashMap;
-#[allow(unused_imports)]
 use sunrise_client::mobs::{Species, spawn_rules};
-#[allow(unused_imports)]
 use sunrise_client::nether_portal::{ENTITY_DELAY, PortalState};
-#[allow(unused_imports)]
 use sunrise_client::world::PendingEntity;
-#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, Axis, Vec3},
     position::BlockPos,
-    random::RandomSource,
 };
-#[allow(unused_imports)]
 use sunrise_world::level::flags as level_flags;
-#[allow(unused_imports)]
 use {
     sunrise_core::nbt::Tag,
     sunrise_world::level::portal_travel::{

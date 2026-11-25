@@ -1,9 +1,6 @@
 //! Common double-chest and container-layout helpers shared by client and server.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use sunrise_client::containers::{BlockEntity, is_chest_block};
-#[allow(unused_imports)]
 use sunrise_gameplay::chests::chest_half;
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay::chests::{chest_connected_pos, is_shulker_box};

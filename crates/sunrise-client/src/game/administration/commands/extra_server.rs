@@ -1,45 +1,16 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Arg, Context, Game, R, Target, err};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::extra::CommandExtras;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::extra::ProfileFetch;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::extra::civil;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::extra::encode_profile;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::extra::filename_date_time;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::extra::num;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::extra::tr_error;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::extra::two_places;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::extra::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::{collections::HashMap, time::Instant};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::actions::Action;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    command::CommandError,
+use super::{Arg, Context, Game, R, Target, err};
+use crate::game::commands::extra::ProfileFetch;
+use crate::game::commands::extra::filename_date_time;
+use crate::game::commands::extra::num;
+use crate::game::commands::extra::tr_error;
+use crate::game::commands::extra::two_places;
+use std::time::Instant;
+use sunrise_client::{
     lan::waypoints::Icon,
     skins::{NameOrId, Resolve, ResolvedProfile},
-    snbt,
-    text::{self, ClickEvent, InlineObject, Style, Text},
+    text::{Style, Text},
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::nbt::{JavaString, Tag};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::version::{
-    BUILD_TIME, DATA_VERSION, STABLE, VANILLA_VERSION, VERSION_ID,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_protocol::packets::{
+use sunrise_protocol::packets::{
     Empty,
     play::{self, Clientbound as C, DialogHolder},
 };

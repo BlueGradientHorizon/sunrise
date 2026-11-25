@@ -1,16 +1,4 @@
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::inventory_input::drop_whole_stack;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::play_keys::GUI_KEYS;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::play_keys::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::keybinds::VanillaMappingSlot;
+use super::*;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// handlePlayerAction SWAP_ITEM_WITH_OFFHAND for the window's own player
@@ -49,21 +37,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod swap_hands_tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::play_keys::swap_hands_tests::Torch;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::play_keys::swap_hands_tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_entity_refs::tests::with_game;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use mod_api::{Flow, Hooks, PlayerSwapHandsEvent, ServerHost};
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use std::sync::{
+    use crate::game::client_side::play_keys::swap_hands_tests::Torch;
+    use crate::game::native_entity_refs::tests::with_game;
+    use std::sync::{
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     };
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_client::items::ItemStack;
+    use sunrise_client::items::ItemStack;
 
     /// The swap through a LAN host's registered connection: the packet goes
     /// through the hub's inbox and the game's packet pass

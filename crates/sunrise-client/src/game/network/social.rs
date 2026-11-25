@@ -3,18 +3,14 @@
 //! scroll, and what hiding does to chat (`Minecraft.isBlocked`). The screen is
 //! `social_screen`. Blocking is Mojang's service (`UserApiService.isBlockedPlayer`), which
 //! Sunrise does not offer: nobody is blocked, as in vanilla's offline mode.
-#[allow(unused_imports)]
 use super::{Game, Screen};
-#[allow(unused_imports)]
 use std::collections::{HashMap, HashSet};
-#[allow(unused_imports)]
 use sunrise_client::{
     social_screen::{self, Action, Entry, Page, SocialView},
     tab_list::TabPlayer,
     text::Text,
     ui::EditBox,
 };
-#[allow(unused_imports)]
 use winit::keyboard::KeyCode;
 
 /// `PlayerSocialManager.hiddenPlayers` and the screen's state.

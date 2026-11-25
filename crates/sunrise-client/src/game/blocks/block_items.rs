@@ -2,15 +2,11 @@
 //! (`sunrise_client::block_entity_item`): the item Pick Block gives, with the
 //! block entity's data on Ctrl in creative, and the data and components a
 //! placed item gives its block entity.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use sunrise_client::{
     block_entity_item, block_entity_nbt, containers::BlockEntity, item_data, items::ItemStack, save,
 };
-#[allow(unused_imports)]
 use sunrise_core::nbt::{Compound, JavaString, Tag};
-#[allow(unused_imports)]
 use sunrise_world::{
     level::{Behaviours, classes::Class},
     registry::{BlockRegistry, BlockStateId},

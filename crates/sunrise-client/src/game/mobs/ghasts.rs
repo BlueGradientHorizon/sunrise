@@ -1,17 +1,11 @@
 //! Happy ghasts on the game side: putting a harness on (and shearing it
 //! off), riding, getting off on top, and the ghastling a dried ghast block
 //! hatches.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use crate::game::level_sounds::LevelSound;
-#[allow(unused_imports)]
 use mod_api::SoundSource;
-#[allow(unused_imports)]
 use sunrise_client::mobs::{MobEvent, happy_ghast};
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
 use sunrise_world::registry::BlockStateId;
 
 impl Game<'_, crate::game::server_side::ServerState> {

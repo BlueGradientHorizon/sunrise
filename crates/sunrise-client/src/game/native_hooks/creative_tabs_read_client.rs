@@ -1,6 +1,5 @@
 //! Client item-model lighting queries.
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
+use super::*;
 use crate::game::api_values::engine_display_context;
 use sunrise_client::cit::Hand as CitHand;
 

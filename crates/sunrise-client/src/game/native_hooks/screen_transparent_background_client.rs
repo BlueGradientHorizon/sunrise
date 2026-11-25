@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::screen_transparent_background::*;
+use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
 impl Game<'_, crate::game::client_side::ClientState> {

@@ -1,32 +1,19 @@
 //! Fishing: `FishingRodItem.use` (cast / reel in), the `FishingHook` (flight,
 //! bobbing, lure and bite timers, open water, hooking mobs, retrieving the
 //! `gameplay/fishing` loot) and `FishingHookRenderer` (bobber and line).
-#[allow(unused_imports)]
-use super::{Game, billboard_axes, creatures::ProjectileHitter, lan_mobs::guest_bounds};
-#[allow(unused_imports)]
+use super::{Game, creatures::ProjectileHitter, lan_mobs::guest_bounds};
 use std::sync::Arc;
-#[allow(unused_imports)]
 use sunrise_client::advancements::EntityView;
-#[allow(unused_imports)]
 use sunrise_client::lan::entity::States;
-#[allow(unused_imports)]
 use sunrise_client::{
-    blocks::Fluid,
-    collisions::SceneCollisions,
-    gizmos::Line,
-    items::ItemStack,
-    mesher::Vertex,
-    particles::{ParticleOptions, ParticleType},
-    pose::Pose,
+    blocks::Fluid, collisions::SceneCollisions, items::ItemStack, particles::ParticleType,
     random_source,
 };
-#[allow(unused_imports)]
 use sunrise_core::{
-    geometry::{Aabb, BlockHit, Vec3, traverse_blocks, trig},
+    geometry::{Aabb, Vec3, trig},
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
 };
-#[allow(unused_imports)]
 use sunrise_protocol::entity_data::{Value, serializer};
 
 #[path = "fishing/impact.rs"]

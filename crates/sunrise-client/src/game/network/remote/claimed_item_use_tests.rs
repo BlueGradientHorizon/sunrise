@@ -1,18 +1,12 @@
-#[allow(unused_imports)]
-use super::{C, Game, PlayerMotion, S, Vec3, play};
-#[allow(unused_imports)]
+use super::{S, play};
 use crate::game::{
     Hit, Screen,
-    native_entity_refs::tests::{with_client_game, with_game},
+    native_entity_refs::tests::with_client_game,
     native_hotbar_slot::hotbar_slot_tests::{logged_in, sent},
 };
-#[allow(unused_imports)]
 use mod_api::{ClientHost, ClientItemUseBehavior, Hooks, ItemKey, Registrar, RegistrationContext};
-#[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
 use sunrise_client::{chunk::Chunk, interaction_input::Button, items::ItemStack};
-#[allow(unused_imports)]
 use sunrise_core::nbt::{JavaString, Tag};
 
 pub(in crate::game) const OWNER: &str = "client_use_fixture";

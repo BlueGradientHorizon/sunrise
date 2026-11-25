@@ -3,24 +3,16 @@
 //! with the entity in the level once the player was sent its spawn bundle, a stop once it was
 //! sent the removal, and a payload a listener sends reaches the player right after that packet.
 //! A leaving player's stops follow `player_logged_out`.
-#[allow(unused_imports)]
-use crate::game::Game;
-#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::with_game;
-#[allow(unused_imports)]
 use crate::game::native_item_places::tests::{guest, open_to_lan};
-#[allow(unused_imports)]
 use mod_api::{Hooks, ModEntry, PayloadBytes, PayloadId, Registrar, ServerHost};
-#[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
 use sunrise_client::{
     chunk::Chunk,
     items::ItemStack,
     lan::{PlayerSender, hub::HostEvent},
     raw_payloads::{Side, Transport},
 };
-#[allow(unused_imports)]
 use sunrise_protocol::{buf::Reader, ids::play::clientbound as id};
 
 pub(in crate::game) const CHANNEL: &str = "tracktest:seen";

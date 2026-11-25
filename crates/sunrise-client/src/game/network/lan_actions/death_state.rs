@@ -1,10 +1,5 @@
-#[allow(unused_imports)]
-use crate::game::{Game, api_values::TryIntoApi};
-#[allow(unused_imports)]
 use mod_api::HurtSource;
-#[allow(unused_imports)]
 use std::sync::Arc;
-#[allow(unused_imports)]
 use sunrise_client::{health::AcceptedHit, items::ItemStack};
 
 /// The source a player's death hooks hear (`living_death`, `living_drops`,

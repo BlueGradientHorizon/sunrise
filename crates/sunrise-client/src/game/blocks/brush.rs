@@ -1,25 +1,7 @@
 //! Brushing suspicious sand and gravel: `BrushItem.onUseTick` and
 //! `BrushableBlockEntity`. The block's loot table stays in its saved block
 //! entity (like a decorated pot's) until the first counted stroke rolls it.
-#[allow(unused_imports)]
-use super::{
-    Game, Hit, decorated_pot,
-    item_draw::{BlockItemDraw, block_entity_pose},
-    view_vector,
-};
-#[allow(unused_imports)]
-use sunrise_client::{
-    block_entity_render::vertex_light,
-    camera::rotate_degrees,
-    containers::BlockEntity,
-    mesher::Vertex,
-    particles::{ParticleOptions, ParticleType},
-    save,
-};
-#[allow(unused_imports)]
-use sunrise_client_render::block_entity_reach::Reach;
-#[allow(unused_imports)]
-use sunrise_core::random::RandomSource;
+use super::Game;
 
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay::brushing::{Brushing, USE_DURATION, completion_state};

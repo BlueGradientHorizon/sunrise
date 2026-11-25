@@ -1,11 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::execution_role::ExecutionRole;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::initial_client_models_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
-    Audio, Game, Options, Progress, Settings, load_resources,
-};
+use crate::game::execution_role::ExecutionRole;
+use crate::game::{Audio, Options, Progress, Settings, load_resources};
 
 #[test]
 #[ignore = "daily"]

@@ -1,6 +1,5 @@
 //! The command line the game starts with (`Options`): what it asks for, read once at start,
 //! then the game folder and the account it names.
-#[allow(unused_imports)]
 use super::*;
 
 #[derive(Clone)]

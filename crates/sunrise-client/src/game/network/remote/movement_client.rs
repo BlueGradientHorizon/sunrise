@@ -1,13 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::movement::MovePacket;
-#[allow(unused_imports)]
+use crate::game::remote::movement::MovePacket;
 pub(in crate::game::client_side) use crate::game::remote::movement::stepped_move;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::movement::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_world::stepped_interpolation::{
-    Path, PosRot, Start, SteppedInterpolation,
-};
+use sunrise_world::stepped_interpolation::{PosRot, SteppedInterpolation};
 
 impl MovePacket {
     /// `tooBigToInterpolate`: a move to `to` of more than 64 blocks snaps.

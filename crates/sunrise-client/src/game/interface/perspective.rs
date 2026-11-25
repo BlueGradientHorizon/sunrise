@@ -2,25 +2,20 @@
 //! in front, cycled by F5), the detached camera (`Camera.setup` with
 //! `getMaxZoom`), and the local player drawn as a model: in third person
 //! and in the inventory (`InventoryScreen.extractEntityInInventoryFollowsMouse`).
-#[allow(unused_imports)]
 #[cfg(feature = "client")]
 use super::native_mob_draw::PlayerRender;
 use super::{Game, Screen};
-#[allow(unused_imports)]
 use mod_api::Hand;
-#[allow(unused_imports)]
 use std::{
     io,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
-#[allow(unused_imports)]
 use sunrise_client::{
     blocks::BlockFacts,
     camera::{CameraEntity, CameraType, LivingCamera},
     collisions::SceneCollisions,
 };
-#[allow(unused_imports)]
 use sunrise_client::{
     entities::nameplate::NameplateDistances,
     hud::HudBatch,
@@ -28,12 +23,10 @@ use sunrise_client::{
     mouse::Rotation,
     pose::Pose,
 };
-#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, ShapeOp, Vec3, VoxelShape},
     position::BlockPos,
 };
-#[allow(unused_imports)]
 use sunrise_world::{
     collision_context::{CollisionContext, CollisionEntity, CollisionItem},
     entity_obstruction::EntityIdentity,

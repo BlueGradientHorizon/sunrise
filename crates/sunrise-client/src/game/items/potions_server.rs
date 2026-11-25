@@ -1,81 +1,41 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{
+use super::{
     Game,
     commands::Target,
-    dragon::{Breath, FightPlayer, FightWho},
+    dragon::{Breath, FightPlayer},
     living_attributes::AttributeWrite,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::BodyPotions;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::CloudParticle;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::CloudSettings;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::LINGERING_WAIT;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::PotionCloud;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::PotionOwner;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::PotionState;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::REAPPLICATION_DELAY;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::ThrownPotion;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::Victim;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::collect_dragon_breath;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::mob_can_be_affected;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::mob_effect_id;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::potion_cloud_from_nbt;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::potion_cloud_to_nbt;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::sound_on_added;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::splash_distance_sqr;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::thrown_projectile;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{
-    EffectApplicable, EffectTickChange, EntityRef, LivingRef, PlayerFood,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_assets::item_model::DisplayContext;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::health::Attack;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    block_entity_render::vertex_light,
+use crate::game::client_side::potions::CloudSettings;
+use crate::game::client_side::potions::LINGERING_WAIT;
+use crate::game::client_side::potions::PotionCloud;
+use crate::game::client_side::potions::PotionOwner;
+use crate::game::client_side::potions::PotionState;
+use crate::game::client_side::potions::REAPPLICATION_DELAY;
+use crate::game::client_side::potions::Victim;
+use crate::game::client_side::potions::collect_dragon_breath;
+use crate::game::client_side::potions::mob_can_be_affected;
+use crate::game::client_side::potions::mob_effect_id;
+use crate::game::client_side::potions::potion_cloud_from_nbt;
+#[cfg(test)]
+use crate::game::client_side::potions::potion_cloud_to_nbt;
+use crate::game::client_side::potions::sound_on_added;
+use crate::game::client_side::potions::splash_distance_sqr;
+use crate::game::client_side::potions::thrown_projectile;
+use mod_api::{EffectApplicable, EffectTickChange, EntityRef, LivingRef, PlayerFood};
+use sunrise_client::health::Attack;
+use sunrise_client::{
     brewing,
     effects::{EffectAction, EffectInstance, OmenTick, PlayerEffects, effect_modifier},
-    hud::HudBatch,
-    hud_layout, hud_overlays, inventory_effects,
     items::ItemStack,
-    mesher::Vertex,
     mobs::{Damage, DamageKind, Mob, MobEffectAction, ModEffectTick, NamedDamage, Who},
     particles::{ParticleOptions, ParticleType},
     projectiles::{Projectile, ProjectileKind},
     text::Text,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::{
+use sunrise_core::nbt::Tag;
+use sunrise_core::{
     geometry::{Aabb, Direction, Vec3},
     random::{LegacyRandom, RandomSource},
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_gameplay::particle_options::custom_particle_options;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_gameplay::particle_options::particle_options;
 
 impl CloudSettings {
     pub(in crate::game) fn lingering() -> Self {
@@ -2083,22 +2043,11 @@ impl sunrise_client::mobs::ModEffectTicks for Game<'_, crate::game::server_side:
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::super::sculk::darkness_blend_added;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::potions::tests::FoodEffectMod;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::potions::tests::OtherEffectMod;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::potions::tests::effect_test_mod;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::potions::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_client::{
-        motion::PlayerMotion, screen_effects::nausea_blend_added,
-    };
+    use super::*;
+    use crate::game::client_side::potions::tests::FoodEffectMod;
+    use crate::game::client_side::potions::tests::OtherEffectMod;
+    use crate::game::client_side::potions::tests::effect_test_mod;
+    use sunrise_client::motion::PlayerMotion;
 
     pub(in crate::game) fn cloud_spawns_during_pass(potion_pass: bool) {
         crate::game::native_entity_refs::tests::with_game(|game| {

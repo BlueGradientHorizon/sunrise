@@ -1,19 +1,11 @@
 //! Powder snow and water cauldrons putting a burning player out: the hiss
 //! (`Entity.playEntityOnFireExtinguishedSound`) plays either way, the block
 //! change only where `mayInteract` allows it.
-#[allow(unused_imports)]
-use super::*;
-#[allow(unused_imports)]
 use crate::game::game_tests::tests::server_game;
-#[allow(unused_imports)]
 use sunrise_client::motion::{MotionWorld, PlayerMotion};
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
 use sunrise_world::chunk::BlockState;
-#[allow(unused_imports)]
 use sunrise_world::entity_move::MovementRecord;
-#[allow(unused_imports)]
 use sunrise_world::registry::BlockStateId;
 
 /// A server's game on the prepared resources, or None when they are absent

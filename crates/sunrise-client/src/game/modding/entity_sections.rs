@@ -37,17 +37,11 @@ pub(in crate::game) mod player;
 #[allow(unused_imports)]
 pub(in crate::game) use player::PlayerSectionObserver;
 
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use crate::mobs::living::section_writes::PositionWrite;
-#[allow(unused_imports)]
 use mod_api::__private::game::BackendRefOf;
-#[allow(unused_imports)]
 use mod_api::{DimensionKey, EntityRef, WorldEpoch};
-#[allow(unused_imports)]
 use std::collections::HashMap;
-#[allow(unused_imports)]
 use std::collections::hash_map::Entry;
 
 #[cfg(test)]

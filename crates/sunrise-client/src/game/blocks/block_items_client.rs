@@ -1,28 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::block_items::apply_patch;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::block_items::clone_item;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::block_items::components;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::block_items::item_block_state;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::block_items::picked_item;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::block_items::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    block_entity_item, block_entity_nbt, containers::BlockEntity, item_data, items::ItemStack, save,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::nbt::{Compound, JavaString, Tag};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_world::{
-    level::{Behaviours, classes::Class},
-    registry::{BlockRegistry, BlockStateId},
-};
+use super::Game;
+use sunrise_client::{block_entity_item, containers::BlockEntity, items::ItemStack, save};
+use sunrise_core::nbt::Tag;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Client arm of [`Game::side_encode_live_block_entity`].

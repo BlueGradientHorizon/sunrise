@@ -1,22 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{Game, Hit, entity_culling::default_range};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::paintings::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    entities::Painting, items::ItemStack, mesher::Vertex, random_source,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{
-    geometry::{Aabb, Vec3},
-    random::RandomSource,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_gameplay::painting_variants::{
-    PaintingVariants, Variant, frame_coexists, painting_coexists, painting_facing,
-};
+use super::{Game, entity_culling::default_range};
+use crate::game::server_side::paintings::*;
+use sunrise_client::mesher::Vertex;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// PaintingRenderer: variant on the front, back texture behind and on the edges.

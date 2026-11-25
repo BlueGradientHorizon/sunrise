@@ -1,53 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::entity::{Blast, Entity as _, for_each_entity_mut};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::wind::BREEZE_BURST;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::wind::BREEZE_RADIUS;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::wind::Burst;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::wind::BurstCause;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::wind::PLAYER_KNOCKBACK;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::wind::PLAYER_RADIUS;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::wind::Source;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::wind::VehicleWinds;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::wind::WIND_CHARGE_BURST;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::wind::above_the_top;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::wind::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::collections::BTreeSet;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::advancements::EntityView;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::chunk::LevelShape;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::join_seq::Joined as _;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    Result,
-    items::ItemStack,
-    mobs::{Damage, DamageKind, Species, Who},
-    particles::{ParticleOptions, ParticleType},
-    projectiles::{Hit, Projectile, ProjectileKind},
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{
-    geometry::{Direction, Vec3},
-    position::BlockPos,
-    random::RandomSource,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_world::level::{PlayerContext, classes::Class};
+use super::Game;
+use sunrise_client::projectiles::Projectile;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `WindChargeRenderer`: the spinning charge and its wind.

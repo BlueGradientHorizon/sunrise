@@ -1,9 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::interaction_event_tests::predicted_use_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::interaction_event_tests::predicted_use_tests::Native;
+use super::*;
+use crate::game::remote::interaction_event_tests::predicted_use_tests::*;
 
 pub(in crate::game) fn matrix(mods: mod_api::Mods) {
     mod_platform::testing::with_mods(mods.clone(), || {

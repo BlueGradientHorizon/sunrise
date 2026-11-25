@@ -1,46 +1,22 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{
+use super::{
     Game,
     stations::{INPUT, Kind, RESULT, Station},
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::trading::GREY;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::trading::GameMaps;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::trading::MadeMaps;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::trading::MerchantState;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::trading::SHIFT;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::trading::drag_scroll;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::trading::inventory_slot;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::trading::merchant_display_name;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::trading::merchant_title;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::trading::on_scroller;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::trading::scroller_cursor;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::trading::scroller_rect;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::trading::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::mobs::{
-    Mob, Species, render::VILLAGER_TYPES, villager,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
+use crate::game::server_side::trading::GREY;
+use crate::game::server_side::trading::MerchantState;
+use crate::game::server_side::trading::SHIFT;
+use crate::game::server_side::trading::drag_scroll;
+use crate::game::server_side::trading::merchant_display_name;
+use crate::game::server_side::trading::merchant_title;
+use crate::game::server_side::trading::on_scroller;
+use crate::game::server_side::trading::scroller_cursor;
+use crate::game::server_side::trading::scroller_rect;
+use sunrise_client::{
     hud::HudBatch,
     items::ItemStack,
-    merchant::{self, MerchantOffer, TradeContext, TradeFeedback},
-    random_sequences::RandomSequences,
+    merchant::{self, MerchantOffer, TradeContext},
     text::Text,
-    widgets::{Cursor, request_cursor},
+    widgets::request_cursor,
 };
 
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -504,8 +480,6 @@ impl MerchantState {
 
 #[cfg(test)]
 pub(in crate::game) mod select_on_a_server_tests {
-    #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::trading::select_on_a_server_tests::*;
 
     /// Picking a trade on a server moves payment locally, sends SelectTrade, and leaves effects to server.
     #[test]

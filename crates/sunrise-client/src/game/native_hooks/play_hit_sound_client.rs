@@ -1,11 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::Audio;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::play_hit_sound::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{geometry::Direction, position::BlockPos};
+use super::*;
+use crate::game::Audio;
+use sunrise_core::{geometry::Direction, position::BlockPos};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn play_mining_hit_sound(

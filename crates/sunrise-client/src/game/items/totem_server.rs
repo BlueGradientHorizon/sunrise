@@ -1,26 +1,9 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::render_tick::player_tracking_body;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::totem::Body;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::totem::TOTEM;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::totem::TOTEM_EVENT;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::totem::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_assets::item_model::DisplayContext;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    block_entity_render::vertex_light,
-    health::HealthEvent,
-    items::ItemStack,
-    mesher::Vertex,
-    motion::MotionEvent,
-    particles::{ParticleOptions, ParticleType, TrackingBody, TrackingTarget},
-};
+use super::Game;
+use super::render_tick::player_tracking_body;
+use crate::game::client_side::totem::Body;
+use crate::game::client_side::totem::TOTEM;
+use crate::game::client_side::totem::TOTEM_EVENT;
+use sunrise_client::{health::HealthEvent, items::ItemStack, motion::MotionEvent};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The `death_effects` of the stack's `minecraft:death_protection`.

@@ -11,17 +11,10 @@
 //! that client's position back (`handleMoveVehicle`), so vanilla never moves
 //! it by the rope either. Here the pull lands on the server's copy and the
 //! rider's client overwrites it the same way (`tick_boats`).
-#[allow(unused_imports)]
 use super::{Game, boats::Boat};
-#[allow(unused_imports)]
-use sunrise_client::actions::Action;
-#[allow(unused_imports)]
 use sunrise_client::mobs::leash::{self, Holder, HolderState, Pending};
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
 use sunrise_core::position::BlockPos;
 
 /// `AbstractBoat`'s `getBbWidth` and `getBbHeight`.

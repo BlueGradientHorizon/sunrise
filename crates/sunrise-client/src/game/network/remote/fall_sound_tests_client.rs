@@ -1,13 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_client_session::tests::logged_client;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_entity_refs::tests::with_client_game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::fall_sound::tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
+use crate::game::native_client_session::tests::logged_client;
+use crate::game::native_entity_refs::tests::with_client_game;
+use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
+use sunrise_core::geometry::Vec3;
 
 /// The `minecraft:block.stone.fall` sounds the landing player's own client plays
 /// for a 5-block fall onto stone, as (volume, pitch).

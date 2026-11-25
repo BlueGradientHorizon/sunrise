@@ -1,98 +1,15 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_entity_refs::tests::{
-    with_client_game, with_game,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_guest_turn_tests::with_guests;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::ASKS;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::Listener;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::PLAYER;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::Rules;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::SCRIPT;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::SEEN;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::Script;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::api_stack;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::click;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::count;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::dispatches;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::reset_local;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::script;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::with_local;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::with_mod;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::item::menu::{ClickedStackResult, StackResult};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{
-    Flow, Hooks, HostSide, HostTransaction, ItemPlace, ItemResource, ItemStackedOnOtherEvent,
-    ModEntry, Mods,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::cell::RefCell;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{items::ItemStack, menu::Input};
+use crate::game::native_entity_refs::tests::with_client_game;
+use mod_api::{ModEntry, Mods};
+use sunrise_client::{items::ItemStack, menu::Input};
 
 pub(in crate::game) mod item_part_tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::item_part_tests::EXTRACTED;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::item_part_tests::GlobalAndPartMod;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::item_part_tests::OBSERVATIONS;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::item_part_tests::PART_SCRIPT;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::item_part_tests::PartObservation;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::item_part_tests::PartOnlyMod;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::item_part_tests::PartScript;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::item_part_tests::PartWithFurnaceHooksMod;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::item_part_tests::SMELTED;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::item_part_tests::TRACE;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::item_part_tests::TaggedPart;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::item_part_tests::extracted_events;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::item_part_tests::observations;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::item_part_tests::set_part_script;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::item_part_tests::smelted_events;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::item_part_tests::trace;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::item_part_tests::with_part_and_furnace_hooks_mod;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::item_part_tests::with_part_only_mod;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::stacked_on_other_tests::item_part_tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use mod_api::item::menu::StackedOnOtherDirection;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use mod_api::{ItemPart, Registrar, RegistrationContext};
+    use super::*;
+    use crate::game::stacked_on_other_tests::item_part_tests::GlobalAndPartMod;
+    use crate::game::stacked_on_other_tests::item_part_tests::PartScript;
+    use crate::game::stacked_on_other_tests::item_part_tests::observations;
+    use crate::game::stacked_on_other_tests::item_part_tests::set_part_script;
+    use crate::game::stacked_on_other_tests::item_part_tests::trace;
+    use mod_api::item::menu::StackedOnOtherDirection;
 
     #[test]
     #[ignore = "daily"]

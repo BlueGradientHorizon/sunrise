@@ -1,79 +1,17 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{
-    Dim, Game, Options, PackResources, Resources, UiResources, WorldIcon,
-    execution_role::ExecutionRole,
-    lan::{
-        LanSettings, Owner,
-        sync::{SyncPreload, preload_sync_data},
-    },
-    native_singleplayer_owner::SingleplayerProfile,
-    owner_link::{OwnerRequest, Reply},
-    world_loading::{WorldLoader, WorldRequest},
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::integrated::CALL_TIMEOUT;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::integrated::ComponentHarness;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::integrated::Finished;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::integrated::Flags;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::integrated::Integrated;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::integrated::Launch;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::integrated::LoadPhase;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::integrated::NO_ANSWER;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::integrated::Opening;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::integrated::PLAYER_CHUNKS;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::integrated::Publish;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::integrated::Ready;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::integrated::ServerOptions;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::integrated::Serving;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::integrated::Starting;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::integrated::serve;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::integrated::server_thread_stack;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::integrated::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::{
-    net::TcpListener,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, AtomicI32, AtomicU16, AtomicU32, AtomicU64, Ordering},
-        mpsc::{Receiver, RecvTimeoutError, Sender, channel, sync_channel},
-    },
-    thread::JoinHandle,
+use super::{Game, WorldIcon, execution_role::ExecutionRole};
+use crate::game::server_side::integrated::Finished;
+use crate::game::server_side::integrated::Flags;
+use crate::game::server_side::integrated::Integrated;
+use crate::game::server_side::integrated::Launch;
+use crate::game::server_side::integrated::Starting;
+use crate::game::server_side::integrated::serve;
+use crate::game::server_side::integrated::server_thread_stack;
+use std::{
+    sync::{Arc, atomic::Ordering, mpsc::channel},
     time::{Duration, Instant},
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::level_loading::{STATUS_RADIUS, Stage};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::spans::startup;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    Result,
-    audio::Audio,
-    chunk_io::Reports,
-    lan::{Lan, MAX_PLAYERS, NetConfig, OwnerProfile, hub::HubConfig},
-    settings::Settings,
-    title::WorldOptions,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::connection::Pipe;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::{crypto::offline_uuid, text::translatable};
+use sunrise_client::{Result, lan::OwnerProfile, title::WorldOptions};
+use sunrise_protocol::crypto::offline_uuid;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Only the owner window changes its integrated server's command tree.

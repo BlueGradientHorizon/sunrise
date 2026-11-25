@@ -1,18 +1,10 @@
 //! The save screen freezes simulation, but keeps pumping window events while
 //! snapshots are prepared in small batches and the region workers drain.
-#[allow(unused_imports)]
-#[cfg(feature = "client")]
-use super::loading_frame;
-#[allow(unused_imports)]
-use super::Game;
-#[allow(unused_imports)]
 use std::{
-    collections::{HashSet, VecDeque},
-    sync::mpsc::{Receiver, TryRecvError},
+    collections::VecDeque,
+    sync::mpsc::Receiver,
     time::{Duration, Instant},
 };
-#[allow(unused_imports)]
-use sunrise_client::{Result, hud::HudBatch};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(in crate::game) enum ClientQuit {

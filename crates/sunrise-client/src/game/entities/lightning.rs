@@ -4,29 +4,13 @@
 //! `thunderHit` (damage and burning, charged creepers, zombified piglins,
 //! witches, mooshroom colours, turtles, burnt items), lightning rods, the sky
 //! flash, the sounds and the branching additive bolt.
-#[allow(unused_imports)]
-use super::{
-    Game,
-    commands::Target,
-    entity::{
-        Entity as _, EntityHandle, ThunderHit, entity_lists_of, for_each_entity, with_entity,
-    },
-    minecarts::CartHit,
-};
-#[allow(unused_imports)]
-use sunrise_client::advancements::EntityView;
-#[allow(unused_imports)]
-use sunrise_client::mobs::{Damage, DamageKind, Species};
-#[allow(unused_imports)]
+use super::Game;
 use sunrise_client::random_source;
 
-#[allow(unused_imports)]
 use sunrise_core::{
-    geometry::{Aabb, Vec3},
-    position::BlockPos,
+    geometry::Vec3,
     random::{LegacyRandom, RandomSource},
 };
-#[allow(unused_imports)]
 use sunrise_world::level::Ticks;
 
 #[derive(Default)]
@@ -332,17 +316,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::*;
-    #[allow(unused_imports)]
-    use crate::game::native_entity_refs::tests::collect_entities_in;
-    #[allow(unused_imports)]
     use mod_api::{self, ServerHost};
-    #[allow(unused_imports)]
     use std::sync::Arc;
-    #[allow(unused_imports)]
     use sunrise_client::mobs::{Anim, Brain, Mob, MobType, Part, Species};
-    #[allow(unused_imports)]
     use sunrise_core::geometry::Vec3;
 
     /// `LightningBolt.spawnFire` places nothing, and draws no extra sources,

@@ -1,9 +1,5 @@
 //! A client start publishes its models only once the world-rest worker it started is joined, so
 //! the renderer table never reads the rest tables before they exist (#1377).
-#[allow(unused_imports)]
-use crate::game::execution_role::ExecutionRole;
-#[allow(unused_imports)]
-use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
 
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::client_side::initial_client_models_tests_client::with_loading_client;

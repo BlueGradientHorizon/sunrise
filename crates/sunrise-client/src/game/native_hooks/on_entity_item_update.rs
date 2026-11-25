@@ -1,9 +1,4 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use crate::game::native_ticks;
-#[allow(unused_imports)]
-use sunrise_core::geometry::Vec3;
 
 /// `IItemExtension.onEntityItemUpdate`: a dropped item entity is about to
 /// tick (`ItemEntity.tick`). Set `canceled` and its
@@ -28,18 +23,13 @@ pub(in crate::game) struct ItemEntityTickAccess<'g, 'w> {
 
 #[cfg(test)]
 pub(in crate::game) mod on_entity_item_update_tests {
-    #[allow(unused_imports)]
     use super::*;
-    #[allow(unused_imports)]
     use crate::game::{
         api_values::{STACK_PROJECTIONS, test_snapshot},
         native_entity_refs::tests::with_game,
     };
-    #[allow(unused_imports)]
     use mod_api::{Flow, Hooks, ItemPart, OnEntityItemUpdateEvent, Registrar, RegistrationContext};
-    #[allow(unused_imports)]
     use std::sync::{Arc, Mutex};
-    #[allow(unused_imports)]
     use sunrise_client::chunk::Chunk;
 
     /// An item part that writes the entity's pickup delay to 7 on every update and

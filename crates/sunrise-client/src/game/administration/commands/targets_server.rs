@@ -1,11 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
+use super::*;
 pub(in crate::game::server_side) use crate::game::commands::targets::non_player_entity_id;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::targets::*;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The level `t` is in (`Entity.level`): a server's players have their

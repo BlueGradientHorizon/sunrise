@@ -3,19 +3,12 @@
 //! the vanilla key mappings they are bound to, the left stick as an analog
 //! move vector and the right stick turning the view. `sunrise-ctl pad`
 //! injects a virtual pad on top of the real one.
-#[allow(unused_imports)]
 use super::event_loop::EventLoopCtl;
-#[allow(unused_imports)]
 use super::{Game, Screen};
-#[allow(unused_imports)]
 use serde_json::{Value, json};
-#[allow(unused_imports)]
 use std::time::{Duration, Instant};
-#[allow(unused_imports)]
 use sunrise_client::actions::Action;
-#[allow(unused_imports)]
 use sunrise_client::held::Source;
-#[allow(unused_imports)]
 use sunrise_client::{
     Result,
     controller_notice::Notice,
@@ -27,11 +20,8 @@ use sunrise_client::{
     keymapping::SNEAK,
     pad_glyph::{Glyph, Glyphs},
 };
-#[allow(unused_imports)]
 use sunrise_client_input::radial;
-#[allow(unused_imports)]
 use winit::event::MouseButton;
-#[allow(unused_imports)]
 use winit::keyboard::KeyCode;
 
 pub(in crate::game) const HELP: &[&str] = &[

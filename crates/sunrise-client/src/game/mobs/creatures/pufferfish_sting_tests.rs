@@ -1,16 +1,6 @@
 //! `Pufferfish.playerTouch`: the sting game event (`ClientboundGameEventPacket.PUFFER_FISH_STING`)
 //! goes out only inside the `hurtServer` branch, and only when the fish is not
 //! silent; the poison follows it.
-#[allow(unused_imports)]
-use crate::game::Game;
-#[allow(unused_imports)]
-use sunrise_client::mobs::Mob;
-#[allow(unused_imports)]
-use sunrise_client::motion::PlayerMotion;
-#[allow(unused_imports)]
-use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
-use sunrise_protocol::packets::play::Clientbound;
 
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::server_side::creatures_server::pufferfish_player::pufferfish_sting_tests::with_fish;

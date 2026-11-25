@@ -1,25 +1,14 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::riptide_tests::OWNER;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::riptide_tests::START;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::riptide_tests::arena;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::riptide_tests::server_to_client;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::riptide_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
+use super::*;
+use crate::game::remote::riptide_tests::OWNER;
+use crate::game::remote::riptide_tests::START;
+use crate::game::remote::riptide_tests::arena;
+use crate::game::remote::riptide_tests::server_to_client;
+use crate::game::remote::riptide_tests::*;
+use crate::game::{
     native_entity_refs::tests::with_client_game, native_guest_turn_tests::with_guests,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::mpsc::{Receiver, channel};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::lan::{Out, PlayerSender, guest::InboxItem};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::{buf::Reader, connection::ConnReader};
+use std::sync::mpsc::channel;
+use sunrise_client::lan::PlayerSender;
 
 #[test]
 #[ignore = "daily"]

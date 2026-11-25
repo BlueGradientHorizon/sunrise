@@ -1,17 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
+use super::*;
 pub(in crate::game::server_side) use crate::game::lan_actions::guest_body::initialize;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::guest_body::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    lan::{guest::Guest, hub::CommittedMove},
-    landing::PlayerLandingPause,
-    motion::{MotionResources, PlayerMotion, ServerTravel},
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::geometry::Vec3;
+use sunrise_client::{lan::hub::CommittedMove, landing::PlayerLandingPause, motion::ServerTravel};
+use sunrise_core::geometry::Vec3;
 
 /// The server copy of the acting guest's body, borrowing its player and the level from `game`.
 /// A macro so that the borrow can end where the game itself is needed (a hook's owning host)

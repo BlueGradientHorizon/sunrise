@@ -10,7 +10,6 @@ pub(in crate::game) mod anvil;
 pub(in crate::game) mod draw;
 #[path = "stations/tooltip.rs"]
 pub(in crate::game) mod tooltip;
-#[allow(unused_imports)]
 use super::smithing_icons::smithing_slot_icons;
 pub(in crate::game) struct EngineTooltipLines<'a>(
     pub(in crate::game) &'a mut Vec<(sunrise_client::text::Text, u32)>,
@@ -115,13 +114,9 @@ pub(in crate::game::client_side) fn tooltip_position(
     (pos[0] as f32, pos[1] as f32)
 }
 
-#[allow(unused_imports)]
 use super::api_values::{TryIntoApi, TryIntoEngine};
-#[allow(unused_imports)]
 use super::{Game, Screen};
-#[allow(unused_imports)]
 use mod_api::TooltipElement;
-#[allow(unused_imports)]
 use std::cell::Cell;
 #[allow(unused_imports)]
 use sunrise_client::{
@@ -129,11 +124,9 @@ use sunrise_client::{
     containers::BlockEntity,
     hud::{HudBatch, rgba},
     items::ItemStack,
-    random_source,
-    stations::{self, AnvilResult, EnchantOffers},
+    stations::{self, AnvilResult},
     text::Text,
 };
-#[allow(unused_imports)]
 use sunrise_core::random::{LegacyRandom, RandomSource};
 
 thread_local! {

@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::camera_type::*;
+use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -20,20 +17,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
 #[cfg(test)]
 pub(in crate::game) mod camera_type_tests {
-    #[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{CameraType, CameraTypeCycleEvent, ClientHost, Hooks, ModEntry};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_platform::testing::with_mods;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::camera_type::camera_type_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::camera_type::camera_type_tests::NoFront;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::camera_type::camera_type_tests::Calls;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::camera_type::camera_type_tests::SharedCamera;
+    use crate::game::native_hooks::camera_type::camera_type_tests::Calls;
+    use crate::game::native_hooks::camera_type::camera_type_tests::NoFront;
+    use crate::game::native_hooks::camera_type::camera_type_tests::SharedCamera;
+    use mod_api::{CameraType, ModEntry};
+    use mod_platform::testing::with_mods;
+    use std::sync::{Arc, Mutex};
 
     /// `key.togglePerspective`: the mod hears each cycle with vanilla's next type and its
     /// answer is the new type; setting the type does not cycle, and without a listener F5

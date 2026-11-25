@@ -2,43 +2,27 @@
 //! synchronous transitions from widget callbacks, text field editing & IME integration, custom
 //! `ScreenWidget` dispatch & panic isolation, and separated screen input Pre/Post hooks.
 
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use crate::game::event_loop::EventLoopCtl;
-#[allow(unused_imports)]
 use crate::game::input_trace::InputOrigin;
-#[allow(unused_imports)]
-use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
-#[allow(unused_imports)]
-use mod_api::client::widgets::{Button, TextField};
-#[allow(unused_imports)]
+use crate::game::native_entity_refs::tests::with_client_game;
+use mod_api::client::widgets::Button;
 use mod_api::{
-    ClientHost, DrawContext, Flow, Hooks, ModEntry, ScreenCharTypedPostEvent,
-    ScreenCharTypedPreEvent, ScreenClosingEvent, ScreenInitPostEvent, ScreenKeyPressedPostEvent,
-    ScreenKeyPressedPreEvent, ScreenKeyReleasedPostEvent, ScreenKeyReleasedPreEvent,
-    ScreenMouseButtonPressedPostEvent, ScreenMouseButtonPressedPreEvent,
-    ScreenMouseButtonReleasedPostEvent, ScreenMouseButtonReleasedPreEvent,
-    ScreenMouseDraggedPostEvent, ScreenMouseDraggedPreEvent, ScreenMouseScrolledPostEvent,
-    ScreenMouseScrolledPreEvent, ScreenOpeningEvent, ScreenPreeditPostEvent, ScreenPreeditPreEvent,
-    ScreenWidget, ScreenWidgetId, Text as ApiText,
+    ClientHost, Flow, Hooks, ModEntry, ScreenInitPostEvent, ScreenKeyReleasedPostEvent,
+    ScreenKeyReleasedPreEvent, ScreenMouseButtonPressedPostEvent, ScreenMouseButtonPressedPreEvent,
+    ScreenMouseButtonReleasedPostEvent, ScreenMouseDraggedPostEvent, ScreenMouseDraggedPreEvent,
+    ScreenMouseScrolledPostEvent, ScreenMouseScrolledPreEvent, ScreenPreeditPostEvent,
+    ScreenWidget, Text as ApiText,
 };
-#[allow(unused_imports)]
 use mod_platform::testing::with_mods;
-#[allow(unused_imports)]
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicBool, AtomicUsize, Ordering},
+    atomic::{AtomicUsize, Ordering},
 };
-#[allow(unused_imports)]
-use winit::dpi::PhysicalSize;
-#[allow(unused_imports)]
 use winit::event::{
     DeviceId, ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent,
 };
-#[allow(unused_imports)]
-use winit::event_loop::{ControlFlow, EventLoop};
-#[allow(unused_imports)]
+use winit::event_loop::ControlFlow;
 use winit::keyboard::KeyCode;
 
 #[path = "screen_widgets_input_tests.rs"]

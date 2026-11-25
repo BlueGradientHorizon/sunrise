@@ -1,34 +1,9 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::loaded_arrow_shot_tests::natural;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::loaded_arrow_shot_tests::owner;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::loaded_arrow_shot_tests::start_events;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::loaded_arrow_shot_tests::stop_events;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::loaded_arrow_shot_tests::take_shots;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::loaded_arrow_shot_tests::with_game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::loaded_arrow_shot_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{
-    Audio, Game, Options, Progress, Settings, load_resources,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    chunk::Chunk,
-    mobs::Who,
-    motion::PlayerMotion,
-    projectiles::{Projectile, ProjectileKind},
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::{
-    geometry::Vec3, position::ChunkPos, random::RandomSource,
-};
+use crate::game::creatures::loaded_arrow_shot_tests::start_events;
+use crate::game::creatures::loaded_arrow_shot_tests::stop_events;
+use crate::game::creatures::loaded_arrow_shot_tests::take_shots;
+use crate::game::creatures::loaded_arrow_shot_tests::with_game;
+use std::sync::Arc;
+use sunrise_client::mobs::Who;
 
 #[test]
 #[ignore = "daily"]

@@ -1,34 +1,9 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::fireworks::events_tests::start_events;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::fireworks::events_tests::stop_events;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::fireworks::events_tests::take_explosions;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::fireworks::events_tests::twinkling;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::fireworks::events_tests::with_game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::fireworks::events_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{
-    Audio, Options, Progress, Settings, load_resources,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    chunk::Chunk,
-    items::ItemStack,
-    mobs::Who,
-    particles::{FireworkExplosion, FireworkShape, ParticleLevel},
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::{
-    geometry::Vec3, position::ChunkPos, random::LegacyRandom,
-};
+use crate::game::fireworks::events_tests::start_events;
+use crate::game::fireworks::events_tests::stop_events;
+use crate::game::fireworks::events_tests::twinkling;
+use crate::game::fireworks::events_tests::with_game;
+use sunrise_client::items::ItemStack;
+use sunrise_core::{geometry::Vec3, position::ChunkPos, random::LegacyRandom};
 
 #[test]
 #[ignore = "daily"]

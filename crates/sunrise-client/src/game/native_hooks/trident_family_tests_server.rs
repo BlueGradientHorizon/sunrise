@@ -1,46 +1,10 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::Game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::api_values::TryIntoApi;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_entity_refs::tests::{
-    bind_local_player, with_game,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::trident_family_tests::Hit;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::trident_family_tests::Probe;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::trident_family_tests::Seen;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::trident_family_tests::step;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::trident_family_tests::throw_mob;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::trident_family_tests::throw_player;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::trident_family_tests::victim;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::trident_family_tests::weapon;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::trident_family_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{
-    Flow, HitHost, Hooks, HurtSource, LivingDeathEvent, LivingIncomingDamageEvent, ModEntry,
-    ServerHost,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    chunk::Chunk,
-    items::ItemStack,
-    mobs::{Mob, Who},
-    motion::PlayerMotion,
-    projectiles::{Projectile, ProjectileKind},
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::{geometry::Vec3, nbt::Tag, position::ChunkPos};
+use crate::game::native_entity_refs::tests::{bind_local_player, with_game};
+use crate::game::native_hooks::trident_family_tests::Probe;
+use crate::game::native_hooks::trident_family_tests::Seen;
+use mod_api::ModEntry;
+use std::sync::{Arc, Mutex};
+use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
+use sunrise_core::{geometry::Vec3, position::ChunkPos};
 
 pub(in crate::game) fn fixture(
     run: impl FnOnce(&mut crate::game::ServerGame<'_>, &Arc<Mutex<Seen>>),

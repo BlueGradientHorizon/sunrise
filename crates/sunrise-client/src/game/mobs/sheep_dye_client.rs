@@ -1,11 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::level_sounds::LevelSound;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::SoundSource;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{first_person::Hand, mobs::sheep_dye};
+use super::Game;
+use super::level_sounds::LevelSound;
+use mod_api::SoundSource;
+use sunrise_client::{first_person::Hand, mobs::sheep_dye};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether `interact_sheep_dye` would act on a client, on a copy of the sheep.

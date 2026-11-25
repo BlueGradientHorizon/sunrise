@@ -1,13 +1,8 @@
 //! The raid bar's viewers are `ServerBossEvent.players`, which
 //! `Raid.updatePlayers` refreshes on the 20-tick beats: walking out of the
 //! raid keeps the red bar until the next beat.
-#[allow(unused_imports)]
-use super::super::Game;
-#[allow(unused_imports)]
 use std::sync::Arc;
-#[allow(unused_imports)]
 use sunrise_client::chunk::Chunk;
-#[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
 
 fn raid_bars(game: &crate::game::ServerGame<'_>) -> usize {

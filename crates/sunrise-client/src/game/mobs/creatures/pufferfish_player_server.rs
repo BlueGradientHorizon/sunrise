@@ -1,20 +1,11 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::super::{
+use super::super::{
     Game,
     entity::{Entity, with_entity},
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::pufferfish_player::PUFFER_FISH_STING;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::pufferfish_player::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    mobs::Species, scoreboard::teams_allow_damage,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_protocol::packets::play::{Clientbound, GameEvent};
+use crate::game::creatures::pufferfish_player::PUFFER_FISH_STING;
+use sunrise_client::{mobs::Species, scoreboard::teams_allow_damage};
+use sunrise_core::geometry::Vec3;
+use sunrise_protocol::packets::play::{Clientbound, GameEvent};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `Pufferfish.playerTouch`: accepted player damage, the sting game event, then poison with

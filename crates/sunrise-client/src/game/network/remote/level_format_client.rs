@@ -1,29 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Remote;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::level_format::LevelEnvironments;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::level_format::LevelFormat;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::level_format::pack_environment;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::level_format::same_stacks;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::level_format::sane_facts;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::level_format::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{Dim, remote_chunks::ChunkFormat};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::{Arc, Weak};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    chunk::LevelShape, environment::Environment,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::{packets::play, registry::DimensionType};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_world::dimension_type::DimensionFacts;
+use crate::game::Dim;
 
 #[cfg(feature = "client")]
 impl crate::game::Game<'_, crate::game::client_side::ClientState> {

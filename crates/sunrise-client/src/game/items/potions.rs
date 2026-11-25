@@ -2,40 +2,30 @@
 //! `Consumable`), throwing splash/lingering potions (`ThrownSplashPotion`),
 //! filling glass bottles (`BottleItem`), the per-tick effect application,
 //! effect attribute modifiers and the HUD effect icons (`Hud.extractEffects`).
-#[allow(unused_imports)]
 use super::{
     Game, Screen,
-    commands::Target,
-    dragon::{Breath, FightPlayer, FightWho},
+    dragon::{Breath, FightWho},
     item_draw::owner_at,
-    living_attributes::AttributeWrite,
 };
-#[allow(unused_imports)]
-use mod_api::{EffectApplicable, EffectTickChange, EntityRef, LivingRef, PlayerFood};
-#[allow(unused_imports)]
 use sunrise_assets::item_model::DisplayContext;
-#[allow(unused_imports)]
-use sunrise_client::health::Attack;
 #[allow(unused_imports)]
 use sunrise_client::{
     block_entity_render::vertex_light,
     brewing,
-    effects::{EffectAction, EffectInstance, OmenTick, PlayerEffects, effect_modifier},
+    effects::{EffectInstance, PlayerEffects},
     hud::HudBatch,
     hud_layout, hud_overlays, inventory_effects,
     items::ItemStack,
     mesher::Vertex,
-    mobs::{Damage, DamageKind, Mob, MobEffectAction, ModEffectTick, NamedDamage, Who},
+    mobs::{Damage, NamedDamage, Who},
     particles::{ParticleOptions, ParticleType},
     projectiles::{Projectile, ProjectileKind},
     text::Text,
 };
-#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
 use sunrise_core::{
-    geometry::{Aabb, Direction, Vec3},
-    random::{LegacyRandom, RandomSource},
+    geometry::{Aabb, Vec3},
+    random::LegacyRandom,
 };
 
 /// Per-cloud settings; natural lingering clouds keep their creation defaults.
@@ -312,7 +302,6 @@ pub(in crate::game) fn potion_cloud_to_nbt(c: &Breath, uuid: [i32; 4], raw: Opti
     tag
 }
 
-#[allow(unused_imports)]
 use sunrise_gameplay::particle_options::custom_particle_options;
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay::particle_options::particle_options;
@@ -902,12 +891,9 @@ pub(in crate::game::client_side) fn client_tick_effects(
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::super::sculk::darkness_blend_added;
-    #[allow(unused_imports)]
     use super::*;
-    #[allow(unused_imports)]
-    use sunrise_client::{motion::PlayerMotion, screen_effects::nausea_blend_added};
+    use sunrise_client::screen_effects::nausea_blend_added;
 
     pub(in crate::game) fn flt(v: f32) -> Tag {
         Tag::Float(v.to_bits())

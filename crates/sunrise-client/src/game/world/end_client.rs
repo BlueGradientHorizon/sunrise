@@ -1,55 +1,15 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{Dim, Game, Resources, remote::Remote};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::end::Arriving;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::end::CrystalDrawFrame;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::end::END_SPAWN;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::end::EndFlash;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::end::EndState;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::end::EyeOfEnder;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::end::GATEWAY_RADIUS;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::end::GATEWAY_Y;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::end::GROUND_LIFT;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::end::GatewayArrival;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::end::GatewayJob;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::end::PORTAL_TICKET;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::end::SummonedEye;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::end::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::{collections::HashMap, sync::Arc};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    Result,
-    containers::BlockEntity,
+use super::{Dim, Game};
+use crate::game::server_side::end::CrystalDrawFrame;
+#[cfg(test)]
+use crate::game::server_side::end::*;
+use sunrise_client::{
     environment::Environment,
     gfx::CelestialBody,
     items::ItemStack,
     mesher::Vertex,
-    mobs::Who,
     particles::{ParticleOptions, ParticleType},
-    projectiles::{Projectile, ProjectileKind},
-    vanillagen::VanillaTerrain,
-    world_spawn::PlayerSpawnFinder,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{
-    geometry::Vec3,
-    position::BlockPos,
-    random::{LegacyRandom, RandomSource},
-};
+use sunrise_core::random::RandomSource;
 
 /// SkyRenderer.renderEndFlash's quad: the end_flash `sprite` at height 100, scale 60, turned by
 /// `pose`, at `intensity`; none when the flash is out or has no sprite. Each quad comes with what

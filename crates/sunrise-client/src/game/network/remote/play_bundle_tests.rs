@@ -1,27 +1,20 @@
-#[allow(unused_imports)]
 use super::super::Received;
-#[allow(unused_imports)]
 use super::{connect_play_test, finish_play_test, offer_test_payloads, spawn_menu_test};
-#[allow(unused_imports)]
 use crate::game::{
     native_entity_refs::tests::{run_fresh_cases, with_client_game},
     viewed_worlds::tests::column,
 };
-#[allow(unused_imports)]
 use mod_api::{
     HandlerThread, Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes,
     PayloadContextError, PayloadHandleError, PayloadId, PayloadSendError, PayloadWork,
     PayloadWorkStatus, Registrar,
 };
-#[allow(unused_imports)]
 use std::{
     sync::{Arc, Mutex, mpsc},
     thread::{self, JoinHandle, ThreadId},
     time::{Duration, Instant},
 };
-#[allow(unused_imports)]
 use sunrise_client::{net::Event, raw_payloads};
-#[allow(unused_imports)]
 use sunrise_protocol::{
     connection::ConnReader,
     connection_groups::{self, Cell, Entry, Section},

@@ -1,34 +1,8 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::tables::ACTIVE_BLOCK_QUERIES;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::tables::BlockProviderQuery;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::tables::BlockQueryKey;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::tables::DEFAULT_CLIENT_FEATURES;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::tables::PopBlockQuery;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::tables::default_client_features;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::tables::level_suffocation_of;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::tables::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::LazyLock;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
+use super::*;
+use sunrise_client::{
     blocks::{MAP_COLORS, RenderShape},
-    menu::Env,
-    neoforge_mob_maps::NeoForgeMobMaps,
     particles::{ParticleOptions, ParticleType},
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_world::level::data::BlockSet;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn block_provider_options(

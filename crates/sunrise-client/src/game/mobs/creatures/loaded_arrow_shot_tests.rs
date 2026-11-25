@@ -1,15 +1,11 @@
-#[allow(unused_imports)]
-use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
-#[allow(unused_imports)]
+use crate::game::{Options, Progress, Settings, load_resources};
 use std::sync::Arc;
-#[allow(unused_imports)]
 use sunrise_client::{
     chunk::Chunk,
     mobs::Who,
     motion::PlayerMotion,
     projectiles::{Projectile, ProjectileKind},
 };
-#[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
 pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());

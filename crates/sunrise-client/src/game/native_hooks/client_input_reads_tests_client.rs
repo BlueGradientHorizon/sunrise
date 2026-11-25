@@ -1,20 +1,10 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_input_reads_tests::*;
-
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{Screen, native_entity_refs::tests::with_client_game};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::MappingError;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::motion::PlayerMotion;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use winit::{event::MouseButton, keyboard::KeyCode};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_input_reads_tests::tests::*;
+    use crate::game::{Screen, native_entity_refs::tests::with_client_game};
+    use mod_api::MappingError;
+    use sunrise_client::motion::PlayerMotion;
+    use sunrise_core::geometry::Vec3;
+    use winit::{event::MouseButton, keyboard::KeyCode};
 
     #[test]
     #[ignore = "daily"]

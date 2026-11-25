@@ -1,17 +1,8 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::on_entity_item_update::ItemEntityTickAccess;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::on_entity_item_update::ResidentDroppedItem;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::on_entity_item_update::native_on_entity_item_update;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::on_entity_item_update::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_ticks;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::geometry::Vec3;
+use super::*;
+use crate::game::native_hooks::on_entity_item_update::ItemEntityTickAccess;
+use crate::game::native_hooks::on_entity_item_update::ResidentDroppedItem;
+use crate::game::native_ticks;
+use sunrise_core::geometry::Vec3;
 
 impl mod_api::ItemEntityServerAccess for ItemEntityTickAccess<'_, '_> {
     fn with_view(&mut self, call: &mut dyn FnMut(mod_api::ItemEntitySubjectView<'_>)) {
@@ -219,35 +210,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod on_entity_item_update_tests {
-    #[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{
-        api_values::{STACK_PROJECTIONS, test_snapshot},
-        native_entity_refs::tests::with_game,
-    };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{Flow, Hooks, ItemPart, OnEntityItemUpdateEvent, Registrar, RegistrationContext};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::chunk::Chunk;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::on_entity_item_update::on_entity_item_update_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::on_entity_item_update::on_entity_item_update_tests::Update;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::on_entity_item_update::on_entity_item_update_tests::Mod;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::on_entity_item_update::on_entity_item_update_tests::ORDER;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::on_entity_item_update::on_entity_item_update_tests::told;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::on_entity_item_update::on_entity_item_update_tests::floor;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::on_entity_item_update::on_entity_item_update_tests::counts;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::on_entity_item_update::on_entity_item_update_tests::a_canceling_part_holds_its_own_item_and_nothing_else_isolated;
+    use super::*;
 
     /// One stack of `item` at rest on the floor, a pickup delay of 20 ticks.
     pub(in crate::game) fn rest(

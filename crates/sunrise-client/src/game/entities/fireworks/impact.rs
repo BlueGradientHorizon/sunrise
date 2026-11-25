@@ -1,5 +1,5 @@
 //! Rocket impacts dispatch only after the vanilla deflection decision.
-#[allow(unused_imports)]
+#[cfg(test)]
 use super::*;
 
 #[cfg(test)]

@@ -1,13 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
+use super::*;
 pub(in crate::game::server_side) use crate::game::creatures::borrowed_tick::BorrowedMobTick;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_tick::retain_mob_rows;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_tick::route_player_events;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_tick::*;
+use crate::game::creatures::borrowed_tick::retain_mob_rows;
+use crate::game::creatures::borrowed_tick::route_player_events;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The killing blow of a mob as the death hooks name it: its damage

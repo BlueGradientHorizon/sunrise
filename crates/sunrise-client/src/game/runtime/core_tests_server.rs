@@ -1,17 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::core_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::ServerHost;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::container_screen::{
-    Button, Clicks, Release, Target,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::keymapping::{
-    KeyAction, SNEAK, SPRINT, ToggleKeys,
-};
+use super::*;
+use mod_api::ServerHost;
 
 #[test]
 #[ignore = "daily"]

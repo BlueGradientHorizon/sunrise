@@ -1,5 +1,4 @@
 //! Independently specified outcomes for the interaction hooks.
-#[allow(unused_imports)]
 use super::*;
 #[path = "interaction_matrix_tests/fixture.rs"]
 pub(in crate::game) mod fixture;

@@ -1,9 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::item_abilities::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::items::{ItemInfo, ItemStack};
+use super::Game;
+use crate::game::item_abilities::*;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether the held stack shears a mob (`shears_harvest`): shears, or a stack whose

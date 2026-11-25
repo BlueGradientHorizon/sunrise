@@ -1,6 +1,5 @@
 //! `LevelEventHandler` 1039 (`LevelEvent.SOUND_PHANTOM_BITE`): the server
 //! queues level event 1039 for guests.
-#[allow(unused_imports)]
 use crate::game::*;
 
 fn with_server_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {

@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Game, to_loot};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::player_loot_entity::*;
+use super::{Game, to_loot};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The acting player as `INTERACTING_ENTITY`: [`Self::killer_loot_entity`]

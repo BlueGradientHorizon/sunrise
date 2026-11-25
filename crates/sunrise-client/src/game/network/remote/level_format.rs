@@ -2,17 +2,11 @@
 //! player's level takes on entering it (`enter_remote_dimension`), and a viewed level's world on
 //! its `open` (`viewed_worlds`). Only the player's level also takes the type's environment
 //! attributes (`build_level_environments`).
-#[allow(unused_imports)]
 use super::Remote;
-#[allow(unused_imports)]
 use crate::game::{Dim, remote_chunks::ChunkFormat};
-#[allow(unused_imports)]
 use std::sync::{Arc, Weak};
-#[allow(unused_imports)]
 use sunrise_client::{chunk::LevelShape, environment::Environment};
-#[allow(unused_imports)]
 use sunrise_protocol::{packets::play, registry::DimensionType};
-#[allow(unused_imports)]
 use sunrise_world::dimension_type::DimensionFacts;
 
 /// What a level of the server is, from its synced dimension type.

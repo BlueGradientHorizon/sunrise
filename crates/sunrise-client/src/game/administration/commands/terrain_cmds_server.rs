@@ -1,31 +1,12 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Arg, Context, Game, R, Target, err, items::Owner};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::terrain_cmds::chunk_text;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::terrain_cmds::holder;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::terrain_cmds::loot_location_block;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::terrain_cmds::num;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::terrain_cmds::size_limit_text;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::terrain_cmds::ticks_to_seconds;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::terrain_cmds::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    command::CommandError,
-    items::ItemStack,
-    scoreboard_cmd::{Holder, Tracker},
-    text::Text,
-    worldborder::{MAX_CENTER, MAX_SIZE},
+use super::{Arg, Context, Game, R, Target, err, items::Owner};
+use crate::game::commands::terrain_cmds::holder;
+use crate::game::commands::terrain_cmds::loot_location_block;
+use crate::game::commands::terrain_cmds::num;
+use sunrise_client::{
+    command::CommandError, items::ItemStack, scoreboard_cmd::Tracker, text::Text,
 };
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::{position::ChunkPos, random::RandomSource};
+use sunrise_core::{position::ChunkPos, random::RandomSource};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `LootCommand.dropBlockLoot`: copy the actual block entity's components
@@ -429,24 +410,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod loot_mine_component_tests {
-    #[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{Audio, Options, Progress, Settings, load_resources};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{chunk::Chunk, containers::BlockEntity, save};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::nbt::{Compound, Tag};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::terrain_cmds::loot_mine_component_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::terrain_cmds::loot_mine_component_tests::slot;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::terrain_cmds::loot_mine_component_tests::decorations;
+    use super::*;
+    use crate::game::commands::terrain_cmds::loot_mine_component_tests::slot;
+    use crate::game::{Options, Progress, Settings, load_resources};
+    use std::sync::Arc;
+    use sunrise_client::chunk::Chunk;
+    use sunrise_core::nbt::Tag;
 
     #[test]
     #[ignore = "daily"]
@@ -567,18 +536,10 @@ pub(in crate::game::server_side) use crate::game::commands::terrain_cmds::loot_m
 
 #[cfg(test)]
 pub(in crate::game) mod loot_mine_location_tests {
-    #[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{chunk::Chunk, containers::BlockEntity};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::terrain_cmds::loot_mine_location_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::terrain_cmds::loot_mine_location_tests::TABLE;
+    use super::*;
+    use crate::game::commands::terrain_cmds::loot_mine_location_tests::TABLE;
+    use std::sync::Arc;
+    use sunrise_client::{chunk::Chunk, containers::BlockEntity};
 
     #[test]
     #[ignore = "daily"]

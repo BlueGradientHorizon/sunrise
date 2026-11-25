@@ -3,27 +3,16 @@
 //! turns it into what `ParticleProvider.createParticle` reads — a block
 //! crumble's block state, a dust transition's colours and scale, a spell's
 //! colour and power, a sculk charge's roll, a vibration's destination.
-#[allow(unused_imports)]
-use super::*;
-#[allow(unused_imports)]
 use crate::game::{
     execution_role,
     launch_options::Options,
     resource_load::{Progress, load_resources},
 };
-#[allow(unused_imports)]
 use mod_api::client::particles::PositionSource;
-#[allow(unused_imports)]
 use std::sync::Arc;
-#[allow(unused_imports)]
 use sunrise_client::{
-    audio::Audio,
-    chunk::Chunk,
-    motion::PlayerMotion,
-    particles::{ParticleLevel, ParticleOptions, ParticleType},
-    settings::Settings,
+    chunk::Chunk, motion::PlayerMotion, particles::ParticleType, settings::Settings,
 };
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
 
 pub(in crate::game) fn game<'a>(

@@ -1,25 +1,14 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{
+use super::{
     Game,
     item_draw::{BlockItemDraw, block_entity_pose},
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::campfire::KIND;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::campfire::is_campfire;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::campfire::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_assets::item_model::DisplayContext;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    Result, block_entities::Pos, block_entity_render::vertex_light, camera::rotate_degrees,
-    containers::BlockEntity, items::ItemStack, mesher::Vertex, mobs::Who,
+use sunrise_assets::item_model::DisplayContext;
+use sunrise_client::{
+    block_entity_render::vertex_light, camera::rotate_degrees, containers::BlockEntity,
+    mesher::Vertex,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client_render::block_entity_reach::Reach;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::position::BlockPos;
+use sunrise_client_render::block_entity_reach::Reach;
+use sunrise_core::position::BlockPos;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `CampfireRenderer`: each cooking item lies on the fire, slot `i`

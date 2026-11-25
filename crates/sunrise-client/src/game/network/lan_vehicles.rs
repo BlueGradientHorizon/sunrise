@@ -9,22 +9,15 @@
 //! here with the rider's input (`ServerPlayer.getLastClientMoveIntent`).
 //! Sneaking gets out (`Player.rideTick`: `wantsToStopRiding`), and the client
 //! is teleported where the player lands (`ServerPlayer.dismountTo`).
-#[allow(unused_imports)]
 use super::{Dim, Game, Keys, lan::LanHost, minecarts::SEAT};
-#[allow(unused_imports)]
 use sunrise_client::collisions::SceneCollisions;
-#[allow(unused_imports)]
 use sunrise_client::lan::hub::no_blocks_in;
-#[allow(unused_imports)]
 use sunrise_client::mobs::equine;
-#[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Axis, Vec3};
-#[allow(unused_imports)]
 use sunrise_protocol::{
     packets::play::{self, Clientbound as C},
     text::translatable,
 };
-#[allow(unused_imports)]
 use sunrise_world::entity_move::MoverType;
 
 /// `PlayerInput` flags, as the server player's client last sent them.

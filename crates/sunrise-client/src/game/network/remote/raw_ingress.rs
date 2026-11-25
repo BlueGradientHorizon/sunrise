@@ -1,5 +1,4 @@
 //! Receiving-provider credit follows ordered events and decoder placeholders.
-#[allow(unused_imports)]
 use super::{session::RemoteOpening, *};
 
 pub(in crate::game) fn local_transfer_notice() -> Event {
@@ -81,15 +80,10 @@ pub(in crate::game) mod post_effects_parity_tests;
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::super::tests::{connect_play_test, spawn_menu_test};
-    #[allow(unused_imports)]
     use super::*;
-    #[allow(unused_imports)]
     use crate::game::native_entity_refs::tests::with_client_game;
-    #[allow(unused_imports)]
     use mod_api::{ClientHost, ClientPacketEvent, EntityRef, Hooks, ModEntry};
-    #[allow(unused_imports)]
     use std::sync::mpsc;
 
     #[test]

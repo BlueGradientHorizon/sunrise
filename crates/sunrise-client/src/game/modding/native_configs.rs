@@ -9,17 +9,12 @@
 //! each file's modification time and hands changed text over again
 //! (`native_config_reloading`). A server's configs are dropped when it stops
 //! (`native_config_unloading`).
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use mod_api::ConfigPath;
 #[allow(unused_imports)]
 pub use mod_api::game::ConfigFile;
-#[allow(unused_imports)]
 use std::fs;
-#[allow(unused_imports)]
 use std::path::{Path, PathBuf};
-#[allow(unused_imports)]
 use std::time::{Duration, Instant};
 
 /// How often the files' modification times are read.

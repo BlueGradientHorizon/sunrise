@@ -1,31 +1,10 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::world_cmds::particle_command_tests::game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::world_cmds::particle_command_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
-    execution_role,
-    launch_options::Options,
-    resource_load::{Progress, load_resources},
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::client::particles::PositionSource;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    audio::Audio,
+use crate::game::commands::world_cmds::particle_command_tests::game;
+use mod_api::client::particles::PositionSource;
+use std::sync::Arc;
+use sunrise_client::{
     chunk::Chunk,
-    motion::PlayerMotion,
-    particles::{ParticleLevel, ParticleOptions, ParticleType},
-    settings::Settings,
+    particles::{ParticleLevel, ParticleOptions},
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
 
 /// The crumbs the command names are queued on the server and drawn on the client:
 /// `TerrainParticle.CrumblingProvider` keeps no particle for options that carry no block.

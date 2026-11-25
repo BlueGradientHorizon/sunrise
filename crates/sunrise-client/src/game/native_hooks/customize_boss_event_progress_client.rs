@@ -1,35 +1,16 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::customize_boss_event_progress::*;
-
 #[cfg(test)]
 pub(in crate::game) mod customize_boss_event_progress_tests {
-    #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{api_values::TryIntoApi, native_entity_refs::tests::run_fresh_cases};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{
-        BossBarColor, ClientHost, CustomizeBossEventProgressEvent, Flow, Hooks, ModEntry,
-        text::TextFormError,
-    };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_platform::testing::with_mods;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::hud_layout::GuiDraw;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::packets::play::{BossAction, BossEvent};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::customize_boss_event_progress::customize_boss_event_progress_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::customize_boss_event_progress::customize_boss_event_progress_tests::Seen;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::customize_boss_event_progress::customize_boss_event_progress_tests::Rearrange;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::customize_boss_event_progress::customize_boss_event_progress_tests::backgrounds;
+    use crate::game::{api_values::TryIntoApi, native_entity_refs::tests::run_fresh_cases};
+use mod_api::{
+             ModEntry,
+        text::TextFormError};
+use mod_platform::testing::with_mods;
+use std::sync::{Arc};
+use sunrise_core::nbt::Tag;
+use sunrise_protocol::packets::play::{BossAction, BossEvent};
+use crate::game::native_hooks::customize_boss_event_progress::customize_boss_event_progress_tests::Seen;
+use crate::game::native_hooks::customize_boss_event_progress::customize_boss_event_progress_tests::Rearrange;
+use crate::game::native_hooks::customize_boss_event_progress::customize_boss_event_progress_tests::backgrounds;
 
     /// Pink, blue and red bars, in that order.
     pub(in crate::game) fn add_bars(game: &mut crate::game::ClientGame<'_>) {

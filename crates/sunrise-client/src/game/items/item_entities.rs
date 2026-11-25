@@ -1,8 +1,6 @@
 //! Dropped items and experience orbs: their tick (`tick_items`, `tick_dropped_items`,
 //! `tick_experience`), the stacks a destroyed container lets fall, and spawning and merging orbs.
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use crate::game::collision_source::Mover;
 
 /// A dropped item's `bobOffs` (its bob and spin phase) from its random's draw `drawn`, or under

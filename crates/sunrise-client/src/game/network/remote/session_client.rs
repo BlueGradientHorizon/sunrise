@@ -1,13 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
+use super::*;
 pub(in crate::game::client_side) use crate::game::remote::session::RemoteOpening;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::session::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::packets::configuration::{
-    ClientInformation, Transfer,
-};
+use sunrise_protocol::packets::configuration::Transfer;
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {

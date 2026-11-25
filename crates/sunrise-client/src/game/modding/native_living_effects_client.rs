@@ -1,21 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::commands_common::Target;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_living_effects::active_effect;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_living_effects::mob_effect;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_living_effects::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{ActiveEffect, EffectKey, LivingRef};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::effects::{EffectInstance, PlayerEffects};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::mobs::Mob;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_items::items::ItemStack;
+use super::Game;
+use super::commands_common::Target;
+use mod_api::{EffectKey, LivingRef};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `LivingEntity.getEffectBlendFactor` for the local player on a client.
@@ -48,18 +33,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use super::super::native_entity_refs::tests::with_game;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_living_effects::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use mod_api::{
-        ActiveEffect, EntityRef, LivingRef, WorldEpoch,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use sunrise_client::mobs::Mob;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
+    use mod_api::{EntityRef, LivingRef, WorldEpoch};
+    use sunrise_core::geometry::Vec3;
 
     /// `LivingEntity.getEffectBlendFactor` on a client: the local player's
     /// darkness fades in a 22nd a tick and nausea a 150th

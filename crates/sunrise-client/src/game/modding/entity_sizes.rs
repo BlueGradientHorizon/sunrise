@@ -21,20 +21,9 @@
 //! (`Shulker.onPeekAmountChange`). A mob keeps its answer, and other copies keep theirs on
 //! their tracking row (`remote::Tracked`); the copy's box follows it.
 
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use super::entity::{Entity as _, with_entity, with_entity_mut};
-#[allow(unused_imports)]
-use crate::game::entity_sizes_common::synced_pose;
-#[allow(unused_imports)]
-use mod_api::{EntityRef, Pose};
-#[allow(unused_imports)]
-use sunrise_client::mobs::Mob;
-#[allow(unused_imports)]
-use sunrise_client::pose::{Dimensions, SizeAnswer};
-#[allow(unused_imports)]
-use sunrise_core::geometry::{Aabb, Vec3};
+use mod_api::Pose;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The server's mobs whose pose or size changed since they were last asked.
@@ -138,11 +127,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use crate::game::native_entity_refs::tests::with_game;
-    #[allow(unused_imports)]
     use mod_api::{EntitySizeEvent, Hooks, Host, Pose};
-    #[allow(unused_imports)]
     use std::sync::{Arc, Mutex};
 
     pub(in crate::game) type Calls = Arc<Mutex<Vec<(Pose, [f32; 3], [f32; 3])>>>;

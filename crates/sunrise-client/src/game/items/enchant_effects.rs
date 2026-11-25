@@ -6,26 +6,20 @@
 //! the armor attribute effects (respiration, depth strider, ...), Soul
 //! Speed's `location_changed` and `tick` effects and the
 //! `minecraft:location_changed` disk effect (frost walker).
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use super::durability::Wearer;
-#[allow(unused_imports)]
 use serde_json::Value;
-#[allow(unused_imports)]
 use sunrise_client::{
     enchant::{EffectContext, Enchantments, level_value},
     items::{ItemStack, Items},
     mobs::{Damage, DamageKind, Who},
     random_source,
 };
-#[allow(unused_imports)]
 use sunrise_core::{
     geometry::Vec3,
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
 };
-#[allow(unused_imports)]
 use sunrise_world::{fluid::FluidKind, level::LevelAccess, registry::BlockStateId};
 
 /// Shared weapon damage effects; callers choose live RNG for an attack or a snapshot for a read.

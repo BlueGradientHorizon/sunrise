@@ -1,32 +1,15 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Game, chat::PLAYER_NAME, screen_info};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
+use super::{Game, chat::PLAYER_NAME};
+use sunrise_client::{
     containers::{BlockEntity, Lectern},
     first_person::Hand,
-    hud::{HudBatch, rgba},
-    item_data::{StackData, WrittenBook},
     items::ItemStack,
     menu::{Kind, Menu},
     mobs::Who,
-    text::Text,
-    ui,
-    widgets::{self, Narratable, ScreenInfo},
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::position::BlockPos;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_gameplay::lectern::lectern_signal;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_protocol::packets::play::{
-    self, Clientbound as C, Serverbound as S,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_world::level::flags as level_flags;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use winit::keyboard::KeyCode;
+use sunrise_core::nbt::Tag;
+use sunrise_core::position::BlockPos;
+use sunrise_protocol::packets::play::{self, Clientbound as C};
+use sunrise_world::level::flags as level_flags;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerGamePacketListenerImpl.handleEditBook`: a guest's book in a
@@ -403,12 +386,8 @@ pub(in crate::game) mod lectern_book_removal_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod lectern_books_tag_tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::super::game_tests::tests::server_game;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_client::{
-        containers::BlockEntity, items::ItemStack,
-    };
+    use super::super::game_tests::tests::server_game;
+    use sunrise_client::{containers::BlockEntity, items::ItemStack};
 
     /// `LecternBlock.useItemOn` checks `ItemTags.LECTERN_BOOKS`; a world's
     /// data pack adds its own book to that tag, and the lectern takes it.

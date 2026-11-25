@@ -1,19 +1,14 @@
 //! Exercise the removal boundary through the live server, including the next actor's tick.
-#[allow(unused_imports)]
-use super::{Game, commands::Target, native_entity_refs::tests::with_game};
-#[allow(unused_imports)]
+use super::{commands::Target, native_entity_refs::tests::with_game};
 use mod_api::{Flow, Hooks, HostSide, ServerHost};
-#[allow(unused_imports)]
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicBool, AtomicUsize, Ordering},
+    atomic::{AtomicBool, Ordering},
 };
-#[allow(unused_imports)]
 use sunrise_client::{
     entities::{ArmorStand, Cushion},
     mobs::Mob,
 };
-#[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
 
 pub(in crate::game) const AT: Vec3 = Vec3::new(4.5, 64.0, 4.5);

@@ -1,15 +1,9 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::Game;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::sniffers::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
+use super::Game;
+use sunrise_client::{
     items::ItemStack,
     mobs::{Mob, Species, Who, sniffer},
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_core::random::RandomSource;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// A snifflet where the egg was.

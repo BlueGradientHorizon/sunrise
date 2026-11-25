@@ -1,16 +1,11 @@
 //! Client glue for sapling growth and bone meal: installs the live feature
 //! registry, routes `BoneMealItem.useOn` through the behaviour library, and
 //! crops a growing plant's head with shears (`ShearsItem.useOn`).
-#[allow(unused_imports)]
 use super::{Game, native_hooks::BonemealAsk};
-#[allow(unused_imports)]
 use std::sync::Arc;
-#[allow(unused_imports)]
-use sunrise_client::{Result, items::ItemStack, vanillagen};
-#[allow(unused_imports)]
-use sunrise_core::{geometry::Direction, position::BlockPos};
-#[allow(unused_imports)]
-use sunrise_world::{level::classes::Class, worldgen::live::LiveFeatures};
+use sunrise_client::{items::ItemStack, vanillagen};
+use sunrise_core::position::BlockPos;
+use sunrise_world::worldgen::live::LiveFeatures;
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {

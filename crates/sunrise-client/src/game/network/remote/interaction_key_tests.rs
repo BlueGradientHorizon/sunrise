@@ -1,9 +1,5 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use mod_api::{
-    ClientHost, InteractionAttempt, InteractionKey, InteractionKeyMappingTriggeredEvent,
-};
+use mod_api::{ClientHost, InteractionKeyMappingTriggeredEvent};
 
 pub(in crate::game) struct KeyControl {
     pub(in crate::game) cancel: bool,

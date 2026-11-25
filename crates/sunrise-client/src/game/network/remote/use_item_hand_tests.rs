@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use super::*;
 
 /// One `use_item` event as `(side, hand, player, player_entity_id)`.

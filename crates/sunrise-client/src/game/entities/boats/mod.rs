@@ -11,36 +11,24 @@ pub(in crate::game) mod lifetime_tests;
 pub(in crate::game) mod paddle_tests;
 pub(in crate::game) mod placement;
 
-#[allow(unused_imports)]
-use super::{Game, InteractTarget, entity::Entity, entity_culling::at, view_vector};
-#[allow(unused_imports)]
+use super::{Game, InteractTarget};
 use std::{collections::HashMap, f32::consts::PI, sync::Arc};
-#[allow(unused_imports)]
-use sunrise_client::entity_rules::EntityRules;
-#[allow(unused_imports)]
 use sunrise_client::{
     blocks::Fluid,
-    collisions::{EntityCollisions, SceneCollisions, no_collision_with_context},
     items::ItemStack,
-    mesher::Vertex,
     mobs::{
         Part,
-        anim::Poses,
         leash::{Holder, Pending},
         riders,
     },
-    motion::{BubbleColumn, RiddenBoat, bubble_column_at},
+    motion::RiddenBoat,
 };
-#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
 use sunrise_core::{
-    geometry::{Aabb, ShapeOp, Vec3, VoxelShape},
+    geometry::{Aabb, Vec3},
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
 };
-#[allow(unused_imports)]
-use sunrise_world::collision_context::CollisionContext;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::game) enum Status {

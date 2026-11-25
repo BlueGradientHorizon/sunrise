@@ -1,19 +1,12 @@
 //! The totem of undying (`LivingEntity.checkTotemDeathProtection`: a hand's
 //! item carrying the `death_protection` component, whatever item it is, and
 //! entity event 35 on the client).
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
-use super::render_tick::player_tracking_body;
-#[allow(unused_imports)]
 use sunrise_assets::item_model::DisplayContext;
-#[allow(unused_imports)]
 use sunrise_client::{
     block_entity_render::vertex_light,
-    health::HealthEvent,
     items::ItemStack,
     mesher::Vertex,
-    motion::MotionEvent,
     particles::{ParticleOptions, ParticleType, TrackingBody, TrackingTarget},
 };
 

@@ -1,13 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{
-    Game, commands::Target, remote::Remote, text_displays::Shows,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_entity_refs_common::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{DimensionKey, EntityRef, LevelRef};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::{Aabb, Vec3};
+use super::{Game, commands::Target, text_displays::Shows};
+use mod_api::EntityRef;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// What a handle names on a client: the local player or an entity tracked by the server.

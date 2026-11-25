@@ -1,39 +1,25 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::retained_limits_tests::OTHER_GUEST;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::retained_limits_tests::ObserveMovement;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::retained_limits_tests::PanicInMovement;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::retained_limits_tests::TARGET_GUEST;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::retained_limits_tests::ZOMBIE;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::retained_limits_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{
-    Game,
-    native_entity_refs::tests::{run_fresh_cases, with_game},
-    native_guest_turn_tests::with_guests,
+use crate::game::creatures::retained_limits_tests::OTHER_GUEST;
+use crate::game::creatures::retained_limits_tests::ObserveMovement;
+use crate::game::creatures::retained_limits_tests::PanicInMovement;
+use crate::game::creatures::retained_limits_tests::TARGET_GUEST;
+use crate::game::creatures::retained_limits_tests::ZOMBIE;
+use crate::game::{
+    native_entity_refs::tests::run_fresh_cases, native_guest_turn_tests::with_guests,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::__private::{HookPanicReport, take_hook_panics};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::{
+use mod_api::__private::{HookPanicReport, take_hook_panics};
+use std::{
     path::PathBuf,
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     },
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
+use sunrise_client::{
     chunk::Chunk,
     mobs::{Mob, Who},
     motion::PlayerMotion,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::geometry::Vec3;
+use sunrise_core::geometry::Vec3;
 
 #[test]
 #[ignore = "daily"]

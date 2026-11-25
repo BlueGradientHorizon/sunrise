@@ -1,18 +1,8 @@
 //! Read-only world content tables shared by server and client games.
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use std::sync::LazyLock;
-#[allow(unused_imports)]
-use sunrise_client::{
-    blocks::{MAP_COLORS, RenderShape},
-    menu::Env,
-    neoforge_mob_maps::NeoForgeMobMaps,
-    particles::{ParticleOptions, ParticleType},
-};
-#[allow(unused_imports)]
+use sunrise_client::{menu::Env, neoforge_mob_maps::NeoForgeMobMaps};
 use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
 use sunrise_world::level::data::BlockSet;
 
 /// [`Game::level_suffocation`] from the fields it reads, for a caller that holds other fields: the

@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::attack_target::*;
+use super::*;
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -111,30 +108,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::boats::Boat;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::dragon::Crystal;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::minecarts::{CartKind, Minecart};
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::native_entity_refs::tests::with_client_game;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::native_hotbar_slot::hotbar_slot_tests::{
-        logged_in, sent,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::remote::attack_target::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use std::sync::Arc;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use sunrise_client::projectiles::{
-        Projectile, ProjectileKind,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use sunrise_protocol::packets::play::Serverbound as S;
+    use crate::game::boats::Boat;
+    use crate::game::dragon::Crystal;
+    use crate::game::minecarts::{CartKind, Minecart};
+    use crate::game::native_entity_refs::tests::with_client_game;
+    use crate::game::native_hotbar_slot::hotbar_slot_tests::{logged_in, sent};
+    use std::sync::Arc;
+    use sunrise_client::projectiles::{Projectile, ProjectileKind};
+    use sunrise_core::geometry::Vec3;
+    use sunrise_protocol::packets::play::Serverbound as S;
 
     /// Each target, sprinting at full strength (knockback 0.5): the horizontal motion times 0.6,
     /// the vertical kept, the sprint stopped, and STOP_SPRINTING after the Attack on the wire.

@@ -1,45 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mounts::DISMOUNT_POSES;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mounts::DismountWorld;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mounts::GameDismountWorld;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mounts::Mount;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mounts::MountState;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mounts::Rider;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mounts::on_top;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mounts::start_riding_jump;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mounts::steering_item;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mounts::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::actions::Action;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    blocks::Fluid,
-    first_person::Hand,
-    hud::HudBatch,
-    items::{EntityTypeTags, ItemStack},
-    mobs::{Mob, MobEvent, Species, Who, equine},
-    motion::{MotionWorld, PlayerMotion},
-    pose::{Dimensions, Pose},
-    sprint::Keys,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{
-    geometry::{Aabb, Vec3, VoxelShape},
-    random::RandomSource,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_world::living_air::escape_vector;
+use super::Game;
+use sunrise_client::{hud::HudBatch, mobs::Species};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The jump bar when it is the contextual bar.

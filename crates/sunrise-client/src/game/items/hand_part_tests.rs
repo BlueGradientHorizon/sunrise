@@ -2,16 +2,11 @@
 //! A stick's `ItemPart` answers `should_cause_reequip_animation` and
 //! `should_cause_block_break_reset` (`IItemExtension.shouldCauseReequipAnimation`,
 //! `shouldCauseBlockBreakReset`) on the local player's client.
-#[allow(unused_imports)]
-use super::Game;
-#[allow(unused_imports)]
 use mod_api::{
     ClientHost, Hooks, ItemPart, Registrar, RegistrationContext, ShouldCauseBlockBreakResetEvent,
     ShouldCauseReequipAnimationEvent,
 };
-#[allow(unused_imports)]
 use std::sync::Mutex;
-#[allow(unused_imports)]
 use sunrise_client::items::ItemStack;
 
 /// What the part answers: `None` leaves vanilla's answer.

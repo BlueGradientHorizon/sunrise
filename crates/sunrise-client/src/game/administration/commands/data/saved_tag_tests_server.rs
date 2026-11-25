@@ -1,25 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::data::saved_tag_tests::saved_tags;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::data::saved_tag_tests::tag_commands_and_explicit_empty;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::data::saved_tag_tests::tag_list;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::data::saved_tag_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{
-    Audio, Options, Progress, Settings, load_resources,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::collections::HashSet;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::motion::PlayerMotion;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::geometry::Vec3;
+use super::*;
+use crate::game::{Options, Progress, Settings, load_resources};
+use sunrise_client::motion::PlayerMotion;
+use sunrise_core::geometry::Vec3;
 
 /// What `command` told the player.
 pub(in crate::game) fn say(game: &mut crate::game::ServerGame<'_>, command: &str) -> Vec<Text> {

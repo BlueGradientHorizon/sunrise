@@ -1,15 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::items::Slot;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::terrain_cmds::loot_slot_tests::with_game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::terrain_cmds::loot_slot_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{
-    Audio, Game, Options, Progress, Settings, load_resources,
-};
+use crate::game::commands::items::Slot;
+use crate::game::commands::terrain_cmds::loot_slot_tests::with_game;
 
 #[test]
 #[ignore = "daily"]

@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::creative_screen::*;
+use super::*;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn click_creative(&mut self, right: bool) -> bool {

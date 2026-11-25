@@ -1,24 +1,17 @@
 //! One demand-driven creative catalog per logical side, and the scoped edit event.
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use crate::game::api_values::{TryIntoApi, TryIntoEngine, stack_value};
-#[allow(unused_imports)]
 use mod_api::{
     CreativeModeTabInfo, CreativeModeTabs, CreativeTabChange, CreativeTabEdit,
     CreativeTabEditError, CreativeTabList, CreativeTabPermissions, CreativeTabPlacement,
     CreativeTabReadError, CreativeTabVisibility,
 };
-#[allow(unused_imports)]
 use std::cell::{OnceCell, RefCell};
-#[allow(unused_imports)]
 use std::sync::atomic::{AtomicU64, Ordering};
-#[allow(unused_imports)]
 use sunrise_items::creative_catalog::{
     Catalog, Holders, Kind, Parameters, TabContents, normalize_components,
 };
 
-#[allow(unused_imports)]
 use sunrise_items::items::Items;
 
 pub(in crate::game) type Contents = Arc<[Arc<TabContents>]>;

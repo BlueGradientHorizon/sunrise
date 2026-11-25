@@ -6,7 +6,6 @@ pub(in crate::game) mod level_helpers;
 #[cfg(test)]
 #[path = "shared/particle_count_tests.rs"]
 pub(in crate::game) mod particle_count_tests;
-#[allow(unused_imports)]
 #[cfg(test)]
 use level_helpers::block_entity_for_block;
 #[cfg(test)]
@@ -48,13 +47,10 @@ pub(in crate::game) mod system_helpers;
 #[path = "shared/world_helpers.rs"]
 pub(in crate::game) mod world_helpers;
 
-#[allow(unused_imports)]
 use super::screen_build::ObservedScreen;
-#[allow(unused_imports)]
 use crate::game::api_values::{TryIntoApi, TryIntoEngine};
-#[allow(unused_imports)]
+#[cfg(test)]
 use screen_chars::chars_to_type;
-#[allow(unused_imports)]
 use sunrise_client::containers::ModBlockEntity as EngineBlockEntity;
 
 pub(in crate::game) struct ContentsChangedGuard<'a, 'game> {
@@ -82,7 +78,7 @@ pub(in crate::game) fn apply_menu_button_cursor(
 #[path = "shared/screen_view.rs"]
 pub(in crate::game) mod screen_view;
 #[allow(unused_imports)]
-use screen_view::{screen_view_for_mod, screen_view_with_id};
+use screen_view::screen_view_for_mod;
 
 /// What `decide_screen` says the hooks answered to a change of screen.
 pub(in crate::game) enum ScreenDecision {
@@ -118,7 +114,6 @@ pub(in crate::game) fn observed_overlay_id(
 
 #[cfg(feature = "client")]
 #[cfg(test)]
-#[allow(unused_imports)]
 use crate::game::client_side::native_hooks_client::posed_camera;
 
 /// `Level.setBlock`'s flags, for the `native_set_block_property` helpers:
@@ -132,7 +127,7 @@ pub(in crate::game) const SHAKE_MAX_DEGREES: f32 = 10.0;
 /// The largest offset a shake gives, in blocks, along each axis.
 pub(in crate::game) const SHAKE_MAX_OFFSET: f32 = 0.5;
 
-#[allow(unused_imports)]
+#[cfg(test)]
 use camera_pose::bounded_shake;
 #[allow(unused_imports)]
 pub(in crate::game) use camera_pose::hand_pose_matrix;

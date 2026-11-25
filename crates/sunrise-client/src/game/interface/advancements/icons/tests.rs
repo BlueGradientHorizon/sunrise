@@ -1,21 +1,5 @@
-#[allow(unused_imports)]
-use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
-#[allow(unused_imports)]
-use std::{collections::BTreeSet, path::PathBuf, sync::Arc};
-#[allow(unused_imports)]
-use sunrise_client::{
-    advancements::{Progress, Tree},
-    hud::{GuiScale, HudBatch},
-    lan::{ServerAdvancements, data::SyncData},
-};
-#[allow(unused_imports)]
-use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
-use sunrise_protocol::{
-    buf::{Codec, Reader},
-    item::{Component, WirePatch, component, custom},
-    packets::play::UpdateAdvancements,
-};
+use std::path::PathBuf;
+use sunrise_client::hud::{GuiScale, HudBatch};
 
 pub(in crate::game) fn fixture() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

@@ -1,21 +1,9 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::RemoteDimensionEntry;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::client_camera_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
-    Game, native_entity_refs::tests::with_client_game, native_lifecycle::NativeLifecycle,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::ClientHost;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    level_loading::Reason, motion::PlayerMotion,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::{
+use crate::game::remote::RemoteDimensionEntry;
+use crate::game::{native_entity_refs::tests::with_client_game, native_lifecycle::NativeLifecycle};
+use mod_api::ClientHost;
+use sunrise_client::{level_loading::Reason, motion::PlayerMotion};
+use sunrise_core::geometry::Vec3;
+use sunrise_protocol::{
     connection::Pipe,
     packets::play::{self, Clientbound as C, SpawnInfo},
 };

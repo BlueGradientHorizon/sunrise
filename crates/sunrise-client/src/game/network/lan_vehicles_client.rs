@@ -1,26 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{Dim, Game, Keys, lan::LanHost, minecarts::SEAT};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_vehicles::WatchedVehicle;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_vehicles::corners;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_vehicles::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::collisions::SceneCollisions;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::lan::hub::no_blocks_in;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::mobs::equine;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::{Aabb, Axis, Vec3};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::{
-    packets::play::{self, Clientbound as C},
-    text::translatable,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_world::entity_move::MoverType;
+use super::Game;
+use crate::game::server_side::lan_vehicles::corners;
+use sunrise_core::geometry::{Aabb, Vec3};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The box of a boat, minecart, armor stand, item frame, painting or general row, and

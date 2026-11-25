@@ -4,23 +4,8 @@
 //! entries that read the server's level ask the integrated server for their
 //! lines (`ServerDebug`); on another server they show what vanilla shows
 //! there, nothing or `??`.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use std::collections::HashSet;
-#[allow(unused_imports)]
-use sunrise_client::{
-    debug_entries::{self, ENTRIES},
-    debug_overlay as overlay,
-    debug_overlay::Displayer,
-};
-#[allow(unused_imports)]
-use sunrise_core::java_number;
-#[allow(unused_imports)]
-use sunrise_world::{
-    heightmap::{HeightmapState, HeightmapType},
-    worldgen::terrain::TerrainBlockStates,
-};
 
 /// `DebugEntryLookingAt.RANGE`.
 pub(in crate::game) const LOOKING_AT_RANGE: f64 = 20.0;

@@ -1,18 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::teleport_player_rider_tests::*;
-
 #[cfg(test)]
 pub(in crate::game) mod fake_travel_tests {
-    #[allow(unused_imports)]
-pub(in crate::game::server_side) use super::super::super::Dim;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::super::Target;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::teleport_player_rider_tests::fake_travel_tests::*;
+    use super::super::super::Dim;
+    use super::super::Target;
 
     #[test]
     #[ignore = "daily"]

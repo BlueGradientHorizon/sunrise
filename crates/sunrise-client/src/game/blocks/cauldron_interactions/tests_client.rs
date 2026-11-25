@@ -1,36 +1,14 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_entity_refs::tests::{
-    bind_local_player, run_fresh_cases, with_game_at,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::cauldron_interactions::tests::POS;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::cauldron_interactions::tests::Seen;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::cauldron_interactions::tests::Syrup;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::cauldron_interactions::tests::TestMod;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::cauldron_interactions::tests::events;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::cauldron_interactions::tests::fixture;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::cauldron_interactions::tests::setup;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::cauldron_interactions::tests::unchanged;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::cauldron_interactions::tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{
-    BlockUpdateFlags, CauldronDecision, CauldronUse, Hooks, ItemPlace, ItemResource, ServerHost,
-    StatType,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::cauldron::{Outcome, interactions::Entry};
+use super::*;
+use crate::game::native_entity_refs::tests::run_fresh_cases;
+use crate::game::server_side::cauldron_interactions::tests::POS;
+use crate::game::server_side::cauldron_interactions::tests::Seen;
+use crate::game::server_side::cauldron_interactions::tests::TestMod;
+use crate::game::server_side::cauldron_interactions::tests::events;
+use crate::game::server_side::cauldron_interactions::tests::fixture;
+use crate::game::server_side::cauldron_interactions::tests::unchanged;
+use crate::game::server_side::cauldron_interactions::tests::*;
+use std::sync::atomic::Ordering;
+use sunrise_client::cauldron::Outcome;
 
 #[test]
 #[ignore = "daily"]

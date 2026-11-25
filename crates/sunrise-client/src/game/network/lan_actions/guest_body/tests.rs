@@ -1,15 +1,10 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-#[allow(unused_imports)]
 use sunrise_client::{
     assets::Assets,
     lan::{Joined, PlayerSender, guest::SavedBody},
 };
-#[allow(unused_imports)]
 use sunrise_core::random::RandomSource;
-#[allow(unused_imports)]
 use sunrise_protocol::packets::configuration::ClientInformation;
 
 #[path = "tests/fall_reset.rs"]

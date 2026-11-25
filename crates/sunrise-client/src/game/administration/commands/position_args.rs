@@ -1,5 +1,4 @@
 //! Block position argument validation for command execution.
-#[allow(unused_imports)]
 use super::{Context, Dim, Game, R, err};
 
 impl Game<'_, crate::game::server_side::ServerState> {

@@ -1,15 +1,9 @@
 //! Play-phase `post_effects` lifecycle and pre-login protocol error against 26.3.
-#[allow(unused_imports)]
-use crate::game::{Game, native_entity_refs::tests::with_client_game};
-#[allow(unused_imports)]
 use std::time::{Duration, Instant};
-#[allow(unused_imports)]
-use sunrise_client::{camera::CameraType, multiplayer, net::Session, title::Mode};
-#[allow(unused_imports)]
 use sunrise_protocol::{
-    connection::{Connection, Pipe},
+    connection::Connection,
     packets::{
-        Empty, configuration as cfg,
+        configuration as cfg,
         play::{self, Clientbound as C, Serverbound as S, SpawnInfo},
     },
 };

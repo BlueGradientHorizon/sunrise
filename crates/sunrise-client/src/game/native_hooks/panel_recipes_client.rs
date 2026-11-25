@@ -1,5 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
+use super::*;
 use crate::game::native_hooks::panel_recipes::page_views;
 
 impl Game<'_, crate::game::client_side::ClientState> {

@@ -1,11 +1,5 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use crate::game::{
-    Audio, Game, Options, Progress, Screen, Settings, execution_role::ExecutionRole,
-    load_resources, native_entity_refs::tests::with_client_game,
-};
-#[allow(unused_imports)]
+use crate::game::native_entity_refs::tests::with_client_game;
 use sunrise_protocol::connection::{Connection, Pipe};
 
 /// `ChatComponent.addClientSystemMessage`: the line joins this client's

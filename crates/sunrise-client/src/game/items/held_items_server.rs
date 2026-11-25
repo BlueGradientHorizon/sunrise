@@ -1,17 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::held_items::OFFHAND_SLOT;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::held_items::attack_range_contains;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::held_items::attack_reach;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::held_items::held_attack_item;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::held_items::in_attack_range;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::held_items::*;
+use super::*;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `Player.attack`: the attack damage attribute with held and effect modifiers.

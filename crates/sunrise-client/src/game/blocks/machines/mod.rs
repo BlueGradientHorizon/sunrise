@@ -3,9 +3,7 @@
 //! the vanilla dispense behaviours Sunrise has entities for, and container
 //! comparator signals (`AbstractContainerMenu.getRedstoneSignalFromContainer`).
 pub(in crate::game) mod loot_access;
-#[allow(unused_imports)]
 use super::{Game, composter::is_composter, spill, storage::is_shulker_box};
-#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
 
 #[cfg(test)]
@@ -21,13 +19,10 @@ pub(in crate::game) mod native_fluids;
 pub(in crate::game) mod native_items;
 #[cfg(test)]
 pub(in crate::game) mod tank_reopen_tests;
-#[allow(unused_imports)]
 use mod_api::{
     self, BlockSide, Capability, ENTITY_AUTOMATION, EntityRef, ItemResource, ResourceHandler,
 };
-#[allow(unused_imports)]
 use std::{borrow::Cow, ops::ControlFlow, sync::Arc};
-#[allow(unused_imports)]
 use sunrise_client::{
     Result,
     containers::{BlockEntity, HOPPER_SLOTS, ModContainer},
@@ -37,9 +32,7 @@ use sunrise_client::{
     save,
     world::World,
 };
-#[allow(unused_imports)]
 use sunrise_core::{geometry::Direction, position::BlockPos, random::RandomSource};
-#[allow(unused_imports)]
 use sunrise_world::{
     level::{Behaviours, LevelAccess},
     registry::BlockStateId,

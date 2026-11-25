@@ -1,14 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::block_particles::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    blocks::{MAP_COLORS, RenderShape},
-    particles::{ParticleOptions, ParticleType},
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::Direction;
+use super::*;
+use sunrise_client::particles::{ParticleOptions, ParticleType};
+use sunrise_core::geometry::Direction;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Raw `ClientLevel.addBreakingParticles`: one crumb on the given face, with no sound or hook.

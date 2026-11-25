@@ -1,13 +1,8 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use mod_api::{Hooks, ModEntry};
-#[allow(unused_imports)]
 use mod_platform::testing::with_mods;
-#[allow(unused_imports)]
 use std::sync::atomic::{AtomicBool, Ordering};
-#[allow(unused_imports)]
-use sunrise_mod_package::{enabled::EnabledMods, selection::SelectedPackage};
+use sunrise_mod_package::selection::SelectedPackage;
 
 pub(in crate::game) struct EmptyCode;
 #[mod_api::__subscriptions]

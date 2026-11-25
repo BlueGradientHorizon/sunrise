@@ -3,7 +3,6 @@
 //! tick and turns what the guests do into gameplay. A world that is not open
 //! costs one `Option` check per tick.
 pub(in crate::game) mod event_timings;
-#[allow(unused_imports)]
 #[cfg(test)]
 use sunrise_gameplay::lan::level_event_targets;
 pub(in crate::game) mod mob_metadata;
@@ -13,19 +12,14 @@ pub(in crate::game) mod residency;
 pub(in crate::game) mod sync;
 pub(in crate::game) mod viewed_areas;
 
-#[allow(unused_imports)]
 use super::{
     Game,
     native_living_effects::{active_effect, mob_effect},
     shield::OFFHAND_SLOT,
 };
-#[allow(unused_imports)]
 use crate::game::api_values::TryIntoApi;
-#[allow(unused_imports)]
 use event_timings::{EventTimings, UseDetail, describe_burst, event_kind, note_event};
-#[allow(unused_imports)]
 use std::{collections::HashMap, sync::Arc, time::Instant};
-#[allow(unused_imports)]
 use sunrise_client::{
     Result,
     effects::{
@@ -45,12 +39,10 @@ use sunrise_client::{
     text::Text,
     world::World,
 };
-#[allow(unused_imports)]
 use sunrise_protocol::{
     entity_data::{Particles, Value, serializer},
     packets::play::{self, Clientbound as C},
 };
-#[allow(unused_imports)]
 use sunrise_world::block_collision::BlockCollisionRegistry;
 
 /// The settings of the open world (WorldOptionsScreen's multiplayer section).
@@ -1006,7 +998,6 @@ pub(in crate::game) fn mob_meta(
 
 /// AbstractVillager.DATA_UNHAPPY_COUNTER (after AgeableMob's two): the head
 /// shake of a villager saying no counts it down from 40.
-#[allow(unused_imports)]
 use super::villager_client::unhappy_counter;
 
 /// A mob's effects as its swirls are computed from.
@@ -3762,7 +3753,6 @@ fn entity_event_partition_keeps_delivery_order() {
     }
 }
 
-#[allow(unused_imports)]
 #[cfg(test)]
 use level_event_targets::level_event_except;
 
@@ -6360,7 +6350,6 @@ pub(in crate::game) mod mob_swing_sync_tests {
 #[cfg(test)]
 pub(in crate::game) mod owner_attachment_connected_statistics_save_tests;
 
-#[allow(unused_imports)]
 use super::stats;
 pub(in crate::game) mod advancement_records;
 
@@ -6372,7 +6361,6 @@ pub(in crate::game) mod merchant_packet_tests {
     //! Vanilla notifyTrade changes the live offer while its frozen owner retains
     //! the last outbound offer packet. No sockets, server loop or world generation.
 
-    #[allow(unused_imports)]
     use mod_api::HostTransaction;
 
     pub(in crate::game) struct ReplaceOnTradeVoice {

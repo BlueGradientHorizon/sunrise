@@ -1,10 +1,8 @@
 //! Titles, the action bar and the selected item name: the state and layout
 //! live in `hud_overlays` (`Titles`, `ToolHighlight`); this feeds and draws them.
-#[allow(unused_imports)]
 use super::Game;
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_client::hud_overlays::Titles;
-#[allow(unused_imports)]
 use sunrise_client::{hud::HudBatch, hud_layout, hud_overlays::HeldName, text::Text};
 
 impl Game<'_, crate::game::client_side::ClientState> {

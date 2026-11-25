@@ -7,25 +7,18 @@
 //! They need prepared resources (`SUNRISE_TEST_RESOURCES`) and run with a native test mod
 //! installed for the test only.
 
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
-#[allow(unused_imports)]
 use mod_api::{
     __private::{HookPanicReport, take_hook_panics},
-    BabyEntitySpawnEvent, BlockState, BlockUpdateFlags, Flow, Hooks, HostBlockStates,
-    MobSplitEvent, PendingMobSpec, ServerHost, UnspawnedMobError,
+    BabyEntitySpawnEvent, Flow, Hooks, MobSplitEvent, PendingMobSpec, ServerHost,
+    UnspawnedMobError,
 };
-#[allow(unused_imports)]
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU32, AtomicUsize, Ordering},
 };
-#[allow(unused_imports)]
 use sunrise_client::chunk::Chunk;
-#[allow(unused_imports)]
-use sunrise_core::random::LegacyRandom;
 
 pub(in crate::game) const IGNORE: &str = "needs prepared resources in SUNRISE_TEST_RESOURCES";
 

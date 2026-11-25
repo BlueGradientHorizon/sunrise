@@ -1,33 +1,15 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::event_loop::EventLoopCtl;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::input_trace::InputOrigin;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_entity_refs::tests::{
-    run_fresh_cases, with_client_game,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_widgets_tests::DropCounter;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_widgets_tests::NoLoop;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_widgets_tests::move_mouse;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_widgets_tests::send_key_control;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_widgets_tests::send_mouse_button;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_widgets_tests::send_scroll;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_widgets_tests::take_log;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::screen_widgets_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::client::widgets::{Button, TextField};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{
+use super::*;
+use crate::game::input_trace::InputOrigin;
+use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
+use crate::game::native_hooks::base::screen_widgets_tests::DropCounter;
+use crate::game::native_hooks::base::screen_widgets_tests::NoLoop;
+use crate::game::native_hooks::base::screen_widgets_tests::move_mouse;
+use crate::game::native_hooks::base::screen_widgets_tests::send_key_control;
+use crate::game::native_hooks::base::screen_widgets_tests::send_mouse_button;
+use crate::game::native_hooks::base::screen_widgets_tests::send_scroll;
+use crate::game::native_hooks::base::screen_widgets_tests::take_log;
+use mod_api::client::widgets::{Button, TextField};
+use mod_api::{
     ClientHost, DrawContext, Flow, Hooks, ModEntry, ScreenCharTypedPostEvent,
     ScreenCharTypedPreEvent, ScreenClosingEvent, ScreenInitPostEvent, ScreenKeyPressedPostEvent,
     ScreenKeyPressedPreEvent, ScreenKeyReleasedPostEvent, ScreenKeyReleasedPreEvent,
@@ -37,23 +19,17 @@ pub(in crate::game::client_side) use mod_api::{
     ScreenMouseScrolledPreEvent, ScreenOpeningEvent, ScreenPreeditPostEvent, ScreenPreeditPreEvent,
     ScreenWidget, ScreenWidgetId, Text as ApiText,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_platform::testing::with_mods;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::{
+use mod_platform::testing::with_mods;
+use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use winit::dpi::PhysicalSize;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use winit::event::{
+use winit::dpi::PhysicalSize;
+use winit::event::{
     DeviceId, ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use winit::event_loop::{ControlFlow, EventLoop};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use winit::keyboard::KeyCode;
+use winit::event_loop::EventLoop;
+use winit::keyboard::KeyCode;
 
 #[path = "screen_widgets_input_tests_client.rs"]
 pub(in crate::game) mod input_routing;

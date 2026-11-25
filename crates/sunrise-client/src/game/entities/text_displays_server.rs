@@ -1,39 +1,11 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::text_displays::RemoteTextDisplay;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::text_displays::SeeThroughCollector;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::text_displays::Shows;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::text_displays::TranslucentDisplayCollector;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::text_displays::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_assets::item_model::DisplayContext;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    gfx::{
-        TEXT_POLYGON_OFFSET_OVERLAY, TEXT_POLYGON_OFFSET_SOLID_OVERLAY, TRANSLUCENT_DRAW_FLIP,
-        TRANSLUCENT_GLINT_ITEM_OVERLAY, TRANSLUCENT_ITEM_OVERLAY,
-    },
-    items::ItemStack,
-    mesher::Vertex,
-    text::Text,
-    text_display::{self, CachedQuads, TextDisplayData},
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_protocol::entity_data::Value;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_world::registry::BlockStateId;
+#[cfg(test)]
+use crate::game::client_side::text_displays::RemoteTextDisplay;
+#[cfg(test)]
+use crate::game::client_side::text_displays::Shows;
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::text_displays::tests::*;
+    use super::*;
 
     #[test]
     #[ignore = "daily"]

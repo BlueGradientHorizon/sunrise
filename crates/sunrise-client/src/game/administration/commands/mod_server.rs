@@ -1,68 +1,27 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{
-    Dim, Game, chat::PLAYER_NAME, vehicle_teleport::TeleportMotion,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::OtherEntity;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::R;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::Target;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::block_input_matches;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::data::{
-    place_summoned, strip_finalize_tree,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::difficulty_names;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::entity_name_key;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::entity_pitch;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::err;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::format_double;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::formatted_command_failure;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::percent_f;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::rotation_in;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::split_top_level;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::teleport_velocity;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::texts;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::without_knots;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::wrap_degrees;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
+use super::{Dim, Game, chat::PLAYER_NAME, vehicle_teleport::TeleportMotion};
+use crate::game::commands::OtherEntity;
+use crate::game::commands::R;
+use crate::game::commands::Target;
+use crate::game::commands::err;
+use crate::game::commands::format_double;
+use crate::game::commands::formatted_command_failure;
+use crate::game::commands::percent_f;
+use crate::game::commands::target_entity_mut;
+use crate::game::commands::texts;
+use crate::game::commands::without_knots;
+use crate::game::commands::wrap_degrees;
+use sunrise_client::{
     command::{
-        Arg, CommandError, Context, Reader,
-        args::{BlockInput, Coordinates, GameMode, ItemInput, Selector},
-        vanilla::DIFFICULTIES,
+        Arg, CommandError, Context,
+        args::{Coordinates, GameMode, ItemInput, Selector},
     },
-    gamerules::{self, Value},
+    gamerules::Value,
     items::ItemStack,
-    text::{self, Style, Text},
+    text::{self, Text},
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::{
-    geometry::Vec3, java_number::float_to_string, random::RandomSource,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_protocol::packets::play::{self, Clientbound as C};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_world::registry::BlockStateId;
+use sunrise_core::{geometry::Vec3, java_number::float_to_string};
+use sunrise_protocol::packets::play::{self, Clientbound as C};
+use sunrise_world::registry::BlockStateId;
 
 #[path = "compute_server.rs"]
 pub(in crate::game) mod compute;
@@ -1995,38 +1954,10 @@ pub(in crate::game) mod summon_bolt_tests;
 
 #[cfg(test)]
 pub(in crate::game) mod peaceful_tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::{Arg, Context, Game};
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::peaceful_tests::TRADER;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::peaceful_tests::trader_egg;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::peaceful_tests::with_types;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::peaceful_tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::{
-        execution_role::ExecutionRole, native_entity_refs::tests as fixture,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use std::sync::{Arc, OnceLock};
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_client::{
-        chunk::Chunk,
-        items::ItemStack,
-        mod_content::{self, ContentMod},
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_command::ParsedArg;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_core::nbt::Tag;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_mod_package::{
-        Content, Package, enabled::EnabledMods,
-    };
+    use crate::game::commands::peaceful_tests::TRADER;
+    use crate::game::commands::peaceful_tests::with_types;
+    use crate::game::execution_role::ExecutionRole;
+    use sunrise_core::nbt::Tag;
 
     #[test]
     #[ignore = "daily"]
@@ -2074,10 +2005,6 @@ pub(in crate::game) mod teleport_player_rider_tests;
 
 #[cfg(test)]
 pub(in crate::game) mod query_feedback_tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::query_feedback_tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
 
     #[test]
     #[ignore = "daily"]
@@ -2230,10 +2157,6 @@ pub(in crate::game) mod query_feedback_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod forced_respawn_tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::forced_respawn_tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
 
     #[test]
     #[ignore = "daily"]

@@ -1,35 +1,12 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{
-    Game, commands::Target, native_entity_refs::tests::with_game,
+use super::commands::Target;
+use crate::game::server_side::vehicle_removal_tests::finish_death_on_next_tick;
+use crate::game::server_side::vehicle_removal_tests::push_pig;
+use crate::game::server_side::vehicle_removal_tests::with_removal_test_hooks;
+use mod_api::{Flow, Hooks, ServerHost};
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::vehicle_removal_tests::AT;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::vehicle_removal_tests::Observation;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::vehicle_removal_tests::Observe;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::vehicle_removal_tests::finish_death_on_next_tick;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::vehicle_removal_tests::push_pig;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::vehicle_removal_tests::with_removal_test_hooks;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::vehicle_removal_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{Flow, Hooks, HostSide, ServerHost};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicBool, AtomicUsize, Ordering},
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    entities::{ArmorStand, Cushion},
-    mobs::Mob,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{geometry::Vec3, position::ChunkPos};
 
 #[test]
 #[ignore = "daily"]

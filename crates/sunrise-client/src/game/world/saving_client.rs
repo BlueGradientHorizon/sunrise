@@ -1,29 +1,9 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{Game, loading_frame};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::saving::CLOSING_SNAPSHOT_BUDGET;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::saving::CLOSING_SNAPSHOTS_PER_FRAME;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::saving::ClientQuit;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::saving::ClosingSave;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::saving::SNAPSHOT_BUDGET;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::saving::SNAPSHOTS_PER_FRAME;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::saving::Stage;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::saving::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::{
-    collections::{HashSet, VecDeque},
-    sync::mpsc::{Receiver, TryRecvError},
-    time::{Duration, Instant},
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{Result, hud::HudBatch};
+use super::{Game, loading_frame};
+use crate::game::saving::ClientQuit;
+use crate::game::saving::ClosingSave;
+use crate::game::saving::Stage;
+use std::time::{Duration, Instant};
+use sunrise_client::{Result, hud::HudBatch};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn begin_closing_save(&mut self, quit: bool) -> Result<()> {

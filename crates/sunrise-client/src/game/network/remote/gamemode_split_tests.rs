@@ -1,16 +1,10 @@
 //! Parity tests for Minecraft 26.3 client local-game-mode vs `PlayerInfo` split (Item 3).
 //! Witness recorded into `.local` by `tools/test_gamemode_split_parity.py` (`VanillaClientGameModeSplitOracle`, JDK 25).
-#[allow(unused_imports)]
 use super::super::*;
-#[allow(unused_imports)]
 use crate::game::game_mode::mode_from_id;
-#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::with_client_game;
-#[allow(unused_imports)]
 use serde_json::Value as JsonValue;
-#[allow(unused_imports)]
 use sunrise_client::command::args::GameMode;
-#[allow(unused_imports)]
 use sunrise_protocol::connection::ConnReader;
 
 pub(in crate::game) const SELF_UUID: u128 = 0xdf71_dcc7_da3b_3506_b229_6d1f_589e_2569;

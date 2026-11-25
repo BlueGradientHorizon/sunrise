@@ -1,15 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::player_equip::ARMOR;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::player_equip::OFFHAND;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::player_equip::same;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::player_equip::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::items::ItemStack;
+use super::Game;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn put_equipment_modifiers(&mut self) {

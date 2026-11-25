@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::minecarts::save_lending::*;
+use super::*;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `MinecartTNT.explode`: with explosions disabled, only a primed cart is

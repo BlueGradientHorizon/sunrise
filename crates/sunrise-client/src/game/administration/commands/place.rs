@@ -1,16 +1,10 @@
 //! `/place template` (PlaceCommand): a saved structure template placed with
 //! rotation, mirroring and integrity.
-#[allow(unused_imports)]
 use super::{Arg, Context, Game, R, err};
-#[allow(unused_imports)]
 use crate::game::structure_blocks::{load_settings, template_size};
-#[allow(unused_imports)]
 use std::sync::OnceLock;
-#[allow(unused_imports)]
 use sunrise_client::text::Text;
-#[allow(unused_imports)]
 use sunrise_core::position::BlockPos;
-#[allow(unused_imports)]
 use {
     sunrise_core::{
         nbt,

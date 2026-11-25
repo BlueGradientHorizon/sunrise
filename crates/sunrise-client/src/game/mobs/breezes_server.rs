@@ -1,34 +1,8 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{BlockStateId, Game};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::breezes::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    blocks::RenderShape,
-    mobs::{Mob, Species, breeze},
-    particles::{ParticleOptions, ParticleType},
-};
-
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::breezes::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::{
-        Audio, Options, Progress, Settings, entity::Entity, load_resources,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use std::sync::Arc;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_client::chunk::Chunk;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_client::mobs::Mob;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_core::geometry::Vec3;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_core::random::LegacyRandom;
+    use crate::game::breezes::tests::*;
+    use crate::game::entity::Entity;
+    use sunrise_core::geometry::Vec3;
 
     /// `Entity.getOnPos(1.0E-5F)` keeps a fence's, a wall's or a fence gate's
     /// own cell while the feet rest on its 1.5-block collision; on a full block

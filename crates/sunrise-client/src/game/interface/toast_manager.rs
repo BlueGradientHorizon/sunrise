@@ -1,11 +1,8 @@
 //! The client's ordinary toast queue. Now playing is independent of the slots.
 
-#[allow(unused_imports)]
-use super::{Game, advancements, mod_toasts, tutorial};
-#[allow(unused_imports)]
+use super::{advancements, mod_toasts, tutorial};
 use std::{cell::RefCell, collections::VecDeque};
-#[allow(unused_imports)]
-use sunrise_client::{hud::HudBatch, toasts::SystemToast};
+use sunrise_client::toasts::SystemToast;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(in crate::game) enum SystemToastId {

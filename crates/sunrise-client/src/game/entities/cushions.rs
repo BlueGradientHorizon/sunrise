@@ -6,19 +6,10 @@
 //! A cushion is a `BlockAttachedEntity`, not a block: it has no block state,
 //! only an entity whose `Pos` is the click point's height. Placement uses
 //! outline bounds, collision shapes and suffocation predicates.
-#[allow(unused_imports)]
-use super::{Game, Hit, InteractTarget, Keys, entity_culling::default_range};
-#[allow(unused_imports)]
-use sunrise_client::actions::Action;
-#[allow(unused_imports)]
+use super::{Game, Hit, InteractTarget, Keys};
 use sunrise_client::cushion::blocks_in;
-#[allow(unused_imports)]
 use sunrise_client::entities::{Cushion, dye_index};
-#[allow(unused_imports)]
 use sunrise_client::items::ItemStack;
-#[allow(unused_imports)]
-use sunrise_client::mobs::anim::Poses;
-#[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Vec3};
 
 /// `Direction.fromYRot(yaw).toYRot()`: the nearest 90 degree step.

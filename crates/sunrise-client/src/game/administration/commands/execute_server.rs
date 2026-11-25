@@ -1,33 +1,10 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{
-    Arg, Context, Dim, Game, R, Target, data::DataRef, err, wrap_degrees,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::execute::ExecState;
-#[allow(unused_imports)]
+use super::{Arg, Context, Game, R, Target, err};
 pub(in crate::game::server_side) use crate::game::commands::execute::Source;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::execute::StoreEntry;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::execute::StoreTarget;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::execute::fork_limit_reached;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::execute::is_player_in_place;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::execute::java_int;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::execute::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    command::CommandError, nbt_path::NbtPath, text::Text,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::geometry::trig;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::nbt::Tag;
+use crate::game::commands::execute::StoreEntry;
+use crate::game::commands::execute::StoreTarget;
+use crate::game::commands::execute::fork_limit_reached;
+use crate::game::commands::execute::is_player_in_place;
+use sunrise_client::{command::CommandError, nbt_path::NbtPath, text::Text};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `ExecuteCommand.isChunkLoaded`: an entity-ticking loading status and
@@ -884,24 +861,13 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
 
 #[cfg(test)]
 pub(in crate::game) mod passenger_relation_tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::execute::passenger_relation_tests::actor;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::execute::passenger_relation_tests::value;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::execute::passenger_relation_tests::vehicle;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::execute::passenger_relation_tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_entity_refs::tests::with_game;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_core::nbt::Tag;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_core::position::BlockPos;
+    use super::*;
+    use crate::game::commands::execute::passenger_relation_tests::actor;
+    use crate::game::commands::execute::passenger_relation_tests::value;
+    use crate::game::commands::execute::passenger_relation_tests::vehicle;
+    use crate::game::native_entity_refs::tests::with_game;
+    use sunrise_core::nbt::Tag;
+    use sunrise_core::position::BlockPos;
 
     #[test]
     #[ignore = "daily"]
@@ -1104,22 +1070,6 @@ pub(in crate::game) mod passenger_relation_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod terminal_fork_tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::Game;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::execute::terminal_fork_tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::{
-        Audio, Options, Progress, Settings, load_resources,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use std::sync::Arc;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_client::chunk::Chunk;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_core::position::ChunkPos;
 
     pub(in crate::game) fn capture(
         game: &mut crate::game::ServerGame<'_>,
@@ -1142,16 +1092,6 @@ pub(in crate::game) mod terminal_fork_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod score_condition_tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::execute::score_condition_tests::game;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::execute::score_condition_tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::game_tests::tests::server_game;
 
     pub(in crate::game) fn say(
         game: &mut crate::game::ServerGame<'_>,

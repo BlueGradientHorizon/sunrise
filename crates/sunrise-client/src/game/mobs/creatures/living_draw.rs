@@ -1,9 +1,5 @@
 //! One living entity's draw (`LivingEntityRenderer.submit` and the layers, hooks, outline
 //! and beam around it). The ordered entity pass shares one `LivingFrame` across its mob runs.
-#[allow(unused_imports)]
-use super::*;
-#[allow(unused_imports)]
-use sunrise_client::mobs::render::FrameDraw;
 
 /// What the mob pass works out once a frame for every living entity it draws.
 #[derive(Clone, Copy)]

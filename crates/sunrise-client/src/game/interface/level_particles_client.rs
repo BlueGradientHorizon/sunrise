@@ -1,21 +1,9 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::level_particles::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::items::ItemStack;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::particles::{
-    self, ParticleOptions, ParticleType,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{
-    geometry::trig, position::BlockPos, random::RandomSource,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_world::level::LevelEvent;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_world::registry::BlockStateId;
+use super::Game;
+use sunrise_client::items::ItemStack;
+use sunrise_client::particles::{self, ParticleOptions, ParticleType};
+use sunrise_core::{geometry::trig, position::BlockPos, random::RandomSource};
+use sunrise_world::level::LevelEvent;
+use sunrise_world::registry::BlockStateId;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Queue and replay level event `id` at `pos` on the client.

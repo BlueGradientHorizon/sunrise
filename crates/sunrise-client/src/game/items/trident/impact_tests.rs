@@ -1,14 +1,9 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use crate::game::{
     native_entity_refs::tests::run_fresh_cases,
     native_projectiles::impact_probe::{Action, with_probe},
 };
-#[allow(unused_imports)]
 use std::sync::atomic::Ordering;
-#[allow(unused_imports)]
-use sunrise_client::mobs::Mob;
 
 pub(in crate::game) fn aim_trident_at_wall(
     game: &mut crate::game::ServerGame<'_>,

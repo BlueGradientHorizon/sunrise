@@ -1,27 +1,15 @@
 //! `/recipe`, `/damage`, `/rotate`, `/swing`, `/playsound`, `/stopsound`,
 //! `/particle`, `/attribute`, `/ride` and `/spreadplayers`.
-#[allow(unused_imports)]
 use super::{Arg, Context, Game, R, Target, err, wrap_degrees};
-#[allow(unused_imports)]
 use crate::game::living_attributes::AttributeWrite;
-#[allow(unused_imports)]
-use crate::game::minecarts::CartHit;
-#[allow(unused_imports)]
 use sunrise_client::{
-    mobs::{Damage, DamageKind, MobEvent, NamedDamage, Who, finalize},
+    mobs::{DamageKind, MobEvent, NamedDamage, Who, finalize},
     scoreboard_cmd::{Holder, Tracker},
     settings::SOUND_SOURCES,
     text::Text,
 };
-#[allow(unused_imports)]
-use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
 use sunrise_core::random::RandomSource;
-#[allow(unused_imports)]
-use sunrise_protocol::packets::play::{self, Clientbound as C};
-#[allow(unused_imports)]
 use sunrise_world::attribute_map::ValueKind;
-#[allow(unused_imports)]
 use sunrise_world::damage_source::Catalog as DamageCatalog;
 
 /// Queue bookkeeping for synchronous command damage, preserving prior requests
@@ -1437,14 +1425,7 @@ pub(in crate::game) fn command_operation(ctx: &Context) -> sunrise_world::attrib
 pub(in crate::game) mod attribute_missing_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod allay_owner_damage_tests {
-    #[allow(unused_imports)]
-    use crate::game::native_entity_refs::tests::with_game_at;
-    #[allow(unused_imports)]
-    use sunrise_client::mobs::{Damage, Mob};
-    #[allow(unused_imports)]
-    use sunrise_core::geometry::Vec3;
-}
+pub(in crate::game) mod allay_owner_damage_tests {}
 
 #[cfg(test)]
 #[path = "registered_damage_tests.rs"]
@@ -1452,13 +1433,8 @@ pub(in crate::game) mod registered_damage_tests;
 
 #[cfg(test)]
 pub(in crate::game) mod datapack_damage_tests {
-    #[allow(unused_imports)]
     use crate::game::{commands::Target, native_entity_refs::tests::with_game};
-    #[allow(unused_imports)]
-    use sunrise_client::mobs::Mob;
-    #[allow(unused_imports)]
     use sunrise_core::geometry::Vec3;
-    #[allow(unused_imports)]
     use sunrise_world::loot::PackOverlay;
 
     /// #2647: a damage type a world's datapack declares is in the world's frozen
@@ -1703,13 +1679,9 @@ pub(in crate::game) mod tests {
 
 #[cfg(test)]
 pub(in crate::game) mod vehicle_damage_command_tests {
-    #[allow(unused_imports)]
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
-    #[allow(unused_imports)]
+    use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    #[allow(unused_imports)]
     use sunrise_client::chunk::Chunk;
-    #[allow(unused_imports)]
     use sunrise_core::position::ChunkPos;
     pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());

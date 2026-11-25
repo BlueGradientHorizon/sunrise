@@ -1,23 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::game_tests::tests::server_game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::item_entities::thrown_items_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
-    Audio, Options, Progress, Settings, load_resources,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::chunk::Chunk;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::entities::{ExperienceOrb, ItemEntity};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::items::ItemStack;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::packets::play::{self, Clientbound as C};
+use crate::game::{Audio, Options, Progress, Settings, load_resources};
 
 /// The one sound `event` played since the last call, with its volume.
 pub(in crate::game) fn sound(game: &mut crate::game::ClientGame<'_>, event: &str) -> (f32, f32) {

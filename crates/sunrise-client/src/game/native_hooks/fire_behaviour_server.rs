@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::fire_behaviour::*;
+use super::*;
 
 /// The level's side of fire and lava ignition, called through `GameLevel`'s
 /// `LevelAccess`: authoritative actions and read-only eligibility queries.

@@ -1,15 +1,8 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::entity_sizes_common::synced_pose;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{EntityRef, Pose};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::mobs::Mob;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::pose::{Dimensions, SizeAnswer};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::{Aabb, Vec3};
+use super::Game;
+use crate::game::entity_sizes_common::synced_pose;
+use mod_api::Pose;
+use sunrise_client::pose::SizeAnswer;
+use sunrise_core::geometry::{Aabb, Vec3};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// What the client copy `id`'s size refresh computes now: its pose and vanilla size, with
@@ -210,36 +203,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::native_entity_refs::tests::with_game;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::tests::Calls;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::tests::Grow;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::tests::Log;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::tests::Seen;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::tests::SetSize;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::tests::ShortCrouch;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::tests::add_entity;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::tests::doubled;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::tests::entity_data;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::tests::in_fresh_process;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::tests::with_loopback_client;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use mod_api::{EntitySizeEvent, Hooks, Host, Pose};
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use std::sync::{Arc, Mutex};
+    use crate::game::server_side::entity_sizes::tests::add_entity;
+    use crate::game::server_side::entity_sizes::tests::doubled;
+    use crate::game::server_side::entity_sizes::tests::entity_data;
+    use crate::game::server_side::entity_sizes::tests::in_fresh_process;
+    use crate::game::server_side::entity_sizes::tests::with_loopback_client;
+    use mod_api::Pose;
 
     /// A client's copies of entities that aren't mobs ask too: a minecart's box, the
     /// crosshair's pick, its F3+B outline and the box mods read take the answer; an armor stand

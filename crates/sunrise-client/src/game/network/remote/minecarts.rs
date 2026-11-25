@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use super::*;
 
 /// `NewMinecartBehavior.MinecartStep`, including the server's rail pitch.

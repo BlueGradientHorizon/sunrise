@@ -1,6 +1,5 @@
 //! Placing the local player in a world it opened: at its saved position once the chunks around it
 //! are lit, or at the world spawn, then capturing the mouse.
-#[allow(unused_imports)]
 use super::*;
 
 impl Game<'_, crate::game::server_side::ServerState> {

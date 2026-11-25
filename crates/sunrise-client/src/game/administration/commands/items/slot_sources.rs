@@ -1,13 +1,8 @@
 //! Shared holder/context resolution before SlotCollection read or live-write consumption.
-#[allow(unused_imports)]
-use super::{Game, Owner, R, err};
-#[allow(unused_imports)]
+use super::{Game, Owner};
 use serde_json::Value;
-#[allow(unused_imports)]
 use std::collections::BTreeSet;
-#[allow(unused_imports)]
 use sunrise_client::datapack::DataStore;
-#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
 pub(in crate::game) fn id(raw: &str) -> String {
     if raw.contains(':') {

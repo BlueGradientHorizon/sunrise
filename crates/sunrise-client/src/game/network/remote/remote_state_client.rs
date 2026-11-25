@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::remote_state::*;
+use super::*;
 
 impl Remote {
     pub(in crate::game) fn clock_time(&self, id: Option<i32>) -> i64 {

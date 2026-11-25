@@ -1,47 +1,18 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::entity::Entity;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{Game, InteractTarget};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::armor_stands::ArmorStandAssets;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::armor_stands::ArmorSwap;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::armor_stands::CartShove;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::armor_stands::TYPE_ID;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::armor_stands::broken_armor_stand_equipment;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::armor_stands::layer_color;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::armor_stands::preview_slot;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::armor_stands::skull_kind;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::armor_stands::stand_box;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::armor_stands::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::{collections::HashMap, sync::Arc};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_assets::resource_source::ResourceSource;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    Result,
+use super::Game;
+use crate::game::server_side::armor_stands::ArmorStandAssets;
+use crate::game::server_side::armor_stands::TYPE_ID;
+use crate::game::server_side::armor_stands::preview_slot;
+use crate::game::server_side::armor_stands::skull_kind;
+use crate::game::server_side::armor_stands::*;
+use sunrise_client::{
     cit::{Hand, Kind, Rule},
     entities::ArmorStand,
     items::ItemStack,
-    join_seq::JoinSeq,
     mesher::Vertex,
-    mobs::{Mob, Part, Species, Who, anim::Poses},
-    trims::{TrimOverride, TrimRegistry, TrimTexture},
+    mobs::{Mob, Part, anim::Poses},
+    trims::TrimTexture,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{
-    geometry::{Aabb, Vec3},
-    random::RandomSource,
-};
+use sunrise_core::geometry::Vec3;
 
 impl ArmorStandAssets {
     /// Trim data of reloaded resources (the models stay).
@@ -771,16 +742,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
 #[cfg(test)]
 pub(in crate::game) mod setup_anim_tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::armor_stands::setup_anim_tests::HEARD;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::armor_stands::setup_anim_tests::Listener;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::armor_stands::setup_anim_tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use std::sync::atomic::{AtomicUsize, Ordering};
+    use super::*;
+    use crate::game::server_side::armor_stands::setup_anim_tests::HEARD;
+    use crate::game::server_side::armor_stands::setup_anim_tests::Listener;
+    use std::sync::atomic::Ordering;
 
     /// The real stand adapter exposes humanoid riding/head preparation, then
     /// preserves position edits while saved rotations replace listener rotations.

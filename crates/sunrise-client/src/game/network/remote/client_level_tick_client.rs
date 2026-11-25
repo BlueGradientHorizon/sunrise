@@ -1,9 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
+use super::*;
 pub(in crate::game::client_side) use crate::game::remote::client_level_tick::advance_clock;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::client_level_tick::*;
 
 /// Per-level client work bracketed by the shared LevelTickEvent hooks.
 /// No level means no event; failed ticks never emit the post event.

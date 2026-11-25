@@ -1,6 +1,5 @@
 //! Client-owned fields of [`super::Game`].
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
+use super::*;
 
 #[cfg(feature = "client")]
 #[path = "runtime/activity.rs"]

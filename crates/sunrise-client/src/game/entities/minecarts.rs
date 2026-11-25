@@ -11,34 +11,22 @@ pub(in crate::game) mod lifetime_tests;
 pub(in crate::game) mod save_lending;
 
 #[allow(unused_imports)]
-use super::{Game, Hit, InteractTarget, Keys, entity::Entity};
-#[allow(unused_imports)]
+use super::{Game, InteractTarget, Keys};
 use std::{collections::HashMap, sync::Arc};
-#[allow(unused_imports)]
-use sunrise_client::entity_rules::EntityRules;
-#[allow(unused_imports)]
-use sunrise_client::join_seq::{JoinList, ListStamp};
-#[allow(unused_imports)]
-use sunrise_client::mobs::{Mob, seen_grid::SeenGrid};
-#[allow(unused_imports)]
+use sunrise_client::join_seq::ListStamp;
+use sunrise_client::mobs::seen_grid::SeenGrid;
 use sunrise_client::{
     blocks::Fluid,
     containers::BlockEntity,
-    items::{ItemStack, Items},
+    items::ItemStack,
     mesher::Vertex,
-    mobs::{Part, Species, Who, anim::Poses, riders},
-    particles::{ParticleOptions, ParticleType},
+    mobs::{Part, Species, riders},
     random_source,
-    scoreboard::pushable_by,
-    sound_engine::{BLOCKS, CartSound, PlayResult, SoundInstance, Sounds},
 };
-#[allow(unused_imports)]
 use sunrise_core::{
-    geometry::{Aabb, Vec3, trig},
-    position::BlockPos,
-    random::{LegacyRandom, RandomSource},
+    geometry::{Aabb, Vec3},
+    random::LegacyRandom,
 };
-#[allow(unused_imports)]
 use sunrise_world::registry::BlockStateId;
 #[path = "minecarts/hit.rs"]
 pub(in crate::game) mod hit;
@@ -46,7 +34,6 @@ pub(in crate::game) mod hit;
 pub(in crate::game) use hit::CartHit;
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay::minecart_cells::CartCells;
-#[allow(unused_imports)]
 use sunrise_gameplay::minecart_seat::*;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(in crate::game) enum CartKind {

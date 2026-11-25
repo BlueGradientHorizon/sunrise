@@ -5,13 +5,7 @@
 //! `MobEffects`': `minecraft:effect.jump_boost` 1.0 per level and
 //! `minecraft:effect.absorption` 4.0 per level, both `add_value`, and
 //! `minecraft:effect.waypoint_transmit_range_hide` -1.0, `add_multiplied_total`.
-#[allow(unused_imports)]
-use crate::game::Game;
-#[allow(unused_imports)]
-use crate::game::commands::Target;
-#[allow(unused_imports)]
 use std::sync::Arc;
-#[allow(unused_imports)]
 use sunrise_client::chunk::Chunk;
 
 pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {

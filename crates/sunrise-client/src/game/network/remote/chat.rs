@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use sunrise_client::chat::{ChatSource, Tag as ChatTag};
 
 /// `ChatType`'s two decorations: how a message shows in the chat, and what the narrator says of it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

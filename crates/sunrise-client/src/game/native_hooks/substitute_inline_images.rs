@@ -1,12 +1,7 @@
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
-use mod_api::{Answered, HookId, InlineImageReplacement};
-#[allow(unused_imports)]
+use mod_api::{Answered, InlineImageReplacement};
 use std::collections::BTreeMap;
-#[allow(unused_imports)]
 use sunrise_client::hud::HudAtlas;
-#[allow(unused_imports)]
 use sunrise_client::text::{InlineObject, Text};
 
 #[cfg(feature = "client")]

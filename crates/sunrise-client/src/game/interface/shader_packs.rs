@@ -4,32 +4,19 @@
 //! `game/modding/native_shaders.rs`. The programs of the current dimension's folder are loaded when the
 //! dimension changes (spec 1.2).
 
-#[allow(unused_imports)]
 use super::remote_camera::CameraFogEffects;
-#[allow(unused_imports)]
 use sunrise_client::camera::CameraFluid;
-#[allow(unused_imports)]
 use sunrise_client::gfx::pack_uniforms::{PackInputs, PlayerStatus, ViewEntity};
-#[allow(unused_imports)]
 use sunrise_client::mod_list::ModList;
-#[allow(unused_imports)]
 use sunrise_client::shader_options::ShaderOptions;
-#[allow(unused_imports)]
 use sunrise_client::text::Text;
-#[allow(unused_imports)]
 use sunrise_shader_api::Api;
-#[allow(unused_imports)]
 use sunrise_shaders::{BlockIds, Macros, Pack, Properties, dimension_folder_named, load_post};
 
-#[allow(unused_imports)]
 use super::native_shaders::{fingerprint, outcome, refused, remember};
-#[allow(unused_imports)]
 use super::{Dim, Game, Screen};
-#[allow(unused_imports)]
 use std::cell::RefCell;
-#[allow(unused_imports)]
 use std::collections::{BTreeMap, HashMap};
-#[allow(unused_imports)]
 use sunrise_client_render::render_geometry::EntitySpan;
 
 /// The values the player chose for pack `name`'s options (`shaderpacks/<name>.txt`).
@@ -1597,17 +1584,9 @@ pub(in crate::game) mod toggle_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod player_status_tests {
-    #[allow(unused_imports)]
     use super::Game;
-    #[allow(unused_imports)]
     use std::sync::Arc;
-    #[allow(unused_imports)]
-    use sunrise_client::{
-        chunk::Chunk,
-        effects::EffectInstance,
-        motion::{MotionWorld, PlayerMotion},
-    };
-    #[allow(unused_imports)]
+    use sunrise_client::{chunk::Chunk, effects::EffectInstance, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
 
     /// The window's player standing at (0.5, 64, 0.5) on the empty chunks around it

@@ -1,12 +1,7 @@
-#[allow(unused_imports)]
 use super::super::native_client_session::tests::logged_client;
-#[allow(unused_imports)]
 use super::super::native_entity_refs::tests::with_client_game;
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use mod_api::{Flow, HostSide, SoundPlay, SoundSource};
-#[allow(unused_imports)]
 use std::sync::Mutex;
 
 #[derive(Default)]

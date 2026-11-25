@@ -1,7 +1,5 @@
 //! Client-side container menus: chest/shulker titles, slots, rendering, and quick-move.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use sunrise_client::{
     containers::{BlockEntity, is_chest_block},
     items::ItemStack,

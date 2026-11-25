@@ -2,14 +2,7 @@
 //! flint and steel leaves the cart alone (`Entity.interact` passes), and
 //! `primeFuse` plays `entity.tnt.primed` on the blocks source only when the
 //! cart is not silent.
-#[allow(unused_imports)]
-use super::super::*;
-#[allow(unused_imports)]
-use super::{CartKind, Minecart};
-#[allow(unused_imports)]
 use crate::game::game_tests::tests::server_game;
-#[allow(unused_imports)]
-use sunrise_client::items::ItemStack;
 
 /// A server's game on the prepared resources, or None when they are absent
 /// (CI has none: the tests then skip quietly).

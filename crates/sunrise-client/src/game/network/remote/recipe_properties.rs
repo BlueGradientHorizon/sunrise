@@ -1,4 +1,4 @@
-#[allow(unused_imports)]
+#[cfg(test)]
 use super::*;
 
 #[cfg(test)]

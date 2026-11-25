@@ -1,21 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::tests::{WeaponProbe, isolated};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::death_weapon::review_tests::arrow;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::death_weapon::review_tests::fixture;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::death_weapon::review_tests::hit;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::death_weapon::review_tests::player;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::death_weapon::review_tests::victim;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::death_weapon::review_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::{Arc, Mutex};
+use super::tests::WeaponProbe;
+use super::*;
+use std::sync::{Arc, Mutex};
 
 pub(in crate::game) fn fixture_with_source(
     expected: Option<ItemStack>,

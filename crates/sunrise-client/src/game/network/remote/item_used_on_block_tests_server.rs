@@ -1,12 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use serde_json::json;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::advancements as a;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::interaction_event_tests::item_used_on_block_tests::*;
-#[allow(unused_imports)]
+use super::*;
 pub(in crate::game::server_side) use crate::game::remote::interaction_event_tests::item_used_on_block_tests::install_criteria;
 
 #[test]

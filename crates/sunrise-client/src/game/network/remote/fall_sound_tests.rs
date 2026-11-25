@@ -1,10 +1,6 @@
-#[allow(unused_imports)]
 use crate::game::native_client_session::tests::logged_client;
-#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::with_client_game;
-#[allow(unused_imports)]
-use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
-#[allow(unused_imports)]
+use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
 
 #[allow(unused_imports)]

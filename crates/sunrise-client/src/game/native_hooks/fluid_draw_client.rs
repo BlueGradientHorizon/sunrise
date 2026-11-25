@@ -1,5 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
+use super::*;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `stack`'s tooltip lines: the game's own, as `fluid_tooltip` listeners left them.

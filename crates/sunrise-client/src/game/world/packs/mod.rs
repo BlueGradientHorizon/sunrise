@@ -1,22 +1,16 @@
 //! Resource pack selection bound to the game: the pack screen lists, and a
 //! full resource reload after a change, while playing.
-#[allow(unused_imports)]
+use super::{Game, PackResources, Resources, UiResources};
 #[cfg(feature = "client")]
 use super::{build_renderer, prepare_renderer_textures};
-use super::{Game, PackResources, Resources, UiResources};
-#[allow(unused_imports)]
 use mod_api::__private::game::*;
-#[allow(unused_imports)]
 use mod_api::{__private::reload::ReloadFiles, FileToIdConverter, Identifier};
-#[allow(unused_imports)]
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, Instant},
 };
-#[allow(unused_imports)]
 use sunrise_assets::resource_source::ResourceRoot;
-#[allow(unused_imports)]
 use sunrise_client::{
     assets::Assets,
     datapack::DataPack,

@@ -2,17 +2,13 @@
 //! a guest teleported, killed or put in spectator mode in the middle of the
 //! tick blocks placement where it is now, as when each turn built the boxes
 //! afresh, not at its box from the start of the tick.
-#[allow(unused_imports)]
 use crate::game::*;
-#[allow(unused_imports)]
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-#[allow(unused_imports)]
 use sunrise_client::{
     chunk::Chunk,
     lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
     motion::PlayerMotion,
 };
-#[allow(unused_imports)]
 use sunrise_protocol::packets::configuration::ClientInformation;
 
 pub(in crate::game) type Boxes = Vec<([f64; 3], [f64; 3])>;

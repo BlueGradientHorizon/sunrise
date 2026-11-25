@@ -1,12 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::Game;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::nautili::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{items::ItemStack, mobs::nautilus};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::random::RandomSource;
+use super::Game;
+use sunrise_client::{items::ItemStack, mobs::nautilus};
+use sunrise_core::random::RandomSource;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `AbstractNautilus.mobInteract`. Returns whether the click was used.

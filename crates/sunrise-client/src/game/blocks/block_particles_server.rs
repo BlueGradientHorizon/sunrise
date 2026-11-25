@@ -1,12 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    blocks::{MAP_COLORS, RenderShape},
-    particles::{ParticleOptions, ParticleType},
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::geometry::Direction;
+use super::*;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `BlockTransformer.TransformParticle.send`: its level event.

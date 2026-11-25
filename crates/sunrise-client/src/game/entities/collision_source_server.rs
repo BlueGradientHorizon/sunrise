@@ -1,5 +1,4 @@
 //! Server-side entity solid-collision helpers split from common `collision_source.rs`.
-#[allow(unused_imports)]
 use super::{
     Game,
     collision_source::{Mover, boat, cart, cart_reach, player},

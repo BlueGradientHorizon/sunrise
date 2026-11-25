@@ -1,9 +1,6 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use crate::game::stats::Stats;
-#[allow(unused_imports)]
-use sunrise_client::{actions::Action, lan::guest::Guest};
+use sunrise_client::lan::guest::Guest;
 
 /// The player that was in place before this guest's turn. Stats stay with the
 /// displaced body so a synchronous death can credit it before the put-back.

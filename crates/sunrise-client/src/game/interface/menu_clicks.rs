@@ -1,7 +1,6 @@
 //! Clicks on an open container menu: `AbstractContainerMenu.clicked` run by the menu engine
 //! (`menu_session`, `click_open_inventory`, `menu_ops`), a shift-click's quick move, the creative screen's own
 //! display and throw clicks, and a mouse button over the inventory (`click_inventory`).
-#[allow(unused_imports)]
 use super::*;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {

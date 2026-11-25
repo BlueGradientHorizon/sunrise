@@ -1,17 +1,11 @@
 //! `ServerPlayer.doTick` runs `super.tick()` (Player.tick, where NeoForge
 //! posts `PlayerTickEvent.Pre`/`Post`) only `if (!isSpectator() ||
 //! !touchingUnloadedChunk())` (#4520).
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::with_game;
-#[allow(unused_imports)]
 use crate::game::native_item_places::tests::{guest, open_to_lan};
-#[allow(unused_imports)]
 use mod_api::HostSide;
-#[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
 use sunrise_client::{chunk::Chunk, effects::EffectInstance};
 
 pub(in crate::game) struct Log(pub(in crate::game) Arc<Mutex<Vec<(&'static str, u128)>>>);

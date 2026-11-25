@@ -6,20 +6,12 @@
 //! `ClientPacketListener.handleBundlePacket`, matching NeoForge `AttachmentSync`). Render
 //! extraction retains the published generation, not the live synced holder. The row's behaviour
 //! is the server's.
-#[allow(unused_imports)]
 use super::{Game, Lerp, Remote};
-#[allow(unused_imports)]
 use crate::game::general::general_type_catalog;
-#[allow(unused_imports)]
 use indexmap::IndexMap;
-#[allow(unused_imports)]
 use std::collections::HashMap;
-#[allow(unused_imports)]
 use sunrise_client::join_seq::JoinSeq;
-#[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Vec3};
-#[allow(unused_imports)]
-use sunrise_mod_runtime::attachments::{Attachments, Holder};
 #[allow(unused_imports)]
 use sunrise_protocol::general_entity::{self, Message};
 
@@ -122,11 +114,8 @@ pub(in crate::game) fn tick_remote_general(
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::*;
-    #[allow(unused_imports)]
     use sunrise_mod_runtime::attachments::Holder;
-    #[allow(unused_imports)]
     use sunrise_protocol::packets::play::{self, Clientbound as C};
 
     pub(in crate::game) static FUEL: mod_api::AttachmentType<i32> = mod_api::AttachmentType {

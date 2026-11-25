@@ -3,11 +3,8 @@
 //! 8 damage plus Impaling, the reversed bounce off a hit, sticking, Loyalty's
 //! return to the owner, pickup) with `ThrownTridentRenderer`, and Channeling's
 //! lightning on a hit (`channeling.json`).
-#[allow(unused_imports)]
 use super::level_sounds::LevelSound;
-#[allow(unused_imports)]
 use super::{Game, commands::Target};
-#[allow(unused_imports)]
 use mod_api::{__private::TransactionFrame, SoundSource};
 #[allow(unused_imports)]
 use sunrise_client::{
@@ -16,11 +13,9 @@ use sunrise_client::{
     enchant::EffectContext,
     items::ItemStack,
     join_seq::JoinSeq,
-    mesher::Vertex,
-    mobs::{Damage, DamageKind, Species, Who, anim::Poses},
+    mobs::{Damage, DamageKind, Species, Who},
     projectiles::{Hit, ProjectileWorld},
 };
-#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, Vec3, traverse_blocks},
     position::BlockPos,

@@ -1,13 +1,10 @@
 //! Common command types and data-only helpers shared by server and client modules.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use sunrise_client::{
     command::CommandError,
     items::ItemStack,
     text::{self, Style, Text},
 };
-#[allow(unused_imports)]
 use sunrise_core::{
     geometry::Vec3,
     nbt::Tag,

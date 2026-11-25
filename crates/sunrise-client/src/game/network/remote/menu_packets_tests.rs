@@ -1,25 +1,8 @@
-#[allow(unused_imports)]
-use super::{connect_menu_test, spawn_menu_test};
-#[allow(unused_imports)]
-use crate::game::{
-    Game, Screen, in_own_process, mount_menu::CHEST, native_entity_refs::tests::with_game,
-};
-#[allow(unused_imports)]
-use std::time::{Duration, Instant};
-#[allow(unused_imports)]
-use sunrise_client::{hud::HudBatch, items::ItemStack, menu::Input, mobs::Mob};
-#[allow(unused_imports)]
-use sunrise_core::{geometry::Vec3, nbt::Tag};
-#[allow(unused_imports)]
 use sunrise_protocol::{
     connection::ConnReader,
-    item::Stack,
     packets::{
         configuration::Ping,
-        play::{
-            Clientbound as C, ContainerSetSlot, MountScreenOpen, OpenScreen, PlayerPosition,
-            Serverbound as S,
-        },
+        play::{Clientbound as C, Serverbound as S},
     },
 };
 

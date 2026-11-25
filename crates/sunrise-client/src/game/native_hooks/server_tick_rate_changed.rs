@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
@@ -13,13 +12,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod server_tick_rate_changed_tests {
-    #[allow(unused_imports)]
     use crate::game::native_guest_turn_tests::with_guests;
-    #[allow(unused_imports)]
     use mod_api::{Hooks, ModEntry, ServerHost, ServerTickRateChangedEvent};
-    #[allow(unused_imports)]
     use mod_platform::testing::with_mods;
-    #[allow(unused_imports)]
     use std::sync::{Arc, Mutex};
 
     /// A scheduling mod: logs the rate each notification reads, and runs `retune` on the first.

@@ -1,24 +1,17 @@
 //! Real LAN merchant result takes, with native listeners and the production coordinator.
-#[allow(unused_imports)]
-use super::{Game, native_guest_turn_tests::with_guests};
-#[allow(unused_imports)]
+use super::native_guest_turn_tests::with_guests;
 use mod_api::{
     Flow, Hooks, HostSide, HostTransaction, ItemPlace, ItemResource, ItemStackedOnOtherEvent,
     ModEntry, Mods, PlayerTradeEvent, ServerHost, TradeWithVillagerEvent,
 };
-#[allow(unused_imports)]
 use std::cell::{Cell, RefCell};
-#[allow(unused_imports)]
 use std::sync::{Arc, mpsc};
-#[allow(unused_imports)]
 use sunrise_client::lan::{Out, PlayerSender};
-#[allow(unused_imports)]
 use sunrise_client::{
     items::ItemStack,
     merchant::{Session, Trader},
     mobs::finalize::{self, Attr, Op},
 };
-#[allow(unused_imports)]
 use sunrise_protocol::packets::play::{Clientbound, ContainerClick};
 
 #[derive(Clone, Copy)]

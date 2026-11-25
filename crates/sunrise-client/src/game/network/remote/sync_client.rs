@@ -1,9 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::sync::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::tab_list::{TabPlayer, default_skin};
+use super::*;
+use sunrise_client::tab_list::TabPlayer;
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {

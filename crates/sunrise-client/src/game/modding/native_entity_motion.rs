@@ -4,17 +4,11 @@
 //! as `native_entity_refs.rs` finds it, and return `None` (or `false`) for a
 //! stale handle. On a client (API @API:client_entity_refs@) they read the
 //! entities the server shows the window, and nothing moves one.
-#[allow(unused_imports)]
 use super::entity::{Entity as _, EntityHandle, with_entity, with_entity_mut};
-#[allow(unused_imports)]
 use super::{Game, commands::Target};
-#[allow(unused_imports)]
 use mod_api::{ClipBlock, ClipFluid, ClipHit, EntityRef, LevelWriteError};
-#[allow(unused_imports)]
 use sunrise_client::{collisions::SceneCollisions, motion::player_context};
-#[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Axis, Vec3};
-#[allow(unused_imports)]
 use sunrise_core::position::BlockPos;
 
 /// `Entity.calculateViewVector` for a look turned `pitch_offset` degrees down: the unit

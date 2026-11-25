@@ -2,30 +2,19 @@
 //! tick (`execute`, `executeChain`), `BaseCommandBlock.performCommand`
 //! through the command system with the block's output, and
 //! `CommandBlockEditScreen` with what `handleSetCommandBlock` does with it.
-#[allow(unused_imports)]
-use super::{Game, Screen, commands::execute::Source};
+use super::{Game, Screen};
 #[allow(unused_imports)]
 use sunrise_client::{
     chat::Commands,
-    command_block::{self, CommandBlock, Mode},
+    command_block::{CommandBlock, Mode},
     containers::BlockEntity,
     hud::{HudBatch, rgba},
-    items::ItemStack,
     screen_draw::Measure,
     text::Text,
     ui,
 };
-#[allow(unused_imports)]
-use sunrise_core::position::BlockPos;
-#[allow(unused_imports)]
-use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
-#[allow(unused_imports)]
+use sunrise_protocol::packets::play::{self, Serverbound as S};
 use winit::keyboard::KeyCode;
-#[allow(unused_imports)]
-use {
-    sunrise_core::nbt::Tag,
-    sunrise_world::{chunk::BlockState, level::flags},
-};
 
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_client_gameplay::command_block_screen::{

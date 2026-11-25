@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_menu_tests::*;
+use super::*;
 
 /// `MenuRef::close` and `click_button` go through the screen's own close
 /// and the button packet, and refuse a menu that is not open or stale.

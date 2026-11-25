@@ -1,35 +1,14 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::host::draw::EngineTooltipFont;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::host::draw::GameBlockEntityDrawContext;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::host::draw::GameCameraDrawContext;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::host::draw::GameDrawContext;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::host::draw::GameWorldDrawContext;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::host::draw::LINE_HEIGHT;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::host::draw::MAX_GLYPHS;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::host::draw::MAX_LINES;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::host::draw::font_id_str;
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::host::draw::label_layout;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::host::draw::label_layout_with;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::host::draw::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
+use crate::game::host::draw::EngineTooltipFont;
+use crate::game::host::draw::GameBlockEntityDrawContext;
+use crate::game::host::draw::GameCameraDrawContext;
+use crate::game::host::draw::GameDrawContext;
+use crate::game::host::draw::GameWorldDrawContext;
+use crate::game::host::draw::font_id_str;
+use crate::game::{
     Game,
     api_values::{TryIntoApi, TryIntoEngine},
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{prelude::*, *};
+use mod_api::{prelude::*, *};
 
 impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
     fn push(&mut self) {

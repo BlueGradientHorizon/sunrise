@@ -1,13 +1,11 @@
 //! Restore the guest's first body without borrowing another player's RNG.
-#[allow(unused_imports)]
+#[cfg(test)]
 use super::*;
 #[allow(unused_imports)]
 use sunrise_client::{
     lan::{guest::Guest, hub::CommittedMove},
-    landing::PlayerLandingPause,
-    motion::{MotionResources, PlayerMotion, ServerTravel},
+    motion::{MotionResources, PlayerMotion},
 };
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
 
 pub(in crate::game) fn initialize(resources: &MotionResources, guest: &mut Guest) -> bool {

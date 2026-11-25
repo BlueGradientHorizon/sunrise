@@ -1,13 +1,9 @@
 //! `/execute` (ExecuteCommand): walk the parsed redirect chain, forking and
 //! filtering command sources, then run the final command once per source,
 //! reporting each result to the `store` callbacks of its source.
-#[allow(unused_imports)]
 use super::{Arg, Context, Dim, Game, R, Target, data::DataRef, err, wrap_degrees};
-#[allow(unused_imports)]
-use sunrise_client::{command::CommandError, nbt_path::NbtPath, text::Text};
-#[allow(unused_imports)]
+use sunrise_client::nbt_path::NbtPath;
 use sunrise_core::geometry::trig;
-#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
 
 /// `CommandSourceStack` fields Sunrise models: the executing entity (None for
@@ -670,14 +666,6 @@ pub(in crate::game) mod tests {
 
 #[cfg(test)]
 pub(in crate::game) mod passenger_relation_tests {
-    #[allow(unused_imports)]
-    use super::*;
-    #[allow(unused_imports)]
-    use crate::game::native_entity_refs::tests::with_game;
-    #[allow(unused_imports)]
-    use sunrise_core::nbt::Tag;
-    #[allow(unused_imports)]
-    use sunrise_core::position::BlockPos;
 
     pub(in crate::game) fn actor(i: usize) -> String {
         format!("00000096-0000-0002-0000-{i:012x}")
@@ -706,15 +694,9 @@ pub(in crate::game) mod passenger_relation_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod terminal_fork_tests {
-    #[allow(unused_imports)]
-    use super::Game;
-    #[allow(unused_imports)]
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
-    #[allow(unused_imports)]
+    use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    #[allow(unused_imports)]
     use sunrise_client::chunk::Chunk;
-    #[allow(unused_imports)]
     use sunrise_core::position::ChunkPos;
 
     #[allow(unused_imports)]
@@ -837,9 +819,6 @@ pub(in crate::game) use crate::game::server_side::commands_server::execute::term
 
 #[cfg(test)]
 pub(in crate::game) mod score_condition_tests {
-    #[allow(unused_imports)]
-    use super::*;
-    #[allow(unused_imports)]
     use crate::game::game_tests::tests::server_game;
 
     pub(in crate::game) fn game(

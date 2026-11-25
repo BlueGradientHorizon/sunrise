@@ -1,31 +1,9 @@
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Arg, Context, Game, R, Target, err};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::compute::Arith;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::compute::ComputeCondition;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::compute::ComputeContext;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::compute::context_entities;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::compute::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use serde_json::Value;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::borrow::Cow;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::providers::{ConditionContext, Evaluation};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    advancements::{self as adv, EntityView},
-    command::CommandError,
-    text::Text,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::java_number::float_to_string;
+use super::{Game, Target};
+use crate::game::commands::compute::ComputeContext;
+use crate::game::commands::compute::context_entities;
+use serde_json::Value;
+use sunrise_client::advancements::{self as adv};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Leaf predicates that read the command's world or entity context.
@@ -127,24 +105,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::compute::tests::Void;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::compute::tests::holds;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::compute::tests::of_type;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::compute::tests::view;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::compute::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use serde_json::json;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use std::collections::BTreeMap;
+    use super::*;
 
     #[test]
     #[ignore = "daily"]

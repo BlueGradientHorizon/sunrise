@@ -1,16 +1,10 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use mod_api::ServerHost;
 
-#[allow(unused_imports)]
 use sunrise_client::mobs::{
     BreedExperience,
-    finalize::{Attr, set_base},
     goals::{Breed, Cx, Goal},
 };
-#[allow(unused_imports)]
-use sunrise_core::random::{LegacyRandom, RandomSource};
+use sunrise_core::random::LegacyRandom;
 
 /// Isolate the goal's stream from earlier tick work, but leave the actual
 /// Breed, subsequent aiStep and queued Game event handling in the route.

@@ -1,15 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::super::native_entity_refs::tests::with_game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::super::native_item_places::tests::{
-    guest, open_to_lan,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::mob_griefing_tests::Deny;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::mob_griefing_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::{Arc, Mutex};
+use super::super::native_entity_refs::tests::with_game;
+use super::super::native_item_places::tests::{guest, open_to_lan};
+use crate::game::creatures::mob_griefing_tests::Deny;
+use std::sync::Arc;
 
 /// `EntityMobGriefingEvent`: the mod's answer for one entity reaches the
 /// game's checks and the mob AI's; another entity keeps the rule, and a

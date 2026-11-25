@@ -8,17 +8,11 @@
 //! keep no effects, as `/effect` skips them. `effect` and `effects` also read
 //! on a client, for the local player, from the effects the server sent it, and
 //! `effect_blend_factor` reads only there, from the fades the client ticks.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use super::commands::Target;
-#[allow(unused_imports)]
 use mod_api::{ActiveEffect, EffectKey, LivingRef};
-#[allow(unused_imports)]
 use sunrise_client::effects::{EffectInstance, PlayerEffects};
-#[allow(unused_imports)]
 use sunrise_client::mobs::Mob;
-#[allow(unused_imports)]
 use sunrise_items::items::ItemStack;
 
 /// A player's effect as the API's load-owned key and instance data.
@@ -305,13 +299,9 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::super::native_entity_refs::tests::with_game;
-    #[allow(unused_imports)]
     use mod_api::{ActiveEffect, EntityRef, LivingRef, WorldEpoch};
-    #[allow(unused_imports)]
     use sunrise_client::mobs::Mob;
-    #[allow(unused_imports)]
     use sunrise_core::geometry::Vec3;
 
     pub(in crate::game::server_side) fn effect(

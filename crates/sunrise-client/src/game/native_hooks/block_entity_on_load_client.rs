@@ -1,9 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick::ClientBlockEntityAccess;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{BlockEntityClientScope, BlockEntitySideScope};
+use super::*;
+use crate::game::native_hooks::block_entity_client_tick::ClientBlockEntityAccess;
+use mod_api::{BlockEntityClientScope, BlockEntitySideScope};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_fire_pending_block_entity_loads(&mut self) {

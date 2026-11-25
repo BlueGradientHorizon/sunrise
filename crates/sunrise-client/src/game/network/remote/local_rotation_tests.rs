@@ -1,18 +1,6 @@
 //! `set_local_rotation`: a client mod turns the local player's view; the look goes out in the
 //! tick's own player sync, one move packet with vanilla's clamp, never a packet of the call's own.
-#[allow(unused_imports)]
-use crate::game::native_client_session::tests::{finish_login, logged_client};
-#[allow(unused_imports)]
-use crate::game::native_entity_refs::tests::with_client_game;
-#[allow(unused_imports)]
-use mod_api::LocalRotationError;
-#[allow(unused_imports)]
-use sunrise_client::motion::PlayerMotion;
-#[allow(unused_imports)]
-use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
 use sunrise_protocol::connection::Connection;
-#[allow(unused_imports)]
 use sunrise_protocol::packets::play::Serverbound as S;
 
 /// The move packets the client sent before a fence, as (kind, yaw, pitch).

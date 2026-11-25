@@ -4,32 +4,25 @@
 //! its next change of state and push the entities an eruption throws up. The
 //! client's draw the gas clouds and the eruption's plume, play its sound and
 //! push the local player, who moves on its own client and not on the server.
-#[allow(unused_imports)]
 use super::{Game, potions::mob_effect_id};
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::potent_sulfur_common::{
     GEYSER_CONTINUOUS_ACTIVE, GEYSER_ERUPTION_ACTIVE, PassMobs,
 };
-#[allow(unused_imports)]
 use sunrise_client::{
     Result,
     block_entities::Pos,
     containers::BlockEntity,
     effects::EffectInstance,
     mobs::Mob,
-    particles::{ParticleLevel, ParticleOptions, ParticleType as T},
-    potent_sulfur::{
-        can_be_reached_by_noxious_gas, find_noxious_gas_source_block, unobstructed_block_count,
-    },
+    particles::ParticleLevel,
+    potent_sulfur::{can_be_reached_by_noxious_gas, unobstructed_block_count},
 };
-#[allow(unused_imports)]
 use sunrise_core::{geometry::Aabb, position::BlockPos, random::RandomSource};
-#[allow(unused_imports)]
 use sunrise_gameplay::potent_sulfur::{
-    EFFECT_APPLICATION_FREQUENCY_TICKS, EFFECT_DURATION_IN_TICKS, Geyser, PARTICLE_FREQUENCY_TICKS,
-    SOUND_FREQUENCY_TICKS, geyser_positional, launch_area, nearby_living_area,
+    EFFECT_APPLICATION_FREQUENCY_TICKS, EFFECT_DURATION_IN_TICKS, Geyser, geyser_positional,
+    launch_area, nearby_living_area,
 };
-#[allow(unused_imports)]
 use sunrise_world::{level::flags, registry::BlockStateId};
 
 /// `PotentSulfurBlockEntity.applyNauseaEffect` on a mob that passed the

@@ -1,23 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::pending_birth_tests::{
-    SEED, YAWS, breed_pair, cube, find, near,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::pending_birth_matrix_tests::Native;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::pending_birth_matrix_tests::matrix;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::pending_birth_matrix_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_entity_refs::tests::{
-    run_fresh_cases, with_game,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{
-    BabyEntitySpawnEvent, Flow, Hooks, MobSplitEvent, ServerHost,
-};
+use super::pending_birth_tests::{SEED, breed_pair, cube};
+use super::*;
 
 /// Two cows bred by the real route; the parent's id ends in `mode`.
 pub(in crate::game) fn breed(

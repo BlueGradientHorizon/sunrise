@@ -1,18 +1,13 @@
 //! #3948: the shader-pack uniforms tied to the view read the camera entity (the entity a
 //! spectator's click or the server's `SetCamera` attached the view to), and the client keeps the
 //! other living entities' effects for it (`ClientPacketListener.handleUpdateMobEffect`).
-#[allow(unused_imports)]
-use crate::game::{Game, native_entity_refs::tests::with_client_game};
-#[allow(unused_imports)]
+use crate::game::native_entity_refs::tests::with_client_game;
 use std::sync::Arc;
-#[allow(unused_imports)]
 use sunrise_client::{
-    camera::CameraType, chunk::Chunk, gfx::pack_uniforms::ViewEntity, level_loading::Reason,
-    motion::PlayerMotion, options_file::V,
+    chunk::Chunk, gfx::pack_uniforms::ViewEntity, level_loading::Reason, motion::PlayerMotion,
+    options_file::V,
 };
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
 use sunrise_protocol::{
     connection::Pipe,
     packets::play::{self, Clientbound as C, SpawnInfo},

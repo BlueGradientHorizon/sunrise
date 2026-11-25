@@ -1,29 +1,17 @@
 //! Shared memory census report types, formatting, and common `Game` entry points.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use serde::Serialize;
-#[allow(unused_imports)]
 use serde_json::Value;
-#[allow(unused_imports)]
 use std::collections::BTreeMap;
-#[allow(unused_imports)]
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, Ordering},
-    mpsc::{Receiver, Sender, channel, sync_channel},
+    atomic::AtomicBool,
+    mpsc::{Receiver, Sender},
 };
-#[allow(unused_imports)]
-use std::task::Poll;
-#[allow(unused_imports)]
-use std::thread::{Builder, JoinHandle};
-#[allow(unused_imports)]
+use std::thread::JoinHandle;
 use sunrise_client::chunk::{Chunk, ColumnCensus, Section};
-#[allow(unused_imports)]
 use sunrise_client::fast_hash::FxHashSet;
-#[allow(unused_imports)]
 use sunrise_client::server_perf::MemoryCost;
-#[allow(unused_imports)]
 use sunrise_client_render::gfx::RendererMemorySnapshot;
 
 pub(in crate::game) const MB: f64 = 1048576.0;

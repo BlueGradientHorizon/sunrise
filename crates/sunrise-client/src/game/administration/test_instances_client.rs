@@ -1,58 +1,10 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{
-    Game,
-    game_tests::Info,
-    structure_blocks::{create_seed, template_size},
-    test_entities::{aabb_of, inflate},
+use super::Game;
+use crate::game::server_side::test_instances::HIGHLIGHT_FILL;
+use sunrise_client::{
+    block_entity_render::vertex_light, component::name_text, containers::BlockEntity,
+    hud::HudBatch, mesher::Vertex, text::Text,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::test_instances::EXPORT;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::test_instances::HIGHLIGHT_FILL;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::test_instances::INIT;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::test_instances::Pos;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::test_instances::QUERY;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::test_instances::RESET;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::test_instances::RUN;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::test_instances::SAVE;
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::test_instances::TestDefSample;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::test_instances::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    block_entity_render::vertex_light,
-    component::name_text,
-    containers::BlockEntity,
-    hud::HudBatch,
-    mesher::Vertex,
-    structure_block::rotation_from_ordinal,
-    test_instance_block::{Data, Status, TestInstanceBlock},
-    text::{self, Text},
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client_render::block_entity_reach::Reach;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{position::BlockPos, ticks::TickArea};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_gameplay::test_instances::{TestDef, parse_test_def};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::packets::play::{self, Clientbound as C};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use {
-    sunrise_core::bounding_box::BoundingBox,
-    sunrise_world::{
-        level::{TemplateSettings, flags},
-        worldgen::structure::{Mirror, Rotation},
-    },
-};
+use sunrise_client_render::block_entity_reach::Reach;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientPacketListener.handleGameTestHighlightPos`:

@@ -2,26 +2,12 @@
 //! from a block face, boosting a gliding player, the 1.15 horizontal
 //! acceleration and 0.04 lift, the flight-duration lifetime, explosion
 //! damage with line of sight, and the client explosion (`createFireworks`).
-#[allow(unused_imports)]
-use super::{Game, Hit, dragon::FightWho, item_draw::owner_at, view_vector};
-#[allow(unused_imports)]
+use super::{Game, view_vector};
 use std::sync::Arc;
-#[allow(unused_imports)]
-use sunrise_assets::item_model::DisplayContext;
-#[allow(unused_imports)]
 use sunrise_client::{
-    block_entity_render::vertex_light,
-    collisions::SceneCollisions,
-    entity_nbt::RocketNbt,
-    items::ItemStack,
-    mesher::Vertex,
-    mobs::{Damage, Species, Who},
-    particles::{FireworkExplosion, ParticleOptions, ParticleType},
-    projectiles::{Hit as ProjectileHit, ProjectileWorld},
-    random_source,
-    text::Text,
+    collisions::SceneCollisions, entity_nbt::RocketNbt, items::ItemStack, mobs::Who,
+    particles::FireworkExplosion,
 };
-#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::RandomSource,

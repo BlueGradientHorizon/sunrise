@@ -1,11 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::owner_link::{ControlRequest, OwnerRequest};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::lan_op::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::Result;
+use super::Game;
+use super::owner_link::{ControlRequest, OwnerRequest};
+use sunrise_client::Result;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `sunrise-ctl lan op NAME LEVEL`; `None` for any other command.

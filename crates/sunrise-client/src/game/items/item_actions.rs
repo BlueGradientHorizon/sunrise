@@ -1,7 +1,6 @@
 //! A click that uses the held item at nothing or at an entity (`Minecraft.startUseItem`,
 //! `Player.interactOn`), the context a block's use sees, and the mod hooks that cancel a placement
 //! or an emptied bucket.
-#[allow(unused_imports)]
 use super::*;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {

@@ -1,11 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::camera_read::PROJECT_VIEW;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::camera_read::ProjectionFrame;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::camera_read::*;
+use super::*;
+use crate::game::native_hooks::camera_read::PROJECT_VIEW;
+use crate::game::native_hooks::camera_read::ProjectionFrame;
 
 /// Helpers for native mods, kept as stable as the hook points.
 impl Game<'_, crate::game::client_side::ClientState> {

@@ -1,13 +1,8 @@
 //! Llamas on the game side: `AbstractChestedHorse.mobInteract` and
 //! `Llama.handleEating` (wheat and hay), chests, carpets, shearing a carpet
 //! off and riding.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
-use sunrise_client::actions::Action;
-#[allow(unused_imports)]
 use sunrise_client::mobs::{equine, llama};
-#[allow(unused_imports)]
 use sunrise_core::random::RandomSource;
 
 impl Game<'_, crate::game::server_side::ServerState> {

@@ -1,22 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Arg, Context, Game, R, Target, err};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::chat::PLAYER_NAME;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::misc::millis;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::misc::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    clock::SprintReport,
-    text::{self, Text},
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::java_number::format_fixed;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::random::RandomSource;
+use super::{Arg, Context, Game, R, Target, err};
+use crate::game::chat::PLAYER_NAME;
+use sunrise_client::text::{self, Text};
+use sunrise_core::random::RandomSource;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn cmd_random(&mut self, id: &str, ctx: &Context) -> R<i32> {

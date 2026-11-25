@@ -1,13 +1,5 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use crate::game::{Audio, Options, Progress, Settings, load_resources};
-#[allow(unused_imports)]
 use std::collections::HashSet;
-#[allow(unused_imports)]
-use sunrise_client::motion::PlayerMotion;
-#[allow(unused_imports)]
-use sunrise_core::geometry::Vec3;
 
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::server_side::commands_server::data::saved_tag_tests::with_command_game;

@@ -1,25 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::super::native_entity_refs::tests::with_game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::super::native_item_places::tests::{
-    guest, open_to_lan,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::player_tick_tests::Captain;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::player_tick_tests::Log;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::player_tick_tests::Snapshot;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::player_tick_tests::tags_over_steve;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::player_tick_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{Host, HostSide, PlayerRef};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::items::ItemStack;
+use crate::game::remote::player_tick_tests::Log;
+use std::sync::{Arc, Mutex};
 
 #[test]
 #[ignore = "daily"]

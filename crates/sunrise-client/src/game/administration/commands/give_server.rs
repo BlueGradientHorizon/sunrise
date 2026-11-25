@@ -1,19 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Game, Target};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::give::GiveItem;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::give::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::level_sounds::LevelSound;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::SoundSource;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::items::ItemStack;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::random::RandomSource;
+use super::{Game, Target};
+use crate::game::commands::give::GiveItem;
+use sunrise_client::items::ItemStack;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `GiveCommand.giveItem`'s handing over of one stack to the acting player:

@@ -1,9 +1,6 @@
 //! `BowItem.releaseUsing` through `ProjectileWeaponItem.draw` and `shoot`: the
 //! bow's enchantment components decide the arrows it fires, and the ammunition
 //! is whatever `#minecraft:arrows` lists.
-#[allow(unused_imports)]
-use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
-#[allow(unused_imports)]
 use sunrise_client::items::ItemStack;
 
 #[allow(unused_imports)]

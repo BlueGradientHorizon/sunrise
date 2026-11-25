@@ -1,5 +1,4 @@
 //! Item/enchantment answers resolved when parts install, read from registry snapshots.
-#[allow(unused_imports)]
 use super::*;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {

@@ -1,13 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::interaction_event_tests::use_item_hand_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::interaction_event_tests::use_item_hand_tests::ItemUser;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::interaction_event_tests::use_item_hand_tests::item_users;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::interaction_event_tests::use_item_hand_tests::item_observer;
+use super::*;
+use crate::game::remote::interaction_event_tests::use_item_hand_tests::item_observer;
+use crate::game::remote::interaction_event_tests::use_item_hand_tests::item_users;
 
 #[test]
 #[ignore = "daily"]

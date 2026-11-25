@@ -1,15 +1,10 @@
 //! Shape queries for a supplied state without replacing the block in the world.
-#[allow(unused_imports)]
 use super::{Game, perspective};
-#[allow(unused_imports)]
 use mod_api::BlockShapeKind;
-#[allow(unused_imports)]
 use sunrise_client::{
     block_entity_anim::BlockEntityAnims, collisions::SceneCollisions, world::World,
 };
-#[allow(unused_imports)]
 use sunrise_core::{geometry::VoxelShape, position::BlockPos};
-#[allow(unused_imports)]
 use sunrise_world::{
     block_collision::BlockCollisionRegistry,
     collision::ShapeChannel,

@@ -1,9 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::cauldrons::is_under_water;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::cauldrons::*;
+use super::*;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `CauldronInteractions` for the held item aimed at a cauldron.

@@ -6,33 +6,22 @@
 //! `with_hand_item`, `health`, `max_health`, `attribute_value`, `attribute_base`,
 //! `attributes` and `attribute_modifiers`), which on a client answer for the
 //! local player from the client's own copy; and `effect`/`effects`.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use super::api_values::{StackReadMetadata, project_stack, stack_read_metadata};
-#[allow(unused_imports)]
 use super::commands::{Target, items::Owner};
-#[allow(unused_imports)]
 use super::living_attributes::AttributeWrite;
-#[allow(unused_imports)]
 use crate::mobs::Who;
-#[allow(unused_imports)]
 use mod_api::client::first_person::Hand;
-#[allow(unused_imports)]
 use mod_api::{
     AttributeModifier, AttributeOperation, Direction, EntityRef, EquipmentSlot, Identifier,
     ItemStackView, LivingRef, ModifierLifetime,
 };
-#[allow(unused_imports)]
 use sunrise_client::health::{Attack, DamageLevel, HitEffects, Hurting, Knock, NO_ATTACK};
-#[allow(unused_imports)]
 use sunrise_client::items::{EntityTypeTags, ItemStack};
-#[allow(unused_imports)]
 use sunrise_client::mobs::{
     Mob,
     finalize::{self, EquipmentRead},
 };
-#[allow(unused_imports)]
 use sunrise_world::attributes::{Modifier, Operation};
 
 /// A player's armour slots (`armor`, head first) by equipment slot.
@@ -1486,11 +1475,8 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::super::api_values::TryIntoApi;
-    #[allow(unused_imports)]
     use super::*;
-    #[allow(unused_imports)]
     use sunrise_core::geometry::Vec3;
 
     /// The mod API keeps a written base in range; vanilla's own `setBaseValue` (`/attribute base set`) does not.

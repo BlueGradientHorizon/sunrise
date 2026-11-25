@@ -1,29 +1,7 @@
-#[allow(unused_imports)]
-use super::{Game, Text};
-#[allow(unused_imports)]
-use crate::game::{
-    Screen,
-    lan::LanHost,
-    lan_particles::tests::test_hub,
-    native_entity_refs::tests::{fixture_root, run_fresh_cases, with_client_game, with_game},
-    native_hotbar_slot::hotbar_slot_tests::{logged_in, sent},
-};
-#[allow(unused_imports)]
-use std::sync::Arc;
-#[allow(unused_imports)]
+use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
 use sunrise_client::{
-    creative::Creative,
     items::ItemStack,
-    lan::{Out, data::SyncData},
-    menu::Input,
     mobs::finalize::{MAINHAND, item_stack},
-    scoreboard::{comp_text, tag_to_json},
-};
-#[allow(unused_imports)]
-use sunrise_protocol::{
-    buf::Reader,
-    packets::play::{Clientbound as C, GameEvent, Serverbound as S},
-    registry::Builtin,
 };
 
 pub(in crate::game) const TRIDENT: &str = "minecraft:trident";

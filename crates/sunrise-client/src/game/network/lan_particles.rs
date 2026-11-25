@@ -1,20 +1,14 @@
 //! Particles a server sends its players and its clients draw:
 //! `ClientboundLevelParticlesPacket` (`ServerLevel.sendParticles`, which
 //! `/particle` uses) and `ClientboundExplodePacket` (`ServerLevel.explode`).
-#[allow(unused_imports)]
 use super::{Game, explosion_settings::BlastEffects, lan::LanHost, level_sounds::LevelSound};
-#[allow(unused_imports)]
 use crate::lan::server_effects::{
     ServerExplosion, ServerExplosionParticle, ServerParticle, ServerParticleData,
     ServerQueuedParticle,
 };
-#[allow(unused_imports)]
 use mod_api::{SoundSource, client::particles::PositionSource};
-#[allow(unused_imports)]
 use sunrise_client::lan::{Body, containers::within_range, hub::Hub};
-#[allow(unused_imports)]
-use sunrise_client::particles::{ExplosionParticle, ParticleOptions, ParticleType};
-#[allow(unused_imports)]
+use sunrise_client::particles::{ParticleOptions, ParticleType};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
@@ -25,7 +19,6 @@ use sunrise_protocol::{
     entity_data::{Particle, ParticleData, PositionSource as NetworkPositionSource},
     packets::play::{self, Clientbound as C},
 };
-#[allow(unused_imports)]
 use sunrise_world::registry::BlockStateId;
 
 /// Convert engine `ParticleOptions` (from `/particle` or native mod APIs) into a portable

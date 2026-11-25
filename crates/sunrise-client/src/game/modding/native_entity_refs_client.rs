@@ -1,36 +1,15 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{
+use super::{
     Game,
-    commands::Target,
     entity::Entity,
     pick_entity::{
         aabb_extents,
         pick_sections::{PickKind, PickMember},
     },
-    remote::Remote,
-    text_displays::{RemoteTextDisplay, Shows},
-    transactions::After,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use core::ops::ControlFlow;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{
-    BlockFace, BlockShapeKind, BlockUpdateFlags, ClipBlock, ClipFluid, ClipHit, DimensionKey,
-    EntityRayHit, EntityRef, LevelReadError, LevelRef, NeighbourUpdate,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::join_seq::{
-    JoinList, JoinSeq, Joined,
-    residency::table::{EntityLookup, Location, SectionSearch},
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::{Aabb, Vec3};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_items::items::ItemStack;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_world::registry::BlockStateId;
+use core::ops::ControlFlow;
+use mod_api::{EntityRef, LevelReadError, LevelRef};
+use sunrise_client::join_seq::residency::table::SectionSearch;
+use sunrise_core::geometry::{Aabb, Vec3};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `LevelRenderer.destroyBlockProgress` for this client's own view only.
@@ -185,50 +164,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::api_values::TryIntoApi;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::FRESH_CASE_LIMIT;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::bind_acting_guest;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::bind_local_player;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::collect_all_entities;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::collect_entities_in;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::fixture_root;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::prepare_entity_ticking_neighborhood;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::record_key;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::resolve_parts;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::run_fresh_cases;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::run_with_game_stack;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::test_window;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::with_client_game;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::with_game;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::with_game_at;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::with_game_role;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::with_game_role_and_facts;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use core::ops::ControlFlow;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use mod_api::__private::game::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use mod_api::{EntityRef, LevelReadError, LevelRef};
+    use crate::game::server_side::native_entity_refs::tests::collect_entities_in;
+    use crate::game::server_side::native_entity_refs::tests::run_fresh_cases;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
+    use core::ops::ControlFlow;
 
     #[test]
     #[ignore = "daily"]

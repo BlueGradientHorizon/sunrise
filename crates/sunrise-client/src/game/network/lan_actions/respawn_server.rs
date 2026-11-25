@@ -1,7 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{commands::Target, server_travel::SpawnAction};
+use super::*;
+use crate::game::{commands::Target, server_travel::SpawnAction};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `handleClientCommand(PERFORM_RESPAWN)` calls PlayerList, not ServerPlayer.teleport.

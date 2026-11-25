@@ -1,17 +1,12 @@
 //! A mod presses vanilla gameplay mappings with `VanillaKeyMappingRef::set_down` and
 //! `VanillaKeyMappingRef::click`. The client tick's key step acts on them with its checks
 //! and sends the packets the player's own keys send.
-#[allow(unused_imports)]
 use super::super::super::Screen;
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use mod_api::prelude::ClientInputClientHost;
-#[allow(unused_imports)]
 use mod_api::{
     ClientHost, InteractionKeyMappingTriggeredEvent, MappingError, VanillaKeyMappingRef,
 };
-#[allow(unused_imports)]
 use std::sync::OnceLock;
 
 #[path = "input_burst_tests.rs"]

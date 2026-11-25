@@ -1,13 +1,9 @@
 //! Common boat physics, fluid/status queries, placement clip, and collision helpers shared by server and client.
-#[allow(unused_imports)]
 use super::{Game, collision_source::Mover, entity::Entity};
-#[allow(unused_imports)]
 use crate::game::server_side::boats::{
     Boat, HEIGHT, Status, powder_snow_stuck, reached_cells, registered_boat_item, wrap_degrees_f64,
 };
-#[allow(unused_imports)]
 use std::{io, sync::Arc};
-#[allow(unused_imports)]
 use sunrise_client::{
     blocks::Fluid,
     collisions::{EntityCollisions, SceneCollisions, no_collision_with_context},
@@ -15,13 +11,11 @@ use sunrise_client::{
     items::ItemStack,
     motion::{BubbleColumn, bubble_column_at},
 };
-#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, ShapeOp, Vec3, VoxelShape},
     position::BlockPos,
     random::RandomSource,
 };
-#[allow(unused_imports)]
 use sunrise_world::{
     collision_context::CollisionContext,
     registry::BlockStateId,

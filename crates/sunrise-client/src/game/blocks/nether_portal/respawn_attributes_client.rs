@@ -1,19 +1,8 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::super::{Game, Result};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::nether_portal::respawn_attributes::Carried;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::nether_portal::respawn_attributes::RespawnAttributes;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::nether_portal::respawn_attributes::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    lan::attributes::apply, motion::PlayerMotion,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::packets::play::AttributeSnapshot;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_world::attributes::Instance;
+use super::super::{Game, Result};
+use crate::game::server_side::nether_portal::respawn_attributes::Carried;
+use crate::game::server_side::nether_portal::respawn_attributes::RespawnAttributes;
+use sunrise_client::{lan::attributes::apply, motion::PlayerMotion};
+use sunrise_protocol::packets::play::AttributeSnapshot;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientPacketListener.handleUpdateAttributes` of the player's own entity.

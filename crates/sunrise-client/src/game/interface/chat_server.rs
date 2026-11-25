@@ -1,50 +1,10 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Game, Screen};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::chat_common::{
-    BLOCK_PROPERTIES, BlockProperties, COMMAND_EXPORTS, PLAYER_NAME, RESOURCE_IDS, ResourceIds,
-    block_properties, command_export,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::ChatDraft;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::ChatExit;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::LINK_COPY;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::LINK_YES;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::SessionDispatcher;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::UiState;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::{
-    collections::BTreeMap,
-    path::{Path, PathBuf},
-    sync::{Arc, Mutex},
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    chat::{
-        Chat, ChatAbilities, ChatAction, ChatScreen, ChatSource, ChatVisibility, Commands,
-        QUEUE_EXPAND_ID, SYSTEM_INDICATOR, normalize_chat_message,
-    },
-    command::{ArgType, Dispatcher, MOD_COMMAND, Registries},
-    gamerules::GameRules,
-    hud::HudBatch,
-    screen_draw::Measure,
-    text::{ClickEvent, Style, Text},
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_gameplay::world_clock::OVERWORLD_CLOCK;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_gameplay::world_clock::{TimeMarker, WorldClock};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_world::registry::{BlockRegistry, BlockStateId};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use winit::keyboard::KeyCode;
+use super::Game;
+use crate::game::chat_common::command_export;
+use crate::game::client_side::chat::SessionDispatcher;
+use std::sync::Arc;
+use sunrise_client::{command::Registries, text::Text};
+use sunrise_gameplay::world_clock::OVERWORLD_CLOCK;
+use sunrise_gameplay::world_clock::WorldClock;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_sound_event_names(&self) -> Vec<String> {
@@ -265,10 +225,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod enchantment_snapshot_tests {
-    #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::enchantment_snapshot_tests::*;
+    use crate::game::{Options, Progress, Settings, load_resources};
 
     #[test]
     #[ignore = "daily"]
@@ -428,10 +385,7 @@ pub(in crate::game::server_side) use crate::game::client_side::chat::enchantment
 
 #[cfg(test)]
 pub(in crate::game) mod damage_type_registry_tests {
-    #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::damage_type_registry_tests::*;
+    use crate::game::{Options, Progress, Settings, load_resources};
 
     /// A world pack's damage type is a `/damage` type once the world opens,
     /// beside vanilla's, and the registry keeps vanilla's tags.

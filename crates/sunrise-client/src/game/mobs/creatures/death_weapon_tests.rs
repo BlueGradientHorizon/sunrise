@@ -1,6 +1,3 @@
-#[allow(unused_imports)]
-use super::*;
-#[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
 
 // Native mod registries are process-global. Each parallel test owns a fresh process

@@ -11,39 +11,21 @@ pub(in crate::game) mod predicted_use_tests;
 pub(in crate::game) mod use_item_hand_tests;
 #[path = "use_item_result_tests.rs"]
 pub(in crate::game) mod use_item_result_tests;
-#[allow(unused_imports)]
 use super::super::{
-    Game, Hit, execution_role::ExecutionRole, lan::LanSettings,
-    native_entity_refs::tests::with_game,
+    Game, Hit, execution_role::ExecutionRole, native_entity_refs::tests::with_game,
 };
-#[allow(unused_imports)]
 use mod_api::InteractionResult as Answer;
-#[allow(unused_imports)]
 use mod_api::{
     self, BlockPart, ENTITY_ITEMS, Flow, Hooks, HostSide, HostTransaction, ItemPart, ItemResource,
     LivingEntityUseItemFinishEvent, LogicalSide, Registrar, RightClickBlockEvent,
     RightClickItemEvent, ServerHost, TriState, UseItemEvent, UseItemOnBlockEvent, UseItemOnEvent,
     UseOnEvent, UsePhase,
 };
-#[allow(unused_imports)]
-use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicI32, AtomicUsize},
-};
-#[allow(unused_imports)]
-use sunrise_client::{
-    chunk::Chunk,
-    first_person::Hand,
-    items::ItemStack,
-    lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
-    motion::PlayerMotion,
-};
-#[allow(unused_imports)]
+use std::sync::{Arc, Mutex};
+use sunrise_client::{chunk::Chunk, first_person::Hand, items::ItemStack, motion::PlayerMotion};
 use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
-use sunrise_protocol::{connection::Pipe, packets::configuration::ClientInformation};
+use sunrise_protocol::connection::Pipe;
 
 impl<S: crate::game::Side> Game<'_, S> {
     pub(in crate::game) fn set_sent_sneak_for_test(&mut self) {

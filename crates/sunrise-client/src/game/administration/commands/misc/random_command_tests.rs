@@ -1,14 +1,9 @@
 //! `/random`'s roll line: who hears it and who it names, and the names
 //! `/random reset` completes (RandomCommand).
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use crate::game::{Dim, game_tests::tests::server_game};
-#[allow(unused_imports)]
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-#[allow(unused_imports)]
 use sunrise_client::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
-#[allow(unused_imports)]
 use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
 
 /// The packets a guest's connection was sent, encoded.

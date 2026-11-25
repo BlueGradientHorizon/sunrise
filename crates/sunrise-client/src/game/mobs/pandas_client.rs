@@ -1,18 +1,9 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{
-    Game,
-    pickups::{Collector, Taken},
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::pandas::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
+use super::Game;
+use sunrise_client::{
     items::ItemStack,
     mobs::{Species, panda},
     particles::{ParticleOptions, ParticleType},
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// What a window draws of its pandas: the crumbs of a bite

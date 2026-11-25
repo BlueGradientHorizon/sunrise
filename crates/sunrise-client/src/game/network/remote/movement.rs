@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use sunrise_world::stepped_interpolation::{Path, PosRot, Start, SteppedInterpolation};
 
 /// The packet a living entity's move came in.

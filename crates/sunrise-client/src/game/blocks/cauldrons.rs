@@ -1,5 +1,4 @@
 //! Using an item on a cauldron (`CauldronInteraction`): what the click does, and doing it.
-#[allow(unused_imports)]
 use super::*;
 
 /// `CauldronInteractions.isUnderWater`: the *fluid* above the cauldron is in

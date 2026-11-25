@@ -1,59 +1,20 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::camera_view_tests::BOAT;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::camera_view_tests::FRAME_CASE;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::camera_view_tests::FRAME_NAME;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::camera_view_tests::OWN;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::camera_view_tests::PLAYER_VIEW;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::camera_view_tests::ZOMBIE;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::camera_view_tests::add;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::camera_view_tests::framed;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::camera_view_tests::kept;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::camera_view_tests::registry_id;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::camera_view_tests::remove;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::camera_view_tests::ride;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::camera_view_tests::set_camera;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::camera_view_tests::set_light;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::camera_view_tests::spawn;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::camera_view_tests::update;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::camera_view_tests::view;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::camera_view_tests::with_spectator;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::camera_view_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
-    Game, native_entity_refs::tests::with_client_game,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    camera::CameraType, chunk::Chunk, gfx::pack_uniforms::ViewEntity, level_loading::Reason,
-    motion::PlayerMotion, options_file::V,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::{
-    connection::Pipe,
-    packets::play::{self, Clientbound as C, SpawnInfo},
-};
+use crate::game::native_entity_refs::tests::with_client_game;
+use crate::game::remote::camera_view_tests::BOAT;
+use crate::game::remote::camera_view_tests::FRAME_CASE;
+use crate::game::remote::camera_view_tests::FRAME_NAME;
+use crate::game::remote::camera_view_tests::OWN;
+use crate::game::remote::camera_view_tests::PLAYER_VIEW;
+use crate::game::remote::camera_view_tests::ZOMBIE;
+use crate::game::remote::camera_view_tests::framed;
+use crate::game::remote::camera_view_tests::kept;
+use crate::game::remote::camera_view_tests::remove;
+use crate::game::remote::camera_view_tests::set_camera;
+use crate::game::remote::camera_view_tests::set_light;
+use crate::game::remote::camera_view_tests::update;
+use crate::game::remote::camera_view_tests::view;
+use crate::game::remote::camera_view_tests::with_spectator;
+use sunrise_client::{camera::CameraType, gfx::pack_uniforms::ViewEntity, options_file::V};
+use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// An entity that isn't living has no effects to read and looks nowhere, and a living one with
 /// none reads none; neither has the player's mood or blindness.

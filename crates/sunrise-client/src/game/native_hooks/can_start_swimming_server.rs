@@ -1,11 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::can_start_swimming::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::SwimmingCheck;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{motion::SwimEntry, sprint};
+use super::*;
+use mod_api::SwimmingCheck;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_ask_swim_eligibility(

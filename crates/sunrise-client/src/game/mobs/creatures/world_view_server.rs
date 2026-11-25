@@ -1,7 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::world_view::*;
+use super::*;
+use crate::game::creatures::world_view::*;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn mob_world_base<'s>(&'s self, others: &'s [Seen]) -> MobWorld<'s> {

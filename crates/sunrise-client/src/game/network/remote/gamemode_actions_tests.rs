@@ -1,23 +1,8 @@
 //! Packet and prediction regressions for vanilla 26.3 game mode actions.
-#[allow(unused_imports)]
-use crate::game::Game;
-#[allow(unused_imports)]
-use crate::game::native_entity_refs::tests::with_client_game;
-#[allow(unused_imports)]
-use crate::game::native_hotbar_slot::hotbar_slot_tests::logged_in;
-#[allow(unused_imports)]
-use mod_api::InteractionAttempt;
-#[allow(unused_imports)]
-use std::sync::Arc;
-#[allow(unused_imports)]
 use std::time::Duration;
-#[allow(unused_imports)]
-use sunrise_client::{chunk::Chunk, first_person::Hand, items::ItemStack};
-#[allow(unused_imports)]
+use sunrise_client::items::ItemStack;
 use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
 use sunrise_protocol::connection::ConnReader;
-#[allow(unused_imports)]
 use sunrise_protocol::packets::{
     configuration::Ping,
     play::{self, Clientbound as C, Serverbound as S},

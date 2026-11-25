@@ -1,5 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
+use super::*;
 
 #[path = "book_screen/open_client.rs"]
 pub(in crate::game) mod open;

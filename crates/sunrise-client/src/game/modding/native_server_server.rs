@@ -1,87 +1,33 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::api_values::{TryIntoApi, TryIntoEngine};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{
-    Dim, Game, commands::execute, respawn_anchor::RespawnConfig,
+use super::api_values::TryIntoApi;
+use super::{Dim, Game, commands::execute, respawn_anchor::RespawnConfig};
+use crate::game::level_control_hooks::LevelControl;
+use crate::game::native_server::Acting;
+use crate::game::native_server::BaseTree;
+use crate::game::native_server::PlayerRead;
+use crate::game::native_server::ScopedPlayerState;
+use crate::game::native_server::argument_kinds::command_arguments;
+use crate::game::native_server::argument_kinds::{
+    custom_value, dimension_value, nbt_value, parsed_type, positional_value,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::level_control_hooks::LevelControl;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::Acting;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::BaseTree;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::CommandExecutorSlots;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::FakeAction;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::LEVELS;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::PlayerRead;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::ScopedPlayerState;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::argument_kinds::{
-    CommandArguments, command_arguments,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::argument_kinds::{
-    UNCENTERED, argument_type, bounded_parser, custom_parser, custom_value, dimension_value,
-    nbt_value, parsed_type, parser, positional_value, resource_parser,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::base_root;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::client_command_tree;
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::command_tree;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::command_tree_for;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::declares_provider;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::finish;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::online_mode_of;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::orb_meets;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::ordered_box;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::register_command_nodes;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::register_dispatcher;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::registered_commands::NativeCommandState;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::system_chat;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::usage_nodes;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_server::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::__private::game::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::LevelRef;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{
+use crate::game::native_server::command_tree_for;
+use crate::game::native_server::online_mode_of;
+use crate::game::native_server::orb_meets;
+use crate::game::native_server::ordered_box;
+use crate::game::native_server::register_command_nodes;
+use crate::game::native_server::system_chat;
+use mod_api::__private::game::*;
+use mod_api::LevelRef;
+use mod_api::{
     ActionOutcome, ActionRefused, FakeEffect, GameMode, GlobalPos, Identifier, PlayerAction,
-    PlayerActionSetup, PlayerFood, PlayerRef, PlayerRespawnConfig, ScopedActionResult, Sidebar,
-    TextFormError, VirtualHost,
+    PlayerActionSetup, PlayerRef, PlayerRespawnConfig, ScopedActionResult, Sidebar, TextFormError,
+    VirtualHost,
 };
+use serde_json::json;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use serde_json::{Map, Value, json};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::{
-    LazyLock, Mutex, PoisonError,
-    atomic::{AtomicBool, Ordering},
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::{collections::HashMap, path::PathBuf, sync::Arc};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    command::{Arg, ArgType, Context, Dispatcher},
+use std::sync::{LazyLock, Mutex, atomic::Ordering};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use sunrise_client::{
+    command::{Arg, ArgType, Context},
     items::ItemStack,
     lan::{
         abilities::PlayerAbilities, data::component_nbt, guest::Guest, scoreboard::SidebarContents,
@@ -89,10 +35,8 @@ pub(in crate::game::server_side) use sunrise_client::{
     motion::PlayerMotion,
     text::Text,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::position::BlockPos;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_protocol::packets::play::{self, Clientbound as C};
+use sunrise_core::position::BlockPos;
+use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 #[path = "native_server/registered_commands_server.rs"]
 pub(in crate::game) mod registered_commands;
@@ -1906,36 +1850,8 @@ pub(in crate::game) mod selector_tests;
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_server::tests::Heard;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_server::tests::HostileArgument;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_server::tests::MachineArgument;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_server::tests::Machines;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_server::tests::MixedOffsets;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_server::tests::POSITIONED;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_server::tests::PatternArgument;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_server::tests::Watcher;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_server::tests::player_guest;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_server::tests::stack;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_server::tests::tree;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_server::tests::with_command_sources;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_server::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_client::items::ItemStack;
+    use super::*;
+    use crate::game::native_server::tests::with_command_sources;
 
     #[test]
     #[ignore = "daily"]
@@ -2554,41 +2470,18 @@ pub(in crate::game) mod tests {
 
 #[cfg(test)]
 pub(in crate::game) mod fake_action_tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::super::Game;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::super::{
-        boats::Boat, minecarts::CART_KEY_Y, minecarts::CartKind, minecarts::Minecart,
-        respawn_anchor::RespawnConfig, stations::Kind, stations::Station,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use super::{
-        Acting, ActionOutcome, ActionRefused, FakeEffect, PlayerAction,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_server::fake_action_tests::AttackWatcher;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_server::fake_action_tests::ChargeWatcher;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_server::fake_action_tests::fake;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_server::fake_action_tests::health;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_server::fake_action_tests::held;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_server::fake_action_tests::on_top;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_server::fake_action_tests::place;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_server::fake_action_tests::trader;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_server::fake_action_tests::zombie;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_server::fake_action_tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use mod_api::{BlockHit, Hand, PlayerRef};
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_client::items::ItemStack;
+    use super::super::{respawn_anchor::RespawnConfig, stations::Kind, stations::Station};
+    use super::{Acting, ActionOutcome, ActionRefused, FakeEffect, PlayerAction};
+    use crate::game::native_server::fake_action_tests::AttackWatcher;
+    use crate::game::native_server::fake_action_tests::ChargeWatcher;
+    use crate::game::native_server::fake_action_tests::fake;
+    use crate::game::native_server::fake_action_tests::health;
+    use crate::game::native_server::fake_action_tests::held;
+    use crate::game::native_server::fake_action_tests::on_top;
+    use crate::game::native_server::fake_action_tests::place;
+    use crate::game::native_server::fake_action_tests::zombie;
+    use mod_api::{BlockHit, Hand};
+    use sunrise_client::items::ItemStack;
 
     #[test]
     #[ignore = "daily"]

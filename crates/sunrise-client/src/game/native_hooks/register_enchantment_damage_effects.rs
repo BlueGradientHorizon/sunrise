@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use super::*;
 
 /// Register damage value effects before loading enchantment content.
@@ -13,21 +12,12 @@ pub(in crate::game) fn native_register_enchantment_damage_effects(
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::*;
-    #[allow(unused_imports)]
     use mod_api::{
-        EnchantmentDamageContext, EnchantmentDamageEffect, Hooks, ModEntry,
+        EnchantmentDamageContext, EnchantmentDamageEffect, Hooks,
         RegisterEnchantmentDamageEffectsEvent, ServerHost,
     };
-    #[allow(unused_imports)]
-    use mod_platform::testing::with_mods;
-    #[allow(unused_imports)]
     use std::sync::{Arc, Mutex};
-    #[allow(unused_imports)]
-    use sunrise_client::{mobs::Mob, motion::PlayerMotion};
-    #[allow(unused_imports)]
-    use sunrise_core::geometry::Vec3;
 
     pub(in crate::game) type Observations = Arc<Mutex<Vec<(u32, u32, String, u32, f32)>>>;
     pub(in crate::game) struct Effect {

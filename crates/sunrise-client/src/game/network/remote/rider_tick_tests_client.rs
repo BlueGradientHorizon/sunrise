@@ -1,15 +1,8 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::boats::Boat;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_entity_refs::tests::with_client_game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::rider_tick_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::motion::PlayerMotion;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use winit::keyboard::KeyCode;
+use super::*;
+use crate::game::boats::Boat;
+use crate::game::native_entity_refs::tests::with_client_game;
+use sunrise_client::motion::PlayerMotion;
+use winit::keyboard::KeyCode;
 
 #[test]
 #[ignore = "daily"]

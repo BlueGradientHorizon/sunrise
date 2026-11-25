@@ -1,11 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::minecarts::CartLerp;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::minecarts::CartStep;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::minecarts::*;
+use super::*;
+use crate::game::remote::minecarts::CartLerp;
+use crate::game::remote::minecarts::CartStep;
 
 impl CartLerp {
     /// `NewMinecartBehavior.getCartLerpPosition`, `getCartLerpMovements` and

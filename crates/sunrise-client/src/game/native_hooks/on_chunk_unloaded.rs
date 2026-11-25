@@ -1,6 +1,4 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use mod_api::ModBlockEntity;
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn native_on_chunk_unloaded(

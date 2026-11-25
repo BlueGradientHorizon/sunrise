@@ -1,19 +1,9 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::core_tests::pet_order_tests::WOLF;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::core_tests::pet_order_tests::use_on_wolf;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::core_tests::pet_order_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::chunk::Chunk;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::mobs::Mob;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::position::ChunkPos;
+use super::*;
+use crate::game::core_tests::pet_order_tests::WOLF;
+use std::sync::Arc;
+use sunrise_client::chunk::Chunk;
+use sunrise_client::mobs::Mob;
+use sunrise_core::position::ChunkPos;
 
 pub(in crate::game) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,

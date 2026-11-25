@@ -1,53 +1,16 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::pickups::pickup_post_tests::CASE;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::pickups::pickup_post_tests::Case;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::pickups::pickup_post_tests::Notice;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::pickups::pickup_post_tests::Outcome;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::pickups::pickup_post_tests::Probe;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::pickups::pickup_post_tests::State;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::pickups::pickup_post_tests::apples;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::pickups::pickup_post_tests::arm;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::pickups::pickup_post_tests::clear_ground;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::pickups::pickup_post_tests::ground;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::pickups::pickup_post_tests::guest_case;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::pickups::pickup_post_tests::host_case;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::pickups::pickup_post_tests::host_stat;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::pickups::pickup_post_tests::spawn;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::pickups::pickup_post_tests::with_probe;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::pickups::pickup_post_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{
-    Game, native_entity_refs::tests::collect_all_entities,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{
-    Hooks, ItemPickedUpEvent, ItemPickedUpPostEvent, ModEntry, ServerHost, TriState,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_platform::testing::with_mods;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::items::ItemStack;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::motion::PlayerMotion;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::geometry::Vec3;
+use crate::game::lan_actions::pickups::pickup_post_tests::CASE;
+use crate::game::lan_actions::pickups::pickup_post_tests::Case;
+use crate::game::lan_actions::pickups::pickup_post_tests::Probe;
+use crate::game::lan_actions::pickups::pickup_post_tests::arm;
+use crate::game::lan_actions::pickups::pickup_post_tests::clear_ground;
+use crate::game::lan_actions::pickups::pickup_post_tests::ground;
+use crate::game::lan_actions::pickups::pickup_post_tests::host_case;
+use crate::game::lan_actions::pickups::pickup_post_tests::host_stat;
+use crate::game::lan_actions::pickups::pickup_post_tests::with_probe;
+use mod_api::TriState;
+use sunrise_client::items::ItemStack;
+use sunrise_client::motion::PlayerMotion;
+use sunrise_core::geometry::Vec3;
 
 /// Both pickup hooks name the ground item entity, and `item_picked_up`
 /// reads its whole stack through the handle, components included.

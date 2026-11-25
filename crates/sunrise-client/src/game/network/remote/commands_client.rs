@@ -1,9 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::commands::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::packets::play::CommandSuggestions;
+use super::*;
+use sunrise_protocol::packets::play::CommandSuggestions;
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {

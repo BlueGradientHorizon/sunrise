@@ -1,11 +1,8 @@
 //! Common Ender Dragon helpers shared by client rendering/picking and server simulation.
-#[allow(unused_imports)]
 use super::{Game, view_vector};
-#[allow(unused_imports)]
 use crate::game::server_side::dragon::{
     Crystal, Dragon, Phase, SPECIAL, dragon_part_wire_id, wrap,
 };
-#[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Vec3, trig};
 
 /// The part index (`0..8`) of `candidate_id` under `dragon_id`, if it is one of

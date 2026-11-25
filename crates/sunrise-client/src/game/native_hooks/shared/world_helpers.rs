@@ -1,15 +1,8 @@
-#[allow(unused_imports)]
 use super::*;
 #[cfg(feature = "client")]
-#[allow(unused_imports)]
 use crate::game::host::draw::GameDrawContext;
-#[allow(unused_imports)]
-use mod_api::{__private::game::CallbackOwner, ClientHost, DrawContext, GuiLayerWrapContext};
-#[allow(unused_imports)]
-use sunrise_client::{
-    gui_layers::{self, GuiLayerBody, VanillaGuiLayer},
-    hud::HudPaintCheckpoint,
-};
+use mod_api::{ClientHost, DrawContext, GuiLayerWrapContext};
+use sunrise_client::{gui_layers::GuiLayerBody, hud::HudPaintCheckpoint};
 
 #[allow(dead_code)]
 impl<__Side: crate::game::Side> Game<'_, __Side> {

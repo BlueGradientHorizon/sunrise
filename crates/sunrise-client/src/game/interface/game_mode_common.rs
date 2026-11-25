@@ -1,9 +1,6 @@
 //! Common game-mode queries, adventure predicates, chat abilities, and player abilities.
-#[allow(unused_imports)]
 use super::{Game, Screen};
-#[allow(unused_imports)]
 use mod_api::{PlayerAbilities, PlayerRef};
-#[allow(unused_imports)]
 use sunrise_client::{
     chat::{ChatAbilities, ChatVisibility},
     command::args::GameMode,

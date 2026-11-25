@@ -1,31 +1,20 @@
 //! Test instance blocks on the server: `handleTestInstanceBlockAction` and
 //! the `TestInstanceBlockEntity` operations behind it (reset, save, export,
 //! the structure's placement), over the game tests the registry holds.
-#[allow(unused_imports)]
 use super::{
     Game,
     game_tests::Info,
     structure_blocks::{create_seed, template_size},
     test_entities::{aabb_of, inflate},
 };
-#[allow(unused_imports)]
 use sunrise_client::{
-    block_entity_render::vertex_light,
-    component::name_text,
     containers::BlockEntity,
-    hud::HudBatch,
-    mesher::Vertex,
     structure_block::rotation_from_ordinal,
     test_instance_block::{Data, Status, TestInstanceBlock},
     text::{self, Text},
 };
-#[allow(unused_imports)]
-use sunrise_client_render::block_entity_reach::Reach;
-#[allow(unused_imports)]
 use sunrise_core::{position::BlockPos, ticks::TickArea};
-#[allow(unused_imports)]
 use sunrise_protocol::packets::play::{self, Clientbound as C};
-#[allow(unused_imports)]
 use {
     sunrise_core::bounding_box::BoundingBox,
     sunrise_world::{

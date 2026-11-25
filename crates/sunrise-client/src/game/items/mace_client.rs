@@ -1,37 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mace::FALL_THRESHOLD;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mace::HEAVY_THRESHOLD;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mace::KNOCKBACK_POWER;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mace::KNOCKBACK_RADIUS;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mace::SmashPush;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mace::Spared;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mace::can_smash;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mace::stack_smash_damage;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mace::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    enchant::{EffectContext, Enchantments},
-    health::ArmorWeapon,
-    items::{ItemStack, Items},
-    mobs::{Damage, DamageKind, Mob, MobEvent, Species},
-    particles::{ParticleOptions, ParticleType},
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{
-    geometry::{Aabb, Vec3},
-    position::BlockPos,
-    random::RandomSource,
-};
+use super::Game;
+use crate::game::server_side::mace::KNOCKBACK_RADIUS;
+use sunrise_client::particles::{ParticleOptions, ParticleType};
+use sunrise_core::{position::BlockPos, random::RandomSource};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Level event 2013 (`ParticleUtils.spawnSmashAttackParticles`): dust

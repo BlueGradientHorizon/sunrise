@@ -1,11 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_components::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::items::ItemStack;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::nbt::Tag;
+use super::Game;
+use sunrise_client::items::ItemStack;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_item_combat_actor(
@@ -67,12 +61,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod item_resource_property_tests {
-    #[allow(unused_imports)]
-pub(in crate::game::server_side) use serde_json::Value;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_components::item_resource_property_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_components::item_resource_property_tests::engine;
+    use crate::game::native_components::item_resource_property_tests::engine;
+    use crate::game::native_components::item_resource_property_tests::*;
+    use serde_json::Value;
 
     pub(in crate::game) fn run_effective_resource_properties_match_vanilla() {
         let inputs = std::env::var("SUNRISE_ITEM_PROPERTIES_CASES")

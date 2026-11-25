@@ -1,6 +1,4 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use sunrise_world::block_landing::FarmlandTrample;
 
 /// The hook point. It does nothing in Sunrise.
@@ -65,21 +63,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::*;
-    #[allow(unused_imports)]
     use crate::game::native_entity_refs::tests::with_game;
-    #[allow(unused_imports)]
     use crate::game::native_item_places::tests::{guest, open_to_lan};
-    #[allow(unused_imports)]
     use mod_api::*;
-    #[allow(unused_imports)]
     use std::sync::{Arc, Mutex};
-    #[allow(unused_imports)]
     use sunrise_client::{chunk::Chunk, lan::guest::InboxItem, motion::PlayerMotion};
-    #[allow(unused_imports)]
     use sunrise_core::geometry::Vec3;
-    #[allow(unused_imports)]
     use sunrise_protocol::packets::{Empty, play, play::Serverbound as S};
 
     pub(in crate::game) const FIELD: [i32; 3] = [1, 63, 1];

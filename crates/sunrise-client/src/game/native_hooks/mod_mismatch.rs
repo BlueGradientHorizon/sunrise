@@ -1,6 +1,4 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use sunrise_client::save::level_mods;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {

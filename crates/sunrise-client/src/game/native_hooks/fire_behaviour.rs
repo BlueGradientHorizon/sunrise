@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use super::*;
 
 /// The level's side of fire and lava ignition, called through `GameLevel`'s

@@ -1,7 +1,5 @@
 //! Common player identity and local-body residency wrappers dispatching via `side_ops::player`.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use mod_api::PlayerRef;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {

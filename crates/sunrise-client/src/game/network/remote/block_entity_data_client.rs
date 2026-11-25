@@ -1,9 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::block_entity_data::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::BlockEntityDataSource;
+use super::*;
+use mod_api::BlockEntityDataSource;
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {

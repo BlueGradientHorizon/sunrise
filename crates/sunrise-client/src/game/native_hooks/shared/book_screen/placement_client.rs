@@ -1,5 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
+use super::*;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn native_book_placement_scope_matches(

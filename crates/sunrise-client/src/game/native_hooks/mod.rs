@@ -20,58 +20,47 @@ pub(in crate::game) use fire::{
     ConnectsToCall, EntityChangeBlockPreCall, HotbarAttackIndicatorProgressCall,
     ItemAfterVerticalCollisionCall, PlayerPongCall, PreRemoveSideEffectsCall, UpdateShapeCall,
 };
-#[allow(unused_imports)]
 use mod_api::{BlockEntityDataSource, BlockEntityRef, ClockAdjustment};
 
-#[allow(unused_imports)]
 use super::native_data_maps::DataMapType;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-use super::{
-    native_block_entity_draw::BlockEntityDraw,
-    native_mob_draw::{MobRender, PlayerRender},
-    native_panel_recipes::RecipePage,
-};
-#[allow(unused_imports)]
 use super::{
     Game, GameLevel, LevelDimension, Screen,
     execution_role::{self, ExecutionRole},
     mod_api_host,
     native_configs::ConfigFile,
 };
-#[allow(unused_imports)]
+#[cfg(feature = "client")]
+use super::{
+    native_block_entity_draw::BlockEntityDraw,
+    native_mob_draw::{MobRender, PlayerRender},
+};
 use mod_api::__private::game::{
     BlockStateDefinitionRegistration, ItemModelRegistration, ItemTintSourceRegistration,
     JsonAnimationTypeRegistration, LayerDefinitionRegistration, ModelLoaderRegistration,
     ParticleGroupRegistration, PresetEditorFactoryRegistration, RangeSelectPropertyRegistration,
     SelectPropertyRegistration, SpriteSourceRegistration, StandaloneModelRegistration,
 };
-#[allow(unused_imports)]
 use mod_api::GameMode;
-#[allow(unused_imports)]
 use mod_api::GameTests;
 #[allow(unused_imports)]
 pub use mod_api::game::{PhantomSpawnResult, Shake, SleepProblem};
-#[allow(unused_imports)]
 use mod_api::{
-    self, Answered, BlockPlacement, BlockTintSources, CauldronFluidContents, CauldronInteractions,
+    self, Answered, BlockTintSources, CauldronFluidContents, CauldronInteractions,
     ClientAudioOptions, ClientChatOptions, ClientGraphicsOptions, ClientGuiOptions,
-    ClientInputOptions, ClientMiningPrediction, ClientModifiers, ClientReloadListeners,
-    ColorResolvers, EnchantmentDamageEffects, EnchantmentInfo, EntityLayers, EntityRef,
-    EntityRenderers, GameRuleActor, GuiLayerRegistrar, HandDrawContext, HandRender, InsideEffects,
+    ClientInputOptions, ClientMiningPrediction, ClientReloadListeners, ColorResolvers,
+    EnchantmentDamageEffects, EnchantmentInfo, EntityLayers, EntityRef, EntityRenderers,
+    GameRuleActor, GuiLayerRegistrar, HandDrawContext, HandRender, InsideEffects,
     InteractionAttempt, InteractionKey, ItemEntityRef, LifecycleContext, LivingRef, LoadConditions,
     NoteBlockChange, ParticleProviders, PathComputationType, Placement, PlayerRef,
-    PoiTypeExtensions, RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenWidgets,
+    PoiTypeExtensions, RecipeBookCategory, ScreenOpening, ScreenTarget, ScreenWidgets,
     ScreenshotImage, ServerReloadListeners, ServerTickPhase, SpecialModelRenderers,
     TicketController, ToolUse, VillagerProfessions, WorldPhase,
 };
-#[allow(unused_imports)]
 use mod_api::{
     ActiveEffect, AttachmentStore, BlockClick, BlockUpdateFlags, BonemealSource, ChunkRef,
     FluidStack, ItemClick, LevelRef, LogicalSide, NeighbourUpdate, TooltipElement, TriState,
     UsePhase,
 };
-#[allow(unused_imports)]
 use mod_api::{
     BlockKey, DebugEntry, DebugRenderer, EffectKey, FrameModel, FrameModelEdit, MapDecorationType,
     SkullModel, TextureAtlasRegistration,
@@ -81,31 +70,20 @@ pub(crate) use mod_api::{
     BlockRim, ClientPacket, ClientPayload, ColoredLight, ContainerLootFilled, ExplosionStart,
     ItemFished, LootDrops, PanelEvent, PortalShape, ScreenView,
 };
-#[allow(unused_imports)]
-use mod_api::{
-    CameraType, Despawn, Identifier, MobRef, PermissionLevel, RailShape, SoundPlay, SoundRef,
-};
-#[allow(unused_imports)]
+use mod_api::{Despawn, Identifier, MobRef, PermissionLevel, RailShape};
 use std::{
     fs,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
 };
-#[allow(unused_imports)]
-use sunrise_client::block_contact::Pending;
-#[allow(unused_imports)]
 #[cfg(test)]
 use sunrise_client::mobs::Damage;
-#[allow(unused_imports)]
 use sunrise_client::{
     atlas_sources::qualified,
     biome::{BiomeColors, SpawnEntry},
     block_entities::Pos,
-    chat::ChatSource,
-    containers::{
-        BlockEntity, MOD_MENUS, ModBlockEntityFields, ModContainer, ModEnergyBuffer, ModFluidTanks,
-    },
+    containers::{BlockEntity, MOD_MENUS, ModBlockEntityFields},
     crafting::{Ingredient, recipe_result},
     extras::Corner,
     extras_hud::Corners,
@@ -118,29 +96,23 @@ use sunrise_client::{
     hud::{HudBatch, rgba},
     items::ItemStack,
     keybinds,
-    merchant::MerchantOffer,
     mobs::Who,
-    mod_list::{self, Installed, KeyMapping, NativePage, NativeSetting, NativeSettingValue},
+    mod_list::{self},
     music::{Music, MusicLayer},
     particles::{ParticleOptions, ParticleType},
     text::Text,
 };
-#[allow(unused_imports)]
 use sunrise_client_core::gamerules::Value as GameRuleValue;
-#[allow(unused_imports)]
 use sunrise_client_core::suggestion::Suggestion;
-#[allow(unused_imports)]
 use sunrise_core::{
     connection_kind::ConnectionKind,
     geometry::Direction,
     position::BlockPos,
     ticks::{ScheduleResult, TickPriority},
 };
-#[allow(unused_imports)]
-use sunrise_world::level::{BonemealCheck, PlaceContext};
+use sunrise_world::level::BonemealCheck;
 #[allow(unused_imports)]
 use winit::{event::MouseButton, keyboard::KeyCode};
-#[allow(unused_imports)]
 use {
     sunrise_core::{
         nbt::{Compound, Tag},
@@ -761,10 +733,9 @@ pub(in crate::game) use base::LevelView;
 pub(in crate::game) use bounce_restitution::install_block_contact_hooks;
 #[allow(unused_imports)]
 pub(in crate::game) use living_change_target::NativeHookHost;
-#[allow(unused_imports)]
 use mod_api::ModBlockEntity;
 #[allow(unused_imports)]
-use sound_and_shader_helpers::{finite, finite_params, local_sound_ok};
+use sound_and_shader_helpers::{finite_params, local_sound_ok};
 #[allow(unused_imports)]
 pub(in crate::game) use sound_and_shader_helpers::{level_sound_playable, mod_sound_ok, sound_id};
 

@@ -2,26 +2,10 @@
 //! answers `SUCCESS_SERVER` for it, so `Mob.interact` posts `ENTITY_INTERACT` with the
 //! player as its source, at the mob. The offspring is `getBreedOffspring(level, this)`,
 //! so a mooshroom's 1-in-1024 colour flip is rolled with the parent as its own mate.
-#[allow(unused_imports)]
-use crate::game::{
-    Audio, Game, InteractTarget, Options, Progress, Screen, Settings, execution_role,
-    load_resources,
-};
-#[allow(unused_imports)]
-use std::sync::Arc;
-#[allow(unused_imports)]
-use sunrise_client::chunk::Chunk;
-#[allow(unused_imports)]
+use crate::game::InteractTarget;
 use sunrise_client::items::ItemStack;
-#[allow(unused_imports)]
 use sunrise_client::mobs::{Mob, Species, Who};
-#[allow(unused_imports)]
-use sunrise_client::motion::PlayerMotion;
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
-use sunrise_core::position::ChunkPos;
-#[allow(unused_imports)]
 use sunrise_core::random::{LegacyRandom, RandomSource};
 
 #[allow(unused_imports)]

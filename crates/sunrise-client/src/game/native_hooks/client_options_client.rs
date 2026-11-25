@@ -1,11 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_options::gui_options_snapshot;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_options::resolved_gui_scale;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_options::*;
+use super::*;
+use crate::game::native_hooks::client_options::resolved_gui_scale;
 
 /// Helpers for native mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.

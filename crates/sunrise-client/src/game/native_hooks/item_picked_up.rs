@@ -1,11 +1,4 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use sunrise_client::entities::ItemEntity;
-#[allow(unused_imports)]
-use sunrise_client::join_seq::JoinList;
-#[allow(unused_imports)]
-use sunrise_core::random::RandomSource;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `player` touches the ground item entity `item`

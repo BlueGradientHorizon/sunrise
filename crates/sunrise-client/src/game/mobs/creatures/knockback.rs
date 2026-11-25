@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use super::*;
 
 /// Apply the full entry's physical push.

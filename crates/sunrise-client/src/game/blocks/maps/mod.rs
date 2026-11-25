@@ -4,18 +4,13 @@
 //! shading, the dithered edge), the player marker, `data/minecraft/maps/<id>.dat` and
 //! `maps/last_id.dat`, the 128x128 texture in an atlas slot, the two-handed
 //! first-person view and maps in item frames.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use std::collections::HashMap;
-#[allow(unused_imports)]
 use sunrise_client::{
     blocks::{Fluid, MAP_COLORS},
-    hud::{HudBatch, MAP_SLOTS, Rect, map_slot_sprite},
+    hud::MAP_SLOTS,
     items::ItemStack,
-    mesher::Vertex,
 };
-#[allow(unused_imports)]
 use sunrise_core::nbt::{JavaString, Tag};
 
 /// What a decoration is filed under in `MapItemSavedData.decorations` (a

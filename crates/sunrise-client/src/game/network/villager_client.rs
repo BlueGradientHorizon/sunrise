@@ -1,9 +1,6 @@
 //! Villager registry indices shared by matching mod loads; no additional packet format.
-#[allow(unused_imports)]
 use sunrise_client::mobs::render::VILLAGER_TYPES;
-#[allow(unused_imports)]
 use sunrise_client::mobs::{Mob, Species, villager::ResolvedProfessions};
-#[allow(unused_imports)]
 use sunrise_protocol::{entity_data::Value, registry::Builtin};
 /// VillagerData as the network sends it: the type and the profession by
 /// their built-in registry ids, then the level.
@@ -112,7 +109,6 @@ pub(in crate::game) fn unhappy_counter(
 #[path = "villager_client/tests.rs"]
 pub(in crate::game) mod tests;
 
-#[allow(unused_imports)]
 use std::sync::Arc;
 pub(in crate::game) type BuiltinCache = Vec<(std::path::PathBuf, Arc<Builtin>)>;
 pub(in crate::game) static BUILTIN: std::sync::Mutex<BuiltinCache> =

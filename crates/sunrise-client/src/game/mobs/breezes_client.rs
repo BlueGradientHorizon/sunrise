@@ -1,11 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{BlockStateId, Game};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::breezes::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
+use super::Game;
+use sunrise_client::{
     blocks::RenderShape,
-    mobs::{Mob, Species, breeze},
+    mobs::{Species, breeze},
     particles::{ParticleOptions, ParticleType},
 };
 
@@ -68,24 +64,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::breezes::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::{
-        Audio, Options, Progress, Settings, entity::Entity, load_resources,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use std::sync::Arc;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use sunrise_client::chunk::Chunk;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use sunrise_client::mobs::Mob;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use sunrise_core::random::LegacyRandom;
+    use crate::game::{Audio, Options, Progress, Settings, load_resources};
+    use std::sync::Arc;
+    use sunrise_client::chunk::Chunk;
+    use sunrise_client::mobs::Mob;
+    use sunrise_core::geometry::Vec3;
 
     /// A game on the prepared resources with an empty chunk at (0, 0), the
     /// window's player (the camera the dust needs) and one breeze standing

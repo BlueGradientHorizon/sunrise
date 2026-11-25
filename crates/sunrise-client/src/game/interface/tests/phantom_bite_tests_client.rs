@@ -1,9 +1,7 @@
 //! `LevelEventHandler` 1039 (`LevelEvent.SOUND_PHANTOM_BITE`): the sound a
 //! phantom's bite posts on the client.
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::random::{LegacyRandom, RandomSource};
+use crate::game::*;
+use sunrise_core::random::{LegacyRandom, RandomSource};
 
 pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     crate::game::native_entity_refs::tests::with_client_game(|g| {

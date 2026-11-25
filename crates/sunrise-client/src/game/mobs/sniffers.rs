@@ -1,13 +1,8 @@
 //! Sniffers on the client side: digging particles, block hit sound, and searching sound.
-#[allow(unused_imports)]
 use super::Game;
 #[allow(unused_imports)]
-use sunrise_client::{
-    items::ItemStack,
-    mobs::{Mob, Species, Who, sniffer},
-};
-#[allow(unused_imports)]
-use sunrise_core::{geometry::Vec3, position::BlockPos, random::RandomSource};
+use sunrise_client::mobs::{Mob, Species, sniffer};
+use sunrise_core::{geometry::Vec3, position::BlockPos};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The sniffer's client-side effects: `Sniffer.emitDiggingParticles`

@@ -1,22 +1,6 @@
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::block_entity_client_tick::ClientBlockEntityAccess;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use super::block_entity_tick::ResidentBlockEntityAccess;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_on_load::authoritative_world_for_mods;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_on_load::native_block_entity_on_load;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_on_load::world_for_mods;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_on_load::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{
-    BlockEntityClientScope, BlockEntityScope, BlockEntitySideScope,
-};
+use super::*;
+use mod_api::{BlockEntityScope, BlockEntitySideScope};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_fire_pending_block_entity_loads(&mut self) {

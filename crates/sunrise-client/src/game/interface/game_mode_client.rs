@@ -1,19 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{Game, Screen};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::game_mode::inventory_after_infinite_materials;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::game_mode::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    collisions::SceneCollisions, command::args::GameMode, items::ItemStack,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_gameplay::game_modes::{
-    loads_chunks, mode_from_id, projectile_predicate_supported,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_world::world_movement::in_range_of_ground;
+use super::{Game, Screen};
+use crate::game::server_side::game_mode::inventory_after_infinite_materials;
+use sunrise_client::command::args::GameMode;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `MultiPlayerGameMode.setLocalMode(GameType)`: updates only the local mode and `Abilities`.

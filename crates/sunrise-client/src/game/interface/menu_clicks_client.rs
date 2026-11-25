@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::menu_clicks::*;
+use super::*;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `quickMoveStack` of the open plain menu for a shift-click.

@@ -5,12 +5,8 @@
 //! UUID or selector, and what a command does to them runs with their state
 //! swapped in (`for_player`), as their own turn, what it tells them going to
 //! their chat.
-#[allow(unused_imports)]
 use super::{Game, Target};
-#[allow(unused_imports)]
-use sunrise_client::{command::args::Selector, lan::guest::Guest};
-#[allow(unused_imports)]
-use sunrise_protocol::packets::play::{self, Clientbound as C};
+use sunrise_client::lan::guest::Guest;
 
 impl Target {
     /// A player, in place or not (`instanceof ServerPlayer`).

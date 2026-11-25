@@ -1,8 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::block_breaking::*;
+use super::*;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn break_block(&mut self, pos: [i32; 3]) -> Result<()> {

@@ -1,28 +1,22 @@
 //! Switching an owner off holds scheduled work and prevents template writes.
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::super::{
-        Dim, Game, Hit,
+        Dim, Hit,
         api_values::{TryIntoApi, TryIntoEngine},
         native_entity_refs::tests as fixture,
     };
-    #[allow(unused_imports)]
     use mod_api::{
         BlockPart, BlockToolModificationEvent, CanBeHydratedEvent, DispenseMethodEvent, Dispensed,
         Flow, Hooks, Host, LevelWriteHost, Registrar, RegistrationContext, ServerHost,
         TickBlockEvent, ToolAbility, ToolModifiedStateEvent,
     };
-    #[allow(unused_imports)]
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     };
-    #[allow(unused_imports)]
     use sunrise_client::{chunk::Chunk, items::ItemStack};
-    #[allow(unused_imports)]
     use sunrise_core::{position::BlockPos, ticks::TickPriority};
-    #[allow(unused_imports)]
     use sunrise_world::{
         level::{BlockMapValue, BlockMaps, Landing, LevelAccess},
         registry::BlockStateId,

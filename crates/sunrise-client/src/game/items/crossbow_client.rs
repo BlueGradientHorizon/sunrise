@@ -1,31 +1,11 @@
+#[cfg(test)]
+use crate::game::server_side::crossbow::ARROW;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{Game, shield::OFFHAND_SLOT, view_vector};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::crossbow::ARROW;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::crossbow::Ammo;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::crossbow::CROSSBOW;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::crossbow::FIREWORK_ROCKET;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::crossbow::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    enchant::EffectContext,
-    items::{ItemStack, Items},
-    mobs::Who,
-    projectiles::{Projectile, ProjectileKind},
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_client::items::ItemStack;
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::crossbow::tests::*;
+    use super::*;
 
     /// `BowItem.releaseUsing` and `CrossbowItem.performShooting` play the shot
     /// with no player at the shooter's `getX/Y/Z`, the feet. At the eye, a

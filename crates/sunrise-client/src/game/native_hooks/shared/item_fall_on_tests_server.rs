@@ -1,27 +1,12 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::item_fall_on_tests::LOAN_VALUE;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::item_fall_on_tests::Lands;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::item_fall_on_tests::LoanMod;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::item_fall_on_tests::LoanPart;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::item_fall_on_tests::Mod;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::item_fall_on_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{
-    BlockPart, FallOnEvent, Hooks, LevelRandomHost, ModEntry, Registrar,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_platform::testing::with_mods;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::random::RandomSource as _;
+use super::*;
+use crate::game::native_hooks::item_fall_on_tests::LOAN_VALUE;
+use crate::game::native_hooks::item_fall_on_tests::Lands;
+use crate::game::native_hooks::item_fall_on_tests::LoanMod;
+use crate::game::native_hooks::item_fall_on_tests::Mod;
+use mod_api::ModEntry;
+use mod_platform::testing::with_mods;
+use std::sync::Arc;
+use sunrise_core::random::RandomSource as _;
 
 /// A dropped item that falls onto a block with a `fall_on` part is told to it once, as
 /// `minecraft:item`, with the whole fall and no damage; the write the part asks for lands

@@ -1,9 +1,4 @@
 // Test module extracted without changing its logical path.
-#[allow(unused_imports)]
-use super::super::native_entity_refs::tests::with_game;
-#[allow(unused_imports)]
-use super::super::native_item_places::tests::{guest, open_to_lan};
-#[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
 
 /// Denies griefing to the entities in `self.0`, and logs who was asked.

@@ -1,9 +1,5 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
-use winit::dpi::PhysicalPosition;
 
 #[derive(Debug, PartialEq)]
 pub(in crate::game) struct Frame {

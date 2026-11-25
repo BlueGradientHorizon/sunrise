@@ -3,22 +3,14 @@
 //! stops the fall, cancels its damage and knocks the creatures around the
 //! target away. The rest of a weapon hit (`Player.itemAttackInteraction`)
 //! is here too: `hurtEnemy`, the post-attack enchantments and `postHurtEnemy`.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use sunrise_client::{
     enchant::{EffectContext, Enchantments},
     health::ArmorWeapon,
     items::{ItemStack, Items},
     mobs::{Damage, DamageKind, Mob, MobEvent, Species},
-    particles::{ParticleOptions, ParticleType},
 };
-#[allow(unused_imports)]
-use sunrise_core::{
-    geometry::{Aabb, Vec3},
-    position::BlockPos,
-    random::RandomSource,
-};
+use sunrise_core::geometry::{Aabb, Vec3};
 
 #[cfg(test)]
 #[path = "tests/player_armor_weapon_tests.rs"]

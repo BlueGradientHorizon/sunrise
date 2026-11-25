@@ -1,5 +1,4 @@
 //! Breeding completion: credit, partner cooldown and heart delivery.
-#[allow(unused_imports)]
 use super::*;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {

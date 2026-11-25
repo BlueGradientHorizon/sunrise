@@ -1,14 +1,6 @@
-#[allow(unused_imports)]
-use super::super::{C, Game, play};
-#[allow(unused_imports)]
-use sunrise_client::sound_engine::{SoundEntity, SoundInstance};
-#[allow(unused_imports)]
-use sunrise_core::random::LegacyRandom;
+use super::super::{C, play};
 
-#[allow(unused_imports)]
-use crate::game::{
-    native_entity_refs::tests::with_client_game, native_hotbar_slot::hotbar_slot_tests::logged_in,
-};
+use crate::game::native_entity_refs::tests::with_client_game;
 
 pub(in crate::game) fn with_isolated_client(
     name: &str,

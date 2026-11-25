@@ -1,19 +1,11 @@
 //! Witness-driven parity tests for projectile gaps #120-#124 against vanilla 26.3.
-#[allow(unused_imports)]
-use crate::game::{Game, commands::Target};
-#[allow(unused_imports)]
+use crate::game::commands::Target;
 use serde::Deserialize;
-#[allow(unused_imports)]
 use std::collections::BTreeMap;
-#[allow(unused_imports)]
 use std::path::PathBuf;
-#[allow(unused_imports)]
 use sunrise_client::mobs::{Who, leash::Holder};
-#[allow(unused_imports)]
 use sunrise_client::projectiles::{Projectile, ProjectileKind};
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
 use sunrise_core::random::{LegacyRandom, RandomSource};
 
 #[derive(Deserialize)]

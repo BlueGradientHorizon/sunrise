@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use mod_api::ServerHost;
 
 #[test]
 fn a_projectile_blow_has_no_known_direct_entity_and_a_melee_one_is_its_causer() {

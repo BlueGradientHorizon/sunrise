@@ -1,40 +1,31 @@
 //! The player's advancements in the game: criteria triggered from game
 //! events (`CriteriaTriggers`), awarding with rewards, the toast and the
 //! chat announcement, and `players/advancements/<uuid>.json`.
-#[allow(unused_imports)]
 use super::{Dim, Game, chat::PLAYER_NAME, lan_actions::DisplacedPlayer, stats::Stats};
 pub(in crate::game) mod icons;
 
 #[cfg(test)]
 #[path = "inventory_changed_tests.rs"]
 pub(in crate::game) mod inventory_changed_tests;
-#[allow(unused_imports)]
 use mod_api::{GameMode, ProgressType};
-#[allow(unused_imports)]
 use serde_json::Value;
-#[allow(unused_imports)]
 #[cfg(test)]
 use std::time::Instant;
-#[allow(unused_imports)]
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
 };
-#[allow(unused_imports)]
 use sunrise_client::{
     advancements::{self as adv, EntityView, Frame, ItemView, Progress, Tree},
     effects::PlayerEffects,
-    hud::{HudBatch, rgba},
+    hud::rgba,
     items::ItemStack,
     motion::PlayerMotion,
     text::{self, Style, Text},
     toasts::Slide,
 };
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
 use sunrise_core::random::RandomSource;
-#[allow(unused_imports)]
 use sunrise_protocol::packets::play::Clientbound as C;
 
 #[cfg(test)]
@@ -2869,7 +2860,6 @@ pub(in crate::game) fn text_of(v: &Value) -> Text {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::*;
 
     #[test]

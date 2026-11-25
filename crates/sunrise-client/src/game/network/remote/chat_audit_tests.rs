@@ -1,15 +1,11 @@
-#[allow(unused_imports)]
-use super::{C, Game, Signature, Tag, play, secure_chat};
-#[allow(unused_imports)]
+use super::{C, Signature, Tag, play, secure_chat};
 use crate::game::{in_own_process, native_entity_refs::tests::with_client_game};
-#[allow(unused_imports)]
 use sunrise_client::{
     chat::{ChatAbilities, ChatOptions, ChatVisibility},
     hud_layout::GuiDraw,
     options_file::V,
     tab_list::TabPlayer,
 };
-#[allow(unused_imports)]
 use sunrise_protocol::rsa::{RsaPrivateKey, RsaPublicKey, SignatureHash};
 
 pub(in crate::game) const ALICE: u128 = 10;

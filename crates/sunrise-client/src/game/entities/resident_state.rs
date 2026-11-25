@@ -1,5 +1,4 @@
 //! Game-owned residency state; no second membership directory.
-#[allow(unused_imports)]
 use super::*;
 pub(in crate::game) struct ResidentEntities {
     pub table: Box<RefCell<sunrise_client::join_seq::residency::table::EntityTable>>,

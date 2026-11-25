@@ -1,16 +1,13 @@
 //! `/forceload`, `/fillbiome`, `/worldborder` and `/loot`.
-#[allow(unused_imports)]
-use super::{Arg, Context, Game, R, Target, err, items::Owner};
+use super::{Arg, Context, Game, R, err};
 #[allow(unused_imports)]
 use sunrise_client::{
-    command::CommandError,
     items::ItemStack,
     scoreboard_cmd::{Holder, Tracker},
     text::Text,
     worldborder::{MAX_CENTER, MAX_SIZE},
 };
-#[allow(unused_imports)]
-use sunrise_core::{position::ChunkPos, random::RandomSource};
+use sunrise_core::position::ChunkPos;
 
 /// `LocationCheck.test` / `BlockPredicate`: the measured loaded block-state subset.
 pub(in crate::game) fn loot_location_block(
@@ -602,15 +599,10 @@ pub(in crate::game) mod tests {
 
 #[cfg(test)]
 pub(in crate::game) mod loot_mine_component_tests {
-    #[allow(unused_imports)]
     use super::*;
-    #[allow(unused_imports)]
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
-    #[allow(unused_imports)]
+    use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    #[allow(unused_imports)]
     use sunrise_client::{chunk::Chunk, containers::BlockEntity, save};
-    #[allow(unused_imports)]
     use sunrise_core::nbt::{Compound, Tag};
 
     pub(in crate::game) fn slot(game: &crate::game::ServerGame<'_>, index: usize) -> ItemStack {
@@ -1037,12 +1029,6 @@ pub(in crate::game) mod loot_kill_target_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod loot_mine_location_tests {
-    #[allow(unused_imports)]
-    use super::*;
-    #[allow(unused_imports)]
-    use std::sync::Arc;
-    #[allow(unused_imports)]
-    use sunrise_client::{chunk::Chunk, containers::BlockEntity};
     pub(in crate::game) const TABLE: &str = r###"{"type":"minecraft:block","pools":[{"rolls":1,"entries":[{"type":"minecraft:item","name":"minecraft:emerald","modifier":{"type":"minecraft:set_count","count":2}}]},{"rolls":1,"condition":{"type":"minecraft:location_check","offsetX":1,"predicate":{"block":{"blocks":"minecraft:oak_log","state":{"axis":"x"}}}},"entries":[{"type":"minecraft:item","name":"minecraft:diamond"}]}]}"###;
 }
 

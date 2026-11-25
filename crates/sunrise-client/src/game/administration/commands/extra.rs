@@ -3,27 +3,17 @@
 //! (DialogCommand), `/posteffect` (PostEffectCommand), `/kick`,
 //! `/fetchprofile`, `/publish`, `/unpublish`, `/debug`, `/jfr` and
 //! `/version`, with vanilla's feedback and failures.
-#[allow(unused_imports)]
 use super::{Arg, Context, Game, R, Target, err};
-#[allow(unused_imports)]
 use std::{collections::HashMap, time::Instant};
-#[allow(unused_imports)]
-use sunrise_client::actions::Action;
-#[allow(unused_imports)]
 use sunrise_client::{
     command::CommandError,
     lan::waypoints::Icon,
-    skins::{NameOrId, Resolve, ResolvedProfile},
+    skins::{NameOrId, ResolvedProfile},
     snbt,
     text::{self, ClickEvent, InlineObject, Style, Text},
 };
-#[allow(unused_imports)]
 use sunrise_core::nbt::{JavaString, Tag};
-#[allow(unused_imports)]
-use sunrise_protocol::packets::{
-    Empty,
-    play::{self, Clientbound as C, DialogHolder},
-};
+use sunrise_protocol::packets::play::DialogHolder;
 
 /// A `/fetchprofile` lookup in flight: what it resolves, the message ids it
 /// answers with (`commands.fetchprofile.<kind>.success|failure`), the

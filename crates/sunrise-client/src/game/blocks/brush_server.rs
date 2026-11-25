@@ -1,28 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{
-    Game, Hit, decorated_pot,
-    item_draw::{BlockItemDraw, block_entity_pose},
-    view_vector,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::brush::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    block_entity_render::vertex_light,
-    camera::rotate_degrees,
-    containers::BlockEntity,
-    mesher::Vertex,
-    particles::{ParticleOptions, ParticleType},
-    save,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client_render::block_entity_reach::Reach;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::random::RandomSource;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_gameplay::brushing::{
-    Brushing, USE_DURATION, completion_state,
-};
+use super::{Game, Hit, decorated_pot};
+use sunrise_client::{containers::BlockEntity, save};
+use sunrise_core::random::RandomSource;
+use sunrise_gameplay::brushing::{USE_DURATION, completion_state};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `BrushableBlockEntity.brush`: whether the block changed (the brush wears).

@@ -1,29 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{Game, commands_common::Target};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::combat::CombatTracker;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::combat::DROWN_EVENT;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::combat::Entry;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::combat::PendingAttacker;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::combat::PlayerCredit;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::combat::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::health::melee;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    health::{Attack, HealthEvent},
-    mobs::{Damage, Mob, Species, Who, stuck::Stuck},
-    motion::MotionEvent,
-    particles::{ParticleOptions, ParticleType},
-    text::Text,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::random::RandomSource;
+use super::Game;
+use sunrise_client::particles::{ParticleOptions, ParticleType};
+use sunrise_core::random::RandomSource;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `LivingEntity.makeDrownParticles`: `count` bubbles around the entity

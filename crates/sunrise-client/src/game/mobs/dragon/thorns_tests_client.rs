@@ -1,16 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::thorns_tests::thorny;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::thorns_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    mobs::{Damage, DamageKind, Mob, MobEvent, Who, finalize as f},
-    projectiles::{Hit, Projectile, ProjectileKind},
-};
+use super::*;
+use crate::game::server_side::dragon::thorns_tests::thorny;
+use crate::game::*;
+use sunrise_client::mobs::{Damage, DamageKind, Mob, Who, finalize as f};
 
 pub(in crate::game) fn check_answer(g: &crate::game::ServerGame<'_>, slot: usize, answers: bool) {
     let health = g.mobs[0].health;

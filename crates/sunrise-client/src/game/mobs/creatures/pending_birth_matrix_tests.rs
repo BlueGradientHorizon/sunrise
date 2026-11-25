@@ -1,12 +1,7 @@
 //! Test pending children through real splitting and breeding with a native listener.
 
-#[allow(unused_imports)]
-use super::pending_birth_tests::{SEED, YAWS, breed_pair, cube, find, near};
-#[allow(unused_imports)]
-use super::*;
-#[allow(unused_imports)]
+use super::pending_birth_tests::{YAWS, find, near};
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
-#[allow(unused_imports)]
 use mod_api::{BabyEntitySpawnEvent, Flow, Hooks, MobSplitEvent, ServerHost};
 
 #[path = "pending_birth_matrix_tests/fixture.rs"]

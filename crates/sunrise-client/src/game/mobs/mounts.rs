@@ -2,27 +2,20 @@
 //! armour and chests, mounting, the rider's control and jump bar
 //! (`LocalPlayer.aiStep`'s riding jump), positioning, dismounting, and the
 //! mount's health and jump bar on the HUD.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
-use sunrise_client::actions::Action;
-#[allow(unused_imports)]
 use sunrise_client::{
     blocks::Fluid,
     first_person::Hand,
-    hud::HudBatch,
     items::{EntityTypeTags, ItemStack},
     mobs::{Mob, MobEvent, Species, Who, equine},
     motion::{MotionWorld, PlayerMotion},
     pose::{Dimensions, Pose},
     sprint::Keys,
 };
-#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, Vec3, VoxelShape},
     random::RandomSource,
 };
-#[allow(unused_imports)]
 use sunrise_world::living_air::escape_vector;
 
 pub(in crate::game) fn steering_item(
@@ -1280,9 +1273,7 @@ pub(in crate::game) fn start_riding_jump(
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::*;
-    #[allow(unused_imports)]
     use std::collections::HashMap;
 
     /// `ZombieHorse.isFood` is `#minecraft:zombie_horse_food`, which holds only

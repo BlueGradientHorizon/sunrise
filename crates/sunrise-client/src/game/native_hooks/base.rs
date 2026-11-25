@@ -1,6 +1,4 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use mod_api::ModBlockEntity;
 impl GameLevel<'_> {
     /// Initial saved data for a declared block entity (`EntityBlock.newBlockEntity`),

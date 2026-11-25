@@ -1,11 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::host::draw::GameDrawContext;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::screen_backgrounds::without_regions;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::screen_backgrounds::*;
+use super::*;
+use crate::game::host::draw::GameDrawContext;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `LevelExtractor` / `LevelRenderer`: the world border wall this frame.

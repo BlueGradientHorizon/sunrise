@@ -1,31 +1,10 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::command_harness::spans;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::summon_bolt_tests::ORACLE_PLAYER_UUID;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::summon_bolt_tests::tag_contains_bolt;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::summon_bolt_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_entity_refs::tests::{
-    bind_local_player, prepare_entity_ticking_neighborhood, run_fresh_cases, with_game,
+use crate::game::commands::summon_bolt_tests::ORACLE_PLAYER_UUID;
+use crate::game::native_entity_refs::tests::{
+    bind_local_player, prepare_entity_ticking_neighborhood, with_game,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use serde_json::{Value, json};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::collections::HashSet;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::motion::PlayerMotion;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::position::ChunkPos;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::random::RandomSource;
+use sunrise_client::motion::PlayerMotion;
+use sunrise_core::geometry::Vec3;
+use sunrise_core::position::ChunkPos;
 
 /// Verifies `Silent:1b` sound suppression and `minecraft:lightning_strike` game-event timing on first server tick.
 #[test]

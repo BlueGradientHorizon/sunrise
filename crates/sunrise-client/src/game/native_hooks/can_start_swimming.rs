@@ -1,8 +1,5 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use mod_api::SwimmingCheck;
-#[allow(unused_imports)]
 use sunrise_client::{motion::SwimEntry, sprint};
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {

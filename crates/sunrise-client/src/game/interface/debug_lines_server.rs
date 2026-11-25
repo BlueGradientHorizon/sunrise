@@ -1,28 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::debug_lines::LOOKING_AT_RANGE;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::debug_lines::SERVER_ENTRIES;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::debug_lines::ServerDebug;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::debug_lines::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::collections::HashSet;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    debug_entries::{self, ENTRIES},
-    debug_overlay as overlay,
-    debug_overlay::Displayer,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::java_number;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_world::{
-    heightmap::{HeightmapState, HeightmapType},
-    worldgen::terrain::TerrainBlockStates,
-};
+use super::Game;
+use crate::game::debug_lines::ServerDebug;
+use sunrise_client::debug_overlay as overlay;
+use sunrise_world::heightmap::HeightmapType;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The server thread's half of the debug entries, in the level of

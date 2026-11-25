@@ -8,15 +8,10 @@
 //! waypoint (`Waypoint.Icon`). Reads return None and writes false for a stale
 //! handle, on a client, and for a kind Sunrise keeps no such state for (each
 //! doc says which).
-#[allow(unused_imports)]
 use super::{Game, commands::Target};
-#[allow(unused_imports)]
 use mod_api::{Identifier, LivingRef};
-#[allow(unused_imports)]
 use sunrise_client::first_person::{Hand, SwingAnimation};
-#[allow(unused_imports)]
 use sunrise_client::lan::waypoints::Icon;
-#[allow(unused_imports)]
 use sunrise_client::mobs::{spear_use, stuck::Stuck};
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -343,31 +338,20 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::super::native_entity_refs::tests::with_game;
-    #[allow(unused_imports)]
     use super::super::native_living_flags::tests::{guest, guest_server, packets, sync_guests};
-    #[allow(unused_imports)]
     use super::super::native_living_position::tests::floor_and_zombies;
-    #[allow(unused_imports)]
     use super::Stuck;
-    #[allow(unused_imports)]
     use mod_api::client::first_person::Hand;
-    #[allow(unused_imports)]
     use mod_api::{
         EntityRef, Flow, Hooks, HostSide, Identifier, ItemPart, LivingEntityUseItemFinishEvent,
         LivingEntityUseItemStartEvent, LivingEntityUseItemStopEvent, LivingEntityUseItemTickEvent,
-        LivingRef, ModEntry, Mods, OnUseTickEvent, Registrar, ReleaseUsingEvent, WorldEpoch,
+        LivingRef, OnUseTickEvent, Registrar, ReleaseUsingEvent, WorldEpoch,
     };
-    #[allow(unused_imports)]
     use std::sync::{Arc, Mutex};
-    #[allow(unused_imports)]
     use sunrise_client::items::ItemStack;
-    #[allow(unused_imports)]
     use sunrise_client::lan::waypoints::Icon;
-    #[allow(unused_imports)]
     use sunrise_client::mobs::Mob;
-    #[allow(unused_imports)]
     use sunrise_core::geometry::Vec3;
 
     /// What a mod heard of item uses, and what it does back.

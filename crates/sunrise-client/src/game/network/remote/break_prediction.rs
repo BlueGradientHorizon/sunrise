@@ -1,10 +1,6 @@
 //! Optimistic block writes and reconciliation on the multiplayer client.
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use crate::game::native_connection_groups::{GroupUpdates, ReceivedGroup, check_group_updates};
-#[allow(unused_imports)]
-use sunrise_core::position::BlockPos;
+use crate::game::native_connection_groups::ReceivedGroup;
 
 /// `BlockStatePredictionHandler.ServerVerifiedState`: the most recent sequence,
 /// the server's latest state, and the player's position at the first prediction.

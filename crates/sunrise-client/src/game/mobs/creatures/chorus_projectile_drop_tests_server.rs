@@ -1,25 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::chorus_projectile_drop_tests::dropped;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::chorus_projectile_drop_tests::launch;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::chorus_projectile_drop_tests::source;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::chorus_projectile_drop_tests::with_game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::chorus_projectile_drop_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{
-    Audio, Options, Progress, Settings, load_resources,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::position::ChunkPos;
+use super::*;
+use crate::game::creatures::chorus_projectile_drop_tests::source;
+use crate::game::creatures::chorus_projectile_drop_tests::with_game;
 
 #[test]
 #[ignore = "daily"]

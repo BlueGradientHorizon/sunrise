@@ -1,39 +1,24 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{
+use super::{
     Game,
     decided_action::{DecidedTarget, Epoch},
     lan_trading::{MerchantRun, opaque_villager},
     stacked_on_other::Pickup,
-    trading::MadeMaps,
     transactions::{
         After,
-        decision::{Identity, OwnerStamp, Reply, Side},
+        decision::{Identity, Reply, Side},
     },
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_trade_decisions::Effect;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_trade_decisions::Journal;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_trade_decisions::Restore;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_trade_decisions::TakePlan;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_trade_decisions::TakeReads;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_trade_decisions::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::{cell::RefCell, collections::HashMap};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    advancements::Advancement,
-    items::ItemStack,
+use crate::game::lan_trade_decisions::Effect;
+use crate::game::lan_trade_decisions::Journal;
+use crate::game::lan_trade_decisions::TakePlan;
+use crate::game::lan_trade_decisions::TakeReads;
+use std::cell::RefCell;
+use sunrise_client::{
     lan::conn::transaction_packets::Scope,
-    menu::{Input, Menu, StackedOutcome},
+    menu::{Input, StackedOutcome},
     merchant::Event,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_protocol::packets::play;
+use sunrise_protocol::packets::play;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Install only the writes calculated by the plan.

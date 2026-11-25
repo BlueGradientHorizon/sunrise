@@ -1,37 +1,12 @@
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{Game, commands::Target};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_mob_refs::MobFlag;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_mob_refs::PlayerFacts;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_mob_refs::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{EntityRef, LivingRef, MobRef};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    mobs::{self, Mob, MobWorld, Species, Who, ai::brain_target},
-    scoreboard::Team,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::{Aabb, Axis};
+use sunrise_client::mobs::{self};
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use super::super::native_entity_refs::tests::{
-        with_client_game, with_game,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_mob_refs::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use mod_api::WorldEpoch;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use sunrise_client::{entities::ArmorStand, mobs::Mob};
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
+    use super::super::native_entity_refs::tests::with_game;
+    use super::*;
+    use sunrise_client::mobs::Mob;
+    use sunrise_core::geometry::Vec3;
 
     #[test]
     #[ignore = "daily"]

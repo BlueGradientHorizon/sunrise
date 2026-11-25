@@ -1,9 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::light_emission::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::fast_hash::FxHashMap;
+use super::*;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Re-query dynamic-light cells in sections touched by a server light update.

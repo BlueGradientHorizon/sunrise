@@ -1,13 +1,8 @@
 //! `/give`'s handing over of one stack.
-#[allow(unused_imports)]
 use super::{Game, Target};
-#[allow(unused_imports)]
 use crate::game::level_sounds::LevelSound;
-#[allow(unused_imports)]
 use mod_api::SoundSource;
-#[allow(unused_imports)]
 use sunrise_client::items::ItemStack;
-#[allow(unused_imports)]
 use sunrise_core::random::RandomSource;
 
 pub(in crate::game) enum GiveItem {

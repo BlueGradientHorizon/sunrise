@@ -1,50 +1,10 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::Game;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::remote_tags::DAMAGE_TYPE;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::remote_tags::READ_REGISTRIES;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::remote_tags::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::items::{Items, TagRegistry};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_protocol::{
-    item::Names, packets::configuration::UpdateTags, registry::SyncedNames,
-};
-
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::remote_tags::tests::Probe;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::remote_tags::tests::Seen;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::remote_tags::tests::login;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::remote_tags::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::native_entity_refs::tests::with_client_game;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use mod_api::{
-        Hooks, Identifier, ModEntry, TagMembers, TagsUpdateCause, TagsUpdatedEvent,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use mod_platform::__private::part_tests::block_key;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use std::sync::{Arc, Mutex};
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_protocol::packets::{
-        configuration::{RegistryTags, TagEntry, UpdateTags},
-        play::{self, Clientbound as C},
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use sunrise_protocol::registry::Builtin;
+    use crate::game::client_side::remote_tags::tests::login;
+    use crate::game::native_entity_refs::tests::with_client_game;
+    use mod_api::{Hooks, Identifier, ModEntry, TagMembers};
+    use std::sync::Arc;
+    use sunrise_protocol::packets::play::Clientbound as C;
 
     #[test]
     #[ignore = "daily"]

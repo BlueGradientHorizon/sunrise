@@ -1,6 +1,4 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
 use mod_api::__private::game::Fields;
 
 /// The hook points. Each does nothing in Sunrise.

@@ -2,9 +2,7 @@
 //! game event when an armour or off-hand slot takes a different item, from
 //! every path that calls it (use, the inventory menu, the creative screen,
 //! the swap-hands key, dispensers), for the host and for LAN guests.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use sunrise_client::items::ItemStack;
 
 /// The equipment slots `onEquipItem` can act on, as `EquipmentSlot` names:

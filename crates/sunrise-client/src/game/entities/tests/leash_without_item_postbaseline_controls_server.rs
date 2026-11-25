@@ -1,13 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::game_tests::tests::server_game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::motion::PlayerMotion;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::{geometry::Vec3, position::BlockPos};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::leash_without_item_postbaseline_controls::*;
+use super::*;
+use crate::game::game_tests::tests::server_game;
+use sunrise_client::motion::PlayerMotion;
+use sunrise_core::{geometry::Vec3, position::BlockPos};
 
 /// Added after baseline: an item-unconstrained interaction still dispatches
 /// on detach. This prevents suppressing the whole trigger to pass the lead test.

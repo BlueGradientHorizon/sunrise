@@ -1,29 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::misc::random_command_tests::chats;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::misc::random_command_tests::packets;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::misc::random_command_tests::server_with_guests;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::misc::random_command_tests::suggestions;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::misc::random_command_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{Dim, game_tests::tests::server_game};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::{Arc, atomic::AtomicI32, mpsc};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::lan::{
-    Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_protocol::packets::{
-    configuration::ClientInformation, play::Clientbound,
-};
+use crate::game::game_tests::tests::server_game;
 
 /// CommandSourceStack.getDisplayName: a command block names itself, the
 /// console says "Server".

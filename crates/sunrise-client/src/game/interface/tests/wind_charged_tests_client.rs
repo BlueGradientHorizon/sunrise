@@ -1,29 +1,10 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::Target;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::wind::wind_charged_tests::BREEZE_BURST;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::wind::wind_charged_tests::WIND_CHARGE_BURST;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::wind::wind_charged_tests::a_wind_charged_zombie_dies;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::wind::wind_charged_tests::boat;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::wind::wind_charged_tests::boat_speed;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::wind::wind_charged_tests::with_game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::wind::wind_charged_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
-    Audio, Game, Options, Progress, Settings, load_resources,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::chunk::Chunk;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_world::food::Difficulty;
+use crate::game::server_side::wind::wind_charged_tests::BREEZE_BURST;
+use crate::game::server_side::wind::wind_charged_tests::WIND_CHARGE_BURST;
+use crate::game::server_side::wind::wind_charged_tests::a_wind_charged_zombie_dies;
+use crate::game::server_side::wind::wind_charged_tests::boat;
+use crate::game::server_side::wind::wind_charged_tests::boat_speed;
+use crate::game::server_side::wind::wind_charged_tests::with_game;
+use crate::game::server_side::wind::wind_charged_tests::*;
 
 /// Count `Clientbound::Explode` packets carrying emitter particle id `particle_id`.
 fn gusts(rx: &std::sync::mpsc::Receiver<sunrise_client::lan::Out>, particle_id: i32) -> usize {

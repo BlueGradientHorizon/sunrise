@@ -1,15 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::fireworks::impact::tests::launch;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::fireworks::impact::tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_projectiles::impact_probe::{
-    Action, point, with_probe,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::mobs::Mob;
+use crate::game::fireworks::impact::tests::launch;
+use crate::game::native_projectiles::impact_probe::{Action, with_probe};
 
 #[test]
 #[ignore = "daily"]

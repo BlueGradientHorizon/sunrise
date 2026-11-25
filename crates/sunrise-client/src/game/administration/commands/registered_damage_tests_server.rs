@@ -1,18 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::world_cmds::registered_damage_tests::run_live_damage_and_blast_creaking_reactions_and_timed_player_credit;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::commands::world_cmds::registered_damage_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{Game, native_entity_refs::tests::with_game};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    health::{damage_type, source_damage_type},
-    mobs::{Damage, DamageKind, NamedDamage as Tags, Who, gear},
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_world::damage_source::Catalog;
+use crate::game::native_entity_refs::tests::with_game;
+use sunrise_client::mobs::{Damage, Who};
 
 #[test]
 #[ignore = "daily"]

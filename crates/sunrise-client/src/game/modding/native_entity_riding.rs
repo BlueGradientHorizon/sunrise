@@ -1,13 +1,10 @@
 //! Vehicles and passengers through an `EntityRef`: what an entity rides, who rides it,
 //! getting off, and who holds its lead. Basic topology reads also answer from the client's
 //! packet state; riding writes and the remaining reads are server-only.
-#[allow(unused_imports)]
 use super::{
     Game, commands::Target, mounts::steering_item, remote::Remote, remote_vehicles::passenger_root,
 };
-#[allow(unused_imports)]
 use mod_api::{EntityRef, LeashHolder, LivingRef, StartRidingRefusal};
-#[allow(unused_imports)]
 use sunrise_client::{
     lan::playerdata::ints_uuid,
     mobs::{Mob, Species, equine, happy_ghast, leash::Holder, nautilus},
@@ -891,20 +888,14 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
     use super::super::{Game, commands::Target};
-    #[allow(unused_imports)]
     use mod_api::{
         self, EntityMountEvent, EntityRef, EntityUnleashEvent, Flow, Hooks, LivingRef, ServerHost,
         StartRidingRefusal,
     };
-    #[allow(unused_imports)]
     use std::sync::{Arc, Mutex};
-    #[allow(unused_imports)]
     use sunrise_client::chunk::Chunk;
-    #[allow(unused_imports)]
     use sunrise_client::mobs::Mob;
-    #[allow(unused_imports)]
     use sunrise_core::geometry::Vec3;
 
     pub(in crate::game) struct MountObserver(pub(in crate::game) Arc<Mutex<Vec<bool>>>);

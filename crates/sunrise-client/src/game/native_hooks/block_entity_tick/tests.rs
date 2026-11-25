@@ -1,31 +1,23 @@
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use crate::game::Dim;
-#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::{
     bind_local_player, run_fresh_cases, with_game, with_game_at,
 };
-#[allow(unused_imports)]
 use mod_api::{
     BlockEdit, BlockEntityLoadAdditionalEvent, BlockEntityPart, BlockEntitySaveAdditionalEvent,
     BlockEntityTickEvent, BlockPart, BlockRun, BlockUpdateFlags, Direction, EntityJoinLevelEvent,
     Flow, Hooks, HostTransaction, ItemResource, ItemSpawnEvent, LevelHost, ModEntry,
     NeighborNotifyEvent, Registrar, STORAGE,
 };
-#[allow(unused_imports)]
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU32, Ordering},
 };
-#[allow(unused_imports)]
 use sunrise_client::{
     chunk::Chunk,
     containers::{ModBlockEntityFields, ModContainer},
     items::ItemStack,
     motion::PlayerMotion,
 };
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
 
 pub(in crate::game) const POS: Pos = (1, 64, 1);

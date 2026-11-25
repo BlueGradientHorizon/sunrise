@@ -1,15 +1,10 @@
 //! `LevelRef::play_sound` leaving one player out: the player handle is translated to the
 //! connection inside the game.
 
-#[allow(unused_imports)]
 use super::native_guest_turn_tests::with_guests;
-#[allow(unused_imports)]
 use mod_api::{HostTransaction, SoundSource};
-#[allow(unused_imports)]
 use std::sync::{Arc, mpsc};
-#[allow(unused_imports)]
 use sunrise_client::lan::{Out, PlayerSender};
-#[allow(unused_imports)]
 use sunrise_protocol::{buf::Reader, packets::play::Clientbound as C};
 
 pub(in crate::game) fn decode_packets(rx: &mpsc::Receiver<Out>) -> Vec<C> {

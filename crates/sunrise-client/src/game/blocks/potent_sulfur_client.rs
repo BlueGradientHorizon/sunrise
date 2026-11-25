@@ -1,34 +1,15 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::potent_sulfur_common::{
-    GEYSER_CONTINUOUS_ACTIVE, GEYSER_ERUPTION_ACTIVE,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    Result,
+use super::Game;
+use crate::game::potent_sulfur_common::{GEYSER_CONTINUOUS_ACTIVE, GEYSER_ERUPTION_ACTIVE};
+use sunrise_client::{
     block_entities::Pos,
     containers::BlockEntity,
-    effects::EffectInstance,
-    mobs::Mob,
     particles::{ParticleLevel, ParticleOptions, ParticleType as T},
-    potent_sulfur::{
-        can_be_reached_by_noxious_gas, find_noxious_gas_source_block, unobstructed_block_count,
-    },
+    potent_sulfur::unobstructed_block_count,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{
-    geometry::Aabb, position::BlockPos, random::RandomSource,
+use sunrise_core::random::RandomSource;
+use sunrise_gameplay::potent_sulfur::{
+    Geyser, PARTICLE_FREQUENCY_TICKS, SOUND_FREQUENCY_TICKS, launch_area,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_gameplay::potent_sulfur::PassMobs;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_gameplay::potent_sulfur::{
-    EFFECT_APPLICATION_FREQUENCY_TICKS, EFFECT_DURATION_IN_TICKS, Geyser, PARTICLE_FREQUENCY_TICKS,
-    SOUND_FREQUENCY_TICKS, geyser_positional, launch_area, nearby_living_area,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_world::{level::flags, registry::BlockStateId};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `PotentSulfurBlock.getTicker` on the client, for the block entity at

@@ -2,16 +2,12 @@
 //! registry a mod fills through `LevelRef::register_passage`, its sync to the Sunrise
 //! clients that hold each passage's chunk (`sunrise:passage_sync`, sent with the chunk
 //! through the hub's chunk watches), and the copy a client keeps until it forgets the chunk.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use mod_api::{
     DimensionKey, LevelRef, Passage, PassageId, PassageRegistrationError as Refused, PassageTurn,
     Vec3,
 };
-#[allow(unused_imports)]
 use sunrise_client::fast_hash::FxHashMap;
-#[allow(unused_imports)]
 use sunrise_protocol::passage_sync::{Message, PassageForm};
 
 /// Passages a level holds at most. A client holds every passage of the chunks it has, so

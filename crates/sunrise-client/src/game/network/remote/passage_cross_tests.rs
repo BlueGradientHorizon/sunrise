@@ -1,26 +1,16 @@
 //! A window crossing a passage its server told it of (#3775): it moves itself through,
 //! tells the server, and the server's all-relative zero position packet leaves it where it
 //! is with its velocity, and stops its mining.
-#[allow(unused_imports)]
 use super::tests::connect_menu_test;
-#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::with_client_game;
-#[allow(unused_imports)]
 use mod_api::{PassageCrossError, PassageCrossRefusal, PassageId};
-#[allow(unused_imports)]
 use std::sync::Arc;
-#[allow(unused_imports)]
 use sunrise_client::chunk::Chunk;
-#[allow(unused_imports)]
 use sunrise_client::lan::hub::passage_cross::refusal_code;
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
 use sunrise_protocol::connection::{ConnReader, ConnWriter};
-#[allow(unused_imports)]
-use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S, relative};
-#[allow(unused_imports)]
-use sunrise_protocol::passage_sync::{Cross, Message, PassageForm, decode_cross, encode};
+use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
+use sunrise_protocol::passage_sync::{Message, PassageForm, encode};
 
 /// What the window sent since the last call, as play packets.
 pub(in crate::game) fn sent(reader: &mut ConnReader) -> Vec<S> {

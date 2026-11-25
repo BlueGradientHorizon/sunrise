@@ -1,22 +1,13 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{
+use super::{
     Game,
     commands::{Target, execute::Source},
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
+use sunrise_client::{
     containers::BlockEntity,
-    hud::{HudBatch, rgba},
     items::ItemStack,
-    signs::{ClickAction, DYE_TEXT, click_action, editor_sprite},
-    ui::EditBox,
+    signs::{ClickAction, DYE_TEXT, click_action},
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_protocol::packets::play::{
-    self, Clientbound as C, Serverbound as S,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use winit::keyboard::KeyCode;
+use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `WallHangingSignBlock.shouldTryToChainAnotherHangingSign` and

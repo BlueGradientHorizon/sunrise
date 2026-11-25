@@ -7,13 +7,10 @@
 //! client predicts its own movement; the server stays authoritative for
 //! everything else.
 pub(in crate::game) mod selector_metadata;
-#[allow(unused_imports)]
-use crate::game::collision_source::Mover;
-#[allow(unused_imports)]
+#[cfg(test)]
 use selector_metadata::hurt_sound_for;
 pub(in crate::game) mod attack_target;
 pub(in crate::game) mod break_prediction;
-#[allow(unused_imports)]
 use break_prediction::Prediction;
 pub(in crate::game) mod connection;
 pub(in crate::game) mod fall_sound;
@@ -24,8 +21,7 @@ pub(in crate::game) mod interaction_actions;
 pub(in crate::game) mod interaction_prediction;
 #[allow(unused_imports)]
 use inventory::{
-    CREATIVE_SYNCED, Predicted, changed_slots, creative_sync_slot, creative_sync_stacks,
-    mark_synced, menu_items, predict_clicks, predict_clicks_with,
+    CREATIVE_SYNCED, creative_sync_slot, creative_sync_stacks, mark_synced, predict_clicks,
 };
 pub(in crate::game) mod level_format;
 pub(in crate::game) mod raw_ingress;
@@ -39,83 +35,58 @@ pub(in crate::game) mod block_entity_data_tests;
 pub(in crate::game) mod claimed_item_use_tests;
 #[cfg(test)]
 pub(in crate::game) mod gamemode_actions_tests;
-#[allow(unused_imports)]
 use super::raw_backlog::Received;
-#[allow(unused_imports)]
-use super::remote_chunks::{ChunkDecoder, ChunkFormat, Next, RemoteLight};
-#[allow(unused_imports)]
+use super::remote_chunks::{ChunkDecoder, ChunkFormat, RemoteLight};
 use super::remote_vehicles::PassengerSeat;
 #[allow(unused_imports)]
-use super::render_tick::{mob_tracking_body, player_tracking_body};
-#[allow(unused_imports)]
-use super::{Dim, Game, Hit, Mining, Screen, item_use::ticks_left, level_sounds::LevelSound};
-#[allow(unused_imports)]
+use super::{Dim, Game, Hit, Screen};
 use crate::game::api_values::TryIntoApi;
-#[allow(unused_imports)]
-use mod_api::InteractionKey;
-#[allow(unused_imports)]
+#[cfg(test)]
 use movement::MovePacket;
 #[allow(unused_imports)]
 #[cfg(test)]
 // The move-packet tests reach it through `super::super`.
 use movement::stepped_move;
-#[allow(unused_imports)]
 use std::{
     collections::{HashMap, VecDeque},
     sync::Arc,
     time::{Duration, Instant},
 };
-#[allow(unused_imports)]
-use sunrise_client::first_person::{Hand, SwingAnimation};
+use sunrise_client::first_person::Hand;
 #[allow(unused_imports)]
 use sunrise_client::{
-    Result,
-    blocks::Fluid,
     chunk::Chunk,
-    containers::{BlockEntity, Furnace, FurnaceKind},
-    entities::{Experience, ExperienceOrb, ItemEntity},
-    hud::HudBatch,
+    containers::BlockEntity,
     items::ItemStack,
     join_seq::JoinSeq,
-    lan::data::{BIOME_REGISTRY, client_biomes},
     menu::Input,
-    mobs::{Mob, MobType, Who},
-    motion::{MotionWorld, PlayerMotion},
+    mobs::{Mob, MobType},
+    motion::PlayerMotion,
     net::{Event, Session},
-    particles::TrackingTarget,
-    random_source,
-    save::SaveDir,
-    screen_effects,
     sprint::Keys,
-    streaming::{ChunkGenerator, Proto, Streaming},
-    tab_list::SPECTATOR,
-    text::Text,
+    streaming::{ChunkGenerator, Proto},
 };
-#[allow(unused_imports)]
-use sunrise_core::{geometry::Vec3, profile::AccountProperty, random::RandomSource};
+use sunrise_core::{geometry::Vec3, profile::AccountProperty};
 #[allow(unused_imports)]
 use sunrise_protocol::{
-    entity_data::{ITEM_ENTITY_ITEM, Value},
-    item::{Hashed, Stack},
+    item::Stack,
     packets::{
         Empty,
         play::{self, Clientbound as C, Serverbound as S},
     },
-    registry::{Builtin, DimensionType, Dynamic, SyncedNames, ceil_log2},
+    registry::{Builtin, DimensionType, Dynamic},
     rsa::RsaPublicKey,
     secure_chat::{self, Signature},
-    text::{Language, plain},
+    text::Language,
 };
-#[allow(unused_imports)]
 use sunrise_server_files::profiles::ServicesKeySet;
 #[allow(unused_imports)]
 use {
     sunrise_core::nbt::Tag,
     sunrise_mod_runtime::attachments::{Holder, ResidentAttachments},
     sunrise_world::{
-        level::InteractionResult,
         registry::BlockStateId,
-        stepped_interpolation::{Path, PosRot, Start, SteppedInterpolation},
+        stepped_interpolation::{Path, PosRot, SteppedInterpolation},
     },
 };
 
@@ -128,8 +99,7 @@ pub(in crate::game) mod commands;
 #[allow(unused_imports)]
 #[cfg(test)]
 pub(in crate::game) use chat::Decoration;
-#[allow(unused_imports)]
-use chat_received::{QueuedChat, QueuedChatKind};
+use chat_received::QueuedChat;
 pub(in crate::game) mod client_level_tick;
 pub(in crate::game) mod effect;
 pub(in crate::game) mod entity_data_schema;
@@ -139,7 +109,6 @@ pub(in crate::game) mod item_use;
 pub(in crate::game) mod kept_columns;
 pub(in crate::game) mod menu_interactions;
 pub(in crate::game) mod minecarts;
-#[allow(unused_imports)]
 use minecarts::CartLerp;
 pub(in crate::game) mod motion;
 pub(in crate::game) mod movement;
@@ -1128,7 +1097,7 @@ pub(in crate::game) fn input_ordinal(input: Input) -> i32 {
 }
 
 pub(in crate::game) mod dry_level;
-#[allow(unused_imports)]
+#[cfg(test)]
 use dry_level::DryLevel;
 
 pub(in crate::game) type DrySound = (
@@ -1521,7 +1490,6 @@ pub(in crate::game) mod tests {
         include!("client_explosion_tests.rs");
     }
 
-    #[allow(unused_imports)]
     use super::super::api_values::TryIntoApi;
 
     pub(in crate::game) mod block_entity_state_tests {
@@ -1897,7 +1865,6 @@ pub(in crate::game) mod tests {
         spawn
     }
 
-    #[allow(unused_imports)]
     use super::{
         boat_interact_passes, chat_after_event, item_frame_interact_passes, remote_object_swings,
     };
@@ -2101,12 +2068,10 @@ pub(in crate::game) mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
-    #[allow(unused_imports)]
     use sunrise_client::{
         containers::{Beacon, BlockEntity},
         items::ItemStack,
     };
-    #[allow(unused_imports)]
     use sunrise_core::nbt::Tag;
 
     /// #12040: a server's client moves at the speed the server's attributes give it, never its
@@ -2223,9 +2188,6 @@ pub(in crate::game) mod tests {
             "speed on each tick: {seen:?}, vanilla's client: {expected:?}"
         );
     }
-
-    #[allow(unused_imports)]
-    use super::Game;
 }
 
 #[cfg(test)]

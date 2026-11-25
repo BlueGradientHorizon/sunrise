@@ -4,24 +4,17 @@
 //! ticker, in vanilla's list order (`sunrise_client::block_entities`), in
 //! chunks that tick blocks. Sculk, brewing stands and pistons tick in their
 //! own passes.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use crate::game::published_loops::{Attributed, LoopFlow, LoopMod};
 #[allow(unused_imports)]
 use sunrise_client::{
     Result,
     block_entities::{Pos, Ticking},
     block_entity_anim::Ticker,
-    containers::{BlockEntity, FurnaceKind, HOPPER_SLOTS},
-    furnace::FurnaceCooking,
+    containers::{BlockEntity, HOPPER_SLOTS},
 };
-#[allow(unused_imports)]
 use sunrise_core::position::BlockPos;
-#[allow(unused_imports)]
 use sunrise_gameplay::block_entity_ticks::{block_ticking_at, ticker_name};
-#[allow(unused_imports)]
-use sunrise_world::registry::BlockStateId;
 
 /// What `block_entities.tick` is visiting: the kinds its dispatch ticks, read once per entry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

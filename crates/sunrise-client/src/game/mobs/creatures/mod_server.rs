@@ -1,151 +1,64 @@
+use super::api_values::{TryIntoApi, TryIntoEngine};
+use super::level_sounds::LevelSound;
+use super::piston_push::Lid;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use super::api_values::{TryIntoApi, TryIntoEngine};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::level_sounds::LevelSound;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::piston_push::Lid;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::native_mob_draw::PlayerRender;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{
+use super::{
     Dim, Game, InteractTarget,
-    entity_culling::EntityCullDecision,
     native_projectiles::{Impact, PendingImpact, ProjectileHit, projectile_impact_event},
     view_vector,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::Creatures;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::DyingDrops;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::Finalized;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::MobDrawFrame;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::MobOutputBatch;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::NativeSound;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::NormalActionFrame;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::NormalMobActions;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::OrbOrder;
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::PICKABLE_PROJECTILE_IDS;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::PendingMobBatch;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::ProjectileHandBack;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::ProjectileHitter;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::RemainingActions;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::Skinned;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::SpawnReason;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::SpawnSite;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::arrow_miss;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::bounced_place;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::breeding_credit;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::bucketable;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::death_source::death_hurt_source;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::dye_color_mix_in_recipes;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::dye_mix;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::flame_geometry;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::from_loot;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::is_item_billboard;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::killed_by_mob;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::living_draw::LivingFrame;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::local_difficulty_in;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::mob_effect_instance;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::named_mob_pickable;
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::pickable_projectile_hit;
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::pickable_projectile_hitboxes;
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::pickable_projectile_hitboxes_into;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets::{
+use crate::game::creatures::DyingDrops;
+use crate::game::creatures::Finalized;
+use crate::game::creatures::MobOutputBatch;
+use crate::game::creatures::NativeSound;
+use crate::game::creatures::NormalActionFrame;
+use crate::game::creatures::NormalMobActions;
+use crate::game::creatures::OrbOrder;
+use crate::game::creatures::ProjectileHandBack;
+use crate::game::creatures::ProjectileHitter;
+use crate::game::creatures::SpawnReason;
+use crate::game::creatures::SpawnSite;
+use crate::game::creatures::arrow_miss;
+use crate::game::creatures::bounced_place;
+use crate::game::creatures::breeding_credit;
+use crate::game::creatures::bucketable;
+use crate::game::creatures::death_source::death_hurt_source;
+use crate::game::creatures::dye_mix;
+use crate::game::creatures::from_loot;
+use crate::game::creatures::killed_by_mob;
+use crate::game::creatures::mob_effect_instance;
+use crate::game::creatures::projectile_targets::{
     NonMobHit, ProjectileHitInfo, TargetQuery, is_pickable_projectile,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::seen;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::thrown_item_axes;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::thrown_item_quad;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::to_loot;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::{EquipmentSlot, LootDrops, SoundSource};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_assets::item_model::DisplayContext;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::actions::Action;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::health::{
-    damage_type, melee, source_damage_type,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
+use crate::game::creatures::seen;
+use crate::game::creatures::to_loot;
+use crate::game::creatures::*;
+use mod_api::{EquipmentSlot, LootDrops, SoundSource};
+use std::sync::Arc;
+use sunrise_client::health::source_damage_type;
+use sunrise_client::{
     Result,
     arrows::EntityHit,
-    blocks::Fluid,
-    crafting::Recipes,
     fast_hash::FxHashMap,
-    graphics::EntityCullingMode,
-    health::{Attack, HealthEvent, HurtSource, Hurting, Knock},
-    items::{ItemStack, Items},
+    health::{Attack, HealthEvent, HurtSource},
+    items::ItemStack,
     join_seq::JoinSeq,
-    mesher::Vertex,
     mobs::{
-        Damage, DamageKind, Mob, MobEvent, MobWorld, PlayerView, Seen, SpawnSetup, Species, Who,
+        Damage, DamageKind, Mob, MobEvent, MobWorld, PlayerView, Seen, Species, Who,
         ai::{eating_sound, eating_sound_is_bound, feed_animal, takes_food},
         entity_sounds::full_id,
         finalize::Group,
-        spawning::{self, BiomeFacts},
+        spawning::{self},
     },
-    particles::{ParticleOptions, ParticleType},
+    particles::ParticleType,
     projectiles::{Hit, Projectile, ProjectileKind},
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client_render::render_geometry::EntitySpan;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::{
-    geometry::{Aabb, Direction, Vec3, trig::Mth},
+use sunrise_core::{
+    geometry::{Aabb, Direction, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_gameplay::projectile_world::ProjWorld;
+use sunrise_gameplay::projectile_world::ProjWorld;
 
 #[path = "borrowed_tick_server.rs"]
 pub(in crate::game) mod borrowed_tick;

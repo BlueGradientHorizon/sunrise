@@ -5,14 +5,9 @@
 #[path = "chat/suggestion_completion_tests.rs"]
 pub(in crate::game) mod suggestion_completion_tests;
 
-#[allow(unused_imports)]
 use super::{Game, Screen};
 #[allow(unused_imports)]
-use std::{
-    collections::BTreeMap,
-    path::{Path, PathBuf},
-    sync::{Arc, Mutex},
-};
+use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 #[allow(unused_imports)]
 use sunrise_client::{
     chat::{
@@ -25,8 +20,6 @@ use sunrise_client::{
     screen_draw::Measure,
     text::{ClickEvent, Style, Text},
 };
-#[allow(unused_imports)]
-use sunrise_world::registry::{BlockRegistry, BlockStateId};
 
 /// The tree the chat parses and completes with: `Remote::chat_tree`, which is
 /// a server's, once it has sent one (ClientPacketListener.commands), else the
@@ -51,7 +44,6 @@ pub(in crate::game::client_side) fn sunrise_profiler_args<'a>(
         .is_none_or(|tree| tree.has_sunrise_profiler())
         .then_some(args)
 }
-#[allow(unused_imports)]
 use winit::keyboard::KeyCode;
 
 /// `base` with extra client-local commands added: each a literal taking the
@@ -2209,17 +2201,11 @@ pub(in crate::game) mod tests {
 
 #[cfg(feature = "client")]
 #[cfg(test)]
-pub(in crate::game) mod enchantment_snapshot_tests {
-    #[allow(unused_imports)]
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
-}
+pub(in crate::game) mod enchantment_snapshot_tests {}
 
 #[cfg(feature = "client")]
 #[cfg(test)]
-pub(in crate::game) mod damage_type_registry_tests {
-    #[allow(unused_imports)]
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
-}
+pub(in crate::game) mod damage_type_registry_tests {}
 
 #[cfg(feature = "client")]
 #[cfg(test)]

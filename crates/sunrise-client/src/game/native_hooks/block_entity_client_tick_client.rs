@@ -1,28 +1,6 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::api_values::TryIntoApi;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick::ClientBlockEntityAccess;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick::ResidentReadBlockEntity;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick::native_block_entity_client_tick;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{
-    BlockEntityClientAccess, BlockEntityClientScope, BlockEntityReadView, BlockEntityRef,
-    ClientHost, ResidentBlockEntityReadOnly,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::animate_tick::campfire_particle_tick;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    block_entities::Ticking, containers::BlockEntity,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::nbt::Compound;
+use super::*;
+use sunrise_client::animate_tick::campfire_particle_tick;
+use sunrise_client::containers::BlockEntity;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `CampfireBlockEntity.particleTick` of the campfire at `key`.

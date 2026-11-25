@@ -1,44 +1,10 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_passages::AXIS_TOLERANCE;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_passages::Dirty;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_passages::HORIZONTAL_LIMIT;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_passages::HeldRefusal;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_passages::LevelPassages;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_passages::MAX_PER_CHUNK;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_passages::MAX_PER_LEVEL;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_passages::MAX_SIDE;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_passages::Passages;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_passages::VERTICAL_LIMIT;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_passages::check;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_passages::form;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_passages::passage;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_passages::turn_index;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_passages::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{
-    DimensionKey, LevelRef, Passage, PassageId, PassageRegistrationError as Refused, PassageTurn,
-    Vec3,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::fast_hash::FxHashMap;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::passage_sync::{Message, PassageForm};
+use super::Game;
+use crate::game::server_side::native_passages::HeldRefusal;
+use crate::game::server_side::native_passages::MAX_PER_LEVEL;
+use crate::game::server_side::native_passages::check;
+use crate::game::server_side::native_passages::passage;
+use mod_api::PassageId;
+use sunrise_protocol::passage_sync::{Message, PassageForm};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The window forgot chunk `(x, z)`: the passages of that chunk go with it.

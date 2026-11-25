@@ -1,76 +1,10 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::stats;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::villager_client::unhappy_counter;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{
-    Game,
-    native_living_effects::{active_effect, mob_effect},
-    shield::OFFHAND_SLOT,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::api_values::TryIntoApi;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan::HELP;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan::LanHost;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan::LanSettings;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan::Owner;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan::baby_index;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan::client_info;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan::event_timings::{
-    EventTimings, UseDetail, describe_burst, event_kind, note_event,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan::living_flags;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan::mob_freeze_meta;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan::mob_meta;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan::mob_raider_meta;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan::*;
-#[allow(unused_imports)]
-#[cfg(test)]
-pub(in crate::game::client_side) use level_event_targets::level_event_except;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::{collections::HashMap, sync::Arc, time::Instant};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
+use super::Game;
+use crate::game::server_side::lan::LanSettings;
+use sunrise_client::{
     Result,
-    effects::{
-        EffectInstance, ModifiedEffectParticles, ShownEffect, effect_particle,
-        visible_effect_particles,
-    },
-    lan::{
-        self, NetConfig,
-        chunks::ChunkEncoder,
-        configuration_tasks::{Configured, PreparedSpawn},
-        data::{BIOME_REGISTRY, SyncData},
-        entity::{EntityState, States, avatar_main_arm_meta},
-        hub::{HostEvent, Hub, HubConfig, TickCtx, stuck_meta},
-        playerdata,
-    },
-    mobs::{Mob, Species, Who, leash::Holder},
+    lan::{self},
     text::Text,
-    world::World,
 };
-#[allow(unused_imports)]
-#[cfg(test)]
-pub(in crate::game::client_side) use sunrise_gameplay::lan::level_event_targets;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::{
-    entity_data::{Particles, Value, serializer},
-    packets::play::{self, Clientbound as C},
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_world::block_collision::BlockCollisionRegistry;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_lan_open(&mut self, settings: LanSettings) -> Result<()> {

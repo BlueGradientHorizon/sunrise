@@ -1,6 +1,3 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_day_time_tests::*;
-
 #[test]
 #[ignore = "daily"]
 fn client_day_time_reads_overworld_clock_across_packets_and_levels() {

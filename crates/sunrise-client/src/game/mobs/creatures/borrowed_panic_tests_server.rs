@@ -1,94 +1,41 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::BOTH_LEVELS;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::BreathPanic;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::Breather;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::Consumer;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::ConsumerProbe;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::FAILING_MOD;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::FRESH_CASE;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::FailingLanding;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::Family;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::GoalPart;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::GoalSpec;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::HealthyLanding;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::Hooks;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::LEVEL_SEED;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::Output;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::OutputNotice;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::PanicToken;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::Probe;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::Proposal;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::Scratch;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::VALUE;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::assert_panic_report;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::eggs;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::fixture_game;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::fixture_mob;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::fresh_dimension;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::guest_health;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::prime_hook;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::queue_egg;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::run_conditional;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::run_output;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::tick_in_level;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::borrowed_panic_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_entity_refs::tests::{
-    run_fresh_cases, with_game,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::__private::{HookPanicReport, take_hook_panics};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::sync::{
+use super::*;
+use crate::game::creatures::borrowed_panic_tests::BreathPanic;
+use crate::game::creatures::borrowed_panic_tests::Breather;
+use crate::game::creatures::borrowed_panic_tests::Consumer;
+use crate::game::creatures::borrowed_panic_tests::ConsumerProbe;
+use crate::game::creatures::borrowed_panic_tests::FAILING_MOD;
+use crate::game::creatures::borrowed_panic_tests::Family;
+use crate::game::creatures::borrowed_panic_tests::Hooks;
+use crate::game::creatures::borrowed_panic_tests::LEVEL_SEED;
+use crate::game::creatures::borrowed_panic_tests::Output;
+use crate::game::creatures::borrowed_panic_tests::OutputNotice;
+use crate::game::creatures::borrowed_panic_tests::PanicToken;
+use crate::game::creatures::borrowed_panic_tests::Probe;
+use crate::game::creatures::borrowed_panic_tests::Scratch;
+use crate::game::creatures::borrowed_panic_tests::VALUE;
+use crate::game::creatures::borrowed_panic_tests::assert_panic_report;
+use crate::game::creatures::borrowed_panic_tests::eggs;
+use crate::game::creatures::borrowed_panic_tests::fixture_game;
+use crate::game::creatures::borrowed_panic_tests::fixture_mob;
+use crate::game::creatures::borrowed_panic_tests::guest_health;
+use crate::game::creatures::borrowed_panic_tests::prime_hook;
+use crate::game::creatures::borrowed_panic_tests::queue_egg;
+use crate::game::creatures::borrowed_panic_tests::tick_in_level;
+use crate::game::native_entity_refs::tests::with_game;
+use mod_api::__private::take_hook_panics;
+use std::sync::{
     Mutex,
     atomic::{AtomicUsize, Ordering},
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
+use sunrise_client::{
     chunk::Chunk,
     join_seq::residency::{
         Change, Journal, Kind, Owner,
         table::{EntityLookup, EntityTable, SourceEntity},
     },
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::random::LegacyRandom;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_mod_runtime::attachments::{AttachmentType, Holder};
+use sunrise_core::random::LegacyRandom;
+use sunrise_mod_runtime::attachments::Holder;
 
 /// One tick of a zombie with 100 air and an iron sword: the air it listened to, then the air
 /// and the sword's damage the tick left.

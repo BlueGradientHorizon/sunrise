@@ -1,17 +1,9 @@
 //! Witness-driven parity tests for projectiles hitting non-mob pickable entities (#119).
-#[allow(unused_imports)]
-use crate::game::{Game, commands::Target};
-#[allow(unused_imports)]
 use serde::Deserialize;
-#[allow(unused_imports)]
 use std::collections::BTreeMap;
-#[allow(unused_imports)]
 use std::path::PathBuf;
-#[allow(unused_imports)]
 use sunrise_client::mobs::{Who, leash::Holder};
-#[allow(unused_imports)]
-use sunrise_core::geometry::{Aabb, Vec3};
-#[allow(unused_imports)]
+use sunrise_core::geometry::Vec3;
 use sunrise_core::random::{LegacyRandom, RandomSource};
 
 #[derive(Deserialize)]

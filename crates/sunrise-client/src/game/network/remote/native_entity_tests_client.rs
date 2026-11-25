@@ -1,23 +1,12 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::native_entity_tests::spawn;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::native_entity_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
-    Audio, Game, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
+use crate::game::remote::native_entity_tests::spawn;
+use crate::game::{
+    Audio, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::EquipmentSlot;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::entity_data::Value;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::item::{Component, Stack, component};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::packets::play::{self, Clientbound as C};
+use mod_api::EquipmentSlot;
+use sunrise_core::nbt::Tag;
+use sunrise_protocol::entity_data::Value;
+use sunrise_protocol::item::{Component, Stack, component};
+use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 #[test]
 #[ignore = "daily"]

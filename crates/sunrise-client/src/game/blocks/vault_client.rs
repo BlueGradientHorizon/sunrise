@@ -1,36 +1,13 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{
+use super::{
     Game,
     item_draw::{BlockItemDraw, block_entity_pose},
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::vault::Players;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::vault::Pos;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::vault::TakenVault;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::vault::VaultEject;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::vault::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_assets::item_model::DisplayContext;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    Result,
-    block_entities::BlockEntityLease,
-    block_entity_render::vertex_light,
-    camera::rotate_degrees,
-    containers::BlockEntity,
-    item_render,
-    items::ItemStack,
-    mesher::Vertex,
-    vault::{Vault, VaultEvent, VaultLevel, VaultPlayer, VaultState},
+use sunrise_assets::item_model::DisplayContext;
+use sunrise_client::{
+    block_entity_render::vertex_light, camera::rotate_degrees, containers::BlockEntity,
+    item_render, items::ItemStack, mesher::Vertex,
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client_render::block_entity_reach::Reach;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::random::{LegacyRandom, LevelRandom};
+use sunrise_client_render::block_entity_reach::Reach;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `VaultRenderer`: the display item of every vault near the camera that

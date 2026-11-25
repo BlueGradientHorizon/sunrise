@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::muffle_sounds::*;
+use super::*;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Muffles the game's sounds for a while, as ears ringing after a close

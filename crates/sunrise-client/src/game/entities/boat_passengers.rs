@@ -5,14 +5,13 @@
 //! (`positionRider`, `clampRotation`) and how they get out.
 //! Saving them under the boat's `Passengers` lives in `persist.rs`.
 #[allow(unused_imports)]
-use super::{Game, boats::Boat, collision_source::Mover, commands::Target, lan_mobs::guest_bounds};
+use super::{Game, boats::Boat, commands::Target, lan_mobs::guest_bounds};
 use std::cell::{Cell, Ref, RefCell};
 #[allow(unused_imports)]
 use sunrise_client::{
-    camera::wrap_degrees,
     fast_hash::FxHashMap,
     join_seq::ListStamp,
-    mobs::{BoxReach, Mob, Species, Who, drops::is_animal, riders, seen_grid::SeenGrid},
+    mobs::{BoxReach, Mob, Species, Who, riders, seen_grid::SeenGrid},
     scoreboard::pushable_by,
 };
 use sunrise_core::geometry::{Aabb, Vec3};

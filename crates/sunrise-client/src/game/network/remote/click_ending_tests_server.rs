@@ -1,9 +1,4 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::tests::click_ending_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::use_ends_click;
+use super::*;
 
 /// EndCrystalItem.useOn ends the click either way: SUCCESS (the arm swings) on obsidian with
 /// air and nothing above, FAIL (no swing) on grass or with the player in the space above. Each

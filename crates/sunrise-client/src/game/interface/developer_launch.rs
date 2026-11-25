@@ -1,10 +1,5 @@
 //! Developer single-player startup and network-entry policy.
-#[allow(unused_imports)]
-use super::lan::LanSettings;
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use sunrise_client::lan::{NetConfig, hub::HubConfig};
 
 impl Options {
     pub(in crate::game) fn validate_developer_single_player(&self) -> Result<()> {

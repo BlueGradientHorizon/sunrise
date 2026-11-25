@@ -1,23 +1,10 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::combat::bee_sting_tests::spawn;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::combat::bee_sting_tests::sting;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::combat::bee_sting_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::items::ItemStack;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::mobs::{
-    Mob, Who, ai::do_hurt_target, bee, goals::Cx,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::motion::PlayerMotion;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_world::food::Difficulty;
+use crate::game::server_side::combat::bee_sting_tests::spawn;
+use crate::game::server_side::combat::bee_sting_tests::sting;
+use sunrise_client::items::ItemStack;
+use sunrise_client::mobs::{Who, bee};
+use sunrise_client::motion::PlayerMotion;
+use sunrise_core::geometry::Vec3;
+use sunrise_world::food::Difficulty;
 
 /// A sting that lands sets the flag, calms the bee, plays the sound at its
 /// position and poisons the victim on normal and hard.

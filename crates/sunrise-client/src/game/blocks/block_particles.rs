@@ -1,13 +1,7 @@
 //! Block particles: the sprite and tint of a block's faces and particle material, honey slides,
 //! and the burst a destroyed block leaves (`ClientLevel.addDestroyBlockEffect`).
-#[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use sunrise_client::{
-    blocks::{MAP_COLORS, RenderShape},
-    particles::{ParticleOptions, ParticleType},
-};
-#[allow(unused_imports)]
+use sunrise_client::blocks::RenderShape;
 use sunrise_core::geometry::Direction;
 
 impl Game<'_, crate::game::client_side::ClientState> {

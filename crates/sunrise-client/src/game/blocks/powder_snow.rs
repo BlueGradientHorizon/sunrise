@@ -2,11 +2,8 @@
 //! bucket that picks it up (`BucketItem.use` on a `BucketPickup` block). The
 //! sinking, slowing, climbing and freezing are `PlayerMotion`'s
 //! (`crate::motion`); placing it is the powder snow bucket's `BlockItem.place`.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
 use sunrise_client::{cauldron, items::ItemStack};
-#[allow(unused_imports)]
 use sunrise_core::random::RandomSource;
 
 /// The two ordered float draws of `Entity.playEntityOnFireExtinguishedSound`.

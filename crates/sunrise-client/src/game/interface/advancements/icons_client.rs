@@ -1,9 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{Game, ItemStack};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::advancements::icons::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::item::Stack;
+use super::{Game, ItemStack};
+use sunrise_protocol::item::Stack;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `DisplayInfo.fromNetwork`: convert the template once, not while drawing it.

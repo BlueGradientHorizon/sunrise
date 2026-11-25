@@ -1,58 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Dim, Game, Resources, remote::Remote};
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::end_client::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::server_side::end::Arriving;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::server_side::end::CrystalDrawFrame;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::server_side::end::END_SPAWN;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::server_side::end::EndFlash;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::server_side::end::EndState;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::server_side::end::EyeOfEnder;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::server_side::end::GATEWAY_RADIUS;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::server_side::end::GATEWAY_Y;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::server_side::end::GROUND_LIFT;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::server_side::end::GatewayArrival;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::server_side::end::GatewayJob;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::server_side::end::PORTAL_TICKET;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::server_side::end::SummonedEye;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::server_side::end::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::{collections::HashMap, sync::Arc};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    Result,
-    containers::BlockEntity,
-    environment::Environment,
-    gfx::CelestialBody,
-    items::ItemStack,
-    mesher::Vertex,
-    mobs::Who,
-    particles::{ParticleOptions, ParticleType},
-    projectiles::{Projectile, ProjectileKind},
-    vanillagen::VanillaTerrain,
-    world_spawn::PlayerSpawnFinder,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::{
-    geometry::Vec3,
-    position::BlockPos,
-    random::{LegacyRandom, RandomSource},
-};
+use super::Game;
+use crate::game::server_side::end::EyeOfEnder;
+use sunrise_client::items::ItemStack;
+use sunrise_core::random::RandomSource;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// EnderEyeItem.use: findNearestMapStructure over the stronghold rings,

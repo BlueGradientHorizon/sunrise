@@ -1,45 +1,12 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_level_environment_tests::Built;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_level_environment_tests::CloudPack;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_level_environment_tests::built;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_level_environment_tests::drawn;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_level_environment_tests::gameplay;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_level_environment_tests::join;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_level_environment_tests::login;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_level_environment_tests::reload;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_level_environment_tests::respawn;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_level_environment_tests::send_types;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_level_environment_tests::server_types;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_level_environment_tests::spawn;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_level_environment_tests::with_height;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::tests::client_level_environment_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
-    Dim, Game, Progress, native_entity_refs::tests::with_uncached_client_game as with_client_game,
-    packs::stage_pack,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::Arc;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::environment::Sample;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_protocol::{
-    connection::Pipe,
-    packets::play::{self, Clientbound as C},
-};
+use crate::game::remote::tests::client_level_environment_tests::drawn;
+use crate::game::remote::tests::client_level_environment_tests::login;
+use crate::game::remote::tests::client_level_environment_tests::respawn;
+use crate::game::remote::tests::client_level_environment_tests::send_types;
+use crate::game::remote::tests::client_level_environment_tests::spawn;
+use crate::game::remote::tests::client_level_environment_tests::with_height;
+use crate::game::{Game, native_entity_refs::tests::with_uncached_client_game as with_client_game};
+use std::sync::Arc;
+use sunrise_protocol::connection::Pipe;
 
 /// Cloud preparation and atmospheric fog read the synced attributes, not the skybox, while
 /// precipitation in a loaded column uses the joined level's sea level from the spawn packet.

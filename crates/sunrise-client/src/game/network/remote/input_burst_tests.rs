@@ -2,12 +2,6 @@
 //! completely in the next tick's `handleKeybinds` order (`while (key.consumeClick())`), with
 //! no fixed per-tick or queue-length cap. Each hotbar key keeps its own counter and consumes one
 //! click per selection drain (`if (keyHotbarSlots[i].consumeClick())`).
-#[allow(unused_imports)]
-use super::*;
-#[allow(unused_imports)]
-use winit::event::MouseButton;
-#[allow(unused_imports)]
-use winit::keyboard::KeyCode;
 
 /// How many of each packet `packets` holds: punches, player actions (drops and swaps) and slot
 /// changes, in that order.

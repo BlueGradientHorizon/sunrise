@@ -1,37 +1,19 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_particle_effects_tests::Calls;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_particle_effects_tests::Effects;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_particle_effects_tests::Register;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_particle_effects_tests::fresh;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_particle_effects_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
-    Game,
+use crate::game::native_hooks::block_particle_effects_tests::Calls;
+use crate::game::native_hooks::block_particle_effects_tests::Register;
+use crate::game::native_hooks::block_particle_effects_tests::fresh;
+use crate::game::{
     execution_role::ExecutionRole,
     native_client_session::tests::logged_client,
-    native_entity_refs::tests::{
-        fixture_root, run_fresh_cases, with_game_role_and_facts, with_game_role_and_facts_client,
-    },
+    native_entity_refs::tests::{fixture_root, with_game_role_and_facts_client},
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{
-    AddDestroyEffectsEvent, AddHitEffectsEvent, BlockPart, BlockPos, BlockShapeKind, ClientHost,
-    Direction, Flow, Hooks, ModEntry, ParticleKey, ParticleOptions, Registrar, RegistrationContext,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
+use mod_api::{BlockPos, Direction, ModEntry};
+use std::sync::Arc;
+use sunrise_client::{
     chunk::Chunk,
     motion::PlayerMotion,
     particles::{ParticleLevel, requested_count},
 };
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{
+use sunrise_core::{
     geometry::Vec3,
     random::{LegacyRandom, RandomSource as _},
 };

@@ -1,22 +1,7 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Game, Screen};
 #[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::social::Social;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::social::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::collections::{HashMap, HashSet};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    social_screen::{self, Action, Entry, Page, SocialView},
-    tab_list::TabPlayer,
-    text::Text,
-    ui::EditBox,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use winit::keyboard::KeyCode;
+use crate::game::client_side::social::Social;
+use std::collections::{HashMap, HashSet};
+use sunrise_client::{social_screen::Page, ui::EditBox};
 
 #[cfg(feature = "client")]
 impl Default for Social {

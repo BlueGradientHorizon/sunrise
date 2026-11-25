@@ -1,15 +1,8 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{session::RemoteOpening, *};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::raw_ingress::ListenerTurn;
-#[allow(unused_imports)]
+use super::*;
+use crate::game::remote::raw_ingress::ListenerTurn;
 pub(in crate::game::client_side) use crate::game::remote::raw_ingress::PacketError;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::raw_ingress::local_transfer_notice;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::raw_ingress::packet_error_notice;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::raw_ingress::*;
+use crate::game::remote::raw_ingress::local_transfer_notice;
+use crate::game::remote::raw_ingress::packet_error_notice;
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -605,22 +598,9 @@ pub(in crate::game) mod post_effects_parity_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use super::super::tests::{
-        connect_play_test, spawn_menu_test,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::native_entity_refs::tests::with_client_game;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::remote::raw_ingress::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use mod_api::{
-        ClientHost, ClientPacketEvent, EntityRef, Hooks, ModEntry,
-    };
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use std::sync::mpsc;
+    use super::super::tests::{connect_play_test, spawn_menu_test};
+    use super::*;
+    use crate::game::native_entity_refs::tests::with_client_game;
 
     #[test]
     #[ignore = "daily"]

@@ -1,6 +1,5 @@
 //! Container screen slots: item and decoration drawing, the carried stack and quick craft drag,
 //! slot positions and hit tests, highlights, and the crafting result slot.
-#[allow(unused_imports)]
 use super::*;
 
 /// Disjoint internal slot base for mod menu backing slots (`ModMenuType`), well above

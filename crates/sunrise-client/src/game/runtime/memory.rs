@@ -3,38 +3,14 @@
 //! the census of the columns, the server's entities, players and chunk send
 //! caches, the renderer's bookkeeping and the GPU allocator's resources by
 //! label say where it goes. `unattributed_mb` is what the named parts leave.
-#[allow(unused_imports)]
 use super::Game;
-#[allow(unused_imports)]
-use super::owner_link::{ControlRequest, OwnerRequest};
-#[allow(unused_imports)]
-use serde::Serialize;
-#[allow(unused_imports)]
-use serde_json::Value;
-#[allow(unused_imports)]
 use std::collections::BTreeMap;
-#[allow(unused_imports)]
 use std::mem::size_of;
-#[allow(unused_imports)]
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-    mpsc::{Receiver, Sender, channel, sync_channel},
-};
-#[allow(unused_imports)]
-use std::task::Poll;
-#[allow(unused_imports)]
-use std::thread::{Builder, JoinHandle};
-#[allow(unused_imports)]
-use sunrise_client::chunk::{Chunk, ColumnCensus, Section};
-#[allow(unused_imports)]
-use sunrise_client::fast_hash::FxHashSet;
-#[allow(unused_imports)]
+use std::sync::Arc;
+use sunrise_client::chunk::Chunk;
 use sunrise_client::lan::hub::Hub;
-#[allow(unused_imports)]
+#[cfg(test)]
 use sunrise_client::server_perf::MemoryCost;
-#[allow(unused_imports)]
-use sunrise_client_render::gfx::RendererMemorySnapshot;
 
 pub(in crate::game) use crate::game::memory_common::*;
 

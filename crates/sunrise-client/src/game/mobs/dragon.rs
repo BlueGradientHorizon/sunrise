@@ -14,45 +14,34 @@ pub(in crate::game) mod residency;
 pub(in crate::game) mod save_lending;
 #[path = "dragon/walls.rs"]
 pub(in crate::game) mod walls;
-#[allow(unused_imports)]
-use super::api_values::TryIntoApi;
-#[allow(unused_imports)]
 use super::commands::Target;
-#[allow(unused_imports)]
 use super::{
     Game,
     creatures::{Finalized, SpawnSite},
     potions::{Victim, mob_can_be_affected},
 };
-#[allow(unused_imports)]
 use mod_api::DragonPhase;
 #[allow(unused_imports)]
 use sunrise_client::{
     health::{DamageContainer, DamageLevel, HurtSource, Hurting, Knock, Reduction},
-    hud::HudBatch,
-    hud_layout, hud_overlays,
     mesher::Vertex,
     mobs::{Damage, DamageKind, Who},
-    particles::{ParticleOptions, ParticleType},
+    particles::ParticleType,
     projectiles::{Projectile, ProjectileKind},
     random_source,
     text::Text,
 };
-#[allow(unused_imports)]
 use sunrise_client_core::nbt_value;
 #[allow(unused_imports)]
 use sunrise_client_gameplay::dragon_render::{dissolve_color, dissolve_mask, dragon_rays};
-#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
-#[allow(unused_imports)]
 use sunrise_core::position::BlockPos;
-#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, Vec3, trig},
     jmath,
     random::{LegacyRandom, RandomSource},
 };
-#[allow(unused_imports)]
+#[cfg(test)]
 use sunrise_protocol::entity_data::Value;
 
 /// `EnderDragon.recreateFromPacket`: part `part` (`0..8`) gets wire id `dragon_id + 1 + part`

@@ -1,15 +1,11 @@
 //! `/effect` (EffectCommands) and `/enchant` (EnchantCommand).
-#[allow(unused_imports)]
 use super::{Arg, Context, Game, R, Target, err, texts};
-#[allow(unused_imports)]
 use mod_api::EquipmentSlot;
-#[allow(unused_imports)]
 use sunrise_client::{
     brewing::{self, namespaced},
     effects::EffectInstance,
     text::{self, Style, Text},
 };
-#[allow(unused_imports)]
 use sunrise_items::equipment::MAINHAND;
 
 /// `CommandResponseTracker` over targets: elements with a non-zero result.
