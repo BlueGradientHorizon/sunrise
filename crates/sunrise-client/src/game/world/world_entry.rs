@@ -99,9 +99,9 @@ impl Game<'_> {
         Ok(())
     }
 
-    /// `CreateWorldScreen.openCreateWorldScreen`: read the world generation
-    /// data the create screen describes, on a worker, then open the screen
-    /// (`title.preparing`).
+    /// `CreateWorldScreen.openCreateWorldScreen`: read the world data the create
+    /// screen describes (`title.preparing`). The first call leaves the preparing
+    /// screen up for a frame; the next reads.
     pub(super) fn poll_world_creation(&mut self) {
         let Some(title) = self.title.as_ref() else {
             return;
@@ -109,73 +109,20 @@ impl Game<'_> {
         if !title.preparing() {
             return;
         }
-        if self.creation_job.is_none() {
-            let dir = self.options.resources.join("worldgen");
-            let registry = self.pack.assets.registry;
-            // The chosen packs' worldgen over the game's own:
-            // `applyNewPackConfig` reloads with the new pack config.
-            let overrides = title
-                .creation_packs()
-                .map(|(dir, packs)| {
-                    let stack = super::functions::creation_stack(
-                        dir.as_deref(),
-                        &self.options.resources,
-                        &self.pack.data_source,
-                        &self.pack.data_changes,
-                        &packs,
-                        &self.pack.additional_data,
-                    );
-                    world_loading::worldgen_overrides_of(&stack.data_packs(Vec::new())).0
-                })
-                .unwrap_or_default();
-            let data_source = self.pack.data_changes.clone();
-            let job = std::thread::Builder::new()
-                .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
-                .name("world-creation".into())
-                .spawn(move || {
-                    sunrise_client::vanillagen::shared_data_from(
-                        &dir,
-                        &overrides,
-                        registry,
-                        &data_source,
-                    )
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-                });
-            match job {
-                Ok(job) => self.creation_job = Some(job),
-                Err(error) => {
-                    log::warn!("Sunrise: world creation worker could not start: {error}");
-                    if let Some(title) = self.title.as_mut()
-                        && !title.pack_validation_failed()
-                    {
-                        title.finish_preparing();
-                        title.failed(format!(
-                            "{}: {error}",
-                            sunrise_client::lang::get("createWorld.preparing")
-                        ));
-                    }
-                }
-            }
+        if !std::mem::replace(&mut self.creation_read_started, true) {
             return;
         }
-        if !self
-            .creation_job
-            .as_ref()
-            .is_none_or(std::thread::JoinHandle::is_finished)
-        {
-            return;
-        }
-        let outcome = self.creation_job.take().and_then(|job| job.join().ok());
+        self.creation_read_started = false;
+        let (dir, packs) = title.creation_packs().unwrap_or_default();
+        let outcome = self
+            .read_creation_packs(dir.as_deref(), &packs)
+            .map_err(|e| e.to_string());
         if let Some(title) = self.title.as_mut() {
             match outcome {
-                Some(Ok(())) => title.finish_preparing(),
+                Ok(()) => title.finish_preparing(),
                 // `applyNewPackConfig`'s failure: back out of the read with
                 // the message, the Create screen's options intact.
-                outcome => {
-                    let e = outcome
-                        .and_then(|r| r.err())
-                        .unwrap_or_else(|| "the read never ran".to_owned());
+                Err(e) => {
                     log::warn!("Sunrise: preparing world creation failed: {e}");
                     // A new selection's failed read asks where to go
                     // (`dataPack.validation.failed`). The first read clears the
@@ -195,6 +142,33 @@ impl Game<'_> {
                 }
             }
         }
+    }
+
+    /// `applyNewPackConfig` reloads with the new pack config through `WorldLoader.load`: the
+    /// chosen packs' registries and worldgen are staged as a world open stages them (`open_world_datapacks`),
+    /// and refused as it refuses them.
+    fn read_creation_packs(
+        &mut self,
+        pack_dir: Option<&std::path::Path>,
+        selected: &[String],
+    ) -> Result<()> {
+        let resources = self.options.resources.clone();
+        let stack = super::functions::creation_stack(
+            pack_dir,
+            &resources,
+            &self.pack.data_source,
+            &self.pack.data_changes,
+            selected,
+            &self.pack.additional_data,
+        );
+        let staged = self.stage_world_tables(&stack, false, &resources)?;
+        if let Some(tables) = staged.tables {
+            tables
+                .biomes
+                .overrides
+                .validate_fill_layers(self.pack.assets.registry)?;
+        }
+        Ok(())
     }
 
     pub(super) fn poll_world_rest(&mut self) -> Result<()> {
@@ -1377,4 +1351,65 @@ pub(super) fn level_suffocation_of<'a>(
     world_tables
         .as_ref()
         .map_or_else(|| res.suffocation(), |t| &t.suffocation)
+}
+
+#[cfg(test)]
+mod creation_read_tests {
+    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+
+    #[test]
+    #[ignore = "daily"]
+    fn the_creation_read_refuses_a_pack_with_an_empty_jukebox_song() {
+        let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+        let settings = Settings::default();
+        let loaded = load_resources(
+            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+            Vec::new(),
+            None,
+            &root,
+            &settings,
+            std::time::Instant::now(),
+            false,
+            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            &Progress::new(),
+            &mut |_, _| unreachable!(),
+        )
+        .unwrap();
+        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+        options.resources = root.clone();
+        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        let mut game = Game::new(
+            &loaded.resources,
+            loaded.pack,
+            loaded.gui.unwrap(),
+            options,
+            settings,
+            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
+                root,
+            )),
+            None,
+        )
+        .unwrap();
+        game.build_registries();
+
+        let folder =
+            std::env::temp_dir().join(format!("sunrise-creation-read-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        // Where Create World's Data Packs screen lists it: directly in the `mcworld-` folder.
+        let pack = folder.join("bad_song");
+        std::fs::create_dir_all(pack.join("data/test/jukebox_song")).unwrap();
+        std::fs::write(
+            pack.join("pack.mcmeta"),
+            r#"{"pack":{"description":"fixture"}}"#,
+        )
+        .unwrap();
+        std::fs::write(pack.join("data/test/jukebox_song/empty.json"), "{}").unwrap();
+
+        assert!(game.read_creation_packs(Some(&folder), &[]).is_ok());
+        assert!(
+            game.read_creation_packs(Some(&folder), &["file/bad_song".to_owned()])
+                .is_err()
+        );
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
 }

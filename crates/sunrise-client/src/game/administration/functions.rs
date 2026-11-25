@@ -135,7 +135,7 @@ pub(super) fn creation_stack(
     selected: &[String],
     additional: &[Arc<DataPack>],
 ) -> PackStack {
-    let packs = super::pack_finders::data_repository(
+    let packs = super::pack_finders::data_repository_in(
         pack_dir.unwrap_or(std::path::Path::new("")),
         resources,
         additional,

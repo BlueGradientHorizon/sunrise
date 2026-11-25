@@ -482,7 +482,12 @@ pub fn feature_packs(resources: &Path) -> Vec<DataPack> {
 /// The packs of `<world>/datapacks` plus the resources root's feature packs:
 /// the world's whole repository, as `PackRepository.reload` sees it.
 pub fn discover_with_features(world_root: &Path, resources: &Path) -> Vec<DataPack> {
-    let mut packs = discover(world_root);
+    discover_folder_with_features(&world_root.join("datapacks"), resources)
+}
+/// [`discover_with_features`] over a pack folder itself: Create World's `mcworld-` folder holds
+/// its packs directly, as its Data Packs screen lists them.
+pub fn discover_folder_with_features(dir: &Path, resources: &Path) -> Vec<DataPack> {
+    let mut packs = discover_folder(dir);
     packs.extend(feature_packs(resources));
     packs.sort_by(|a, b| compare_ids(&a.id, &b.id));
     packs

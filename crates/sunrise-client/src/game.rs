@@ -3799,9 +3799,8 @@ struct Game<'a> {
     lectern_pulses: Vec<((i32, i32, i32), i32)>,
     /// LevelLoadingScreen.smoothedProgress while the player is not placed yet.
     loading_progress: f32,
-    /// `CreateWorldScreen.openCreateWorldScreen`'s data read, on a worker,
-    /// while the title says `createWorld.preparing`.
-    creation_job: Option<std::thread::JoinHandle<std::result::Result<(), String>>>,
+    /// `createWorld.preparing` has been drawn: the data read runs on the next poll.
+    creation_read_started: bool,
     /// When `loading_progress` last eased (the server thread's load, 50 ms a step).
     loading_progress_at: Option<std::time::Instant>,
     /// A received packet started or ended a piston's move: `poll_remote`
@@ -14414,7 +14413,7 @@ impl<'a> Game<'a> {
             book_last_click: None,
             lectern_pulses: Vec::new(),
             loading_progress: 0.0,
-            creation_job: None,
+            creation_read_started: false,
             loading_progress_at: None,
             moving_pistons_stale: false,
             spawn_origin: None,
