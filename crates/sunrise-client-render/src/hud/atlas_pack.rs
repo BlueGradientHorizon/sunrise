@@ -513,7 +513,12 @@ impl HudAtlas {
                 flags.insert(name.clone(), value);
             }
         }
+        let skin_origins = (0..SKIN_SLOTS)
+            .map_while(|i| placed_sprites.get(&format!("sunrise/skin{i}")))
+            .map(|p| [p.x, p.y])
+            .collect();
         Ok(Self {
+            skin_origins,
             pictures: std::sync::Mutex::new(pictures::Cache::new(root, defaults)),
             revision: Self::next_revision(),
             material_maps: std::sync::Arc::new(material_maps),

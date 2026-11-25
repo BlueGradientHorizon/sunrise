@@ -9,6 +9,9 @@ pub struct HudRenderer {
     /// texture each was made for.
     pub(super) dynamic: dynamic_textures::Store,
     pub(super) dynamic_groups: HashMap<u64, (u64, wgpu::BindGroup)>,
+    /// Reused by every frame's `prepare_dynamic`.
+    pub(super) dynamic_drawn: Vec<u64>,
+    pub(super) dynamic_changed: Vec<(u64, Option<(wgpu::TextureView, u64)>)>,
     /// What a dynamic texture released after its draw was submitted draws as: vanilla's missing
     /// texture, made when first needed.
     pub(super) dynamic_missing: Option<wgpu::BindGroup>,
@@ -329,6 +332,8 @@ impl HudRenderer {
             pictures: HashMap::new(),
             dynamic: Default::default(),
             dynamic_groups: HashMap::new(),
+            dynamic_drawn: Vec::new(),
+            dynamic_changed: Vec::new(),
             dynamic_missing: None,
             atlas_texture: None,
             sprite_animations: Vec::new(),

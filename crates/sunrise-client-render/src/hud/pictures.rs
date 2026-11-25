@@ -23,6 +23,8 @@ pub(super) struct Cache {
     entries: HashMap<String, Option<Weak<Picture>>>,
     /// By namespace, then path: looked up by `&str` every frame without building a key.
     textures: HashMap<String, HashMap<String, Arc<Picture>>>,
+    /// By namespace, then path, whether [`Cache::has`] found the resource in a root.
+    present: HashMap<String, HashMap<String, bool>>,
     missing: Option<Arc<Picture>>,
 }
 
@@ -43,24 +45,21 @@ impl Cache {
     }
     /// Whether the resource `assets/<namespace>/<path>` of `id` is in a root: an image that is
     /// there but cannot be decoded still is, and draws vanilla's missing texture.
-    fn has(&self, id: &Identifier) -> bool {
-        // An id already loaded is found without building its name, unless it loaded as missing.
-        if self
-            .textures
-            .get(id.namespace())
-            .and_then(|t| t.get(id.path()))
-            .is_some_and(|texture| {
-                !self
-                    .missing
-                    .as_ref()
-                    .is_some_and(|m| Arc::ptr_eq(m, texture))
-            })
-        {
-            return true;
+    /// Answered once per resource generation, as the cache dies with its atlas on a reload; a
+    /// hit builds no name.
+    fn has(&mut self, id: &Identifier) -> bool {
+        let (namespace, path) = (id.namespace(), id.path());
+        if let Some(&known) = self.present.get(namespace).and_then(|t| t.get(path)) {
+            return known;
         }
-        let name = format!("assets/{}/{}", id.namespace(), id.path());
-        crate::resource_source::stays_inside(&name)
-            && self.roots.iter().any(|root| root.contains(&name))
+        let name = format!("assets/{namespace}/{path}");
+        let found = crate::resource_source::stays_inside(&name)
+            && self.roots.iter().any(|root| root.contains(&name));
+        self.present
+            .entry(namespace.to_owned())
+            .or_default()
+            .insert(path.to_owned(), found);
+        found
     }
     /// The standalone texture `id`, the exact resource `assets/<namespace>/<path>`, from the
     /// first root that has it (`ResourceManager.getResource`), sampled as its `.mcmeta` says:
@@ -360,19 +359,23 @@ impl HudRenderer {
         encoder: &mut wgpu::CommandEncoder,
         batch: &HudBatch,
     ) {
-        let drawn: HashSet<u64> = batch
-            .blends
-            .iter()
-            .filter_map(|(_, blend)| match blend {
-                Blend::Dynamic(handle) => Some(*handle),
-                _ => None,
-            })
-            .collect();
+        let mut drawn = std::mem::take(&mut self.dynamic_drawn);
+        drawn.clear();
+        drawn.extend(batch.blends.iter().filter_map(|(_, blend)| match blend {
+            Blend::Dynamic(handle) => Some(*handle),
+            _ => None,
+        }));
+        drawn.sort_unstable();
+        drawn.dedup();
         self.dynamic_groups
-            .retain(|handle, _| drawn.contains(handle));
+            .retain(|handle, _| drawn.binary_search(handle).is_ok());
+        let mut changed = std::mem::take(&mut self.dynamic_changed);
+        changed.clear();
+        self.dynamic
+            .changed(&drawn, &self.dynamic_groups, &mut changed);
         let mut shared = None;
-        for handle in drawn {
-            let Some((view, revision)) = self.dynamic.view(handle) else {
+        for (handle, found) in changed.drain(..) {
+            let Some((view, revision)) = found else {
                 // Released since the draw was submitted: vanilla's missing texture.
                 self.dynamic_groups.remove(&handle);
                 if self.dynamic_missing.is_none() {
@@ -398,18 +401,13 @@ impl HudRenderer {
                 }
                 continue;
             };
-            if self
-                .dynamic_groups
-                .get(&handle)
-                .is_some_and(|(held, _)| *held == revision)
-            {
-                continue;
-            }
             let shared = shared
                 .get_or_insert_with(|| device.create_sampler(&sampler(TextureFlags::default())));
             let group = self.picture_group(device, &view, shared);
             self.dynamic_groups.insert(handle, (revision, group));
         }
+        self.dynamic_drawn = drawn;
+        self.dynamic_changed = changed;
     }
 
     pub(super) fn prepare_pictures(

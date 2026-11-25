@@ -320,11 +320,23 @@ impl Store {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// The view and revision of texture `handle`.
-    pub(super) fn view(&self, handle: u64) -> Option<(wgpu::TextureView, u64)> {
-        self.lock()
-            .get(&handle)
-            .map(|gpu| (gpu.view.clone(), gpu.revision))
+    /// Under one lock, for each of `drawn` that has no bind group in `held` of its current
+    /// revision, push it to `out` with its view and revision, or with `None` when it no longer
+    /// exists. A view is cloned only for a bind group that must be made again.
+    pub(super) fn changed(
+        &self,
+        drawn: &[u64],
+        held: &HashMap<u64, (u64, wgpu::BindGroup)>,
+        out: &mut Vec<(u64, Option<(wgpu::TextureView, u64)>)>,
+    ) {
+        let textures = self.lock();
+        for &handle in drawn {
+            match textures.get(&handle) {
+                Some(gpu) if held.get(&handle).is_some_and(|(r, _)| *r == gpu.revision) => {}
+                Some(gpu) => out.push((handle, Some((gpu.view.clone(), gpu.revision)))),
+                None => out.push((handle, None)),
+            }
+        }
     }
 
     /// Apply `commands` in order into `encoder`, ahead of the frame's draws. `atlas` is the HUD

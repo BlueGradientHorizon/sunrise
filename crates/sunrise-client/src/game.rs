@@ -4054,6 +4054,8 @@ struct Game<'a> {
     /// and mannequins) resolve through the services in the background.
     skin_profiles: RefCell<sunrise_client::skins::Resolver>,
     skin_slots: sunrise_client::skins::SkinSlots,
+    /// What `apply_player_skin_override` resolved for the selected dynamic texture.
+    player_skin_slot: Option<native_hooks::resolve_player_skin::PlayerSkinSlot>,
     /// Runtime trim slots and the last completed preparation for this atlas.
     trim_slots: sunrise_client::trims::TrimSlots,
     cart_models: minecarts::CartModels,
@@ -14530,6 +14532,7 @@ impl<'a> Game<'a> {
             }),
             skin_profiles: RefCell::new(sunrise_client::skins::Resolver::new()),
             skin_slots: sunrise_client::skins::SkinSlots::new(sunrise_client::hud::SKIN_SLOTS),
+            player_skin_slot: None,
             trim_slots: Default::default(),
             cart_models: prepared.cart_models,
             riding: None,

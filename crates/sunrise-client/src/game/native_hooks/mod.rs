@@ -536,7 +536,7 @@ mod render_tooltip_gather_components;
 mod render_tooltip_pre;
 pub(in crate::game) mod render_tooltip_texture;
 mod render_view_transform;
-mod resolve_player_skin;
+pub(in crate::game) mod resolve_player_skin;
 mod respawn_position;
 mod right_click_empty;
 mod right_click_item;

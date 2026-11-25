@@ -38,6 +38,9 @@ pub struct HudAtlas {
     pub width: u32,
     pub height: u32,
     pub sprites: HashMap<String, Rect>,
+    /// The texel origin of each `sunrise/skin{n}` slot, by `n`: where a skin is written. Empty
+    /// on an atlas without the slots.
+    pub skin_origins: Vec<[u32; 2]>,
     /// The GUI atlas's own sprites by GUI id, each with an entry of its own: its rect, or none for
     /// a sprite its list removed or failed ([`HudAtlas::gui_lookup`]).
     pub gui: HashMap<String, GuiSprite>,
@@ -544,6 +547,7 @@ impl HudAtlas {
         };
         Ok(Self {
             pictures: Default::default(),
+            skin_origins: Vec::new(),
             revision: Self::next_revision(),
             pixels: Vec::new(),
             packed: None,
@@ -630,6 +634,7 @@ impl HudAtlas {
         let white = sprites["sunrise/white"];
         Self {
             pictures: Default::default(),
+            skin_origins: Vec::new(),
             revision: Self::next_revision(),
             font: crate::font::Font::load(
                 &crate::resource_source::ResourceSource::default(),
