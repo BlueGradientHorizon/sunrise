@@ -23,7 +23,7 @@ StructureBlockEntity.getRenderableBox	port	crates/sunrise-level/src/structure_bl
 TestInstanceBlockEntity.Data.withSize	skip:java		record copy-with builder; no behaviour of its own
 TestInstanceBlockEntity.Data.withStatus	port	crates/sunrise-client/src/game/administration/game_tests.rs::Game::set_test_status	setRunning and setSuccess write the status through it and mark the block entity updated; a new status clears the error message
 TestInstanceBlockEntity.Data.withError	port	crates/sunrise-client/src/game/administration/game_tests.rs::Game::set_test_status	setErrorMessage carries the text as the block entity's error_message, which the next status change clears
-TheEndGatewayBlockEntity.beamAnimationTick	port	crates/sunrise-client-render/src/block_entity_anim.rs::EndGateway::tick	client ticker: age goes up and the teleport cooldown goes down
+TheEndGatewayBlockEntity.beamAnimationTick	port	crates/sunrise-level/src/block_entity_ticks.rs::EndGateway::tick	client ticker: age goes up and the teleport cooldown goes down
 TheEndGatewayBlockEntity.getSpawnPercent	inline	crates/sunrise-client-render/src/block_entity_render.rs::gateway_beam	spawn percent is (age + partial) / 200, clamped, inside the beam function
 TheEndGatewayBlockEntity.getCooldownPercent	inline	crates/sunrise-client-render/src/block_entity_render.rs::gateway_beam	cooldown percent is one minus the clamped cooldown over 40, inside the beam function
 TheEndGatewayBlockEntity.findExitPosition	inline	crates/sunrise-client/src/game/world/end.rs::Game::resolve_gateway	the known-exit branch's find_exit closure: tallest block from two up and five out, then one above it

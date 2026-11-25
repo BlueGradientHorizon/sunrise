@@ -8,7 +8,6 @@ use super::Game;
 use std::collections::HashMap;
 use sunrise_client::{
     blocks::{Fluid, MAP_COLORS},
-    hud::MAP_SLOTS,
     items::ItemStack,
 };
 use sunrise_core::nbt::{JavaString, Tag};
@@ -676,23 +675,12 @@ pub(in crate::game::server_side) fn map_read<T>(
         None => saved().map(|map| read(&map)),
     }
 }
+#[derive(Default)]
 pub(in crate::game) struct Maps {
     pub data: HashMap<i32, MapData>,
     /// The highest map id handed out (`maps/last_id.dat`), loaded on first use.
     pub(in crate::game) last_id: Option<i32>,
-    /// The atlas slots holding map textures.
-    pub slots: super::atlas_slots::AtlasSlots<i32>,
     pub(in crate::game) missing: std::collections::HashSet<i32>,
-}
-impl Default for Maps {
-    fn default() -> Self {
-        Self {
-            data: HashMap::new(),
-            last_id: None,
-            slots: super::atlas_slots::AtlasSlots::new(MAP_SLOTS),
-            missing: Default::default(),
-        }
-    }
 }
 /// `MapColor.getColorFromPackedId` as RGBA bytes (NONE and undefined IDs are transparent).
 pub(in crate::game) fn packed_rgba(packed: u8) -> [u8; 4] {

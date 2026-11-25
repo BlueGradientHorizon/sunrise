@@ -62,7 +62,7 @@ impl DebugHost for Host<'_, '_> {
             g.side.pause_focus = None;
             g.set_screen(Screen::Paused);
             g.capture(false);
-            g.mining = None;
+            g.set_client_mining(None);
         }
     }
     fn debug_action(&mut self, action: DebugAction, shift: bool) -> bool {
@@ -1369,7 +1369,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // AreaEffectCloud.getDimensions: diameter follows synced radius,
         // height is 0.5; EntityDimensions.scalable gives eyes at 85% height.
-        for c in &self.potions.clouds {
+        for c in &self.side.remote_clouds {
             let (size, eye) = sized(c.id, (c.radius * 2.0, 0.5), 0.425);
             g.hitbox(c.at, size, eye, false, (0.0, 0.0));
         }

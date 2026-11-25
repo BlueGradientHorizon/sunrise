@@ -100,6 +100,38 @@ pub struct Style {
 pub fn font_id(v: &Value) -> Option<String> {
     crate::identifier::parse_identifier(v.as_str()?)
 }
+
+/// `StringUtil.isAllowedChatCharacter`.
+pub fn is_allowed_chat_character(c: char) -> bool {
+    c != '§' && c >= ' ' && c != '\u{7f}'
+}
+
+/// `StringUtil.filterText`: the allowed characters, and line breaks where
+/// the field takes several lines.
+pub fn filter_text(input: &str, multiline: bool) -> String {
+    input
+        .chars()
+        .filter(|&c| is_allowed_chat_character(c) || (multiline && c == '\n'))
+        .collect()
+}
+
+/// `ChatFormatting.stripFormatting`: `§` followed by a format code removed.
+pub fn strip_formatting(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '§'
+            && chars.peek().is_some_and(
+                |n| matches!(n.to_ascii_lowercase(), '0'..='9' | 'a'..='f' | 'k'..='o' | 'r'),
+            )
+        {
+            chars.next();
+            continue;
+        }
+        out.push(c);
+    }
+    out
+}
 impl Style {
     pub fn color(c: u32) -> Self {
         Self {
@@ -1922,5 +1954,17 @@ mod tests {
             ..Style::default()
         });
         assert!(text.spans[0].style.click.is_none());
+    }
+    #[test]
+    fn chat_character_filter_and_strip_formatting() {
+        assert!(is_allowed_chat_character(' '));
+        assert!(is_allowed_chat_character('a'));
+        assert!(!is_allowed_chat_character('§'));
+        assert!(!is_allowed_chat_character('\u{7f}'));
+        assert!(!is_allowed_chat_character('\n'));
+        let s = "a\u{7}b§c\nd\re\u{80}";
+        assert_eq!(filter_text(s, false), "abcde\u{80}");
+        assert_eq!(filter_text(s, true), "abc\nde\u{80}");
+        assert_eq!(strip_formatting("§aRed§r §zx§"), "Red §zx§");
     }
 }

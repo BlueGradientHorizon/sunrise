@@ -88,7 +88,7 @@ AttributeType.checkAllowedModifier	skip:data		attribute type definitions and cod
 BedRule.Rule.test	inline	crates/sunrise-client/src/game/game_server.rs::Game::try_sleep	WHEN_DARK is the hard-coded night or thunder check; ALWAYS and NEVER are in bed_sets_spawn and the dimension checks
 EnvironmentAttribute.valueCodec	skip:data		codec
 EnvironmentAttribute.Builder.build	skip:data		attribute definition builder
-EnvironmentAttributeMap.applyModifier	inline	crates/sunrise-client-render/src/environment.rs::Environment::value	gap: minor: only multiply and override are applied for visual tracks; and, or and maximum tracks are read by their own users
+EnvironmentAttributeMap.applyModifier	inline	crates/sunrise-level/src/environment.rs::Environment::value	gap: minor: only multiply and override are applied for visual tracks; and, or and maximum tracks are read by their own users
 EnvironmentAttributeMap.equals	skip:java
 EnvironmentAttributeMap.Builder.modify	skip:java		builder
 EnvironmentAttributeMap.Builder.build	skip:java		builder
@@ -96,28 +96,28 @@ EnvironmentAttributeMap.Entry.createCodec	skip:data		codec
 EnvironmentAttributeMap.Entry.createFullCodec	skip:data		codec
 EnvironmentAttributeProbe.reset	skip:other		Sunrise keeps no probe state: render recomputes the biome weights each frame
 EnvironmentAttributeProbe.getValue	inline	crates/sunrise-client/src/game/game_client.rs::Game::render	sky, fog and water fog are blended from Gaussian biome weights at the camera each frame, no last and new tick lerp
-EnvironmentAttributeProbe.ValueProbe.getValueFromLevel	inline	crates/sunrise-client-render/src/environment.rs::Environment::sample	dimension and timeline value; biome blend is applied by the caller
+EnvironmentAttributeProbe.ValueProbe.getValueFromLevel	inline	crates/sunrise-level/src/environment.rs::Environment::sample	dimension and timeline value; biome blend is applied by the caller
 EnvironmentAttributeProbe.ValueProbe.tick	port	crates/sunrise-client-render/src/biome.rs::gaussian_weights	the per-tick Gaussian sampling of noise biomes around the camera
 EnvironmentAttributeProbe.ValueProbe.get	inline	crates/sunrise-client/src/game/game_client.rs::Game::render	per frame values from the camera position instead of lerping last and new tick values
 EnvironmentAttributeReader.getValue	skip:java		overload that centres a BlockPos and passes no interpolator
 EnvironmentAttributeSystem.bakeLayerSampler	skip:java		folds leading constant layers into the base value; load_dimension builds its base values the same way
-EnvironmentAttributeSystem.addStaticLayers	inline	crates/sunrise-client-render/src/environment.rs::Environment::load_dimension	dimension attributes become base values; biome attributes are read in Biomes::load
-EnvironmentAttributeSystem.addDynamicLayers	inline	crates/sunrise-client-render/src/environment.rs::Environment::sample	gap: minor: only day.json drives the visual attributes here; moon, early game and villager timelines are read by moon, patrol and villager code; weather is apply_weather
+EnvironmentAttributeSystem.addStaticLayers	inline	crates/sunrise-level/src/environment.rs::Environment::load_dimension	dimension attributes become base values; biome attributes are read in Biomes::load
+EnvironmentAttributeSystem.addDynamicLayers	inline	crates/sunrise-level/src/environment.rs::Environment::sample	gap: minor: only day.json drives the visual attributes here; moon, early game and villager timelines are read by moon, patrol and villager code; weather is apply_weather
 EnvironmentAttributeSystem.addBiomeLayer	inline	crates/sunrise-client-render/src/biome.rs::Biomes::load	biome attributes (sky, fog, water fog, spawns, fire burnout) are read into BiomeInfo
 EnvironmentAttributeSystem.addBiomeLayerForAttribute	inline	crates/sunrise-client-render/src/biome.rs::blend_rgb	gap: minor: only sky, fog and water fog colours are blended by Gaussian weights; other biome attributes use the biome at the position
 EnvironmentAttributeSystem.getDimensionValue	inline	crates/sunrise-client-render/src/environment.rs::Environment::sample
-EnvironmentAttributeSystem.getValue	inline	crates/sunrise-client-render/src/environment.rs::Environment::sample	the sky state at a time of day; other attributes are read straight from dimension and biome data by their users
+EnvironmentAttributeSystem.getValue	inline	crates/sunrise-level/src/environment.rs::Environment::sample	the sky state at a time of day; other attributes are read straight from dimension and biome data by their users
 EnvironmentAttributeSystem.getConstantBaseValue	skip:debug		VisibleForTesting
 EnvironmentAttributeSystem.isAffectedByPosition	skip:debug		VisibleForTesting
-EnvironmentAttributeSystem.Builder.addConstantLayer	inline	crates/sunrise-client-render/src/environment.rs::Environment::load_dimension	dimension attributes inserted as base values
-EnvironmentAttributeSystem.Builder.addConstantEntry	inline	crates/sunrise-client-render/src/environment.rs::Environment::load_dimension
+EnvironmentAttributeSystem.Builder.addConstantLayer	inline	crates/sunrise-level/src/environment.rs::Environment::load_dimension	dimension attributes inserted as base values
+EnvironmentAttributeSystem.Builder.addConstantEntry	inline	crates/sunrise-level/src/environment.rs::Environment::load_dimension
 EnvironmentAttributeSystem.Builder.addLayer	skip:java		builder
-EnvironmentAttributeSystem.Builder.addTimelineLayer	inline	crates/sunrise-client-render/src/environment.rs::Environment::load_dimension	day timeline tracks loaded (overworld only)
-EnvironmentAttributeSystem.Builder.addTimelineLayerForAttribute	inline	crates/sunrise-client-render/src/environment.rs::Environment::load_dimension	one Track per attribute with its easing
-EnvironmentAttributeSystem.ValueSampler.getDimensionValue	inline	crates/sunrise-client-render/src/environment.rs::Environment::sample	no per-tick cache: recomputed per frame
+EnvironmentAttributeSystem.Builder.addTimelineLayer	inline	crates/sunrise-level/src/environment.rs::Environment::load_dimension	day timeline tracks loaded (overworld only)
+EnvironmentAttributeSystem.Builder.addTimelineLayerForAttribute	inline	crates/sunrise-level/src/environment.rs::Environment::load_dimension	one Track per attribute with its easing
+EnvironmentAttributeSystem.ValueSampler.getDimensionValue	inline	crates/sunrise-level/src/environment.rs::Environment::sample	no per-tick cache: recomputed per frame
 EnvironmentAttributeSystem.ValueSampler.getValue	inline	crates/sunrise-client-render/src/environment.rs::Environment::sample
 EnvironmentAttributeSystem.ValueSampler.computeValuePositional	inline	crates/sunrise-client/src/game/game_client.rs::Game::render	base, timeline track, then biome blend, then weather, in that order
-EnvironmentAttributeSystem.ValueSampler.computeValueNotPositional	inline	crates/sunrise-client-render/src/environment.rs::Environment::sample	base then timeline track
+EnvironmentAttributeSystem.ValueSampler.computeValueNotPositional	inline	crates/sunrise-level/src/environment.rs::Environment::sample	base then timeline track
 EnvironmentAttributes.register	skip:data		attribute registry
 WeatherAttributes.addBuiltinLayers	port	crates/sunrise-world/src/environment_system.rs::Builder::weather_layers	rain and thunder layers over sky, fog, cloud, sky light, stars and sunrise; bees staying in the hive is bees_stay_in_hive in bee.rs
 WeatherAttributes.addLayer	port	crates/sunrise-world/src/environment_system.rs::Builder::weather_layer	rain level minus thunder level, then thunder level, each lerped by the attribute's state-change function in `weather`

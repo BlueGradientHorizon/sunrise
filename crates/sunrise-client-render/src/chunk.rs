@@ -260,22 +260,15 @@ impl Default for ColumnLayout {
 /// Biomes are 4x4x4 containers with 16-bit IDs, including saved placeholders.
 pub const BIOME_STRATEGY: Strategy = Strategy::biomes(16);
 
-/// Bits of the block states' global palette: 16 for vanilla's 35,723 states
-/// (what vanilla servers and clients send), more when content mods add states
-/// past 65,536 (docs/modpacks.md). Set once, before the first chunk.
-static BLOCK_BITS: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(16);
-/// States in the registry, set with [`BLOCK_BITS`].
-static BLOCK_STATES: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(u32::MAX);
-
 /// Block states are `PalettedContainer`s over the registry: vanilla's 16-bit
 /// global palette, wider with enough content mods.
 pub fn block_strategy() -> Strategy {
-    Strategy::blocks(BLOCK_BITS.load(std::sync::atomic::Ordering::Relaxed))
+    Strategy::blocks(crate::assets::block_palette_bits())
 }
 
 /// Whether the registry has this state. Every id is known until the registry is loaded.
 pub fn known_block_state(id: u32) -> bool {
-    id < BLOCK_STATES.load(std::sync::atomic::Ordering::Relaxed)
+    id < crate::assets::block_states_count()
 }
 
 /// A server's block container in our palette width. Ids past our registry (a
@@ -318,12 +311,7 @@ pub fn free_columns<T: Send + 'static>(columns: T, count: usize) {
 
 /// Sizes the block states' global palette for a registry of `states`.
 pub fn set_block_states(states: usize) {
-    let bits = sunrise_core::paletted::ceil_log2(states).max(16);
-    BLOCK_BITS.store(bits, std::sync::atomic::Ordering::Relaxed);
-    BLOCK_STATES.store(
-        u32::try_from(states).unwrap_or(u32::MAX),
-        std::sync::atomic::Ordering::Relaxed,
-    );
+    crate::assets::set_block_states(states);
     forget_shared();
 }
 
@@ -332,7 +320,7 @@ pub fn set_block_states(states: usize) {
 /// (block, biome, light). A tall column is mostly such sections: air with
 /// full sky light above the terrain. Edits copy them (`Arc::make_mut`).
 type SharedSections = std::collections::HashMap<(u32, u32, u8), Arc<Section>>;
-static SHARED: std::sync::Mutex<Option<SharedSections>> = std::sync::Mutex::new(None);
+static SHARED: std::sync::Mutex<Option<(u64, SharedSections)>> = std::sync::Mutex::new(None);
 
 /// Replaces the uniform sections of `sections` with the shared ones.
 pub fn share_uniform(sections: &mut [Arc<Section>]) {
@@ -345,10 +333,16 @@ pub fn share_uniform(sections: &mut [Arc<Section>]) {
         }
         Some((s.blocks.uniform()?, s.biomes.uniform()?, light))
     };
-    let Ok(mut shared) = SHARED.lock() else {
+    let generation = crate::assets::block_states_generation();
+    let Ok(mut guard) = SHARED.lock() else {
         return;
     };
-    let shared = shared.get_or_insert_with(Default::default);
+    let entry = guard.get_or_insert_with(|| (generation, Default::default()));
+    if entry.0 != generation {
+        entry.0 = generation;
+        entry.1.clear();
+    }
+    let shared = &mut entry.1;
     for section in sections {
         let Some(k) = key(section) else {
             continue;
@@ -652,9 +646,9 @@ impl ColumnCensus {
 /// Sparse sky and block DataLayer presence, indexed from the column's lower pad.
 #[derive(Clone, Copy)]
 pub struct StoredLight {
-    pub(crate) masks: [crate::section_mask::SectionMask; 2],
+    pub masks: [crate::section_mask::SectionMask; 2],
     /// Materialized arrays in a save-backed snapshot, including all-zero arrays.
-    pub(crate) saved_arrays: Option<[crate::section_mask::SectionMask; 2]>,
+    pub saved_arrays: Option<[crate::section_mask::SectionMask; 2]>,
 }
 
 impl StoredLight {
@@ -687,7 +681,7 @@ pub struct Chunk {
     pub(crate) light_layers: Option<StoredLight>,
     pub(crate) light_sky: bool,
     /// Padded light sections kept by this column's published non-air sections.
-    pub(crate) light_support: crate::section_mask::SectionMask,
+    pub light_support: crate::section_mask::SectionMask,
     /// `Heightmap.Types.WORLD_SURFACE` per column (`z << 4 | x`): one above
     /// the highest non-air block, or the column's minimum Y. Built on the first read; a
     /// `set` that can move a column's surface marks that column, found again on its next read.
@@ -1146,7 +1140,7 @@ impl Chunk {
     }
     /// A biome at quart coordinates, with Y clamped before converting to a section index.
     #[inline]
-    pub(crate) fn biome_quart(&self, [qx, qy, qz]: [i32; 3]) -> u16 {
+    pub fn biome_quart(&self, [qx, qy, qz]: [i32; 3]) -> u16 {
         let qy = (qy - (self.min_y >> 2)).clamp(0, self.sections.len() as i32 * 4 - 1);
         self.sections[(qy >> 2) as usize]
             .biomes
@@ -1160,6 +1154,14 @@ impl Chunk {
             u32::from(biome),
         );
     }
+}
+
+/// Snapshot of the 3x3 chunk neighbourhood used by a worker job.
+pub type Region = [[Option<Arc<Chunk>>; 3]; 3];
+
+/// Borrows the chunks held by a [`Region`].
+pub fn borrow(region: &Region) -> [[Option<&Chunk>; 3]; 3] {
+    std::array::from_fn(|z| std::array::from_fn(|x| region[z][x].as_deref()))
 }
 
 /// A proto chunk saved before it became final. Decoration writes into a

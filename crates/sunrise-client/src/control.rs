@@ -9,7 +9,7 @@
 //! path ends in `.json`, the game listens on a random localhost TCP port and
 //! writes `{"transport":"tcp","port":N,"token":"..."}` to the path, readable
 //! only by its user; a client's first line must then be `auth TOKEN`.
-use crate::block_entity_render::StaticCacheFrameStats;
+use crate::perf_types::RenderCacheStats;
 use std::{
     io::{self, BufRead, BufReader, Read, Write},
     net::{Ipv4Addr, TcpListener, TcpStream},
@@ -698,13 +698,12 @@ mod tests {
         let mut stats = FrameStats::default();
         stats.record(10.0);
         stats.record_cpu(5.0);
-        stats.record_block_entities(StaticCacheFrameStats {
+        stats.record_block_entities(RenderCacheStats {
             snapshot_rebuilds: 2,
             snapshot_bytes_built: 128,
             static_bytes_uploaded: 96,
             static_entities_drawn: 4,
             dynamic_entities_drawn: 3,
-            ..Default::default()
         });
 
         let summary = stats.summary();
@@ -888,7 +887,7 @@ impl FrameStats {
         }
     }
     /// Block-entity cache counters for the frame just rendered.
-    pub fn record_block_entities(&mut self, stats: StaticCacheFrameStats) {
+    pub fn record_block_entities(&mut self, stats: RenderCacheStats) {
         self.static_snapshot_rebuilds += stats.snapshot_rebuilds;
         self.static_snapshot_bytes_built += stats.snapshot_bytes_built;
         self.static_bytes_uploaded += stats.static_bytes_uploaded;

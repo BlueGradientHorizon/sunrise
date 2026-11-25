@@ -106,7 +106,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 Some(visit_box(self.side.recipe_ui.0.search.as_mut()?, edited))
             }
             Screen::Inventory if self.station_typing() => {
-                let state = visit_box(&mut self.station.as_mut()?.rename, edited);
+                let (_, ui) = self.station_and_ui_mut()?;
+                let state = visit_box(&mut ui.rename, edited);
                 if edited.is_some() {
                     self.station_text(None, false);
                 }

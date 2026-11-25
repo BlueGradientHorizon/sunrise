@@ -151,10 +151,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.world.block_entities.put(lease, BlockEntity::Beacon(b));
     }
     fn beacon_levels(&self) -> i32 {
-        let Some(s) = self.station.as_ref() else {
+        let Some((s, ui)) = self.station_and_ui() else {
             return 0;
         };
-        if let Some(levels) = s.beacon_levels {
+        if let Some(levels) = ui.beacon_levels {
             return levels;
         }
         let pos = s.pos;

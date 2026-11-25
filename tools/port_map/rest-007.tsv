@@ -6,20 +6,20 @@ ContinuationTask.execute	inline	crates/sunrise-client/src/game/administration/co
 ContinuationTask.schedule	inline	crates/sunrise-client/src/game/administration/commands/execute_server.rs::Game::run_execute	no queue of continuation tasks: run_execute walks the sources in a loop
 net/minecraft/commands/execution/tasks/ExecuteCommand#execute	port	crates/sunrise-client/src/game/administration/commands/execute_server.rs::Game::run_execute	gap: minor: profiler and tracer.onReturn are not reported; forked errors are silenced in the run branch
 IsolatedCall.execute	inline	crates/sunrise-client/src/game/administration/functions.rs::Game::run_function	the new depth and the isolated return slot are set up in run_function; if function reaches it through call_function_ref
-CommandFunction.shouldConcatenateNextLine	inline	crates/sunrise-client-render/src/datapack.rs::parse_function	the trailing-backslash join is the continuation loop in parse_function
+CommandFunction.shouldConcatenateNextLine	inline	crates/sunrise-level/src/datapack.rs::parse_function	the trailing-backslash join is the continuation loop in parse_function
 CommandFunction.checkCommandLineLength	missing		minor: no 2,000,000-character limit on a command line; a longer line is not refused
 CommandFunction.parseCommand	port	crates/sunrise-client/src/game/functions.rs::Game::admit_store	ordinary lines compile at function permission against actual and candidate registries before the file is admitted; macro lines remain deferred
-FunctionBuilder.addCommand	inline	crates/sunrise-client-render/src/datapack.rs::parse_function	plain lines are collected in parse_function
-FunctionBuilder.getArgumentIndex	inline	crates/sunrise-client-render/src/datapack.rs::parse_function	macro parameter names are collected in order without duplicates; names, not indices
-FunctionBuilder.convertToIndices	inline	crates/sunrise-client-render/src/datapack.rs::Function::instantiate	parameters are looked up by name in instantiate; there is no index list
-FunctionBuilder.addMacro	inline	crates/sunrise-client-render/src/datapack.rs::parse_function	the $ line branch of parse_function, split by macro_parameters
-FunctionBuilder.build	port	crates/sunrise-client-render/src/datapack.rs::parse_function	returns one Function; Function::is_macro tells a plain function from a macro one
-MacroFunction.lookupValues	inline	crates/sunrise-client-render/src/datapack.rs::Function::instantiate	values are picked by parameter name in instantiate
-MacroFunction.substituteAndParse	port	crates/sunrise-client-render/src/datapack.rs::Function::instantiate	gap: minor: substitutes only; no new function with a per-call id, and lines are parsed when they run
-MacroFunction.MacroEntry.instantiate	port	crates/sunrise-client-render/src/datapack.rs::Function::instantiate	gap: minor: substitutes only; a parse error is raised when the line runs, not as commands.function.error.parse
-StringTemplate.fromString	port	crates/sunrise-client-render/src/datapack.rs::macro_parameters	gap: minor: keeps the variable names only, and accepts a $ line with no $(name) (vanilla rejects it)
-StringTemplate.isValidVariableName	inline	crates/sunrise-client-render/src/datapack.rs::macro_parameters	checks ASCII letters, digits and _; Java also accepts other Unicode letters and digits
-StringTemplate.substitute	port	crates/sunrise-client-render/src/datapack.rs::substitute	gap: minor: no 2,000,000-character length check
+FunctionBuilder.addCommand	inline	crates/sunrise-level/src/datapack.rs::parse_function	plain lines are collected in parse_function
+FunctionBuilder.getArgumentIndex	inline	crates/sunrise-level/src/datapack.rs::parse_function	macro parameter names are collected in order without duplicates; names, not indices
+FunctionBuilder.convertToIndices	inline	crates/sunrise-level/src/datapack.rs::Function::instantiate	parameters are looked up by name in instantiate; there is no index list
+FunctionBuilder.addMacro	inline	crates/sunrise-level/src/datapack.rs::parse_function	the $ line branch of parse_function, split by macro_parameters
+FunctionBuilder.build	port	crates/sunrise-level/src/datapack.rs::parse_function	returns one Function; Function::is_macro tells a plain function from a macro one
+MacroFunction.lookupValues	inline	crates/sunrise-level/src/datapack.rs::Function::instantiate	values are picked by parameter name in instantiate
+MacroFunction.substituteAndParse	port	crates/sunrise-level/src/datapack.rs::Function::instantiate	gap: minor: substitutes only; no new function with a per-call id, and lines are parsed when they run
+MacroFunction.MacroEntry.instantiate	port	crates/sunrise-level/src/datapack.rs::Function::instantiate	gap: minor: substitutes only; a parse error is raised when the line runs, not as commands.function.error.parse
+StringTemplate.fromString	port	crates/sunrise-level/src/datapack.rs::macro_parameters	gap: minor: keeps the variable names only, and accepts a $ line with no $(name) (vanilla rejects it)
+StringTemplate.isValidVariableName	inline	crates/sunrise-level/src/datapack.rs::macro_parameters	checks ASCII letters, digits and _; Java also accepts other Unicode letters and digits
+StringTemplate.substitute	port	crates/sunrise-level/src/datapack.rs::substitute	gap: minor: no 2,000,000-character length check
 ArgumentTypeInfos.register	skip:data		bootstrap registration of argument type infos
 ArgumentTypeInfos.byClass	skip:java		lookup by Java class; Sunrise's argument types are an enum
 ArgumentUtils.createNumberFlags	inline	crates/sunrise-client/src/lan/commands.rs::properties	the min and max presence bits are written inline in properties

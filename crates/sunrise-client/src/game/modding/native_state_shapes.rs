@@ -1,5 +1,5 @@
 //! Shape queries for a supplied state without replacing the block in the world.
-use super::{Game, perspective};
+use super::Game;
 use mod_api::BlockShapeKind;
 use sunrise_client::{
     block_entity_anim::BlockEntityAnims, collisions::SceneCollisions, world::World,
@@ -56,6 +56,23 @@ pub(in crate::game) enum Outline<'a> {
     Default(&'a sunrise_client::blocks::StateFacts),
 }
 
+pub(in crate::game) fn outline_offset(
+    facts: &sunrise_client::blocks::BlockFacts,
+    state: BlockStateId,
+    x: i32,
+    z: i32,
+    follows_offset: bool,
+) -> [f64; 3] {
+    if follows_offset {
+        facts
+            .states
+            .get(state.0 as usize)
+            .map_or([0.0; 3], |sf| sf.offset_at(x, z))
+    } else {
+        [0.0; 3]
+    }
+}
+
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn selected_outline<'a>(
         &'a self,
@@ -67,8 +84,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     ) -> (Outline<'a>, [f64; 3]) {
         let facts = self.res.facts().get(state);
         let default_offset = || {
-            perspective::outline_offset(
-                &self.pack.context.tables,
+            outline_offset(
+                self.res.facts(),
                 state,
                 pos[0],
                 pos[2],

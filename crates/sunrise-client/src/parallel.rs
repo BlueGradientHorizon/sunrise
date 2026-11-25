@@ -7,9 +7,9 @@
 //! (`graphics::ParallelTickMode`: Off, Auto or On), decided between ticks for the next one
 //! ([`after_tick`]) and never during one. `SUNRISE_PARALLEL_TICK` wins over the setting, and is
 //! all a dedicated server follows (`server.toml`'s `parallel_tick`).
-use crate::graphics::ParallelTickMode;
 use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock, PoisonError};
+use sunrise_level::tick_mode::ParallelTickMode;
 
 /// Typed gameplay dispatch owns mutable residency and damage contexts, so Sunrise Fork keeps
 /// every tick serial whatever the setting or `SUNRISE_PARALLEL_TICK` says (Diverges from upstream).

@@ -42,7 +42,6 @@ pub(in crate::game) struct ExplosionCause {
 pub(in crate::game) struct ClipData<'a, 'r> {
     pub facts: &'a sunrise_client::blocks::BlockFacts,
     pub behaviours: &'a sunrise_world::level::Behaviours,
-    pub tables: &'a sunrise_client::mesher::MeshTables,
     pub registry: &'r sunrise_world::registry::BlockRegistry,
 }
 pub(in crate::game) struct ColliderRays<'a, 'r> {
@@ -89,8 +88,8 @@ impl RayWorld for ColliderRays<'_, '_> {
             }
             if mode == RayBlockMode::Outline {
                 let facts = data.facts.get(state);
-                let offset = super::perspective::outline_offset(
-                    data.tables,
+                let offset = crate::game::native_state_shapes::outline_offset(
+                    data.facts,
                     state,
                     p.x,
                     p.z,

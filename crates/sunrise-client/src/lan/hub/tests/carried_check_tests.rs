@@ -19,7 +19,7 @@ const OTHER: u32 = 101;
 /// A stone floor with its top at y 5, and `walls`: blocks (x, z) filled from the floor up.
 pub(super) fn scene(fixture: &crate::test_fixtures::Vanilla, walls: &[(i32, i32)]) -> World {
     let assets = &fixture.assets;
-    let mut scene = World::test_scene(assets, &fixture.render, 10).unwrap();
+    let mut scene = World::test_scene_with_placements(assets, &[], 10).unwrap();
     let stone = assets.registry.default_state("minecraft:stone").unwrap();
     let air = assets.registry.default_state("minecraft:air").unwrap();
     for x in 10..=30 {

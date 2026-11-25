@@ -1,8 +1,8 @@
 BellBlockEntity.serverTick	port	crates/sunrise-client/src/game/blocks/block_entity_anims.rs::Game::tick_bell_servers	world-owned ringing bells tick without a renderer; clients animate their separate copy
-BellBlockEntity.areRaidersNearby	inline	crates/sunrise-client-render/src/block_entity_anim.rs::Bell::tick	resonation start check (raider within 32 blocks) folded into Bell::tick
+BellBlockEntity.areRaidersNearby	inline	crates/sunrise-level/src/block_entity_ticks.rs::Bell::tick	resonation start check (raider within 32 blocks) folded into Bell::tick
 BellBlockEntity.makeRaidersGlow	port	crates/sunrise-client/src/game/blocks/block_entity_anims.rs::Game::server_tick_bell	GLOWING 60 applied to the raiders Bell::tick returns
-BellBlockEntity.showBellParticles	port	crates/sunrise-client-render/src/block_entity_anim.rs::Bell::tick	particle positions and colours computed here; emitted in Game::tick_bell
-BellBlockEntity.isRaiderWithinRange	inline	crates/sunrise-client-render/src/block_entity_anim.rs::Bell::tick	raider_in closure (48 blocks)
+BellBlockEntity.showBellParticles	port	crates/sunrise-level/src/block_entity_ticks.rs::Bell::tick	particle positions and colours computed here; emitted in Game::tick_bell
+BellBlockEntity.isRaiderWithinRange	inline	crates/sunrise-level/src/block_entity_ticks.rs::Bell::tick	raider_in closure (48 blocks)
 BlockEntity.validateBlockState	skip:other		guard that throws on a wrong block state; no player behaviour
 BlockEntity.getPosFromTag	port	crates/sunrise-world/src/chunk.rs::block_entity_pos	the saved x/y/z, with x and z moved into the chunk that saved the entity when the tag names another one (vanilla warns and keeps each coordinate's low four bits); the chunk decoder applies it to every saved block entity
 BlockEntity.saveCustomOnly	port	crates/sunrise-client/src/block_entity_item.rs::custom_only	saved NBT without id, position and components
@@ -112,14 +112,14 @@ ShelfBlockEntity.getUpdateTag	port	crates/sunrise-client/src/lan/chunks.rs::enti
 ShelfBlockEntity.setChanged	inline	crates/sunrise-client/src/game/blocks/machines/mod.rs::Game::view_changed	the shelf's own arm marks the block entity updated so clients see the swap, and a container's slot write posts `block_activate` (the no-argument `setChanged()`)
 ShelfBlockEntity.applyImplicitComponents	port	crates/sunrise-client/src/block_entity_item.rs::place	Items as container component
 ShelfBlockEntity.collectImplicitComponents	port	crates/sunrise-client/src/block_entity_item.rs::collect	Items as container component
-ShulkerBoxBlockEntity.updateAnimation	port	crates/sunrise-client-render/src/block_entity_anim.rs::Shulker::tick	lid progress
+ShulkerBoxBlockEntity.updateAnimation	port	crates/sunrise-level/src/shulker_box.rs::Shulker::tick	lid progress
 ShulkerBoxBlockEntity.moveCollidedEntities	inline	crates/sunrise-client/src/game/blocks/piston_push_server.rs::Game::push_shulker_entities	the sweeping lid box moves every body it meets out along the facing by the box's size plus 0.01 (`Entity.move(MoverType.SHULKER_BOX, …)`), through the piston push machinery
 ShulkerBoxBlockEntity.doNeighborUpdates	port	crates/sunrise-world/src/level/mod.rs::Behaviours::shulker_neighbor_updates	the four points of `ShulkerBoxBlockEntity.tick` where a lid starts or finishes moving: `state.updateNeighbourShapes(level, pos, 3)` then `level.updateNeighborsAt(pos, block)`, once per `ShulkerTick.neighbor_updates`
 ShulkerBoxBlockEntity.saveAdditional	port	crates/sunrise-client/src/save/block_entity_encode.rs::encode	shulker box uses the chest arm (27 slots)
 ShulkerBoxBlockEntity.loadFromTag	port	crates/sunrise-client/src/block_entity_item.rs::place	contents from the item's data
 SignBlockEntity.getText	skip:other		accessor; SignData keeps front and back sides as fields
 SignBlockEntity.saveAdditional	port	crates/sunrise-client/src/save/block_entity_encode.rs::encode	sign arm: sign.encode()
-SignBlockEntity.loadAdditional	port	crates/sunrise-client-render/src/signs.rs::SignData::decode
+SignBlockEntity.loadAdditional	port	crates/sunrise-level/src/signs_data.rs::SignData::decode
 SignBlockEntity.resolveLines	missing		a sign's text is kept as literal strings (`block_entity_item.rs` `sign_text_front`/`sign_text_back`), so a selector or a score on a sign shows raw
 SignBlockEntity.resolveLine	missing		same as SignBlockEntity.resolveLines: no per-line resolution, sign lines are literal
 SignBlockEntity.updateText	port	crates/sunrise-client/src/game/interface/sign_edit_server.rs::Game::lan_sign_update	guest's sign write
@@ -135,15 +135,15 @@ SignBlockEntity.tick	inline	crates/sunrise-client/src/game/interface/sign_edit_s
 SignBlockEntity.applyImplicitComponents	port	crates/sunrise-client/src/block_entity_item.rs::place	sign_text_front, sign_text_back and waxed onto front_text, back_text and is_waxed; a client applies them to the sign it predicts through Game::apply_predicted_item (#8102)
 SignBlockEntity.collectImplicitComponents	port	crates/sunrise-client/src/block_entity_item.rs::collect	front_text, back_text and is_waxed leave on the item as sign_text_front, sign_text_back and waxed
 SignBlockEntity.removeComponentsFromTag	port	crates/sunrise-client/src/block_entity_item.rs::pick	front, back and waxed left out of the item data
-SignText.load	port	crates/sunrise-client-render/src/signs.rs::SignData::decode	modern String messages remain literal; compound/list components keep their structured path
+SignText.load	port	crates/sunrise-level/src/signs_data.rs::SignData::decode	modern String messages remain literal; compound/list components keep their structured path
 SignText.<clinit>	port	crates/sunrise-client/src/item_sync.rs::sign_text_tag	STREAM_CODEC read into the saved CODEC form; lan/guest.rs::sign_text_bytes writes it
 SignText.validateLineCounts	skip:java		codec check of four lines; Sunrise fixes the array size
 SignText.withGlowingText	port	crates/sunrise-client/src/game/interface/sign_edit_server.rs::Game::use_sign_applicator	glow ink sac
 SignText.withColor	port	crates/sunrise-client/src/game/interface/sign_edit_server.rs::Game::use_sign_applicator	dye
-SignText.hasMessage	port	crates/sunrise-client-render/src/signs.rs::SignText::is_empty	inverse of is_empty
+SignText.hasMessage	port	crates/sunrise-level/src/signs_data.rs::SignText::is_empty	inverse of is_empty
 SignText.getRenderMessages	port	crates/sunrise-client-render/src/block_entity_render.rs::sign_text_calls	lines drawn on the sign
 SignText.filteredMessagesForSerialization	skip:service		chat-filtered sign text for clients; Sunrise has no text filter
-SignText.hasAnyClickCommands	port	crates/sunrise-client-render/src/signs.rs::SignText::has_any_click_commands	ticked in #3516; `SignText.hasAnyClickCommands` is cited at crates/sunrise-client-render/src/signs.rs:81
+SignText.hasAnyClickCommands	port	crates/sunrise-level/src/signs_data.rs::SignText::has_any_click_commands	ticked in #3516; `SignText.hasAnyClickCommands` is cited at crates/sunrise-client-render/src/signs.rs:81
 SignText.hasEditableText	skip:other		Sunrise sign text has no click events, so every line is editable
 SignText.equals	skip:java		value equality
 SignText.hashCode	skip:java		value hashing

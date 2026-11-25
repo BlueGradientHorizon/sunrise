@@ -616,3 +616,7 @@ predicted_equipment_modifiers	Vec<(String, String)>	client	client predicted equi
 darkness_blend	(f32, f32)	client	client-only darkness effect fade blend (split from SculkState::darkness)	614	side	-
 item_features	sunrise_items::creative_catalog::ItemFeatureRequirements	game	shared (item feature requirements shared across server and client)	615	-	-
 creative_catalog	Arc<sunrise_items::creative_catalog::Catalog>	game	drop-order (server): server creative catalog handle (client reads creative_screen.catalog())	616	-	server_only
+map_slots	super::atlas_slots::AtlasSlots<i32>	client	client-only map atlas slots (split from Maps in H1 L1-3)	617	side	-
+station_ui	Option<stations_client::StationUi>	client	client-only station UI widgets (split from Station in H1 L4-2)	618	side	-
+remote_clouds	Vec<sunrise_client_gameplay::remote::projectiles::RemoteCloud>	client	client-only remote cloud visuals (H1 L2-2)	619	side	-
+mining_crack	Option<client_cracks::ClientCrack>	client	client-only mining crack animation (split from Mining in H1 L3-2)	620	side	-

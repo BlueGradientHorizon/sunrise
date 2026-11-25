@@ -672,7 +672,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .0
                 .borrow_mut()
                 .set_resource_root(game.pack.source.clone());
-            game.maps.slots.forget();
+            game.side.map_slots.forget();
             game.side.map_patches.clear();
             game.side.text_patches.get_mut().clear();
             // Kept mod block entities name the old atlas's sprites, and their view distances the old
@@ -818,7 +818,7 @@ pub(in crate::game) fn stage_pack(
                     )
                 });
                 (
-                    assets.reload(&resource_root),
+                    sunrise_client::assets::RenderAssets::load(&resource_root, assets),
                     atlas.join(),
                     panorama.join(),
                     small

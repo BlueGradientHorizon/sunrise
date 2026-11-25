@@ -3,9 +3,8 @@
 #[path = "sunrise_look.rs"]
 mod sunrise_look;
 use crate::{crash, game, logging};
+use sunrise_level::runtime_env::runtime_environment;
 use sunrise_mod_package::selection::{Argument, LaunchArguments};
-pub(crate) mod dedicated_arguments;
-pub(crate) mod runtime_environment;
 
 /// Validated startup state. No native hooks or workers may run before prepare returns.
 pub struct Startup {

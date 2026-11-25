@@ -63,8 +63,8 @@ SystemToast.extractRenderState	port	crates/sunrise-client/src/toasts.rs::SystemT
 SystemToast.extractTextLines	inline	crates/sunrise-client/src/toasts.rs::SystemToast::draw	text lines drawn in draw
 SystemToast.recalculateWidth	inline	crates/sunrise-client/src/toasts.rs::SystemToast::draw	width from the widest line, at least 160, plus 30
 SystemToast.onFileDropFailure	missing		gap: minor: a dropped file that is not a data pack is only logged (title.rs::Title::drop_file); no failure toast
-SystemToast.onChunkLoadFailure	port	crates/sunrise-client/src/chunk_io.rs::load_failure_toast	the chunk.toast.loadFailure toast with its check-log line
-SystemToast.onChunkSaveFailure	port	crates/sunrise-client/src/chunk_io.rs::save_failure_toast	the chunk.toast.saveFailure toast with its check-log line
+SystemToast.onChunkLoadFailure	port	crates/sunrise-client/src/toasts.rs::load_failure_toast	the chunk.toast.loadFailure toast with its check-log line
+SystemToast.onChunkSaveFailure	port	crates/sunrise-client/src/toasts.rs::save_failure_toast	the chunk.toast.saveFailure toast with its check-log line
 ToastManager.findFreeSlotsIndex	inline	crates/sunrise-client/src/game/interface/toast_manager_client.rs::ToastManager::update	first consecutive run that fits the toast in the shared five slots
 ToastManager.getToast	port	crates/sunrise-client/src/game/interface/toast_manager.rs::ToastManager::find_mut	matching visible toast first, then the queued toasts
 ToastManager.showNowPlayingToast	port	crates/sunrise-client/src/music.rs::MusicManager::show_now_playing_toast_if_needed	gap: player: the request goes to toast_requests and nothing draws it

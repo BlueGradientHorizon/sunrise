@@ -166,7 +166,6 @@ impl GuestPlay {
             progress: 0.0,
             per_tick: 0.0,
             ticks: 1,
-            crack: None,
         });
         self.delayed = delayed;
         self.last_progress = -1;
@@ -1168,7 +1167,6 @@ pub(in crate::game) mod tests {
                 progress: 0.5,
                 per_tick: 0.0,
                 ticks: 8,
-                crack: None,
             }),
             destroy_pos: Some(pos),
             dig_start: 1000,

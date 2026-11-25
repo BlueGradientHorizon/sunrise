@@ -507,7 +507,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 progress: 0.0,
                                 per_tick: 0.0,
                                 ticks: 0,
-                                crack: None,
                             });
                             return StartDig::Air;
                         }
@@ -517,7 +516,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             progress: 0.0,
                             per_tick: 0.0,
                             ticks: 0,
-                            crack: None,
                         });
                         StartDig::Accepted
                     });

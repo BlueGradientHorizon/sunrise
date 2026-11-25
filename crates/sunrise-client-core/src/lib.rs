@@ -14,6 +14,7 @@ pub mod gamerules;
 pub mod identifier;
 pub mod key_display;
 pub mod lang;
+pub mod move_input;
 pub use sunrise_world::nbt_path;
 pub mod nbt_value;
 pub use sunrise_world::particle_type;

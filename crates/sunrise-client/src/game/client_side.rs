@@ -66,6 +66,7 @@ pub(in crate::game) mod client_ambient;
 #[cfg(feature = "client")]
 #[path = "items/client_attack_targets.rs"]
 pub(in crate::game) mod client_attack_targets;
+#[cfg(feature = "client")]
 #[path = "modding/client_cracks.rs"]
 pub(in crate::game) mod client_cracks;
 #[cfg(feature = "client")]
@@ -785,6 +786,9 @@ pub(in crate::game) mod station_control;
 #[path = "blocks/stations.rs"]
 pub(in crate::game) mod stations;
 #[cfg(feature = "client")]
+#[path = "blocks/stations_client.rs"]
+pub(in crate::game) mod stations_client;
+#[cfg(feature = "client")]
 #[path = "interface/stats_screen.rs"]
 pub(in crate::game) mod stats_screen;
 #[path = "world/storage.rs"]
@@ -1314,6 +1318,7 @@ pub(in crate::game) struct ClientState {
     /// The other players' cracks (`LevelRenderer.destroyingBlocks`): breaker id to the block,
     /// stage (0..=9), last refresh time and stored additional display positions.
     pub(in crate::game::client_side) destroying: HashMap<i32, client_cracks::ClientCrack>,
+    pub(in crate::game::client_side) mining_crack: Option<client_cracks::ClientCrack>,
     pub(in crate::game::client_side) keys: sunrise_client::held::HeldKeys,
     // Physical input is separate from remapped and toggled movement keys.
     pub(in crate::game) physical_keys: HashSet<KeyCode>,
@@ -1505,6 +1510,7 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game) book: Option<books::BookScreen>,
     /// The last click on the book screen, for double clicks.
     pub(in crate::game::client_side) book_last_click: Option<std::time::Instant>,
+    pub(in crate::game::client_side) station_ui: Option<stations_client::StationUi>,
     /// LevelLoadingScreen.smoothedProgress while the player is not placed yet.
     pub(in crate::game::client_side) loading_progress: f32,
     /// When `loading_progress` last eased (the server thread's load, 50 ms a step).
@@ -1621,6 +1627,7 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) remote_knots: HashMap<u32, [i32; 3]>,
     pub(in crate::game::client_side) text_display_vertices: usize,
     pub(in crate::game::client_side) skin_slots: sunrise_client::skins::SkinSlots,
+    pub(in crate::game::client_side) map_slots: super::atlas_slots::AtlasSlots<i32>,
     /// Runtime trim slots and the last completed preparation for this atlas.
     pub(in crate::game::client_side) trim_slots: sunrise_client::trims::TrimSlots,
     pub(in crate::game::client_side) cart_models: minecarts::CartModels,
@@ -1628,6 +1635,8 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) mount_menu: mount_menu::MountMenu,
     /// The other players' hooks a server tracks to this client.
     pub(in crate::game::client_side) remote_hooks: Vec<fishing::RemoteHook>,
+    pub(in crate::game::client_side) remote_clouds:
+        Vec<sunrise_client_gameplay::remote::projectiles::RemoteCloud>,
     pub(in crate::game::client_side) tick_hit: std::cell::Cell<Option<Option<Hit>>>,
     pub(in crate::game::client_side) tick_mob: Option<Option<(usize, f64, [f64; 3])>>,
     pub(in crate::game::client_side) predicted_equipment_modifiers: Vec<(String, String)>,
@@ -1967,6 +1976,7 @@ impl ClientState {
             last_inv_click: None,
             last_quick_moved: None,
             destroying: HashMap::new(),
+            mining_crack: None,
             keys: Default::default(),
             physical_keys: HashSet::new(),
             rejected_keys: HashSet::new(),
@@ -2059,6 +2069,7 @@ impl ClientState {
             sign_edit: None,
             book: None,
             book_last_click: None,
+            station_ui: None,
             loading_progress: 0.0,
             loading_progress_at: None,
             moving_pistons_stale: false,
@@ -2121,10 +2132,12 @@ impl ClientState {
             remote_knots: Default::default(),
             text_display_vertices: 0,
             skin_slots: sunrise_client::skins::SkinSlots::new(sunrise_client::hud::SKIN_SLOTS),
+            map_slots: super::atlas_slots::AtlasSlots::new(sunrise_client::hud::MAP_SLOTS),
             trim_slots: Default::default(),
             cart_models: prepared.cart_models,
             mount_menu: Default::default(),
             remote_hooks: Vec::new(),
+            remote_clouds: Vec::new(),
             tick_hit: Default::default(),
             tick_mob: None,
             predicted_equipment_modifiers: Vec::new(),

@@ -647,7 +647,7 @@ impl DynamicSupportWorld for SceneCollisions<'_, '_> {
             .world
             .shulkers
             .get(&p)
-            .map(|s| s.status == crate::block_entity_anim::ShulkerStatus::Closed))
+            .map(|s| s.status == crate::shulker_box::ShulkerStatus::Closed))
     }
     /// `MovingPistonBlock.getCollisionShape`: the block entity's moving shape
     /// (`PistonMovingBlockEntity.getCollisionShape`), outside any push.
@@ -962,7 +962,7 @@ mod border_movement_tests {
 #[cfg(test)]
 mod shulker_collision_tests {
     use super::*;
-    use crate::block_entity_anim::{Shulker, ShulkerStatus, progress_delta_aabb};
+    use crate::shulker_box::{Shulker, ShulkerStatus, progress_delta_aabb};
     use sunrise_core::geometry::{Aabb, Axis, Direction, Vec3, VoxelShape};
 
     /// A shulker box facing up at progress 0.0 (closed): collision is a 1x1x1 block.
@@ -1184,13 +1184,8 @@ mod section_tests {
             return;
         }
         let assets = crate::assets::Assets::load(&root).unwrap();
-        let render = assets
-            .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-                root.to_path_buf(),
-            ))
-            .unwrap();
         let binding = load(&root, assets.registry).unwrap();
-        let mut world = World::test_scene(&assets, &render, 3).unwrap();
+        let mut world = World::test_scene_with_placements(&assets, &[], 3).unwrap();
         let state = |name: &str| assets.registry.default_state(name).unwrap();
         // Torches, and a fence at the bottom of a section above air.
         for x in 17..30 {

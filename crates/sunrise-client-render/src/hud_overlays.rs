@@ -1708,4 +1708,36 @@ mod effect_order_tests {
             .collect();
         assert_eq!(corners, [(175, 1), (150, 1), (125, 1)]);
     }
+
+    /// Warden darkness (`new MobEffectInstance(DARKNESS, 260, 0, false,
+    /// false)`) shows neither particles nor its icon; a renewal that shows the
+    /// icon turns it back on (`MobEffectInstance.update`).
+    #[test]
+    fn an_effect_without_particles_hides_its_icon() {
+        use crate::effects::{EffectInstance, PlayerEffects, SavedEffect};
+        let mut fx = PlayerEffects::default();
+        fx.add(EffectInstance::new("darkness", 260, 0).with_flags(false, false));
+        let darkness = fx.get("darkness").unwrap();
+        // ClientboundUpdateMobEffectPacket: no ambient, particles or icon bit.
+        assert_eq!(PlayerEffects::flags(darkness), 0);
+        assert!(!EffectIcon::from(darkness).show_icon);
+        assert!(fx.add(EffectInstance::new("darkness", 100, 0)));
+        assert_eq!(PlayerEffects::flags(fx.get("darkness").unwrap()), 2 | 4);
+
+        // Details keeps show_icon apart from show_particles.
+        let mut speed = EffectInstance::new("speed", 100, 0);
+        speed.show_icon = false;
+        let mut fx = PlayerEffects::default();
+        fx.add(speed);
+        let saved = fx.saved();
+        assert_eq!(
+            saved,
+            [SavedEffect {
+                icon: false,
+                ..SavedEffect::new("minecraft:speed", 100, 0)
+            }]
+        );
+        let loaded = PlayerEffects::from_saved(&saved);
+        assert_eq!(PlayerEffects::flags(loaded.get("speed").unwrap()), 2);
+    }
 }

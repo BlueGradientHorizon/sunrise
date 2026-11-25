@@ -68,11 +68,11 @@ ItemContainerContents.itemCopies	skip:other		no callers in the vanilla source
 ItemContainerContents.asMutable	skip:other		no callers in the vanilla source
 ItemContainerContents.equals	skip:java		value equality; Sunrise compares the item data directly
 KineticWeapon.makeLocalHitSound	port	crates/sunrise-client/src/game/items/spear.rs::Game::kinetic_hit_feedback	the local hit sound, at most once per ten ticks per entity
-KineticWeapon.computeDamageUseDuration	port	crates/sunrise-client/src/spear.rs::Kinetic::damage_use_duration	the delay plus the damage window's duration, which `SpearUseGoal` and `SpearAttack` read as the spear's use duration
-KineticWeapon.Condition.test	port	crates/sunrise-client/src/spear.rs::Condition::test	tick, attacker speed and relative speed against the scaled minimums
+KineticWeapon.computeDamageUseDuration	port	crates/sunrise-sim/src/spear_sim.rs::Kinetic::damage_use_duration	the delay plus the damage window's duration, which `SpearUseGoal` and `SpearAttack` read as the spear's use duration
+KineticWeapon.Condition.test	port	crates/sunrise-sim/src/spear_sim.rs::Condition::test	tick, attacker speed and relative speed against the scaled minimums
 PiercingWeapon.makeHitSound	port	crates/sunrise-client/src/game/items/spear_server.rs::Game::jab	the hit sound plays at the spear's target position through `audio.play`, shared with the LAN guests
-ResolvableProfile.createUnresolved	port	crates/sunrise-client-render/src/skins.rs::parse_profile	keeps a name or id as the unresolved key, resolved later
-ResolvableProfile.createPartialProfile	port	crates/sunrise-client-render/src/skins.rs::parse_profile	id, else the name's offline UUID, else nil
+ResolvableProfile.createUnresolved	port	crates/sunrise-level/src/profile_lookup.rs::parse_profile	keeps a name or id as the unresolved key, resolved later
+ResolvableProfile.createPartialProfile	port	crates/sunrise-level/src/profile_lookup.rs::parse_profile	id, else the name's offline UUID, else nil
 ResolvableProfile.Dynamic.hashCode	skip:java		hash of the key and skin patch; Sunrise compares them directly
 ResolvableProfile.Static.name	skip:other		no callers in the vanilla source
 ResolvableProfile.Static.equals	skip:java		value equality

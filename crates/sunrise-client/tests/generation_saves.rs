@@ -202,11 +202,11 @@ impl Session {
 fn worker_context(root: &Path) -> Arc<WorkerContext> {
     let assets = Arc::new(Assets::load(root).unwrap());
     let render = Arc::new(
-        assets
-            .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-                root.to_path_buf(),
-            ))
-            .unwrap(),
+        sunrise_client::assets::RenderAssets::load(
+            &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
+            &assets,
+        )
+        .unwrap(),
     );
     let facts = BlockFacts::load(root, assets.registry).unwrap();
     let visibility = models::load_visibility(root, assets.registry).unwrap();
@@ -317,11 +317,11 @@ fn proto_chunks_are_viewed_once_per_state() {
     };
     let assets = Arc::new(Assets::load(&root).unwrap());
     let render = Arc::new(
-        assets
-            .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-                root.to_path_buf(),
-            ))
-            .unwrap(),
+        sunrise_client::assets::RenderAssets::load(
+            &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
+            &assets,
+        )
+        .unwrap(),
     );
     let facts = BlockFacts::load(&root, assets.registry).unwrap();
     let visibility = models::load_visibility(&root, assets.registry).unwrap();

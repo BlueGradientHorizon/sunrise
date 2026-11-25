@@ -38,6 +38,7 @@ sunrise-level = { path = "../sunrise-level" }
 sunrise-protocol = { path = "../sunrise-protocol" }
 # server.properties, eula.txt and the user lists, shared with sunrise-server.
 sunrise-server-files = { path = "../sunrise-server-files" }
+sunrise-server-profiles-http = { path = "../sunrise-server-profiles-http" }
 # The JDK's clock, for the LAN host's random seed and the probes.
 sunrise-java-properties = { path = "../sunrise-java-properties" }
 # Shader packs: reading them and turning their GLSL into naga modules.

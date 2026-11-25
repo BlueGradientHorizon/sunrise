@@ -216,8 +216,8 @@ fn colormap(root: &ResourceSource, name: &str) -> Result<Vec<u32>> {
     decoder.ignore_checksums(true);
     decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
     let mut reader = decoder.read_info()?;
-    crate::hud::check_pack_size(reader.info().width, reader.info().height)?;
-    use crate::hud::{MAX_IMAGE_BYTES, image_buffer};
+    use crate::pack_image::{MAX_IMAGE_BYTES, check_pack_size, image_buffer};
+    check_pack_size(reader.info().width, reader.info().height)?;
     let size = reader.output_buffer_size().unwrap_or(usize::MAX);
     let mut bytes = image_buffer(&[size], MAX_IMAGE_BYTES)?;
     bytes.resize(size, 0);
@@ -874,10 +874,10 @@ mod pack_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl Biomes {
     /// Biomes from their files' JSON, by name, in id order: for tests elsewhere.
-    pub(crate) fn from_jsons(entries: &[(&str, Value)]) -> Self {
+    pub fn from_jsons(entries: &[(&str, Value)]) -> Self {
         let maps = Colormaps {
             grass: Vec::new(),
             foliage: Vec::new(),
@@ -1137,7 +1137,7 @@ mod source_tests {
         assert!(
             refused
                 .as_ref()
-                .is_err_and(|e| e.is::<crate::hud::OverSizeLimit>()),
+                .is_err_and(|e| e.is::<crate::pack_image::OverSizeLimit>()),
             "{refused:?}"
         );
     }

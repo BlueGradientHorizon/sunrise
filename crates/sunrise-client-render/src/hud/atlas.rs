@@ -113,7 +113,7 @@ pub struct HudAtlas {
 pub const GLYPH_ROWS: u32 = 512;
 /// The largest atlas side: the 2D texture limit of the GPUs Sunrise runs on
 /// (Apple silicon, RADV and Intel allow 16384; NVIDIA 32768).
-pub const MAX_ATLAS_SIZE: u32 = 16384;
+pub use sunrise_level::pack_image::MAX_ATLAS_SIZE;
 /// 128x128 atlas slots for map textures. A lobby paints its signs as walls of
 /// framed maps, so the pool holds a wall; too few slots re-upload every map
 /// every frame. 26.3's `MapTextureManager` keeps a texture per map instead.

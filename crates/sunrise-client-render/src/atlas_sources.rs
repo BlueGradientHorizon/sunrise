@@ -480,7 +480,7 @@ pub type Image = (u32, u32, Vec<u8>);
 /// drivers report (NVIDIA's Vulkan; Direct3D 12 and Metal stop at 16384), so no sprite vanilla
 /// would stitch is refused. A larger declared sprite is skipped with a logged reason, never
 /// allocated.
-pub const MAX_SPRITE_SIDE: i64 = 32768;
+pub use sunrise_level::pack_image::MAX_SPRITE_SIDE;
 
 fn argb(rgba: &[u8]) -> Vec<u32> {
     rgba.as_chunks::<4>()

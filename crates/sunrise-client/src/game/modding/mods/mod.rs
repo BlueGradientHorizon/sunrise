@@ -420,7 +420,7 @@ pub(in crate::game) fn install_registration_data(
                 packages.ids(),
             ),
             directory,
-            crate::entry::runtime_environment::get().clone(),
+            sunrise_level::runtime_env::runtime_environment::get().clone(),
         )
         .with_capability_coverage(coverage::builtin, coverage::block_entity)
         .with_runtime_files(runtime_files)

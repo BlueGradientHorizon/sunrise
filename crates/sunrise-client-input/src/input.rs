@@ -11,24 +11,7 @@ fn length(v: [f32; 2]) -> f32 {
 fn scale(v: [f32; 2], factor: f32) -> [f32; 2] {
     [v[0] * factor, v[1] * factor]
 }
-pub fn keyboard_direction(forward: bool, backward: bool, left: bool, right: bool) -> [f32; 2] {
-    let impulse = |positive: bool, negative: bool| {
-        if positive == negative {
-            0.0
-        } else if positive {
-            1.0
-        } else {
-            -1.0
-        }
-    };
-    let v = [impulse(left, right), impulse(forward, backward)];
-    let magnitude = length(v);
-    if magnitude < 1.0e-4 {
-        [0.0, 0.0]
-    } else {
-        [v[0] / magnitude, v[1] / magnitude]
-    }
-}
+pub use sunrise_client_core::move_input::keyboard_direction;
 
 /// LocalPlayer.modifyInput with already selected multipliers. `item_use` is
 /// Some only when using an item and not riding; `sneaking` only when moving

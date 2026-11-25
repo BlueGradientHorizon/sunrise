@@ -50,15 +50,10 @@ mod tests {
             return;
         }
         let assets = crate::assets::Assets::load(&root).unwrap();
-        let render = assets
-            .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-                root.clone(),
-            ))
-            .unwrap();
         let facts = crate::blocks::BlockFacts::load(&root, assets.registry).unwrap();
         let fluids = crate::motion::FluidResources::new(&assets, &facts).unwrap();
         let collision = crate::collisions::load(&root, assets.registry).unwrap();
-        let mut world = World::test_scene(&assets, &render, 3).unwrap();
+        let mut world = World::test_scene_with_placements(&assets, &[], 3).unwrap();
         let stone = assets.registry.default_state("minecraft:stone").unwrap();
         world.set(20, 3, 20, stone).unwrap();
         // A happy ghast's 4 x 4 x 4 box, from 5.0 to 9.0.
@@ -106,14 +101,9 @@ mod tests {
             return;
         }
         let assets = crate::assets::Assets::load(&root).unwrap();
-        let render = assets
-            .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-                root.clone(),
-            ))
-            .unwrap();
         let facts = crate::blocks::BlockFacts::load(&root, assets.registry).unwrap();
         let collision = crate::collisions::load(&root, assets.registry).unwrap();
-        let world = World::test_scene(&assets, &render, 3).unwrap();
+        let world = World::test_scene_with_placements(&assets, &[], 3).unwrap();
         let context = crate::test_resources::server_loop_context();
         let mut item = falling_item(20.5, 40.0, 20.5, 1.0, 0.0, 0.0);
         item.id = 2;

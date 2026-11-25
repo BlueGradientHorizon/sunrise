@@ -60,7 +60,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 [x, y, z]
             }
             "minecraft:area_effect_cloud" => {
-                let cloud = self.potions.clouds.iter().find(|cloud| cloud.id == eid)?;
+                let cloud = self
+                    .side
+                    .remote_clouds
+                    .iter()
+                    .find(|cloud| cloud.id == eid)?;
                 width = f64::from(cloud.radius * 2.0);
                 cloud.at
             }
@@ -186,7 +190,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some((_, _, _, p, _)) = self.potions.thrown_tracked().find(|(tid, ..)| *tid == eid) {
             return Some([p.x, p.y, p.z]);
         }
-        if let Some(c) = self.potions.clouds.iter().find(|c| c.id == eid) {
+        if let Some(c) = self.side.remote_clouds.iter().find(|c| c.id == eid) {
             return Some(c.at);
         }
         if let Some((_, p)) = self.end.eye_positions().find(|(eye_id, _)| *eye_id == eid) {

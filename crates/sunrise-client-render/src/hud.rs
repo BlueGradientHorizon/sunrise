@@ -104,6 +104,9 @@ pub use atlas_sprites::*;
 mod atlas;
 pub use atlas::*;
 mod atlas_pack;
+pub use sunrise_level::pack_image::{
+    MAX_IMAGE_BYTES, OverSizeLimit, check_pack_size, image_buffer, image_bytes,
+};
 mod image;
 pub use image::*;
 mod batch;

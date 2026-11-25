@@ -110,7 +110,7 @@ impl World {
 
     /// Hold a proto's section status through temporary worker checkout and replace
     /// it atomically with the full column's status on install.
-    pub(crate) fn set_proto_light_support(&mut self, key: (i32, i32), support: SectionMask) {
+    pub fn set_proto_light_support(&mut self, key: (i32, i32), support: SectionMask) {
         let before = if support.is_empty() {
             self.proto_light_support.remove(&key)
         } else {
@@ -131,7 +131,7 @@ impl World {
             };
             let (stored, changed) = restore_saved_layers(chunk, added, None);
             if !changed.is_empty() {
-                crate::streaming::Streaming::light_updated(self, x, z, &changed);
+                self.light_updated(x, z, &changed);
             }
             if !stored.is_empty()
                 && let Some(log) = &mut self.light_log
@@ -166,13 +166,13 @@ impl World {
             let changed = remove_light_layers(Arc::make_mut(chunk), removed);
             self.modified.insert(near);
             if !changed.is_empty() {
-                crate::streaming::Streaming::light_updated(self, near.0, near.1, &changed);
+                self.light_updated(near.0, near.1, &changed);
             }
         }
     }
 
     /// Update the neighbouring missing columns for a new section-status snapshot.
-    pub(crate) fn publish_light_border(&mut self, key: (i32, i32), before: SectionMask) {
+    pub fn publish_light_border(&mut self, key: (i32, i32), before: SectionMask) {
         self.border.remove(&key);
         self.publish_light_support(key, before, self.chunks[&key].light_support);
     }

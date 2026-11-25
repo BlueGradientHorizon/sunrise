@@ -209,7 +209,6 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             clip_data: Some(crate::game::server_side::explosion::ClipData {
                 facts: self.res.facts(),
                 behaviours: self.res.behaviours(),
-                tables: &self.pack.context.tables,
                 registry: self.pack.assets.registry,
             }),
         };

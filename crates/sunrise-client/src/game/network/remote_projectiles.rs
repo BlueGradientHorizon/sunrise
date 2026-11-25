@@ -96,8 +96,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let id = id as u32;
         self.remote_hook_data(id, values);
         if let Some(at) = self
-            .potions
-            .clouds
+            .side
+            .remote_clouds
             .iter()
             .find(|c| c.id == id)
             .map(|c| c.at)
@@ -108,7 +108,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     (10, Value::Particle(p)) => self.received_particle(p, at),
                     _ => None,
                 };
-                let Some(c) = self.potions.clouds.iter_mut().find(|c| c.id == id) else {
+                let Some(c) = self.side.remote_clouds.iter_mut().find(|c| c.id == id) else {
                     return;
                 };
                 match (index, value) {
@@ -569,7 +569,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.tridents.retain(|t| t.id != id);
         self.rockets.retain(|r| r.id != id);
         self.potions.remove_remote_thrown(id);
-        self.potions.clouds.retain(|c| c.id != id);
+        self.side.remote_clouds.retain(|c| c.id != id);
         self.end.remove_remote_eye(id);
         self.remove_remote_hook(id);
     }
@@ -586,7 +586,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // The dragon a server sent goes with its crystals.
         self.dragon.discard();
         self.potions.clear_thrown();
-        self.potions.clouds.clear();
+        self.side.remote_clouds.clear();
         self.end.clear_remote_eyes();
         self.clear_remote_hooks();
     }
@@ -1001,7 +1001,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             | "minecraft:experience_bottle" => {
                 self.potions.add_remote_thrown(id, kind, at, velocity);
             }
-            "minecraft:area_effect_cloud" => self.potions.clouds.push(RemoteCloud {
+            "minecraft:area_effect_cloud" => self.side.remote_clouds.push(RemoteCloud {
                 id,
                 at: position,
                 radius: 3.0,
@@ -1079,7 +1079,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// `AreaEffectCloud.clientTick` for each cloud a server tracks.
     pub(in crate::game::client_side) fn tick_remote_clouds(&mut self) {
-        for c in &mut self.potions.clouds {
+        for c in &mut self.side.remote_clouds {
             cloud_client_tick(
                 &mut self.side.particles.0,
                 &self.world,

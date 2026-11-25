@@ -16,12 +16,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         alpha: f64,
         out: &mut Vec<sunrise_client_render::render_geometry::Vertex>,
     ) {
-        let Some(model) = self.fangs.model.as_ref().or(self
-            .side
-            .entity_models
-            .evoker_fangs
-            .as_ref())
-        else {
+        let Some(model) = self.side.entity_models.evoker_fangs.as_ref() else {
             return;
         };
         let Some(r) = self

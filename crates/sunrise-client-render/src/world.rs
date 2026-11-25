@@ -41,24 +41,22 @@ impl DirtySections {
             *edits.entry(key).or_default() |= mask;
         }
     }
-    pub(crate) fn insert_mesh(&mut self, (x, sy, z): (i32, i32, i32)) {
+    pub fn insert_mesh(&mut self, (x, sy, z): (i32, i32, i32)) {
         debug_assert!((0..SectionMask::CAPACITY as i32).contains(&sy));
         self.columns.entry((x, z)).or_default().insert(sy as usize);
     }
-    pub(crate) fn insert_mesh_column_mask(&mut self, key: (i32, i32), mask: SectionMask) {
+    pub fn insert_mesh_column_mask(&mut self, key: (i32, i32), mask: SectionMask) {
         *self.columns.entry(key).or_default() |= mask;
     }
-    pub(crate) fn track_visibility_edits(&mut self, listening: bool) {
+    pub fn track_visibility_edits(&mut self, listening: bool) {
         self.visibility_edits = listening.then(FxHashMap::default);
     }
-    pub(crate) fn visibility_edits(
-        &mut self,
-    ) -> impl Iterator<Item = ((i32, i32), SectionMask)> + '_ {
+    pub fn visibility_edits(&mut self) -> impl Iterator<Item = ((i32, i32), SectionMask)> + '_ {
         self.visibility_edits
             .iter_mut()
             .flat_map(|edits| edits.drain())
     }
-    pub(crate) fn visibility_edited(&self, (x, sy, z): (i32, i32, i32)) -> bool {
+    pub fn visibility_edited(&self, (x, sy, z): (i32, i32, i32)) -> bool {
         self.visibility_edits
             .as_ref()
             .and_then(|edits| edits.get(&(x, z)))
@@ -217,7 +215,7 @@ pub struct World {
     /// The `ShulkerBoxBlockEntity` lid state of the level, by position, copied
     /// from the block entities after each tick: the collision queries read it
     /// (`ShulkerBoxBlockEntity.getBoundingBox`), as `moving_pistons` for pistons.
-    pub shulkers: FxHashMap<[i32; 3], crate::block_entity_anim::Shulker>,
+    pub shulkers: FxHashMap<[i32; 3], crate::shulker_box::Shulker>,
 }
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Weather {
@@ -405,10 +403,10 @@ impl World {
         }
     }
     /// A controlled blockstate scene for the native scene probes: material
-    /// layers, a stepped pyramid and the model gallery. Not generated terrain.
-    pub fn test_scene(
+    /// layers, a stepped pyramid and optional extra placements. Not generated terrain.
+    pub fn test_scene_with_placements(
         assets: &crate::assets::Assets,
-        render: &crate::assets::RenderAssets,
+        placements: &[(sunrise_core::position::BlockPos, BlockStateId)],
         radius: i32,
     ) -> crate::Result<Self> {
         let air = assets
@@ -455,11 +453,42 @@ impl World {
                 }
             }
         }
-        for (position, state) in &render.model_placements {
-            world.set(position.x, position.y, position.z, *state)?;
+        for &(position, state) in placements {
+            world.set(position.x, position.y, position.z, state)?;
         }
         world.revision = 0;
         Ok(world)
+    }
+    /// A changed mesh input also affects its neighbouring sections.
+    pub fn light_updated(&mut self, x: i32, z: i32, sections: &[usize]) {
+        for &sy in sections {
+            self.dirty_light_section(x, sy as i32, z);
+        }
+    }
+    /// `ClientPacketListener.readSectionList` requests rebuilds even if a standalone
+    /// light packet repeats the same data. Its coordinates include both padding sections.
+    pub fn rebuild_packet_light(
+        &mut self,
+        x: i32,
+        z: i32,
+        layers: &[sunrise_protocol::chunk::SectionLight],
+    ) {
+        for (b, (sky, block)) in layers.iter().enumerate() {
+            if sky.is_some() || block.is_some() {
+                self.dirty_light_section(x, b as i32 - 1, z);
+            }
+        }
+    }
+    fn dirty_light_section(&mut self, x: i32, sy: i32, z: i32) {
+        let sections = self.layout().sections() as i32;
+        for s in (sy - 1).max(0)..=(sy + 1).min(sections - 1) {
+            for dz in -1..=1 {
+                for dx in -1..=1 {
+                    self.dirty_sections
+                        .insert((x.wrapping_add(dx), s, z.wrapping_add(dz)));
+                }
+            }
+        }
     }
     /// The column the level's chunks hold.
     pub fn layout(&self) -> ColumnLayout {
@@ -686,7 +715,7 @@ impl World {
 
     /// A replacement column carries its complete group map. Compare by cell once, before
     /// adopting it, so a bundle never removes and re-adds an unchanged group.
-    pub(crate) fn dirty_connection_group_diff(&mut self, old: &Chunk, next: &Chunk) {
+    pub fn dirty_connection_group_diff(&mut self, old: &Chunk, next: &Chunk) {
         let removed_or_changed = old.connection_groups.iter().filter_map(|(&cell, &value)| {
             (next.connection_groups.get(&cell) != Some(&value)).then_some(cell)
         });

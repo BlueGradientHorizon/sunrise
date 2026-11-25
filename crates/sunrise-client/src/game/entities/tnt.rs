@@ -1008,15 +1008,15 @@ pub(in crate::game) mod tests {
             return;
         }
         let assets = sunrise_client::assets::Assets::load(&root).unwrap();
-        let render = assets
-            .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-                root.to_path_buf(),
-            ))
-            .unwrap();
+        let render = sunrise_client::assets::RenderAssets::load(
+            &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
+            &assets,
+        )
+        .unwrap();
         let facts = sunrise_client::blocks::BlockFacts::load(&root, assets.registry).unwrap();
         let fluids = sunrise_client::motion::FluidResources::new(&assets, &facts).unwrap();
         let collision = sunrise_client::collisions::load(&root, assets.registry).unwrap();
-        let world = sunrise_client::world::World::test_scene(&assets, &render, 3).unwrap();
+        let world = sunrise_client::assets::test_scene_world(&assets, &render, 3).unwrap();
         let border =
             sunrise_core::geometry::border::BorderGeometry::new([20.0, 20.0], 10.0, 29_999_984)
                 .unwrap();
@@ -1081,11 +1081,11 @@ pub(in crate::game) mod tests {
             return;
         }
         let assets = sunrise_client::assets::Assets::load(&root).unwrap();
-        let render = assets
-            .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-                root.to_path_buf(),
-            ))
-            .unwrap();
+        let render = sunrise_client::assets::RenderAssets::load(
+            &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
+            &assets,
+        )
+        .unwrap();
         let facts = sunrise_client::blocks::BlockFacts::load(&root, assets.registry).unwrap();
         let fluids = sunrise_client::motion::FluidResources::new(&assets, &facts).unwrap();
         let collision = sunrise_client::collisions::load(&root, assets.registry).unwrap();
@@ -1097,7 +1097,7 @@ pub(in crate::game) mod tests {
             ("minecraft:soul_sand", 3.875),
             ("minecraft:honey_block", 3.9375),
         ] {
-            let mut world = sunrise_client::world::World::test_scene(&assets, &render, 3).unwrap();
+            let mut world = sunrise_client::assets::test_scene_world(&assets, &render, 3).unwrap();
             let id = assets.registry.default_state(block).unwrap();
             for x in 18..=23 {
                 for z in 19..=21 {
@@ -1162,15 +1162,15 @@ pub(in crate::game) mod tests {
             return;
         }
         let assets = sunrise_client::assets::Assets::load(&root).unwrap();
-        let render = assets
-            .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-                root.to_path_buf(),
-            ))
-            .unwrap();
+        let render = sunrise_client::assets::RenderAssets::load(
+            &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
+            &assets,
+        )
+        .unwrap();
         let facts = sunrise_client::blocks::BlockFacts::load(&root, assets.registry).unwrap();
         let fluids = sunrise_client::motion::FluidResources::new(&assets, &facts).unwrap();
         let collision = sunrise_client::collisions::load(&root, assets.registry).unwrap();
-        let mut world = sunrise_client::world::World::test_scene(&assets, &render, 3).unwrap();
+        let mut world = sunrise_client::assets::test_scene_world(&assets, &render, 3).unwrap();
         let stone = assets.registry.default_state("minecraft:stone").unwrap();
         let water = assets.registry.default_state("minecraft:water").unwrap();
         let mut state = assets.registry.state(water).unwrap().clone();
@@ -1319,15 +1319,15 @@ pub(in crate::game) mod tests {
             return;
         }
         let assets = sunrise_client::assets::Assets::load(&root).unwrap();
-        let render = assets
-            .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-                root.to_path_buf(),
-            ))
-            .unwrap();
+        let render = sunrise_client::assets::RenderAssets::load(
+            &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
+            &assets,
+        )
+        .unwrap();
         let facts = sunrise_client::blocks::BlockFacts::load(&root, assets.registry).unwrap();
         let fluids = sunrise_client::motion::FluidResources::new(&assets, &facts).unwrap();
         let collision = sunrise_client::collisions::load(&root, assets.registry).unwrap();
-        let mut world = sunrise_client::world::World::test_scene(&assets, &render, 3).unwrap();
+        let mut world = sunrise_client::assets::test_scene_world(&assets, &render, 3).unwrap();
         let water = assets.registry.default_state("minecraft:water").unwrap();
         let soul_sand = assets
             .registry
@@ -1436,15 +1436,15 @@ pub(in crate::game) mod tests {
             return;
         }
         let assets = sunrise_client::assets::Assets::load(&root).unwrap();
-        let render = assets
-            .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-                root.to_path_buf(),
-            ))
-            .unwrap();
+        let render = sunrise_client::assets::RenderAssets::load(
+            &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
+            &assets,
+        )
+        .unwrap();
         let facts = sunrise_client::blocks::BlockFacts::load(&root, assets.registry).unwrap();
         let fluids = sunrise_client::motion::FluidResources::new(&assets, &facts).unwrap();
         let collision = sunrise_client::collisions::load(&root, assets.registry).unwrap();
-        let mut world = sunrise_client::world::World::test_scene(&assets, &render, 3).unwrap();
+        let mut world = sunrise_client::assets::test_scene_world(&assets, &render, 3).unwrap();
         let water = assets.registry.default_state("minecraft:water").unwrap();
         let soul_sand = assets
             .registry

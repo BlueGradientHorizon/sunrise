@@ -160,7 +160,7 @@ mod tests {
             );
             let assets = Arc::new(Assets::load(&root).unwrap());
             let source = crate::resource_source::ResourceRoot::directory(root.clone());
-            let render = Arc::new(assets.reload(&source).unwrap());
+            let render = Arc::new(crate::assets::RenderAssets::load(&source, &assets).unwrap());
             let facts = BlockFacts::load(&root, assets.registry).unwrap();
             let collision = crate::collisions::load(&root, assets.registry).unwrap();
             let visibility = crate::models::load_visibility(&root, assets.registry).unwrap();

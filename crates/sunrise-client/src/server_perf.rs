@@ -1,6 +1,5 @@
 //! A side's .hzperf capture (docs/perf-platform.md §3, §4.1), the dedicated server's or the client's, and the always-on health history and slow ring behind it.
-use crate::gfx::pack_timing::{GpuReadout, TimedFrames};
-use crate::spans::Span;
+use crate::perf_types::{self, GpuFrameLog, GpuPerfSnapshot, TimedFramesDto};
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::{
@@ -9,8 +8,8 @@ use std::sync::{
 };
 use std::thread::{self, JoinHandle};
 use std::time::Instant;
-use sunrise_client_render::perf_gpu;
 use sunrise_java_properties::now_millis;
+use sunrise_level::spans::Span;
 use sunrise_perf_format::files;
 use sunrise_perf_format::v1::{
     BenchResult, GpuMode, Kind, Mark, MemorySnapshot, Options, Overhead, Side, Start, Stop,
@@ -26,7 +25,7 @@ mod tests;
 
 /// Tests that sample threads take turns: a sampler session arms every thread of the name it asks for, the other tests' too.
 #[cfg(all(test, target_os = "linux"))]
-pub(crate) static SAMPLED_TESTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+pub(crate) use crate::perf_types::SAMPLED_TESTS;
 
 mod samples;
 pub mod spans;
@@ -146,7 +145,7 @@ pub struct CaptureEnd {
     pub span_ns: f64,
     pub mob_ns: f64,
     /// The GPU pass timings, when the capture asked for them.
-    pub gpu: Option<GpuReadout>,
+    pub gpu: Option<GpuPerfSnapshot>,
     /// Benchmark reports to embed verbatim; the capture gives them its side.
     pub bench: Vec<BenchResult>,
 }
@@ -198,7 +197,7 @@ struct Session {
     traffic: TrafficRecorder,
     gpu: GpuMode,
     /// The GPU timers' frames and the window's CPU frame times, and when their last block was written.
-    gpu_log: perf_gpu::FrameLog,
+    gpu_log: GpuFrameLog,
     gpu_block_t: f64,
     timeline: Option<TimelineRecorder>,
     memory_cost: MemoryCost,
@@ -321,7 +320,7 @@ impl ServerPerf {
                 cpu_ms: detail.as_ref().and_then(|d| d.cpu_ms).unwrap_or(0.0),
                 top: detail
                     .iter()
-                    .flat_map(|d| crate::spans::merge(&d.spans))
+                    .flat_map(|d| sunrise_level::spans::merge(&d.spans))
                     .map(|s| SlowSpan {
                         name: s.name.to_owned(),
                         wall_ms: s.ms,
@@ -345,7 +344,7 @@ impl ServerPerf {
     }
 
     /// The window's frame that ended at `t`: its CPU ms and the GPU frames timed since the last, written about once a second when the capture times the GPU.
-    pub fn gpu_frames(&mut self, t: f64, cpu_ms: f32, frames: &TimedFrames) {
+    pub fn gpu_frames(&mut self, t: f64, cpu_ms: f32, frames: &TimedFramesDto) {
         let Some(session) = &mut self.session else {
             return;
         };
@@ -453,7 +452,7 @@ impl ServerPerf {
             spans: SpanRecorder::new(self.role.span_thread, self.role.side, self.role.unit),
             traffic: TrafficRecorder::new(options.wire),
             gpu: options.gpu,
-            gpu_log: perf_gpu::FrameLog::default(),
+            gpu_log: GpuFrameLog::default(),
             gpu_block_t: 0.0,
             timeline,
             memory_cost: MemoryCost::default(),
@@ -719,13 +718,13 @@ impl Session {
     }
 
     /// Writes the GPU timings the capture asked for, or a warning when there were none.
-    fn gpu(&mut self, rel: f64, readout: Option<&GpuReadout>) {
+    fn gpu(&mut self, rel: f64, readout: Option<&GpuPerfSnapshot>) {
         if matches!(self.gpu, GpuMode::Unspecified | GpuMode::Off) {
             return;
         }
         self.gpu_block();
         let sections = readout.map_or_else(Vec::new, |r| {
-            perf_gpu::gpu_passes(r, &self.gpu_log, self.side, &mut self.strings)
+            perf_types::gpu_passes(r, &self.gpu_log, self.side, &mut self.strings)
         });
         self.entries();
         if sections.is_empty() {

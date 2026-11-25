@@ -474,13 +474,12 @@ pub(in crate::game) mod tests {
             game.side.ambience.moodiness = 0.375;
             assert_eq!(player.ambient_mood(game), Some(0.375));
             for (progress, stage) in [(0.0, None), (0.45, Some(4)), (1.0, Some(9))] {
-                game.mining = Some(super::super::Mining {
+                game.set_client_mining(Some(super::super::Mining {
                     pos: [4, 65, -2],
                     progress,
                     per_tick: 0.0,
                     ticks: 3,
-                    crack: None,
-                });
+                }));
                 assert_eq!(
                     player.block_breaking(game),
                     Some(BlockBreakingState::Breaking {
@@ -490,7 +489,7 @@ pub(in crate::game) mod tests {
                     })
                 );
             }
-            game.mining = None;
+            game.set_client_mining(None);
             game.side.ambience.moodiness = 0.0;
             assert_eq!(player.block_breaking(game), Some(BlockBreakingState::Idle));
             assert_eq!(player.ambient_mood(game), Some(0.0));

@@ -61,16 +61,16 @@ CreateWorldScreen.createLevelSettings	port	crates/sunrise-client/src/game/world/
 CreateWorldScreen.keyPressed	port	crates/sunrise-client/src/title.rs::confirm_key_size	player: Enter with no button focused creates the world (Screenless Create mode falls through to create_action), as the screen does after its widgets decline the key
 CreateWorldScreen.extractRenderState	port	crates/sunrise-client/src/title/create_world.rs::Title::draw_create	draws the footer separator
 CreateWorldScreen.extractMenuBackground	port	crates/sunrise-client/src/title/create_world.rs::Title::draw_create	draws the tab header strip and menu background
-CreateWorldScreen.getOrCreateTempDataPackDir	port	crates/sunrise-client-render/src/datapack.rs::temp_folder	the Create screen's chosen packs live in a temp folder kept in options.pack_dir, made on the first drop or Data Packs click
+CreateWorldScreen.getOrCreateTempDataPackDir	port	crates/sunrise-level/src/datapack.rs::temp_folder	the Create screen's chosen packs live in a temp folder kept in options.pack_dir, made on the first drop or Data Packs click
 CreateWorldScreen.openExperimentsScreen	port	crates/sunrise-client/src/title.rs::Title::click_action	the Experiments button opens experiments::ExperimentsScreen with the selected packs' flags
 CreateWorldScreen.openDataPackSelectionScreen	port	crates/sunrise-client/src/title.rs::Title::click_action	the More tab's Data Packs button (arm 31) opens the pack selection screen on the temp folder; Back reopens it (reopen_data_packs)
 CreateWorldScreen.tryApplyNewDataPacks	port	crates/sunrise-client/src/title.rs::Title::offer_data_packs	the chosen ids apply at once and the data is read again, or the experimental confirm comes first
 CreateWorldScreen.applyNewPackConfig	inline	crates/sunrise-client/src/title.rs::creation_packs	the selected ids are applied at creation rather than validated into a separate config object
 CreateWorldScreen.createDefaultLoadConfig	skip:data		builds the datapack load config; Sunrise loads no datapack set at creation
 CreateWorldScreen.removeTempDataPackDir	inline	crates/sunrise-client/src/title.rs::Title::cancel_create	the temp folder goes when Create is cancelled; it is also removed once its packs are installed
-CreateWorldScreen.copyBetweenDirs	port	crates/sunrise-client-render/src/datapack.rs::copy_pack	a dropped pack is copied into the temp folder
+CreateWorldScreen.copyBetweenDirs	port	crates/sunrise-level/src/datapack.rs::copy_pack	a dropped pack is copied into the temp folder
 CreateWorldScreen.createNewWorldDirectory	port	crates/sunrise-client/src/game/world/world_loading.rs::WorldRequest::prepare	makes the world folder and writes level.dat; gap: minor: datapack files not copied in
-CreateWorldScreen.createTempDataPackDirFromExistingWorld	port	crates/sunrise-client-render/src/datapack.rs::for_recreate	Re-Create copies the old world's packs into a temp folder and keeps its selection
+CreateWorldScreen.createTempDataPackDirFromExistingWorld	port	crates/sunrise-level/src/datapack.rs::for_recreate	Re-Create copies the old world's packs into a temp folder and keeps its selection
 CreateWorldScreen.getDataPackSelectionSettings	inline	crates/sunrise-client/src/title.rs::Title::creation_packs	options.pack_dir and options.data_packs are the selection settings the picker and the worldgen read open on
 CreateWorldScreen.GameTab.<init>	port	crates/sunrise-client/src/title/create_world.rs::buttons	Game tab: name box, game mode, difficulty, allow cheats; gap: minor: vanilla's Experiments button sits on this tab in non-stable builds
 CreateWorldScreen.MoreTab.openGameRulesScreen	port	crates/sunrise-client/src/title.rs::Title::click_action	Game Rules button (arm 29) over a copy of the rules, via RulesScreen::for_creation

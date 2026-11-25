@@ -119,10 +119,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if !self.maps.data.contains_key(&id) {
             return None;
         }
-        let slot = match self.maps.slots.show(&id) {
+        let slot = match self.side.map_slots.show(&id) {
             Some(slot) => slot,
             None => {
-                let (slot, _) = self.maps.slots.claim(id)?;
+                let (slot, _) = self.side.map_slots.claim(id)?;
                 if let Some(m) = self.maps.data.get_mut(&id) {
                     m.texture_dirty = true;
                 }

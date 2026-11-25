@@ -173,7 +173,7 @@ mod tests {
             None,
         )
         .unwrap();
-        crate::entry::runtime_environment::capture(&launch);
+        sunrise_level::runtime_env::runtime_environment::capture(&launch);
         let folder = tempfile::tempdir().unwrap();
         let runtime = open_package(folder.path());
         let mut files: BTreeMap<String, Arc<dyn mod_api::RuntimeFileSource>> = BTreeMap::new();

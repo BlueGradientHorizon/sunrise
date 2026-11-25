@@ -403,7 +403,7 @@ pub(super) mod tests {
             );
             let source = ResourceRoot::directory(root.clone());
             let assets = Arc::new(Assets::load(&root).unwrap());
-            let render = Arc::new(assets.reload(&source).unwrap());
+            let render = Arc::new(crate::assets::RenderAssets::load(&source, &assets).unwrap());
             let facts = BlockFacts::load(&root, assets.registry).unwrap();
             let visibility = models::load_visibility(&root, assets.registry).unwrap();
             Arc::new(WorkerContext {

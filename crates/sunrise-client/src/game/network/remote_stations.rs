@@ -24,7 +24,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.remote_set_menu(Some((container, menu)), Some(title));
         self.craft_size = 2;
         self.container = None;
-        self.station = Some(Station::new_kind(kind, pos));
+        self.open_station_client(Station::new_kind(kind, pos));
         self.set_screen(Screen::Inventory);
         self.capture(false);
     }
@@ -92,14 +92,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             });
         }
         if internal == super::stations::INPUT
-            && let Some(s) = self
-                .station
-                .as_mut()
-                .filter(|s| s.kind == Kind::Stonecutter)
+            && let Some((s, ui)) = self.station_and_ui_mut()
+            && s.kind == Kind::Stonecutter
         {
             // The client menu's `Slot.set` on the input runs the screen's
             // listener (`StonecutterMenu.container.setChanged`).
-            s.stonecutter_changed();
+            s.stonecutter_changed(ui);
         }
         // AnvilScreen.slotChanged: the box shows the new input's name, which
         // its responder sends.
@@ -139,7 +137,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             // BeaconMenu: the levels, then the powers (BeaconScreen's
             // dataChanged shows the menu's).
-            (Kind::Beacon, 0) => s.beacon_levels = Some(i32::from(value)),
+            (Kind::Beacon, 0) => {
+                debug_assert!(
+                    self.side.station_ui.is_some(),
+                    "open client station missing StationUi"
+                );
+                if let Some(ui) = self.side.station_ui.as_mut() {
+                    ui.beacon_levels = Some(i32::from(value));
+                }
+            }
             (Kind::Beacon, 1 | 2) => {
                 let effect = self.remote_effect_id(i32::from(value) - 1);
                 let index =
@@ -176,19 +182,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self.remote.is_none() {
             return;
         }
-        let Some(s) = self
-            .station
-            .as_ref()
-            .filter(|s| s.kind == Kind::Anvil && s.inputs[0].is_some())
-        else {
+        let Some((s, ui)) = self.station_and_ui() else {
             return;
         };
-        let name = self.anvil_item_name(s);
-        if s.anvil_sent.as_deref() == Some(&name) {
+        if s.kind != Kind::Anvil || s.inputs[0].is_none() {
             return;
         }
-        if let Some(s) = self.station.as_mut() {
-            s.anvil_sent = Some(name.clone());
+        let name = self.anvil_item_name(s);
+        if ui.anvil_sent.as_deref() == Some(&name) {
+            return;
+        }
+        if let Some((_, ui)) = self.station_and_ui_mut() {
+            ui.anvil_sent = Some(name.clone());
         }
         self.send(S::RenameItem(play::RenameItem { name }));
     }

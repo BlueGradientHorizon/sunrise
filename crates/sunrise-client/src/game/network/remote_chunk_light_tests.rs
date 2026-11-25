@@ -2,7 +2,7 @@ use crate::game::{
     in_own_process, native_entity_refs::tests::with_client_game, remote::RemoteDimensionEntry,
 };
 use std::sync::Arc;
-use sunrise_client::{level_loading::Reason, streaming::Streaming, world::World};
+use sunrise_client::{level_loading::Reason, world::World};
 use sunrise_protocol::{
     buf::set_bit,
     chunk::{ChunkData, LightData, Paletted, Section, Strategy},
@@ -82,7 +82,7 @@ fn light_packet_padding_rebuilds_only_adjacent_mesh_rows() {
     let layers = data(&[], &[(0, 4), (count as usize + 1, 7)], &[]).layers(count as usize + 2);
     // Padding has no mesh of its own. Its neighbour on the terrain side does,
     // including the diagonals, without touching the next terrain row in.
-    Streaming::rebuild_packet_light(&mut world, -2, 4, &layers);
+    world.rebuild_packet_light(-2, 4, &layers);
     assert_eq!(world.dirty_sections.len(), 18);
     for x in -3..=-1 {
         for z in 3..=5 {

@@ -43,7 +43,7 @@ Util.safeMoveFile	port	crates/sunrise-world/src/datafix/files.rs::move_file	gap:
 Util.safeReplaceOrMoveFile	port	crates/sunrise-client/src/save/level_dat.rs::write_dat	gap: minor: no retries and no rollback to the backup when the new file cannot be renamed in; the old file is moved to a *_old name
 Util.offsetByCodepoints	inline	crates/sunrise-client-render/src/screen_draw.rs::TextField::key	gap: minor: arrow keys move one character only (no count argument, no surrogate pairs); ctrl-arrows use ui word_position
 Util.startTimerHackThread	skip:other		JVM Windows timer-resolution thread; Rust timers do not need it
-Util.copyBetweenDirs	inline	crates/sunrise-client-render/src/datapack.rs::install	Create World's picks are copied into <world>/datapacks one by one, each pack's folder or zip (datapack.rs::copy)
+Util.copyBetweenDirs	inline	crates/sunrise-level/src/datapack.rs::install	Create World's picks are copied into <world>/datapacks one by one, each pack's folder or zip (datapack.rs::copy)
 Util.sanitizeName	skip:other		builds the texture cache path of a world icon; Sunrise reads icon.png straight from the save folder (title.rs)
 Util.memoize	skip:java		memoizing function wrapper
 Util.blockUntilDone	skip:java		waits on executor futures during startup (game test server)

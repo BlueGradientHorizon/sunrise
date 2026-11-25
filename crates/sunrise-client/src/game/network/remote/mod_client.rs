@@ -1305,8 +1305,11 @@ impl ServicesKeys {
     /// Minecraft.services() has the keys wherever the game is played, single player's own
     /// server included: its guests' chat keys are checked against them.
     pub(in crate::game::client_side) fn fetching() -> Arc<std::sync::Mutex<Self>> {
-        use sunrise_server_files::profiles;
-        Self::fetching_with(|| profiles::fetch_profile_key_keys(&profiles::discovery_url()))
+        Self::fetching_with(|| {
+            sunrise_server_profiles_http::fetch_profile_key_keys(
+                &sunrise_server_files::profiles::discovery_url(),
+            )
+        })
     }
     /// The keys start `Pending` and arrive from `fetch` on a thread of their own, so a
     /// listener never caches a verdict on keys it does not have yet. A thread that cannot

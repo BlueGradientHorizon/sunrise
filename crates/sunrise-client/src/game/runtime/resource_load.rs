@@ -216,11 +216,13 @@ pub(in crate::game) fn load_core(
                 let parsed_models = parsed_models;
                 let render = startup::time("core.block_models_sprites", || {
                     if headless {
-                        assets.reload_for_server(resources)
+                        sunrise_client::assets::RenderAssets::load_for_server(resources, assets)
                     } else if let Some(parsed) = parsed_models {
-                        assets.reload_with_models(resources, parsed)
+                        sunrise_client::assets::RenderAssets::load_with_models(
+                            resources, assets, parsed,
+                        )
                     } else {
-                        assets.reload(resources)
+                        sunrise_client::assets::RenderAssets::load(resources, assets)
                     }
                 })
                 .map_err(|e| e.to_string())?;

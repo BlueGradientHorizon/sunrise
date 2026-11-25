@@ -409,6 +409,7 @@ pub(in crate::game) use client_side::client_ambient;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::client_attack_targets;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::client_cracks;
 #[cfg(feature = "client")]
@@ -2572,6 +2573,9 @@ pub(in crate::game) use client_side::station_control;
 pub(in crate::game) use client_side::stations;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
+pub(in crate::game) use client_side::stations_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
 pub(in crate::game) use client_side::stats_screen;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::storage;
@@ -3230,8 +3234,6 @@ struct Mining {
     /// The latest destroy-speed query, reused for server crack feedback.
     per_tick: f32,
     ticks: u32,
-    /// The stage's display-only answer, dropped with this mining state.
-    crack: Option<client_cracks::ClientCrack>,
 }
 impl Mining {
     fn stage(&self) -> Option<u8> {
@@ -5700,7 +5702,6 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         self.ominous_spawners.clear();
         self.fangs.list.clear();
         self.potions.clear_thrown();
-        self.potions.clouds.clear();
         self.end.clear_remote_eyes();
         self.riding = None;
         self.persist = Default::default();

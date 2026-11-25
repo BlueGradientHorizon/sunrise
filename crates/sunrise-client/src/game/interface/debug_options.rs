@@ -120,7 +120,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.set_screen(Screen::DebugOptions);
         self.side.pause_menu = true;
         self.capture(false);
-        self.mining = None;
+        self.set_client_mining(None);
     }
     /// The interrupted screen's own close (`Screen.onClose`): the containers
     /// hand their state back and a mod's hooks hear of the screen going. A

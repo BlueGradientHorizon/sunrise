@@ -40,7 +40,7 @@ fn a_servers_custom_enchantment_book_gives_an_anvil_result() {
         let mut station = Station::new(Kind::Anvil, [0, 64, 0]);
         station.inputs[0] = Some(ItemStack::new("minecraft:diamond_pickaxe", 1));
         station.inputs[1] = Some(book);
-        game.station = Some(station);
+        game.open_station_client(station);
 
         game.station_changed();
 

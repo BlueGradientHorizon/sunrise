@@ -2591,7 +2591,7 @@ fn only_hovered_slots_check_show_tooltip_with_item_in_hand() {
     .into();
 
     with_mod_factories(mods, |game| {
-        game.station = Some(crate::game::stations_common::Station::new(
+        game.open_station_client(crate::game::stations_common::Station::new(
             crate::game::stations_common::Kind::Anvil,
             [0, 64, 0],
         ));
@@ -2629,7 +2629,7 @@ fn only_hovered_slots_check_show_tooltip_with_item_in_hand() {
         );
 
         // Both previews bypass that same callback (which would now answer false).
-        game.station = Some(crate::game::stations_common::Station::new(
+        game.open_station_client(crate::game::stations_common::Station::new(
             crate::game::stations_common::Kind::Stonecutter,
             [0, 64, 0],
         ));

@@ -1,6 +1,8 @@
 //! Client crack state belongs to one level and expires independently of new updates.
+#[cfg(feature = "client")]
 use super::{Game, Mining};
 
+#[cfg(feature = "client")]
 pub(in crate::game) struct ClientCrack {
     pub pos: [i32; 3],
     pub stage: u8,
@@ -25,52 +27,53 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     pub(in crate::game::client_side) fn reset_client_world(&mut self, seed: i64) {
         self.side.destroying.clear();
-        self.mining = None;
+        self.set_client_mining(None);
         self.world = crate::game::world_for_mods(self.res.facts().air, seed);
     }
 
     /// Preserve the stage's stored display answer across prediction updates.
-    pub(in crate::game) fn set_client_mining(&mut self, mut mining: Option<Mining>) {
-        if let Some(next) = &mut mining
-            && let Some(old) = self.mining.as_mut().filter(|old| old.pos == next.pos)
-        {
-            next.crack = old.crack.take();
+    pub(in crate::game) fn set_client_mining(&mut self, mining: Option<Mining>) {
+        let keep = mining
+            .as_ref()
+            .is_some_and(|next| self.mining.as_ref().is_some_and(|old| old.pos == next.pos));
+        if !keep {
+            self.side.mining_crack = None;
         }
         self.mining = mining;
         self.update_local_crack();
     }
 
     pub(in crate::game) fn update_local_crack(&mut self) {
-        if !self.native_window() {
-            return;
-        }
-        let Some(mining) = self.mining.as_mut() else {
-            return;
-        };
-        let Some(stage) = mining.stage() else {
-            mining.crack = None;
-            return;
-        };
-        let pos = mining.pos;
-        if mining
-            .crack
+        let Some((pos, stage)) = self
+            .mining
             .as_ref()
-            .is_some_and(|crack| crack.stage == stage)
+            .and_then(|mining| Some((mining.pos, mining.stage()?)))
+        else {
+            self.side.mining_crack = None;
+            return;
+        };
+        if self
+            .side
+            .mining_crack
+            .as_ref()
+            .is_some_and(|crack| crack.pos == pos && crack.stage == stage)
         {
             return;
         }
         // Mark this stage before dispatch, so a reentrant update cannot ask twice.
-        mining.crack = Some(ClientCrack {
+        self.side.mining_crack = Some(ClientCrack {
             pos,
             stage,
             updated_at: self.world.game_time,
             positions: Vec::new(),
         });
         self.with_break_progress_positions(pos, stage, |game, positions| {
-            if let Some(mining) = &mut game.mining
+            if let Some(mining) = &game.mining
                 && mining.pos == pos
                 && mining.stage() == Some(stage)
-                && let Some(crack) = &mut mining.crack
+                && let Some(crack) = &mut game.side.mining_crack
+                && crack.pos == pos
+                && crack.stage == stage
             {
                 crack.positions = positions;
             }
@@ -242,7 +245,6 @@ pub(in crate::game) mod tests {
                         progress,
                         per_tick: 0.0,
                         ticks: 1,
-                        crack: None,
                     })
                 };
                 game.set_client_mining(mining(0.35));
@@ -258,6 +260,7 @@ pub(in crate::game) mod tests {
                 game.set_client_mining(mining(0.45));
                 assert!(game.crack_stages().iter().all(|(_, stage)| *stage == 4));
                 game.set_client_mining(None);
+                assert!(game.side.mining_crack.is_none());
                 assert!(game.crack_stages().is_empty());
                 game.world.set(9, 64, 4, dirt).unwrap();
                 game.destroy_block_progress(11, [9, 64, 4], 1);
@@ -305,6 +308,7 @@ pub(in crate::game) mod tests {
                 game.reset_client_world(0);
                 assert!(game.side.destroying.is_empty());
                 assert!(game.mining.is_none());
+                assert!(game.side.mining_crack.is_none());
                 assert!(game.crack_stages().is_empty());
             })
         });

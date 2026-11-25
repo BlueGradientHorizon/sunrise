@@ -12,14 +12,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Some(c) => c.1 = c.1.max(stage),
             None => stages.push((pos, stage)),
         };
-        if let Some(m) = &self.mining
-            && let Some(stage) = m.stage()
-        {
-            add(m.pos, u32::from(stage));
-            if let Some(crack) = &m.crack {
-                for &pos in &crack.positions {
-                    add(pos, u32::from(stage));
-                }
+        if let Some(crack) = &self.side.mining_crack {
+            add(crack.pos, u32::from(crack.stage));
+            for &pos in &crack.positions {
+                add(pos, u32::from(crack.stage));
             }
         }
         let now = self.world.game_time;

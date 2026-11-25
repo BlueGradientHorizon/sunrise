@@ -318,8 +318,9 @@ mod tests {
             std::env::var_os("SUNRISE_TEST_RESOURCES").expect("SUNRISE_TEST_RESOURCES"),
         );
         let assets = Arc::new(Assets::load(&root)?);
-        let render = Arc::new(assets.reload(
+        let render = Arc::new(crate::assets::RenderAssets::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
+            &assets,
         )?);
         let facts = BlockFacts::load(&root, assets.registry)?;
         let tables = Arc::new(MeshTables::new(

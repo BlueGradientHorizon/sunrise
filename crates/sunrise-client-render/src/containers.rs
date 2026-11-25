@@ -391,24 +391,32 @@ impl Skull {
 }
 impl SkullSkin {
     pub fn of(profile: &sunrise_core::nbt::Tag) -> Self {
-        let download = crate::skins::profile_skin_url_nbt(profile).and_then(|url| {
-            let location = crate::skins::skin_location(&crate::skins::texture_hash(&url)?);
+        let download = crate::profile_lookup::profile_skin_url_nbt(
+            profile,
+            &crate::profile_lookup::TEXTURE_URIS,
+        )
+        .and_then(|url| {
+            let location =
+                crate::profile_lookup::skin_location(&crate::profile_lookup::texture_hash(&url)?);
             Some((url, location))
         });
         // A `Dynamic` profile (a name or id only) resolves through the
         // services when the skull is drawn.
-        let dynamic = crate::skins::dynamic_nbt(profile);
+        let dynamic = crate::profile_lookup::dynamic_nbt(profile);
         // DefaultPlayerSkin.get(id), or getDefaultSkin (slim steve) without an id.
-        let fallback = crate::skins::profile_uuid_nbt(profile)
+        let fallback = crate::profile_lookup::profile_uuid_nbt(profile)
             .or_else(|| {
-                crate::skins::nbt_text(profile.get("name"))
+                crate::profile_lookup::nbt_text(profile.get("name"))
                     .map(|name| sunrise_protocol::crypto::offline_uuid(&name))
             })
-            .map_or("entity/player/slim/steve", crate::tab_list::default_skin);
+            .map_or(
+                "entity/player/slim/steve",
+                crate::profile_lookup::default_skin,
+            );
         Self {
             download,
             dynamic,
-            texture: crate::skins::profile_texture_nbt(profile),
+            texture: crate::profile_lookup::profile_texture_nbt(profile),
             fallback,
         }
     }
@@ -567,8 +575,8 @@ impl BlockEntity {
 
     fn for_factory(name: &str) -> Option<Self> {
         let name = vanilla_factory(name)?;
-        if let Some(hanging) = crate::signs::sign_kind(name) {
-            return Some(Self::Sign(crate::signs::SignData {
+        if let Some(hanging) = crate::signs_data::sign_kind(name) {
+            return Some(Self::Sign(crate::signs_data::SignData {
                 hanging,
                 ..Default::default()
             }));
@@ -701,7 +709,7 @@ impl BlockEntity {
         match self {
             Self::Chest(items) => container_size(name) == Some(items.len()),
             Self::Furnace(f) => FurnaceKind::from_block(name) == Some(f.kind),
-            Self::Sign(s) => crate::signs::sign_kind(name) == Some(s.hanging),
+            Self::Sign(s) => crate::signs_data::sign_kind(name) == Some(s.hanging),
             Self::Sculk(s) => {
                 crate::sculk::SculkEntity::for_block(name).is_some_and(|n| n.id() == s.id())
             }

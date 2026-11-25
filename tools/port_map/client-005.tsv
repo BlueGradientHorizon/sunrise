@@ -85,7 +85,7 @@ AvatarRenderer.submitNameDisplay	port	crates/sunrise-client/src/game/interface/n
 AvatarRenderer.extractRenderState	port	crates/sunrise-client/src/mobs.rs::Mob::tick_avatar_pose	glide count, wings and swim read here; stuck arrows and stingers, shoulder parrots, ears, the cape and the spyglass are drawn by game/perspective.rs and render::cape
 AvatarRenderer.shouldShowName	port	crates/sunrise-client/src/game/interface/names.rs::Game::name_tags	name tags for players and named mobs
 AvatarRenderer.extractFlightData	port	crates/sunrise-client/src/mobs/render.rs::base_transform_at	glide time drives the tilt; the body turns toward the flight direction (lerped velocity)
-AvatarRenderer.extractCapeState	port	crates/sunrise-client-render/src/camera.rs::AvatarBob::cape	the cape flap, lean and lean2 from the cloak lagging behind the body
+AvatarRenderer.extractCapeState	port	crates/sunrise-level/src/camera_math.rs::AvatarBob::cape	the cape flap, lean and lean2 from the cloak lagging behind the body
 AvatarRenderer.renderRightHand	port	crates/sunrise-client/src/game/interface/frame_geometry.rs::Game::submit_first_person_arm	first-person arm with local skin, sleeve and outward roll
 AvatarRenderer.renderLeftHand	port	crates/sunrise-client/src/game/interface/frame_geometry.rs::Game::submit_first_person_arm	first-person arm with local skin, sleeve and outward roll
 AvatarRenderer.renderHand	port	crates/sunrise-client/src/game/interface/frame_geometry.rs::Game::submit_first_person_arm	first-person arm with local skin and sleeve, outward rest-pose roll

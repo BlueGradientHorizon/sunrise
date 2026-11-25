@@ -264,7 +264,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .map(|e| (e.edit.value.clone(), e.edit.cursor, e.edit.highlight));
         if let Some(edit) = self.side.sign_edit.as_mut() {
             f(&mut edit.edit);
-            let clean = sunrise_client::clipboard::strip_formatting(&edit.edit.value);
+            let clean = sunrise_client_core::text::strip_formatting(&edit.edit.value);
             if clean != edit.edit.value {
                 let n = sunrise_client::ui::char_len(&clean);
                 edit.edit.value = clean;
@@ -315,7 +315,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .map(|e| (e.edit.value.clone(), e.edit.cursor, e.edit.highlight));
         if let Some(edit) = self.side.sign_edit.as_mut() {
             edit.edit.shortcut(shortcut, &mut self.side.clipboard.0);
-            let clean = sunrise_client::clipboard::strip_formatting(&edit.edit.value);
+            let clean = sunrise_client_core::text::strip_formatting(&edit.edit.value);
             if clean != edit.edit.value {
                 let n = sunrise_client::ui::char_len(&clean);
                 edit.edit.value = clean;

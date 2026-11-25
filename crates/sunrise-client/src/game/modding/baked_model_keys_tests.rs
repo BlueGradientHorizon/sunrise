@@ -170,7 +170,10 @@ fn a_client_mod_reads_a_block_states_baked_models_once_per_load() {
                 cache.path().to_owned(),
                 game.pack.source.clone(),
             );
-            game.pack.render = Arc::new(game.pack.assets.reload_for_server(&root).unwrap());
+            game.pack.render = Arc::new(
+                sunrise_client::assets::RenderAssets::load_for_server(&root, &game.pack.assets)
+                    .unwrap(),
+            );
             let host: &dyn ClientHost = game;
             let stone = host.block_state_id("minecraft:stone").expect("stone");
             let keys = host.render_assets().block_state_models(stone).unwrap();

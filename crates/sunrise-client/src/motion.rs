@@ -3519,8 +3519,8 @@ mod tests {
     fn a_player_jump_fires_living_jump_once_with_its_velocity() {
         use crate::native_client_hooks::test_hooks::{install, jumps, record_jumps};
         let v = crate::test_fixtures::vanilla().expect("prepared resources");
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 1).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 1).unwrap();
         let mut player = PlayerMotion::new(resources, Vec3::new(10.0, 100.0, 10.0)).unwrap();
         player.entity_id = 5;
         player.ground.on_ground = true;
@@ -3557,8 +3557,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             panic!("no prepared resources at {}", root.display());
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 1).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 1).unwrap();
         let mut player = PlayerMotion::new(resources, Vec3::new(10.0, 100.0, 10.0)).unwrap();
         player.auto_jump_enabled = true;
         player.ground.on_ground = true;
@@ -3592,8 +3592,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 1).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 1).unwrap();
         let entities = [Aabb::new(
             Vec3::new(10.0, 80.0, 10.0),
             Vec3::new(14.0, 84.0, 14.0),
@@ -3668,8 +3668,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 1).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 1).unwrap();
         let registry = assets.registry;
         let moving = registry.default_state("minecraft:moving_piston").unwrap();
         let stone = registry.default_state("minecraft:stone").unwrap();
@@ -3735,8 +3735,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 1).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 1).unwrap();
         let cauldron = assets
             .registry
             .default_state("minecraft:lava_cauldron")
@@ -3780,8 +3780,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 1).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 1).unwrap();
         let water = assets
             .registry
             .resolve(&sunrise_world::chunk::BlockState {
@@ -3836,8 +3836,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 1).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 1).unwrap();
         let snow = assets
             .registry
             .default_state("minecraft:powder_snow")
@@ -3893,8 +3893,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 1).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 1).unwrap();
         let web = assets.registry.default_state("minecraft:cobweb").unwrap();
         let bush = assets
             .registry
@@ -3956,8 +3956,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 1).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 1).unwrap();
         let snow = assets
             .registry
             .default_state("minecraft:powder_snow")
@@ -4024,8 +4024,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 1).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 1).unwrap();
         let rose = assets
             .registry
             .default_state("minecraft:wither_rose")
@@ -4106,8 +4106,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 1).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 1).unwrap();
         let snow = assets
             .registry
             .default_state("minecraft:powder_snow")
@@ -4176,8 +4176,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 1).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 1).unwrap();
         let snow = assets
             .registry
             .default_state("minecraft:powder_snow")
@@ -4277,8 +4277,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 1).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 1).unwrap();
         let at = Vec3::new(20.5, 4.0, 20.5);
         let mut player = PlayerMotion::new(resources, at).unwrap();
         let mut travel = |player: &mut PlayerMotion| {
@@ -4342,8 +4342,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 1).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 1).unwrap();
         // A wall in the way of a glide along +x, at feet height.
         let stone = assets.registry.default_state("minecraft:stone").unwrap();
         for y in 4..=5 {
@@ -4394,8 +4394,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 1).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 1).unwrap();
         // A wall in the way of a glide along +x, at feet height.
         let stone = assets.registry.default_state("minecraft:stone").unwrap();
         for y in 4..=5 {
@@ -4459,9 +4459,9 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
         // On the scene's floor, clear of its stepped pyramid (|x|, |z| <= 10 from y = 4).
-        let mut scene = World::test_scene(assets, render, 2).unwrap();
+        let mut scene = World::test_scene_with_placements(assets, &[], 2).unwrap();
         let start = Vec3::new(20.5, 4.0, 20.5);
         let mut player = PlayerMotion::new(resources, start).unwrap();
         player.client_side = true;
@@ -4500,9 +4500,9 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
         let run = |steps| {
-            let mut scene = World::test_scene(assets, render, 2).unwrap();
+            let mut scene = World::test_scene_with_placements(assets, &[], 2).unwrap();
             let start = Vec3::new(20.5, 12.0, 20.5);
             let mut player = PlayerMotion::new(resources, start).unwrap();
             player.spectator = true;
@@ -4546,9 +4546,9 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
         let run = |name: &str, spectator: bool| {
-            let mut scene = World::test_scene(assets, render, 2).unwrap();
+            let mut scene = World::test_scene_with_placements(assets, &[], 2).unwrap();
             let state = assets.registry.default_state(name).unwrap();
             for x in 19..=23 {
                 for y in 10..=17 {
@@ -4901,7 +4901,7 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
         // LivingEntity.updateFallFlyingMovement run on the 26.3 JVM from
         // (0.4, -0.3, 1.1): a climb (Mth.sin in the pull-up) and a dive.
         let cases = [
@@ -4925,7 +4925,7 @@ mod tests {
             ),
         ];
         for (pitch, yaw, want) in cases {
-            let mut scene = World::test_scene(assets, render, 2).unwrap();
+            let mut scene = World::test_scene_with_placements(assets, &[], 2).unwrap();
             let mut player = PlayerMotion::new(resources, Vec3::new(20.5, 40.0, 20.5)).unwrap();
             player.glider = true;
             player.fall_flying = true;
@@ -4962,10 +4962,10 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
         // Entity.checkFallDistanceAccumulation: capped above -0.5 a tick, not below.
         for (dy, capped) in [(-0.3, true), (-0.49, true), (-0.8, false)] {
-            let mut scene = World::test_scene(assets, render, 2).unwrap();
+            let mut scene = World::test_scene_with_placements(assets, &[], 2).unwrap();
             let mut player = PlayerMotion::new(resources, Vec3::new(20.5, 20.0, 20.5)).unwrap();
             player.glider = true;
             player.fall_flying = true;
@@ -5011,9 +5011,9 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
         for wet in [false, true] {
-            let mut scene = World::test_scene(assets, render, 2).unwrap();
+            let mut scene = World::test_scene_with_placements(assets, &[], 2).unwrap();
             if wet {
                 let water = assets.registry.default_state("minecraft:water").unwrap();
                 for x in 19..=21 {
@@ -5058,9 +5058,9 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
         for spectator in [false, true] {
-            let mut scene = World::test_scene(assets, render, 2).unwrap();
+            let mut scene = World::test_scene_with_placements(assets, &[], 2).unwrap();
             let mut player = PlayerMotion::new(resources, Vec3::new(20.5, 20.0, 20.5)).unwrap();
             player.spectator = spectator;
             player.local_spectator = spectator;
@@ -5092,9 +5092,9 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
         for client_side in [false, true] {
-            let mut scene = World::test_scene(assets, render, 2).unwrap();
+            let mut scene = World::test_scene_with_placements(assets, &[], 2).unwrap();
             let mut player = PlayerMotion::new(resources, Vec3::new(20.5, 20.0, 20.5)).unwrap();
             player.client_side = client_side;
             player.fall_distance = 30.0;
@@ -5147,9 +5147,9 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
         for slow_falling in [false, true] {
-            let mut scene = World::test_scene(assets, render, 2).unwrap();
+            let mut scene = World::test_scene_with_placements(assets, &[], 2).unwrap();
             let mut player = PlayerMotion::new(resources, Vec3::new(20.5, 9.0, 20.5)).unwrap();
             player.fall_distance = 30.0;
             player.status.slow_falling = slow_falling;
@@ -5188,8 +5188,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 2).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 2).unwrap();
         let mut player = PlayerMotion::new(resources, Vec3::new(20.5, 10.0, 20.5)).unwrap();
         player.auto_spin_attack_ticks = 2;
         player.auto_spin_attack_dmg = 8.0;
@@ -5234,8 +5234,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 2).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 2).unwrap();
         let mut player = PlayerMotion::new(resources, Vec3::new(20.5, 10.0, 20.5)).unwrap();
         let mut w = MotionWorld {
             side: crate::motion::dry_side(),
@@ -5283,8 +5283,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 2).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 2).unwrap();
         let mut player = PlayerMotion::new(resources, Vec3::new(20.5, 10.0, 20.5)).unwrap();
         player.sprinting = true;
         player.swimming = true;
@@ -5317,8 +5317,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 2).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 2).unwrap();
         let stone = assets.registry.default_state("minecraft:stone").unwrap();
         for y in 4..=6 {
             scene.set(20, y, 21, stone).unwrap();
@@ -5356,8 +5356,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 2).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 2).unwrap();
         let water = assets.registry.default_state("minecraft:water").unwrap();
         for y in 6..=7 {
             scene.set(20, y, 20, water).unwrap();
@@ -5396,8 +5396,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 2).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 2).unwrap();
         // Feet inside the floor block, as on a cushion seat (y - 0.35): away
         // from the pyramid the scene's floor tops out at y = 4.
         let mut player = PlayerMotion::new(resources, Vec3::new(20.5, 3.65, 20.5)).unwrap();
@@ -5468,8 +5468,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 3).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let water = assets.registry.default_state("minecraft:water").unwrap();
         for y in 4..=6 {
             scene.set(20, y, 20, water).unwrap();
@@ -5515,8 +5515,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 2).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 2).unwrap();
         let ahead = Aabb::new(Vec3::new(20.2, 9.0, 21.5), Vec3::new(20.8, 11.0, 22.1));
         for target in [None, Some(ahead)] {
             let mut player = PlayerMotion::new(resources, Vec3::new(20.5, 10.0, 20.5)).unwrap();
@@ -5559,8 +5559,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 2).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 2).unwrap();
         let mut player = PlayerMotion::new(resources, Vec3::new(20.5, 4.2, 20.5)).unwrap();
         let mut w = MotionWorld {
             side: crate::motion::dry_side(),
@@ -5609,8 +5609,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 2).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 2).unwrap();
         let mut player = PlayerMotion::new(resources, Vec3::new(20.5, 4.2, 20.5)).unwrap();
         let mut w = MotionWorld {
             side: crate::motion::dry_side(),
@@ -5671,8 +5671,8 @@ mod tests {
             eprintln!("skipping resident water/lava test: prepared resources unavailable");
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 3).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let mut player = PlayerMotion::new(resources, Vec3::new(20.5, 4.0, 20.5)).unwrap();
         let water = assets.registry.default_state("minecraft:water").unwrap();
         for x in 19..=21 {
@@ -5929,8 +5929,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 3).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let water = assets.registry.default_state("minecraft:water").unwrap();
         for y in 4..=6 {
             scene.set(20, y, 20, water).unwrap();
@@ -6029,9 +6029,9 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
         for name in ["minecraft:lava", "minecraft:water"] {
-            let mut scene = World::test_scene(assets, render, 3).unwrap();
+            let mut scene = World::test_scene_with_placements(assets, &[], 3).unwrap();
             let fluid = assets.registry.default_state(name).unwrap();
             scene.set(20, 4, 20, fluid).unwrap();
             let mut player = PlayerMotion::new(resources, Vec3::new(20.5, 4.0, 20.5)).unwrap();
@@ -6084,8 +6084,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 3).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let water = assets.registry.default_state("minecraft:water").unwrap();
         scene.set(20, 4, 20, water).unwrap();
         scene.set(20, 5, 20, water).unwrap();
@@ -6128,8 +6128,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 3).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let water = assets.registry.default_state("minecraft:water").unwrap();
         scene.set(20, 4, 20, water).unwrap();
         scene.set(20, 5, 20, water).unwrap();
@@ -6201,9 +6201,9 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
         for (water_level, lava_level, ground_jump) in [(0, 6, true), (6, 0, false)] {
-            let mut scene = World::test_scene(assets, render, 3).unwrap();
+            let mut scene = World::test_scene_with_placements(assets, &[], 3).unwrap();
             for (name, level, x) in [
                 ("minecraft:water", water_level, 20),
                 ("minecraft:lava", lava_level, 21),
@@ -6258,8 +6258,8 @@ mod tests {
             eprintln!("Prepared resources unavailable; the player fluid heights did not run");
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 3).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 3).unwrap();
         for (name, x) in [("minecraft:lava", 20), ("minecraft:water", 21)] {
             let source = assets.registry.default_state(name).unwrap();
             for y in 4..=5 {
@@ -6308,8 +6308,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render) = (&v.assets, &v.render);
-        let mut scene = World::test_scene(assets, render, 3).unwrap();
+        let assets = &v.assets;
+        let mut scene = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let (binding, resources) = (&v.collision, &v.motion);
         let mut player = PlayerMotion::new(resources, Vec3::new(20.5, 4.0, 20.5)).unwrap();
         let mut steps = |player: &mut PlayerMotion, keys: crate::sprint::Keys, ticks: usize| {
@@ -6364,7 +6364,7 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
         let water = assets.registry.default_state("minecraft:water").unwrap();
         let forward = crate::sprint::Keys {
             forward: true,
@@ -6378,7 +6378,7 @@ mod tests {
         // once the sprint has started: the speed must not change.
         let mut swims = Vec::new();
         for release in [false, true] {
-            let mut scene = World::test_scene(assets, render, 3).unwrap();
+            let mut scene = World::test_scene_with_placements(assets, &[], 3).unwrap();
             for x in 19..=21 {
                 for y in 4..=8 {
                     for z in 19..=31 {
@@ -6435,8 +6435,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 3).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let mut player = PlayerMotion::new(resources, Vec3::new(20.5, 4.0, 20.5)).unwrap();
         let mut w = MotionWorld {
             side: crate::motion::dry_side(),
@@ -6493,8 +6493,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 3).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let mut player = PlayerMotion::new(resources, Vec3::new(20.5, 4.0, 20.5)).unwrap();
         let mut w = MotionWorld {
             side: crate::motion::dry_side(),
@@ -6545,8 +6545,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 3).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let mut player = PlayerMotion::new(resources, Vec3::new(20.5, 4.0, 20.5)).unwrap();
         let mut w = MotionWorld {
             side: crate::motion::dry_side(),
@@ -6591,8 +6591,8 @@ mod tests {
             eprintln!("skipped forced flight: prepared resources unavailable");
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 3).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let start = Vec3::new(20.5, 20.0, 20.5);
         let mut player = PlayerMotion::new(resources, start).unwrap();
         player.may_fly = false;
@@ -6648,8 +6648,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 3).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let mut player = PlayerMotion::new(resources, Vec3::new(20.5, 10.0, 20.5)).unwrap();
         let mut w = MotionWorld {
             side: crate::motion::dry_side(),
@@ -6709,8 +6709,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 2).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 2).unwrap();
         let mut player = PlayerMotion::new(resources, Vec3::new(20.5, 100.0, 20.5)).unwrap();
         player.glider = true;
         player.fall_flying = true;
@@ -6749,9 +6749,9 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
         for client_side in [true, false] {
-            let mut scene = World::test_scene(assets, render, 2).unwrap();
+            let mut scene = World::test_scene_with_placements(assets, &[], 2).unwrap();
             // Far outside the test scene's chunks.
             let at = Vec3::new(10_000.5, 20.0, 10_000.5);
             assert!(!scene.chunks.contains_key(&(10_000 >> 4, 10_000 >> 4)));
@@ -6789,8 +6789,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 1).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 1).unwrap();
         let mut player = PlayerMotion::new(resources, Vec3::new(20.5, 4.0, 20.5)).unwrap();
         player.client_side = true;
         let speed = player
@@ -6866,7 +6866,7 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
         // (client_side, flying, sneaking, suppressing)
         for (client_side, flying, sneaking, want) in [
             (true, false, true, true),
@@ -6877,7 +6877,7 @@ mod tests {
             (false, true, true, true),
             (false, true, false, false),
         ] {
-            let mut scene = World::test_scene(assets, render, 2).unwrap();
+            let mut scene = World::test_scene_with_placements(assets, &[], 2).unwrap();
             let mut player = PlayerMotion::new(resources, Vec3::new(0.5, 64.0, 0.5)).unwrap();
             player.client_side = client_side;
             player.flying = flying;
@@ -6914,8 +6914,8 @@ mod tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 2).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 2).unwrap();
         // How much of a 0.1 step east the move leaves in the velocity.
         let mut kept = |floor: &str, y: f64, flying: bool, gliding: bool| {
             let state = assets.registry.default_state(floor).unwrap();

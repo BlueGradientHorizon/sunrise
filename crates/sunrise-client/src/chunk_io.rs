@@ -6,7 +6,7 @@
 //! Save failures also leave server diagnostics without stopping the save.
 //! `SystemToast.addOrUpdate` makes a repeat reset the toast it already shows,
 //! so only the newest chunk of each kind is kept.
-use crate::{save, text::Text, toasts::SystemToast};
+use crate::save;
 use chrono::{DateTime, Local};
 use std::{
     collections::VecDeque,
@@ -335,6 +335,24 @@ impl SuppressedSaveFailures {
     }
 }
 
+/// `SharedConstants.ILLEGAL_FILE_CHARACTERS`, in its order.
+const ILLEGAL_FILE_CHARACTERS: [char; 15] = [
+    '/', '\n', '\r', '\t', '\0', '\u{c}', '`', '?', '*', '\\', '<', '>', '|', '"', ':',
+];
+
+/// `FileUtil.sanitizeName`.
+pub fn sanitize_world_name(name: &str) -> String {
+    name.chars()
+        .map(|c| {
+            if ILLEGAL_FILE_CHARACTERS.contains(&c) || matches!(c, '.' | '/' | '"') {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
 /// An owned snapshot for `MinecraftServer.storeChunkIoError`, independent of the region writer.
 struct ChunkIoReport {
     time: DateTime<Local>,
@@ -360,7 +378,7 @@ impl ChunkIoReport {
             );
             return Ok(());
         }
-        let safe_level = crate::title::sanitize_world_name(&self.level);
+        let safe_level = sanitize_world_name(&self.level);
         let date = Local::now().format("%Y-%m-%d_%H.%M.%S");
         let path = debug.join(format!("chunk-{safe_level}-{date}-server.txt"));
         let (x, z) = self.pos;
@@ -433,40 +451,6 @@ impl Reports {
     pub fn take(&self) -> Pending {
         std::mem::take(&mut *self.pending())
     }
-}
-
-/// `ChatFormatting.RED`.
-fn red() -> u32 {
-    crate::hud::rgba(255, 85, 85, 255)
-}
-
-/// `SystemToast.onLowDiskSpace` (`SystemToastId.LOW_DISK_SPACE`: ten seconds).
-pub fn low_disk_space_toast() -> SystemToast {
-    SystemToast::new(
-        Text::tr("chunk.toast.lowDiskSpace", &[]),
-        Some(Text::tr("chunk.toast.lowDiskSpace.description", &[])),
-    )
-    .with_display_time(SystemToast::LONG_DISPLAY_TIME)
-}
-
-fn chunk_toast(key: &str, x: i32, z: i32) -> SystemToast {
-    // `Component.translationArg(ChunkPos)` is `ChunkPos.toString`.
-    let pos = format!("[{x}, {z}]");
-    SystemToast::new(
-        Text::tr(key, &[&pos]),
-        Some(Text::tr("chunk.toast.checkLog", &[])),
-    )
-    .with_title_color(red())
-}
-
-/// `SystemToast.onChunkLoadFailure`.
-pub fn load_failure_toast(x: i32, z: i32) -> SystemToast {
-    chunk_toast("chunk.toast.loadFailure", x, z)
-}
-
-/// `SystemToast.onChunkSaveFailure`.
-pub fn save_failure_toast(x: i32, z: i32) -> SystemToast {
-    chunk_toast("chunk.toast.saveFailure", x, z)
 }
 
 #[cfg(test)]
@@ -855,12 +839,5 @@ mod tests {
         assert!(summary.contains("another class"));
         assert!(summary.contains("chunk/save:Error x 1\n\t\t\tchunk/save:std::io::Error x 9"));
         assert_eq!(SaveFailureReporter::default().reported_failures(), 0);
-    }
-
-    #[test]
-    fn low_disk_space_toast_stays_ten_seconds() {
-        let toast = low_disk_space_toast();
-        assert_eq!(toast.display_time(), 10000.0);
-        assert_eq!(load_failure_toast(0, 0).display_time(), 5000.0);
     }
 }

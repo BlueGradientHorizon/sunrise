@@ -12,17 +12,17 @@ fn deepslate(count: u32) -> ItemStack {
 /// recipes' rows (`startIndex` 8).
 fn scroll_to_bottom(game: &mut crate::game::ClientGame<'_>) {
     game.station_scroll(-2.0);
-    let s = game.station.as_ref().unwrap();
+    let ui = game.side.station_ui.as_ref().unwrap();
     assert_eq!(
-        (s.start, s.scroll),
+        (ui.start, ui.scroll),
         (8, 1.0),
         "the list is at its bottom row"
     );
 }
 
 fn shown(game: &crate::game::ClientGame<'_>) -> (usize, f32) {
-    let s = game.station.as_ref().unwrap();
-    (s.start, s.scroll)
+    let ui = game.side.station_ui.as_ref().unwrap();
+    (ui.start, ui.scroll)
 }
 
 fn pick_recipe(game: &mut crate::game::ClientGame<'_>, index: i32) -> bool {
@@ -42,7 +42,7 @@ fn the_stonecutter_list_returns_to_the_top_when_its_input_changes() {
             (0, 0),
             std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
         );
-        g.station = Some(Station::new(Kind::Stonecutter, [0, 64, 0]));
+        g.open_station_client(Station::new(Kind::Stonecutter, [0, 64, 0]));
         // Two deepslate in the input: 17 recipes, so the list scrolls.
         *g.slot_mut(9) = Some(deepslate(2));
         assert!(g.click_open_inventory(Some(9), 0, Input::Pickup));

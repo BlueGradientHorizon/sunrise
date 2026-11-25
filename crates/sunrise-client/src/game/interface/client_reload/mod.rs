@@ -32,20 +32,23 @@ pub(in crate::game) struct StartupReloadContext<'a> {
 
 impl ClientReloadListenerContext for StartupReloadContext<'_> {
     fn dist(&self) -> mod_api::Dist {
-        crate::entry::runtime_environment::try_get().map_or(mod_api::Dist::Client, |env| env.dist())
+        sunrise_level::runtime_env::runtime_environment::try_get()
+            .map_or(mod_api::Dist::Client, |env| env.dist())
     }
     fn game_version(&self) -> &'static str {
-        crate::entry::runtime_environment::try_get()
+        sunrise_level::runtime_env::runtime_environment::try_get()
             .map_or(sunrise_core::VANILLA_VERSION, |env| env.game_version())
     }
     fn server_data_version(&self) -> i32 {
         sunrise_core::version::DATA_VERSION
     }
     fn sunrise_version(&self) -> &'static str {
-        crate::entry::runtime_environment::try_get().map_or("", |env| env.sunrise_version())
+        sunrise_level::runtime_env::runtime_environment::try_get()
+            .map_or("", |env| env.sunrise_version())
     }
     fn game_tests_enabled(&self) -> bool {
-        crate::entry::runtime_environment::try_get().is_some_and(|env| env.game_tests_enabled())
+        sunrise_level::runtime_env::runtime_environment::try_get()
+            .is_some_and(|env| env.game_tests_enabled())
     }
     fn on(&self, mod_id: &str) -> bool {
         self.settings

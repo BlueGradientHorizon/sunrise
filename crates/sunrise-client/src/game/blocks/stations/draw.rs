@@ -4,20 +4,18 @@ use super::*;
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Draws the open station or brewing stand screen; false when none is open.
     pub(in crate::game::client_side) fn draw_station(&mut self, batch: &mut HudBatch) -> bool {
-        if self
-            .station
-            .as_ref()
-            .is_some_and(|s| s.kind == Kind::Merchant)
-        {
-            return self.draw_merchant(batch);
-        }
-        if self
-            .station
-            .as_ref()
-            .is_some_and(|s| s.kind == Kind::Beacon)
-        {
-            self.draw_beacon(batch);
-            return true;
+        if let Some(kind) = self.station.as_ref().map(|s| s.kind) {
+            if self.side.station_ui.is_none() {
+                debug_assert!(false, "open client station missing StationUi");
+                return false;
+            }
+            if kind == Kind::Merchant {
+                return self.draw_merchant(batch);
+            }
+            if kind == Kind::Beacon {
+                self.draw_beacon(batch);
+                return true;
+            }
         }
         let brewing = self.brewing_open();
         if self.station.is_none() && !brewing {
@@ -25,7 +23,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // `SmithingScreen.containerTick`: the icons of the empty slots follow the template.
         let (now, partial) = (self.visual_ticks(), self.clock.camera_fraction() as f32);
-        if let Some(s) = self.station.as_mut().filter(|s| s.kind == Kind::Smithing) {
+        if let Some((s, ui)) = self
+            .station_and_ui_mut()
+            .filter(|(s, _)| s.kind == Kind::Smithing)
+        {
             let template = s.inputs[0].as_ref().map(|t| t.item.clone());
             let (base, base_len, additions, additions_len) =
                 smithing_slot_icons(template.as_deref());
@@ -34,7 +35,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 &base[..base_len],
                 &additions[..additions_len],
             ];
-            for (cycling, icons) in s.cycling.iter_mut().zip(lists) {
+            for (cycling, icons) in ui.cycling.iter_mut().zip(lists) {
                 cycling.advance(now, icons);
             }
         }
@@ -166,11 +167,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 tooltip = self.draw_loom(batch, ox, oy, local);
             }
             let atlas = &self.gui.atlas;
-            let s = self.station.as_ref().expect("open station");
+            let Some(s) = self.station.as_ref() else {
+                return false;
+            };
+            let Some(ui) = self.side.station_ui.as_ref() else {
+                debug_assert!(false, "open client station missing StationUi");
+                return false;
+            };
             let has_input = s.inputs.iter().any(Option::is_some);
             match kind {
                 Kind::Enchanting => {
-                    let (open, flip) = s.book.at(self.clock.camera_fraction() as f32);
+                    let (open, flip) = ui.book.at(self.clock.camera_fraction() as f32);
                     sunrise_client::item_render::gui::draw_enchanting_book(
                         &self.pack.item_renderer,
                         &atlas.sprites,
@@ -426,7 +433,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     let mut onboarding: Option<String> = None;
                     // `CyclingSlotBackground.extractRenderState`: an empty slot shows the
                     // icons of what the template in the table takes.
-                    for (i, cycling) in s.cycling.iter().enumerate() {
+                    for (i, cycling) in ui.cycling.iter().enumerate() {
                         if s.inputs[i].is_some() {
                             continue;
                         }
@@ -504,7 +511,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 Kind::Stonecutter => {
                     let display = s.inputs[0].is_some() && !s.stone.recipes.is_empty();
                     let active = display && s.stone.recipes.len() > 12;
-                    let offs = if active { s.scroll } else { 0.0 };
+                    let offs = if active { ui.scroll } else { 0.0 };
                     let scroller = if active {
                         "scroller"
                     } else {
@@ -517,7 +524,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         oy + 15.0 + (41.0 * offs).floor(),
                     );
                     if display {
-                        let (start, selected) = (s.start, s.selected);
+                        let (start, selected) = (ui.start, s.selected);
                         // graphics.item: the icon only, without the count.
                         let shown: Vec<(usize, ItemStack)> = (start
                             ..(start + 12).min(s.stone.recipes.len()))

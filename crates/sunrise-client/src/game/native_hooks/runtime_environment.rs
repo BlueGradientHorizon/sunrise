@@ -3,19 +3,19 @@ use super::Game;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn dist(&self) -> mod_api::Dist {
-        crate::entry::runtime_environment::get().dist()
+        sunrise_level::runtime_env::runtime_environment::get().dist()
     }
     pub(in crate::game) fn game_version(&self) -> &'static str {
-        crate::entry::runtime_environment::get().game_version()
+        sunrise_level::runtime_env::runtime_environment::get().game_version()
     }
     pub(in crate::game) fn server_data_version(&self) -> i32 {
         sunrise_core::version::DATA_VERSION
     }
     pub(in crate::game) fn sunrise_version(&self) -> &'static str {
-        crate::entry::runtime_environment::get().sunrise_version()
+        sunrise_level::runtime_env::runtime_environment::get().sunrise_version()
     }
     pub(in crate::game) fn game_tests_enabled(&self) -> bool {
-        crate::entry::runtime_environment::get().game_tests_enabled()
+        sunrise_level::runtime_env::runtime_environment::get().game_tests_enabled()
     }
 }
 

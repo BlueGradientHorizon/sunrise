@@ -37,7 +37,7 @@ const GUEST_ENTITY: i32 = 41;
 
 fn scene(fixture: &crate::test_fixtures::Vanilla) -> World {
     let assets = &fixture.assets;
-    let mut scene = World::test_scene(assets, &fixture.render, 2).unwrap();
+    let mut scene = World::test_scene_with_placements(assets, &[], 2).unwrap();
     let stone = assets.registry.default_state("minecraft:stone").unwrap();
     let glass = assets.registry.default_state("minecraft:glass").unwrap();
     let air = assets.registry.default_state("minecraft:air").unwrap();

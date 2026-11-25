@@ -36,7 +36,7 @@ mod tests {
             return;
         };
         let (assets, resources) = (&fixture.assets, &fixture.motion);
-        let mut scene = World::test_scene(assets, &fixture.render, 1).unwrap();
+        let mut scene = World::test_scene_with_placements(assets, &[], 1).unwrap();
         let web = assets.registry.default_state("minecraft:cobweb").unwrap();
         scene.set(20, 4, 20, web).unwrap();
         scene.set(21, 4, 20, web).unwrap();

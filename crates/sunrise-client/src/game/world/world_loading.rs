@@ -241,7 +241,7 @@ impl WorldRequest {
                     .collect();
                 if let Some(dir) = o.pack_dir.as_deref() {
                     disabled.extend(
-                        sunrise_client::packs::folder(
+                        sunrise_level::pack_meta::folder_meta(
                             std::path::Path::new(dir),
                             sunrise_core::version::DATA_PACK_FORMAT,
                         )

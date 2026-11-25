@@ -47,7 +47,7 @@ sunrise_client_lib::motion::MotionWorld
 sunrise_client_lib::net::Event
 sunrise_client_lib::player_sync::PositionSender
 sunrise_client_lib::sprint::Keys
-sunrise_client_render::assets::Assets
+sunrise_level::assets::Assets
 sunrise_client_render::camera::NearPlane
 sunrise_client_render::chat::ChatScreen
 sunrise_client_render::chat::ChatSource

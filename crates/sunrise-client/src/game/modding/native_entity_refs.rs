@@ -4685,7 +4685,13 @@ pub(in crate::game) mod tests {
             game.world.set(4, 64, 4, plant).unwrap();
             let facts = game.res.facts().get(plant);
             assert!(facts.outline_offset);
-            let offset = game.pack.context.tables.offset(plant, 4, 4).unwrap();
+            let offset = crate::game::native_state_shapes::outline_offset(
+                game.res.facts(),
+                plant,
+                4,
+                4,
+                facts.outline_offset,
+            );
             assert_ne!(offset[0], 0.0);
             let b = facts.outline[0];
             let y = 64.0 + offset[1] + (b[1] + b[4]) / 2.0;

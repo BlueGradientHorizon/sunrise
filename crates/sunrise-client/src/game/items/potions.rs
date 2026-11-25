@@ -448,8 +448,6 @@ pub(in crate::game) struct PotionState {
     /// Reused holder snapshot for the read-only mod effect tick event.
     pub(in crate::game) tick_keys: std::cell::RefCell<Vec<mod_api::EffectKey>>,
     pub(in crate::game) thrown: Vec<ThrownPotion>,
-    /// The area effect clouds a server tracks (game/network/remote_projectiles.rs).
-    pub(in crate::game) clouds: Vec<super::remote_projectiles::RemoteCloud>,
     /// Armor the protection table was computed for.
     pub(in crate::game) protection_for: Option<(u64, Vec<Option<ItemStack>>)>,
 
@@ -1000,14 +998,14 @@ pub(in crate::game) mod tests {
                 (0.0, 0.0),
             );
             assert_eq!(
-                game.potions.clouds[0].particle.ty,
+                game.side.remote_clouds[0].particle.ty,
                 ParticleType::EntityEffect
             );
             game.remote_projectile_data(
                 id,
                 &[(10, serializer::PARTICLE, Value::Particle(particle.clone()))],
             );
-            let original = game.potions.clouds[0].particle.typed_particle.clone();
+            let original = game.side.remote_clouds[0].particle.typed_particle.clone();
             assert!(original.is_some());
             let mut bad = particle;
             let Some(ParticleData::Mod { options, .. }) = &mut bad.data else {
@@ -1015,7 +1013,7 @@ pub(in crate::game) mod tests {
             };
             options.truncate(1);
             game.remote_projectile_data(id, &[(10, serializer::PARTICLE, Value::Particle(bad))]);
-            assert_eq!(game.potions.clouds[0].particle.typed_particle, original);
+            assert_eq!(game.side.remote_clouds[0].particle.typed_particle, original);
         });
     }
 

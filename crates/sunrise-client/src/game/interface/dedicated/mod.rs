@@ -24,7 +24,7 @@ use sunrise_client::{
         LoginGate, NetConfig, NetLog, OnlineMode, hub::HubConfig, viewed_levels::areas as viewed,
     },
     server::{
-        eula, profiles,
+        eula,
         properties::{GAME_MODES, ServerProperties, SystemEntropy},
         user_cache::UserCache,
         user_lists::{
@@ -37,6 +37,7 @@ use sunrise_client::{
 use sunrise_core::nbt::{JavaString, Tag};
 use sunrise_perf_format::v1::{StopReason, Trigger};
 use sunrise_protocol::text::translatable;
+use sunrise_server_files::profiles;
 
 pub(in crate::game) mod biome_regions;
 mod missing_mods;
@@ -302,7 +303,7 @@ pub(in crate::game) fn preflight(options: &mut Options) -> Result<bool> {
     let mut port = None;
     let mut init_settings = false;
     let mut allow_missing_mods = false;
-    for argument in crate::entry::dedicated_arguments::parse(&args) {
+    for argument in sunrise_level::runtime_env::dedicated_arguments::parse(&args) {
         let (name, value) = argument?;
         match name {
             "nogui"
@@ -928,7 +929,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             props.enforce_secure_profile && props.online_mode,
             || {
                 let discovery = profiles::discovery_url();
-                profiles::fetch_profile_key_keys(&discovery)
+                sunrise_server_profiles_http::fetch_profile_key_keys(&discovery)
                     .map(|keys| keys.player_certificate_keys)
                     .unwrap_or_else(|e| {
                         ::log::error!("{e}");
@@ -1684,7 +1685,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn resolve_name(&self, name: &str) -> Option<NameAndId> {
         USER_CACHE.lock().unwrap().as_mut().and_then(|cache| {
             cache.get_by_name(name, |lower| {
-                let found = profiles::find_by_name(&profiles::discovery_url(), lower);
+                let found =
+                    sunrise_server_profiles_http::find_by_name(&profiles::discovery_url(), lower);
                 if found.is_none() {
                     log("WARN", &format!("Couldn't find profile with name: {lower}"));
                 }

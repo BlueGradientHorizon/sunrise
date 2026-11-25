@@ -552,7 +552,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side.entity_spans.borrow_mut().clear();
         self.side.entity_motion.borrow_mut().clear();
         self.side.entity_motion_posed.borrow_mut().clear();
-        self.maps.slots.next_frame();
+        self.side.map_slots.next_frame();
         // LevelExtractor.extract: the transient blocks queued since the last frame.
         self.drain_transient_block_queue();
         self.prepare_entity_culling();
@@ -1920,9 +1920,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
                                 ms(ticked.elapsed().saturating_sub(r.last_wait + render)),
                                 ms(render),
                             ]);
-                            self.side
-                                .frame_stats
-                                .record_block_entities(r.static_block_entity_frame_stats());
+                            let stats = r.static_block_entity_frame_stats();
+                            self.side.frame_stats.record_block_entities(
+                                sunrise_sim::perf_types::RenderCacheStats {
+                                    snapshot_rebuilds: stats.snapshot_rebuilds,
+                                    snapshot_bytes_built: stats.snapshot_bytes_built,
+                                    static_bytes_uploaded: stats.static_bytes_uploaded,
+                                    static_entities_drawn: stats.static_entities_drawn,
+                                    dynamic_entities_drawn: stats.dynamic_entities_drawn,
+                                },
+                            );
                         }
                         self.side.frame_stats.record_gpu(&r.gpu_times);
                         r.gpu_times.clear();

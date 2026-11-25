@@ -103,7 +103,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self.is_logical_server() {
             self.carried = None;
         }
-        self.station = None;
+        self.clear_station_client();
         self.container = None;
         self.craft_size = 2;
         self.set_screen(Screen::Inventory);

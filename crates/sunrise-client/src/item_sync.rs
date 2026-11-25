@@ -440,7 +440,7 @@ fn equipment_slot_name(id: i32) -> Option<&'static str> {
 fn dye_name(id: i32) -> &'static str {
     usize::try_from(id)
         .ok()
-        .and_then(|i| crate::block_entity_render::DYES.get(i))
+        .and_then(|i| sunrise_level::dyes::DYES.get(i))
         .map_or("white", |d| d.0)
 }
 

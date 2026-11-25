@@ -20,7 +20,7 @@ TextureManager.getTexture	port	crates/sunrise-client-render/src/sprites.rs::Spri
 TextureManager.tick	inline	crates/sunrise-client-render/src/gfx/animate.rs::SpriteAnimator::animate_with	gap: minor: animated layers advance in the per-frame animate pass; there is no tickable texture list
 TextureManager.release	skip:java		drops one texture object; Rust ownership
 TextureManager.close	skip:java		drops all texture objects; Rust ownership
-TextureManager.reload	port	crates/sunrise-client-render/src/assets.rs::Assets::reload	gap: minor: rebuilds every render asset synchronously; no pending futures
+TextureManager.reload	port	crates/sunrise-client-render/src/assets.rs::RenderAssets::load	gap: minor: rebuilds every render asset synchronously; no pending futures
 TextureManager.dumpAllSheets	skip:debug		debug dump of every atlas
 TextureManager.scheduleLoad	skip:other		asynchronous texture preparation; Sunrise loads each texture on the calling thread in Sprites::insert
 SpriteSource.Output.add	port	crates/sunrise-client-render/src/atlas_sources.rs::list	records a sprite id and its origin; a later source with the same id replaces it

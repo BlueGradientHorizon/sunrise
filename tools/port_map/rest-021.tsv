@@ -74,7 +74,7 @@ Ease.inOutQuint	missing		a named easing only a datapack's timeline can reach: th
 Ease.outBounce	missing		a named easing only a datapack's timeline can reach: the four shipped timelines ask for constant, cubic_bezier or no ease, and environment.rs::Environment::load_dimension reads those two
 Ease.outElastic	missing		a named easing only a datapack's timeline can reach: the four shipped timelines ask for constant, cubic_bezier or no ease, and environment.rs::Environment::load_dimension reads those two
 Ease.outExpo	missing		a named easing only a datapack's timeline can reach: the four shipped timelines ask for constant, cubic_bezier or no ease, and environment.rs::Environment::load_dimension reads those two
-EasingType.cubicBezier	inline	crates/sunrise-client-render/src/environment.rs::Environment::load_dimension	reads the four control points of a cubic_bezier ease; gap: minor: no range check, see CubicBezierControls.validate
+EasingType.cubicBezier	inline	crates/sunrise-level/src/environment.rs::Environment::load_dimension	reads the four control points of a cubic_bezier ease; gap: minor: no range check, see CubicBezierControls.validate
 EasingType.CubicBezier.curveFromControls	inline	crates/sunrise-client-render/src/environment.rs::Easing::apply	the curve coefficients closure
 EasingType.CubicBezier.solveT	inline	crates/sunrise-client-render/src/environment.rs::Easing::apply	Newton steps with the 1e-5 tolerance
 EasingType.CubicBezier.solveTBisect	inline	crates/sunrise-client-render/src/environment.rs::Easing::apply	bisection fallback when Newton does not converge

@@ -7,7 +7,6 @@ use std::{collections::VecDeque, sync::Arc};
 use sunrise_client::{
     chunk::Chunk,
     fast_hash::{FxHashMap, FxHashSet},
-    streaming::Streaming,
 };
 use sunrise_mod_runtime::attachments::Holder;
 use sunrise_protocol::{chunk::SectionLight, packets::play};
@@ -342,7 +341,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             };
             if rebuild {
                 // Use this packet's masks, not the pending union or the changed values.
-                Streaming::rebuild_packet_light(&mut self.world, x, z, &layers);
+                self.world.rebuild_packet_light(x, z, &layers);
             }
             let pending = r.chunk_light.columns.entry(key).or_default();
             if let Some(earlier) = pending.take() {
@@ -367,7 +366,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     &layers,
                     r.chunk_format.has_skylight,
                 );
-                Streaming::light_updated(&mut self.world, x, z, &changed);
+                self.world.light_updated(x, z, &changed);
                 if rebuild {
                     self.ask_updated_light_emission(key, &changed);
                 }

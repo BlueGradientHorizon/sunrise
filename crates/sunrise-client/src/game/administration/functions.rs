@@ -1202,7 +1202,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .iter()
             .find(|pack| pack.id == id)
             .and_then(|pack| pack.selection.as_ref())
-            .is_some_and(|info| info.source == sunrise_client::pack_screen::Source::BuiltIn)
+            .is_some_and(|info| info.source == sunrise_level::pack_meta::PackSource::BuiltIn)
         {
             "pack.source.builtin"
         } else {
@@ -1409,7 +1409,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             .find(|pack| pack.id == name)
                             .and_then(|pack| pack.selection.as_ref())
                             .is_some_and(|info| {
-                                info.position == sunrise_client::packs::Position::Bottom
+                                info.position == sunrise_level::pack_meta::Position::Bottom
                             })
                     {
                         0

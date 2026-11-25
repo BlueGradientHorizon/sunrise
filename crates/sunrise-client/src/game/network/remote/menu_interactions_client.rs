@@ -846,7 +846,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         self.mount_menu_reset();
         // The client's menu has no level access: what it holds is the server's.
-        self.station = None;
+        self.clear_station_client();
         self.craft_size = 2;
         if let Some(key) = self.container.take() {
             // Server containers stay renderable but lose their copied slots.

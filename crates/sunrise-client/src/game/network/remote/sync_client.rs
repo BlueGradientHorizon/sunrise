@@ -530,7 +530,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 pitch: self.pitch,
             }));
             self.stop_remote_mining();
-            self.mining = None;
+            self.set_client_mining(None);
             return Ok(());
         }
         match self.player.as_mut() {
@@ -591,7 +591,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // anticheat's setback, a /tp) interrupts is aborted on the wire, and the
         // attack strength starts again.
         self.stop_remote_mining();
-        self.mining = None;
+        self.set_client_mining(None);
         Ok(())
     }
     /// `MultiPlayerGameMode.handleCreativeModeItemAdd`, shared by each creative slot sender.

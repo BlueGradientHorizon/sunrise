@@ -527,13 +527,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let toasts = [
             pending
                 .low_disk_space
-                .then(sunrise_client::chunk_io::low_disk_space_toast),
+                .then(sunrise_client::toasts::low_disk_space_toast),
             pending
                 .load_failure
-                .map(|(x, z)| sunrise_client::chunk_io::load_failure_toast(x, z)),
+                .map(|(x, z)| sunrise_client::toasts::load_failure_toast(x, z)),
             pending
                 .save_failure
-                .map(|(x, z)| sunrise_client::chunk_io::save_failure_toast(x, z)),
+                .map(|(x, z)| sunrise_client::toasts::save_failure_toast(x, z)),
         ];
         for (index, new) in toasts.into_iter().enumerate() {
             let Some(new) = new else { continue };

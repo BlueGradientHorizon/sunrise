@@ -1461,7 +1461,7 @@ fn resolve_mod_book_slot_with(
                         })
                         .or_else(|| items.get(&stack.item).and_then(|info| info.dye.clone()))
                         .unwrap_or_else(|| "white".into());
-                    sunrise_client::block_entity_render::DYES
+                    sunrise_level::dyes::DYES
                         .iter()
                         .position(|(id, _)| *id == name)
                         .unwrap_or(0)

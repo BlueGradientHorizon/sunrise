@@ -12,21 +12,20 @@ use crate::{
     world::World,
 };
 use glam::{DVec3, Quat, Vec3 as FVec3};
+use mod_api::{__private::BoundParticleProvider, ParticleBlend, ParticleKey};
+use std::{
+    array,
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 use sunrise_assets::resource_source::ResourceSource;
 use sunrise_core::{
     geometry::{Aabb, Vec3, trig},
     jmath,
     random::{LegacyRandom, RandomSource},
 };
+pub use sunrise_level::particle_options::ParticleOptions;
 use sunrise_world::block_collision::BlockCollisionRegistry;
-mod options;
-use mod_api::{__private::BoundParticleProvider, ParticleBlend, ParticleKey};
-pub use options::ParticleOptions;
-use std::{
-    array,
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
 
 pub use sunrise_client_core::particle_type::ParticleType;
 pub use sunrise_items::firework::{DYE_FIREWORK_COLORS, FireworkExplosion, FireworkShape};

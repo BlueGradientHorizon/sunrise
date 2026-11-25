@@ -264,11 +264,9 @@ fn a_client_anvil_click_fills_the_rename_box_with_the_parts_name() {
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "AnvilTest").unwrap();
             game.remote_set_menu(Some((1, "minecraft:anvil".into())), None);
-            game.station = Some(Station::new_kind(Kind::Anvil, [0, 64, 0]));
-            let rename_box = |game: &crate::game::ClientGame<'_>| {
-                let station = game.station.as_ref().unwrap();
-                (station.rename.value.clone(), station.rename.editable)
-            };
+            game.open_station_client(Station::new_kind(Kind::Anvil, [0, 64, 0]));
+            let rename_box =
+                |game: &crate::game::ClientGame<'_>| game.station_rename_box_for_test();
             // One left click on the input slot: puts the carried stack in, or takes it out.
             let click = |game: &mut crate::game::ClientGame<'_>| {
                 assert!(game.remote_menu_ops(&[(Some(INPUT), 0, Input::Pickup)]));

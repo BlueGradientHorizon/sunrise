@@ -4634,6 +4634,7 @@ dependencies = [
  "sunrise-perf-format",
  "sunrise-protocol",
  "sunrise-server-files",
+ "sunrise-server-profiles-http",
  "sunrise-shader-api",
  "sunrise-shaders",
  "sunrise-sim",
@@ -5030,6 +5031,7 @@ version = "0.1.0"
 name = "sunrise-level"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "bytemuck",
  "chrono",
  "flate2",
@@ -5039,6 +5041,7 @@ dependencies = [
  "rustix 1.1.5",
  "serde",
  "serde_json",
+ "sha1",
  "smallvec",
  "sunrise-assets",
  "sunrise-border",
@@ -5397,6 +5400,7 @@ dependencies = [
  "sunrise-perf-format",
  "sunrise-protocol",
  "sunrise-server-files",
+ "sunrise-server-profiles-http",
  "sunrise-shader-api",
  "sunrise-shaders",
  "sunrise-sim",
@@ -5473,6 +5477,7 @@ dependencies = [
  "sunrise-perf-format",
  "sunrise-proxy",
  "sunrise-server-files",
+ "sunrise-server-profiles-http",
  "sunrise-system",
  "sunrise-world",
 ]
@@ -5635,7 +5640,6 @@ dependencies = [
  "sunrise-core",
  "sunrise-java-properties",
  "sunrise-protocol",
- "ureq",
 ]
 
 [[package]]
@@ -5651,6 +5655,15 @@ dependencies = [
  "toml",
  "toml_edit",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "sunrise-server-profiles-http"
+version = "0.1.0"
+dependencies = [
+ "sunrise-core",
+ "sunrise-server-files",
+ "ureq",
 ]
 
 [[package]]

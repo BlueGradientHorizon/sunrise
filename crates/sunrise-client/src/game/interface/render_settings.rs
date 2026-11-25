@@ -260,7 +260,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// again.
     pub(in crate::game::client_side) fn forget_atlas_slots(&mut self) {
         self.side.skin_slots.forget();
-        self.maps.slots.forget();
+        self.side.map_slots.forget();
         self.side.trim_slots.forget();
         self.side.map_patches.clear();
         self.side.text_patches.get_mut().clear();

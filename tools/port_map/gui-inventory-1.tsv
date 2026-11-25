@@ -52,7 +52,7 @@ AbstractSignEditScreen.preeditUpdated	inline	crates/sunrise-client/src/game/inte
 AbstractSignEditScreen.extractRenderState	port	crates/sunrise-client/src/game/interface/sign_edit.rs::Game::draw_sign_editor
 AbstractSignEditScreen.extractSign	inline	crates/sunrise-client/src/game/interface/sign_edit.rs::Game::draw_sign_editor	sign sprite and text scale
 AbstractSignEditScreen.extractSignText	inline	crates/sunrise-client/src/game/interface/sign_edit.rs::Game::draw_sign_editor	cursor at the end of a line is a bar; vanilla draws an underscore there; no bidirectional shaping
-AnvilScreen.subInit	port	crates/sunrise-client/src/game/blocks/stations_common.rs::rename_box	50 character unbordered rename box
+AnvilScreen.subInit	port	crates/sunrise-client/src/game/blocks/stations_client.rs::rename_box	50 character unbordered rename box
 AnvilScreen.resize	skip:ui		re-init on window resize
 AnvilScreen.extractBackground	inline	crates/sunrise-client/src/game/blocks/stations/draw.rs::Game::draw_station	text field sprite, disabled without an input
 AnvilScreen.extractErrorIcon	inline	crates/sunrise-client/src/game/blocks/stations/draw.rs::Game::draw_station	error sprite when there is input and no result

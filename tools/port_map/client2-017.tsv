@@ -110,12 +110,12 @@ KeyBindsScreen.addFooter	port	crates/sunrise-client-render/src/options_ui.rs::Op
 KeyBindsScreen.repositionElements	skip:ui		layout only
 KeyBindsScreen.mouseClicked	port	crates/sunrise-client-render/src/options_ui.rs::OptionsUi::bind_mouse	a mouse button is bound to the key being changed
 KeyBindsScreen.extractRenderState	port	crates/sunrise-client-render/src/options_ui.rs::OptionsUi::layout	Reset All is active only while a binding differs from its default (KeyBinds::changed_from_defaults)
-PackSelectionModel.getUnselected	port	crates/sunrise-client-render/src/packs.rs::SelectionModel::list	unselected list (list(false)), returned as a slice rather than a stream
-PackSelectionModel.getSelected	port	crates/sunrise-client-render/src/packs.rs::SelectionModel::list	selected list (list(true)), returned as a slice rather than a stream
-PackSelectionModel.updateRepoSelectedList	port	crates/sunrise-client-render/src/packs.rs::SelectionModel::commit	selection written bottom first, as options.txt stores it; downloaded server/… packs are omitted from the saved list
+PackSelectionModel.getUnselected	port	crates/sunrise-level/src/pack_meta.rs::SelectionModel::list	unselected list (list(false)), returned as a slice rather than a stream
+PackSelectionModel.getSelected	port	crates/sunrise-level/src/pack_meta.rs::SelectionModel::list	selected list (list(true)), returned as a slice rather than a stream
+PackSelectionModel.updateRepoSelectedList	port	crates/sunrise-level/src/pack_meta.rs::SelectionModel::commit	selection written bottom first, as options.txt stores it; downloaded server/… packs are omitted from the saved list
 PackSelectionModel.findNewPacks	port	crates/sunrise-client/src/game/world/packs/mod.rs::Game::refresh_pack_lists	gap: minor: rescans when the options open and lists the data pack folder again once a second while the screen is open (OptionsUi::watch_data_packs); no watch on the resource pack folder; active server packs are included
 PackSelectionModel.EntryBase.updateHighContrastOptionInstance	missing		minor: selecting the high_contrast pack does not switch the High Contrast option on, as vanilla does
-PackSelectionModel.EntryBase.move	port	crates/sunrise-client-render/src/packs.rs::SelectionModel::move_by	move up or down within the list when the neighbour is not fixed
+PackSelectionModel.EntryBase.move	port	crates/sunrise-level/src/pack_meta.rs::SelectionModel::move_by	move up or down within the list when the neighbour is not fixed
 PackSelectionScreen.closeWatcher	missing		minor: no folder watcher to close (see PackSelectionScreen.Watcher)
 PackSelectionScreen.setInitialFocus	port	crates/sunrise-client-render/src/pack_screen.rs::PackScreen::set_focus	search box focused on open
 PackSelectionScreen.updateFilteredEntries	port	crates/sunrise-client-render/src/pack_screen.rs::PackScreen::filter	filters both lists by the search text

@@ -82,7 +82,7 @@ Firework.calculate	port	crates/sunrise-assets/src/item_model.rs::Resolve::tint
 ItemTintSources.bootstrap	skip:data		item tint ids are registered from data
 net/minecraft/client/color/item/Potion#calculate	port	crates/sunrise-assets/src/item_model.rs::Resolve::tint
 net/minecraft/client/color/item/TeamColor#calculate	port	crates/sunrise-assets/src/item_model.rs::Resolve::tint
-ClientAvatarState.moveCloak	port	crates/sunrise-client-render/src/camera.rs::AvatarBob::tick	the cloak point eases a quarter of the way to the player each tick, or jumps to it from 10 blocks away; the cape layer leans from it
+ClientAvatarState.moveCloak	port	crates/sunrise-level/src/camera_math.rs::AvatarBob::tick	the cloak point eases a quarter of the way to the player each tick, or jumps to it from 10 blocks away; the cape layer leans from it
 ClientMannequin.registerOverrides	skip:other		client-side constructor override; Sunrise creates mannequins from the species table
 ClientMannequin.tick	missing		minor: unsure: the mannequin avatar state (walk bob, cloak) is not ticked; skins come from skins.rs
 AbstractSelectionList.getRowLeft	port	crates/sunrise-client-render/src/pack_screen.rs::List::row_left
@@ -111,7 +111,7 @@ FirstPersonHandsAndItems.extractMapRenderState	inline	crates/sunrise-client/src/
 FirstPersonHandsAndItems.isChargedCrossbow	inline	crates/sunrise-client/src/first_person.rs::hands_to_render
 ItemActivation.tick	port	crates/sunrise-client/src/item_activation.rs::ItemActivation::tick	the count down to 0, where the item goes; game.rs::tick_item_activation runs it
 ItemActivation.activate	port	crates/sunrise-client/src/item_activation.rs::ItemActivation::activate	a copy of the stack, the 40 ticks and two offsets in [-1, 1); game/items/totem.rs sets it from findTotem
-KeyboardInput.calculateImpulse	inline	crates/sunrise-client-input/src/input.rs::keyboard_direction
+KeyboardInput.calculateImpulse	inline	crates/sunrise-client-core/src/move_input.rs::keyboard_direction
 LocalPlayer.<init>	inline	crates/sunrise-client/src/ambience.rs::Ambience::new	gap: minor: the three ambient handlers are the Ambience loops; no connection set-up
 LocalPlayer.sendChanges	port	crates/sunrise-client/src/game/network/remote/sync_client.rs::Game::remote_send_state
 LocalPlayer.getCurrentMood	inline	crates/sunrise-client/src/ambience.rs::Ambience::tick_biome	gap: minor: moodiness is built here; no getter is exposed

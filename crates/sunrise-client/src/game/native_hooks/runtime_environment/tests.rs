@@ -163,7 +163,7 @@ fn native_process_environment_in_registration_and_game_hosts() {
         );
     }
     // The same entry capture used before the executable loads any code.
-    crate::entry::runtime_environment::capture(&launch);
+    sunrise_level::runtime_env::runtime_environment::capture(&launch);
     let expected = RuntimeEnvironment::new(
         if dedicated {
             Dist::DedicatedServer
@@ -257,9 +257,11 @@ fn normal_options_preserve_dedicated_flag_valued_operands() {
         let options = Options::from_launch(launch).unwrap().unwrap();
         assert_eq!(options.dedicated.as_ref(), Some(&tail));
         assert_eq!(
-            crate::entry::dedicated_arguments::parse(options.dedicated.as_ref().unwrap())
-                .collect::<Result<Vec<_>, _>>()
-                .unwrap(),
+            sunrise_level::runtime_env::dedicated_arguments::parse(
+                options.dedicated.as_ref().unwrap()
+            )
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap(),
             [(option, Some("--game-tests"))],
         );
     }

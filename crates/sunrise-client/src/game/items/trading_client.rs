@@ -378,7 +378,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         );
         let mut s = Station::new_kind(Kind::Merchant, [0, 0, 0]);
         s.merchant = Some(Box::new(state));
-        self.station = Some(s);
+        self.open_station_client(s);
         self.set_screen(super::Screen::Inventory);
         self.capture(false);
         self.set_mapping_held("key.use", false);

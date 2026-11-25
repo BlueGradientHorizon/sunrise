@@ -30,7 +30,7 @@ SmithingMenu.createRecipeInput	inline	crates/sunrise-client/src/menu.rs::Menu::s
 SmithingMenu.shrinkStackInSlot	inline	crates/sunrise-client/src/menu.rs::Menu::on_take	the SmithingMenu take arm removes one of each input
 SmithingMenu.canTakeItemForPickAll	port	crates/sunrise-client/src/menu.rs::Menu::can_take_for_pick_all	the result slot is excluded
 SmithingMenu.canMoveIntoInputSlots	inline	crates/sunrise-client/src/menu.rs::Menu::quick_move	the Anvil or Smithing arm checks for an empty input the stack fits
-StonecutterMenu.hasInputItem	inline	crates/sunrise-client/src/game/blocks/stations.rs::Station::stonecutter_changed	the draw flag; the list scroll resets on the same input and recipe check
+StonecutterMenu.hasInputItem	inline	crates/sunrise-client/src/game/blocks/stations_client.rs::Station::stonecutter_changed	the draw flag; the list scroll resets on the same input and recipe check
 StonecutterMenu.isValidRecipeIndex	inline	crates/sunrise-client/src/menu.rs::Menu::button	the stonecutter arm checks the recipe index
 StonecutterMenu.setupRecipeList	port	crates/sunrise-client/src/menu.rs::Menu::stone_changed	recipes for the input are selected and the selection and result reset
 StonecutterMenu.canTakeItemForPickAll	port	crates/sunrise-client/src/menu.rs::Menu::can_take_for_pick_all	the result slot is excluded

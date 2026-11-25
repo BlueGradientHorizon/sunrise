@@ -1410,7 +1410,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 progress: 0.0,
                 per_tick: 0.0,
                 ticks: 0,
-                crack: None,
             });
         }
         let state = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);

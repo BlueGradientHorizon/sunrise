@@ -60,11 +60,11 @@ fn columns_loaded_past_the_render_distance_mesh_when_they_come_in_range() {
     };
     let assets = Arc::new(Assets::load(&root).unwrap());
     let render = Arc::new(
-        assets
-            .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-                root.to_path_buf(),
-            ))
-            .unwrap(),
+        sunrise_client::assets::RenderAssets::load(
+            &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
+            &assets,
+        )
+        .unwrap(),
     );
     let facts = BlockFacts::load(&root, assets.registry).unwrap();
     let visibility = models::load_visibility(&root, assets.registry).unwrap();
@@ -171,11 +171,11 @@ fn relit_columns_keep_every_mesh_current() {
     };
     let assets = Arc::new(Assets::load(&root).unwrap());
     let render = Arc::new(
-        assets
-            .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-                root.to_path_buf(),
-            ))
-            .unwrap(),
+        sunrise_client::assets::RenderAssets::load(
+            &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
+            &assets,
+        )
+        .unwrap(),
     );
     let facts = BlockFacts::load(&root, assets.registry).unwrap();
     let visibility = models::load_visibility(&root, assets.registry).unwrap();
@@ -308,11 +308,11 @@ fn every_extra_area_loads_however_the_areas_change() {
     };
     let assets = Arc::new(Assets::load(&root).unwrap());
     let render = Arc::new(
-        assets
-            .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-                root.clone(),
-            ))
-            .unwrap(),
+        sunrise_client::assets::RenderAssets::load(
+            &sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+            &assets,
+        )
+        .unwrap(),
     );
     let facts = BlockFacts::load(&root, assets.registry).unwrap();
     let visibility = models::load_visibility(&root, assets.registry).unwrap();
@@ -385,7 +385,7 @@ fn meshes_waiting_for_upload_hold_back_new_mesh_jobs() {
     };
     let assets = Arc::new(Assets::load(&root).unwrap());
     let source = sunrise_assets::resource_source::ResourceRoot::directory(root.clone());
-    let render = Arc::new(assets.reload(&source).unwrap());
+    let render = Arc::new(sunrise_client::assets::RenderAssets::load(&source, &assets).unwrap());
     let facts = BlockFacts::load(&root, assets.registry).unwrap();
     let visibility = models::load_visibility(&root, assets.registry).unwrap();
     let context = Arc::new(WorkerContext {

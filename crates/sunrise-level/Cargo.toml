@@ -22,6 +22,7 @@ sunrise-protocol = { path = "../sunrise-protocol" }
 sunrise-system = { path = "../sunrise-system" }
 sunrise-threads = { path = "../sunrise-threads" }
 sunrise-world = { path = "../sunrise-world" }
+base64 = "0.22"
 bytemuck = { version = "1.24", features = ["derive"] }
 chrono = { version = "0.4.42", default-features = false, features = ["clock", "std"] }
 flate2 = { version = "1.1.10", default-features = false, features = ["zlib-rs", "runtime_detection"] }
@@ -30,6 +31,7 @@ log = "0.4"
 png = "0.18"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["raw_value"] }
+sha1 = "0.10"
 smallvec = { version = "1", features = ["const_new"] }
 unicode-bidi = "0.3.18"
 zip = { version = "9.1.3", default-features = false, features = ["deflate"] }

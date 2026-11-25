@@ -505,7 +505,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .can_destroy_block(self.held(), self.creative)
         {
             self.stop_remote_mining();
-            self.mining = None;
+            self.set_client_mining(None);
             return true;
         }
         let Some(r) = self.remote.as_mut() else {
@@ -516,7 +516,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return true;
         }
         let Some(hit) = self.pick() else {
-            self.mining = None;
+            self.set_client_mining(None);
             return true;
         };
         let face = face_direction(hit.face);
@@ -526,7 +526,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // startDestroyBlock refuses a restricted break before predicting it.
         if self.remote_break_restricted(hit.pos) {
-            self.mining = None;
+            self.set_client_mining(None);
             return true;
         }
         if self.creative {
@@ -622,7 +622,6 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 progress: 0.0,
                 per_tick: 0.0,
                 ticks: 0,
-                crack: None,
             }));
             return true;
         }
@@ -656,7 +655,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 r.is_destroying = false;
                 r.destroy_delay = 5;
             }
-            self.mining = None;
+            self.set_client_mining(None);
         } else {
             if last_face != face {
                 self.send(S::PlayerAction(play::PlayerAction {
@@ -674,7 +673,6 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 progress: done,
                 per_tick: 0.0,
                 ticks,
-                crack: None,
             }));
         }
         true

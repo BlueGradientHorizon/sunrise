@@ -14,11 +14,11 @@ fn a_pearl_feels_the_water_its_box_touches() {
         return;
     }
     let assets = sunrise_client::assets::Assets::load(&root).unwrap();
-    let render = assets
-        .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-            root.to_path_buf(),
-        ))
-        .unwrap();
+    let render = sunrise_client::assets::RenderAssets::load(
+        &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
+        &assets,
+    )
+    .unwrap();
     let registry = assets.registry;
     let facts = sunrise_client::blocks::BlockFacts::load(&root, registry).unwrap();
     let motion = sunrise_client::motion::MotionResources::load(&root, &assets).unwrap();
@@ -45,7 +45,7 @@ fn a_pearl_feels_the_water_its_box_touches() {
     let suffocation =
         sunrise_client::mobs::suffocation::bind(collision.clone(), &motion.causes_suffocation)
             .unwrap();
-    let mut world = sunrise_client::world::World::test_scene(&assets, &render, 3).unwrap();
+    let mut world = sunrise_client::assets::test_scene_world(&assets, &render, 3).unwrap();
     // A pool of still water one block deep at y = 4, from x = 20 on (clear of the
     // scene's pyramid): its
     // surface is at 4 + 8/9.

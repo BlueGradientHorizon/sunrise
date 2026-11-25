@@ -162,7 +162,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // Interaction.getDimensions: EntityDimensions.scalable(width, height).
             return Some([i.width, i.height, i.height * 0.85]);
         }
-        if let Some(c) = self.potions.clouds.iter().find(|c| c.id == id) {
+        if let Some(c) = self.side.remote_clouds.iter().find(|c| c.id == id) {
             // AreaEffectCloud.getDimensions: scalable(radius * 2, 0.5).
             return Some([c.radius * 2.0, 0.5, 0.5 * 0.85]);
         }

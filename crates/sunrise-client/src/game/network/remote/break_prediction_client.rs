@@ -149,7 +149,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         for (pos, previous, state) in applied.into_iter().rev() {
             self.finish_client_block_write(pos, Some(previous), state, true);
         }
-        self.mining = None;
+        self.set_client_mining(None);
     }
 
     /// The blocks a use changed, kept under its sequence until acknowledgement.

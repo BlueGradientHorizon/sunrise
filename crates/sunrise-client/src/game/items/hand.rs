@@ -105,7 +105,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         self.clicks.destroying = Default::default();
         self.request_remote_mining_stop();
-        self.mining = None;
+        self.set_client_mining(None);
     }
     /// Returns false when the interaction policy or item vetoes the swing and its packet.
     pub(in crate::game) fn client_swing_hand(

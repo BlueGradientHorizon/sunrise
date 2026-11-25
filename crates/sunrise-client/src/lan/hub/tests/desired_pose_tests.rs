@@ -158,7 +158,7 @@ fn no_body(flags: PoseFlags) -> BodyFlags {
 #[ignore = "daily"]
 fn update_player_pose_takes_the_desired_pose_and_the_others_see_the_bodys() {
     let v = crate::test_fixtures::vanilla().expect("prepared resources required");
-    let mut scene = crate::world::World::test_scene(&v.assets, &v.render, 2).unwrap();
+    let mut scene = crate::world::World::test_scene_with_placements(&v.assets, &[], 2).unwrap();
     let (hub, _rx) = hub_with_a_guest();
     let entity = hub.guests[0].entity_id;
     let mut seen = Vec::new();
@@ -217,7 +217,7 @@ fn update_player_pose_takes_the_desired_pose_and_the_others_see_the_bodys() {
 fn a_replaced_desired_pose_reaches_every_pose_update() {
     use crate::rule_replacements::{DESIRED_POSE, replaced};
     let v = crate::test_fixtures::vanilla().expect("prepared resources required");
-    let mut scene = crate::world::World::test_scene(&v.assets, &v.render, 2).unwrap();
+    let mut scene = crate::world::World::test_scene_with_placements(&v.assets, &[], 2).unwrap();
     let (hub, _rx) = hub_with_a_guest();
     let entity = hub.guests[0].entity_id;
     let standing = PoseFlags::default();

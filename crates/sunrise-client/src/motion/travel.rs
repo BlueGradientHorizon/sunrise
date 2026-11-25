@@ -240,8 +240,8 @@ mod tests {
     /// position and velocity it leaves, and where it started.
     fn flying_travel(listener: Decide, replaying: bool) -> (Vec3, Vec3, Vec3) {
         let v = crate::test_fixtures::vanilla().expect("prepared resources are required");
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 1).unwrap();
+        let (assets, binding, resources) = (&v.assets, &v.collision, &v.motion);
+        let mut scene = World::test_scene_with_placements(assets, &[], 1).unwrap();
         let start = Vec3::new(20.5, 4.0, 20.5);
         let mut player = PlayerMotion::new(resources, start).unwrap();
         player.flying = true;

@@ -440,7 +440,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             &mut sign.back
         };
         for (line, new) in side.lines.iter_mut().zip(&p.lines) {
-            *line = sunrise_client::clipboard::strip_formatting(new);
+            *line = sunrise_client_core::text::strip_formatting(new);
         }
         self.world.block_entities.set_sign_editor(key, None);
         self.mark_block_entity_updated(key);

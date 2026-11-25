@@ -1116,6 +1116,7 @@ state_resolver	game	touches neither ClientState nor ServerState fields	game/modd
 stateful_block_entity_tests	game	touches neither ClientState nor ServerState fields	game/runtime/stateful_block_entity_tests.rs
 station_control	client	touches only ClientState fields	game/runtime/station_control.rs
 stations	client	touches only client-owned fields (opposite-side functions moved to stations_server)	game/blocks/stations.rs
+stations_client	client	client-only station UI extracted in H1	game/blocks/stations_client.rs
 stations_common	game	common dual-role module	game/blocks/stations_common.rs
 stations_server	server	hand-authored server role-split module	game/blocks/stations_server.rs
 stats	server	touches only ServerState fields	game/interface/stats.rs

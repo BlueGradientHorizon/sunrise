@@ -7,6 +7,7 @@ use std::{fs, path::Path};
 use sunrise_protocol::packets::configuration::ClientInformation;
 
 pub use sunrise_client_core::sound_source::SOUND_SOURCES;
+pub use sunrise_level::sim_settings::SimSettings;
 
 /// Per-source volumes for the mixer (soundCategory_* except master).
 static SOURCE_VOLUMES: std::sync::RwLock<[f32; 11]> = std::sync::RwLock::new([1.0; 11]);
@@ -874,6 +875,34 @@ impl Settings {
             requested: self.gui_scale,
             unicode: self.force_unicode,
         }
+    }
+
+    pub fn sim_settings(&self) -> SimSettings {
+        SimSettings {
+            render_distance: self.render_distance,
+            simulation_distance: self.simulation_distance,
+            entity_distance: self.entity_distance,
+            parallel_tick: self.sunrise.parallel_tick,
+            auto_jump: self.auto_jump,
+            main_hand_left: self.main_hand_left,
+            chat_visibility: self.chat_visibility,
+            operator_items_tab: self.operator_items_tab,
+            reduced_debug_info: self.reduced_debug_info,
+            language: self.language.clone(),
+        }
+    }
+
+    pub fn apply_sim_settings(&mut self, sim: &SimSettings) {
+        self.render_distance = sim.render_distance;
+        self.simulation_distance = sim.simulation_distance;
+        self.entity_distance = sim.entity_distance;
+        self.sunrise.parallel_tick = sim.parallel_tick;
+        self.auto_jump = sim.auto_jump;
+        self.main_hand_left = sim.main_hand_left;
+        self.chat_visibility = sim.chat_visibility;
+        self.operator_items_tab = sim.operator_items_tab;
+        self.reduced_debug_info = sim.reduced_debug_info;
+        self.language.clone_from(&sim.language);
     }
 }
 

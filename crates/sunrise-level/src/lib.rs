@@ -2,6 +2,9 @@
 //! Zero desktop, GPU, window, audio, gamepad, clipboard or HTTP dependencies.
 #![forbid(unsafe_code)]
 
+#[cfg(test)]
+mod test_log;
+
 pub use sunrise_assets::resource_source;
 pub use sunrise_assets::zip;
 pub use sunrise_client_core::Result;
@@ -29,23 +32,42 @@ pub use sunrise_world::moving_colliders;
 
 // --- lowered modules ---
 pub mod api_context;
+pub mod assets;
+pub mod audio_capture;
 pub mod bidi;
+pub mod block_entity_ticks;
+pub mod camera_math;
 pub mod carrier_fences;
 pub mod columns;
 pub mod crash;
+pub mod datapack;
+pub mod dyes;
+pub mod environment;
 pub mod fast_hash;
 pub mod jigsaw_block;
+pub mod lod_data;
 pub mod logging;
 pub mod mod_chunk_tickets;
+pub mod pack_image;
+pub mod pack_meta;
 pub mod pack_tags;
 pub mod par;
+pub mod particle_options;
+#[cfg(target_os = "linux")]
+pub mod perf_capture;
+pub mod profile_lookup;
 pub mod providers;
 pub mod random_source;
+pub mod runtime_env;
 pub mod section_mask;
+pub mod shulker_box;
+pub mod signs_data;
+pub mod sim_settings;
 pub mod sound_events;
 pub mod spans;
 pub mod structure_block;
 pub mod test_block;
 pub mod test_instance_block;
+pub mod tick_mode;
 pub mod worldborder;
 // --- end lowered modules ---

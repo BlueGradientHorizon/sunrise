@@ -465,14 +465,9 @@ mod below_world_tests {
             std::env::var_os("SUNRISE_TEST_RESOURCES").expect("SUNRISE_TEST_RESOURCES"),
         );
         let assets = Assets::load(&root).unwrap();
-        let render = assets
-            .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-                root.clone(),
-            ))
-            .unwrap();
         let binding = crate::collisions::load(&root, assets.registry).unwrap();
         let resources = MotionResources::load(&root, &assets).unwrap();
-        let mut scene = World::test_scene(&assets, &render, 1).unwrap();
+        let mut scene = World::test_scene_with_placements(&assets, &[], 1).unwrap();
         scene.shape = shape;
         let mut player = PlayerMotion::new(&resources, Vec3::new(0.5, y, 0.5)).unwrap();
         MotionWorld {

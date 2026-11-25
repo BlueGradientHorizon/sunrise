@@ -2,10 +2,11 @@
 //! `banner_patterns` layers carried by banner items, shields and placed
 //! banners, and the loom rules of `LoomMenu` (selectable patterns, the
 //! six-layer limit and the result stack).
-use crate::{block_entity_render::DYES, items::ItemStack, items::Items};
+use crate::items::{ItemStack, Items};
 use serde_json::Value;
 use std::{collections::HashMap, fs, path::Path, sync::Arc};
 use sunrise_core::nbt::Tag;
+use sunrise_level::dyes::{DYES, diffuse};
 
 pub use sunrise_items::banner_layer::{BannerLayer, layers_from_nbt, layers_to_nbt};
 
@@ -279,7 +280,7 @@ pub fn banner_color(item: &str) -> Option<&'static str> {
 pub fn dye_rgb(name: &str) -> u32 {
     DYES.iter()
         .position(|d| d.0 == name)
-        .map_or(0xFFFFFF, crate::pack_palette::diffuse)
+        .map_or(0xFFFFFF, diffuse)
 }
 /// The ominous banner's component patch hides its pattern tooltip.
 pub fn tooltip_layers(stack: &ItemStack) -> &[BannerLayer] {
@@ -431,7 +432,8 @@ mod tests {
     }
     #[test]
     fn ominous_banner_hides_tooltip_layers_but_keeps_its_patterns() {
-        let mut banner = crate::mobs::raider::ominous_banner();
+        let mut banner = ItemStack::new("minecraft:white_banner", 1);
+        banner.data_mut().ominous_banner = true;
         (banner.damage, banner.extra) = crate::item_data::decode_components(
             crate::item_data::encode_components(&banner, &Default::default()).as_ref(),
         );

@@ -14,7 +14,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.clear_device_keys();
         self.set_mapping_held("key.attack", false);
         self.set_mapping_held("key.use", false);
-        self.mining = None;
+        self.set_client_mining(None);
         self.capture(false);
     }
 

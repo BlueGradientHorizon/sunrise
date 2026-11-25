@@ -137,7 +137,7 @@ MultiPlayerGameMode.performUseItemOn	port	crates/sunrise-client/src/game/network
 MultiPlayerGameMode.createPlayer	port	crates/sunrise-client/src/game/network/remote/sync_client.rs::Game::remote_teleport	gap: minor: the player is created on the first position packet, not at login
 MultiPlayerGameMode.handleCreativeModeItemAdd	inline	crates/sunrise-client/src/game/network/remote/sync_client.rs::Game::remote_send_state	gap: minor: the creative inventory is sent as a per-tick diff, with no feature-flag check
 MultiPlayerGameMode.handleCreativeModeItemDrop	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::remote_creative_drop	gap: minor: no check that another container screen is open
-MultiPlayerGameMode.getDestroyStage	port	crates/sunrise-client/src/first_person.rs::Destroying::stage
+MultiPlayerGameMode.getDestroyStage	port	crates/sunrise-sim/src/first_person_sim.rs::Destroying::stage
 RegistryDataCollector.appendContents	skip:data		registry data for the configuration handshake; Sunrise reads its own tables
 RegistryDataCollector.appendTags	skip:data		registry tags for the configuration handshake; Sunrise reads its own tables
 RegistryDataCollector.loadNewElementsAndTags	skip:data		registry loading for the configuration handshake; Sunrise reads its own tables

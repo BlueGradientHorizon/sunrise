@@ -476,7 +476,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side.pickups.0.clear();
         self.orbs.clear();
         self.falling.clear();
-        self.mining = None;
+        self.set_client_mining(None);
         self.container = None;
         self.carried = None;
         self.using = None;
@@ -750,7 +750,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.dropped.clear();
         self.clear_client_particles();
         self.falling.clear();
-        self.mining = None;
+        self.set_client_mining(None);
         self.container = None;
         self.carried = None;
         self.using = None;

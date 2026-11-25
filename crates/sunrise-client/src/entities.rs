@@ -2678,7 +2678,7 @@ mod fire_environment_tests {
         if !v.root.join("items.json").exists() {
             return;
         }
-        let (assets, render, facts) = (&v.assets, &v.render, &v.facts);
+        let (assets, facts) = (&v.assets, &v.facts);
         let defaults = sunrise_world::item_defaults::read(&v.root).unwrap();
         let damage = crate::health::HealthResources::load(&v.root).unwrap();
         let can_hurt = |stack: &ItemStack, name: &str| {
@@ -2688,7 +2688,7 @@ mod fire_environment_tests {
                 .and_then(|components| components.get("minecraft:damage_resistant"));
             crate::item_damage::stack_can_be_hurt_by(default, &damage.damage, stack, name).unwrap()
         };
-        let mut world = World::test_scene(assets, render, 3).unwrap();
+        let mut world = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let at = Vec3::new(20.5, 4.0, 20.5);
         world
             .set(
@@ -2872,7 +2872,7 @@ mod destroyed_bundle_environment_tests {
         if !v.root.join("items.json").exists() {
             return;
         }
-        let (assets, render, facts) = (&v.assets, &v.render, &v.facts);
+        let (assets, facts) = (&v.assets, &v.facts);
         let defaults = sunrise_world::item_defaults::read(&v.root).unwrap();
         let damage = crate::health::HealthResources::load(&v.root).unwrap();
         let can_hurt = |stack: &ItemStack, name: &str| {
@@ -2882,7 +2882,7 @@ mod destroyed_bundle_environment_tests {
                 .and_then(|components| components.get("minecraft:damage_resistant"));
             crate::item_damage::stack_can_be_hurt_by(default, &damage.damage, stack, name).unwrap()
         };
-        let mut world = World::test_scene(assets, render, 3).unwrap();
+        let mut world = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let at = Vec3::new(20.5, 4.0, 20.5);
         world
             .set(
@@ -3515,7 +3515,7 @@ mod world_border_tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, facts) = (&v.assets, &v.render, &v.facts);
+        let (assets, facts) = (&v.assets, &v.facts);
         let fluids = crate::motion::FluidResources::new(assets, facts).unwrap();
         let (collision, motion) = (&v.collision, &v.motion);
         let mut after = Vec::new();
@@ -3525,7 +3525,7 @@ mod world_border_tests {
             ("minecraft:soul_sand", 3.875),
             ("minecraft:honey_block", 3.9375),
         ] {
-            let mut world = World::test_scene(assets, render, 3).unwrap();
+            let mut world = World::test_scene_with_placements(assets, &[], 3).unwrap();
             let id = assets.registry.default_state(block).unwrap();
             for x in 18..=23 {
                 for z in 19..=21 {
@@ -3569,10 +3569,10 @@ mod world_border_tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, facts) = (&v.assets, &v.render, &v.facts);
+        let (assets, facts) = (&v.assets, &v.facts);
         let fluids = crate::motion::FluidResources::new(assets, facts).unwrap();
         let collision = &v.collision;
-        let world = World::test_scene(assets, render, 3).unwrap();
+        let world = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let border = BorderGeometry::new([20.0, 20.0], 10.0, 29_999_984).unwrap();
         for bordered in [false, true] {
             let border = bordered.then_some(&border);
@@ -3652,10 +3652,10 @@ mod honey_slide_tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, facts) = (&v.assets, &v.render, &v.facts);
+        let (assets, facts) = (&v.assets, &v.facts);
         let fluids = crate::motion::FluidResources::new(assets, facts).unwrap();
         let collision = &v.collision;
-        let mut world = World::test_scene(assets, render, 3).unwrap();
+        let mut world = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let stone = assets.registry.default_state("minecraft:stone").unwrap();
         for x in 19..=21 {
             for z in 19..=21 {
@@ -3697,10 +3697,10 @@ mod honey_slide_tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, facts) = (&v.assets, &v.render, &v.facts);
+        let (assets, facts) = (&v.assets, &v.facts);
         let fluids = crate::motion::FluidResources::new(assets, facts).unwrap();
         let collision = &v.collision;
-        let mut world = World::test_scene(assets, render, 3).unwrap();
+        let mut world = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let soul = assets
             .registry
             .default_state("minecraft:soul_sand")
@@ -3760,9 +3760,9 @@ mod honey_slide_tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, facts) = (&v.assets, &v.render, &v.facts);
+        let (assets, facts) = (&v.assets, &v.facts);
         let collision = &v.collision;
-        let mut world = World::test_scene(assets, render, 3).unwrap();
+        let mut world = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let mut column = assets
             .registry
             .state(
@@ -4002,11 +4002,11 @@ mod slime_bounce_tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, facts) = (&v.assets, &v.render, &v.facts);
+        let (assets, facts) = (&v.assets, &v.facts);
         let motion =
             crate::motion::MotionResources::load_with_facts(&v.root, assets, facts).unwrap();
         let collision = &v.collision;
-        let mut world = World::test_scene(assets, render, 3).unwrap();
+        let mut world = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let slime = assets
             .registry
             .default_state("minecraft:slime_block")
@@ -4124,10 +4124,10 @@ mod entity_collision_tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, facts) = (&v.assets, &v.render, &v.facts);
+        let (assets, facts) = (&v.assets, &v.facts);
         let fluids = crate::motion::FluidResources::new(assets, facts).unwrap();
         let collision = &v.collision;
-        let mut world = World::test_scene(assets, render, 3).unwrap();
+        let mut world = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let stone = assets.registry.default_state("minecraft:stone").unwrap();
         world.set(20, 3, 20, stone).unwrap();
         let rest = |boxes: &[Aabb]| {
@@ -4165,10 +4165,10 @@ mod entity_collision_tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, facts) = (&v.assets, &v.render, &v.facts);
+        let (assets, facts) = (&v.assets, &v.facts);
         let fluids = crate::motion::FluidResources::new(assets, facts).unwrap();
         let collision = &v.collision;
-        let mut world = World::test_scene(assets, render, 3).unwrap();
+        let mut world = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let state = |n: &str| assets.registry.default_state(n).unwrap();
         for x in 16..32 {
             world.set(x, 3, 20, state("minecraft:stone")).unwrap();
@@ -4515,9 +4515,9 @@ mod armor_stand_motion_tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, facts) = (&v.assets, &v.render, &v.facts);
+        let (assets, facts) = (&v.assets, &v.facts);
         let collision = &v.collision;
-        let world = World::test_scene(assets, render, 3).unwrap();
+        let world = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let border = BorderGeometry::new([20.0, 20.0], 10.0, 29_999_984).unwrap();
         for bordered in [false, true] {
             let mut stand = ArmorStand::new(1, Vec3::new(24.0, 4.0, 20.5), 0.0);
@@ -4567,9 +4567,9 @@ mod armor_stand_motion_tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, facts) = (&v.assets, &v.render, &v.facts);
+        let (assets, facts) = (&v.assets, &v.facts);
         let collision = &v.collision;
-        let world = World::test_scene(assets, render, 3).unwrap();
+        let world = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let empty = Default::default();
         let climbing = sunrise_world::climbing::ClimbingRegistry::new(
             collision.registry(),
@@ -4674,8 +4674,8 @@ mod armor_stand_motion_tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, collision, facts) = (&v.assets, &v.render, &v.collision, &v.facts);
-        let world = World::test_scene(assets, render, 3).unwrap();
+        let (assets, collision, facts) = (&v.assets, &v.collision, &v.facts);
+        let world = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let start = Vec3::new(20.5, 20.0, 20.5);
         let mut stand = ArmorStand::new(1, start, 0.0);
         stand.ground.on_ground = false;
@@ -4705,8 +4705,8 @@ mod armor_stand_motion_tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, collision, facts) = (&v.assets, &v.render, &v.collision, &v.facts);
-        let world = World::test_scene(assets, render, 3).unwrap();
+        let (assets, collision, facts) = (&v.assets, &v.collision, &v.facts);
+        let world = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let start = Vec3::new(20.5, 20.0, 20.5);
         let mut stand = ArmorStand::new(1, start, 0.0);
         stand.ground.on_ground = false;
@@ -4730,8 +4730,8 @@ mod armor_stand_motion_tests {
         let Some(v) = crate::test_fixtures::vanilla() else {
             return;
         };
-        let (assets, render, collision, facts) = (&v.assets, &v.render, &v.collision, &v.facts);
-        let mut world = World::test_scene(assets, render, 3).unwrap();
+        let (assets, collision, facts) = (&v.assets, &v.collision, &v.facts);
+        let mut world = World::test_scene_with_placements(assets, &[], 3).unwrap();
         let snow = assets
             .registry
             .default_state("minecraft:powder_snow")
@@ -5214,10 +5214,10 @@ mod orb_lava_tests {
             eprintln!("orb lava fixture unavailable: prepared resources missing");
             return;
         };
-        let (assets, render, facts) = (&v.assets, &v.render, &v.facts);
+        let (assets, facts) = (&v.assets, &v.facts);
         let fluids = crate::motion::FluidResources::new(assets, facts).unwrap();
         let collision = &v.collision;
-        let mut world = World::test_scene(assets, render, 3).unwrap();
+        let mut world = World::test_scene_with_placements(assets, &[], 3).unwrap();
         f(&mut world, facts, collision, &fluids, assets);
     }
 

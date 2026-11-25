@@ -1,7 +1,16 @@
 //! Engine particle provider options, independent of API registry keys.
-use super::ParticleType;
 use mod_api::client::particles::PositionSource;
+use std::{collections::BTreeMap, sync::Arc};
+pub use sunrise_client_core::particle_type::ParticleType;
 use sunrise_world::particle_options::ParticleOptions as PersistentOptions;
+
+/// What an emitter seeds on the custom particle it spawns: its own `red`... `custom` and customs.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Seed {
+    pub fields: BTreeMap<String, f64>,
+    pub customs: BTreeMap<String, f64>,
+}
+
 /// `ParticleOptions` with the parameters of the option classes used here.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: the game builds it with a literal; mods use the constructors
@@ -37,8 +46,8 @@ pub struct ParticleOptions {
     pub mod_particle: Option<std::borrow::Cow<'static, str>>,
     /// A registered type's owned options and its `overrideLimiter` flag.
     pub typed_particle: Option<(mod_api::__private::TypedParticleOptions, bool)>,
-    pub source: Option<std::sync::Arc<str>>,
-    pub polytone_seed: Option<std::sync::Arc<super::polytone::Seed>>,
+    pub source: Option<Arc<str>>,
+    pub polytone_seed: Option<Arc<Seed>>,
 }
 impl ParticleOptions {
     /// Persistent options that don't need a model lookup or a special renderer.
@@ -207,5 +216,11 @@ impl ParticleOptions {
             color: rgba,
             ..Self::simple(ty)
         }
+    }
+    /// These options with the block or item they carry (`source`), for particle modifier
+    /// filters.
+    pub fn with_source(mut self, id: &str) -> Self {
+        self.source = Some(Arc::from(id));
+        self
     }
 }

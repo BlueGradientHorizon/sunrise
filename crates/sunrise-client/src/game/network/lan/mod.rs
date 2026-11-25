@@ -4389,15 +4389,13 @@ pub(in crate::game) mod tests {
             None,
         )
         .unwrap();
-        let render = game
-            .pack
-            .assets
-            .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-                root.clone(),
-            ))
-            .unwrap();
+        let render = sunrise_client::assets::RenderAssets::load(
+            &sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+            &game.pack.assets,
+        )
+        .unwrap();
         game.world =
-            sunrise_client::world::World::test_scene(&game.pack.assets, &render, 2).unwrap();
+            sunrise_client::assets::test_scene_world(&game.pack.assets, &render, 2).unwrap();
 
         let sync = Arc::new(sunrise_client::lan::data::SyncData::empty());
         let net = NetConfig {

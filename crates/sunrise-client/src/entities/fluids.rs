@@ -389,14 +389,9 @@ mod tests {
             return;
         }
         let assets = crate::assets::Assets::load(&root).unwrap();
-        let render = assets
-            .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-                root.to_path_buf(),
-            ))
-            .unwrap();
         let facts = crate::blocks::BlockFacts::load(&root, assets.registry).unwrap();
         let fluids = FluidResources::new(&assets, &facts).unwrap();
-        let mut world = World::test_scene(&assets, &render, 3).unwrap();
+        let mut world = World::test_scene_with_placements(&assets, &[], 3).unwrap();
         let stone = assets.registry.default_state("minecraft:stone").unwrap();
         let water = assets.registry.default_state("minecraft:water").unwrap();
         let mut state = assets.registry.state(water).unwrap().clone();
@@ -439,15 +434,10 @@ mod tests {
             return;
         }
         let assets = crate::assets::Assets::load(&root).unwrap();
-        let render = assets
-            .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-                root.to_path_buf(),
-            ))
-            .unwrap();
         let facts = crate::blocks::BlockFacts::load(&root, assets.registry).unwrap();
         let fluids = FluidResources::new(&assets, &facts).unwrap();
         let collision = crate::collisions::load(&root, assets.registry).unwrap();
-        let mut world = World::test_scene(&assets, &render, 3).unwrap();
+        let mut world = World::test_scene_with_placements(&assets, &[], 3).unwrap();
         let stone = assets.registry.default_state("minecraft:stone").unwrap();
         let water = assets.registry.default_state("minecraft:water").unwrap();
         let mut state = assets.registry.state(water).unwrap().clone();
@@ -554,15 +544,10 @@ mod tests {
             return;
         }
         let assets = crate::assets::Assets::load(&root).unwrap();
-        let render = assets
-            .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-                root.to_path_buf(),
-            ))
-            .unwrap();
         let facts = crate::blocks::BlockFacts::load(&root, assets.registry).unwrap();
         let fluids = FluidResources::new(&assets, &facts).unwrap();
         let collision = crate::collisions::load(&root, assets.registry).unwrap();
-        let mut world = World::test_scene(&assets, &render, 3).unwrap();
+        let mut world = World::test_scene_with_placements(&assets, &[], 3).unwrap();
         let stone = assets.registry.default_state("minecraft:stone").unwrap();
         let water = assets.registry.default_state("minecraft:water").unwrap();
         let mut state = assets.registry.state(water).unwrap().clone();
@@ -669,15 +654,10 @@ mod tests {
             return;
         }
         let assets = crate::assets::Assets::load(&root).unwrap();
-        let render = assets
-            .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-                root.clone(),
-            ))
-            .unwrap();
         let facts = crate::blocks::BlockFacts::load(&root, assets.registry).unwrap();
         let fluids = FluidResources::new(&assets, &facts).unwrap();
         let collision = crate::collisions::load(&root, assets.registry).unwrap();
-        let mut world = World::test_scene(&assets, &render, 3).unwrap();
+        let mut world = World::test_scene_with_placements(&assets, &[], 3).unwrap();
         let water = assets.registry.default_state("minecraft:water").unwrap();
         for x in 19..=21 {
             for z in 19..=21 {
@@ -742,14 +722,9 @@ mod tests {
             return;
         }
         let assets = crate::assets::Assets::load(&root).unwrap();
-        let render = assets
-            .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-                root.to_path_buf(),
-            ))
-            .unwrap();
         let facts = crate::blocks::BlockFacts::load(&root, assets.registry).unwrap();
         let fluids = FluidResources::new(&assets, &facts).unwrap();
-        let mut world = World::test_scene(&assets, &render, 3).unwrap();
+        let mut world = World::test_scene_with_placements(&assets, &[], 3).unwrap();
         let stone = assets.registry.default_state("minecraft:stone").unwrap();
         let water = assets.registry.default_state("minecraft:water").unwrap();
         let mut state = assets.registry.state(water).unwrap().clone();
@@ -808,15 +783,10 @@ mod tests {
             return;
         }
         let assets = crate::assets::Assets::load(&root).unwrap();
-        let render = assets
-            .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-                root.to_path_buf(),
-            ))
-            .unwrap();
         let facts = crate::blocks::BlockFacts::load(&root, assets.registry).unwrap();
         let fluids = FluidResources::new(&assets, &facts).unwrap();
         let collision = crate::collisions::load(&root, assets.registry).unwrap();
-        let mut world = World::test_scene(&assets, &render, 3).unwrap();
+        let mut world = World::test_scene_with_placements(&assets, &[], 3).unwrap();
         let stone = assets.registry.default_state("minecraft:stone").unwrap();
         let water = assets.registry.default_state("minecraft:water").unwrap();
         let mut state = assets.registry.state(water).unwrap().clone();

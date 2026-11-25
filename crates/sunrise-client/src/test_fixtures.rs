@@ -1,14 +1,10 @@
 //! The prepared vanilla data unit tests read, loaded once per test process.
 //!
-//! Decoding the block registry, baking every block model and reading the
+//! Decoding the block registry and reading the
 //! movement tables takes seconds in a debug build, and a test that did it
 //! for itself spent most of its time there. Tests only read these, so one
 //! copy serves them all; each test still builds its own `World` over it.
-use crate::{
-    assets::{Assets, RenderAssets},
-    blocks::BlockFacts,
-    motion::MotionResources,
-};
+use crate::{assets::Assets, blocks::BlockFacts, motion::MotionResources};
 use std::{
     path::{Path, PathBuf},
     sync::OnceLock,
@@ -19,7 +15,6 @@ pub(crate) struct Vanilla {
     /// The root everything below was read from: additional test data uses the same root.
     pub root: PathBuf,
     pub assets: Assets,
-    pub render: RenderAssets,
     pub facts: BlockFacts,
     pub collision: BlockCollisionRegistry<'static>,
     pub motion: MotionResources,
@@ -50,11 +45,6 @@ pub(crate) fn vanilla() -> Option<&'static Vanilla> {
                 return None;
             }
             let assets = Assets::load(&root).unwrap();
-            let render = assets
-                .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-                    root.clone(),
-                ))
-                .unwrap();
             let facts = BlockFacts::load(&root, assets.registry).unwrap();
             let collision = crate::collisions::load(&root, assets.registry).unwrap();
             let motion = MotionResources::load(&root, &assets).unwrap();
@@ -62,7 +52,6 @@ pub(crate) fn vanilla() -> Option<&'static Vanilla> {
                 root,
                 facts,
                 assets,
-                render,
                 collision,
                 motion,
             })

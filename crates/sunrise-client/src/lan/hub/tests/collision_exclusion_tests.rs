@@ -12,7 +12,7 @@ const OPENING: [[f64; 6]; 1] = [[22.0, 5.0, 20.0, 23.0, 7.0, 21.0]];
 /// A stone floor with its top at y 5, with a wall at x 22 three blocks high or none.
 fn scene(fixture: &crate::test_fixtures::Vanilla, wall: bool) -> World {
     let assets = &fixture.assets;
-    let mut scene = World::test_scene(assets, &fixture.render, 2).unwrap();
+    let mut scene = World::test_scene_with_placements(assets, &[], 2).unwrap();
     let stone = assets.registry.default_state("minecraft:stone").unwrap();
     let air = assets.registry.default_state("minecraft:air").unwrap();
     for x in 10..=30 {

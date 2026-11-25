@@ -1085,12 +1085,12 @@ mod tests {
             check(game);
             game.craft_size = 3;
             check(game);
-            game.station = Some(crate::game::stations::Station::new_kind(
+            game.open_station_client(crate::game::stations::Station::new_kind(
                 crate::game::stations::Kind::Merchant,
                 [0, 0, 0],
             ));
             check(game);
-            game.station = None;
+            game.clear_station_client();
             game.side.screen = Screen::Creative;
             check(game);
             let inventory = game

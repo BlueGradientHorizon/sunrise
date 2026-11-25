@@ -61,14 +61,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }),
             )
         });
-        if let Some(station) = self
-            .station
-            .as_mut()
-            .filter(|station| station.kind == crate::game::stations::Kind::Stonecutter)
+        if let Some((station, ui)) = self.station_and_ui_mut()
+            && station.kind == crate::game::stations::Kind::Stonecutter
         {
             // The table and the menu's cached indices are one generation. Rebuild even
             // when the input stack has not changed since the previous packet.
-            station.reset_stonecutter_generation();
+            station.reset_stonecutter_generation(ui);
             self.remote_station_slot_changed(crate::game::stations::INPUT);
         }
     }

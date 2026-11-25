@@ -1,6 +1,5 @@
 //! LocalPlayer sprint decisions around KeyboardInput.tick. Conditions are the
 //! current player queries; setting sprint dispatches to the live attribute state.
-use crate::input;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Keys {
@@ -19,7 +18,12 @@ impl Keys {
     pub fn direction(self) -> [f32; 2] {
         match self.analog {
             Some(v) => v,
-            None => input::keyboard_direction(self.forward, self.backward, self.left, self.right),
+            None => sunrise_client_core::move_input::keyboard_direction(
+                self.forward,
+                self.backward,
+                self.left,
+                self.right,
+            ),
         }
     }
     /// Add a stick's move vector: the direction flags code reading keys

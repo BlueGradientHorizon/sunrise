@@ -103,7 +103,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         menu.on_client = true;
         menu.selected = self.selected;
         menu.levels = self.experience.level;
-        menu.anvil.name = self.station.as_ref().and_then(|s| s.anvil_sent.clone());
+        menu.anvil.name = self
+            .station_and_ui()
+            .and_then(|(_, ui)| ui.anvil_sent.clone());
         {
             let env = Env {
                 enchantments: self.item_enchantments(),
@@ -155,8 +157,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.offhand = menu.player_item(40).cloned();
         // The names AnvilScreen.onNameChanged sent while the click ran go out before it.
         for name in std::mem::take(&mut menu.anvil.renamed) {
-            if let Some(s) = self.station.as_mut() {
-                s.anvil_sent = Some(name.clone());
+            if let Some((_, ui)) = self.station_and_ui_mut() {
+                ui.anvil_sent = Some(name.clone());
             }
             self.send(sunrise_protocol::packets::play::Serverbound::RenameItem(
                 sunrise_protocol::packets::play::RenameItem { name },
@@ -677,7 +679,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         menu.levels = self.experience.level;
         if anvil_open {
             // The rename box as AnvilScreen.onNameChanged gives it to the menu.
-            menu.anvil.name = self.station.as_ref().and_then(|s| s.anvil_sent.clone());
+            menu.anvil.name = self
+                .station_and_ui()
+                .and_then(|(_, ui)| ui.anvil_sent.clone());
         }
         for (i, stack) in before.iter().enumerate() {
             menu.set_slot(&env, i, stack.clone());
@@ -824,19 +828,19 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.loom_screen_changed();
         } else if kind == Kind::Stonecutter {
             let input_changed = before[0] != menu.slot(0).cloned();
-            if let Some(s) = self.station.as_mut() {
+            if let Some((s, ui)) = self.station_and_ui_mut() {
                 s.selected = usize::try_from(menu.data[0]).ok();
                 s.stone = std::mem::take(&mut menu.stone);
                 if input_changed {
-                    s.stonecutter_changed();
+                    s.stonecutter_changed(ui);
                 }
             }
         }
         if kind == Kind::Anvil {
             // The names AnvilScreen.onNameChanged sent while the click ran go out before it.
             for name in std::mem::take(&mut menu.anvil.renamed) {
-                if let Some(s) = self.station.as_mut() {
-                    s.anvil_sent = Some(name.clone());
+                if let Some((_, ui)) = self.station_and_ui_mut() {
+                    ui.anvil_sent = Some(name.clone());
                 }
                 self.send(sunrise_protocol::packets::play::Serverbound::RenameItem(
                     sunrise_protocol::packets::play::RenameItem { name },

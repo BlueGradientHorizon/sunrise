@@ -26,7 +26,7 @@ pub use other::{Sampling, Stopped};
 #[cfg(target_os = "linux")]
 mod linux {
     use super::*;
-    use sunrise_client_render::perf_capture;
+    use sunrise_level::perf_capture;
     use sunrise_threads::heap_sample::{self, HeapProfile};
     use sunrise_threads::profile::{self, Profile, SymbolQuality};
     use sunrise_threads::sampler;

@@ -1,8 +1,7 @@
 //! Evoker fangs (`EvokerFangs`): rising out of the floor after a delay,
 //! biting what stands on them for 6 damage, sinking back after 22 ticks.
 use super::Game;
-use std::sync::Arc;
-use sunrise_client::mobs::{Part, Species};
+use sunrise_client::mobs::Species;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::{LegacyRandom, RandomSource};
 
@@ -56,7 +55,6 @@ pub(in crate::game) fn fang_crit(
 #[derive(Default)]
 pub(in crate::game) struct FangState {
     pub list: sunrise_client::join_seq::ResidentList<Fangs>,
-    pub(in crate::game) model: Option<Arc<Part>>,
 }
 impl FangState {
     pub(in crate::game) fn perf_count(&self) -> usize {

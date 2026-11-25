@@ -835,11 +835,6 @@ mod tests {
             .join("../../.local/sunrise-client")
             .join(sunrise_core::VANILLA_VERSION);
         let assets = Assets::load(&root).unwrap();
-        let render = assets
-            .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-                root.to_path_buf(),
-            ))
-            .unwrap();
         let collision = crate::collisions::load(&root, assets.registry).unwrap();
         let resources = MotionResources::load(&root, &assets).unwrap();
         let files = vec![
@@ -861,7 +856,7 @@ mod tests {
             .with_packs(&root, &PackOverlay::new(&files), false)
             .unwrap();
         let reloaded = open.with_packs(&root, &PackOverlay::NONE, true).unwrap();
-        let mut scene = World::test_scene(&assets, &render, 1).unwrap();
+        let mut scene = World::test_scene_with_placements(&assets, &[], 1).unwrap();
         for (source, exhaustion, name) in [
             (LandingDamage::Fall, 0.75, "minecraft:fall"),
             (LandingDamage::Stalagmite, 0.5, "minecraft:stalagmite"),

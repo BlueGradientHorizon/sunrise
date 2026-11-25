@@ -1452,40 +1452,6 @@ impl Streaming {
         }
         take_resent_column(world, &old, chunk, self.relight_resent);
     }
-    /// A changed mesh input also affects its neighbouring sections.
-    pub fn light_updated(world: &mut World, x: i32, z: i32, sections: &[usize]) {
-        for &sy in sections {
-            Self::dirty_light_section(world, x, sy as i32, z);
-        }
-    }
-
-    /// `ClientPacketListener.readSectionList` requests rebuilds even if a standalone
-    /// light packet repeats the same data. Its coordinates include both padding sections.
-    pub fn rebuild_packet_light(
-        world: &mut World,
-        x: i32,
-        z: i32,
-        layers: &[sunrise_protocol::chunk::SectionLight],
-    ) {
-        for (b, (sky, block)) in layers.iter().enumerate() {
-            if sky.is_some() || block.is_some() {
-                Self::dirty_light_section(world, x, b as i32 - 1, z);
-            }
-        }
-    }
-
-    fn dirty_light_section(world: &mut World, x: i32, sy: i32, z: i32) {
-        let sections = world.layout().sections() as i32;
-        for s in (sy - 1).max(0)..=(sy + 1).min(sections - 1) {
-            for dz in -1..=1 {
-                for dx in -1..=1 {
-                    world
-                        .dirty_sections
-                        .insert((x.wrapping_add(dx), s, z.wrapping_add(dz)));
-                }
-            }
-        }
-    }
 
     /// A cache-centre change invalidates mesh inputs but keeps the hidden columns lit.
     pub fn remote_chunk_visibility_changed(
@@ -4098,10 +4064,10 @@ pub fn take_resent_column(world: &mut World, old: &Chunk, mut chunk: Chunk, reli
     // A section with new biomes and the same blocks remeshes now (its tint), with its neighbours, whose tint
     // blends across the border: above and below too, as a block's tint can sample the biome quart of the
     // section next to it (`BiomeManager.getBiome`'s zoom reaches a quart beyond the block).
-    Streaming::light_updated(world, key.0, key.1, &kept.biomes);
+    world.light_updated(key.0, key.1, &kept.biomes);
     // A section with the same blocks and new light takes the packet's light (vanilla's
     // `handleLevelChunkWithLight` always applies it) and remeshes as a light update would.
-    Streaming::light_updated(world, key.0, key.1, &kept.light);
+    world.light_updated(key.0, key.1, &kept.light);
     if !kept.blocks {
         return;
     }
@@ -4604,11 +4570,11 @@ mod tests {
         let root = PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let assets = Arc::new(Assets::load(&root).unwrap());
         let render = Arc::new(
-            assets
-                .reload(&sunrise_assets::resource_source::ResourceRoot::directory(
-                    root.to_path_buf(),
-                ))
-                .unwrap(),
+            crate::assets::RenderAssets::load(
+                &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
+                &assets,
+            )
+            .unwrap(),
         );
         let facts = BlockFacts::load(&root, assets.registry).unwrap();
         let visibility = models::load_visibility(&root, assets.registry).unwrap();

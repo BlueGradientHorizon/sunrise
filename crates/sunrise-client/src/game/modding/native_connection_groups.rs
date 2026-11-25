@@ -1309,7 +1309,7 @@ mod tests {
             .collect(),
         );
         let assets = game.pack.assets.clone();
-        let render = assets.reload(&root).unwrap();
+        let render = sunrise_client::assets::RenderAssets::load(&root, &assets).unwrap();
         assert!(render.connected.has_group_rules());
         let visibility =
             sunrise_client::models::load_visibility(root.prepared(), assets.registry).unwrap();

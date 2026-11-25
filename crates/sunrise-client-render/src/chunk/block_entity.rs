@@ -221,13 +221,7 @@ pub struct SkullSkin {
     pub texture: Option<String>,
     pub fallback: &'static str,
 }
-/// `Either<String, UUID>`: the key a `Dynamic` `ResolvableProfile` resolves
-/// by (`ResolvableProfile.nameOrId`).
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum NameOrId {
-    Name(String),
-    Id(u128),
-}
+pub use crate::profile_lookup::NameOrId;
 /// `CrafterBlockEntity`: nine slots that can be disabled, the powered flag
 /// and the ticks left in the crafting animation.
 #[derive(Clone, Debug, Default)]
@@ -316,40 +310,7 @@ pub struct BrewingStand {
     pub ingredient: Option<Arc<str>>,
     pub last_bottles: Option<[bool; 3]>,
 }
-/// One sign side (`SignText`).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SignText {
-    pub lines: [String; 4],
-    /// `DyeColor` id.
-    pub color: u8,
-    pub glowing: bool,
-    /// The `click_event` in each line's component style, as saved.
-    pub click: [Option<Tag>; 4],
-    /// Each line's saved component when it is more than plain text (a colour,
-    /// siblings, a list), so its style survives loading, saving and the
-    /// network. See `SignText::message` for a line edited since.
-    pub saved: [Option<SavedLine>; 4],
-}
-/// A sign line's saved component and the text it showed when it was read.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SavedLine {
-    pub text: String,
-    pub component: Tag,
-}
-/// `SignBlockEntity` / `HangingSignBlockEntity` data.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct SignData {
-    pub hanging: bool,
-    pub front: SignText,
-    pub back: SignText,
-    pub waxed: bool,
-    /// `allow_op_features`: the sign's click events may run commands.
-    pub allow_op_features: bool,
-    /// `playerWhoMayEdit`: the one player whose editor is on this sign, as a
-    /// UUID. Every other player's click, write and applicator is refused
-    /// while it is set. Not saved (vanilla keeps it out of the NBT).
-    pub allowed_editor: Option<u128>,
-}
+pub use crate::signs_data::{SavedLine, SignData, SignText};
 /// `VibrationInfo`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Info {

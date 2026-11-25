@@ -9,13 +9,11 @@ use serde_json::{Value, json};
 use sunrise_client::{
     command::vanilla::DIFFICULTIES,
     gamerules::{self, Value as GameRuleValue},
-    server::{
-        profiles,
-        user_lists::{BanEntry, NameAndId, OpEntry, WhiteEntry},
-    },
+    server::user_lists::{BanEntry, NameAndId, OpEntry, WhiteEntry},
     text::Text,
 };
 use sunrise_protocol::text::translatable;
+use sunrise_server_files::profiles;
 
 /// A `UserBan`: the player, the reason, the source, the end.
 type Ban = BanEntry<NameAndId>;
@@ -843,7 +841,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .unwrap()
                 .as_mut()
                 .and_then(|c| c.get_by_id(id));
-            return cached.or_else(|| profiles::find_by_id(&profiles::discovery_url(), id));
+            return cached.or_else(|| {
+                sunrise_server_profiles_http::find_by_id(&profiles::discovery_url(), id)
+            });
         }
         self.resolve_name(player["name"].as_str()?)
     }
