@@ -955,7 +955,8 @@ fn vehicle_root_travel(expected: &RootTravel, dismount: Option<&str>) {
         assert!(game.boats.iter().all(|b| b.id != root));
         assert!(game.carts.iter().all(|c| c.id != root));
         assert!(game.boat_object(root).is_some() || game.cart_object(root).is_some());
-        let y = |game: &crate::game::ServerGame<'_>, id: u32| game.mob_object(id).unwrap().position.y;
+        let y =
+            |game: &crate::game::ServerGame<'_>, id: u32| game.mob_object(id).unwrap().position.y;
         assert_eq!([y(game, rejected), y(game, grandchild)], expected.seated);
         for _ in 0..5 {
             game.tick_world(true).unwrap();

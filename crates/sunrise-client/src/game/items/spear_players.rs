@@ -318,14 +318,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             affected = true;
             // attackVisualEffects: no attack sound, the enchantments' magic crit.
             if l.magic {
-                self.critical_hit(
-                    self.side.lan_acting,
-                    l.id,
-                    l.feet,
-                    l.width,
-                    l.height,
-                    true,
-                );
+                self.critical_hit(self.side.lan_acting, l.id, l.feet, l.width, l.height, true);
             }
             // setLastHurtMob at this stab's own tail: a mob contact that came later
             // in the same use already wrote the record during the turn.

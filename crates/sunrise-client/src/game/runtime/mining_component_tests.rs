@@ -1,4 +1,4 @@
-use super::{Audio, Game, Options, Progress, Settings, load_resources};
+use super::{Options, Progress, Settings, load_resources};
 use std::sync::Arc;
 use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
 use sunrise_core::{geometry::Vec3, position::ChunkPos};

@@ -239,7 +239,8 @@ fn reload_command_prepares_world_before_applying_listeners_and_preserves_tables_
                 let old_order = game.items().block_tag_order.clone();
                 let old_sets = game.items().block_tags.clone();
                 let old = game
-                    .side.world_tables
+                    .side
+                    .world_tables
                     .0
                     .as_ref()
                     .map(|tables| tables as *const _);
@@ -252,7 +253,8 @@ fn reload_command_prepares_world_before_applying_listeners_and_preserves_tables_
                 assert_eq!(state.load(Ordering::SeqCst), 1);
                 assert_eq!(
                     old,
-                    game.side.world_tables
+                    game.side
+                        .world_tables
                         .0
                         .as_ref()
                         .map(|tables| tables as *const _)
@@ -409,7 +411,8 @@ fn reload_command_runs_listeners_on_both_sides_of_function_library() {
                         ["apply before", "parse chosen", "apply after"]
                     );
                     assert!(
-                        game.side.fns
+                        game.side
+                            .fns
                             .0
                             .store
                             .functions
@@ -583,11 +586,17 @@ fn missing_original_at_reload_preserves_the_published_data_and_reports_its_owner
         assert!(reported.contains("reload_test: original 1:"), "{reported}");
         assert!(reported.contains(jar.sha512()), "{reported}");
         assert_eq!(game.options.resources, resources.prepared().to_owned());
-        assert_eq!(game.side.fns.0.store.functions["reload_test:keep"], previous);
+        assert_eq!(
+            game.side.fns.0.store.functions["reload_test:keep"],
+            previous
+        );
         assert_eq!(game.side.fns.0.enabled(), enabled);
         write(&jar_file, &original);
         assert!(game.run_command("reload"));
-        assert_ne!(game.side.fns.0.store.functions["reload_test:keep"], previous);
+        assert_ne!(
+            game.side.fns.0.store.functions["reload_test:keep"],
+            previous
+        );
     });
 }
 
@@ -700,7 +709,10 @@ fn server_reload_delivers_mod_files_overrides_and_preserves_all_data_on_failure(
                 8,
                 "earlier successful prepare must not publish"
             );
-            assert_eq!(game.side.fns.0.store.functions["reload_test:keep"], old_function);
+            assert_eq!(
+                game.side.fns.0.store.functions["reload_test:keep"],
+                old_function
+            );
             assert!(!game.run_command("datapack disable \"file/test\""));
             assert_eq!(
                 std::fs::read(world.join("datapacks.json")).unwrap(),
@@ -715,7 +727,14 @@ fn server_reload_delivers_mod_files_overrides_and_preserves_all_data_on_failure(
                 game.side.cmds.0.vanilla_disabled, old_vanilla_disabled,
                 "the refused change flips no command switch"
             );
-            assert!(game.side.fns.0.store.functions.contains_key("reload_test:keep"));
+            assert!(
+                game.side
+                    .fns
+                    .0
+                    .store
+                    .functions
+                    .contains_key("reload_test:keep")
+            );
             assert_eq!(*live.lock().unwrap(), 8);
             reject.store(false, Ordering::Relaxed);
             write(&data, "not JSON");
@@ -729,7 +748,10 @@ fn server_reload_delivers_mod_files_overrides_and_preserves_all_data_on_failure(
                 "{error}"
             );
             assert_eq!(*live.lock().unwrap(), 8);
-            assert_eq!(game.side.fns.0.store.functions["reload_test:keep"], old_function);
+            assert_eq!(
+                game.side.fns.0.store.functions["reload_test:keep"],
+                old_function
+            );
         })
     });
     std::fs::remove_dir_all(root).unwrap();

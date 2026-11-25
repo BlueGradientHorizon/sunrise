@@ -1,5 +1,5 @@
 use super::*;
-use crate::game::native_entity_refs::tests::{with_game_role, with_game_role_client};
+use crate::game::native_entity_refs::tests::with_game_role_client;
 use mod_api::{BlockPart, Hooks, LevelSide, Registrar, SmokeSourceEvent};
 
 struct Bale;

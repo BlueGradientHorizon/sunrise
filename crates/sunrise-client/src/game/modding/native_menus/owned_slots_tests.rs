@@ -1,6 +1,5 @@
 use super::tests::{MOD_MENU, mod_menu_guest, sent};
 use crate::game::{
-    Game,
     api_values::{self, TryIntoApi},
     native_entity_refs::tests::{run_fresh_cases, with_game},
 };

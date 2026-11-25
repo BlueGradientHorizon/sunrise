@@ -16,12 +16,14 @@ impl FrameVisuals {
         camera: glam::DVec3,
     ) -> Vec<dynamic_light::Colored> {
         let particle_lights = game
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .and_then(|r| r.particle_lights())
             .map_or_else(Vec::new, |entries| {
-                game.side.particles
+                game.side
+                    .particles
                     .0
                     .lights(entries, game.clock.camera_fraction() as f32)
             });
@@ -58,7 +60,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let mut visuals = FrameVisuals::default();
         // Held and dropped items whose block the pack's `[[lights]]` colour shine in that colour,
         // as far as their dynamic light reaches.
-        if let Some(renderer) = self.side.renderer.0.as_ref().filter(|r| r.has_light_colors()) {
+        if let Some(renderer) = self
+            .side
+            .renderer
+            .0
+            .as_ref()
+            .filter(|r| r.has_light_colors())
+        {
             for (source, item) in self.dynamic_light_sources(alpha) {
                 let Some(color) = item.and_then(|i| renderer.light_color(i)) else {
                     continue;

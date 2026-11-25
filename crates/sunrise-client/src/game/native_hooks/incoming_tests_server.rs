@@ -4,7 +4,7 @@ pub(in crate::game::server_side) use crate::game::native_hooks::incoming_tests::
 #[test]
 #[ignore = "daily"]
 fn held_durability_retains_the_stack_hand_and_explicit_break_slot() {
-    use crate::game::{Audio, Game, Hand, Options, Progress, Settings, load_resources};
+    use crate::game::{Hand, Options, Progress, Settings, load_resources};
     use sunrise_client::{items::ItemStack, motion::PlayerMotion};
     use sunrise_core::equipment_slot::EquipmentSlot;
     use sunrise_core::geometry::Vec3;

@@ -43,7 +43,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     pub(in crate::game::client_side) fn finish_async_particle_culling(&self) {
-        self.side.async_particle_culler
+        self.side
+            .async_particle_culler
             .0
             .borrow_mut()
             .finish_frame(&self.world, self.res.facts());

@@ -1,6 +1,5 @@
 //! Minecraft 26.3 display parity tests against VanillaDisplayParityOracle (.local witness).
 use super::{RemoteTextDisplay, Shows};
-use crate::game::Game;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use crate::game::native_hooks::particle_count_tests::frame_scene;
 use glam::{DVec3, Mat4};
@@ -410,11 +409,16 @@ fn no_culling_text_displays_are_not_frustum_culled_26_3() {
             (0.0, 0.0),
             0,
         ));
-        game.side.text_displays.0.get_mut(&1001).unwrap().metadata(&[
-            (11, 0, Value::Floats(vec![50.0, 0.0, -50.0])),
-            (17, 2, Value::Float(0.03)),
-            (23, 0, Value::Text(Tag::String("Menu".into()))),
-        ]);
+        game.side
+            .text_displays
+            .0
+            .get_mut(&1001)
+            .unwrap()
+            .metadata(&[
+                (11, 0, Value::Floats(vec![50.0, 0.0, -50.0])),
+                (17, 2, Value::Float(0.03)),
+                (23, 0, Value::Text(Tag::String("Menu".into()))),
+            ]);
         game.tick_text_displays(game.clock.runs_normally());
         let (mut normal, mut see_through) = (Vec::new(), Vec::new());
         collect_text_display_geometry(game, cam, 1.0, &mut normal, &mut see_through);
@@ -429,12 +433,17 @@ fn no_culling_text_displays_are_not_frustum_culled_26_3() {
             (0.0, 0.0),
             0,
         ));
-        game.side.text_displays.0.get_mut(&1002).unwrap().metadata(&[
-            (17, 2, Value::Float(0.03)),
-            (20, 2, Value::Float(0.2)),
-            (21, 2, Value::Float(0.2)),
-            (23, 0, Value::Text(Tag::String("Behind".into()))),
-        ]);
+        game.side
+            .text_displays
+            .0
+            .get_mut(&1002)
+            .unwrap()
+            .metadata(&[
+                (17, 2, Value::Float(0.03)),
+                (20, 2, Value::Float(0.2)),
+                (21, 2, Value::Float(0.2)),
+                (23, 0, Value::Text(Tag::String("Behind".into()))),
+            ]);
         game.tick_text_displays(game.clock.runs_normally());
         normal.clear();
         see_through.clear();
@@ -450,11 +459,16 @@ fn no_culling_text_displays_are_not_frustum_culled_26_3() {
             (0.0, 0.0),
             0,
         ));
-        game.side.text_displays.0.get_mut(&1003).unwrap().metadata(&[
-            (20, 2, Value::Float(f32::INFINITY)),
-            (21, 2, Value::Float(1.0)),
-            (23, 0, Value::Text(Tag::String("Inf".into()))),
-        ]);
+        game.side
+            .text_displays
+            .0
+            .get_mut(&1003)
+            .unwrap()
+            .metadata(&[
+                (20, 2, Value::Float(f32::INFINITY)),
+                (21, 2, Value::Float(1.0)),
+                (23, 0, Value::Text(Tag::String("Inf".into()))),
+            ]);
         game.tick_text_displays(game.clock.runs_normally());
         normal.clear();
         see_through.clear();
@@ -610,14 +624,16 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
             (0.0, 0.0),
             0,
         ));
-        game.side.text_displays.0.get_mut(&2003).unwrap().metadata(&[(
-            23,
-            0,
-            Value::Text(Tag::String("VR".into())),
-        )]);
+        game.side
+            .text_displays
+            .0
+            .get_mut(&2003)
+            .unwrap()
+            .metadata(&[(23, 0, Value::Text(Tag::String("VR".into())))]);
         game.tick_text_displays(game.clock.runs_normally());
         // Standalone view_range update (no render state id, no tick): range = 1.92.
-        game.side.text_displays
+        game.side
+            .text_displays
             .0
             .get_mut(&2003)
             .unwrap()
@@ -691,17 +707,27 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
         game.side.text_displays.0.clear();
         let culled_case = &lc["last_progress_while_culled"];
         assert!(game.spawn_remote_object(2004, "minecraft:text_display", [0.0; 3], (0.0, 0.0), 0));
-        game.side.text_displays.0.get_mut(&2004).unwrap().metadata(&[
-            (23, 0, Value::Text(Tag::String("C".into()))),
-            (11, 0, Value::Floats(vec![0.0, 0.0, 0.0])),
-            (17, 2, Value::Float(0.05)), // range = 3.2
-        ]);
+        game.side
+            .text_displays
+            .0
+            .get_mut(&2004)
+            .unwrap()
+            .metadata(&[
+                (23, 0, Value::Text(Tag::String("C".into()))),
+                (11, 0, Value::Floats(vec![0.0, 0.0, 0.0])),
+                (17, 2, Value::Float(0.05)), // range = 3.2
+            ]);
         game.tick_text_displays(game.clock.runs_normally()); // tick 1
-        game.side.text_displays.0.get_mut(&2004).unwrap().metadata(&[
-            (8, 1, Value::Int(0)),
-            (9, 1, Value::Int(4)),
-            (11, 0, Value::Floats(vec![10.0, 0.0, 0.0])),
-        ]);
+        game.side
+            .text_displays
+            .0
+            .get_mut(&2004)
+            .unwrap()
+            .metadata(&[
+                (8, 1, Value::Int(0)),
+                (9, 1, Value::Int(4)),
+                (11, 0, Value::Floats(vec![10.0, 0.0, 0.0])),
+            ]);
         game.tick_text_displays(game.clock.runs_normally()); // tick 2
         game.tick_text_displays(game.clock.runs_normally()); // tick 3: progress(0.0) = 0.25
         normal.clear();
@@ -722,11 +748,16 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
         );
         assert!(normal.is_empty());
         // Tick 5: retarget to 20; must start from 0.25 * 10 = 2.5, not 7.5.
-        game.side.text_displays.0.get_mut(&2004).unwrap().metadata(&[
-            (8, 1, Value::Int(0)),
-            (9, 1, Value::Int(4)),
-            (11, 0, Value::Floats(vec![20.0, 0.0, 0.0])),
-        ]);
+        game.side
+            .text_displays
+            .0
+            .get_mut(&2004)
+            .unwrap()
+            .metadata(&[
+                (8, 1, Value::Int(0)),
+                (9, 1, Value::Int(4)),
+                (11, 0, Value::Floats(vec![20.0, 0.0, 0.0])),
+            ]);
         game.tick_text_displays(game.clock.runs_normally());
         let d = &game.side.text_displays.0[&2004];
         let p = d.progress(0.0);
@@ -747,16 +778,26 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
         game.side.text_displays.0.clear();
         let dur_case = &lc["duration_zero_and_negative"];
         assert!(game.spawn_remote_object(2005, "minecraft:text_display", [0.0; 3], (0.0, 0.0), 0));
-        game.side.text_displays.0.get_mut(&2005).unwrap().metadata(&[
-            (23, 0, Value::Text(Tag::String("Z".into()))),
-            (11, 0, Value::Floats(vec![0.0, 0.0, 0.0])),
-        ]);
+        game.side
+            .text_displays
+            .0
+            .get_mut(&2005)
+            .unwrap()
+            .metadata(&[
+                (23, 0, Value::Text(Tag::String("Z".into()))),
+                (11, 0, Value::Floats(vec![0.0, 0.0, 0.0])),
+            ]);
         game.tick_text_displays(game.clock.runs_normally()); // tick 1
-        game.side.text_displays.0.get_mut(&2005).unwrap().metadata(&[
-            (8, 1, Value::Int(0)),
-            (9, 1, Value::Int(4)),
-            (11, 0, Value::Floats(vec![8.0, 0.0, 0.0])),
-        ]);
+        game.side
+            .text_displays
+            .0
+            .get_mut(&2005)
+            .unwrap()
+            .metadata(&[
+                (8, 1, Value::Int(0)),
+                (9, 1, Value::Int(4)),
+                (11, 0, Value::Floats(vec![8.0, 0.0, 0.0])),
+            ]);
         game.tick_text_displays(game.clock.runs_normally()); // tick 2
         game.tick_text_displays(game.clock.runs_normally()); // tick 3: progress(0.0) = 0.25
         normal.clear();
@@ -765,7 +806,8 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
             game.side.text_displays.0[&2005].last_progress.to_bits(),
             hex_u32(&dur_case["progress_before_zero_bits"])
         );
-        game.side.text_displays
+        game.side
+            .text_displays
             .0
             .get_mut(&2005)
             .unwrap()
@@ -773,11 +815,16 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
         game.tick_text_displays(game.clock.runs_normally()); // tick 4: duration = 0
         normal.clear();
         collect_text_display_geometry(game, DVec3::ZERO, 0.5, &mut normal, &mut see_through);
-        game.side.text_displays.0.get_mut(&2005).unwrap().metadata(&[
-            (8, 1, Value::Int(0)),
-            (9, 1, Value::Int(4)),
-            (11, 0, Value::Floats(vec![20.0, 0.0, 0.0])),
-        ]);
+        game.side
+            .text_displays
+            .0
+            .get_mut(&2005)
+            .unwrap()
+            .metadata(&[
+                (8, 1, Value::Int(0)),
+                (9, 1, Value::Int(4)),
+                (11, 0, Value::Floats(vec![20.0, 0.0, 0.0])),
+            ]);
         game.tick_text_displays(game.clock.runs_normally()); // tick 5: must start from 0.25 * 8 = 2.0, not 8.0
         let dz = &game.side.text_displays.0[&2005];
         let p_after = dz.progress(0.0);
@@ -886,11 +933,16 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
                 (0.0, 0.0),
                 0
             ));
-            game.side.text_displays.0.get_mut(&3001).unwrap().metadata(&[
-                (23, 0, Value::Text(Tag::String(text.into()))),
-                (25, 1, Value::Int(bg as i32)),
-                (26, 0, Value::Byte(opacity)),
-            ]);
+            game.side
+                .text_displays
+                .0
+                .get_mut(&3001)
+                .unwrap()
+                .metadata(&[
+                    (23, 0, Value::Text(Tag::String(text.into()))),
+                    (25, 1, Value::Int(bg as i32)),
+                    (26, 0, Value::Byte(opacity)),
+                ]);
             game.tick_text_displays(game.clock.runs_normally());
             normal.clear();
             see_through.clear();
@@ -1044,7 +1096,8 @@ fn text_display_resolves_inline_player_head_profiles_26_3() {
             (0.0, 0.0),
             0,
         ));
-        game.side.text_displays
+        game.side
+            .text_displays
             .0
             .get_mut(&83225)
             .unwrap()
@@ -1090,28 +1143,30 @@ fn block_display_backface_culling_translucent_pass_and_light_emission_26_3() {
         let chunk = sunrise_client::chunk::Chunk::empty(0, 0);
         game.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
 
-        let emit_block = |game: &mut crate::game::ClientGame<'_>, id: i32, block: &str| -> Vec<Vertex> {
-            game.side.text_displays.0.clear();
-            game.side.glowing_vertices.borrow_mut().clear();
-            let state = game.pack.assets.registry.default_state(block).unwrap();
-            assert!(game.spawn_remote_object(
-                id,
-                "minecraft:block_display",
-                [0.5, 64.0, 0.5],
-                (0.0, 0.0),
-                0,
-            ));
-            game.side.text_displays
-                .0
-                .get_mut(&id)
-                .unwrap()
-                .show(&[(23, 0, Value::Id(state.0 as i32))], None);
-            game.tick_text_displays(game.clock.runs_normally());
-            let mut out = Vec::new();
-            game.block_item_display_geometry(DVec3::new(0.5, 64.0, 3.5), 1.0, &mut out);
-            assert!(!out.is_empty(), "{block} emitted no vertices");
-            out
-        };
+        let emit_block =
+            |game: &mut crate::game::ClientGame<'_>, id: i32, block: &str| -> Vec<Vertex> {
+                game.side.text_displays.0.clear();
+                game.side.glowing_vertices.borrow_mut().clear();
+                let state = game.pack.assets.registry.default_state(block).unwrap();
+                assert!(game.spawn_remote_object(
+                    id,
+                    "minecraft:block_display",
+                    [0.5, 64.0, 0.5],
+                    (0.0, 0.0),
+                    0,
+                ));
+                game.side
+                    .text_displays
+                    .0
+                    .get_mut(&id)
+                    .unwrap()
+                    .show(&[(23, 0, Value::Id(state.0 as i32))], None);
+                game.tick_text_displays(game.clock.runs_normally());
+                let mut out = Vec::new();
+                game.block_item_display_geometry(DVec3::new(0.5, 64.0, 3.5), 1.0, &mut out);
+                assert!(!out.is_empty(), "{block} emitted no vertices");
+                out
+            };
 
         let concrete = emit_block(game, 5001, "minecraft:black_concrete");
         assert!(
@@ -1156,7 +1211,8 @@ fn block_display_backface_culling_translucent_pass_and_light_emission_26_3() {
         );
 
         // Glowing block display submits live glow_color_override (red -> blue without ticking).
-        game.side.text_displays
+        game.side
+            .text_displays
             .0
             .get_mut(&5005)
             .unwrap()
@@ -1166,7 +1222,8 @@ fn block_display_backface_culling_translucent_pass_and_light_emission_26_3() {
         game.block_item_display_geometry(DVec3::new(0.5, 64.0, 3.5), 1.0, &mut out);
         assert!(!game.side.glowing_vertices.borrow().is_empty());
         assert_eq!(game.side.glowing_vertices.borrow()[0].color, 0xFF00_00FF);
-        game.side.text_displays
+        game.side
+            .text_displays
             .0
             .get_mut(&5005)
             .unwrap()
@@ -1200,29 +1257,37 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
 
         // 1. Display name tags.
         assert!(game.spawn_remote_object(6001, "minecraft:text_display", [0.0; 3], (0.0, 0.0), 0));
-        game.side.text_displays.0.get_mut(&6001).unwrap().metadata(&[
-            (2, 0, Value::OptText(Some(Tag::String("DisplayTag".into())))),
-            (3, 0, Value::Bool(true)),
-        ]);
+        game.side
+            .text_displays
+            .0
+            .get_mut(&6001)
+            .unwrap()
+            .metadata(&[
+                (2, 0, Value::OptText(Some(Tag::String("DisplayTag".into())))),
+                (3, 0, Value::Bool(true)),
+            ]);
         // Pre-first-tick: DisplayRenderer.submit does not submit name tag.
         assert!(game.shown_name_tags(DVec3::new(0.0, 0.0, 5.0)).is_empty());
         // Post-first-tick with empty text: hasSubState() is true -> submits name tag.
-        game.side.text_displays.0.get_mut(&6001).unwrap().metadata(&[(
-            23,
-            0,
-            Value::Text(Tag::String("".into())),
-        )]);
+        game.side
+            .text_displays
+            .0
+            .get_mut(&6001)
+            .unwrap()
+            .metadata(&[(23, 0, Value::Text(Tag::String("".into())))]);
         game.tick_text_displays(game.clock.runs_normally());
         let tags = game.shown_name_tags(DVec3::new(0.0, 0.0, 5.0));
         assert!(tags.iter().any(|t| t == "DisplayTag"));
         // Zero view_range suppresses tag through the unified visibility decision.
-        game.side.text_displays
+        game.side
+            .text_displays
             .0
             .get_mut(&6001)
             .unwrap()
             .metadata(&[(17, 2, Value::Float(0.0))]);
         assert!(game.shown_name_tags(DVec3::new(0.0, 0.0, 5.0)).is_empty());
-        game.side.text_displays
+        game.side
+            .text_displays
             .0
             .get_mut(&6001)
             .unwrap()
@@ -1235,10 +1300,15 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
                 .any(|t| t == "DisplayTag")
         );
         // Display brightness override lights the solid name tag; shift key (discrete) suppresses see-through copy.
-        game.side.text_displays.0.get_mut(&6001).unwrap().metadata(&[
-            (16, 1, Value::Int((15 << 20) | (15 << 4))),
-            (0, 0, Value::Byte(0x02)),
-        ]);
+        game.side
+            .text_displays
+            .0
+            .get_mut(&6001)
+            .unwrap()
+            .metadata(&[
+                (16, 1, Value::Int((15 << 20) | (15 << 4))),
+                (0, 0, Value::Byte(0x02)),
+            ]);
         game.tick_text_displays(game.clock.runs_normally());
         let (mut solid_tag, mut faded_tag) = (Vec::new(), Vec::new());
         let mut tag_collector = std::mem::take(&mut game.side.see_through_collector);
@@ -1259,7 +1329,8 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
         assert!(solid_tag.iter().all(|v| v.light == 0xF0F0));
 
         // CustomNameVisible = false (not crosshair pick): suppressed.
-        game.side.text_displays
+        game.side
+            .text_displays
             .0
             .get_mut(&6001)
             .unwrap()
@@ -1298,11 +1369,12 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
         assert_eq!((out[0].light >> 8) & 0xff, 15 * 16);
 
         // Brightness override (block=3, sky=5) beats fire light 15.
-        game.side.text_displays.0.get_mut(&6002).unwrap().metadata(&[(
-            16,
-            1,
-            Value::Int((5 << 20) | (3 << 4)),
-        )]);
+        game.side
+            .text_displays
+            .0
+            .get_mut(&6002)
+            .unwrap()
+            .metadata(&[(16, 1, Value::Int((5 << 20) | (3 << 4)))]);
         game.tick_text_displays(game.clock.runs_normally());
         out.clear();
         game.block_item_display_geometry(DVec3::new(0.5, 64.0, 3.5), 1.0, &mut out);
@@ -1342,11 +1414,12 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
             (0.0, 0.0),
             0,
         ));
-        game.side.text_displays.0.get_mut(&7001).unwrap().metadata(&[(
-            23,
-            0,
-            Value::Text(Tag::String("In".into())),
-        )]);
+        game.side
+            .text_displays
+            .0
+            .get_mut(&7001)
+            .unwrap()
+            .metadata(&[(23, 0, Value::Text(Tag::String("In".into())))]);
         assert!(game.spawn_remote_object(
             7002,
             "minecraft:block_display",
@@ -1354,7 +1427,8 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
             (0.0, 0.0),
             0,
         ));
-        game.side.text_displays
+        game.side
+            .text_displays
             .0
             .get_mut(&7002)
             .unwrap()
@@ -1401,7 +1475,8 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
         // Compiled empty section while fading (< 0.3 visibility) stays hidden; fade = 0 renders.
         let sy = game.world.shape.column().section_index(65).unwrap() as i32;
         game.settings.chunk_fade = 10.0;
-        game.side.renderer
+        game.side
+            .renderer
             .0
             .as_mut()
             .unwrap()
@@ -1518,33 +1593,38 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
                 (ent_yaw, ent_pitch),
                 0,
             ));
-            game.side.text_displays.0.get_mut(&83100).unwrap().metadata(&[
-                (
-                    11,
-                    0,
-                    Value::Floats(hex_f32_arr::<3>(&case["translation_bits"]).to_vec()),
-                ),
-                (
-                    12,
-                    0,
-                    Value::Floats(hex_f32_arr::<3>(&case["scale_bits"]).to_vec()),
-                ),
-                (
-                    13,
-                    0,
-                    Value::Floats(hex_f32_arr::<4>(&case["left_rotation_bits"]).to_vec()),
-                ),
-                (
-                    14,
-                    0,
-                    Value::Floats(hex_f32_arr::<4>(&case["right_rotation_bits"]).to_vec()),
-                ),
-                (15, 0, Value::Byte(billboard)),
-                (23, 0, Value::Text(cursor_tag)),
-                (25, 1, Value::Int(0)),
-                (26, 0, Value::Byte(-1)),
-                (27, 0, Value::Byte(1)),
-            ]);
+            game.side
+                .text_displays
+                .0
+                .get_mut(&83100)
+                .unwrap()
+                .metadata(&[
+                    (
+                        11,
+                        0,
+                        Value::Floats(hex_f32_arr::<3>(&case["translation_bits"]).to_vec()),
+                    ),
+                    (
+                        12,
+                        0,
+                        Value::Floats(hex_f32_arr::<3>(&case["scale_bits"]).to_vec()),
+                    ),
+                    (
+                        13,
+                        0,
+                        Value::Floats(hex_f32_arr::<4>(&case["left_rotation_bits"]).to_vec()),
+                    ),
+                    (
+                        14,
+                        0,
+                        Value::Floats(hex_f32_arr::<4>(&case["right_rotation_bits"]).to_vec()),
+                    ),
+                    (15, 0, Value::Byte(billboard)),
+                    (23, 0, Value::Text(cursor_tag)),
+                    (25, 1, Value::Int(0)),
+                    (26, 0, Value::Byte(-1)),
+                    (27, 0, Value::Byte(1)),
+                ]);
             game.tick_text_displays(game.clock.runs_normally());
             let (mut normal, mut see_through) = (Vec::new(), Vec::new());
             collect_text_display_geometry(game, cam_pos, 1.0, &mut normal, &mut see_through);
@@ -1734,11 +1814,12 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
             data: 0,
         }))
         .unwrap();
-        game.side.text_displays.0.get_mut(&9001).unwrap().metadata(&[(
-            23,
-            0,
-            Value::Text(Tag::String("CamDisplay".into())),
-        )]);
+        game.side
+            .text_displays
+            .0
+            .get_mut(&9001)
+            .unwrap()
+            .metadata(&[(23, 0, Value::Text(Tag::String("CamDisplay".into())))]);
         game.tick_text_displays(true);
 
         // SetCamera packet targeting a tracked display attaches camera, hides in first person, shows in third person.
@@ -1795,11 +1876,16 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
             (0.0, 0.0),
             0,
         ));
-        game.side.text_displays.0.get_mut(&9002).unwrap().metadata(&[
-            (2, 0, Value::OptText(Some(Tag::String("NearTag".into())))),
-            (3, 0, Value::Bool(true)),
-            (23, 0, Value::Text(Tag::String("".into()))),
-        ]);
+        game.side
+            .text_displays
+            .0
+            .get_mut(&9002)
+            .unwrap()
+            .metadata(&[
+                (2, 0, Value::OptText(Some(Tag::String("NearTag".into())))),
+                (3, 0, Value::Bool(true)),
+                (23, 0, Value::Text(Tag::String("".into()))),
+            ]);
         assert!(game.spawn_remote_object(
             9003,
             "minecraft:text_display",
@@ -1807,12 +1893,17 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
             (0.0, 0.0),
             0,
         ));
-        game.side.text_displays.0.get_mut(&9003).unwrap().metadata(&[
-            (23, 0, Value::Text(Tag::String("FarHolo".into()))),
-            (25, 1, Value::Int(0xFF11_2233u32 as i32)),
-            (26, 0, Value::Byte(-1)),
-            (27, 0, Value::Byte(2)), // see_through
-        ]);
+        game.side
+            .text_displays
+            .0
+            .get_mut(&9003)
+            .unwrap()
+            .metadata(&[
+                (23, 0, Value::Text(Tag::String("FarHolo".into()))),
+                (25, 1, Value::Int(0xFF11_2233u32 as i32)),
+                (26, 0, Value::Byte(-1)),
+                (27, 0, Value::Byte(2)), // see_through
+            ]);
         game.tick_text_displays(true);
         let mut collector = super::SeeThroughCollector::default();
         let (mut solid, mut st_out) = (Vec::new(), Vec::new());

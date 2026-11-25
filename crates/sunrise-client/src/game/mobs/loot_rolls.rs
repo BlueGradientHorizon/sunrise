@@ -119,7 +119,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .then(|| self.target_loot_entity(target)),
             _ => None,
         };
-        let loot = live_target.as_ref().and_then(|_| self.side.server_loot.0.get());
+        let loot = live_target
+            .as_ref()
+            .and_then(|_| self.side.server_loot.0.get());
         let matcher = |predicate: &serde_json::Value, entity: &sunrise_world::loot::LootEntity| {
             loot.as_ref()
                 .is_some_and(|data| data.entity_matches(predicate, Some(entity)))
@@ -263,7 +265,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         if entity.nbt.is_none()
             && self
-                .side.server_loot
+                .side
+                .server_loot
                 .0
                 .get()
                 .is_some_and(|data| data.copies_entity_nbt())

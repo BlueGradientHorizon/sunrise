@@ -60,8 +60,8 @@ fn conversion_transfers_tags_and_team() {
 #[test]
 #[ignore = "daily"]
 fn ender_pearl_clears_impulse_before_next_fall() {
-    use super::{Game, Hit, Projectile, Vec3, Who};
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
+    use super::{Hit, Projectile, Vec3, Who};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use sunrise_client::motion::{MotionWorld, PlayerMotion};
 
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());

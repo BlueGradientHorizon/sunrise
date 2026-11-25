@@ -1,6 +1,6 @@
 //! Moving colliders on a real game: set, read, refused, saved and loaded back, and solid to a
 //! falling item.
-use super::{Dim, Game, native_colliders::SAVE_KEY};
+use super::{Dim, native_colliders::SAVE_KEY};
 use mod_api::{Collider, ColliderBox, ColliderError, EntityRef};
 use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
@@ -297,7 +297,10 @@ fn tick_level(game: &mut crate::game::ServerGame<'_>) {
 
 /// [`tick_level`] with a mod moving its colliders during the tick, after the colliders were
 /// placed and the movers ran, which is when a mod's own tick moves them.
-fn tick_level_moving(game: &mut crate::game::ServerGame<'_>, moving: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
+fn tick_level_moving(
+    game: &mut crate::game::ServerGame<'_>,
+    moving: impl FnOnce(&mut crate::game::ServerGame<'_>),
+) {
     let placed = game.placed_moving_colliders();
     sunrise_client_render::moving_colliders::in_level(placed.clone(), || {
         game.tick_world(true).unwrap()
@@ -502,7 +505,9 @@ fn two_hundred_items_over_a_capped_collider_rest_and_the_tick_is_timed() {
                 .collect()
         };
         let time =
-            |game: &mut crate::game::ServerGame<'_>, ticks: usize, mut each: Option<&mut dyn FnMut(&mut crate::game::ServerGame<'_>)>| {
+            |game: &mut crate::game::ServerGame<'_>,
+             ticks: usize,
+             mut each: Option<&mut dyn FnMut(&mut crate::game::ServerGame<'_>)>| {
                 let start = Instant::now();
                 for _ in 0..ticks {
                     if let Some(each) = each.as_mut() {
@@ -922,7 +927,9 @@ fn a_carried_vehicle_takes_its_passengers_and_theirs_with_it() {
         let (vehicle, _) = stand_with_id(game, [8.5, 70.0, 8.0]);
         let (middle, _) = stand_with_id(game, [8.5, 71.0, 8.0]);
         let (top, _) = stand_with_id(game, [8.5, 72.0, 8.0]);
-        let update = |game: &mut crate::game::ServerGame<'_>, id: u32, f: &dyn Fn(&mut sunrise_client::mobs::Mob)| {
+        let update = |game: &mut crate::game::ServerGame<'_>,
+                      id: u32,
+                      f: &dyn Fn(&mut sunrise_client::mobs::Mob)| {
             let at = game.mobs.iter().position(|m| m.id == id).expect("a pig");
             game.mobs.update(at, |m| f(m));
         };

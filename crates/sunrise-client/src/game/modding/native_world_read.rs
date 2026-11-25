@@ -215,11 +215,6 @@ impl<S: crate::game::Side> FluidHeightWorld for FluidColumn<'_, '_, S> {
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
-
-
-
-
-
     /// The fluid state at `pos` of the level `level` names (`BlockGetter.getFluidState`). None
     /// for a stale handle, a chunk that isn't loaded or a `y` outside the world: a read never
     /// loads a chunk.
@@ -231,7 +226,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let state = self.level_block_state(level, pos)?;
         self.state_fluid_state(state)
     }
-
 
     /// `Fluid.getTickDelay(level)` of `fluid` at `pos` in the level in place: vanilla's by its
     /// family and the dimension (`World::fast_lava`), a mod fluid's as registered and as its
@@ -261,13 +255,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             ))
         }))
     }
-
-
-
-
-
-
-
 
     /// Read a loaded block in a server tick hook, without loading a chunk.
     /// The returned name and properties are owned and remain valid after the hook.
@@ -659,7 +646,8 @@ mod tests {
         with_game(|game| {
             let dir =
                 std::env::temp_dir().join(format!("sunrise-tag-reads-{}", std::process::id()));
-            game.side.session_lock.0 = Some(sunrise_client::save::SessionLock::acquire(&dir).unwrap());
+            game.side.session_lock.0 =
+                Some(sunrise_client::save::SessionLock::acquire(&dir).unwrap());
             let registry = game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
             let water = registry.default_state("minecraft:water").unwrap();

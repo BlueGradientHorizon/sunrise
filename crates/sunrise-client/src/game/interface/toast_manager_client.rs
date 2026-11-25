@@ -66,7 +66,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.side.audio.0.play(event, None, 1.0, 1.0);
         }
         if challenge_sound {
-            self.side.audio
+            self.side
+                .audio
                 .0
                 .play("minecraft:ui.toast.challenge_complete", None, 1.0, 1.0);
         }

@@ -80,7 +80,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .find(|c| c.id == id)
                 .map(|c| [c.position.x, c.position.y, c.position.z]),
             Target::Other(id) => self
-                .side.others
+                .side
+                .others
                 .0
                 .iter()
                 .find(|o| o.id == id)

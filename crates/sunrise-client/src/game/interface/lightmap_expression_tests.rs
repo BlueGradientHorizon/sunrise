@@ -247,7 +247,8 @@ fn the_sky_draws_its_expression_uniform() {
         assert_eq!(game.requested_post_effects(), ["minecraft:end_of_frame"]);
         assert!(
             !game
-                .side.renderer
+                .side
+                .renderer
                 .0
                 .as_ref()
                 .unwrap()
@@ -274,14 +275,22 @@ pub(in crate::game::client_side) fn corner_of(
     game: &mut crate::game::ClientGame<'_>,
     draw: impl FnOnce(&mut crate::game::ClientGame<'_>) -> sunrise_client::Result<bool>,
 ) -> [u8; 3] {
-    game.side.renderer.0.as_mut().unwrap().screenshot = Some(sunrise_client::gfx::ScreenshotRequest {
-        path: "unused.png".into(),
-        size: None,
-        scaled: false,
-        background: false,
-    });
+    game.side.renderer.0.as_mut().unwrap().screenshot =
+        Some(sunrise_client::gfx::ScreenshotRequest {
+            path: "unused.png".into(),
+            size: None,
+            scaled: false,
+            background: false,
+        });
     draw(game).unwrap();
-    let result = game.side.renderer.0.as_mut().unwrap().screenshot_result.take();
+    let result = game
+        .side
+        .renderer
+        .0
+        .as_mut()
+        .unwrap()
+        .screenshot_result
+        .take();
     let mut pending = result.unwrap().unwrap();
     let image = pending.image_mut();
     let width = image.width as usize;
@@ -371,7 +380,8 @@ fn a_post_effect_reads_poly_globals() {
         corner(game);
         assert!(
             !game
-                .side.renderer
+                .side
+                .renderer
                 .0
                 .as_ref()
                 .unwrap()
@@ -380,7 +390,8 @@ fn a_post_effect_reads_poly_globals() {
         game.side.post_effects = vec!["minecraft:globals".to_owned()];
         assert_eq!(corner(game), [64, 51, 0]);
         assert!(
-            game.side.renderer
+            game.side
+                .renderer
                 .0
                 .as_ref()
                 .unwrap()

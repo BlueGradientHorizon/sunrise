@@ -260,7 +260,9 @@ pub(in crate::game) mod tests {
             &[],
         )];
 
-        let hp = |g: &crate::game::ServerGame<'_>| g.mobs.iter().find(|m| m.id as i32 == pig).unwrap().health;
+        let hp = |g: &crate::game::ServerGame<'_>| {
+            g.mobs.iter().find(|m| m.id as i32 == pig).unwrap().health
+        };
         let full = hp(&game);
         attack(&mut game, 2, pig);
         assert_eq!(disconnects(&rx), vec![], "a pig is a target");

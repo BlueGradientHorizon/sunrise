@@ -259,7 +259,8 @@ fn remote_tab_updates_restore_pan_and_clear_hover_on_progress_only() {
 
                 let (left, top) = window(batch.width, batch.height);
                 game.side.cursor = (left + 13.0, top + 22.0);
-                game.side.adv_ui.0.last_frame = Some(Instant::now() - std::time::Duration::from_secs(1));
+                game.side.adv_ui.0.last_frame =
+                    Some(Instant::now() - std::time::Duration::from_secs(1));
                 game.adv_tick_hover(&view, -17, -12, left, top);
                 let tab = game.side.adv_ui.0.tab_state().unwrap();
                 assert_eq!(tab.hovered, Some(first_index));

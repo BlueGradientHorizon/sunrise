@@ -37,7 +37,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.note_started_riding(vehicle);
     }
 
-
     /// The first seat, preserving enumeration order on a tie without sorting or allocating.
     pub(in crate::game::server_side) fn first_seated_passenger(
         &self,
@@ -52,8 +51,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         });
         first
     }
-
-
 
     /// `getPassengers().size()` without allocating or sorting the seats.
     pub(in crate::game) fn seated_passenger_count(&self, vehicle: u32) -> usize {
@@ -149,12 +146,19 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// The player riding through `riding` and its place: the acting guest (its kept place, if
     /// any, comes from the hub's list) or, outside a guest turn, this game's own player.
     pub(in crate::game) fn riding_player(&self) -> Option<(u32, i64)> {
-        match (crate::game::Side::lan_acting_entity(&self.side), crate::game::Side::lan_acting(&self.side)) {
-            (Some(id), _) if crate::game::Side::lan_acting_uuid(&self.side).is_some() => Some((id, i64::MIN)),
-            (_, None) => self
-                .player
-                .as_ref()
-                .map(|p| (p.entity_id as u32, crate::game::Side::riding_order(&self.side))),
+        match (
+            crate::game::Side::lan_acting_entity(&self.side),
+            crate::game::Side::lan_acting(&self.side),
+        ) {
+            (Some(id), _) if crate::game::Side::lan_acting_uuid(&self.side).is_some() => {
+                Some((id, i64::MIN))
+            }
+            (_, None) => self.player.as_ref().map(|p| {
+                (
+                    p.entity_id as u32,
+                    crate::game::Side::riding_order(&self.side),
+                )
+            }),
             _ => None,
         }
     }

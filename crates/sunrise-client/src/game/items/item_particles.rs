@@ -120,7 +120,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             _ => return,
         };
         let pitch = 0.8 + self.world.random.next_float() * 0.4;
-        self.side.audio.0.play_unshared(&sound, Some(at), 0.8, pitch);
+        self.side
+            .audio
+            .0
+            .play_unshared(&sound, Some(at), 0.8, pitch);
     }
     /// The slime ball, snowball and cobweb models behind `item_slime`,
     /// `item_snowball` and `item_cobweb`, resolved on first use.

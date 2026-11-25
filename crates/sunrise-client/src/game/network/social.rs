@@ -90,12 +90,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let (name, skin, removed) = match online(id) {
                 Some(p) => (p.name.clone(), p.skin.clone(), false),
                 None => (
-                    self.side
-                        .social
-                        .names
-                        .get(&id)
-                        .cloned()
-                        .unwrap_or_default(),
+                    self.side.social.names.get(&id).cloned().unwrap_or_default(),
                     sunrise_client::tab_list::default_skin(id).to_owned(),
                     true,
                 ),
@@ -192,13 +187,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             Action::Hide(id) | Action::Show(id) => {
                 let hiding = matches!(action, Action::Hide(_));
-                let name = self
-                    .side
-                    .social
-                    .names
-                    .get(&id)
-                    .cloned()
-                    .unwrap_or_default();
+                let name = self.side.social.names.get(&id).cloned().unwrap_or_default();
                 if hiding {
                     self.side.social.hidden.insert(id);
                 } else {

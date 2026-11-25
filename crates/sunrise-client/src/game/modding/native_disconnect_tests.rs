@@ -92,13 +92,18 @@ fn a_translatable_reason_reads_in_the_players_language() {
                 let host: &mut dyn ClientHost = game;
                 assert_eq!(host.disconnect(Some(sent)), Ok(()));
                 game.native_leave_if_asked().unwrap();
-                seen = game.side.title.0.as_ref().and_then(|title| match &title.mode {
-                    Mode::Multiplayer(sunrise_client::multiplayer::Screen::Disconnected {
-                        reason,
-                        ..
-                    }) => Some(reason.plain()),
-                    _ => None,
-                });
+                seen = game
+                    .side
+                    .title
+                    .0
+                    .as_ref()
+                    .and_then(|title| match &title.mode {
+                        Mode::Multiplayer(sunrise_client::multiplayer::Screen::Disconnected {
+                            reason,
+                            ..
+                        }) => Some(reason.plain()),
+                        _ => None,
+                    });
             });
             assert_eq!(
                 seen.as_deref(),

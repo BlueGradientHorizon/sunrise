@@ -13,7 +13,9 @@ const A: &str = "00006094-0000-0000-0000-000000000002";
 const B: &str = "00006094-0000-0000-0000-000000000003";
 const ECHO: &str = "00006094-0000-0000-0000-000000000004";
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
+fn game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),

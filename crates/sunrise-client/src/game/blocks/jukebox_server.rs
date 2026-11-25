@@ -344,7 +344,7 @@ pub(in crate::game) mod jukebox_play_tests {
     use super::*;
 
     fn playing(ticks: i32) -> Option<Vec<String>> {
-        use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+        use crate::game::{Options, Progress, Settings, load_resources};
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES")?);
         let settings = Settings::default();
         let loaded = load_resources(
@@ -609,8 +609,9 @@ pub(in crate::game) mod jukebox_component_tests {
             .default_state("minecraft:jukebox")
             .unwrap();
         game.world.set(8, 64, 8, state).unwrap();
-        let takes =
-            |game: &crate::game::ServerGame<'_>, stack: ItemStack| game.jukebox_takes([8, 64, 8], Some(&stack));
+        let takes = |game: &crate::game::ServerGame<'_>, stack: ItemStack| {
+            game.jukebox_takes([8, 64, 8], Some(&stack))
+        };
         assert!(takes(&game, ItemStack::new("minecraft:music_disc_cat", 1)));
         assert!(!takes(&game, ItemStack::new("minecraft:stone", 1)));
         let mut removed = ItemStack::new("minecraft:music_disc_cat", 1);
@@ -640,8 +641,8 @@ pub(in crate::game) mod jukebox_tests;
 
 #[cfg(test)]
 pub(in crate::game) mod block_change_tests {
-    use super::*;
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
+
+    use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
     use sunrise_client::chunk::Chunk;
 

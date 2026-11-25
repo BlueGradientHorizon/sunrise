@@ -60,7 +60,7 @@ mod tests {
         Dim,
         native_guest_turn_tests::{place_host, with_guests},
     };
-    use super::{ControlFlow, Game};
+    use super::ControlFlow;
     use mod_api::{ChunkRef, LevelReadError, LevelRef, PlayerRef, WorldEpoch};
 
     /// Open the Nether and go back, so it is a parked level of the server.
@@ -73,7 +73,10 @@ mod tests {
         players.map(|players| players.into_iter().map(PlayerRef::uuid).collect())
     }
 
-    fn collect_online_players(game: &crate::game::ServerGame<'_>, level: LevelRef) -> Vec<(u128, u32)> {
+    fn collect_online_players(
+        game: &crate::game::ServerGame<'_>,
+        level: LevelRef,
+    ) -> Vec<(u128, u32)> {
         let mut players = Vec::new();
         assert_eq!(
             level.visit_online_players(game, &mut |player| {

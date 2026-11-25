@@ -212,9 +212,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let screen_open = self.mod_mappings_screen_open();
         let held = glfw_modifiers(self.side.modifiers);
-        self.side
-            .mod_keys
-            .button(button, action, screen_open, held);
+        self.side.mod_keys.button(button, action, screen_open, held);
     }
     fn mod_mappings_input(&mut self, input: &str, action: KeyAction, mouse: bool) {
         let screen_open = self.mod_mappings_screen_open();

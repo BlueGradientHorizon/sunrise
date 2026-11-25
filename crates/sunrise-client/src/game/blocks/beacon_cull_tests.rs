@@ -1,5 +1,4 @@
 //! `BeaconRenderer.shouldRender`: a beam draws inside the effective render distance, and leaves with its column.
-use super::*;
 use crate::game::{
     execution_role,
     launch_options::Options,
@@ -19,58 +18,6 @@ fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> crate::ga
 
 /// A game loaded from the prepared resources as `role`: a client also loads what it draws with
 /// (the GUI and item atlas, baked block models).
-pub(in crate::game) fn game_as<'a>(
-    resources: &'a mut Option<Arc<crate::game::Resources>>,
-    role: execution_role::ExecutionRole,
-) -> crate::game::ServerGame<'a> {
-    let root = std::path::PathBuf::from(
-        std::env::var_os("SUNRISE_TEST_RESOURCES")
-            .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
-    );
-    let settings = Settings::default();
-    let loaded = load_resources(
-        sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
-        Vec::new(),
-        None,
-        &root,
-        &settings,
-        std::time::Instant::now(),
-        false,
-        role,
-        &Progress::new(),
-        &mut |_, _| unreachable!(),
-    )
-    .unwrap();
-    let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-    options.resources = root.clone();
-    options.execution_role = role;
-    let res = &*resources.insert(loaded.resources);
-    let mut game = crate::game::ServerGame::new(
-        res,
-        loaded.pack,
-        loaded.gui.unwrap(),
-        options,
-        settings,
-        None,
-    )
-    .unwrap();
-    game.build_registries();
-    // The beam's sprite joins the GUI atlas with a renderer: any rectangle draws it here.
-    let rect = sunrise_client::hud::Rect {
-        u0: 0.0,
-        v0: 0.0,
-        u1: 1.0,
-        v1: 1.0,
-        w: 16,
-        h: 16,
-    };
-    game.gui
-        .atlas
-        .sprites
-        .insert("entity/beacon/beacon_beam".into(), rect);
-    game
-}
-
 pub(in crate::game) fn game_as_client<'a>(
     resources: &'a mut Option<Arc<crate::game::Resources>>,
     role: execution_role::ExecutionRole,

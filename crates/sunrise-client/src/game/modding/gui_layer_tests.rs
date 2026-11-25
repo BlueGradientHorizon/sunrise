@@ -1,6 +1,6 @@
 //! HUD slots in a real client: placement, scoped wrapping and replacement, and layer cancellation.
 use super::{
-    Game, Screen,
+    Screen,
     execution_role::ExecutionRole,
     mods,
     native_entity_refs::tests::{run_fresh_cases, with_client_game},

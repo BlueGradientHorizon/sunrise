@@ -224,7 +224,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// The dialog itself shows, with a text input to start on.
     pub(in crate::game::client_side) fn dialog_starts_typing(&self) -> bool {
-        !self.side.dialogs.0.warning && self.side.dialogs.0.waiting.is_none() && self.dialog_has_text_field()
+        !self.side.dialogs.0.warning
+            && self.side.dialogs.0.waiting.is_none()
+            && self.dialog_has_text_field()
     }
     /// The dialog's focus is a text input of many lines, where Enter is a new line.
     pub(in crate::game::client_side) fn dialog_typing_lines(&self) -> bool {
@@ -434,7 +436,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let mut wait = after == AfterAction::WaitForResponse;
         let configuration = match click {
             Some(Click::ShowDialog(_)) => self
-                .side.dialogs
+                .side
+                .dialogs
                 .0
                 .open
                 .as_ref()
@@ -1327,7 +1330,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// Whether the open dialog has a text input.
     pub(in crate::game::client_side) fn dialog_has_text_field(&self) -> bool {
-        self.side.dialogs
+        self.side
+            .dialogs
             .0
             .open
             .as_ref()

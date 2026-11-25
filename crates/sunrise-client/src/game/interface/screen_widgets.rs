@@ -154,7 +154,10 @@ impl MountedWidgetEntry {
         owner.dispose("screen widget", "screen_widget_drop", kind);
     }
 
-    pub(in crate::game) fn press_button(&mut self, game: &mut Game<'_, crate::game::client_side::ClientState>) -> bool {
+    pub(in crate::game) fn press_button(
+        &mut self,
+        game: &mut Game<'_, crate::game::client_side::ClientState>,
+    ) -> bool {
         let MountedWidgetKind::Button { state, on_press } = &mut self.kind else {
             return false;
         };
@@ -509,7 +512,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// Whether Init.Post removed this native PauseScreen action from the current build.
     pub(in crate::game::client_side) fn pause_child_removed(&self, action: u8) -> bool {
-        self.side.screen_state
+        self.side
+            .screen_state
             .0
             .widgets
             .inner
@@ -605,7 +609,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn sync_mounted_focus(&mut self, target: Target) {
         let idx = match target.kind {
             Kind::Mounted { id, .. } => self
-                .side.screen_state
+                .side
+                .screen_state
                 .0
                 .widgets
                 .index_of(ScreenWidgetId::from_raw(id)),
@@ -677,7 +682,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
         batch: &mut HudBatch,
         now: Instant,
     ) {
-        let len = self.side.screen_state.0.widgets.inner.borrow().entries.len();
+        let len = self
+            .side
+            .screen_state
+            .0
+            .widgets
+            .inner
+            .borrow()
+            .entries
+            .len();
         if len == 0 {
             return;
         }
@@ -690,7 +703,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 break;
             }
             let Some(mut entry) = self
-                .side.screen_state
+                .side
+                .screen_state
                 .0
                 .widgets
                 .inner
@@ -866,7 +880,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
             };
             index..index + 1
         } else {
-            let len = self.side.screen_state.0.widgets.inner.borrow().entries.len();
+            let len = self
+                .side
+                .screen_state
+                .0
+                .widgets
+                .inner
+                .borrow()
+                .entries
+                .len();
             0..len
         };
         let hit_rect = |rect| id.is_some() || point_in_rect(mouse, rect);
@@ -1009,7 +1031,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         button: i32,
         modifiers: u32,
     ) -> bool {
-        let Some((idx, drag_button)) = self.side.screen_state.0.widgets.inner.borrow().dragging else {
+        let Some((idx, drag_button)) = self.side.screen_state.0.widgets.inner.borrow().dragging
+        else {
             return false;
         };
         if drag_button != button {
@@ -1043,7 +1066,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         delta: [f32; 2],
         modifiers: u32,
     ) -> bool {
-        let Some((idx, drag_button)) = self.side.screen_state.0.widgets.inner.borrow().dragging else {
+        let Some((idx, drag_button)) = self.side.screen_state.0.widgets.inner.borrow().dragging
+        else {
             return false;
         };
         if drag_button != button || self.side.screen_state.0.widgets.focused_index() != Some(idx) {
@@ -1081,7 +1105,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
         scroll: [f64; 2],
         modifiers: u32,
     ) -> bool {
-        let len = self.side.screen_state.0.widgets.inner.borrow().entries.len();
+        let len = self
+            .side
+            .screen_state
+            .0
+            .widgets
+            .inner
+            .borrow()
+            .entries
+            .len();
         if len == 0 {
             return false;
         }

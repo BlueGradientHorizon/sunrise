@@ -102,7 +102,14 @@ fn drawn_pixel(game: &mut crate::game::ClientGame<'_>) -> [u8; 4] {
     });
     game.render_with(|renderer, frame| renderer.render(frame))
         .unwrap();
-    let result = game.side.renderer.0.as_mut().unwrap().screenshot_result.take();
+    let result = game
+        .side
+        .renderer
+        .0
+        .as_mut()
+        .unwrap()
+        .screenshot_result
+        .take();
     let mut pending = result.unwrap().unwrap();
     let image = pending.image_mut();
     let at = (40 * image.width as usize + 20) * 4;

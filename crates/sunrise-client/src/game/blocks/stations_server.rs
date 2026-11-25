@@ -163,10 +163,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         }
         if mod_api::__private::listened(mod_api::HookId::PlayerXpLevelChange)
-            && let (Some(player), Some(name)) = (
-                self.side.lan_acting_uuid,
-                self.side.lan_acting_name.clone(),
-            )
+            && let (Some(player), Some(name)) =
+                (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
         {
             let mut cancel = false;
             self.native_player_xp_level_change(player, &name, &mut levels, &mut cancel);

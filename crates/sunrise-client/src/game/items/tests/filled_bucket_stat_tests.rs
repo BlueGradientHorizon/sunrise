@@ -2,7 +2,6 @@
 //! awards `Stats.ITEM_USED` once a filled bucket emptied into the world, and
 //! `CauldronInteractions`' bucket and bottle interactions award it next to
 //! their own cauldron statistic (washing a shulker box does not).
-use super::*;
 use crate::game::{Hit, game_tests::tests::server_game};
 use sunrise_client::items::ItemStack;
 

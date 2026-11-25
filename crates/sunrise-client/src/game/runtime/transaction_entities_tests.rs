@@ -14,7 +14,7 @@ use sunrise_client::{chunk::Chunk, items::ItemStack, mobs::StoredEffect};
 use sunrise_core::nbt::{Tag, parse_snbt};
 use sunrise_mod_runtime::attachments::Holder;
 
-use super::{Dim, Game, commands::Target, lan_entities::ENTITY_ID_HEADROOM};
+use super::{Dim, commands::Target, lan_entities::ENTITY_ID_HEADROOM};
 
 /// Kept for the session only.
 static MARK: AttachmentType<i32> = AttachmentType {

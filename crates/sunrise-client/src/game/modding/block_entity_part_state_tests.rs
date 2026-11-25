@@ -14,7 +14,7 @@ use sunrise_client::{
 use sunrise_core::nbt::{Compound, Tag};
 use sunrise_mod_runtime::attachments::{AttachmentCodec, AttachmentError, Attachments, Holder};
 
-use super::{Dim, Game};
+use super::Dim;
 
 static PROGRESS: AttachmentType<i32> = AttachmentType {
     namespace: "part_state",
@@ -136,7 +136,10 @@ fn press(game: &mut crate::game::ServerGame<'_>, pos: (i32, i32, i32)) -> BlockE
     game.block_entity(level, [pos.0, pos.1, pos.2]).unwrap()
 }
 
-fn press_with_item_slot(game: &mut crate::game::ServerGame<'_>, pos: (i32, i32, i32)) -> BlockEntityRef {
+fn press_with_item_slot(
+    game: &mut crate::game::ServerGame<'_>,
+    pos: (i32, i32, i32),
+) -> BlockEntityRef {
     // The save fixture never runs the block-entity tick that binds these declarations.
     let containers = game.native_containers();
     game.world.block_entities.set_mod_containers(containers);
@@ -359,7 +362,8 @@ fn part_state_saves_with_its_chunk_and_reloads_under_a_fresh_handle() {
         // Loaded back from the region file it was saved to, as streaming installs a column.
         game.save_level(true).unwrap();
         let mut chunk = game
-            .side.save
+            .side
+            .save
             .0
             .load(key.0, key.1, game.pack.assets.registry, world_biomes!(game))
             .unwrap();
@@ -416,7 +420,8 @@ fn item_slot_writes_save_but_menu_data_is_transient() {
             );
             game.save_level(true).unwrap();
             let chunk = game
-                .side.save
+                .side
+                .save
                 .0
                 .load(0, 0, game.pack.assets.registry, world_biomes!(game))
                 .unwrap();
@@ -476,7 +481,8 @@ fn an_item_write_commits_in_its_own_level_despite_an_unrelated_transaction() {
         assert!(game.transactions.is_empty());
         assert!(!game.world.modified.contains(&chunk));
         assert!(
-            game.side.levels
+            game.side
+                .levels
                 .0
                 .parked_world(Dim::Nether)
                 .unwrap()
@@ -487,7 +493,8 @@ fn an_item_write_commits_in_its_own_level_despite_an_unrelated_transaction() {
         game.save_parked_levels(true).unwrap();
         game.enter_level(Dim::Nether).unwrap();
         let reloaded = game
-            .side.save
+            .side
+            .save
             .0
             .load(
                 chunk.0,
@@ -584,7 +591,8 @@ fn a_save_or_unload_during_a_transaction_writes_only_committed_state() {
         assert_eq!(Press::edit_state(game, entity, |_, n| *n = 7), Ok(()));
         let reload = |game: &mut crate::game::ServerGame<'_>| {
             let chunk = game
-                .side.save
+                .side
+                .save
                 .0
                 .load(key.0, key.1, game.pack.assets.registry, world_biomes!(game))
                 .unwrap();
@@ -676,7 +684,11 @@ impl Hooks for NativeFixture {
 }
 
 /// The fixture's value at `pos`, read from its saved form.
-fn saved_value(game: &crate::game::ServerGame<'_>, pos: (i32, i32, i32), name: &str) -> Option<i32> {
+fn saved_value(
+    game: &crate::game::ServerGame<'_>,
+    pos: (i32, i32, i32),
+    name: &str,
+) -> Option<i32> {
     let saved = game.world.block_entities.attachments(pos)?.to_nbt();
     let Some(Tag::Compound(names)) = saved.get(&"part_state_fixture".into()) else {
         return None;
@@ -769,7 +781,8 @@ fn part_state_counts_ticks_across_chunk_reload() {
                 assert!(game.world.block_entities.attachments(pos).is_none());
                 game.save_level(true).unwrap();
                 let mut chunk = game
-                    .side.save
+                    .side
+                    .save
                     .0
                     .load(key.0, key.1, game.pack.assets.registry, world_biomes!(game))
                     .unwrap();

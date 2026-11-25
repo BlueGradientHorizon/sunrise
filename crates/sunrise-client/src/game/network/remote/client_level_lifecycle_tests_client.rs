@@ -13,7 +13,7 @@ pub(in crate::game::client_side) use crate::game::remote::tests::client_level_li
 #[test]
 #[ignore = "daily"]
 fn a_reconfiguring_client_plays_menu_music_and_never_indexes_past_the_biomes() {
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use crate::game::{Audio, Options, Progress, Settings, load_resources};
     use sunrise_client::{chunk::Chunk, music::Music};
     use sunrise_core::geometry::Vec3;
     let root = std::path::PathBuf::from(
@@ -109,7 +109,8 @@ fn a_reconfiguring_client_stops_flat_audio_streams_before_configuration() {
         spawn_menu_test(game);
         game.side.audio.0.backend_live_for_bench();
         let stream = game
-            .side.audio
+            .side
+            .audio
             .0
             .open_stream(
                 "test_mod",
@@ -207,7 +208,8 @@ fn client_level_transitions_stop_streams_opened_during_unload() {
                 let _server = logged_client(game);
                 game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
                 let existing = game
-                    .side.audio
+                    .side
+                    .audio
                     .0
                     .open_stream(
                         "test_mod",

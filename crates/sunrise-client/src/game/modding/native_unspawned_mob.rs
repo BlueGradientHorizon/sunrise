@@ -198,7 +198,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn edit_lent_mob<T>(
         &self,
         handle: UnspawnedMobRef,
-        edit: impl FnOnce(&Game<'_, crate::game::server_side::ServerState>, &mut Mob) -> Result<T, UnspawnedMobError>,
+        edit: impl FnOnce(
+            &Game<'_, crate::game::server_side::ServerState>,
+            &mut Mob,
+        ) -> Result<T, UnspawnedMobError>,
     ) -> Result<T, UnspawnedMobError> {
         if let Some(key) = super::native_pending_children::pending_key(self, handle)? {
             let arena = self.side.lent_mobs.0.borrow().pending.clone();

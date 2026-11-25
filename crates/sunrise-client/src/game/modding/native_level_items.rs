@@ -157,7 +157,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_level_pops_spawns_and_awards_as_vanilla() {
-        use super::super::{Game, spill};
+        use super::super::spill;
         use mod_api::{LevelRef, WorldEpoch};
         use sunrise_client::gamerules::Value as RuleValue;
         use sunrise_client::items::ItemStack;

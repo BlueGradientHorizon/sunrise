@@ -5,7 +5,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn refresh_infiniburn(&mut self) {
         self.world.infiniburn = Some(self.resolve_level_infiniburn(self.dimension_type()));
         let parked: Vec<_> = self
-            .side.levels
+            .side
+            .levels
             .0
             .parked
             .keys()
@@ -18,7 +19,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             })
             .collect();
         for (dim, set) in parked {
-            self.side.levels.0.parked.get_mut(&dim).unwrap().world.infiniburn = Some(set);
+            self.side
+                .levels
+                .0
+                .parked
+                .get_mut(&dim)
+                .unwrap()
+                .world
+                .infiniburn = Some(set);
         }
     }
 

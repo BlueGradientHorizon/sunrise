@@ -47,7 +47,6 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn reload_publishes_retained_and_bound_empty_tags_to_loot_and_clients() {
         use crate::game::{
-            Game,
             lan::sync,
             native_entity_refs::tests::{run_fresh_cases, with_game},
         };

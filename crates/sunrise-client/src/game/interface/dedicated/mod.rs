@@ -3143,7 +3143,7 @@ mod tests {
 
 #[cfg(test)]
 mod console_source_tests {
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
     use sunrise_client::chunk::Chunk;
     use sunrise_core::position::ChunkPos;

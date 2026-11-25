@@ -215,7 +215,10 @@ fn guest_corrected(game: &crate::game::ServerGame<'_>) -> bool {
 /// (`MoveVehicle` back to where the vehicle was). The tick holds what it
 /// sends a guest until its end, so the flush hands the batch over first —
 /// one packet or the batch, whichever form it takes.
-fn vehicle_put_back(game: &crate::game::ServerGame<'_>, rx: &std::sync::mpsc::Receiver<Out>) -> bool {
+fn vehicle_put_back(
+    game: &crate::game::ServerGame<'_>,
+    rx: &std::sync::mpsc::Receiver<Out>,
+) -> bool {
     sunrise_client::lan::flush_all(
         game.lan
             .as_ref()

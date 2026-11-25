@@ -1,8 +1,5 @@
 //! Shared listener and resource fixture for independent projectile impact tests.
-use crate::game::{
-    Game,
-    native_entity_refs::tests::{bind_local_player, with_game},
-};
+use crate::game::native_entity_refs::tests::{bind_local_player, with_game};
 use mod_api::{Flow, Hooks, HostTransaction, ServerHost, TransactionError};
 use std::sync::{
     Arc, Mutex,

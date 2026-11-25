@@ -378,7 +378,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// names it instead (`getLocalizedDeathMessage`). It is no kill credit.
     pub(in crate::game) fn note_direct_entity(&mut self, damage_type: &str, name: Text) {
         self.side.combat.0.mark();
-        self.side.combat
+        self.side
+            .combat
             .0
             .pending_direct
             .push((damage_type.to_owned(), name));
@@ -407,7 +408,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         })
                     });
                 if let Some(uuid) = uuid {
-                    self.side.combat.0.note_hurt_by_player(PlayerCredit(uuid), now);
+                    self.side
+                        .combat
+                        .0
+                        .note_hurt_by_player(PlayerCredit(uuid), now);
                 }
             }
             // `instanceof Wolf`: a content mod's type copying the wolf is one.
@@ -499,7 +503,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 _ => continue,
             };
             let (attacker, item, living, credit) = self
-                .side.combat
+                .side
+                .combat
                 .0
                 .pending
                 .iter()
@@ -518,7 +523,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let direct = match attacker {
                 Some(_) => None,
                 None => self
-                    .side.combat
+                    .side
+                    .combat
                     .0
                     .pending_direct
                     .iter()
@@ -586,7 +592,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// `CombatTracker.recheckStatus`: forget old fights.
     pub(in crate::game::server_side) fn recheck_combat(&mut self) {
-        let reset = if self.side.combat.0.in_combat { 300 } else { 100 };
+        let reset = if self.side.combat.0.in_combat {
+            300
+        } else {
+            100
+        };
         if !self.side.combat.0.entries.is_empty()
             && self.world.game_time - self.side.combat.0.last_damage > reset
         {
@@ -840,7 +850,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Who::Mob(id) => g
                 .mob_display_name(id)
                 .or_else(|| {
-                    g.side.combat
+                    g.side
+                        .combat
                         .0
                         .exploded
                         .iter()
@@ -1298,7 +1309,10 @@ pub(in crate::game) mod pet_credit_tests {
                 pet.extra.owner = Some(uuid_ints(12));
                 game.mobs.push(pet);
                 game.resolve_player_responsible_for_player(7, None);
-                assert_eq!(game.side.combat.0.last_hurt_by_player.map(|(c, _)| c.0), credit);
+                assert_eq!(
+                    game.side.combat.0.last_hurt_by_player.map(|(c, _)| c.0),
+                    credit
+                );
             }
         });
     }

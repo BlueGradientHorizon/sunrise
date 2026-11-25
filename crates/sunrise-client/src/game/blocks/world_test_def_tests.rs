@@ -169,7 +169,9 @@ fn a_world_keeps_the_test_instances_it_opened_with() {
     game.reload_datapacks(false, &game.level.enabled_features.clone())
         .unwrap();
     game.load_world_state().unwrap();
-    let ids = |game: &crate::game::ServerGame<'_>| game.ui.registries.ids("minecraft:test_instance").to_vec();
+    let ids = |game: &crate::game::ServerGame<'_>| {
+        game.ui.registries.ids("minecraft:test_instance").to_vec()
+    };
     assert_eq!(ids(&game), ["h275:broken", "minecraft:always_pass"]);
     assert!(
         game.test_def("minecraft:always_pass").unwrap().block_based,

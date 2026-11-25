@@ -1,5 +1,5 @@
 use super::Target;
-use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+use crate::game::{Options, Progress, Settings, load_resources};
 
 #[test]
 #[ignore = "daily"]

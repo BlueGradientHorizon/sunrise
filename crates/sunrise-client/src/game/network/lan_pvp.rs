@@ -367,7 +367,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 g.side.combat.0.refuse_player_hit = refused;
                 g.side.combat.0.projectile_attacker = shooter;
                 let saved_effect_attacker = g
-                    .side.combat
+                    .side
+                    .combat
                     .0
                     .enchantment_projectile_attacker
                     .replace(effect_attacker);

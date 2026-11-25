@@ -5,7 +5,6 @@
 //! which used to move the cart without the suck: a player riding a hopper
 //! minecart under a chest got nothing.
 use super::super::{
-    Game,
     game_tests::tests::server_game,
     minecarts::{CartKind, Minecart},
 };

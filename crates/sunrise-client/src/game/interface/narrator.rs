@@ -238,9 +238,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let pad_focus = self.pad_focus_rect();
         let gui = self.gui_size();
-        self.side
-            .narration
-            .frame(gui, self.side.cursor, pad_focus);
+        self.side.narration.frame(gui, self.side.cursor, pad_focus);
     }
     /// `hasNoEditboxFocused`'s opposite: the open screen's focus is an
     /// `EditBox` that `canConsumeInput`. The chat, command block, anvil
@@ -265,7 +263,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             _ => {
                 self.title_input_active()
                     && self
-                        .side.title
+                        .side
+                        .title
                         .0
                         .as_mut()
                         .is_some_and(|t| t.has_caret_field() || t.focused_field().is_some())

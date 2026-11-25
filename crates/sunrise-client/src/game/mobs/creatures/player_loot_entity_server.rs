@@ -62,7 +62,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         guest: Option<u32>,
     ) -> sunrise_world::loot::LootEntity {
         let capture_nbt = self
-            .side.server_loot
+            .side
+            .server_loot
             .0
             .get()
             .is_some_and(|data| data.copies_entity_nbt());

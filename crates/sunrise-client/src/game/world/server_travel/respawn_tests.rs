@@ -6,7 +6,7 @@ use super::{
         server_with_a_nether_anchor,
     },
 };
-use crate::game::{Game, native_entity_refs::tests::run_with_game_stack};
+use crate::game::native_entity_refs::tests::run_with_game_stack;
 use mod_api::{
     BlockPart, BlockPos, EntityTravelToDimensionEvent, Flow, GlobalPos, Hooks, Host, Identifier,
     ModEntry, PlayerChangedDimensionEvent, PlayerCloneEvent, PlayerRespawnConfig,
@@ -562,7 +562,9 @@ impl Hooks for AnchorRules {
 
 fn with_anchor_death(
     rules: AnchorRules,
-    test: impl FnOnce(&crate::game::ServerGame<'_>, &mpsc::Receiver<Out>, &mpsc::Receiver<Out>) + Send + 'static,
+    test: impl FnOnce(&crate::game::ServerGame<'_>, &mpsc::Receiver<Out>, &mpsc::Receiver<Out>)
+    + Send
+    + 'static,
 ) {
     run_with_game_stack(move || {
         let mods = vec![ModEntry::new("anchor-rules", Box::new(rules))].into();
@@ -578,7 +580,8 @@ fn with_anchor_death(
                 let anchor = registry.default_state("minecraft:respawn_anchor").unwrap();
                 let mut chunk = Chunk::with_layout(x >> 4, z >> 4, game.world.layout());
                 chunk.set(x & 15, y, z & 15, anchor.0);
-                game.side.save
+                game.side
+                    .save
                     .0
                     .save(&[Arc::new(chunk)], registry, world_biomes!(game))
                     .unwrap();

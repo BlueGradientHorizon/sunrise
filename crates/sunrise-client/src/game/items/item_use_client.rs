@@ -450,12 +450,7 @@ pub(in crate::game) mod tests {
                 game.using = Some((game.selected, 0));
                 game.tick_player_model();
                 assert_eq!(
-                    game.side
-                        .player_model
-                        .as_ref()
-                        .unwrap()
-                        .extra
-                        .use_animation,
+                    game.side.player_model.as_ref().unwrap().extra.use_animation,
                     UseAnimation::Drink
                 );
                 assert_eq!(calls.load(Ordering::Relaxed), 10);

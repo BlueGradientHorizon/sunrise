@@ -2,10 +2,11 @@
 //! `/bossbar set … name` compares components rather than their spelling:
 //! `CustomBossEvent.setValue`/`setMax` store the value and clamp only the
 //! derived progress, and `BossBarCommands.setName` uses `Component.equals`.
-use super::*;
 use crate::game::game_tests::tests::server_game;
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
+fn game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> crate::game::ServerGame<'a> {
     let mut game = server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);

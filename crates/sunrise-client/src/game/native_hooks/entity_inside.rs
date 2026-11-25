@@ -218,7 +218,9 @@ pub(in crate::game) mod sweep_tests {
     /// The game's player sweeps its move through two stone blocks, over the game's
     /// own world and assets, through the production `BLOCK_CONTACT_HOOKS` fire.
     /// Returns the player's velocity x before and after, and whether it died.
-    pub(in crate::game) fn sweep_game_player(game: &mut crate::game::ServerGame<'_>) -> (f64, f64, bool) {
+    pub(in crate::game) fn sweep_game_player(
+        game: &mut crate::game::ServerGame<'_>,
+    ) -> (f64, f64, bool) {
         let stone = game
             .pack
             .assets

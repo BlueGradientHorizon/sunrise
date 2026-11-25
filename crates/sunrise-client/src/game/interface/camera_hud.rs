@@ -181,10 +181,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .id("minecraft:max_health")
                     .and_then(|attr| self.remote_attribute(mob_id, attr))
                     .map_or(default_max, |v| v as f32);
-                let blink =
-                    self.side
-                        .health_hud
-                        .update_health(health, tick, millis, invulnerable);
+                let blink = self
+                    .side
+                    .health_hud
+                    .update_health(health, tick, millis, invulnerable);
                 let inputs = HealthInputs {
                     tick,
                     max_health,
@@ -228,10 +228,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         hud.wither,
                     )
                 };
-                let blink =
-                    self.side
-                        .health_hud
-                        .update_health(health, tick, millis, invulnerable);
+                let blink = self
+                    .side
+                    .health_hud
+                    .update_health(health, tick, millis, invulnerable);
                 let inputs = HealthInputs {
                     tick,
                     max_health,

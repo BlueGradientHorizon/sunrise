@@ -71,7 +71,9 @@ fn with_pig_behind(run: impl FnOnce(&mut crate::game::ClientGame<'_>, &Mutex<Lis
 }
 
 /// [`with_pig_behind`], with the server's end of the connection.
-fn with_pig_and_server(run: impl FnOnce(&mut crate::game::ClientGame<'_>, &Mutex<Listener>, &mut Connection)) {
+fn with_pig_and_server(
+    run: impl FnOnce(&mut crate::game::ClientGame<'_>, &Mutex<Listener>, &mut Connection),
+) {
     let listener = Arc::new(Mutex::new(Listener::default()));
     let mods = vec![mod_api::ModEntry::new(
         "agent_picks",
@@ -129,7 +131,10 @@ fn with_pig_and_server(run: impl FnOnce(&mut crate::game::ClientGame<'_>, &Mutex
     });
 }
 
-fn command(game: &mut crate::game::ClientGame<'_>, line: &str) -> (Result<Handled>, mpsc::Receiver<String>) {
+fn command(
+    game: &mut crate::game::ClientGame<'_>,
+    line: &str,
+) -> (Result<Handled>, mpsc::Receiver<String>) {
     let (reply, replies) = mpsc::channel();
     let words: Vec<&str> = line.split_whitespace().collect();
     (game.agent_command(&words, line, &reply, &NoLoop), replies)

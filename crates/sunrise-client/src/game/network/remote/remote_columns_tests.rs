@@ -1,4 +1,4 @@
-use crate::game::native_entity_refs::tests::{with_game, with_client_game};
+use crate::game::native_entity_refs::tests::with_client_game;
 use sunrise_client::{chunk::Chunk, containers::BlockEntity};
 
 #[test]

@@ -911,7 +911,7 @@ pub(in crate::game) mod list_operation_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod stand_equip_event_tests {
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
     use sunrise_client::{chunk::Chunk, containers::BlockEntity, mobs::Who, sculk::Info};
     use sunrise_core::position::ChunkPos;
@@ -1325,7 +1325,7 @@ pub(in crate::game) mod mob_equipment_command_tests {
 #[cfg(test)]
 pub(in crate::game) mod mob_equipment_stack_tests {
     use crate::game::commands::{Target, data::DataRef};
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
     use sunrise_client::{chunk::Chunk, mobs::finalize};
     use sunrise_core::nbt::Tag;
@@ -1512,7 +1512,7 @@ pub(in crate::game) mod mob_equipment_stack_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod builtin_component_delivery_tests {
-    use crate::game::{Game, lan::LanHost};
+    use crate::game::lan::LanHost;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_client::{
         items::ItemStack,
@@ -1926,7 +1926,7 @@ pub(in crate::game) mod set_custom_data_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod transient_modifier_tests {
-    use super::*;
+
     #[test]
     fn inline_command_modifier_refuses_whole_sequence_before_execution() {
         let error = crate::game::ServerGame::parse_inline_item_modifier(

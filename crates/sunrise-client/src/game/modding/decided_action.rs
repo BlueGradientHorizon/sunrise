@@ -265,14 +265,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let inventory = guest.inventory.clone();
         let offhand = guest.offhand.clone();
         let carried = guest.carried.clone();
-        let capture_block =
-            |game: &Game<'_, crate::game::server_side::ServerState>, guest: &sunrise_client::lan::guest::Guest, pos: (i32, i32, i32)| {
-                (
-                    game.world.block_entities.generation(&pos),
-                    game.world.block(pos.0, pos.1, pos.2),
-                    Slots::Block(pos).read(&game.world, guest),
-                )
-            };
+        let capture_block = |game: &Game<'_, crate::game::server_side::ServerState>,
+                             guest: &sunrise_client::lan::guest::Guest,
+                             pos: (i32, i32, i32)| {
+            (
+                game.world.block_entities.generation(&pos),
+                game.world.block(pos.0, pos.1, pos.2),
+                Slots::Block(pos).read(&game.world, guest),
+            )
+        };
         let blocks: Vec<_> = slots
             .halves()
             .chain(open.links.iter().copied())

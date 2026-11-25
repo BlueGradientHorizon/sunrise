@@ -145,7 +145,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_pick_knot_fence(&self, id: u32) -> Option<[i32; 3]> {
         self.natural_knot(id).or_else(|| {
             let knot = self
-                .side.others
+                .side
+                .others
                 .0
                 .iter()
                 .find(|o| o.id == id && o.knot_check.is_some())?;

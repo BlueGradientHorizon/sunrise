@@ -112,11 +112,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             );
             // PlayerList.broadcastSystemMessage: every player hears the roll,
             // the source's own copy with the captured output it has (`/say`'s).
-            let captured = self
-                .side
-                .chat_capture
-                .as_ref()
-                .and(self.side.lan_acting);
+            let captured = self.side.chat_capture.as_ref().and(self.side.lan_acting);
             if let Some(host) = &self.lan {
                 let content = sunrise_client::lan::data::component_nbt(&line.component());
                 match captured {

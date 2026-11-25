@@ -2,9 +2,8 @@
 //! packet adopts a column and tells its load once the blocks are in; every route that frees a
 //! column (eviction, a radius shrink, the forget packet, level close) tells its unload, and the
 //! view centre moving away hides slots untold.
-use crate::game::Game;
 use crate::game::execution_role::ExecutionRole;
-use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_role, with_game_role_client};
+use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_role_client};
 use crate::game::remote::RemoteDimensionEntry;
 use mod_api::{ClientChunkLoadEvent, ClientChunkUnloadEvent, ClientHost, Hooks};
 use std::sync::Mutex;

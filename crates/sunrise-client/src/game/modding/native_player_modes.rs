@@ -112,7 +112,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::Game;
+
     use super::super::api_values::test_snapshot;
     use super::super::native_guest_turn_tests::with_guests;
     use mod_api::__private::game::*;

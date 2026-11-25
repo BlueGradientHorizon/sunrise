@@ -59,8 +59,9 @@ fn an_area_query_lists_the_frames_and_paintings_in_the_box() {
         let level = game.native_list_levels()[0];
         let frame = game.entity(FRAME).unwrap();
         let painting = game.entity(PAINTING).unwrap();
-        let around =
-            |game: &crate::game::ServerGame<'_>, min, max| collect_game_entities_in(game, level, min, max);
+        let around = |game: &crate::game::ServerGame<'_>, min, max| {
+            collect_game_entities_in(game, level, min, max)
+        };
         let both = around(game, [3.0, 69.0, 3.0], [5.0, 71.0, 7.0]).unwrap();
         assert!(both.contains(&frame) && both.contains(&painting));
         let one = around(game, [3.0, 69.0, 3.0], [5.0, 71.0, 5.0]).unwrap();

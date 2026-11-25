@@ -4,7 +4,6 @@
 //! (`LivingEntity.getRiddenInput` reads the controller), on the local player's route and on a
 //! server player's (#2739).
 use super::camel_jump_tests::game;
-use crate::game::Game;
 use mod_api::{EntityMountEvent, Flow, Hooks, ServerHost};
 use std::sync::{
     Arc,
@@ -33,7 +32,9 @@ impl Hooks for KeepRider {
 }
 
 /// Runs `test` on a server game with a horse (its id) and the `KeepRider` mod.
-pub(in crate::game) fn with_horse(test: impl FnOnce(&mut crate::game::ServerGame<'_>, u32, &AtomicBool, &AtomicU32)) {
+pub(in crate::game) fn with_horse(
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, u32, &AtomicBool, &AtomicU32),
+) {
     let keep = Arc::new(AtomicBool::new(true));
     let leaves = Arc::new(AtomicU32::new(0));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
@@ -156,7 +157,8 @@ fn a_kept_server_player_still_drives_and_sneaks() {
                 (g.vehicle, g.vehicle_order, g.input) = (Some(horse), 1, input);
             });
         };
-        let vehicle = |game: &crate::game::ServerGame<'_>| game.lan.as_ref().unwrap().hub.guests[0].vehicle;
+        let vehicle =
+            |game: &crate::game::ServerGame<'_>| game.lan.as_ref().unwrap().hub.guests[0].vehicle;
         set_input(game, INPUT);
         game.guest_vehicle_tick(2);
         assert_eq!(leaves.load(Ordering::SeqCst), 1, "the dismount was asked");

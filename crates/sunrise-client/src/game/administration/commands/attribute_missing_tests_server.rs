@@ -14,7 +14,10 @@ pub(in crate::game::server_side) use std::sync::Arc;
 pub(in crate::game::server_side) use sunrise_client::motion::PlayerMotion;
 
 /// Runs `command`: whether it succeeded and what the issuer was told.
-pub(in crate::game) fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Vec<String>) {
+pub(in crate::game) fn run(
+    game: &mut crate::game::ServerGame<'_>,
+    command: &str,
+) -> (bool, Vec<String>) {
     game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
     let said = game.side.chat_capture.take().unwrap_or_default();

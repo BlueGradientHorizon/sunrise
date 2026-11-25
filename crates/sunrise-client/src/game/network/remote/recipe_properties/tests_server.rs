@@ -134,7 +134,9 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
                 client.remote.as_ref().unwrap().tags.is_none(),
                 "no native tag view"
             );
-            let shown = |client: &crate::game::ClientGame<'_>| client.station_info()["recipe_results"].clone();
+            let shown = |client: &crate::game::ClientGame<'_>| {
+                client.station_info()["recipe_results"].clone()
+            };
             assert_eq!(
                 shown(client),
                 serde_json::json!([
@@ -150,7 +152,9 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
                 Some(0x112233)
             );
 
-            let mut press = |client: &mut crate::game::ClientGame<'_>, server: &mut crate::game::ServerGame<'_>, button| {
+            let mut press = |client: &mut crate::game::ClientGame<'_>,
+                             server: &mut crate::game::ServerGame<'_>,
+                             button| {
                 assert!(client.menu_session(|menu, env, _| Some(menu.button(env, button))));
                 assert!(client.remote_button_click(button));
                 let (id, payload) = peer.recv().unwrap();

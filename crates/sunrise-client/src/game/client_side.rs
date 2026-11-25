@@ -1420,7 +1420,8 @@ pub(in crate::game) struct ClientState {
     /// A server's resource packs (game/world/server_packs.rs).
     pub(in crate::game::client_side) server_packs: ClientOnly<server_packs::ServerPackState>,
     /// The window's inbox for server notices, kept across world disconnects.
-    pub(in crate::game::client_side) client_reports: ClientOnly<Arc<sunrise_client::chunk_io::Reports>>,
+    pub(in crate::game::client_side) client_reports:
+        ClientOnly<Arc<sunrise_client::chunk_io::Reports>>,
     /// A command the player didn't type, waiting for their answer
     /// (game/network/remote_chat.rs).
     pub(in crate::game::client_side) command_prompt: ClientOnly<Option<remote_chat::CommandPrompt>>,
@@ -1431,7 +1432,8 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) stitching_block_atlas: ClientOnly<Option<Arc<RenderAssets>>>,
     pub(in crate::game::client_side) lod: ClientOnly<Option<sunrise_client::lod::Lod>>,
     /// The server's BlueMap far terrain draws from, when the player named one.
-    pub(in crate::game::client_side) lod_blue_map: ClientOnly<Option<Arc<sunrise_client::bluemap::BlueMap>>>,
+    pub(in crate::game::client_side) lod_blue_map:
+        ClientOnly<Option<Arc<sunrise_client::bluemap::BlueMap>>>,
     /// The monitor whose video modes `settings.video_modes` holds.
     pub(in crate::game::client_side) video_modes: ClientOnly<sunrise_client::window::VideoModeList>,
     pub(in crate::game::client_side) screen_state: ClientOnly<screen_build::ScreenState>,
@@ -1443,18 +1445,19 @@ pub(in crate::game) struct ClientState {
         ClientOnly<std::cell::RefCell<sunrise_client::mobs::skin::SkinModels>>,
     /// The level random a block part's `animate_tick` holds as `event.random`, while it runs:
     /// the game's own draws during the call go through it (`with_lent_level_random`).
-    pub(in crate::game::client_side) lent_level_random: ClientOnly<
-        Option<std::rc::Rc<std::cell::RefCell<mod_api::LegacyRandomSource>>>,
-    >,
+    pub(in crate::game::client_side) lent_level_random:
+        ClientOnly<Option<std::rc::Rc<std::cell::RefCell<mod_api::LegacyRandomSource>>>>,
     /// Controllers (Sunrise's own).
     pub(in crate::game::client_side) pad: ClientShared<pad::Pads>,
     /// Mod screens' living scenes, per mod and clock id (game/modding/native_scene_live.rs).
-    pub(in crate::game::client_side) live_scenes: ClientOnly<std::cell::RefCell<native_scene_live::LiveScenes>>,
+    pub(in crate::game::client_side) live_scenes:
+        ClientOnly<std::cell::RefCell<native_scene_live::LiveScenes>>,
     /// `DebugRenderer.renderers`: active mod renderers and their owners, resolved at refresh.
     pub(in crate::game::client_side) debug_renderers:
         ClientOnly<Vec<sunrise_client::debug_entries::ActiveDebugRenderer>>,
     pub(in crate::game::client_side) audio: ClientShared<Audio>,
-    pub(in crate::game::client_side) particles: ClientShared<sunrise_client::particles::ParticleEngine>,
+    pub(in crate::game::client_side) particles:
+        ClientShared<sunrise_client::particles::ParticleEngine>,
     /// `ItemPickupParticle`s: taken items, orbs and arrows flying to their collector.
     pub(in crate::game::client_side) pickups: ClientOnly<pickups::Pickups>,
     /// `CreateWorldScreen.openCreateWorldScreen`'s data read, on a worker,
@@ -1467,7 +1470,8 @@ pub(in crate::game) struct ClientState {
         ClientOnly<indexmap::IndexMap<i32, text_displays::RemoteTextDisplay>>,
     /// Player skin downloads, and which skin each atlas skin slot holds
     /// (least recently shown first).
-    pub(in crate::game::client_side) skin_downloads: ClientOnly<RefCell<sunrise_client::skins::Downloader>>,
+    pub(in crate::game::client_side) skin_downloads:
+        ClientOnly<RefCell<sunrise_client::skins::Downloader>>,
     /// The recipe book of the open screen (game/items/recipe_book.rs).
     pub(in crate::game::client_side) recipe_ui: ClientOnly<recipe_book::RecipeUi>,
     /// Monster spawners' display mobs (`game/mobs/spawner.rs`).
@@ -1476,23 +1480,30 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) mod_screen: ClientOnly<Option<native_hooks::OpenNativeScreen>>,
     pub(in crate::game::client_side) creative_screen: ClientOnly<Creative>,
     /// Control replies waiting for a rendered frame or a benchmark deadline.
-    pub(in crate::game::client_side) pending_screenshot: ClientOnly<Option<std::sync::mpsc::Sender<String>>>,
+    pub(in crate::game::client_side) pending_screenshot:
+        ClientOnly<Option<std::sync::mpsc::Sender<String>>>,
     /// `screenshot-sequence` while it runs.
-    pub(in crate::game::client_side) screenshot_sequence: ClientOnly<Option<screenshot_sequence::Sequence>>,
+    pub(in crate::game::client_side) screenshot_sequence:
+        ClientOnly<Option<screenshot_sequence::Sequence>>,
     /// `render-capture DIR`: replied once the renderer wrote the scene.
-    pub(in crate::game::client_side) pending_render_capture: ClientOnly<Option<std::sync::mpsc::Sender<String>>>,
+    pub(in crate::game::client_side) pending_render_capture:
+        ClientOnly<Option<std::sync::mpsc::Sender<String>>>,
     pub(in crate::game::client_side) pending_bench:
         ClientOnly<Option<(Instant, std::sync::mpsc::Sender<String>, bool)>>,
     /// The in-game browser's worker, separate from the cloneable reload inputs.
     pub(in crate::game::client_side) mod_jobs: ClientOnly<mod_browser::Jobs>,
     /// Main-hand input captured by a client mod, independent of living-item use.
-    pub(in crate::game::client_side) client_item_use: ClientShared<Option<native_claimed_items::ActiveClientItemUse>>,
+    pub(in crate::game::client_side) client_item_use:
+        ClientShared<Option<native_claimed_items::ActiveClientItemUse>>,
     /// Meshed sections waiting for an upload budget (Sunrise settings).
-    pub(in crate::game::client_side) pending_uploads: ClientOnly<Vec<sunrise_client::streaming::MeshUpload>>,
+    pub(in crate::game::client_side) pending_uploads:
+        ClientOnly<Vec<sunrise_client::streaming::MeshUpload>>,
     /// Empty between updates. Reuses storage for merging two sorted runs.
-    pub(in crate::game::client_side) pending_uploads_merge: ClientOnly<Vec<sunrise_client::streaming::MeshUpload>>,
+    pub(in crate::game::client_side) pending_uploads_merge:
+        ClientOnly<Vec<sunrise_client::streaming::MeshUpload>>,
     pub(in crate::game::client_side) occlusion: ClientOnly<entity_culling::EntityOcclusion>,
-    pub(in crate::game::client_side) async_particle_culler: ClientOnly<RefCell<particle_culling::ParticleAsyncState>>,
+    pub(in crate::game::client_side) async_particle_culler:
+        ClientOnly<RefCell<particle_culling::ParticleAsyncState>>,
     /// A scripted flight from the control socket (`fly`).
     pub(in crate::game::client_side) flight: ClientOnly<Option<control::Flight>>,
     /// Widget commands waiting for the frame after a click (game/runtime/ui_control.rs).
@@ -1506,17 +1517,20 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) pending_client_tasks:
         ClientOnly<std::collections::VecDeque<sunrise_client::net::ClientTask>>,
     pub(in crate::game::client_side) world_options: ClientOnly<Option<lan_screen::WorldOptions>>,
-    pub(in crate::game::client_side) command_block_screen: ClientOnly<Option<command_blocks::CommandBlockScreen>>,
-    pub(in crate::game::client_side) block_editor: ClientOnly<Option<block_editor::BlockEditScreen>>,
+    pub(in crate::game::client_side) command_block_screen:
+        ClientOnly<Option<command_blocks::CommandBlockScreen>>,
+    pub(in crate::game::client_side) block_editor:
+        ClientOnly<Option<block_editor::BlockEditScreen>>,
     /// Startup declarations shared by F3 options, the overlay and renderer selection.
-    pub(in crate::game::client_side) registered_debug_entries: ClientOnly<
-        std::sync::Arc<[sunrise_client::debug_entries::RegisteredDebugEntry]>,
-    >,
+    pub(in crate::game::client_side) registered_debug_entries:
+        ClientOnly<std::sync::Arc<[sunrise_client::debug_entries::RegisteredDebugEntry]>>,
     /// `Minecraft.debugEntries`: what the overlay and the debug renderers
     /// show (`debug-profile.json`, F3+F6).
-    pub(in crate::game::client_side) debug_entries: ClientOnly<sunrise_client::debug_entries::DebugEntries>,
+    pub(in crate::game::client_side) debug_entries:
+        ClientOnly<sunrise_client::debug_entries::DebugEntries>,
     /// The system clipboard (`KeyboardHandler.clipboardManager`).
-    pub(in crate::game::client_side) clipboard: ClientOnly<sunrise_client::clipboard::SystemClipboard>,
+    pub(in crate::game::client_side) clipboard:
+        ClientOnly<sunrise_client::clipboard::SystemClipboard>,
     pub(in crate::game::client_side) pending_save: ClientOnly<Option<saving::ClosingSave>>,
     /// `Hud.tabList`: the player list's header, footer and heart states.
     pub(in crate::game::client_side) tab_list: ClientOnly<sunrise_client::tab_list::TabList>,
@@ -1938,16 +1952,26 @@ impl crate::game::Side for ClientState {
     ) -> &'g mut dyn mod_api::PackDiscoveryContext {
         game
     }
-    fn as_client_host_mut<'a, 'g>(game: &'g mut crate::game::Game<'a, Self>) -> Option<&'g mut dyn mod_api::ClientHost> {
+    fn as_client_host_mut<'a, 'g>(
+        game: &'g mut crate::game::Game<'a, Self>,
+    ) -> Option<&'g mut dyn mod_api::ClientHost> {
         Some(game)
     }
-    fn as_client_text_host<'a, 'g>(game: &'g crate::game::Game<'a, Self>) -> Option<&'g dyn mod_api::prelude::ClientTextClientHost> {
+    fn as_client_text_host<'a, 'g>(
+        game: &'g crate::game::Game<'a, Self>,
+    ) -> Option<&'g dyn mod_api::prelude::ClientTextClientHost> {
         Some(game)
     }
-    fn attachment_store<'a, 'g>(game: &'g mut crate::game::Game<'a, Self>) -> &'g mut dyn mod_api::AttachmentStore {
+    fn attachment_store<'a, 'g>(
+        game: &'g mut crate::game::Game<'a, Self>,
+    ) -> &'g mut dyn mod_api::AttachmentStore {
         game
     }
-    fn game_side_tag_items<'a>(&self, remote: &'a Option<crate::game::remote::Remote>, _res: &'a crate::game::Resources) -> Option<&'a sunrise_client::items::Items> {
+    fn game_side_tag_items<'a>(
+        &self,
+        remote: &'a Option<crate::game::remote::Remote>,
+        _res: &'a crate::game::Resources,
+    ) -> Option<&'a sunrise_client::items::Items> {
         remote.as_ref().and_then(|remote| remote.tags.as_ref())
     }
 }

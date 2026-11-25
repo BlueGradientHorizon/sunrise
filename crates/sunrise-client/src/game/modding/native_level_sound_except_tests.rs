@@ -268,7 +268,6 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                     )
                     .unwrap(),
                 );
-                let end_portal_spawn = "minecraft:block.end_portal.spawn";
                 let burp = "minecraft:entity.player.burp";
                 let bell = "minecraft:block.bell.use";
                 let anvil = "minecraft:block.anvil.use";

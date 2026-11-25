@@ -82,7 +82,10 @@ pub(in crate::game) fn clear_entities(game: &mut crate::game::ServerGame<'_>) {
     game.bind_local_player_residency();
 }
 
-pub(in crate::game) fn summon_target(game: &mut crate::game::ServerGame<'_>, target: &str) -> TrackedTarget {
+pub(in crate::game) fn summon_target(
+    game: &mut crate::game::ServerGame<'_>,
+    target: &str,
+) -> TrackedTarget {
     match target {
         "armor_stand" => {
             assert!(game.run_command("summon minecraft:armor_stand 3.5 64.0 4.5 {}"));
@@ -179,7 +182,10 @@ pub(in crate::game) fn summon_target(game: &mut crate::game::ServerGame<'_>, tar
     }
 }
 
-pub(in crate::game) fn target_alive(game: &crate::game::ServerGame<'_>, target: TrackedTarget) -> bool {
+pub(in crate::game) fn target_alive(
+    game: &crate::game::ServerGame<'_>,
+    target: TrackedTarget,
+) -> bool {
     match target {
         TrackedTarget::Stand(id) => game.armor_stands.iter().any(|a| a.id == id),
         TrackedTarget::Painting(id) => game.paintings.iter().any(|p| p.id == id),
@@ -193,7 +199,10 @@ pub(in crate::game) fn target_alive(game: &crate::game::ServerGame<'_>, target: 
     }
 }
 
-pub(in crate::game) fn target_bounds(game: &crate::game::ServerGame<'_>, target: TrackedTarget) -> Aabb {
+pub(in crate::game) fn target_bounds(
+    game: &crate::game::ServerGame<'_>,
+    target: TrackedTarget,
+) -> Aabb {
     match target {
         TrackedTarget::Stand(id) => {
             let a = game.armor_stands.iter().find(|a| a.id == id).unwrap();

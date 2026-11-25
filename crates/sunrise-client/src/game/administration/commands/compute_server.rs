@@ -152,7 +152,7 @@ pub(in crate::game) mod tests {
         use crate::game::*;
         use serde_json::json;
         use std::{path::PathBuf, sync::Arc, time::Instant};
-        use sunrise_assets::resource_source::{ResourceRoot, ResourceSource};
+        use sunrise_assets::resource_source::ResourceRoot;
 
         let root = PathBuf::from(
             std::env::var_os("SUNRISE_TEST_RESOURCES")

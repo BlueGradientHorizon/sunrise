@@ -101,7 +101,9 @@ fn only_an_empty_offhand_drowned_draws_for_the_shell() {
     };
     // The fork's finalize funnel draws from the level's random (`world.random`). `Command` is
     // `/summon`'s reason: a Natural drowned can also roll a zombie nautilus after its shell.
-    let finalize = |game: &mut crate::game::ServerGame<'_>, mut m: sunrise_client::mobs::Mob, seed: i64| {
+    let finalize = |game: &mut crate::game::ServerGame<'_>,
+                    mut m: sunrise_client::mobs::Mob,
+                    seed: i64| {
         m.random.set_seed(seed);
         game.world.random = sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(seed));
         game.finalize_plain(

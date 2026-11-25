@@ -58,10 +58,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// A server guest's entity event is broadcast before the hit's Post.
     pub(in crate::game::server_side) fn apply_totem(&mut self, entity: i32) -> Option<Body> {
         // The mods hear a server player's totem before it is used up.
-        if let (Some(uuid), Some(name)) = (
-            self.side.lan_acting_uuid,
-            self.side.lan_acting_name.clone(),
-        ) {
+        if let (Some(uuid), Some(name)) =
+            (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
+        {
             self.native_player_totem(uuid, &name);
         }
         let p = self.player.as_mut().filter(|p| p.entity_id == entity)?;

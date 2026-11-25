@@ -254,7 +254,10 @@ pub(in crate::game::server_side) fn with_both(test: impl FnOnce()) {
     mod_platform::testing::with_mods(mods, test);
 }
 
-pub(in crate::game) fn open(game: &mut crate::game::ServerGame<'_>, payment: u32) -> ContainerClick {
+pub(in crate::game) fn open(
+    game: &mut crate::game::ServerGame<'_>,
+    payment: u32,
+) -> ContainerClick {
     use super::{
         native_merchant_refs::tests::{offer, spawn},
         trading::MerchantState,
@@ -310,7 +313,10 @@ pub(in crate::game) fn open(game: &mut crate::game::ServerGame<'_>, payment: u32
 pub(in crate::game) const WORK_TICK: i64 = 3_000;
 
 /// A loaded composter with an adult farmer close enough to start work on its next AI tick.
-pub(in crate::game) fn prepare_work(game: &mut crate::game::ServerGame<'_>, save: &std::path::Path) {
+pub(in crate::game) fn prepare_work(
+    game: &mut crate::game::ServerGame<'_>,
+    save: &std::path::Path,
+) {
     use sunrise_client::mobs::villager_brain;
     use sunrise_core::{geometry::Vec3, random::LegacyRandom};
 
@@ -380,7 +386,9 @@ pub(in crate::game) fn work_screen_mut<'a>(
         .unwrap()
 }
 
-pub(in crate::game::server_side) fn reloaded_trader(game: &crate::game::ServerGame<'_>) -> Box<Trader> {
+pub(in crate::game::server_side) fn reloaded_trader(
+    game: &crate::game::ServerGame<'_>,
+) -> Box<Trader> {
     let saved = sunrise_client::entity_nbt::mob_to_nbt(
         game.mob_object(40).unwrap(),
         [1, 2, 3, 4],
@@ -804,7 +812,9 @@ fn an_invalid_offer_restores_another_merchants_effects_and_modifiers() {
 }
 
 /// Observe the order from gameplay's store and independently through the mod API's live map.
-pub(in crate::game::server_side) fn speed_modifier_ids(game: &crate::game::ServerGame<'_>) -> [Vec<String>; 2] {
+pub(in crate::game::server_side) fn speed_modifier_ids(
+    game: &crate::game::ServerGame<'_>,
+) -> [Vec<String>; 2] {
     let attrs = game.mobs[1].extra.attributes.as_deref().unwrap();
     let legacy = attrs
         .modifiers
@@ -999,7 +1009,9 @@ fn exploration_trade_maps_share_nested_reservations() {
     });
 }
 
-pub(in crate::game::server_side) fn record_packets(game: &mut crate::game::ServerGame<'_>) -> mpsc::Receiver<Out> {
+pub(in crate::game::server_side) fn record_packets(
+    game: &mut crate::game::ServerGame<'_>,
+) -> mpsc::Receiver<Out> {
     let (tx, rx) = mpsc::channel();
     game.lan
         .as_mut()
@@ -1073,7 +1085,10 @@ pub(in crate::game::server_side) fn stat(game: &crate::game::ServerGame<'_>) -> 
         .copied()
         .unwrap_or(0)
 }
-pub(in crate::game::server_side) fn unchanged(game: &mut crate::game::ServerGame<'_>, payment: u32) {
+pub(in crate::game::server_side) fn unchanged(
+    game: &mut crate::game::ServerGame<'_>,
+    payment: u32,
+) {
     assert_eq!(result(game), 0);
     assert_eq!(dirt(game), 0);
     assert_eq!(stat(game), 0);

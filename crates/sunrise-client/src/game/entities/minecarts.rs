@@ -1388,7 +1388,7 @@ pub(in crate::game) mod cart_push_tests {
     #[test]
     #[ignore = "daily"]
     fn a_moving_carts_team_rules_which_carts_it_pushes() {
-        use crate::game::{Game, commands::Target};
+        use crate::game::commands::Target;
         use sunrise_client::scoreboard::CollisionRule;
 
         /// Puts a cart on a team of its own, as `/team join` would.
@@ -1400,7 +1400,12 @@ pub(in crate::game) mod cart_push_tests {
         }
         /// Pushes with cart `pusher` moving at `velocity`, and returns the
         /// target's velocity afterwards.
-        fn push_apart(game: &mut crate::game::ServerGame<'_>, pusher: usize, target: usize, velocity: Vec3) -> Vec3 {
+        fn push_apart(
+            game: &mut crate::game::ServerGame<'_>,
+            pusher: usize,
+            target: usize,
+            velocity: Vec3,
+        ) -> Vec3 {
             game.carts.update(target, |cart| cart.velocity = Vec3::ZERO);
             game.carts.update(pusher, |cart| cart.velocity = velocity);
             let mut index = super::CartIndex::default();

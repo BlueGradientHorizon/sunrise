@@ -75,7 +75,14 @@ fn drawn_frame(game: &mut crate::game::ClientGame<'_>) -> (Vec<u8>, usize) {
     });
     game.render_with(|renderer, frame| renderer.render(frame))
         .unwrap();
-    let result = game.side.renderer.0.as_mut().unwrap().screenshot_result.take();
+    let result = game
+        .side
+        .renderer
+        .0
+        .as_mut()
+        .unwrap()
+        .screenshot_result
+        .take();
     let mut pending = result.unwrap().unwrap();
     let image = pending.image_mut();
     (std::mem::take(&mut image.rgba), image.width as usize)
@@ -149,7 +156,8 @@ fn a_packs_clouds_draw_with_and_without_improved_transparency() {
             .atlas
             .clouds_shader;
         let programs = loaded.as_deref().expect("the pack's clouds");
-        game.side.renderer
+        game.side
+            .renderer
             .0
             .as_mut()
             .unwrap()
@@ -173,7 +181,8 @@ fn a_packs_clouds_draw_with_and_without_improved_transparency() {
             .clouds_shader
             .unwrap();
         let error = game
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_mut()
             .unwrap()
@@ -197,7 +206,8 @@ fn a_packs_clouds_draw_with_and_without_improved_transparency() {
         game.settings.clouds = "false".into();
         assert!(drawn_frame(game).0 == off.0, "no clouds drawn while off");
 
-        game.side.renderer
+        game.side
+            .renderer
             .0
             .as_mut()
             .unwrap()

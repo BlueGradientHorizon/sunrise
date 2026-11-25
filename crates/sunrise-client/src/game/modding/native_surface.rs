@@ -422,7 +422,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::Game;
+
     use super::super::native_entity_refs::tests::with_game;
     use super::TryIntoApi;
     use std::sync::atomic::Ordering;

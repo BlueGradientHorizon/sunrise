@@ -25,7 +25,10 @@ pub(in crate::game) struct JournalLevelWrite<'g, 'a> {
 }
 
 impl<'g, 'a> JournalLevelWrite<'g, 'a> {
-    pub(in crate::game) fn new(game: &'g mut Game<'a, crate::game::server_side::ServerState>, level: LevelRef) -> Option<Self> {
+    pub(in crate::game) fn new(
+        game: &'g mut Game<'a, crate::game::server_side::ServerState>,
+        level: LevelRef,
+    ) -> Option<Self> {
         (game.level_in_place(level) && game.has_level_transaction()).then_some(Self { game, level })
     }
 
@@ -371,7 +374,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.dim == level {
             return Some(f(self));
         }
-        if self.options.execution_role.is_client() || !self.side.levels.0.parked.contains_key(&level) {
+        if self.options.execution_role.is_client()
+            || !self.side.levels.0.parked.contains_key(&level)
+        {
             return None;
         }
         let back = self.dim;

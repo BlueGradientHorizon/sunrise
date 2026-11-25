@@ -205,7 +205,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         s.beacon[1] = Some(e);
                     }
                 }
-                self.side.audio
+                self.side
+                    .audio
                     .0
                     .play("minecraft:ui.button.click", None, 0.25, 1.0);
             }
@@ -219,7 +220,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 && let Some(s) = self.station.as_mut()
             {
                 s.beacon[1] = Some(p);
-                self.side.audio
+                self.side
+                    .audio
                     .0
                     .play("minecraft:ui.button.click", None, 0.25, 1.0);
             }
@@ -228,7 +230,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if inside(l, 164.0, 107.0, 22.0, 22.0) {
             let paid = self.station.as_ref().is_some_and(|s| s.inputs[0].is_some());
             if paid && sel[0].is_some() {
-                self.side.audio
+                self.side
+                    .audio
                     .0
                     .play("minecraft:ui.button.click", None, 0.25, 1.0);
                 self.confirm_beacon(sel);
@@ -237,7 +240,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return true;
         }
         if inside(l, 190.0, 107.0, 22.0, 22.0) {
-            self.side.audio
+            self.side
+                .audio
                 .0
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
             self.close_beacon_screen();

@@ -41,7 +41,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.settings.vsync,
             &self.settings.sunrise,
             shader_packs::picked_pack_shape(&self.settings),
-            self.side.renderer
+            self.side
+                .renderer
                 .0
                 .as_ref()
                 .map(|r| r.display_reading())
@@ -80,7 +81,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // HDR and the window's output), and the frame with it.
         let request = shader_packs::picked_pack_shape(&self.settings).frame();
         let wanted = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map(|r| r.requested_frame(&self.settings.sunrise, request));
@@ -88,7 +90,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         }
         if self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .is_none_or(|r| r.frame_follows(&self.settings.sunrise, request))

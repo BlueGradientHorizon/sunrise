@@ -1,5 +1,5 @@
 //! #3720: real Game ticks, Parts storage and transaction close/restore traces.
-use super::super::{Game, Pos};
+use super::super::Pos;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
 use mod_api::*;
 use std::sync::{Arc, Mutex};

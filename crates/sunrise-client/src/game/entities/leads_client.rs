@@ -293,11 +293,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             -1.0
         };
         if self.side.camera_type.is_first_person() {
-            let (yaw, pitch) = rope_hold_angles(
-                (self.yaw, self.pitch),
-                self.side.rope_rot_old,
-                alpha as f32,
-            );
+            let (yaw, pitch) =
+                rope_hold_angles((self.yaw, self.pitch), self.side.rope_rot_old, alpha as f32);
             let v = glam::DVec3::new(0.39 * hand_dir, -0.6, 0.3);
             // Vec3.xRot(-pitch) then yRot(-yaw).
             let (s, c) = ((-pitch).sin(), (-pitch).cos());
@@ -310,11 +307,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Player.getRopeHoldPosition: the view's pitch eased toward `xRotO`,
         // the body's yaw between `yBodyRotO` and `yBodyRot`, from
         // `getPosition(partialTick)`.
-        let (_, x_rot) = rope_hold_angles(
-            (self.yaw, self.pitch),
-            self.side.rope_rot_old,
-            alpha as f32,
-        );
+        let (_, x_rot) =
+            rope_hold_angles((self.yaw, self.pitch), self.side.rope_rot_old, alpha as f32);
         let t = alpha as f32;
         let y_rot = self.side.player_model.as_ref().map_or(
             f64::from(self.yaw * (std::f32::consts::PI / 180.0)),

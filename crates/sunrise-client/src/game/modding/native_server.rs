@@ -1000,7 +1000,9 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) fn with_command_sources(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
+    pub(in crate::game) fn with_command_sources(
+        test: impl FnOnce(&mut crate::game::ServerGame<'_>),
+    ) {
         use sunrise_client::{
             chunk::Chunk, chunk::block_entity::BlockEntity, command_block::CommandBlock,
         };
@@ -2950,7 +2952,11 @@ pub(in crate::game) mod fake_action_tests {
         (player, fake, real)
     }
 
-    pub(in crate::game) fn place(game: &mut crate::game::ServerGame<'_>, pos: [i32; 3], state: &str) {
+    pub(in crate::game) fn place(
+        game: &mut crate::game::ServerGame<'_>,
+        pos: [i32; 3],
+        state: &str,
+    ) {
         // `name[key=value,...]`, as a command writes a state.
         let (name, props) = state.split_once('[').unwrap_or((state, "]"));
         let properties = props
@@ -2983,7 +2989,10 @@ pub(in crate::game) mod fake_action_tests {
         respawn_anchor::RespawnConfig, stations::Kind, stations::Station,
     };
 
-    pub(in crate::game) fn held(game: &crate::game::ServerGame<'_>, uuid: u128) -> Option<ItemStack> {
+    pub(in crate::game) fn held(
+        game: &crate::game::ServerGame<'_>,
+        uuid: u128,
+    ) -> Option<ItemStack> {
         let host = game.lan.as_ref().unwrap();
         let g = host.hub.guests.iter().find(|g| g.uuid == uuid).unwrap();
         g.inventory[g.selected].clone()

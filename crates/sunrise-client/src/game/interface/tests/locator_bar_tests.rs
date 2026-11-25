@@ -1,4 +1,4 @@
-use super::{Game, GuiDraw, TrackedWaypoint};
+use super::{GuiDraw, TrackedWaypoint};
 use crate::game::{
     in_own_process, native_entity_refs::tests::with_client_game, native_lifecycle::NativeLifecycle,
     remote::RemoteDimensionEntry,
@@ -43,11 +43,22 @@ fn connect(game: &mut crate::game::ClientGame<'_>, position: Vec3) -> Pipe {
     server
 }
 
-fn add_armor_stand(game: &mut crate::game::ClientGame<'_>, id: i32, uuid: u128, position: [f64; 3]) {
+fn add_armor_stand(
+    game: &mut crate::game::ClientGame<'_>,
+    id: i32,
+    uuid: u128,
+    position: [f64; 3],
+) {
     add_armor_stand_facing(game, id, uuid, position, 0);
 }
 
-fn add_armor_stand_facing(game: &mut crate::game::ClientGame<'_>, id: i32, uuid: u128, position: [f64; 3], yaw: i8) {
+fn add_armor_stand_facing(
+    game: &mut crate::game::ClientGame<'_>,
+    id: i32,
+    uuid: u128,
+    position: [f64; 3],
+    yaw: i8,
+) {
     let kind = game
         .remote
         .as_ref()

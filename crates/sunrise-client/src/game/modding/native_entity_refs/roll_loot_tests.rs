@@ -2,9 +2,7 @@
 //! same random state it gives what the engine's own roll in the same context gives,
 //! `/loot … fish <table> <pos> <tool>` (whose `loot` path the loot harnesses hold to
 //! vanilla 26.3).
-use crate::game::{
-    Audio, Game, Options, Progress, Settings, execution_role, functions, load_resources,
-};
+use crate::game::{Options, Progress, Settings, execution_role, functions, load_resources};
 use mod_api::{Authority, LevelRef};
 use std::sync::Arc;
 use sunrise_client::{chunk::Chunk, motion::PlayerMotion};

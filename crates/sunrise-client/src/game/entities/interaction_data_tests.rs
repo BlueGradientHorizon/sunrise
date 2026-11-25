@@ -75,7 +75,10 @@ fn data_edits_reach_the_same_live_interaction() {
             .unwrap();
         assert_eq!(tag.get("width"), Some(&Tag::Float(1.0f32.to_bits())));
         // The same entity: its id, UUID and place.
-        assert_eq!((game.side.others.0.len(), game.side.others.0[0].id), (1, id));
+        assert_eq!(
+            (game.side.others.0.len(), game.side.others.0[0].id),
+            (1, id)
+        );
         assert_eq!(tag.get("UUID"), Some(&Tag::IntArray(vec![66, 0, 0, 1])));
         assert_eq!(game.side.others.0[0].position, Vec3::new(4.5, 100.0, 4.5));
     });
@@ -96,7 +99,8 @@ fn the_live_settings_are_what_the_interaction_saves() {
         "summon item_display 12.5 100 4.5 {UUID:[I;66,0,0,4],transformation:[1f,0f,0f,0f,0f,1f,0f,0f,0f,0f,1f,0f,0f,0f,0f,1f]}"
     ));
         let find = |g: &crate::game::ServerGame<'_>, uuid: [i32; 4]| {
-            g.side.others
+            g.side
+                .others
                 .0
                 .iter()
                 .find(|o| g.persist.uuids.get(&o.id) == Some(&uuid))

@@ -23,7 +23,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
 
-
     /// Mutate an extant mob object without making it resident.
     pub(in crate::game) fn mob_object_mut(&mut self, id: u32) -> Option<&mut Mob> {
         if let Some(index) = self.mobs.iter().position(|mob| mob.id == id) {

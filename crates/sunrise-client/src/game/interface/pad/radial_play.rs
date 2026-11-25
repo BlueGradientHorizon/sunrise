@@ -123,7 +123,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side.pad.0.radial_rested =
             std::array::from_fn(|i| radial::stick_length(sticks[i]) < tilts[i].rest);
         let (index, stick, _, tilt) = self.pad_radial_selector();
-        self.side.pad.0.radial.open(index, stick, tilt, Instant::now());
+        self.side
+            .pad
+            .0
+            .radial
+            .open(index, stick, tilt, Instant::now());
         self.side.pad.0.radial_page_said = false;
         self.side.pad.0.radial_said.reset();
     }
@@ -203,10 +207,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// `pad_radial_frame`'s work, before the overlay's look sees the result.
     fn pad_radial_poll(&mut self, now: Instant) {
-        self.side.pad
-            .0
-            .radial
-            .sample([self.side.pad.0.state.left, self.side.pad.0.state.right], now);
+        self.side.pad.0.radial.sample(
+            [self.side.pad.0.state.left, self.side.pad.0.state.right],
+            now,
+        );
         if self.settings.controller.radial_stick == RadialStick::Either {
             self.pad_radial_follow_either();
         }
@@ -225,7 +229,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         }
         let was = self.side.pad.0.radial.selected();
-        self.side.pad.0.radial.update_with_peak(stick, peak, tilt, now);
+        self.side
+            .pad
+            .0
+            .radial
+            .update_with_peak(stick, peak, tilt, now);
         // A tick as the stick reaches a slot that would run, so a flick can be felt.
         let selected = self.side.pad.0.radial.selected();
         if selected != was && selected.is_some_and(|slot| self.pad_radial_fills(slot)) {
@@ -296,7 +304,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
     fn pad_radial_turn(&mut self, forward: bool) {
         let (_, stick, _, tilt) = self.pad_radial_selector();
         let pages = self.settings.controller.radial.len();
-        let Some(wrapped) = self.side.pad.0.radial.turn_page(forward, stick, tilt, pages) else {
+        let Some(wrapped) = self
+            .side
+            .pad
+            .0
+            .radial
+            .turn_page(forward, stick, tilt, pages)
+        else {
             return;
         };
         self.side.pad.0.radial_look.turned(forward);
@@ -350,7 +364,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let shoots = matches!(action, RadialAction::Screenshot | RadialAction::ToggleGui);
         let action = action.action();
-        self.side.audio
+        self.side
+            .audio
             .0
             .play("minecraft:ui.button.click", None, UI_CLICK_VOLUME, 1.0);
         // The release runs whatever the press did, so no key stays held.
@@ -422,7 +437,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let held = opener.is_some_and(|opener| self.side.pad.0.state.held(opener));
         DPAD.contains(&button)
             && self
-                .side.pad
+                .side
+                .pad
                 .0
                 .radial_settle
                 .quiet(opener == Some(button), held, Instant::now())

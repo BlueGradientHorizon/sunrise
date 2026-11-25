@@ -395,7 +395,8 @@ impl<'r> Game<'r, crate::game::server_side::ServerState> {
                 }
                 if self.natural_knot(id).is_some()
                     || self
-                        .side.others
+                        .side
+                        .others
                         .0
                         .iter()
                         .any(|o| o.id == id && o.kind == "minecraft:leash_knot")
@@ -626,7 +627,8 @@ impl<'r> Game<'r, crate::game::server_side::ServerState> {
         // LeashFenceKnotEntity (`BlockAttachedEntity.hurtServer`), natural or explicit.
         let is_knot = self.natural_knot(id).is_some()
             || self
-                .side.others
+                .side
+                .others
                 .0
                 .iter()
                 .any(|o| o.id == id && o.kind == "minecraft:leash_knot");

@@ -3278,7 +3278,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn crafted_by_map_reservations_follow_nested_commit_and_abort() {
-        use super::{Game, Menu};
+        use super::Menu;
         use crate::game::maps::{MapData, map_id};
         use sunrise_client::save::read_dat;
         use sunrise_core::nbt::Tag;

@@ -399,7 +399,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     let credit = if acting {
                         self.side.combat.0.take_hurt_by_player(now)
                     } else {
-                        self.side.guest_combat
+                        self.side
+                            .guest_combat
                             .0
                             .get_mut(&conn)
                             .and_then(|c| c.take_hurt_by_player(now))
@@ -493,7 +494,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         // A mob that blew up this tick has left the list, but vanilla's player
         // dies inside that blast, before the source is discarded.
-        if let Some((_, kind)) = self.side.combat.0.exploded_kinds.iter().rfind(|(m, _)| *m == id) {
+        if let Some((_, kind)) = self
+            .side
+            .combat
+            .0
+            .exploded_kinds
+            .iter()
+            .rfind(|(m, _)| *m == id)
+        {
             return Some(kind.clone());
         }
         self.dragon

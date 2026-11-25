@@ -66,12 +66,7 @@ fn social_toast_is_dismissed_only_by_the_multiplayer_key() {
                 assert!(game.side.screen == Screen::Playing);
                 assert!(wanted(game), "the unavailable key did not open the screen");
                 assert_eq!(
-                    game.side
-                        .titles
-                        .overlay
-                        .as_ref()
-                        .unwrap()
-                        .translation_key(),
+                    game.side.titles.overlay.as_ref().unwrap().translation_key(),
                     Some("multiplayer.socialInteractions.not_available")
                 );
 

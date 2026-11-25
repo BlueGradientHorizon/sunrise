@@ -135,7 +135,7 @@ pub(in crate::game) mod tests {
         root: &std::path::Path,
         home: &std::path::Path,
     ) -> crate::game::ServerGame<'a> {
-        use crate::game::{Audio, Options, Progress, Settings, load_resources};
+        use crate::game::{Options, Progress, Settings, load_resources};
         let settings = Settings::default();
         let loaded = load_resources(
             sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),

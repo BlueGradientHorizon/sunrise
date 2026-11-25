@@ -27,7 +27,12 @@ use sunrise_core::random::{LegacyRandom, RandomSource};
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::client_side::creatures_client::spawn_egg_mob_tests::game;
 
-pub(in crate::game) fn spawn(game: &mut crate::game::ServerGame<'_>, kind: &str, id: u32, at: [f64; 3]) {
+pub(in crate::game) fn spawn(
+    game: &mut crate::game::ServerGame<'_>,
+    kind: &str,
+    id: u32,
+    at: [f64; 3],
+) {
     game.mobs.clear();
     let kind = game.res.mob_types().get(kind).unwrap().clone();
     game.mobs

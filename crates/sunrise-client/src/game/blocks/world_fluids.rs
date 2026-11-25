@@ -259,7 +259,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
             player,
         } = written;
         self.with_level(|b, level, ticks| b.fluid_write_ticks(level, ticks, &write));
-        debug_assert!(self.side.spill.0.is_empty(), "a spill left between level calls");
+        debug_assert!(
+            self.side.spill.0.is_empty(),
+            "a spill left between level calls"
+        );
         self.side.spill.0 = drops;
         self.flush_spill();
         self.with_level(|b, level, ticks| b.fluid_write_effects(level, ticks, &write));

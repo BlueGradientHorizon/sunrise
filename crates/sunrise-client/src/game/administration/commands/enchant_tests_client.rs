@@ -70,7 +70,8 @@ fn integrated_enchant_updates_the_clients_selected_slot() {
         client.set_screen(Screen::Creative);
         // Supply the category's displayed stack, not a predicted or server slot.
         let category = client
-            .side.creative_screen
+            .side
+            .creative_screen
             .0
             .tabs
             .iter()

@@ -31,7 +31,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let min = center.map(|c| (c - reach).floor());
         let max = center.map(|c| (c + reach).floor());
         let source = self
-            .side.combat
+            .side
+            .combat
             .0
             .explosion_direct
             .or(self.side.combat.0.explosion_source);
@@ -50,7 +51,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut seen = HashSet::new();
         entities.retain(|entity| seen.insert(entity.id()));
         self.side.combat.0.blast_hit_ids = seen;
-        self.side.combat.0.blast_hit_list = Some(entities.iter().map(|entity| entity.id()).collect());
+        self.side.combat.0.blast_hit_list =
+            Some(entities.iter().map(|entity| entity.id()).collect());
     }
 
     /// The four entity kinds the entity-list walk misses: item frames,
@@ -448,7 +450,8 @@ mod tests {
                 );
                 // The outer's list is back: its walk still spares the zombie.
                 assert!(
-                    game.side.combat.0.blast_hit_list.is_some() && !game.side.combat.0.visits(SPARED),
+                    game.side.combat.0.blast_hit_list.is_some()
+                        && !game.side.combat.0.visits(SPARED),
                     "the outer's list is restored"
                 );
             });

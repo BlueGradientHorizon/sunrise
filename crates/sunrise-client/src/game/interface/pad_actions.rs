@@ -122,7 +122,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let confirm = glyph(MenuJob::Confirm);
         if let Some(focus) = focus.filter(|f| {
             f.kind == Kind::Field
-                || matches!(f.kind, Kind::Slider { .. }) && self.side.pad.0.menu.slider_hold.is_none()
+                || matches!(f.kind, Kind::Slider { .. })
+                    && self.side.pad.0.menu.slider_hold.is_none()
         }) && let Some((x, y)) = glyph_at(focus.rect, width(confirm), view, true)
         {
             glyphs.push((confirm, x, y));

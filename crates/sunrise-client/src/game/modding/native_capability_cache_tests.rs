@@ -81,7 +81,10 @@ impl Hooks for CacheBench {
 
 const POS: (i32, i32, i32) = (1, 64, 1);
 
-fn with_cache_mod(name: &str, test: impl FnOnce(&mut crate::game::ServerGame<'_>, mod_api::LevelRef)) {
+fn with_cache_mod(
+    name: &str,
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, mod_api::LevelRef),
+) {
     if super::native_entity_refs::tests::run_fresh_cases(
         name,
         "SUNRISE_CAPABILITY_CACHE_CHILD",

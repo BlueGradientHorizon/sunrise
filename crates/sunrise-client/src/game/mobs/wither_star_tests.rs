@@ -2,7 +2,6 @@
 //! then calls `ItemEntity.setExtendedLifetime` (`age = -6000`), so the age
 //! discard (`age >= 6000`) takes it at tick 12000 instead of 6000.
 use crate::entities::ItemEntity;
-use crate::game::Game;
 use crate::items::ItemStack;
 use std::sync::Arc;
 use sunrise_client::chunk::Chunk;

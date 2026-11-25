@@ -306,7 +306,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 mod tests {
-    use crate::game::{Game, native_entity_refs::tests::with_game};
+    use crate::game::native_entity_refs::tests::with_game;
     use mod_api::{
         ArmorHurtEvent, DamageItemEvent, Flow, HitHost, Hooks, ItemPart, LivingIncomingDamageEvent,
         Registrar, RegistrationContext, ServerHost,

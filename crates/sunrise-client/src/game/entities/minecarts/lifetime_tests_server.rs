@@ -28,7 +28,8 @@ fn a_bound_cart_survives_the_parked_level_swap() {
         game.enter_level(super::super::Dim::Nether).unwrap();
         assert!(game.carts.is_empty());
         assert_eq!(
-            game.side.levels
+            game.side
+                .levels
                 .0
                 .parked_mut(super::super::Dim::Overworld)
                 .unwrap()
@@ -41,7 +42,10 @@ fn a_bound_cart_survives_the_parked_level_swap() {
     });
 }
 
-pub(in crate::game) fn bound_cart_case(kind: CartKind, action: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
+pub(in crate::game) fn bound_cart_case(
+    kind: CartKind,
+    action: impl FnOnce(&mut crate::game::ServerGame<'_>),
+) {
     super::super::native_entity_refs::tests::with_game(|game| {
         game.side.tickets.0.update(None);
         game.carts

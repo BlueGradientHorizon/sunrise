@@ -130,27 +130,28 @@ fn a_block_part_hears_a_piston_destroy_it_before_the_move_overwrites_its_cells()
                     .map(|(_, m)| m.moved_state)
             };
             // A powered piston facing east at (2, 64, z), `ahead` east of it, then a torch.
-            let extend = |game: &mut crate::game::ServerGame<'_>, z, ahead: &[BlockStateId], client| {
-                game.with_level(|b, level, ticks| {
-                    level.set_raw(BlockPos::new(1, 64, z), power);
-                    level.set_raw(BlockPos::new(2, 64, z), piston);
-                    for (i, state) in ahead.iter().chain([&torch_state]).enumerate() {
-                        level.set_raw(BlockPos::new(3 + i as i32, 64, z), *state);
-                    }
-                    if client {
-                        // A client replays the server's move with no hooks.
-                        level.client_side = true;
-                        level.native_authoritative = false;
-                    }
-                    b.client_block_event(
-                        level,
-                        ticks,
-                        BlockPos::new(2, 64, z),
-                        0,
-                        Direction::East as i32,
-                    );
-                });
-            };
+            let extend =
+                |game: &mut crate::game::ServerGame<'_>, z, ahead: &[BlockStateId], client| {
+                    game.with_level(|b, level, ticks| {
+                        level.set_raw(BlockPos::new(1, 64, z), power);
+                        level.set_raw(BlockPos::new(2, 64, z), piston);
+                        for (i, state) in ahead.iter().chain([&torch_state]).enumerate() {
+                            level.set_raw(BlockPos::new(3 + i as i32, 64, z), *state);
+                        }
+                        if client {
+                            // A client replays the server's move with no hooks.
+                            level.client_side = true;
+                            level.native_authoritative = false;
+                        }
+                        b.client_block_event(
+                            level,
+                            ticks,
+                            BlockPos::new(2, 64, z),
+                            0,
+                            Direction::East as i32,
+                        );
+                    });
+                };
             let torches = |game: &crate::game::ServerGame<'_>| {
                 game.dropped
                     .iter()

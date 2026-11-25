@@ -1042,7 +1042,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .executor
             .filter(|&key| self.ui.dispatcher.0.owns_executor(key))
             .and_then(|key| {
-                self.side.native_commands
+                self.side
+                    .native_commands
                     .0
                     .registered
                     .as_ref()?
@@ -1736,7 +1737,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_world_table_items(
         &self,
     ) -> Option<&Arc<sunrise_client::items::Items>> {
-        self.side.world_tables.0.as_ref().map(|tables| &tables.items)
+        self.side
+            .world_tables
+            .0
+            .as_ref()
+            .map(|tables| &tables.items)
     }
 
     pub(in crate::game) fn server_lid_openers(&self) -> Option<&HashMap<(i32, i32, i32), i32>> {
@@ -1834,14 +1839,19 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
         let guests = &self.lan.as_ref()?.hub.guests;
         let guest = guests
             .get(guests.identity_index(player.fields().uuid, player.fields().entity.id())?)?;
-        if !guest.placed || !guest.is_fake() || crate::game::Side::lan_guest_swaps(&self.side).contains(&guest.conn) {
+        if !guest.placed
+            || !guest.is_fake()
+            || crate::game::Side::lan_guest_swaps(&self.side).contains(&guest.conn)
+        {
             return None;
         }
         Some(PlayerRead::Guest(guest))
     }
 
     pub(in crate::game) fn player_lookup(&self, uuid: u128) -> Option<(PlayerRead<'_>, u32)> {
-        if crate::game::Side::lan_acting_uuid(&self.side) == Some(uuid) && !crate::game::Side::lan_acting_fake(&self.side) {
+        if crate::game::Side::lan_acting_uuid(&self.side) == Some(uuid)
+            && !crate::game::Side::lan_acting_fake(&self.side)
+        {
             return Some((
                 PlayerRead::Acting {
                     mode: Some(self.mode_id()),
@@ -2017,7 +2027,8 @@ pub(in crate::game) mod tests {
                             changed.store(true, Ordering::Relaxed);
                             game.register_native_commands();
                             assert_eq!(registrations.load(Ordering::Relaxed), 1);
-                            let registered = game.side.native_commands.0.registered.as_ref().unwrap();
+                            let registered =
+                                game.side.native_commands.0.registered.as_ref().unwrap();
                             assert!(registered.levels.contains_key("before"));
                             mod_api::Commands::refresh_commands(game);
                             mod_api::Commands::refresh_commands(game);
@@ -2272,7 +2283,8 @@ pub(in crate::game) mod tests {
                                 parameters: vec![],
                             };
                             game.ensure_datapacks();
-                            game.side.fns
+                            game.side
+                                .fns
                                 .0
                                 .store
                                 .functions
@@ -2649,8 +2661,9 @@ pub(in crate::game) mod fake_action_tests {
             let (player, ..) = fake(game, None, 0);
             let shulker = [1, 64, 0];
             place(game, shulker, "minecraft:shulker_box");
-            let count =
-                |game: &crate::game::ServerGame<'_>| game.be_anims.shulkers.get(&shulker).map(|s| s.open_count);
+            let count = |game: &crate::game::ServerGame<'_>| {
+                game.be_anims.shulkers.get(&shulker).map(|s| s.open_count)
+            };
             assert_eq!(
                 game.player_perform_action(player, on_top(shulker)),
                 Ok(ActionOutcome::EffectBlocked(FakeEffect::Menu))

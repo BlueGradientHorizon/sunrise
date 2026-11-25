@@ -17,7 +17,6 @@ use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_protocol::packets::play;
 
 impl Game<'_, crate::game::server_side::ServerState> {
-
     /// The entity id a player target has: the vehicle id its passengers keep.
     pub(in crate::game::server_side) fn player_vehicle_id(&self, player: Target) -> Option<u32> {
         match player {
@@ -33,8 +32,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             _ => None,
         }
     }
-
-
 
     /// `Entity.startRiding(player, force)` for the mob `entity`, with each
     /// refusal named. The mount itself is `start_riding_target`'s, the path

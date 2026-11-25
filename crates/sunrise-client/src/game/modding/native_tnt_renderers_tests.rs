@@ -2,7 +2,6 @@
 //! `minecraft:tnt` draws in place of the primed TNT cube, reading the TNT fuse; with no
 //! renderer the family's own geometry is unchanged; a failing renderer leaves that cube until a
 //! resource reload resolves it again.
-use super::Game;
 use super::native_entity_renderers::EntityRendererTable;
 use mod_api::{
     BlockEntityDrawContext, EntityRenderState, EntityRenderer, Hooks, RegisterEntityRenderersEvent,
@@ -286,7 +285,10 @@ fn a_tnt_registration_resolves_to_the_tnt_slot() {
 /// Runs `check` on a client game with prepared resources and the scene's TNT renderer, resolved
 /// as the first load does. In a child process running only `test`: the registrations are kept
 /// once per process.
-fn in_scene(test: &str, check: impl FnOnce(&mut crate::game::ClientGame<'_>, &Arc<Mutex<Heard>>, &Flaky)) {
+fn in_scene(
+    test: &str,
+    check: impl FnOnce(&mut crate::game::ClientGame<'_>, &Arc<Mutex<Heard>>, &Flaky),
+) {
     if std::env::var_os("SUNRISE_TNT_RENDERERS_CHILD").is_none() {
         let status = std::process::Command::new(std::env::current_exe().unwrap())
             .args([

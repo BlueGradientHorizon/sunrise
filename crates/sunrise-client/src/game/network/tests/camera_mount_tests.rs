@@ -1,7 +1,7 @@
 //! A spectated rider backs off by its living vehicle's scale and camera distance (26.3 `Camera.alignWithEntity`).
 //! Expected frames are recorded into `.local` by `tools/test_camera_parity.py` (`VanillaCameraOracle`).
 use crate::game::{
-    Game, native_client_session::tests::logged_client, native_entity_refs::tests::with_client_game,
+    native_client_session::tests::logged_client, native_entity_refs::tests::with_client_game,
 };
 use serde_json::Value;
 use sunrise_client::camera::{Camera, CameraType};
@@ -101,7 +101,11 @@ fn pin_pose(game: &mut crate::game::ClientGame<'_>, id: i32) {
 }
 
 /// The spectated rider's view as set by `Camera.alignWithEntity`.
-fn frame(game: &crate::game::ClientGame<'_>, partial: f32, camera_type: CameraType) -> (String, String, f32) {
+fn frame(
+    game: &crate::game::ClientGame<'_>,
+    partial: f32,
+    camera_type: CameraType,
+) -> (String, String, f32) {
     let e = game
         .spectated_camera_snapshot()
         .expect("the level holds the spectated rider");

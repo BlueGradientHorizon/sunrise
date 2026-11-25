@@ -12,10 +12,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         stack: &ItemStack,
         pos: [i32; 3],
     ) -> bool {
-        let (Some(uuid), Some(name)) = (
-            self.side.lan_acting_uuid,
-            self.side.lan_acting_name.clone(),
-        ) else {
+        let (Some(uuid), Some(name)) =
+            (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
+        else {
             return false;
         };
         let mod_fluid = sunrise_world::fluid::mod_fluid_of_bucket(&stack.item);

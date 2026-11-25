@@ -772,19 +772,22 @@ mod tests {
                     assert_eq!(handler.capacity(game, 0, Some(&water)), 1000);
                 }
                 let handler = handler.unwrap();
-                let extract = |game: &mut crate::game::ServerGame<'_>, resource: &FluidResource, amount| {
-                    game.storage_transaction(|host, tx| {
-                        handler.extract_at(host, tx, 0, resource, amount)
-                    })
-                    .unwrap()
-                };
-                let insert = |game: &mut crate::game::ServerGame<'_>, resource: &FluidResource, amount| {
-                    game.storage_transaction(|host, tx| {
-                        handler.insert_at(host, tx, 0, resource, amount)
-                    })
-                    .unwrap()
-                };
-                let at = |game: &crate::game::ServerGame<'_>| game.world.block(pos[0], pos[1], pos[2]);
+                let extract =
+                    |game: &mut crate::game::ServerGame<'_>, resource: &FluidResource, amount| {
+                        game.storage_transaction(|host, tx| {
+                            handler.extract_at(host, tx, 0, resource, amount)
+                        })
+                        .unwrap()
+                    };
+                let insert =
+                    |game: &mut crate::game::ServerGame<'_>, resource: &FluidResource, amount| {
+                        game.storage_transaction(|host, tx| {
+                            handler.insert_at(host, tx, 0, resource, amount)
+                        })
+                        .unwrap()
+                    };
+                let at =
+                    |game: &crate::game::ServerGame<'_>| game.world.block(pos[0], pos[1], pos[2]);
                 // A drain takes whole levels: 1500 mB asked takes one level, 999 none, and the
                 // last level leaves an empty cauldron.
                 assert_eq!(extract(game, &syrup, 1500), 1000);

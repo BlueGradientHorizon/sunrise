@@ -73,7 +73,7 @@ impl crate::game::ClientGame<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::game::Game;
+
     use mod_api::CollisionExclusionsError as Refusal;
 
     /// A portal's opening, 1 wide and 2 tall.

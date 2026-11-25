@@ -263,7 +263,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .instance_slot(fields.slot)
             .ok_or(InstanceError::Model(mod_api::ModelError::UnknownModel))?;
         let uploaded = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .and_then(|renderer| renderer.prepared_generation());

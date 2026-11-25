@@ -420,7 +420,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let inventory = native_menu_inventory_slot(size, slot);
         // The held backpack's own slot takes no click, so it can't go into itself.
         let applied = if inventory.is_none() || inventory != locked {
-            let accepts = |game: &Game<'_, crate::game::server_side::ServerState>, slot, resource: &ItemResource, amount| {
+            let accepts = |game: &Game<'_, crate::game::server_side::ServerState>,
+                           slot,
+                           resource: &ItemResource,
+                           amount| {
                 if locked.is_some() && native_menu_inventory_slot(size, slot as i32) == locked {
                     return (false, false, 0);
                 }
@@ -497,7 +500,12 @@ fn click_pickup(
     menu: MenuRef,
     slot: usize,
     right: bool,
-    accepts: impl Fn(&Game<'_, crate::game::server_side::ServerState>, usize, &ItemResource, u32) -> (bool, bool, u32),
+    accepts: impl Fn(
+        &Game<'_, crate::game::server_side::ServerState>,
+        usize,
+        &ItemResource,
+        u32,
+    ) -> (bool, bool, u32),
 ) -> bool {
     let cursor = menu.cursor();
     let at = ItemPlace::MenuSlot { menu, slot };
@@ -566,7 +574,12 @@ fn click_quick_move(
     size: usize,
     player_slots: usize,
     count: usize,
-    accepts: impl Fn(&Game<'_, crate::game::server_side::ServerState>, usize, &ItemResource, u32) -> (bool, bool, u32),
+    accepts: impl Fn(
+        &Game<'_, crate::game::server_side::ServerState>,
+        usize,
+        &ItemResource,
+        u32,
+    ) -> (bool, bool, u32),
 ) -> bool {
     let from = ItemPlace::MenuSlot { menu, slot: at };
     let Some(resource) = from.resource(game) else {
@@ -754,7 +767,10 @@ mod tests {
     }
 
     /// The guest's record, to change their hands as a packet or a command would.
-    fn edit_guest(game: &mut crate::game::ServerGame<'_>, edit: impl FnOnce(&mut sunrise_client::lan::guest::Guest)) {
+    fn edit_guest(
+        game: &mut crate::game::ServerGame<'_>,
+        edit: impl FnOnce(&mut sunrise_client::lan::guest::Guest),
+    ) {
         let guests = &mut game.lan.as_mut().unwrap().hub.guests;
         let index = guests.connection_index(1).unwrap();
         guests.update(index, edit);

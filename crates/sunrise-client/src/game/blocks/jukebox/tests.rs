@@ -1,7 +1,6 @@
 //! Jukeboxes against `JukeboxBlock`, `JukeboxBlockEntity` and `JukeboxPlayable`:
 //! what a load brings back of a saved song, the `BLOCK_CHANGE` of an insert and
 //! of an eject, and which click the `has_record` state allows.
-use super::Game;
 use std::sync::Arc;
 use sunrise_client::{
     chunk::Chunk,

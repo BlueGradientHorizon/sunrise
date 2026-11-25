@@ -1905,7 +1905,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn block_alias_survival_consumption_and_client_prediction() {
-        use crate::game::{Audio, Game, Options, Progress, Settings, World, load_resources};
+        use crate::game::{Options, Progress, Settings, World, load_resources};
         use std::{path::PathBuf, sync::Arc};
         use sunrise_client::{
             chunk::Chunk,
@@ -2116,7 +2116,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_servers_client_takes_its_speed_from_the_attributes_not_the_effect() {
-        use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+        use crate::game::{Audio, Options, Progress, Settings, load_resources};
         use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
         use sunrise_protocol::packets::play::{

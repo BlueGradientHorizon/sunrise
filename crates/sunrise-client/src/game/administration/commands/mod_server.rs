@@ -619,11 +619,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         match id {
             "say" => {
                 // A visible copy for the acting player goes with their captured output, in order.
-                let captured_for = self
-                    .side
-                    .chat_capture
-                    .as_ref()
-                    .and(self.side.lan_acting);
+                let captured_for = self.side.chat_capture.as_ref().and(self.side.lan_acting);
                 let capture_say = self
                     .lan_broadcast_source_say(&name, &message, captured_for)
                     .ok_or_else(|| err("command.failed", &[]))?;
@@ -645,11 +641,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             "me" => {
                 if self.lan.is_some() {
-                    let captured_for = self
-                        .side
-                        .chat_capture
-                        .as_ref()
-                        .and(self.side.lan_acting);
+                    let captured_for = self.side.chat_capture.as_ref().and(self.side.lan_acting);
                     let capture_me = self
                         .lan_broadcast_source_emote(&name, &message, captured_for)
                         .ok_or_else(|| err("command.failed", &[]))?;
@@ -1536,10 +1528,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let to = self.experience.level;
         if from != to
             && mod_api::__private::listened(mod_api::HookId::PlayerLevelChange)
-            && let (Some(player), Some(name)) = (
-                self.side.lan_acting_uuid,
-                self.side.lan_acting_name.clone(),
-            )
+            && let (Some(player), Some(name)) =
+                (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
         {
             self.native_player_level_change(player, &name, from, to);
         }
@@ -1792,7 +1782,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // joined in resource-stack order; a pack file with `replace`
             // drops what the lower sources put in (`TagLoader.load`).
             let packed = self
-                .side.fns
+                .side
+                .fns
                 .0
                 .store
                 .files
@@ -1940,10 +1931,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !mod_api::__private::listened(mod_api::HookId::PlayerXpChange) {
             return Some(amount);
         }
-        let (Some(player), Some(name)) = (
-            self.side.lan_acting_uuid,
-            self.side.lan_acting_name.clone(),
-        ) else {
+        let (Some(player), Some(name)) =
+            (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
+        else {
             return Some(amount);
         };
         let (mut amount, mut cancel) = (amount, false);
@@ -2060,7 +2050,8 @@ pub(in crate::game) mod peaceful_tests {
             let id = game.load_mob(saved, None).unwrap();
             let trader = game.mobs.iter().find(|mob| mob.id == id).unwrap();
             assert!(trader.persistent && trader.no_ai);
-            game.side.tickets
+            game.side
+                .tickets
                 .0
                 .update(Some(sunrise_client::ticket_levels::Sources {
                     forced: vec![(0, 0)],
@@ -2092,7 +2083,7 @@ pub(in crate::game) mod query_feedback_tests {
     #[ignore = "daily"]
     fn a_silent_source_drops_query_results_but_still_stores_them() {
         use crate::game::{
-            Audio, Game, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
+            Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
         };
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -2147,11 +2138,7 @@ pub(in crate::game) mod query_feedback_tests {
         for command in queries {
             game.side.chat_capture = Some(Vec::new());
             assert!(game.run_command(command), "{command}");
-            assert_eq!(
-                game.side.chat_capture.take().unwrap().len(),
-                1,
-                "{command}"
-            );
+            assert_eq!(game.side.chat_capture.take().unwrap().len(), 1, "{command}");
         }
         // The result still reaches `execute store`.
         assert!(game.run_command_quietly("execute store result score #t q run time query day"));

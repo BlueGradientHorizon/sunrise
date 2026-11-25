@@ -30,18 +30,19 @@ fn a_furnace_cart_is_capped_at_half_the_rule_speed_under_the_new_physics() {
         for z in 0..16 {
             game.world.set(0, 64, z, rail).unwrap();
         }
-        let speed_after = |game: &mut crate::game::ServerGame<'_>, kind: CartKind, on_rail: bool| {
-            let at = if on_rail {
-                Vec3::new(0.5, 64.0625, 2.5)
-            } else {
-                Vec3::new(8.5, 80.0, 8.5)
+        let speed_after =
+            |game: &mut crate::game::ServerGame<'_>, kind: CartKind, on_rail: bool| {
+                let at = if on_rail {
+                    Vec3::new(0.5, 64.0625, 2.5)
+                } else {
+                    Vec3::new(8.5, 80.0, 8.5)
+                };
+                let mut cart = Minecart::new(1, kind, at);
+                cart.velocity = Vec3::new(0.0, 0.0, 1.0);
+                cart.first_tick = false;
+                game.tick_cart(&mut cart, [0.0; 2], 0, &mut CartIndex::default());
+                cart.velocity.horizontal_distance()
             };
-            let mut cart = Minecart::new(1, kind, at);
-            cart.velocity = Vec3::new(0.0, 0.0, 1.0);
-            cart.first_tick = false;
-            game.tick_cart(&mut cart, [0.0; 2], 0, &mut CartIndex::default());
-            cart.velocity.horizontal_distance()
-        };
         // On a rail, the first iteration's cap.
         let furnace = speed_after(game, CartKind::Furnace, true);
         let plain = speed_after(game, CartKind::Rideable, true);

@@ -961,7 +961,7 @@ pub(in crate::game) mod interact_vibration_tests {
         held: &str,
         f: impl FnOnce(&mut crate::game::ServerGame<'_>),
     ) -> Option<Vec<String>> {
-        use crate::game::{Audio, Options, Progress, Settings, load_resources};
+        use crate::game::{Options, Progress, Settings, load_resources};
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES")?);
         let settings = Settings::default();
         let loaded = load_resources(

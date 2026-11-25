@@ -1,6 +1,6 @@
 //! Direct production handlers over an empty in-memory world; no server or renderer.
 use super::*;
-use crate::game::{Audio, Options, Progress, Settings, load_resources};
+use crate::game::{Options, Progress, Settings, load_resources};
 use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
 
@@ -93,7 +93,8 @@ pub(in crate::game::server_side) fn run_portal_contact_and_waiting_handoff_match
     assert_eq!(game.mobs.len(), 1);
     // Direct handler calls do not refresh the headless world's chunk tickets.
     // Frozen entities retain their counters across every group/phase pass.
-    game.side.tickets
+    game.side
+        .tickets
         .0
         .update(Some(crate::ticket_levels::Sources::default()));
     game.handle_vehicle_portals();
@@ -102,10 +103,13 @@ pub(in crate::game::server_side) fn run_portal_contact_and_waiting_handoff_match
     for id in &ids {
         assert_eq!(game.portals.entities.get(id).unwrap().cooldown, 5);
     }
-    game.side.tickets.0.update(Some(crate::ticket_levels::Sources {
-        forced: vec![(0, 0)],
-        ..Default::default()
-    }));
+    game.side
+        .tickets
+        .0
+        .update(Some(crate::ticket_levels::Sources {
+            forced: vec![(0, 0)],
+            ..Default::default()
+        }));
     assert!(game.entity_ticking_area()(entry.x, entry.z));
     let mut runtime = Vec::new();
     for (step, ticks) in [1, 3, 1, 1, 8].into_iter().enumerate() {

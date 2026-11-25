@@ -1,7 +1,6 @@
 //! `/tick`'s status lines reach the other operators; its query lines stay
 //! private. `TickCommand.setFreeze` and `sprint` call
 //! `sendSuccess(..., true)` (broadcast) while `tickQuery` passes `false`.
-use super::*;
 use crate::game::Dim;
 use serde_json::json;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};

@@ -270,7 +270,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let world = if guest.dimension == self.dim.id() {
                     &self.world
                 } else {
-                    self.side.levels
+                    self.side
+                        .levels
                         .0
                         .parked_world_of(&guest.dimension)
                         .ok_or(LevelWriteError::Unavailable)?
@@ -340,7 +341,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let (lo, hi) = match t {
             Target::Other(id) => {
                 return self
-                    .side.others
+                    .side
+                    .others
                     .0
                     .iter()
                     .find(|e| e.id == id)?

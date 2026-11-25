@@ -2160,8 +2160,6 @@ pub(in crate::game) use client_side::remote_objects;
 pub(in crate::game) use client_side::remote_projectiles;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::remote_removal;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::remote_stations;
 #[allow(unused_imports)]
@@ -3657,11 +3655,28 @@ struct TickScratch {
     later: Vec<BlockPos>,
 }
 
-
 #[allow(dead_code)]
-pub(in crate::game) trait Side: Sized + crate::game::side_ops::blocks::SideOps + crate::game::side_ops::events::SideOps + crate::game::side_ops::items::SideOps + crate::game::side_ops::lan::SideOps + crate::game::side_ops::mobs_creatures::SideOps + crate::game::side_ops::mobs_rest::SideOps + crate::game::side_ops::modapi::SideOps + crate::game::side_ops::modapi_hooks::SideOps + crate::game::side_ops::modapi_modding::SideOps + crate::game::side_ops::player::SideOps + crate::game::side_ops::presentation::SideOps + crate::game::side_ops::tables::SideOps + crate::game::side_ops::ui::SideOps + crate::game::side_ops::world::SideOps {
+pub(in crate::game) trait Side:
+    Sized
+    + crate::game::side_ops::blocks::SideOps
+    + crate::game::side_ops::events::SideOps
+    + crate::game::side_ops::items::SideOps
+    + crate::game::side_ops::lan::SideOps
+    + crate::game::side_ops::mobs_creatures::SideOps
+    + crate::game::side_ops::mobs_rest::SideOps
+    + crate::game::side_ops::modapi::SideOps
+    + crate::game::side_ops::modapi_hooks::SideOps
+    + crate::game::side_ops::modapi_modding::SideOps
+    + crate::game::side_ops::player::SideOps
+    + crate::game::side_ops::presentation::SideOps
+    + crate::game::side_ops::tables::SideOps
+    + crate::game::side_ops::ui::SideOps
+    + crate::game::side_ops::world::SideOps
+{
     const IS_SERVER: bool;
-    fn is_server() -> bool { Self::IS_SERVER }
+    fn is_server() -> bool {
+        Self::IS_SERVER
+    }
     fn host_side<'a, 'g>(game: &'g mut Game<'a, Self>) -> mod_api::HostSide<'g>;
     fn as_host<'a, 'g>(game: &'g Game<'a, Self>) -> &'g dyn mod_api::Host;
     fn as_block_states_backend<'a, 'g>(
@@ -3672,35 +3687,100 @@ pub(in crate::game) trait Side: Sized + crate::game::side_ops::blocks::SideOps +
     fn as_pack_discovery_context_mut<'a, 'g>(
         game: &'g mut Game<'a, Self>,
     ) -> &'g mut dyn mod_api::PackDiscoveryContext;
-    fn as_server_host_mut<'a, 'g>(_game: &'g mut Game<'a, Self>) -> Option<&'g mut dyn mod_api::ServerHost> { None }
-    fn as_client_host_mut<'a, 'g>(_game: &'g mut Game<'a, Self>) -> Option<&'g mut dyn mod_api::ClientHost> { None }
-    fn as_client_text_host<'a, 'g>(_game: &'g Game<'a, Self>) -> Option<&'g dyn mod_api::prelude::ClientTextClientHost> { None }
-    fn attachment_store<'a, 'g>(game: &'g mut Game<'a, Self>) -> &'g mut dyn mod_api::AttachmentStore;
-    fn world_tables(&self) -> Option<&WorldTables> { None }
-    fn lan_acting_uuid(&self) -> Option<u128> { None }
-    fn levels_generation(&self, _id: &str) -> u32 { 0 }
-    fn session_lock_active(&self) -> bool { false }
-    fn level_ref(&self, _dim: Dim, _epoch: Option<mod_api::WorldEpoch>) -> Option<mod_api::LevelRef> { None }
-    fn game_side_tag_items<'a>(&self, _remote: &'a Option<remote::Remote>, _res: &'a Resources) -> Option<&'a Items> { None }
-    fn levels(&self) -> Option<&levels::Levels> { None }
-    fn others(&self) -> Option<&sunrise_client::join_seq::ResidentList<commands::OtherEntity>> { None }
-    fn held_out(&self) -> &[u32] { &[] }
-    fn fns(&self) -> Option<&functions::FnState> { None }
-    fn cmds(&self) -> Option<&commands::extra::CommandExtras> { None }
-    fn lan_acting(&self) -> Option<u32> { None }
-    fn lan_acting_entity(&self) -> Option<u32> { None }
-    fn lan_acting_fake(&self) -> bool { false }
-    fn lan_guest_swaps(&self) -> &[u32] { &[] }
-    fn acting_abilities(&self) -> Option<sunrise_client::lan::abilities::PlayerAbilities> { None }
-    fn native_command_filter(&self) -> bool { false }
-    fn riding_order(&self) -> i64 { 0 }
-    fn vehicle_mobs(&self) -> Option<&crate::game::server_side::boat_passengers::VehicleMobs> { None }
-    fn lan_acting_name(&self) -> Option<&str> { None }
-    fn server_tick_deadline(&self) -> Option<Instant> { None }
+    fn as_server_host_mut<'a, 'g>(
+        _game: &'g mut Game<'a, Self>,
+    ) -> Option<&'g mut dyn mod_api::ServerHost> {
+        None
+    }
+    fn as_client_host_mut<'a, 'g>(
+        _game: &'g mut Game<'a, Self>,
+    ) -> Option<&'g mut dyn mod_api::ClientHost> {
+        None
+    }
+    fn as_client_text_host<'a, 'g>(
+        _game: &'g Game<'a, Self>,
+    ) -> Option<&'g dyn mod_api::prelude::ClientTextClientHost> {
+        None
+    }
+    fn attachment_store<'a, 'g>(
+        game: &'g mut Game<'a, Self>,
+    ) -> &'g mut dyn mod_api::AttachmentStore;
+    fn world_tables(&self) -> Option<&WorldTables> {
+        None
+    }
+    fn lan_acting_uuid(&self) -> Option<u128> {
+        None
+    }
+    fn levels_generation(&self, _id: &str) -> u32 {
+        0
+    }
+    fn session_lock_active(&self) -> bool {
+        false
+    }
+    fn level_ref(
+        &self,
+        _dim: Dim,
+        _epoch: Option<mod_api::WorldEpoch>,
+    ) -> Option<mod_api::LevelRef> {
+        None
+    }
+    fn game_side_tag_items<'a>(
+        &self,
+        _remote: &'a Option<remote::Remote>,
+        _res: &'a Resources,
+    ) -> Option<&'a Items> {
+        None
+    }
+    fn levels(&self) -> Option<&levels::Levels> {
+        None
+    }
+    fn others(&self) -> Option<&sunrise_client::join_seq::ResidentList<commands::OtherEntity>> {
+        None
+    }
+    fn held_out(&self) -> &[u32] {
+        &[]
+    }
+    fn fns(&self) -> Option<&functions::FnState> {
+        None
+    }
+    fn cmds(&self) -> Option<&commands::extra::CommandExtras> {
+        None
+    }
+    fn lan_acting(&self) -> Option<u32> {
+        None
+    }
+    fn lan_acting_entity(&self) -> Option<u32> {
+        None
+    }
+    fn lan_acting_fake(&self) -> bool {
+        false
+    }
+    fn lan_guest_swaps(&self) -> &[u32] {
+        &[]
+    }
+    fn acting_abilities(&self) -> Option<sunrise_client::lan::abilities::PlayerAbilities> {
+        None
+    }
+    fn native_command_filter(&self) -> bool {
+        false
+    }
+    fn riding_order(&self) -> i64 {
+        0
+    }
+    fn vehicle_mobs(&self) -> Option<&crate::game::server_side::boat_passengers::VehicleMobs> {
+        None
+    }
+    fn lan_acting_name(&self) -> Option<&str> {
+        None
+    }
+    fn server_tick_deadline(&self) -> Option<Instant> {
+        None
+    }
     fn locate_resident_owner<'a>(
         _game: &Game<'a, Self>,
         _at: sunrise_client::join_seq::residency::table::Location,
-    ) -> Option<sunrise_client::join_seq::residency::table::SourceEntity<(commands::Target, bool)>> {
+    ) -> Option<sunrise_client::join_seq::residency::table::SourceEntity<(commands::Target, bool)>>
+    {
         None
     }
 }
@@ -4970,7 +5050,6 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     fn tick(&mut self) -> Result<()> {
         self.side_tick()
     }
-    
 
     fn draw_reload_overlay(
         &self,
@@ -5500,8 +5579,7 @@ pub(in crate::game) struct ClientSidePrep {
     pub(in crate::game) audio: client_side::ClientShared<Audio>,
     pub(in crate::game) particles:
         client_side::ClientShared<sunrise_client::particles::ParticleEngine>,
-    pub(in crate::game) armor_stand_assets:
-        client_side::ClientOnly<armor_stands::ArmorStandAssets>,
+    pub(in crate::game) armor_stand_assets: client_side::ClientOnly<armor_stands::ArmorStandAssets>,
     pub(in crate::game) creative_screen: client_side::ClientOnly<Creative>,
     pub(in crate::game) skin_downloads:
         client_side::ClientOnly<RefCell<sunrise_client::skins::Downloader>>,

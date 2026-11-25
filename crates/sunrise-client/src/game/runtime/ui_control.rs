@@ -98,7 +98,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     } else if slot >= Creative::DISPLAY {
                         // An item tab's display slot shows the tab's list.
                         let first = self.side.creative_screen.0.first_row(&self.pack.names);
-                        self.side.creative_screen
+                        self.side
+                            .creative_screen
                             .0
                             .shown(&self.pack.names, first * 9 + slot - Creative::DISPLAY)
                     } else {

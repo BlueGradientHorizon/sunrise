@@ -1,6 +1,5 @@
 //! Witness for `Pig.mobInteract` and `Strider.mobInteract`: the real guest
 //! Interact route, with only the world and connection constructed by the test.
-use super::Game;
 use crate::game::{
     Dim, execution_role::ExecutionRole, lan::LanSettings, native_entity_refs::tests,
 };

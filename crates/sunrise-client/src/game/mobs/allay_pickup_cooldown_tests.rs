@@ -11,7 +11,9 @@ use sunrise_core::position::ChunkPos;
 
 const SUPPLIED: &str = "00006096-0000-0000-0000-000000000001";
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
+fn game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -175,13 +177,17 @@ fn the_saved_pickup_cooldown_follows_the_model() {
     assert!(game.run_command(
         "summon allay 7.5 101 8.5 {NoAI:1b,PersistenceRequired:1b,NoGravity:1b,UUID:[I;24726,0,0,2],Brain:{memories:{\"minecraft:item_pickup_cooldown_ticks\":{value:30}}}}"
     ));
-    let at =
-        |game: &mut crate::game::ServerGame<'_>, tail: u32| match game.target_with_uuid([24726, 0, 0, tail as i32]) {
-            Some(super::commands::Target::Mob(id)) => {
-                game.mobs.iter().position(|m| m.id == id).unwrap()
-            }
-            other => panic!("{other:?}"),
-        };
+    let at = |game: &mut crate::game::ServerGame<'_>, tail: u32| match game.target_with_uuid([
+        24726,
+        0,
+        0,
+        tail as i32,
+    ]) {
+        Some(super::commands::Target::Mob(id)) => {
+            game.mobs.iter().position(|m| m.id == id).unwrap()
+        }
+        other => panic!("{other:?}"),
+    };
     // No raw memory, no cooldown: no key.
     let plain = at(&mut game, 3);
     assert_eq!(saved(&mut game, plain), None, "no raw memory");

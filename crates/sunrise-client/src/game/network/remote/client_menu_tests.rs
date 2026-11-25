@@ -4,7 +4,7 @@ use super::*;
 #[test]
 #[ignore = "daily"]
 fn inventory_repair_does_not_replace_an_open_menus_predicted_cursor() {
-    use crate::game::native_entity_refs::tests::{with_game, with_client_game};
+    use crate::game::native_entity_refs::tests::with_client_game;
     use sunrise_core::nbt::Tag;
     use sunrise_protocol::{
         item::Stack,
@@ -95,7 +95,7 @@ fn inventory_repair_does_not_replace_an_open_menus_predicted_cursor() {
 #[test]
 #[ignore = "daily"]
 fn retained_effects_rebind_on_reconfiguration_and_refusals_do_not_block_clicks() {
-    use crate::game::native_entity_refs::tests::{with_game, with_client_game};
+    use crate::game::native_entity_refs::tests::with_client_game;
     use std::sync::Arc;
     use sunrise_core::{nbt::Tag, vanilla_bytes::Writer};
     use sunrise_protocol::{
@@ -239,7 +239,7 @@ fn client_menu_kind_names_the_server_menu_type() {
     crate::game::in_own_process(
         "game::remote::tests::client_menu_tests::client_menu_kind_names_the_server_menu_type",
         || {
-            use crate::game::native_entity_refs::tests::{with_game, with_client_game};
+            use crate::game::native_entity_refs::tests::with_client_game;
             use sunrise_core::nbt::Tag;
             use sunrise_protocol::packets::play::{self, Clientbound as C};
 

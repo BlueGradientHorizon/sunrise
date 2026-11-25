@@ -55,9 +55,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // The limiter's roll draws the level random: inside a part's `animate_tick`, the one
         // the part holds as `event.random`.
         self.with_lent_level_random(|game| {
-            game.side.particles
-                .0
-                .add_with_world(Some(&game.world), options, at, velocity, false, false);
+            game.side.particles.0.add_with_world(
+                Some(&game.world),
+                options,
+                at,
+                velocity,
+                false,
+                false,
+            );
         });
         true
     }
@@ -91,7 +96,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some((sprite, tint)) = self.particle_sprite(state, source_pos) else {
             return Ok(false);
         };
-        let particle = Particle::terrain(self.side.particles.0.random(), at, velocity, sprite, tint);
+        let particle =
+            Particle::terrain(self.side.particles.0.random(), at, velocity, sprite, tint);
         self.side.particles.0.push(particle);
         Ok(true)
     }
@@ -221,7 +227,8 @@ mod tests {
                     game.side.particles.0.tick(&level);
                 }
                 let heard: Vec<_> = game
-                    .side.particles
+                    .side
+                    .particles
                     .0
                     .sounds
                     .iter()

@@ -24,7 +24,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // The renderer laid translucent quads out again (a shader pack's flat terrain came
         // or went) and dropped every section and far tile: meshed again, as for a new one.
         if self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_deref_mut()
             .is_some_and(Renderer::take_dropped_sections)

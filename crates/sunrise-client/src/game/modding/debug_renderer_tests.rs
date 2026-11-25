@@ -1,6 +1,5 @@
 //! Native debug renderer selection, refresh, and world geometry, with prepared client resources.
 use super::{
-    Game,
     debug_options::{Row, rows},
     native_entity_refs::tests::with_client_game,
 };
@@ -159,7 +158,8 @@ fn the_renderer_list_refreshes_with_the_selection_and_leaves_nothing_behind() {
             .collect();
         assert_eq!(toggles, [SHOWN, OTHER]);
         assert_eq!(refreshes(fixture), 0);
-        game.side.debug_entries
+        game.side
+            .debug_entries
             .0
             .set_status(UNDECLARED, Status::AlwaysOn);
         game.side.title.0 = None;
@@ -174,7 +174,10 @@ fn the_renderer_list_refreshes_with_the_selection_and_leaves_nothing_behind() {
         assert_eq!(refreshes(fixture), 0);
 
         // Selected: one refresh, and the enabled renderer runs.
-        game.side.debug_entries.0.set_status(SHOWN, Status::AlwaysOn);
+        game.side
+            .debug_entries
+            .0
+            .set_status(SHOWN, Status::AlwaysOn);
         let shown = |y| (vec![[0.25, y, -1.0, 1.0, y, -1.0]], vec![SHOWN]);
         assert_eq!(frame(game, fixture, false, &mut draw), shown(2.0));
         assert_eq!(refreshes(fixture), 1);
@@ -183,7 +186,10 @@ fn the_renderer_list_refreshes_with_the_selection_and_leaves_nothing_behind() {
         assert_eq!(refreshes(fixture), 0);
 
         // The overlay changes the selection both ways.
-        game.side.debug_entries.0.set_status(SHOWN, Status::InOverlay);
+        game.side
+            .debug_entries
+            .0
+            .set_status(SHOWN, Status::InOverlay);
         assert_eq!(frame(game, fixture, false, &mut draw), none);
         assert_eq!(refreshes(fixture), 1);
         toggle_overlay(game);
@@ -195,11 +201,15 @@ fn the_renderer_list_refreshes_with_the_selection_and_leaves_nothing_behind() {
 
         // Reduced debug info hides default entries, while an entry opted in with
         // `with_reduced_debug_info(true)` stays enabled.
-        game.side.debug_entries.0.set_status(SHOWN, Status::AlwaysOn);
+        game.side
+            .debug_entries
+            .0
+            .set_status(SHOWN, Status::AlwaysOn);
         assert_eq!(frame(game, fixture, false, &mut draw), shown(6.0));
         assert_eq!(refreshes(fixture), 1);
         push(fixture, &[SHOWN, REDUCED_ALLOWED]);
-        game.side.debug_entries
+        game.side
+            .debug_entries
             .0
             .set_status(REDUCED_ALLOWED, Status::AlwaysOn);
         game.options_control(
@@ -215,7 +225,8 @@ fn the_renderer_list_refreshes_with_the_selection_and_leaves_nothing_behind() {
             )
         );
         assert_eq!(refreshes(fixture), 1);
-        game.side.debug_entries
+        game.side
+            .debug_entries
             .0
             .set_status(REDUCED_ALLOWED, Status::Never);
         push(fixture, &[SHOWN, OTHER, UNDECLARED]);
@@ -236,8 +247,14 @@ fn the_renderer_list_refreshes_with_the_selection_and_leaves_nothing_behind() {
         // would now push something else. Multiple renderers (including repeated switches and
         // unconditional ones) all run in registration order with no deduplication.
         push(fixture, &[SHOWN, SHOWN, OTHER, ALWAYS]);
-        game.side.debug_entries.0.set_status(SHOWN, Status::AlwaysOn);
-        game.side.debug_entries.0.set_status(OTHER, Status::AlwaysOn);
+        game.side
+            .debug_entries
+            .0
+            .set_status(SHOWN, Status::AlwaysOn);
+        game.side
+            .debug_entries
+            .0
+            .set_status(OTHER, Status::AlwaysOn);
         let all_four = (
             vec![
                 [0.25, 10.0, -1.0, 1.0, 10.0, -1.0],
@@ -252,7 +269,10 @@ fn the_renderer_list_refreshes_with_the_selection_and_leaves_nothing_behind() {
         push(fixture, &[OTHER]);
         assert_eq!(frame(game, fixture, false, &mut draw), all_four);
         assert_eq!(refreshes(fixture), 0);
-        game.side.debug_entries.0.set_status(SHOWN, Status::AlwaysOn);
+        game.side
+            .debug_entries
+            .0
+            .set_status(SHOWN, Status::AlwaysOn);
         assert_eq!(
             frame(game, fixture, false, &mut draw),
             (vec![[0.25, 11.0, -1.0, 1.0, 11.0, -1.0]], vec![OTHER])
@@ -268,7 +288,10 @@ fn the_renderer_list_refreshes_with_the_selection_and_leaves_nothing_behind() {
 
         // Leaving the world with it on: the title frame asks nothing and shows nothing, and
         // refreshes nothing, as it has no `emitGizmos`.
-        game.side.debug_entries.0.set_status(SHOWN, Status::AlwaysOn);
+        game.side
+            .debug_entries
+            .0
+            .set_status(SHOWN, Status::AlwaysOn);
         assert_eq!(frame(game, fixture, false, &mut draw), shown(13.0));
         assert_eq!(refreshes(fixture), 1);
         game.leave_server(None).unwrap();
@@ -343,8 +366,14 @@ fn invalidation_refreshes(
         let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(pipe, "Steve").unwrap();
         game.handle_packet(login()).unwrap();
-        game.side.debug_entries.0.set_status(SHOWN, Status::AlwaysOn);
-        game.side.debug_entries.0.set_status(OTHER, Status::AlwaysOn);
+        game.side
+            .debug_entries
+            .0
+            .set_status(SHOWN, Status::AlwaysOn);
+        game.side
+            .debug_entries
+            .0
+            .set_status(OTHER, Status::AlwaysOn);
         let mut draw = WorldGeometry::default();
         push(fixture, &[SHOWN]);
         assert_eq!(frame(game, fixture, false, &mut draw).1, [SHOWN]);

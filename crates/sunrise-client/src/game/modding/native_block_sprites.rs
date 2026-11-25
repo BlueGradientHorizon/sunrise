@@ -570,7 +570,7 @@ mod quad_on_tests {
 
 #[cfg(test)]
 mod biome_tint_tests {
-    use super::Game;
+
     use crate::game::native_entity_refs::tests::with_client_game;
     use mod_api::{
         Authority, BiomeColorsEvent, ClientHost, ColorResolver, Hooks, ModEntry,

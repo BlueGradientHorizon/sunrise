@@ -424,7 +424,14 @@ pub(in crate::game) mod tests {
         game: &mut crate::game::ClientGame<'_>,
         pick: impl Fn(&sunrise_client::creative::Tab) -> bool,
     ) {
-        let tab = game.side.creative_screen.0.tabs.iter().position(pick).unwrap();
+        let tab = game
+            .side
+            .creative_screen
+            .0
+            .tabs
+            .iter()
+            .position(pick)
+            .unwrap();
         game.side.creative_screen.0.select(tab);
     }
 
@@ -449,7 +456,9 @@ pub(in crate::game) mod tests {
         event_loop
     }
 
-    pub(in crate::game::client_side) fn window_batch(game: &crate::game::ClientGame<'_>) -> super::super::HudBatch {
+    pub(in crate::game::client_side) fn window_batch(
+        game: &crate::game::ClientGame<'_>,
+    ) -> super::super::HudBatch {
         let config = &game.side.renderer.0.as_ref().unwrap().config;
         super::super::HudBatch::new(
             [config.width, config.height],

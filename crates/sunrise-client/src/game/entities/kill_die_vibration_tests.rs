@@ -3,7 +3,6 @@
 //! `gameEvent(ENTITY_DIE)` at the mob (tools/test_kill_die_vibration_parity.py
 //! measures the same on vanilla 26.3: the sensor's listener holds the event
 //! before any world tick).
-use super::*;
 use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
 use sunrise_client::mobs::Who;
@@ -35,7 +34,10 @@ pub(in crate::game) fn game(test: impl FnOnce(&mut crate::game::ServerGame<'_>))
 }
 
 /// Runs `command`: whether it succeeded and what it said.
-pub(in crate::game) fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Vec<String>) {
+pub(in crate::game) fn run(
+    game: &mut crate::game::ServerGame<'_>,
+    command: &str,
+) -> (bool, Vec<String>) {
     game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
     let said = game.side.chat_capture.take().unwrap_or_default();

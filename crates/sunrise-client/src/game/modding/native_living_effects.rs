@@ -78,7 +78,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
 
-
     /// `LivingEntity.addEffect(instance)`: gives the living entity the
     /// effect by the game's own path. A player's or a guest's goes through
     /// `add_player_effect` (so `MobEffectInstance.update`'s rules, the
@@ -139,9 +138,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             _ => false,
         }
     }
-
-
-
 
     /// `LivingEntity.removeEffect(effect)` the way its running out goes
     /// (`LivingEntity.tickEffects` drops it): what the effect gave the

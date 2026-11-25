@@ -863,7 +863,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn block_menu_handle_and_use_each_count_the_guest_once() {
-        use crate::game::{Game, Hit, sculk::TEST_POSTED_EVENTS};
+        use crate::game::{Hit, sculk::TEST_POSTED_EVENTS};
         use mod_api::{BlockUpdateFlags, GameMode};
         use std::sync::Arc;
         use sunrise_client::chunk::Chunk;
@@ -1586,7 +1586,7 @@ pub(in crate::game) mod respawn_world_point_tests {
 #[cfg(test)]
 pub(in crate::game) mod swing_echo_tests {
     use super::ItemStack;
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_client::chunk::Chunk;
     use sunrise_client::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
@@ -1815,7 +1815,11 @@ pub(in crate::game) mod guest_close_listener_tests {
         game.sculk_sync_index();
         assert!(selected(game).is_none());
     }
-    pub(in crate::game) fn open(game: &mut crate::game::ServerGame<'_>, conn: u32, sequence: i32) -> i32 {
+    pub(in crate::game) fn open(
+        game: &mut crate::game::ServerGame<'_>,
+        conn: u32,
+        sequence: i32,
+    ) -> i32 {
         game.lan_guest_packet(
             conn,
             S::UseItemOn(play::UseItemOn {
@@ -1876,7 +1880,7 @@ pub(in crate::game) mod recipe_check_budget_tests {
 #[cfg(test)]
 pub(in crate::game) mod item_on_block_cooldown_tests {
     use super::ItemStack;
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_client::chunk::Chunk;
     use sunrise_client::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};

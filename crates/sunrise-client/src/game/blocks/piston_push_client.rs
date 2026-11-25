@@ -910,7 +910,8 @@ mod client_lid_tests {
 
             let around = Aabb::new(Vec3::new(1.0, 200.0, 1.0), Vec3::new(4.0, 201.0, 8.0));
             let lift = Vec3::new(0.0, 0.25, 0.0);
-            let player_y = |game: &crate::game::ClientGame<'_>| game.player.as_ref().unwrap().position.y;
+            let player_y =
+                |game: &crate::game::ClientGame<'_>| game.player.as_ref().unwrap().position.y;
             game.lid_push_local(Lid::Shulker(72), around, lift);
             assert_eq!(
                 game.boats[0].position.y, 200.0,

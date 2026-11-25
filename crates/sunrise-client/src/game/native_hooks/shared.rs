@@ -1673,7 +1673,7 @@ pub(in crate::game) mod tests {
         ) {
             return;
         }
-        use super::super::{Audio, Game, Options, Progress, Settings, load_resources};
+        use super::super::{Options, Progress, Settings, load_resources};
         use sunrise_client::mod_content::{ContentMod, build};
         use sunrise_mod_package::content::{Block, Content};
 
@@ -1792,7 +1792,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn generated_fire_matches_dispatch() {
-        use super::super::{Audio, Game, Options, Progress, Settings, load_resources};
+        use super::super::{Audio, Options, Progress, Settings, load_resources};
         use mod_api::{ClientHost, Flow, Hooks, ModEntry};
         use std::sync::{Arc, Mutex};
 
@@ -1935,7 +1935,7 @@ pub(in crate::game) mod tests {
         crate::game::in_own_process(
             "game::native_hooks::tests::no_stack_is_hovered_without_a_window",
             || {
-                use super::super::{Audio, Game, Options, Progress, Settings, load_resources};
+                use super::super::{Audio, Options, Progress, Settings, load_resources};
 
                 let root =
                     std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());

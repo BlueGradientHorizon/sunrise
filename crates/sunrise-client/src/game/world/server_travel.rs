@@ -1833,7 +1833,8 @@ mod tests {
                 assert_eq!(game.portals.entities[&(base + 1)].cooldown, 7);
                 assert!(
                     !game
-                        .side.levels
+                        .side
+                        .levels
                         .0
                         .parked_mut(source)
                         .unwrap()
@@ -2321,7 +2322,7 @@ mod transfer_lifetime_tests {
 #[cfg(test)]
 mod credits_respawn_tests {
     use super::Dim;
-    use crate::game::Game;
+
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_client::{
         chunk::Chunk,
@@ -2430,7 +2431,11 @@ mod credits_respawn_tests {
     /// A scratch server whose Overworld guest has a Nether respawn point.
     pub(super) fn server_with_a_nether_anchor<'a>(
         resources: &'a mut Option<Arc<crate::game::Resources>>,
-    ) -> (tempfile::TempDir, crate::game::ServerGame<'a>, mpsc::Receiver<Out>) {
+    ) -> (
+        tempfile::TempDir,
+        crate::game::ServerGame<'a>,
+        mpsc::Receiver<Out>,
+    ) {
         let scratch = tempfile::tempdir().unwrap();
         let mut game = crate::game::game_tests::tests::server_game(resources);
         game.side.world_root = scratch.path().to_owned();

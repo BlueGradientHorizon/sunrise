@@ -283,8 +283,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         while angle < std::f64::consts::PI * 2.0 {
             let (c, s) = (angle.cos(), angle.sin());
             let at = [x + c * 5.0, y - 0.4, z + s * 5.0];
-            self.side.particles.0.add(&portal, at, [c * -5.0, 0.0, s * -5.0]);
-            self.side.particles.0.add(&portal, at, [c * -7.0, 0.0, s * -7.0]);
+            self.side
+                .particles
+                .0
+                .add(&portal, at, [c * -5.0, 0.0, s * -5.0]);
+            self.side
+                .particles
+                .0
+                .add(&portal, at, [c * -7.0, 0.0, s * -7.0]);
             angle += std::f64::consts::PI / 20.0;
         }
     }
@@ -312,7 +318,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let x = origin[0] + r.next_double() * 0.6 - 0.3;
                 let z = origin[2] + r.next_double() * 0.6 - 0.3;
                 let portal = ParticleOptions::simple(ParticleType::Portal);
-                self.side.particles
+                self.side
+                    .particles
                     .0
                     .add(&portal, [x, origin[1] - 0.5, z], movement);
             }

@@ -100,7 +100,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let (victim, lend) =
             crate::game::entity::victim_and_causer!(self, index, shooter, decision);
         let hurt = victim.damage_projectile(
-            crate::game::entity::damage_level_of!(self, self.side.combat.0.attack(), &mut credit, lend),
+            crate::game::entity::damage_level_of!(
+                self,
+                self.side.combat.0.attack(),
+                &mut credit,
+                lend
+            ),
             amount,
             source,
             aim,
@@ -153,7 +158,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .then(|| self.target_loot_entity(crate::game::commands::Target::Mob(id)))
                     // A charged creeper's blast kills after the creeper left the list.
                     .or_else(|| {
-                        self.side.combat
+                        self.side
+                            .combat
                             .0
                             .charged_exploders
                             .contains(&id)
@@ -436,7 +442,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let player = self.own_entity_id() as u32;
         let attacker = shot.owner.map(|owner| match owner {
             Who::Player => self
-                .side.combat
+                .side
+                .combat
                 .0
                 .enchantment_projectile_attacker
                 .or_else(|| self.player_attacker(shot.guest).map(|s| s.0))

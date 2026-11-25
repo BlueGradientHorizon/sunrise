@@ -291,10 +291,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     self.award_stat("used", &used.item, 1);
                     self.award_custom_stat("pot_flower", 1);
                     self.consume_held();
-                    if let (Some(player), Some(name)) = (
-                        self.side.lan_acting_uuid,
-                        self.side.lan_acting_name.clone(),
-                    ) {
+                    if let (Some(player), Some(name)) =
+                        (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
+                    {
                         self.native_player_flower_pot_manipulate(
                             player, &name, hit.pos, &used.item,
                         );

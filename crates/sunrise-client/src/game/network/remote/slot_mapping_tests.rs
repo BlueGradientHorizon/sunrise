@@ -1,5 +1,3 @@
-use super::*;
-
 #[test]
 fn every_inventory_menu_slot_is_a_game_slot_and_45_is_the_off_hand() {
     // InventoryMenu: result, 2x2 grid, armour, 27 + 9 inventory slots, then the off hand.
@@ -34,8 +32,14 @@ fn remote_clicks_find_slots_past_the_old_large_chest_cutoff() {
             "{menu}, game slot {internal}"
         );
     }
-    assert_eq!(crate::game::ClientGame::menu_slot_index("minecraft:generic_9x6", 354), None);
-    assert_eq!(crate::game::ClientGame::menu_slot_index("minecraft:generic_9x6", 504), None);
+    assert_eq!(
+        crate::game::ClientGame::menu_slot_index("minecraft:generic_9x6", 354),
+        None
+    );
+    assert_eq!(
+        crate::game::ClientGame::menu_slot_index("minecraft:generic_9x6", 504),
+        None
+    );
     assert_eq!(crate::game::ClientGame::menu_slot_index("unknown", 0), None);
 }
 

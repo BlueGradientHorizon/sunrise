@@ -266,7 +266,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         std::iter::once(level(self.dim, &self.world, self.active_perf_view()))
             .chain(
-                self.side.levels
+                self.side
+                    .levels
                     .0
                     .parked_perf_views()
                     .map(|(dim, world, view)| level(dim, world, view)),
@@ -385,7 +386,7 @@ mod tests {
         resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
         root: &Path,
     ) -> crate::game::ServerGame<'a> {
-        use super::super::super::{Audio, Options, Progress, Settings, load_resources};
+        use super::super::super::{Options, Progress, Settings, load_resources};
         let settings = Settings::default();
         let loaded = load_resources(
             sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),

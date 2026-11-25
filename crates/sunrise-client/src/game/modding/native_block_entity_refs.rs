@@ -19,9 +19,6 @@ use sunrise_items::items::ItemStack;
 use sunrise_world::registry::BlockStateId;
 
 impl Game<'_, crate::game::server_side::ServerState> {
-
-
-
     /// The data of the block entity at `pos`, as saved without identity or position
     /// metadata, for the hook that hears its block's removal: the entity is gone from
     /// the world by then, so it is read first. None for a block without one, or while
@@ -93,11 +90,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
 
-
-
-
-
-
     /// Change the lock through the same storage used by container opening and saving.
     pub(in crate::game) fn block_entity_set_lock(
         &mut self,
@@ -160,7 +152,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .clone();
         Some((key, block))
     }
-
 
     /// Set a mod block entity's menu data slot silently in the current transaction.
     /// Ok(false) for a vanilla entity, invalid slot or equal value; Stale for an invalidated
@@ -1611,7 +1602,11 @@ mod tests {
             let chest = game.block_entity(level, [0, 64, 0]).unwrap();
             let sensor = game.block_entity(level, [2, 64, 0]).unwrap();
             let stick = "{Items:[{Slot:3b,id:\"minecraft:stick\",count:3}]}";
-            let slot3 = |game: &crate::game::ServerGame<'_>| match game.world.block_entities.get(&(0, 64, 0)) {
+            let slot3 = |game: &crate::game::ServerGame<'_>| match game
+                .world
+                .block_entities
+                .get(&(0, 64, 0))
+            {
                 Some(BlockEntity::Chest(items)) => items[3].as_ref().map(|s| s.count),
                 _ => panic!("chest block entity missing"),
             };

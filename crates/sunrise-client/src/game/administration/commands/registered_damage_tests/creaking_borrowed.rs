@@ -1,6 +1,5 @@
 use super::setup_live_damage_world;
 use crate::game::{
-    Game,
     combat::PlayerCredit,
     native_entity_refs::tests::{run_fresh_cases, with_game},
     sculk::TEST_POSTED_EVENT_ORDER,

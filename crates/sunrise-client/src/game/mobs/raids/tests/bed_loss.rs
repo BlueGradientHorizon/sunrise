@@ -1,5 +1,5 @@
 //! Real Game raid creation/wave dispatch with a loaded claimed-bed precondition.
-use super::super::{Audio, Game, Options, Progress, Settings, load_resources};
+use super::super::{Options, Progress, Settings, load_resources};
 use std::sync::Arc;
 use sunrise_client::{chunk::Chunk, mobs::Mob, raid::Status};
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
@@ -97,14 +97,20 @@ fn admitted_raid_loses_removed_loaded_bed_without_erasing_memory() {
     );
     // Unavailable claims remain unknown rather than becoming known air.
     let chunk = game.world.chunks.remove(&(0, 0)).unwrap();
-    assert!(crate::game::ServerGame::is_village(&game.village_centers(), [2, 200, 1]));
+    assert!(crate::game::ServerGame::is_village(
+        &game.village_centers(),
+        [2, 200, 1]
+    ));
     game.world.chunks.insert((0, 0), chunk);
     game.level_set([2, 200, 1], air).unwrap();
     game.level_set([2, 200, 2], air).unwrap();
     assert_eq!(game.world.block(2, 200, 1), air);
     assert_eq!(game.world.block(2, 200, 2), air);
     game.tick_raids();
-    assert_eq!(game.side.raiding.0.raids.get(id).unwrap().status, Status::Loss);
+    assert_eq!(
+        game.side.raiding.0.raids.get(id).unwrap().status,
+        Status::Loss
+    );
     assert_eq!(
         game.mobs.iter().find(|m| m.id == 162).unwrap().extra.bed,
         Some([2, 200, 1])

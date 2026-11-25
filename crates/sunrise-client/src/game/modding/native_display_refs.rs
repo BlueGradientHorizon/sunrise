@@ -55,7 +55,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Target::Other(id) = self.native_entity_target(display.entity())? else {
             return None;
         };
-        let kind = self.side.others.0.iter().find(|o| o.id == id)?.kind.as_str();
+        let kind = self
+            .side
+            .others
+            .0
+            .iter()
+            .find(|o| o.id == id)?
+            .kind
+            .as_str();
         Some((DisplayKind::from_entity_type(kind)?, id))
     }
 
@@ -201,7 +208,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return false;
         }
         let index = self
-            .side.others
+            .side
+            .others
             .0
             .iter()
             .position(|o| o.id == display.entity().id())

@@ -181,7 +181,10 @@ pub(in crate::game) fn correction(rx: &mpsc::Receiver<Out>) -> play::PlayerPosit
     packet
 }
 
-pub(in crate::game) fn acknowledge(game: &mut crate::game::ServerGame<'_>, packet: &play::PlayerPosition) {
+pub(in crate::game) fn acknowledge(
+    game: &mut crate::game::ServerGame<'_>,
+    packet: &play::PlayerPosition,
+) {
     let [x, y, z] = packet.position;
     send(
         game,

@@ -187,7 +187,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             Target::Other(id) => {
                 let i = self
-                    .side.others
+                    .side
+                    .others
                     .0
                     .iter()
                     .position(|o| o.id == id)
@@ -985,8 +986,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let name_changed = self.load_block_name(key, &new, &tag);
         let cooldown_changed = if name == "minecraft:hopper" {
             let state = super::super::machines::HopperState::load(&tag);
-            let changed =
-                self.side.hoppers.get(&key).map_or(-1, |s| s.cooldown) != state.cooldown;
+            let changed = self.side.hoppers.get(&key).map_or(-1, |s| s.cooldown) != state.cooldown;
             self.side.hoppers.insert(key, state);
             changed
         } else {

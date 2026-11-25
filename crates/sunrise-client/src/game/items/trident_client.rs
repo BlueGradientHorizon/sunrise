@@ -166,10 +166,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) {
         // ItemPickupParticle: a picked-up trident flying to its collector,
         // drawn with the render state extracted at partial tick 1.
-        let taken = self.side.pickups.0.live.iter().filter_map(|p| match &p.taken {
-            super::pickups::Taken::Trident(t) => Some((&**t, super::pickups::position(p, alpha))),
-            _ => None,
-        });
+        let taken = self
+            .side
+            .pickups
+            .0
+            .live
+            .iter()
+            .filter_map(|p| match &p.taken {
+                super::pickups::Taken::Trident(t) => {
+                    Some((&**t, super::pickups::position(p, alpha)))
+                }
+                _ => None,
+            });
         self.draw_tridents(camera, taken, out);
     }
     pub(in crate::game) fn client_in_rain(&self, at: Vec3, top: f64) -> bool {

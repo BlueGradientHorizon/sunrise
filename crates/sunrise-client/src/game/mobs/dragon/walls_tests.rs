@@ -1,7 +1,6 @@
 //! `can_entity_destroy` asked by the dragon's `checkWalls` and the wither's block break: a
 //! block part decides what the entity may destroy, after the griefing gate and before
 //! `living_destroy_block`.
-use super::*;
 use mod_api::{
     BlockPart, CanEntityDestroyEvent, Flow, Hooks, Host, LivingDestroyBlockEvent, Registrar,
     ServerHost,

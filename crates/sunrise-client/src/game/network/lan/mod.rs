@@ -4366,7 +4366,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn guest_climbable_glide() {
-        use crate::game::{Audio, Options, Progress, Settings, load_resources};
+        use crate::game::{Options, Progress, Settings, load_resources};
         use std::sync::{Arc, atomic::AtomicI32, mpsc};
         use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest};
         use sunrise_client::motion::MotionWorld;
@@ -6143,7 +6143,7 @@ pub(in crate::game) mod world_spawn_join_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod mob_pickup_sync_tests {
-    use super::super::pickups::{Collector, Taken};
+
     use super::*;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_client::{

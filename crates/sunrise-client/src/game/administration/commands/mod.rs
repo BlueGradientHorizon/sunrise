@@ -2640,7 +2640,7 @@ pub(in crate::game) mod teleport_player_rider_tests;
 #[cfg(test)]
 pub(in crate::game) mod selector_bounds_tests {
     use super::*;
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use sunrise_client::{entities::ArmorStand, mobs::Mob};
     use sunrise_core::geometry::Vec3;
 
@@ -2947,7 +2947,7 @@ pub(in crate::game) mod effective_presence_tests {
 #[cfg(test)]
 pub(in crate::game) mod fill_note_instrument_tests {
     use super::*;
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
     use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::position::ChunkPos;

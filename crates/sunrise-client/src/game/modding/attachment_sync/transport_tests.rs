@@ -1,7 +1,6 @@
 //! Attachment sync on the negotiated route (#813 step 4a), over the real integrated memory
 //! connection and LAN TCP: who is sent values, in which order, what a rollback and a stale
 //! epoch send, and what an oversized message does to the connection.
-use super::super::Game;
 use mod_api::{AttachmentCodec, AttachmentStore, AttachmentType, Host};
 use std::time::{Duration, Instant};
 use sunrise_core::nbt::Tag;
@@ -61,7 +60,9 @@ impl mod_api::Hooks for Route {
 }
 
 /// The server's own attachment store.
-pub(super) fn store<'a>(server: &'a mut crate::game::ServerGame<'_>) -> &'a mut dyn AttachmentStore {
+pub(super) fn store<'a>(
+    server: &'a mut crate::game::ServerGame<'_>,
+) -> &'a mut dyn AttachmentStore {
     let host: &mut dyn Host = server;
     host.attachments()
 }

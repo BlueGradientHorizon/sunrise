@@ -1116,7 +1116,11 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
     fn nested_vehicle_discard_notifies_a_cart_dismount_once() {
         discard_during_dismount(true);
     }
-    fn with_vehicle_tree(cart: bool, rejected: bool, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
+    fn with_vehicle_tree(
+        cart: bool,
+        rejected: bool,
+        test: impl FnOnce(&mut crate::game::ServerGame<'_>),
+    ) {
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.options.game_dir = Some(
@@ -2351,7 +2355,8 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                 if cross_level {
                     assert_eq!(game.border.size(), 1000.0);
                     assert_eq!(
-                        game.side.levels
+                        game.side
+                            .levels
                             .0
                             .parked_border(super::super::Dim::Nether)
                             .unwrap()

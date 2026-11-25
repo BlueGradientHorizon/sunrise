@@ -752,7 +752,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || (self.options.dedicated.is_none() && self.player.is_some() && self.dim == dim)
     }
 
-
     /// A handle to the server level `key`, of the generation it is open with.
     pub(in crate::game) fn level_ref(
         &self,
@@ -797,7 +796,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Err("the files of an earlier delete are not all removed".into());
         }
         let level = self
-            .side.levels
+            .side
+            .levels
             .0
             .runtime
             .level_of(id)
@@ -904,11 +904,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.side.levels.0.runtime.fail_erase {
             return Err(std::io::Error::other("injected removal failure"));
         }
-        erase_level_files(
-            &self.side.world_root,
-            id,
-            !self.references_file_shared(id),
-        )
+        erase_level_files(&self.side.world_root, id, !self.references_file_shared(id))
     }
 
     /// The runtime level `id` was unloaded, or failed to open: it leaves every table it was added
@@ -955,6 +951,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// for a runtime level the open it was given. A handle of an earlier open reads as stale.
     pub(in crate::game) fn level_handle_current(&self, level: LevelRef) -> bool {
         self.native_lifecycle.epoch() == Some(level.epoch())
-            && level.generation() == crate::game::Side::levels_generation(&self.side, level.dimension_id())
+            && level.generation()
+                == crate::game::Side::levels_generation(&self.side, level.dimension_id())
     }
 }

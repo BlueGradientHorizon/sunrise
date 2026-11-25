@@ -90,7 +90,10 @@ fn load(game: &mut crate::game::ServerGame<'_>, snbt: &str, n: i32) -> u32 {
     game.load_orb(parse_snbt(snbt).unwrap().0, Some([9, 0, 0, n]));
     game.orbs.last().unwrap().id
 }
-fn orb<'a>(game: &'a crate::game::ServerGame<'_>, id: u32) -> &'a sunrise_client::entities::ExperienceOrb {
+fn orb<'a>(
+    game: &'a crate::game::ServerGame<'_>,
+    id: u32,
+) -> &'a sunrise_client::entities::ExperienceOrb {
     game.orbs.iter().find(|o| o.id == id).unwrap()
 }
 

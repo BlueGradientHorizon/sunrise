@@ -498,7 +498,10 @@ fn a_birth_panic_does_not_undo_or_misroute_a_biome_write_in_another_level() {
 
 /// Two cows bred directly, as `breeding_announces_the_orb_before_the_lower_id_child` does: the
 /// parents' ages are 6000 as the goal leaves them, the partner is in love.
-pub(in crate::game) fn breed_pair(game: &mut crate::game::ServerGame<'_>, kind: &str) -> (u32, u32, Option<u32>) {
+pub(in crate::game) fn breed_pair(
+    game: &mut crate::game::ServerGame<'_>,
+    kind: &str,
+) -> (u32, u32, Option<u32>) {
     breed_pair_credited(game, kind, false)
 }
 
@@ -705,7 +708,10 @@ fn turtle_hatching_spawns_its_turtle_without_asking_baby_entity_spawn() {
     assert_eq!(*calls.lock().unwrap(), 0);
 }
 
-pub(in crate::game) fn with_splits(listeners: Vec<SplitFn>, run: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
+pub(in crate::game) fn with_splits(
+    listeners: Vec<SplitFn>,
+    run: impl FnOnce(&mut crate::game::ServerGame<'_>),
+) {
     let entries: Vec<_> = listeners
         .into_iter()
         .enumerate()

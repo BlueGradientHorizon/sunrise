@@ -2,7 +2,6 @@
 //! off (`LecternBlock.getStateForPlacement`, `LecternBlock.placeBook` and
 //! `LecternBlockEntity.onBookItemRemove`).
 use super::super::game_tests::tests::server_game;
-use super::Game;
 use crate::game::{Hit, sculk::TEST_POSTED_EVENTS};
 use sunrise_client::{
     containers::{BlockEntity, Lectern},
@@ -11,7 +10,12 @@ use sunrise_client::{
 };
 
 /// A lectern at `pos`: the state's `has_book`, and the entity's book.
-fn lectern(game: &mut crate::game::ServerGame<'_>, pos: [i32; 3], has_book: bool, book: Option<ItemStack>) {
+fn lectern(
+    game: &mut crate::game::ServerGame<'_>,
+    pos: [i32; 3],
+    has_book: bool,
+    book: Option<ItemStack>,
+) {
     let registry = game.pack.assets.registry;
     let default = registry.default_state("minecraft:lectern").unwrap();
     let mut state = registry.state(default).unwrap().clone();

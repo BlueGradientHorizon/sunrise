@@ -198,7 +198,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 
     pub(in crate::game) fn server_recipes(&self) -> &Recipes {
-        self.side.world_tables
+        self.side
+            .world_tables
             .0
             .as_ref()
             .map_or_else(|| self.res.recipes(), |t| &t.recipes)

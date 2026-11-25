@@ -72,7 +72,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             "pregen.pause" | "pregen.continue" => {
                 let pause = id == "pregen.pause";
                 let task = self
-                    .side.cmds
+                    .side
+                    .cmds
                     .0
                     .pregen
                     .as_mut()
@@ -96,7 +97,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             "pregen.cancel" => {
                 let task = self
-                    .side.cmds
+                    .side
+                    .cmds
                     .0
                     .pregen
                     .take()
@@ -109,7 +111,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             _ => {
                 let task = self
-                    .side.cmds
+                    .side
+                    .cmds
                     .0
                     .pregen
                     .as_ref()
@@ -128,7 +131,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether the level in place has a running task, which the server pumps
     /// between its ticks (`pump_chunks`).
     pub(in crate::game::server_side) fn pregen_runs_here(&self) -> bool {
-        self.side.cmds
+        self.side
+            .cmds
             .0
             .pregen
             .as_ref()

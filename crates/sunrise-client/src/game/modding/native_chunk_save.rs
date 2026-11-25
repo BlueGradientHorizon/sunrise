@@ -106,7 +106,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || self.agent.hold_server
             || self.clock.sprinting()
             || self
-                .side.server_lists
+                .side
+                .server_lists
                 .0
                 .as_ref()
                 .is_some_and(|lists| !lists.lock().unwrap().autosave)
@@ -172,7 +173,8 @@ mod tests {
                 let stone = registry.default_state("minecraft:stone").unwrap();
                 let gold = registry.default_state("minecraft:gold_block").unwrap();
                 chunk.set(1, 64, 1, stone.0);
-                game.side.save
+                game.side
+                    .save
                     .0
                     .save(&[Arc::new(chunk.clone())], registry, world_biomes!(game))
                     .unwrap();
@@ -196,7 +198,8 @@ mod tests {
                 game.save_game().unwrap();
                 assert_eq!(game.side.save.0.record_save_failures(), 1);
                 assert_eq!(
-                    game.side.save
+                    game.side
+                        .save
                         .0
                         .load(key.0, key.1, registry, world_biomes!(game))
                         .unwrap()
@@ -212,7 +215,8 @@ mod tests {
                 game.save_chunks_eagerly_at(now + Duration::from_secs(22));
                 game.side.save.0.flush().unwrap();
                 assert_eq!(
-                    game.side.save
+                    game.side
+                        .save
                         .0
                         .load(key.0, key.1, registry, world_biomes!(game))
                         .unwrap()

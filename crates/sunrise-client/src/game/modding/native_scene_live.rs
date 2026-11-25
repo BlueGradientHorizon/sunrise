@@ -252,7 +252,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let owner = mod_api::content::crash::current_native_mod().unwrap_or("");
         let mut scenes = self
-            .side.live_scenes
+            .side
+            .live_scenes
             .0
             .try_borrow_mut()
             .map_err(|_| SceneError::Unavailable)?;

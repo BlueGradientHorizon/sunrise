@@ -1093,7 +1093,7 @@ pub(in crate::game) mod eye_item_tests;
 #[cfg(test)]
 pub(in crate::game) mod wolf_live_anger_tests {
     use super::Target;
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use sunrise_core::nbt::Tag;
 
     #[test]
@@ -1366,7 +1366,7 @@ pub(in crate::game) mod boat_passenger_tree_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod loot_table_tests {
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
     use sunrise_client::{
         chunk::Chunk,
@@ -1540,7 +1540,7 @@ pub(in crate::game) mod arrow_reload_tests;
 #[cfg(test)]
 pub(in crate::game) mod arrow_owner_tests {
     use super::Target;
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use sunrise_core::nbt::Tag;
 
     #[test]

@@ -1,5 +1,4 @@
 //! Positional block Parts run against the owning readonly level, not during state resolution.
-use super::Game;
 use super::native_entity_refs::tests::with_game;
 use mod_api::{
     AdjacentBlockPathTypeEvent, BlockPart, BlockPathTypeEvent, Hooks, Host, IsPathfindableEvent,

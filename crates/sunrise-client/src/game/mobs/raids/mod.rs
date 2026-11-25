@@ -115,7 +115,14 @@ impl RaidLevel for Lvl<'_, '_> {
     /// `ServerLevel.isPositionEntityTicking`: a loaded chunk whose entities
     /// tick (`canPositionTick`) in entity ticking range, not merely loaded.
     fn is_position_entity_ticking(&self, p: [i32; 3]) -> bool {
-        self.has_chunk_at(p) && self.game.side.tickets.0.levels().entity_ticking_at(p[0], p[2])
+        self.has_chunk_at(p)
+            && self
+                .game
+                .side
+                .tickets
+                .0
+                .levels()
+                .entity_ticking_at(p[0], p[2])
     }
     fn ravager_can_spawn(&self, [x, y, z]: [i32; 3]) -> bool {
         let g = self.game;
@@ -143,7 +150,8 @@ impl RaidLevel for Lvl<'_, '_> {
 pub(in crate::game) struct PatrolCx<'a, 'g, 'h> {
     pub(in crate::game) level: super::natural_spawning::GameLevel<'a, 'g>,
     pub(in crate::game) centers: HashSet<(i32, i32, i32)>,
-    pub(in crate::game) can_spawn: &'h dyn Fn(&Game<'_, crate::game::server_side::ServerState>, [i32; 3]) -> bool,
+    pub(in crate::game) can_spawn:
+        &'h dyn Fn(&Game<'_, crate::game::server_side::ServerState>, [i32; 3]) -> bool,
 }
 impl SpawnLevel for PatrolCx<'_, '_, '_> {
     fn within_world_border(&self, x: i32, z: i32) -> bool {
@@ -430,7 +438,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if self.difficulty_id() != 0
                     && sections_to_village(&self.village_centers(), section(pos)) <= 1
                     && self
-                        .side.raiding
+                        .side
+                        .raiding
                         .0
                         .raids
                         .nearby(pos)
@@ -474,7 +483,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let seed = random_source::unique_seed();
         let difficulty = self.difficulty_id();
         let (id, triggered) = self
-            .side.raiding
+            .side
+            .raiding
             .0
             .raids
             .create_or_extend(center, difficulty, amplifier, seed);
@@ -519,7 +529,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
     pub(in crate::game::server_side) fn raid_set_omen(&mut self, id: i32, level: i32) -> i32 {
-        self.side.raiding.0.raids.set_omen_level(id, level).unwrap_or(0)
+        self.side
+            .raiding
+            .0
+            .raids
+            .set_omen_level(id, level)
+            .unwrap_or(0)
     }
     pub(in crate::game::server_side) fn raid_glow(&mut self, id: i32) {
         for m in &mut self.mobs {
@@ -653,13 +668,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let centers = self.village_centers();
         let infos = self.raider_infos();
         let old_states: HashMap<_, _> = self
-            .side.raiding
+            .side
+            .raiding
             .0
             .raids
             .ids()
             .into_iter()
             .filter_map(|id| {
-                self.side.raiding
+                self.side
+                    .raiding
                     .0
                     .raids
                     .get(id)
@@ -769,7 +786,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// for everyone within 64 blocks or in the raid. One seed for every packet
     /// (`SoundSource.NEUTRAL`, volume 64, pitch 1).
     pub(in crate::game::server_side) fn raid_horn(&mut self, id: i32, pos: [i32; 3], seed: i64) {
-        let in_raid = self.side.raiding.0.raids.get(id).is_some_and(|r| r.bar.player);
+        let in_raid = self
+            .side
+            .raiding
+            .0
+            .raids
+            .get(id)
+            .is_some_and(|r| r.bar.player);
         let (rx, rz) = (f64::from(pos[0]) + 0.5, f64::from(pos[2]) + 0.5);
         // The raid tracks one participant (`bar.player`): the first player in
         // the level. Everyone else is heard by distance alone.
@@ -813,7 +836,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         spawns: &[Spawn],
     ) {
         let odds = self
-            .side.raiding
+            .side
+            .raiding
             .0
             .raids
             .get(raid_id)
@@ -1134,7 +1158,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> HashMap<i32, std::sync::Arc<Vec<[i32; 3]>>> {
         let now = self.world.game_time;
         let ids: Vec<(i32, [i32; 3])> = self
-            .side.raiding
+            .side
+            .raiding
             .0
             .raids
             .map
@@ -1142,13 +1167,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .filter(|(_, r)| r.active && !r.is_over() && r.started)
             .map(|(id, r)| (*id, r.center))
             .collect();
-        self.side.raiding
+        self.side
+            .raiding
             .0
             .homes
             .retain(|id, _| ids.iter().any(|(i, _)| i == id));
         for (id, c) in ids {
             if self
-                .side.raiding
+                .side
+                .raiding
                 .0
                 .homes
                 .get(&id)
@@ -1177,12 +1204,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     }
                 }
             }
-            self.side.raiding
+            self.side
+                .raiding
                 .0
                 .homes
                 .insert(id, (now, std::sync::Arc::new(beds)));
         }
-        self.side.raiding
+        self.side
+            .raiding
             .0
             .homes
             .iter()
@@ -1317,7 +1346,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.dim != Dim::Overworld {
             return Vec::new();
         }
-        self.side.raiding
+        self.side
+            .raiding
             .0
             .raids
             .ids()

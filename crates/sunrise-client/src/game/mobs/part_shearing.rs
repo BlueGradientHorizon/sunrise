@@ -117,10 +117,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 _ => false,
             };
         if shearable
-            && let (Some(uuid), Some(name)) = (
-                self.side.lan_acting_uuid,
-                self.side.lan_acting_name.clone(),
-            )
+            && let (Some(uuid), Some(name)) =
+                (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
         {
             let mut cancel = false;
             let off_hand = self.hand == Hand::Off;

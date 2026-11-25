@@ -85,10 +85,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn spectator_hotbar_key(&mut self, slot: i32) {
         let now = self.spectator_now();
         let menu = self.spectator_menu_if_needed();
-        let outcome = self
-            .side
-            .spectator_gui
-            .on_hotbar_selected(slot, now, menu);
+        let outcome = self.side.spectator_gui.on_hotbar_selected(slot, now, menu);
         self.spectator_outcome(outcome);
     }
     /// `key.spectatorHotbar`: opens the menu, or uses the selected item.

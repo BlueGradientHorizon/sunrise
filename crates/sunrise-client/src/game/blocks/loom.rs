@@ -78,7 +78,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Some(*flag)
         });
         if taken {
-            self.side.audio
+            self.side
+                .audio
                 .0
                 .play("minecraft:ui.loom.select_pattern", None, 1.0, 1.0);
             self.remote_station_button(index as i32);
@@ -133,7 +134,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `LoomScreen.mouseDragged` on the scroller.
     pub(in crate::game::client_side) fn loom_drag(&mut self) -> bool {
         let Some(size) = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])

@@ -214,7 +214,8 @@ fn refused_wire_reload_preserves_hub_and_engine_generation() {
     with_guests(|game| {
         let before = game.lan.as_ref().unwrap().hub.lan.shared.sync();
         let old_tables = game
-            .side.world_tables
+            .side
+            .world_tables
             .0
             .as_ref()
             .map(|tables| tables as *const _);
@@ -265,7 +266,8 @@ fn refused_wire_reload_preserves_hub_and_engine_generation() {
         assert!(Arc::ptr_eq(&old_context, &game.loop_context));
         assert_eq!(
             old_tables,
-            game.side.world_tables
+            game.side
+                .world_tables
                 .0
                 .as_ref()
                 .map(|tables| tables as *const _)
@@ -690,7 +692,8 @@ fn velocity_writes_send_only_the_owning_player_the_replacement_motion() {
         use sunrise_core::random::RandomSource;
         let mut own = b_body.random.clone();
         let mut level = game
-            .side.levels
+            .side
+            .levels
             .0
             .parked_mut(super::Dim::Overworld)
             .unwrap()
@@ -713,7 +716,8 @@ fn velocity_writes_send_only_the_owning_player_the_replacement_motion() {
         );
         assert_eq!(b_body.random.clone().next_long(), own.next_long());
         assert_eq!(
-            game.side.levels
+            game.side
+                .levels
                 .0
                 .parked_mut(super::Dim::Overworld)
                 .unwrap()
@@ -1774,8 +1778,9 @@ fn a_panic_in_a_turn_end_callback_still_restores_the_guest() {
                     guest.load_timeout = 0;
                 })
                 .unwrap();
-            let food =
-                |game: &crate::game::ServerGame<'_>| game.lan.as_ref().unwrap().hub.guest(13).unwrap().food;
+            let food = |game: &crate::game::ServerGame<'_>| {
+                game.lan.as_ref().unwrap().hub.guest(13).unwrap().food
+            };
             let before = food(game);
             let outer = game.side.lan_acting;
             assert_eq!(
@@ -1828,7 +1833,9 @@ fn a_panic_in_a_turn_end_callback_still_restores_the_guest() {
 
 /// An armor stand summoned at (1.5, 70, 1.5) in the level in place, which `with_guests` puts
 /// its two players beside, at (3, 64, 5).
-pub(in crate::game::server_side) fn summon_stand(game: &mut crate::game::ServerGame<'_>) -> mod_api::EntityRef {
+pub(in crate::game::server_side) fn summon_stand(
+    game: &mut crate::game::ServerGame<'_>,
+) -> mod_api::EntityRef {
     game.options.dedicated = Some(Vec::new());
     game.world
         .chunks
@@ -1850,7 +1857,10 @@ pub(in crate::game::server_side) fn summon_stand(game: &mut crate::game::ServerG
 }
 
 /// Whether anything the server sent the acting player since `before` is a chat line.
-pub(in crate::game::server_side) fn told_since(game: &crate::game::ServerGame<'_>, before: usize) -> bool {
+pub(in crate::game::server_side) fn told_since(
+    game: &crate::game::ServerGame<'_>,
+    before: usize,
+) -> bool {
     use sunrise_protocol::packets::play::Clientbound as C;
     game.side.guest_packets[before..]
         .iter()

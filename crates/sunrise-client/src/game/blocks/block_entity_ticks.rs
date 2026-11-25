@@ -514,7 +514,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// Single-position read without copying the pending-entity set.
     pub(in crate::game) fn block_ticking_at(&self, x: i32, z: i32) -> bool {
-        block_ticking_at(&self.side.tickets.0.levels(), &self.world.entities_pending, x, z)
+        block_ticking_at(
+            &self.side.tickets.0.levels(),
+            &self.world.entities_pending,
+            x,
+            z,
+        )
     }
     /// `DaylightDetectorBlock.tickEntity` of the detector at `pos`.
     pub(in crate::game) fn tick_daylight_detector(&mut self, pos: Pos) {
@@ -530,14 +535,16 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod jukebox_stop_tests {
-    use super::Game;
+
     use sunrise_client::items::ItemStack;
 
     /// A windowless game from the prepared resources with a resident chunk and
     /// a jukebox at (0, 64, 0), recording its game events; `None` without the
     /// resources. `f` gets the game and the disc.
-    fn with_jukebox(f: impl FnOnce(&mut crate::game::ServerGame<'_>, &ItemStack)) -> Option<Vec<String>> {
-        use crate::game::{Audio, Options, Progress, Settings, load_resources};
+    fn with_jukebox(
+        f: impl FnOnce(&mut crate::game::ServerGame<'_>, &ItemStack),
+    ) -> Option<Vec<String>> {
+        use crate::game::{Options, Progress, Settings, load_resources};
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES")?);
         let settings = Settings::default();
         let loaded = load_resources(
@@ -1215,7 +1222,8 @@ pub(in crate::game) mod furnace_changed_tests {
         request.save_root = root.to_owned();
         game.load_world(request).unwrap();
         assert!(
-            game.side.fns
+            game.side
+                .fns
                 .0
                 .enabled()
                 .iter()
@@ -1335,7 +1343,7 @@ pub(in crate::game) mod slot_guard_tests {
 #[cfg(test)]
 pub(in crate::game) mod slot_mutation_tests {
     use super::{BlockEntityTick, BlockEntityTickSlot};
-    use crate::game::Game;
+
     use crate::game::game_tests::tests::server_game;
     use crate::game::published_loops::LoopFlow;
     use sunrise_client::block_entities::Pos;
@@ -1548,10 +1556,7 @@ pub(in crate::game) mod slot_mutation_tests {
                         tick.game.side.item_columns.is_some(),
                         "the outer pass's columns"
                     );
-                    assert!(
-                        tick.game.side.pass_mobs.is_some(),
-                        "the outer pass's mobs"
-                    );
+                    assert!(tick.game.side.pass_mobs.is_some(), "the outer pass's mobs");
                     stone_above(tick.game, C);
                 }
                 LoopFlow::Continue
@@ -1581,7 +1586,7 @@ pub(in crate::game) mod slot_mutation_tests {
 #[cfg(test)]
 pub(in crate::game) mod own_block_entity_tests {
     use super::{BlockEntityTick, BlockEntityTickSlot, OwnBlockEntities, TickedKind};
-    use crate::game::Game;
+
     use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
     use crate::game::published_loops::LoopFlow;
     use mod_api::*;
@@ -1687,7 +1692,11 @@ pub(in crate::game) mod own_block_entity_tests {
 
     /// `mods` installed, a game on the prepared resources with a player over chunk (0, 0), whose
     /// blocks tick, and `placed` set there as a player's placement sets them.
-    fn with_machines(mods: Mods, placed: &[(Pos, &str)], test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
+    fn with_machines(
+        mods: Mods,
+        placed: &[(Pos, &str)],
+        test: impl FnOnce(&mut crate::game::ServerGame<'_>),
+    ) {
         mod_platform::testing::with_mods(mods.clone(), || {
             crate::game::api_values::install_parts(&mods).unwrap();
             mod_api::__private::mark_game_thread();

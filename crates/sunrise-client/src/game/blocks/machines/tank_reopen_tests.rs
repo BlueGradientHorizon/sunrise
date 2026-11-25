@@ -10,7 +10,7 @@
 //! the chunk back from that file. Not covered: LAN guests, a dedicated server process,
 //! and `close_world`'s closing save, which finishes over event-loop stages a test can't
 //! run.
-use super::{BlockEntity, Game};
+use super::BlockEntity;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
 use crate::game::world_loading::WorldRequest;
 use mod_api::{

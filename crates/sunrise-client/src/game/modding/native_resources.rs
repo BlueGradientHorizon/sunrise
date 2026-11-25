@@ -4,11 +4,7 @@ use mod_api::{Identifier, PackType};
 use std::collections::BTreeSet;
 use sunrise_assets::resource_source::{ResourceSource, read_winning_resource};
 
-impl Game<'_, crate::game::server_side::ServerState> {
-
-
-
-}
+impl Game<'_, crate::game::server_side::ServerState> {}
 
 impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// `pack_type`'s top folder and its stack, lowest priority first. Client

@@ -132,7 +132,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use super::Game;
+
     use crate::game::native_entity_refs::tests::with_game;
     use sunrise_client::{command::vanilla, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;

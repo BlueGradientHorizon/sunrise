@@ -36,7 +36,11 @@ fn held(name: &str, count: u32, block: &str) -> ItemStack {
 /// An adventure player (`mayBuild` false) clicks the south side of the sign
 /// at [2, 4, 3] with `stack` in hand, as `Minecraft.startUseItem` does; the
 /// game events the click posted.
-fn click_sign(game: &mut crate::game::ServerGame<'_>, sign: SignData, stack: ItemStack) -> Vec<Posted> {
+fn click_sign(
+    game: &mut crate::game::ServerGame<'_>,
+    sign: SignData,
+    stack: ItemStack,
+) -> Vec<Posted> {
     let registry = game.pack.assets.registry;
     let sign_state = registry.default_state("minecraft:oak_sign").unwrap();
     game.world.set(2, 4, 3, sign_state).unwrap();

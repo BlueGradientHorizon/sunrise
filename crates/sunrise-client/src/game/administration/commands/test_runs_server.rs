@@ -33,7 +33,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Vec<(String, TestDef)> {
         let keys: Vec<String> = match finder {
             Finder::Failed(only_required) => self
-                .side.game_tests
+                .side
+                .game_tests
                 .0
                 .failed
                 .iter()

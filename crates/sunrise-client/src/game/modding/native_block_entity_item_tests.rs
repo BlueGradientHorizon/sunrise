@@ -247,7 +247,10 @@ fn internal_slots_preserve_automation_limits_and_nested_transactions() {
 }
 
 /// A mod holder with nine container slots and `keys` entries of saved data beside them.
-fn container_holder(game: &mut crate::game::ServerGame<'_>, keys: usize) -> mod_api::BlockEntityRef {
+fn container_holder(
+    game: &mut crate::game::ServerGame<'_>,
+    keys: usize,
+) -> mod_api::BlockEntityRef {
     let entity = mod_holder(game);
     let stone = game.world.block(1, 64, 1);
     game.world.block_entities.set_mod_containers(
@@ -572,7 +575,10 @@ fn container_at(
     slots
 }
 
-fn slots_at(game: &crate::game::ServerGame<'_>, pos: (i32, i32, i32)) -> Option<Vec<Option<ItemStack>>> {
+fn slots_at(
+    game: &crate::game::ServerGame<'_>,
+    pos: (i32, i32, i32),
+) -> Option<Vec<Option<ItemStack>>> {
     Some(game.world.block_entities.get(&pos)?.slots().to_vec())
 }
 

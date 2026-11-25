@@ -1,5 +1,5 @@
 use super::super::native_entity_refs::tests::with_game;
-use super::{Game, SlotAccess};
+use super::SlotAccess;
 use mod_api::DimensionKey;
 use std::{
     num::NonZeroU32,

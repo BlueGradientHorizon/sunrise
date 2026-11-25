@@ -272,10 +272,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             0
         };
         if ticks > 0 {
-            if let (Some(player), Some(name)) = (
-                self.side.lan_acting_uuid,
-                self.side.lan_acting_name.clone(),
-            ) {
+            if let (Some(player), Some(name)) =
+                (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
+            {
                 self.native_player_shield_disable(player, &name, ticks);
             }
             let used = self

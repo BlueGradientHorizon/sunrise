@@ -392,7 +392,12 @@ fn credit_goes_to_the_player_only_when_the_baby_is_accepted() {
 }
 
 /// A dying cube mob of `kind` and `size` whose own random is `new Random(seed)`.
-pub(in crate::game) fn cube(game: &mut crate::game::ServerGame<'_>, kind: &str, size: i32, seed: i64) -> Mob {
+pub(in crate::game) fn cube(
+    game: &mut crate::game::ServerGame<'_>,
+    kind: &str,
+    size: i32,
+    seed: i64,
+) -> Mob {
     game.side.next_entity += 1;
     let kind = game.res.mob_types().get(kind).unwrap().clone();
     let mut mob = Mob::new(

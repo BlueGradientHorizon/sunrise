@@ -10,7 +10,9 @@ use sunrise_client::{
     },
 };
 /// A guest with a three-slot mod menu open on a block, and the selection its client would send.
-fn open_mod_menu(game: &mut crate::game::ServerGame<'_>) -> ((i32, i32, i32), MenuSnapshot, sync::Selection) {
+fn open_mod_menu(
+    game: &mut crate::game::ServerGame<'_>,
+) -> ((i32, i32, i32), MenuSnapshot, sync::Selection) {
     let pos = (3, 64, 5);
     let kind = Box::leak(Box::new(ModMenuType {
         id: "review:menu",

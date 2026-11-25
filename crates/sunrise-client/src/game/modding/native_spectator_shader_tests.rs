@@ -1,7 +1,6 @@
 //! `register_entity_spectator_shaders` (#889) end to end: a mod maps an entity type to a post
 //! chain at start, spectating one puts it on the screen, and the third-person view or the entity
 //! leaving takes it off; vanilla's mobs keep their own chains.
-use super::Game;
 use super::execution_role::ExecutionRole;
 use super::native_client_session::tests::logged_client;
 use super::native_entity_refs::tests::with_client_game;
@@ -73,25 +72,16 @@ fn a_mods_entity_type_puts_its_chain_on_while_spectated() {
 
             add_entity(game, 31, "minecraft:cow");
             game.remote_set_camera(31);
-            assert_eq!(
-                game.side.spectated_post_effect,
-                Some("example:cow_vision")
-            );
+            assert_eq!(game.side.spectated_post_effect, Some("example:cow_vision"));
             // The third-person view clears it; back in first person it applies again.
             game.check_entity_post_effect(false);
             assert_eq!(game.side.spectated_post_effect, None);
             game.check_entity_post_effect(true);
-            assert_eq!(
-                game.side.spectated_post_effect,
-                Some("example:cow_vision")
-            );
+            assert_eq!(game.side.spectated_post_effect, Some("example:cow_vision"));
             // Removing the entity retains the detached camera's chain until SetCamera replaces it.
             game.handle_packet(C::RemoveEntities(play::RemoveEntities { ids: vec![31] }))
                 .unwrap();
-            assert_eq!(
-                game.side.spectated_post_effect,
-                Some("example:cow_vision")
-            );
+            assert_eq!(game.side.spectated_post_effect, Some("example:cow_vision"));
             let own = game.own_entity_id();
             game.remote_set_camera(own);
             assert_eq!(game.side.spectated_post_effect, None);

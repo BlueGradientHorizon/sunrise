@@ -13,7 +13,12 @@ use sunrise_client::{
 };
 use sunrise_core::geometry::Vec3;
 
-fn add(game: &mut Game<'_, crate::game::client_side::ClientState>, options: &ParticleOptions, at: [f64; 3], velocity: [f64; 3]) -> bool {
+fn add(
+    game: &mut Game<'_, crate::game::client_side::ClientState>,
+    options: &ParticleOptions,
+    at: [f64; 3],
+    velocity: [f64; 3],
+) -> bool {
     use super::api_values::TryIntoApi;
     let Ok(options) = options.try_into_api() else {
         return false;

@@ -1,7 +1,6 @@
 //! A scoreboard command's source: a bare name finds the online player it
 //! names (with their team's formatting), and `/trigger` completes the
 //! objectives unlocked for the player asking, not for the host.
-use super::*;
 use crate::game::lan::LanSettings;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_client::{
@@ -94,7 +93,10 @@ fn a_score_for_another_player_uses_their_team_formatted_name() {
 }
 
 /// The `/trigger` suggestions the server sent the guest for `trigger `.
-fn guest_trigger_suggestions(game: &mut crate::game::ServerGame<'_>, rx: &mpsc::Receiver<Out>) -> Vec<String> {
+fn guest_trigger_suggestions(
+    game: &mut crate::game::ServerGame<'_>,
+    rx: &mpsc::Receiver<Out>,
+) -> Vec<String> {
     let mut w = Writer::new();
     w.varint(7);
     w.string("trigger ");

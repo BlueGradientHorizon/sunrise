@@ -328,7 +328,9 @@ mod tests {
             prepare(game);
             set(game, "minecraft:nether_portal", ENTRY);
             let overworld = game.level("minecraft:overworld").unwrap();
-            let ask = |game: &crate::game::ServerGame<'_>| game.level_portal_destination(overworld, ENTRY, SIZE);
+            let ask = |game: &crate::game::ServerGame<'_>| {
+                game.level_portal_destination(overworld, ENTRY, SIZE)
+            };
             load_around(game, None);
             // The Nether is not open.
             assert_eq!(ask(game), Err(PortalError::ChunksNotLoaded));

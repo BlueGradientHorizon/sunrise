@@ -748,10 +748,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let ctrl = self.has_control_down_with_quirk();
         let shift = self.has_shift_down();
         let before = self.side.stats_ui.tab;
-        if self.side.stats_ui.key(key, ctrl, shift, active) && self.side.stats_ui.tab != before
-        {
+        if self.side.stats_ui.key(key, ctrl, shift, active) && self.side.stats_ui.tab != before {
             // TabManager.setCurrentTab(.., true): the click of a tab press.
-            self.side.audio
+            self.side
+                .audio
                 .0
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
         }
@@ -771,7 +771,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             {
                 self.side.stats_ui.tab = i;
                 self.side.stats_ui.scroll.amount = 0.0;
-                self.side.audio
+                self.side
+                    .audio
                     .0
                     .play("minecraft:ui.button.click", None, 0.25, 1.0);
                 return true;
@@ -784,7 +785,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             200.0,
             20.0,
         ) {
-            self.side.audio
+            self.side
+                .audio
                 .0
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
             self.set_screen(Screen::Paused);
@@ -804,7 +806,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         Some((sc, _)) if sc == c => None,
                         _ => Some((c, -1)),
                     };
-                    self.side.audio
+                    self.side
+                        .audio
                         .0
                         .play("minecraft:ui.button.click", None, 0.25, 1.0);
                 }

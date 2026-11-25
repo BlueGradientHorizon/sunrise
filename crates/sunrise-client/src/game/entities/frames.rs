@@ -158,10 +158,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// of type `kind` at `pos` (`native_hanging_place`): true when one
     /// cancelled it. A game's own player is not asked.
     pub(in crate::game) fn hanging_place_cancelled(&mut self, kind: &str, pos: [i32; 3]) -> bool {
-        let (Some(uuid), Some(name)) = (
-            self.side.lan_acting_uuid,
-            self.side.lan_acting_name.clone(),
-        ) else {
+        let (Some(uuid), Some(name)) =
+            (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
+        else {
             return false;
         };
         let mut cancel = false;
@@ -322,10 +321,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if action == "put" && !self.creative {
             self.consume_held();
         }
-        if let (Some(player), Some(name)) = (
-            self.side.lan_acting_uuid,
-            self.side.lan_acting_name.clone(),
-        ) {
+        if let (Some(player), Some(name)) =
+            (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
+        {
             let frame = self.item_frames.iter().find(|f| f.id == entity_id);
             let item = frame
                 .and_then(|f| f.item.as_ref())
@@ -495,10 +493,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         self.world.modified.insert((f.pos[0] >> 4, f.pos[2] >> 4));
         if by_player
-            && let (Some(player), Some(name)) = (
-                self.side.lan_acting_uuid,
-                self.side.lan_acting_name.clone(),
-            )
+            && let (Some(player), Some(name)) =
+                (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
         {
             self.native_player_item_frame_change(
                 player,

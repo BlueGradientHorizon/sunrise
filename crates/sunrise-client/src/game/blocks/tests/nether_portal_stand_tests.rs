@@ -15,7 +15,11 @@ use sunrise_client::motion::PlayerMotion;
 
 /// `ArmorStand`'s portal: stone at `y`, nether portal blocks at `y + 1` and
 /// `y + 2` in the column of `(x, z)`.
-pub(in crate::game::server_side) fn put_portal(game: &mut crate::game::ServerGame<'_>, x: i32, z: i32) {
+pub(in crate::game::server_side) fn put_portal(
+    game: &mut crate::game::ServerGame<'_>,
+    x: i32,
+    z: i32,
+) {
     let registry = game.pack.assets.registry;
     let stone = registry.default_state("minecraft:stone").unwrap();
     let portal = registry.default_state("minecraft:nether_portal").unwrap();

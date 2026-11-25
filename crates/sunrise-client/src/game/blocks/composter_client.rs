@@ -6,7 +6,10 @@ use sunrise_client::{
 };
 use sunrise_core::{position::BlockPos, random::RandomSource};
 
-fn composter_level(game: &Game<'_, crate::game::client_side::ClientState>, pos: [i32; 3]) -> Option<i32> {
+fn composter_level(
+    game: &Game<'_, crate::game::client_side::ClientState>,
+    pos: [i32; 3],
+) -> Option<i32> {
     let state = game.world.block(pos[0], pos[1], pos[2]);
     let s = game.pack.assets.registry.state(state)?;
     if &*s.name != "minecraft:composter" {
@@ -43,7 +46,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             "minecraft:block.composter.fill"
         };
         // `handleFill` is `playLocalSound`: capture would echo a sound packet.
-        self.side.audio.0.play_unshared(sound, Some(center), 1.0, 1.0);
+        self.side
+            .audio
+            .0
+            .play_unshared(sound, Some(center), 1.0, 1.0);
         // getShape(..).max(Y, 0.5, 0.5): the compost surface (SHAPES[8] = SHAPES[7]).
         let level = composter_level(self, [pos.x, pos.y, pos.z]).unwrap_or(0);
         let height = f64::from((1 + level.min(7) * 2).clamp(2, 16)) / 16.0 + 0.03125;

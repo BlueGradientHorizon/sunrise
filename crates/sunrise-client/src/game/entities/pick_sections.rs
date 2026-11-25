@@ -567,11 +567,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         search: SectionSearch,
     ) -> impl Iterator<Item = PickMember> + '_ {
-        self.side
-            .client_pick
-            .sections
-            .borrow_mut()
-            .sync_with(self);
+        self.side.client_pick.sections.borrow_mut().sync_with(self);
         let mut after = None;
         std::iter::from_fn(move || {
             self.side
@@ -601,11 +597,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// Updates entity `id`'s section after a position write; no-op within the same section.
     pub(in crate::game) fn pick_section_move(&self, id: u32, to: [f64; 3]) {
-        self.side
-            .client_pick
-            .sections
-            .borrow_mut()
-            .move_id(id, to);
+        self.side.client_pick.sections.borrow_mut().move_id(id, to);
     }
 
     /// Updates entity `id`'s section from its live position without scanning unrelated families.
@@ -616,11 +608,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             None => self.locate_pick_member(id).map(|(_, pos)| pos),
         };
         if let Some(pos) = pos {
-            self.side
-                .client_pick
-                .sections
-                .borrow_mut()
-                .move_id(id, pos);
+            self.side.client_pick.sections.borrow_mut().move_id(id, pos);
         }
     }
 
@@ -854,7 +842,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     fn pick_member_position_of_kind(&self, kind: PickKind, id: u32) -> Option<[f64; 3]> {
         match kind {
             PickKind::RemoteDisplay => self
-                .side.text_displays
+                .side
+                .text_displays
                 .0
                 .get(&(id as i32))
                 .map(|d| d.position().to_array()),
@@ -956,12 +945,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .rows
                 .get(&(id as i32))
                 .map(|e| e.position),
-            PickKind::RemoteKnot => self
-                .side
-                .remote_knots
-                .get(&id)
-                .copied()
-                .map(knot_position),
+            PickKind::RemoteKnot => self.side.remote_knots.get(&id).copied().map(knot_position),
             PickKind::LocalKnot => self
                 .resident_entities
                 .knots
@@ -1221,11 +1205,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         mut visit: impl FnMut(u32, Aabb, f64),
     ) {
         {
-            self.side
-                .client_pick
-                .sections
-                .borrow_mut()
-                .sync_with(self);
+            self.side.client_pick.sections.borrow_mut().sync_with(self);
         }
         {
             let storage = self.side.client_pick.sections.borrow();

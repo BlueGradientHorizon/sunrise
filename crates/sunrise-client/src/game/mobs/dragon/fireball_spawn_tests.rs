@@ -1,9 +1,11 @@
-use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+use crate::game::{Game, Options, Progress, Settings, load_resources};
 use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
 use sunrise_core::geometry::Vec3;
 
-fn end_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a, crate::game::server_side::ServerState> {
+fn end_game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> Game<'a, crate::game::server_side::ServerState> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -60,7 +62,9 @@ fn end_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>
 }
 
 /// The level's dragon fireballs: its projectiles of that kind.
-fn dragon_fireballs<'a>(game: &'a Game<'_, crate::game::server_side::ServerState>) -> Vec<&'a sunrise_client::projectiles::Projectile> {
+fn dragon_fireballs<'a>(
+    game: &'a Game<'_, crate::game::server_side::ServerState>,
+) -> Vec<&'a sunrise_client::projectiles::Projectile> {
     game.creatures
         .projectiles
         .iter()

@@ -185,7 +185,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // Only while a mod hears entity ticks and named the type: otherwise none is offered.
         let told = self.side.ordered.told;
         if told.listening() {
-            self.side.others
+            self.side
+                .others
                 .0
                 .iter()
                 .filter(|o| {

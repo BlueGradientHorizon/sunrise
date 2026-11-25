@@ -16,7 +16,10 @@ pub(in crate::game::server_side) use sunrise_core::geometry::Vec3;
 pub(in crate::game::server_side) use sunrise_core::nbt::Tag;
 
 /// What a command says, and whether it succeeded.
-pub(in crate::game) fn say(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, String) {
+pub(in crate::game) fn say(
+    game: &mut crate::game::ServerGame<'_>,
+    command: &str,
+) -> (bool, String) {
     game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
     let said = game.side.chat_capture.take().unwrap_or_default();

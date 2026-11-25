@@ -1130,8 +1130,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         if success && was_empty && view.kind == Kind::Hopper {
             let dest = view.parts[0].0;
-            let from_ticked =
-                from_hopper.and_then(|p| self.side.hoppers.get(&p).map(|h| h.ticked));
+            let from_ticked = from_hopper.and_then(|p| self.side.hoppers.get(&p).map(|h| h.ticked));
             let state = self.side.hoppers.entry(dest).or_default();
             if state.cooldown <= 8 {
                 let skip = i32::from(from_ticked.is_some_and(|t| state.ticked >= t));
@@ -1345,13 +1344,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(view) = c.view(pos, false) else {
             return false;
         };
-        if self
-            .side
-            .hoppers
-            .get(&pos)
-            .is_some_and(|h| h.cooldown > 0)
-            || !enabled
-        {
+        if self.side.hoppers.get(&pos).is_some_and(|h| h.cooldown > 0) || !enabled {
             return false;
         }
         self.native_prepare_hopper_transfer([pos.0, pos.1, pos.2]);
@@ -1517,12 +1510,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `tryMoveItems(…, () -> addItem(hopper, itemEntity))`; true when the
     /// item entity was taken whole.
     pub(in crate::game::server_side) fn hopper_take_item(&mut self, pos: Pos, i: usize) -> bool {
-        if self
-            .side
-            .hoppers
-            .get(&pos)
-            .is_some_and(|h| h.cooldown > 0)
-        {
+        if self.side.hoppers.get(&pos).is_some_and(|h| h.cooldown > 0) {
             return false;
         }
         let state = self.world.block(pos.0, pos.1, pos.2);
@@ -3224,13 +3212,16 @@ pub(in crate::game) mod part_front_tests {
                 .default_state("minecraft:chest")
                 .unwrap();
             let flags = BlockUpdateFlags::NEIGHBORS;
-            let chest_items =
-                |game: &crate::game::ServerGame<'_>, z| match game.world.block_entities.get(&(2, 64, z)) {
-                    Some(BlockEntity::Chest(items)) => {
-                        items.iter().flatten().map(|s| s.count).sum::<u32>()
-                    }
-                    _ => panic!("no chest"),
-                };
+            let chest_items = |game: &crate::game::ServerGame<'_>, z| match game
+                .world
+                .block_entities
+                .get(&(2, 64, z))
+            {
+                Some(BlockEntity::Chest(items)) => {
+                    items.iter().flatten().map(|s| s.count).sum::<u32>()
+                }
+                _ => panic!("no chest"),
+            };
             for (z, part, taken) in [(0, "test:pipe", true), (4, "test:greedy", false)] {
                 for (x, block) in [(0, dropper), (2, chest)] {
                     assert_eq!(
@@ -3304,7 +3295,7 @@ pub(in crate::game) mod hopper_cart_transfer_tests {
         minecarts::{CartKind, Minecart},
         native_entity_refs::tests::with_game,
     };
-    use super::Game;
+
     use sunrise_client::{containers::BlockEntity, items::ItemStack};
     use sunrise_core::geometry::Vec3;
     use sunrise_core::nbt::Tag;
@@ -3707,7 +3698,11 @@ pub(in crate::game) mod tests {
         });
     }
 
-    fn hopper_facing(game: &crate::game::ServerGame<'_>, facing: &str, enabled: bool) -> BlockStateId {
+    fn hopper_facing(
+        game: &crate::game::ServerGame<'_>,
+        facing: &str,
+        enabled: bool,
+    ) -> BlockStateId {
         let registry = &game.pack.assets.registry;
         let mut state = registry
             .state(registry.default_state("minecraft:hopper").unwrap())

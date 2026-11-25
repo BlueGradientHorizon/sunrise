@@ -319,7 +319,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.pad_output_off();
             self.pad_cancel_inputs(event_loop);
             // The radial menu closed with the pad: its overlay fades out, as for a cancel.
-            self.side.pad
+            self.side
+                .pad
                 .0
                 .radial_look
                 .observe(None, std::time::Instant::now());
@@ -360,7 +361,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.ui.options.pad_driving = self.side.pad.0.in_use && self.pad_focus_mode();
         let mut state = hardware.merge(&self.side.pad.0.injected);
         let activity = self
-            .side.pad
+            .side
+            .pad
             .0
             .activity
             .observe(&state, &self.settings.controller);
@@ -449,7 +451,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.side.title.0.is_none() && self.side.screen == Screen::Playing && !self.pause;
         if down {
             // Pressed again before its held-back release went out.
-            if let Some(i) = self.side.pad.0.late_releases.iter().position(|b| *b == button) {
+            if let Some(i) = self
+                .side
+                .pad
+                .0
+                .late_releases
+                .iter()
+                .position(|b| *b == button)
+            {
                 self.side.pad.0.late_releases.remove(i);
                 self.pad_button_logged(event_loop, button, false);
             }
@@ -632,7 +641,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 if !down {
                     return Ok(());
                 }
-                let screen_open = self.side.screen != Screen::Playing || self.side.title.0.is_some();
+                let screen_open =
+                    self.side.screen != Screen::Playing || self.side.title.0.is_some();
                 self.side.keys.resume_device_input(&KeyCode::ShiftLeft);
                 if !screen_open {
                     let state = self.side.vanilla_mappings.toggle_state_mut(SNEAK);
@@ -713,7 +723,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let interval = Duration::from_secs_f32(self.settings.controller.repeat_interval);
         let step = self
-            .side.pad
+            .side
+            .pad
             .0
             .held_drop
             .as_mut()
@@ -814,10 +825,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // A long frame (a hitch) must not spin the view.
         let seconds = seconds.min(0.1);
-        let turn = gamepad::look_delta(self.side.pad.0.state.right, settings, seconds, self.scoping());
+        let turn = gamepad::look_delta(
+            self.side.pad.0.state.right,
+            settings,
+            seconds,
+            self.scoping(),
+        );
         // The cinematic camera eases the stick's turn in and out, as it does the mouse's.
         let (yaw, pitch) = self
-            .side.pad
+            .side
+            .pad
             .0
             .look
             .turn(turn, seconds, self.side.smooth_camera);

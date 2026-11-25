@@ -3,7 +3,6 @@
 //! guaranteed drop (`setGuaranteedDrop`: drop chance 2.0 for that slot). The
 //! gift goes through the game's own `MobEvent::Gift` handler. Other slots
 //! keep their chances, and an antenna that already holds an item keeps it.
-use super::super::*;
 use std::sync::Arc;
 use sunrise_client::{chunk::Chunk, mobs::MobEvent};
 use sunrise_core::position::ChunkPos;
@@ -12,7 +11,9 @@ const EMPTY: &str = "0000609b-0000-0000-0000-000000000001";
 const CHANCES: &str = "0000609b-0000-0000-0000-000000000002";
 const OCCUPIED: &str = "0000609b-0000-0000-0000-000000000003";
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
+fn game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> crate::game::ServerGame<'a> {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);

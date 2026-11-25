@@ -98,7 +98,10 @@ pub(in crate::game) fn vec_bits(v: Vec3) -> [String; 3] {
     [bits(v.x), bits(v.y), bits(v.z)]
 }
 
-pub(in crate::game) fn align_next_entity_mod4(game: &mut crate::game::ServerGame<'_>, want_mod4: u32) {
+pub(in crate::game) fn align_next_entity_mod4(
+    game: &mut crate::game::ServerGame<'_>,
+    want_mod4: u32,
+) {
     while ((game.side.next_entity + 1) & 3) != (want_mod4 & 3) {
         game.side.next_entity += 1;
     }
@@ -188,7 +191,10 @@ impl TrackedTarget {
     }
 }
 
-pub(in crate::game) fn summon_target(game: &mut crate::game::ServerGame<'_>, target: &str) -> TrackedTarget {
+pub(in crate::game) fn summon_target(
+    game: &mut crate::game::ServerGame<'_>,
+    target: &str,
+) -> TrackedTarget {
     match target {
         "item_frame" => {
             assert!(game.run_command(
@@ -392,7 +398,12 @@ pub(in crate::game) fn check_hook_tick(
     }
 }
 
-pub(in crate::game) fn spawn_test_hook(game: &mut crate::game::ServerGame<'_>, pos: Vec3, vel: Vec3, hook_seed: i64) {
+pub(in crate::game) fn spawn_test_hook(
+    game: &mut crate::game::ServerGame<'_>,
+    pos: Vec3,
+    vel: Vec3,
+    hook_seed: i64,
+) {
     game.side.next_entity += 1;
     let id = game.side.next_entity;
     let mut hook = Hook::remote(id, pos, [0, 0, 0, id as i32]);

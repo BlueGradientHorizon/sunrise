@@ -41,7 +41,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.world.modified.remove(&key);
             let chunks = self.with_entities(self.world.chunks.get(&key));
             self.native_full_chunk_snapshots(&chunks);
-            self.side.save
+            self.side
+                .save
                 .0
                 .save_later(&chunks, self.pack.assets.registry, world_biomes!(self))?;
             keys.pop_front();
@@ -98,10 +99,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.side.startup_ticket_restore_pending {
             return Ok(());
         }
-        self.side.save
-            .0
-            .save_chunk_tickets(self.streaming.commanded(), self.side.tickets.0.portal_tickets())?;
-        self.side.save
+        self.side.save.0.save_chunk_tickets(
+            self.streaming.commanded(),
+            self.side.tickets.0.portal_tickets(),
+        )?;
+        self.side
+            .save
             .0
             .save_mod_tickets(self.streaming.mod_tickets(), |slot| {
                 mod_api::TicketController::from_slot(slot).map(|c| c.id())
@@ -138,7 +141,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let chunks = self.with_entities(keys.iter().filter_map(|k| self.world.chunks.get(k)));
         self.native_full_chunk_snapshots(&chunks);
-        self.side.save
+        self.side
+            .save
             .0
             .save_later(&chunks, self.pack.assets.registry, world_biomes!(self))?;
         // Prepare entities while the chunk writer runs, then use one barrier.
@@ -372,7 +376,8 @@ pub(in crate::game) mod tests {
                     ));
                     let invalid = (0..=DISK_WRITE_NESTING_GUARD)
                         .fold(Tag::Int(0), |nested, _| Tag::List(vec![nested]));
-                    game.side.save
+                    game.side
+                        .save
                         .0
                         .save_entities(vec![((2, 0), vec![invalid])])
                         .unwrap();

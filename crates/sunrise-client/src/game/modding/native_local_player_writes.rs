@@ -83,7 +83,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
 #[cfg(test)]
 mod tests {
-    use crate::game::Game;
+
     use crate::game::native_entity_refs::tests::{with_client_game, with_game};
     use mod_api::HostSide;
     use std::sync::{Arc, Mutex};

@@ -3,14 +3,15 @@
 //! `chestVehicleDestroyed`'s angry piglins. Prepared resources only.
 use super::super::{CartKind, Minecart};
 use super::CartHit;
-use crate::game::Game;
 use crate::game::game_tests::tests::server_game;
 use sunrise_client::mobs::{Species, Who};
 use sunrise_core::geometry::Vec3;
 
 /// A server game with a player at `(8.5, 64, 8.5)`, as a window's player is
 /// there for the piglins that look at it.
-fn game_with_player(resources: &mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'_> {
+fn game_with_player(
+    resources: &mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> crate::game::ServerGame<'_> {
     let mut game = server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);

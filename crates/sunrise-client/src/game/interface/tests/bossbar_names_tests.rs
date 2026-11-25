@@ -15,7 +15,7 @@ use sunrise_protocol::packets::configuration::ClientInformation;
 fn game_with_two_guests<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
 ) -> crate::game::ServerGame<'a> {
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES").expect("set SUNRISE_TEST_RESOURCES"),
     );

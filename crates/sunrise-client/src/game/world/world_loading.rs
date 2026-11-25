@@ -1706,7 +1706,8 @@ mod tests {
             game.world.modified.insert((8, 8));
             game.save_level(true).unwrap();
             let reloaded = game
-                .side.save
+                .side
+                .save
                 .0
                 .load(8, 8, game.pack.assets.registry, world_biomes!(game))
                 .unwrap();

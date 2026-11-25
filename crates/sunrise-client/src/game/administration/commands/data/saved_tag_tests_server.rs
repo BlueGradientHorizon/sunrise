@@ -52,7 +52,10 @@ fn tag_list_is_not_repeated_to_the_operators() {
 }
 
 /// A server-side game that runs commands, its world in a scratch folder.
-pub(in crate::game) fn with_command_game(name: &str, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
+pub(in crate::game) fn with_command_game(
+    name: &str,
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>),
+) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(

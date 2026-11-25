@@ -134,12 +134,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// Event 2017: `TeleportRandomlyConsumeEffect`'s directional particles.
     pub(in crate::game) fn consume_teleport_particles(&mut self, pos: [i32; 3], data: i32) {
-        self.side.particles
+        self.side
+            .particles
             .0
             .block_teleportation(pos, data, [127, 127, 127]);
     }
     pub(in crate::game) fn dragon_egg_particles(&mut self, pos: [i32; 3], data: i32) {
-        self.side.particles.0.block_teleportation(pos, data, [16, 8, 16]);
+        self.side
+            .particles
+            .0
+            .block_teleportation(pos, data, [16, 8, 16]);
     }
     /// `LevelEventHandler` 2006 (`DragonFireball.onHit`): 200 dragon breath
     /// particles thrown outwards, then the explosion sound when `data` is 1.
@@ -249,14 +253,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let r = self.side.particles.0.level_random();
             let x = f64::from(pos.x) + (5.0 + r.next_double() * 6.0) / 16.0;
             let z = f64::from(pos.z) + (5.0 + r.next_double() * 6.0) / 16.0;
-            self.side.particles
+            self.side
+                .particles
                 .0
                 .add(&options, [x, f64::from(pos.y) + 0.8125, z], [0.0; 3]);
         }
     }
     /// Event 2018: an enderman's portal trail.
     pub(in crate::game) fn enderman_teleport_particles(&mut self, pos: [i32; 3], data: i32) {
-        self.side.particles
+        self.side
+            .particles
             .0
             .enderman_teleportation(pos, data, self.settings.particles);
     }
@@ -359,7 +365,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let r = self.side.particles.0.level_random();
             let x = f64::from(pos.x) + r.next_double();
             let z = f64::from(pos.z) + r.next_double();
-            self.side.particles
+            self.side
+                .particles
                 .0
                 .add(&options, [x, f64::from(pos.y) + 1.2, z], [0.0; 3]);
         }
@@ -367,7 +374,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Event 2016: `Shulker.teleportSomewhere`'s particles between the
     /// shell's old and new cells.
     pub(in crate::game) fn shulker_teleport_particles(&mut self, pos: [i32; 3], data: i32) {
-        self.side.particles.0.block_teleportation(pos, data, [8, 8, 8]);
+        self.side
+            .particles
+            .0
+            .block_teleportation(pos, data, [8, 8, 8]);
     }
     /// `LevelEventHandler` 3009 (a sniffer egg cracking on moss):
     /// `spawnParticlesOnBlockFaces(.., EGG_CRACK, UniformInt.of(3, 6))`.

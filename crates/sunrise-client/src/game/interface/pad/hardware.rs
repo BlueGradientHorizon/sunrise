@@ -379,7 +379,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.pad_haptics();
         self.pad_show();
         let now = Instant::now();
-        self.side.pad.0.devices.rumbles.retain(|(_, end)| *end > now);
+        self.side
+            .pad
+            .0
+            .devices
+            .rumbles
+            .retain(|(_, end)| *end > now);
     }
 
     /// The DualSense's HID output, while it is the active pad, open, and this window has focus
@@ -511,7 +516,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// only then); close them when it goes. Opt-in with `SUNRISE_DUALSENSE_HAPTICS=1` until
     /// they are proven on a pad (docs/controllers.md); never for games without sound (tests).
     pub(in crate::game::client_side) fn pad_haptics(&mut self) {
-        let usb = self.side.pad.0.devices.output.as_ref().and_then(|o| o.open())
+        let usb = self
+            .side
+            .pad
+            .0
+            .devices
+            .output
+            .as_ref()
+            .and_then(|o| o.open())
             == Some(sunrise_dualsense::Transport::Usb);
         if !usb {
             self.side.pad.0.devices.haptics = None;
@@ -541,7 +553,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) {
         let level = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
         if let Some(haptics) = self
-            .side.pad
+            .side
+            .pad
             .0
             .devices
             .haptics
@@ -566,9 +579,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             output.rumble(steps.collect());
             return;
         }
-        let (Some(gilrs), Some(id)) =
-            (self.side.pad.0.devices.gilrs.as_mut(), self.side.pad.0.devices.active)
-        else {
+        let (Some(gilrs), Some(id)) = (
+            self.side.pad.0.devices.gilrs.as_mut(),
+            self.side.pad.0.devices.active,
+        ) else {
             return;
         };
         if let Some(playing) = play_pulse(gilrs, id, pulse) {

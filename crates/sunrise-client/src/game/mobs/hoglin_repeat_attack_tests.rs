@@ -14,7 +14,9 @@ const NEAR_PIG: &str = "00006093-0000-0000-0000-00000000000d";
 const HOGLIN: &str = "00006093-0000-0000-0000-000000000001";
 const PIG: &str = "00006093-0000-0000-0000-00000000000b";
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
+fn game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -213,7 +215,9 @@ fn a_broadcast_target_replaces_only_a_farther_one() {
     let mut game = game(&mut resources);
     let receiver = mob_id(&mut game, HOGLIN);
     let (near, far) = (mob_id(&mut game, PIG), mob_id(&mut game, NEAR_PIG));
-    let place = |game: &crate::game::ServerGame<'_>, id: u32| game.mobs.iter().find(|m| m.id == id).unwrap().position;
+    let place = |game: &crate::game::ServerGame<'_>, id: u32| {
+        game.mobs.iter().find(|m| m.id == id).unwrap().position
+    };
     let (near_at, far_at) = (place(&game, near), place(&game, far));
     let position = |who: Who, _current| match who {
         Who::Mob(id) if id == near => Some(near_at),
@@ -469,7 +473,12 @@ fn hoglin_broadcast_obeys_target_cancellation_and_redirection() {
 }
 
 /// The broadcast as the flush applies it (`MobEvent::HoglinAttackTarget`).
-fn broadcast(game: &mut crate::game::ServerGame<'_>, mob: u32, from: u32, target: sunrise_client::mobs::Who) {
+fn broadcast(
+    game: &mut crate::game::ServerGame<'_>,
+    mob: u32,
+    from: u32,
+    target: sunrise_client::mobs::Who,
+) {
     let player = game
         .lan
         .as_ref()
@@ -486,7 +495,11 @@ fn target_of(game: &crate::game::ServerGame<'_>, id: u32) -> Option<sunrise_clie
     game.mobs.iter().find(|m| m.id == id).unwrap().ai.target
 }
 
-fn set_target(game: &mut crate::game::ServerGame<'_>, id: u32, target: Option<sunrise_client::mobs::Who>) {
+fn set_target(
+    game: &mut crate::game::ServerGame<'_>,
+    id: u32,
+    target: Option<sunrise_client::mobs::Who>,
+) {
     game.mobs.iter_mut().find(|m| m.id == id).unwrap().ai.target = target;
 }
 

@@ -1,7 +1,7 @@
 //! A mod's world pickup and placement of fluid in a real game: decided at the call, its block
 //! kept by the transaction, its updates, drops and effects at the outermost commit, nothing of
 //! it after an abort.
-use crate::game::{Game, dispense_fixture, native_entity_refs::tests::with_game};
+use crate::game::{dispense_fixture, native_entity_refs::tests::with_game};
 use mod_api::{FluidStack, HostTransaction, LevelRef, ServerHost, TransactionError};
 use std::sync::Arc;
 use sunrise_client::{chunk::Chunk, containers::BlockEntity};

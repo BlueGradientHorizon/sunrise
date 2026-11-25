@@ -191,7 +191,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn for_player_keeps_the_outer_body_in_its_original_dimension() {
-        use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+        use crate::game::{Options, Progress, Settings, load_resources};
         use std::sync::{Arc, atomic::AtomicI32, mpsc};
         use sunrise_client::{
             lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},

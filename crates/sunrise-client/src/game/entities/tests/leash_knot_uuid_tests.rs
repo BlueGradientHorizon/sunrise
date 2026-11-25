@@ -1,13 +1,14 @@
 //! A mob or boat whose `leash` names a leash knot by UUID is tied to that knot
 //! (#13113): `Leashable.restoreLeashFromSave` finds it with
 //! `ServerLevel.getEntity`, as any other holder.
-use super::*;
 use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
 use sunrise_client::mobs::leash::Holder;
 use sunrise_core::position::ChunkPos;
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
+fn game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> crate::game::ServerGame<'a> {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);

@@ -9,7 +9,7 @@ use sunrise_client::items::EntityTypeTags;
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::super::super::{
-        Audio, Game, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
+        Audio, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
     };
     use std::{collections::HashSet, sync::Arc};
     use sunrise_client::{items::ItemStack, mobs::equip::equippable_in_slot};

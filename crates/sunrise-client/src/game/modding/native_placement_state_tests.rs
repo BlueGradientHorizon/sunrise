@@ -1,6 +1,6 @@
 //! The server placement-state query through the public handle on prepared resources.
 use super::{
-    Dim, Game,
+    Dim,
     native_entity_refs::tests::{run_fresh_cases, with_game_at},
 };
 use mod_api::{

@@ -66,9 +66,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         Some([x, top, z])
     }
 
-
-
-
     /// A live portal root carries a direct or indirect mount through complete objects.
     pub(in crate::game::server_side) fn vehicle_tree_contains_mount(
         &self,
@@ -801,10 +798,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
 
     /// The side's own copy of the entity for a read. On a client only tracked
     /// entities and the local player have handles.
-    pub(in crate::game) fn riding_read(
-        &self,
-        entity: EntityRef,
-    ) -> Option<RidingRead<'_>> {
+    pub(in crate::game) fn riding_read(&self, entity: EntityRef) -> Option<RidingRead<'_>> {
         if self.is_logical_server() {
             return self.native_entity_target(entity).map(RidingRead::Server);
         }
@@ -991,20 +985,23 @@ pub(in crate::game) mod tests {
                     if vehicle_kind == "minecraft:armor_stand" {
                         game.armor_stands.push(ArmorStand::new(id, Vec3::ZERO, 0.0));
                     } else {
-                        game.side.others.0.push(super::super::commands::OtherEntity {
-                            size_answer: None,
-                            attachment_lifetime: Default::default(),
-                            knot_check: None,
-                            eye: None,
-                            join: Default::default(),
-                            item_transformation: None,
-                            interaction: None,
-                            id,
-                            kind: vehicle_kind.into(),
-                            position: Vec3::ZERO,
-                            yaw: 0.0,
-                            pitch: 0.0,
-                        });
+                        game.side
+                            .others
+                            .0
+                            .push(super::super::commands::OtherEntity {
+                                size_answer: None,
+                                attachment_lifetime: Default::default(),
+                                knot_check: None,
+                                eye: None,
+                                join: Default::default(),
+                                item_transformation: None,
+                                interaction: None,
+                                id,
+                                kind: vehicle_kind.into(),
+                                position: Vec3::ZERO,
+                                yaw: 0.0,
+                                pitch: 0.0,
+                            });
                     }
                     let vehicle = game.entity(id).unwrap();
                     let rider = add_mob(game, id + 1, "minecraft:zombie", Vec3::ZERO);
@@ -1312,7 +1309,10 @@ pub(in crate::game) mod tests {
         id: u32,
         name: &str,
         at: Vec3,
-    ) -> EntityRef where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
+    ) -> EntityRef
+    where
+        for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host,
+    {
         let kind = game.res.mob_types().get(name).unwrap().clone();
         game.mobs.push(Mob::new(id, kind, at, 0.0));
         game.entity(id).unwrap()
@@ -1745,7 +1745,10 @@ pub(in crate::game) mod tests {
         asked
     }
     /// The level holds exactly one dropped item, a single lead at `at`; takes it away.
-    pub(in crate::game) fn take_one_lead<S: crate::game::Side>(game: &mut Game<'_, S>, at: Vec3) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
+    pub(in crate::game) fn take_one_lead<S: crate::game::Side>(game: &mut Game<'_, S>, at: Vec3)
+    where
+        for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host,
+    {
         assert_eq!(game.dropped.len(), 1);
         let item = game.dropped.iter().next().unwrap();
         assert_eq!(&*item.stack.item, "minecraft:lead");
@@ -1905,20 +1908,23 @@ pub(in crate::game) mod tests {
             assert_eq!(cow.dismount_location(game, LivingRef::new(player)), None);
             // A marker has a zero-sized box. Entity's default dismount answer is
             // still its position with the box's top as Y, even without a current ride.
-            game.side.others.0.push(super::super::commands::OtherEntity {
-                size_answer: None,
-                attachment_lifetime: Default::default(),
-                knot_check: None,
-                eye: None,
-                join: Default::default(),
-                item_transformation: None,
-                interaction: None,
-                id: 132,
-                kind: "minecraft:marker".into(),
-                position: at,
-                yaw: 0.0,
-                pitch: 0.0,
-            });
+            game.side
+                .others
+                .0
+                .push(super::super::commands::OtherEntity {
+                    size_answer: None,
+                    attachment_lifetime: Default::default(),
+                    knot_check: None,
+                    eye: None,
+                    join: Default::default(),
+                    item_transformation: None,
+                    interaction: None,
+                    id: 132,
+                    kind: "minecraft:marker".into(),
+                    position: at,
+                    yaw: 0.0,
+                    pitch: 0.0,
+                });
             let marker = game.entity(132).unwrap();
             assert_eq!(
                 marker.dismount_location(game, living),

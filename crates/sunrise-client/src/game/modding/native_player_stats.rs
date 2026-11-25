@@ -512,7 +512,9 @@ mod tests {
             game.stats.add("custom", "minecraft:jump", 3);
 
             let player = game.player(123).unwrap();
-            let jump = |game: &crate::game::ServerGame<'_>| game.player_stat(player, StatType::Custom, "jump");
+            let jump = |game: &crate::game::ServerGame<'_>| {
+                game.player_stat(player, StatType::Custom, "jump")
+            };
             assert_eq!(jump(game), Some(7));
             assert_eq!(
                 game.player_has_discovered_recipe(player, "stick"),

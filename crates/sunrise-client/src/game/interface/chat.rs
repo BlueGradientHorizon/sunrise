@@ -508,7 +508,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.ui.chat_draft_shown = false;
         self.refresh_dynamic_registries();
         let size = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map_or([1280, 720], |r| [r.config.width, r.config.height]);
@@ -1325,10 +1326,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // The hovered message part's tooltip (`renderComponentHoverEffect`),
         // or the text of the message tag under the cursor.
         let height = batch.height as i32;
-        let (cx, cy) = (
-            f64::from(self.side.cursor.0),
-            f64::from(self.side.cursor.1),
-        );
+        let (cx, cy) = (f64::from(self.side.cursor.0), f64::from(self.side.cursor.1));
         // handleTagIcon: the chat-modified icons over the cursor or its message.
         let (tag_tooltip, tag_icons) =
             self.ui

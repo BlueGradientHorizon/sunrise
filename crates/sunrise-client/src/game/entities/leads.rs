@@ -424,11 +424,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         sound: bool,
         used: bool,
     ) {
-        let killer = self
-            .side
-            .lead_killers
-            .remove(&id)
-            .map(|(killer, _)| killer);
+        let killer = self.side.lead_killers.remove(&id).map(|(killer, _)| killer);
         let Some((at, kind, holder)) = self.mobs.iter_mut().find(|m| m.id == id).and_then(|m| {
             let holder = m.extra.leash;
             sunrise_client::mobs::leash::remove(m)?;
@@ -443,10 +439,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.notify_knot_leashee_removed(holder, id);
         self.native_entity_unleash(id, &kind);
         if used
-            && let (Some(player), Some(name)) = (
-                self.side.lan_acting_uuid,
-                self.side.lan_acting_name.clone(),
-            )
+            && let (Some(player), Some(name)) =
+                (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
         {
             self.native_player_unleash_entity(player, &name, id);
         }
@@ -506,7 +500,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return true;
         }
         if let Some(i) = self
-            .side.others
+            .side
+            .others
             .0
             .iter()
             .position(|o| o.id == id && o.kind == "minecraft:leash_knot")
@@ -1016,12 +1011,14 @@ pub(in crate::game) mod rope_hold_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod attach_tests {
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use sunrise_core::geometry::Vec3;
 
     /// A game with resources but no level: a test pushes the mobs it needs
     /// and drives the lead code alone.
-    fn game(resources: &mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'_> {
+    fn game(
+        resources: &mut Option<std::sync::Arc<crate::game::Resources>>,
+    ) -> crate::game::ServerGame<'_> {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(

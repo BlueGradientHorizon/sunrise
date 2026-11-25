@@ -1375,9 +1375,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// The player acting now: the guest whose turn it is, else the host.
     pub(in crate::game) fn acting_player(&self) -> FightWho {
-        self.side
-            .lan_acting
-            .map_or(FightWho::Host, FightWho::Guest)
+        self.side.lan_acting.map_or(FightWho::Host, FightWho::Guest)
     }
     /// The causing player shared by the crystal/deflected-fireball blast.
     pub(in crate::game::server_side) fn crystal_blast_player(
@@ -1842,7 +1840,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // The world's tags, so a datapack type is classed as vanilla's are.
         let explosion = self.damage_in_tag(ty, "minecraft:is_explosion");
         let no_knockback = self.damage_in_tag(ty, "minecraft:no_knockback");
-        let level = super::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None);
+        let level =
+            super::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None);
         let reaches_base = self.dragon.as_ref().is_some_and(|d| {
             d.reaches_base_check(
                 BODY,
@@ -1863,8 +1862,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let Some(d) = self.dragon.as_mut().filter(|d| d.id == id) else {
                     return false;
                 };
-                let level =
-                    super::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None);
+                let level = super::entity::damage_level_of!(
+                    self,
+                    self.side.combat.0.attack(),
+                    no_push,
+                    None
+                );
                 return matches!(
                     d.hurt_from(
                         level,
@@ -3621,7 +3624,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     damage_type,
                     causing,
                     direct: self
-                        .side.combat
+                        .side
+                        .combat
                         .0
                         .explosion_direct
                         .or(self.side.combat.0.explosion_source)
@@ -3636,7 +3640,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.destroy_crystal(i, by, CrystalDamage::Explosion);
             }
         }
-        let Some(d) = self.dragon.as_ref().filter(|d| self.side.combat.0.visits(d.id)) else {
+        let Some(d) = self
+            .dragon
+            .as_ref()
+            .filter(|d| self.side.combat.0.visits(d.id))
+        else {
             return;
         };
         let hits = d.explosion_hits(center, radius, |b| {

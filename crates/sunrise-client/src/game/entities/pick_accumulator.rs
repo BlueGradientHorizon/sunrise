@@ -172,7 +172,9 @@ mod tests {
                     PlayerMotion::new(game.motion, Vec3::new(at.x, at.y - eye, at.z)).unwrap(),
                 );
             };
-            let picked = |game: &crate::game::ServerGame<'_>| game.mob_hit().map(|(i, _, _)| game.mobs[i].id);
+            let picked = |game: &crate::game::ServerGame<'_>| {
+                game.mob_hit().map(|(i, _, _)| game.mobs[i].id)
+            };
             eyes_at(game, centre);
             assert_eq!(
                 picked(game),

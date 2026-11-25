@@ -64,7 +64,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             _ => (0.1, 1.0),
         };
         let count = 7 + self
-            .side.particles
+            .side
+            .particles
             .0
             .level_random()
             .next_int_bound(5)

@@ -18,7 +18,10 @@ const GUEST: &str = "RecipeGuest";
 /// A host on a stone floor with one connected, placed guest (conn 2).
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> (crate::game::ServerGame<'a>, mpsc::Receiver<sunrise_client::lan::Out>) {
+) -> (
+    crate::game::ServerGame<'a>,
+    mpsc::Receiver<sunrise_client::lan::Out>,
+) {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),

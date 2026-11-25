@@ -3,7 +3,6 @@
 //! render distance (and the server's view distance, when the case has one) and asks the frame's
 //! own geometry whether anything is drawn from that camera. The End gateway, which draws through
 //! the frame's renderer, is asked the frame's off-screen selection instead.
-use super::*;
 use std::sync::Arc;
 use sunrise_client::{
     chunk::Chunk,
@@ -13,7 +12,12 @@ use sunrise_client::{
 use sunrise_world::piston_shape::MovingPistonState;
 
 /// Places the case's block entity and reports whether the game draws it from the case's camera.
-fn drawn(game: &mut crate::game::ClientGame<'_>, block: &str, pos: [i32; 3], camera: glam::DVec3) -> Option<bool> {
+fn drawn(
+    game: &mut crate::game::ClientGame<'_>,
+    block: &str,
+    pos: [i32; 3],
+    camera: glam::DVec3,
+) -> Option<bool> {
     let registry = game.pack.assets.registry;
     let state = |spec: &str| {
         let (name, props) = spec.split_once('[').unwrap_or((spec, ""));

@@ -883,7 +883,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         // The write-back to the block's storage and its effects: inside the click's decision, so
         // an outer abort restores them with the cursor and the slots.
-        let write_back = |game: &mut Game<'_, crate::game::server_side::ServerState>, menu: &mut Menu, changed: bool| {
+        let write_back = |game: &mut Game<'_, crate::game::server_side::ServerState>,
+                          menu: &mut Menu,
+                          changed: bool| {
             game.journal_block_entity(pos);
             if let Some((_, links)) = &linked {
                 for &at in links {

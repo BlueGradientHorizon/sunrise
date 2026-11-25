@@ -158,7 +158,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             ));
         }
         let pitch = if enabled { 1.0 } else { 0.75 };
-        self.side.audio
+        self.side
+            .audio
             .0
             .play("minecraft:ui.button.click", None, 0.4, pitch);
     }

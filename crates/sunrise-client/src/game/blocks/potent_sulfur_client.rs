@@ -79,7 +79,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         // guests play their own.
                         let seed = self.side.particles.0.level_random().next_long();
                         if self.remote.is_some() {
-                            self.side.audio.0.play_seeded(sound, Some(at), 1.0, 1.0, seed);
+                            self.side
+                                .audio
+                                .0
+                                .play_seeded(sound, Some(at), 1.0, 1.0, seed);
                         } else {
                             self.side.audio.0.play_unshared(sound, Some(at), 1.0, 1.0);
                         }

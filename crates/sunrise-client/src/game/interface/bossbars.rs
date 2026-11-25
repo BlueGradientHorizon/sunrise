@@ -264,15 +264,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 Ok(self.side.bosses.bars.bars.len() as i32)
             }
             "bossbar.get" => {
-                let b = self
-                    .side
-                    .bosses
-                    .bars
-                    .get(&bar)
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        sunrise_client::bossbar::BossBar::new(&bar, sb::literal(&bar))
-                    });
+                let b = self.side.bosses.bars.get(&bar).cloned().unwrap_or_else(|| {
+                    sunrise_client::bossbar::BossBar::new(&bar, sb::literal(&bar))
+                });
                 let s = b.display_name();
                 Ok(match last.as_str() {
                     "value" => {

@@ -42,7 +42,9 @@ fn lodestone_compass() -> ItemStack {
 
 /// A client game that draws: its item models (the compass' `range_dispatch`) and
 /// atlas come from the resources, as `ShelfRenderer` gets them.
-fn drawing_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ClientGame<'a> {
+fn drawing_game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> crate::game::ClientGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES").expect("SUNRISE_TEST_RESOURCES"),
     );
@@ -84,7 +86,12 @@ fn drawing_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resour
 
 /// `minecraft:oak_shelf` with `facing` at `pos`, its block entity holding `stack`
 /// in the middle slot.
-fn place_shelf(game: &mut crate::game::ClientGame<'_>, pos: [i32; 3], facing: &str, stack: &ItemStack) {
+fn place_shelf(
+    game: &mut crate::game::ClientGame<'_>,
+    pos: [i32; 3],
+    facing: &str,
+    stack: &ItemStack,
+) {
     let state = {
         let registry = &game.pack.assets.registry;
         let mut state = registry

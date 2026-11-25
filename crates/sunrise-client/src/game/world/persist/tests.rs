@@ -162,7 +162,10 @@ fn neutral_load_restores_only_the_saved_live_target_with_or_without_listeners() 
         }
     }
 
-    fn check(game: &mut crate::game::ServerGame<'_>, observed: Option<&Mutex<Vec<(u32, Option<u32>)>>>) {
+    fn check(
+        game: &mut crate::game::ServerGame<'_>,
+        observed: Option<&Mutex<Vec<(u32, Option<u32>)>>>,
+    ) {
         let uuid = [274, 0, 0, 1];
         let entity_at_origin = |kind: &str| {
             let mut mob = entity(kind);
@@ -307,7 +310,7 @@ fn comparator_and_hopper_live_state_survives_chunk_reload() {
 }
 
 pub(in crate::game::server_side) fn run_comparator_and_hopper_live_state_survives_chunk_reload() {
-    use super::super::{Audio, Options, Progress, Settings, load_resources};
+    use super::super::{Options, Progress, Settings, load_resources};
     use sunrise_client::{containers::BlockEntity, items::ItemStack, save};
     fn cooldown(game: &crate::game::ServerGame<'_>) -> i32 {
         match game
@@ -815,7 +818,7 @@ fn saved_attachments_read_over_a_constructed_map_but_not_a_live_one() {
 #[test]
 #[ignore = "daily"]
 fn an_older_save_loads_its_entities_attachments_back_onto_them() {
-    use super::super::{Audio, Game, Options, Progress, Settings, load_resources};
+    use super::super::{Options, Progress, Settings, load_resources};
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -959,7 +962,7 @@ fn an_older_save_loads_its_entities_attachments_back_onto_them() {
 #[test]
 #[ignore = "daily"]
 fn a_lingering_cloud_leaves_with_its_chunk() {
-    use super::super::{Audio, Game, Options, Progress, Settings, load_resources};
+    use super::super::{Options, Progress, Settings, load_resources};
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -1090,7 +1093,7 @@ fn a_fresh_add_is_told_apart_from_a_load_and_unmarked() {
 #[test]
 #[ignore = "daily"]
 fn anger_at_a_mob_not_saved_yet_names_it() {
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(

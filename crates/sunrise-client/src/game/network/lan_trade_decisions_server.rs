@@ -475,7 +475,10 @@ impl Journal {
         }
         self.correct_on_abort.extend(child.correct_on_abort);
     }
-    pub(in crate::game) fn rollback(self, game: &mut Game<'_, crate::game::server_side::ServerState>) {
+    pub(in crate::game) fn rollback(
+        self,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
+    ) {
         for restore in self.guests.into_values() {
             restore(game);
         }
@@ -492,7 +495,10 @@ impl Journal {
 }
 
 impl TakeReads {
-    pub(in crate::game) fn fresh(&self, game: &Game<'_, crate::game::server_side::ServerState>) -> bool {
+    pub(in crate::game) fn fresh(
+        &self,
+        game: &Game<'_, crate::game::server_side::ServerState>,
+    ) -> bool {
         let Some(host) = game.lan.as_ref() else {
             return false;
         };

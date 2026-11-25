@@ -1,5 +1,4 @@
 //! A data pack's own item and block tags, at load and at run time.
-use super::*;
 use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
 use sunrise_core::{geometry::Vec3, position::ChunkPos};

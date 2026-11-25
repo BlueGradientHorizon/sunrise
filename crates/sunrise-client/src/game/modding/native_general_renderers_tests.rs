@@ -2,7 +2,6 @@
 //! resolves to its catalog slot, a type with none is named; each row shown on the window is drawn
 //! by its type's renderer at the frame's interpolated pose, with its synced attachments; a renderer that fails is dropped until resources reload; a type
 //! with no renderer draws nothing.
-use super::Game;
 use super::native_entity_renderers::EntityRendererTable;
 use crate::game::general::GeneralTypeCatalog;
 use mod_api::{
@@ -724,7 +723,10 @@ fn a_spawned_general_row_is_drawn_in_its_window() {
     integrated_scene("a_spawned_general_row_is_drawn_in_its_window", spawn_row);
 }
 
-fn poll_until(game: &mut crate::game::ClientGame<'_>, ready: impl Fn(&crate::game::ClientGame<'_>) -> bool) {
+fn poll_until(
+    game: &mut crate::game::ClientGame<'_>,
+    ready: impl Fn(&crate::game::ClientGame<'_>) -> bool,
+) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
     while !ready(game) {
         game.poll_remote().unwrap();

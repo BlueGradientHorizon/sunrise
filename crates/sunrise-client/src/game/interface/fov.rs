@@ -294,8 +294,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// towards 1.125 by half the frame's game ticks and reset to 0.5 while
     /// not scoping in first person.
     pub(in crate::game::client_side) fn draw_spyglass(&mut self, batch: &mut HudBatch) {
-        self.side.scope_scale +=
-            0.5 * self.side.frame_ticks * (1.125 - self.side.scope_scale);
+        self.side.scope_scale += 0.5 * self.side.frame_ticks * (1.125 - self.side.scope_scale);
         if !self.side.camera_type.is_first_person() {
             return;
         }

@@ -21,7 +21,13 @@ pub(in crate::game::client_side) use sunrise_protocol::packets::play::{self, Cli
 
 /// The one sound `event` played since the last call, with its volume.
 pub(in crate::game) fn sound(game: &mut crate::game::ClientGame<'_>, event: &str) -> (f32, f32) {
-    let heard = game.side.audio.0.capture.replace(Vec::new()).unwrap_or_default();
+    let heard = game
+        .side
+        .audio
+        .0
+        .capture
+        .replace(Vec::new())
+        .unwrap_or_default();
     let sound = heard
         .iter()
         .find(|s| s.event == event)
@@ -31,7 +37,9 @@ pub(in crate::game) fn sound(game: &mut crate::game::ClientGame<'_>, event: &str
 
 /// A window joined to a server through memory, with the sounds it plays
 /// recorded: the client half of a pickup (`ClientPacketListener`).
-pub(in crate::game) fn with_remote_game<R>(f: impl FnOnce(&mut crate::game::ClientGame<'_>) -> R) -> R {
+pub(in crate::game) fn with_remote_game<R>(
+    f: impl FnOnce(&mut crate::game::ClientGame<'_>) -> R,
+) -> R {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(

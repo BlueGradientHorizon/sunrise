@@ -24,7 +24,7 @@ pub(in crate::game) use worlds::ViewedWorlds;
 pub(in crate::game) mod tests {
     use super::routing::RouteError;
     use super::sounds::{ViewedPlay, ViewedSound};
-    use crate::game::{Game, game_tests::tests::server_game};
+
     use mod_api::SoundSource;
     use std::sync::{Arc, Mutex};
     use sunrise_protocol::{

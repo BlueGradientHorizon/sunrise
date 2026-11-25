@@ -200,7 +200,8 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
         const WARDEN: &str = "00000054-0000-0000-0000-000000000001";
         const DRAGON: &str = "00000054-0000-0000-0000-000000000007";
         let warden = game.mob(game.entity(warden_id).unwrap()).unwrap();
-        let check_target = |game: &mut crate::game::ServerGame<'_>, expected: Option<mod_api::LivingRef>| {
+        let check_target = |game: &mut crate::game::ServerGame<'_>,
+                            expected: Option<mod_api::LivingRef>| {
             assert_eq!(warden.target(game), expected);
             // Keep guest 23 selected in the tick even when the stored target is 22.
             assert_eq!(read_borrowed_target(game, warden, pig_id, 23), expected);

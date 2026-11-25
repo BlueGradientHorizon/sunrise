@@ -132,7 +132,10 @@ impl StartupMenu {
         }
     }
 
-    pub(in crate::game::client_side) fn handoff(&mut self, game: &mut Game<'_, crate::game::client_side::ClientState>) {
+    pub(in crate::game::client_side) fn handoff(
+        &mut self,
+        game: &mut Game<'_, crate::game::client_side::ClientState>,
+    ) {
         let registry = Arc::new(crate::game::api_values::game_rule_registry());
         if let Some(PendingWorldEntry::Local {
             create: Some(options),

@@ -1,7 +1,6 @@
 //! What special model renderers cost the frame (see the measurement in
 //! `docs/performance/special-item-renderers.md`). Each test runs alone in its own process, the
 //! measurement by hand: it registers the process's renderers.
-use crate::game::Game;
 use mod_api::{
     ClientHost, SpecialModelCollector, SpecialModelContext, SpecialModelFactory,
     SpecialModelGeometry, SpecialModelRenderer, SpecialModelStack, SpecialModelTints,
@@ -34,7 +33,11 @@ const SCENE: [&str; 6] = [
 ];
 
 /// `stack` resolved and submitted as a frame draws an item in the world, into `out`.
-fn draw(game: &crate::game::ClientGame<'_>, stack: &ItemStack, out: &mut Vec<Vertex>) -> ItemRenderState {
+fn draw(
+    game: &crate::game::ClientGame<'_>,
+    stack: &ItemStack,
+    out: &mut Vec<Vertex>,
+) -> ItemRenderState {
     let state = game.resolve_item(stack, DisplayContext::Gui, None, 0);
     game.submit_item_unlit(&state, glam::Mat4::IDENTITY, LIGHT, out);
     state
@@ -59,7 +62,11 @@ fn give_every_quad_a_sprite(game: &mut crate::game::ClientGame<'_>) {
 
 /// One frame of the scene: the frame's start, then every item, with the allocations each
 /// made and the vertices drawn.
-fn frame(game: &crate::game::ClientGame<'_>, stacks: &[ItemStack], out: &mut Vec<Vertex>) -> (usize, usize) {
+fn frame(
+    game: &crate::game::ClientGame<'_>,
+    stacks: &[ItemStack],
+    out: &mut Vec<Vertex>,
+) -> (usize, usize) {
     out.clear();
     let ((), started) = sunrise_threads::allocation_count::measure(|| game.begin_frame_draws());
     let ((), drawn) = sunrise_threads::allocation_count::measure(|| {
@@ -128,7 +135,9 @@ fn built_in_scenes_cost_nothing_more_without_a_listener_isolated() {
         (first, counts[0])
     }
     let mut unregistered = None;
-    crate::game::native_entity_refs::tests::with_client_game(|game| unregistered = Some(scene(game)));
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
+        unregistered = Some(scene(game))
+    });
     assert!(install_special_model_factories(BTreeMap::from([(
         mod_api::Identifier::parse("test:unmatched").unwrap(),
         OwnedSpecialModelFactory::new(

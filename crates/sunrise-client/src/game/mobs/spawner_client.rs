@@ -91,10 +91,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         };
         if let Some(p) = s.client_tick(near, display, random, pos) {
-            self.side.particles
+            self.side
+                .particles
                 .0
                 .add(&ParticleOptions::simple(ParticleType::Smoke), p, [0.0; 3]);
-            self.side.particles
+            self.side
+                .particles
                 .0
                 .add(&ParticleOptions::simple(ParticleType::Flame), p, [0.0; 3]);
         }
@@ -107,7 +109,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return false;
         };
         if self
-            .side.spawners
+            .side
+            .spawners
             .0
             .displays
             .get(&key)
@@ -167,7 +170,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // (`Renderer::shadow_pass_block_entities`, #8464): a spawner's mob out of the view and
         // out of those sections isn't drawn, where it would have gone to the shadow pass alone.
         let shadow_sections = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .filter(|_| self.side.pack_ids.is_some() && self.side.occlusion.0.shadow_casters.0);

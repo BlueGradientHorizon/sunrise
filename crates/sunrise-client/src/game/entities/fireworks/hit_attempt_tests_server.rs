@@ -24,7 +24,10 @@ pub(in crate::game::server_side) use sunrise_client::{
     projectiles::{Hit, Projectile, ProjectileKind, ThrownType},
 };
 
-pub(in crate::game::server_side) fn fresh_player(game: &mut crate::game::ServerGame<'_>, mode: GameMode) {
+pub(in crate::game::server_side) fn fresh_player(
+    game: &mut crate::game::ServerGame<'_>,
+    mode: GameMode,
+) {
     game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
     bind_local_player(game, 7, 7);
     game.side.lan_acting_name = Some("attempts".into());

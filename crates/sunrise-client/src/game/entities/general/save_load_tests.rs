@@ -51,7 +51,10 @@ fn with_types(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     with_types_and(None, test);
 }
 
-fn with_types_and(observer: Option<mod_api::ModEntry>, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
+fn with_types_and(
+    observer: Option<mod_api::ModEntry>,
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>),
+) {
     mod_platform::__private::initialize().expect("test registration requires the mod API runtime");
     let _phase = mod_platform::__private::RegistrationGuard::open();
     let mut mods = vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];
@@ -754,7 +757,11 @@ fn a_same_level_teleport_places_the_general_tree_and_unseats_a_separately_moved_
 }
 
 /// A chain of general rows, each riding the one before, by direct row writes.
-fn general_chain(game: &mut crate::game::ServerGame<'_>, poses: &[([f64; 3], [f32; 2])], word: i32) -> Vec<u32> {
+fn general_chain(
+    game: &mut crate::game::ServerGame<'_>,
+    poses: &[([f64; 3], [f32; 2])],
+    word: i32,
+) -> Vec<u32> {
     let mut ids = Vec::new();
     for (n, _) in poses.iter().enumerate() {
         let tag = record_tag("mymod:robot", [word, n as i32, 0, 0], b"", Vec::new());
@@ -833,8 +840,9 @@ fn a_nested_general_tree_takes_each_riders_transition_from_its_vehicle() {
             [false; 3],
             true,
         );
-        let row =
-            |game: &crate::game::ServerGame<'_>, n: usize| game.resident_entities.general.row(ids[n]).unwrap().clone();
+        let row = |game: &crate::game::ServerGame<'_>, n: usize| {
+            game.resident_entities.general.row(ids[n]).unwrap().clone()
+        };
         // Entity.calculatePassengerTransition: each edge adds the child's offset
         // from its immediate vehicle's old pose to that vehicle's transition.
         let mid_at = [

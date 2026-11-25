@@ -43,7 +43,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return 0.0;
         }
         if let Some(room) = self
-            .side.screen_state
+            .side
+            .screen_state
             .0
             .build
             .room_answer(self.side.frames, self.side.screen)

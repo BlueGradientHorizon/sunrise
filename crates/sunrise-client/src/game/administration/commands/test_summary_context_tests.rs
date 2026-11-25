@@ -113,7 +113,8 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         conn: 2, command: "execute as 00000000-0000-0000-0000-000000000063 store result score result context store success score success context run test run minecraft:always_pass".into(),
         permission: 2, integrated: false, quiet: false }));
     let context = game
-        .side.game_tests
+        .side
+        .game_tests
         .0
         .runner
         .as_ref()
@@ -148,7 +149,8 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         })
     );
     assert_eq!(
-        game.side.game_tests
+        game.side
+            .game_tests
             .0
             .runner
             .as_ref()
@@ -195,7 +197,10 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         format!("{:?}", game.side.command_source.unwrap()),
         format!("{outer:?}")
     );
-    assert_eq!(before, (game.side.exec.0.commands, game.side.exec.0.callback));
+    assert_eq!(
+        before,
+        (game.side.exec.0.commands, game.side.exec.0.callback)
+    );
     // Added missing-recipient control: no host fallback or operator broadcast.
     game.lan
         .as_mut()
@@ -204,7 +209,8 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         .guests
         .retain(|g| g.conn != 2);
     game.test_source_output(context, marker, true);
-    game.side.game_tests
+    game.side
+        .game_tests
         .0
         .outbox
         .push(Out::Coordinates(context, vec![Dim::Overworld]));
@@ -220,7 +226,10 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         format!("{:?}", game.side.command_source.unwrap()),
         format!("{outer:?}")
     );
-    assert_eq!(before, (game.side.exec.0.commands, game.side.exec.0.callback));
+    assert_eq!(
+        before,
+        (game.side.exec.0.commands, game.side.exec.0.callback)
+    );
     assert_eq!(
         game.score.board.score("result", "context").unwrap().value,
         1
@@ -245,7 +254,8 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
     );
     game.track_and_start_runner(vec![info], false, None, false);
     assert!(
-        game.side.game_tests
+        game.side
+            .game_tests
             .0
             .runner
             .as_ref()

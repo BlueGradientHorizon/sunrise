@@ -10,7 +10,9 @@ use crate::game::game_tests::tests::{isolated_server_game, server_game};
 use sunrise_client::items::ItemStack;
 use sunrise_core::position::ChunkPos;
 
-fn game(resources: &mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'_> {
+fn game(
+    resources: &mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> crate::game::ServerGame<'_> {
     let mut game = server_game(resources);
     set_up(&mut game);
     game
@@ -41,7 +43,11 @@ fn hit(pos: [i32; 3]) -> Hit {
 
 /// Clicks the block with `stack` in the main hand: the block's own use, then
 /// the item's (`BoneMealItem.useOn`). True when something was used.
-fn use_block(game: &mut crate::game::ServerGame<'_>, pos: [i32; 3], stack: Option<ItemStack>) -> bool {
+fn use_block(
+    game: &mut crate::game::ServerGame<'_>,
+    pos: [i32; 3],
+    stack: Option<ItemStack>,
+) -> bool {
     game.dropped.clear();
     let hit = hit(pos);
     game.side.forced_hit = Some(hit);
@@ -175,7 +181,10 @@ fn block_drops_on_keeps_the_pop() {
 fn harvest_game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
     table: serde_json::Value,
-) -> (crate::game::game_tests::tests::Published, crate::game::ServerGame<'a>) {
+) -> (
+    crate::game::game_tests::tests::Published,
+    crate::game::ServerGame<'a>,
+) {
     let (published, mut game) = isolated_server_game(resources);
     set_up(&mut game);
     game.player = Some(

@@ -162,7 +162,13 @@ fn with_guest_probe(test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Mutex<V
 }
 
 /// A blast centred on `at`, whose causing entity is `owner` (a player when `player`).
-fn blast(game: &mut crate::game::ServerGame<'_>, at: [f64; 3], owner: u32, player: bool, guest: Option<u32>) {
+fn blast(
+    game: &mut crate::game::ServerGame<'_>,
+    at: [f64; 3],
+    owner: u32,
+    player: bool,
+    guest: Option<u32>,
+) {
     game.side.combat.0.blast_owner = Some((owner, sunrise_client::text::Text::literal("owner")));
     game.side.combat.0.blast_owner_player = player;
     game.side.combat.0.blast_guest = guest;

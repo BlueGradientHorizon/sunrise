@@ -223,7 +223,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let cit = stack.and_then(|s| self.cit_worn_rule(sunrise_optifine::cit::Kind::Armor, s));
         let trim = stack
             .and_then(|s| {
-                self.side.armor_stand_assets
+                self.side
+                    .armor_stand_assets
                     .0
                     .trim_texture(&piece.asset, piece.kind, s)
             })

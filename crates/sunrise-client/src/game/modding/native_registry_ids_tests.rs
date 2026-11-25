@@ -15,7 +15,14 @@ fn id(text: &str) -> Identifier {
     Identifier::parse_namespaced(text).unwrap()
 }
 
-fn lookup<S: crate::game::Side>(game: &super::Game<'_, S>, registry: &str, name: &str) -> Option<i32> where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
+fn lookup<S: crate::game::Side>(
+    game: &super::Game<'_, S>,
+    registry: &str,
+    name: &str,
+) -> Option<i32>
+where
+    for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host,
+{
     game.registry_protocol_id(&id(registry), &id(name))
 }
 

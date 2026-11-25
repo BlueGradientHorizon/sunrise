@@ -1,6 +1,5 @@
 //! #3717: a block sharing volume with one of a player's collision exclusions is no wall: the
 //! server's `isInWall` doesn't count it, and the client doesn't push its player out of it.
-use crate::game::Game;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
 
@@ -69,7 +68,8 @@ fn a_block_in_a_players_exclusions_does_not_push_it_out() {
         let mut body =
             sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(3.5, 64.0, 5.5))
                 .unwrap();
-        let nudge = |game: &crate::game::ServerGame<'_>, body: &sunrise_client::motion::PlayerMotion| {
+        let nudge = |game: &crate::game::ServerGame<'_>,
+                     body: &sunrise_client::motion::PlayerMotion| {
             crate::game::closest_space_nudge(
                 body,
                 &game.world,

@@ -912,10 +912,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.dim.id()
     }
     pub(in crate::game::server_side) fn map_path(&self, name: &str) -> std::path::PathBuf {
-        self.side
-            .world_root
-            .join("data/minecraft/maps")
-            .join(name)
+        self.side.world_root.join("data/minecraft/maps").join(name)
     }
     /// `f` of map `id`'s data: the loaded map, else its `.dat` read without keeping it, so a
     /// read needs no `&mut`. None for a map id nothing made.
@@ -1216,10 +1213,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         // EmptyMapItem.use: consumed, then counted.
         self.award_stat("used", "minecraft:map", 1);
-        if let (Some(player), Some(name)) = (
-            self.side.lan_acting_uuid,
-            self.side.lan_acting_name.clone(),
-        ) {
+        if let (Some(player), Some(name)) =
+            (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
+        {
             self.native_player_map_filled(player, &name, id);
         }
         self.server_play_player_bound_sound(
@@ -1638,10 +1634,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 ("DataVersion", Tag::Int(sunrise_world::DATA_VERSION)),
             ]);
             if let Err(e) = sunrise_client::save::write_dat(
-                &self
-                    .side
-                    .world_root
-                    .join("data/minecraft/maps/last_id.dat"),
+                &self.side.world_root.join("data/minecraft/maps/last_id.dat"),
                 tag,
             ) {
                 log::warn!("Sunrise: the next map id is not saved: {e}");
@@ -1863,7 +1856,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn map_on_banner_in_adventure_mode_honours_can_place_on() {
-        use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+        use crate::game::{Options, Progress, Settings, load_resources};
         use std::sync::Arc;
         use sunrise_client::{chunk::Chunk, command::args::GameMode};
 

@@ -1,6 +1,6 @@
 //! tools/test_block_entity_item_geometry_parity.py: the items campfires, suspicious sand
 //! and gravel, shelves and vaults hand to the item renderer, case by case.
-use crate::game::{Game, item_draw::BlockItemDraw, native_entity_refs::tests::with_client_game};
+use crate::game::{item_draw::BlockItemDraw, native_entity_refs::tests::with_client_game};
 use std::sync::Arc;
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{
@@ -123,7 +123,10 @@ fn row(d: BlockItemDraw) -> serde_json::Value {
     })
 }
 
-fn case_rows(game: &mut crate::game::ClientGame<'_>, case: &serde_json::Value) -> serde_json::Value {
+fn case_rows(
+    game: &mut crate::game::ClientGame<'_>,
+    case: &serde_json::Value,
+) -> serde_json::Value {
     place(game, case);
     let c = &case["camera"];
     let camera = glam::DVec3::new(

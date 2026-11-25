@@ -48,7 +48,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // Publish the paired item and world evaluators before any callbacks.
         self.load_server_loot();
         self.side.data_map_registries = self
-            .side.world_tables
+            .side
+            .world_tables
             .0
             .as_ref()
             .map_or_else(Vec::new, |t| t.data_maps.registries());
@@ -164,7 +165,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.adv.reset_tree();
         self.load_server_loot();
         self.side.data_map_registries = self
-            .side.world_tables
+            .side
+            .world_tables
             .0
             .as_ref()
             .map_or_else(Vec::new, |t| t.data_maps.registries());

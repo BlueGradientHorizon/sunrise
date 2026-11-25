@@ -102,14 +102,20 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         }
         if !self
-            .side.creation_job
+            .side
+            .creation_job
             .0
             .as_ref()
             .is_none_or(std::thread::JoinHandle::is_finished)
         {
             return;
         }
-        let outcome = self.side.creation_job.0.take().and_then(|job| job.join().ok());
+        let outcome = self
+            .side
+            .creation_job
+            .0
+            .take()
+            .and_then(|job| job.join().ok());
         if let Some(title) = self.side.title.0.as_mut() {
             match outcome {
                 Some(Ok(())) => title.finish_preparing(),

@@ -93,7 +93,9 @@ fn a_declared_interaction_runs_after_vanillas_and_a_veto_stops_it() {
             game.world.block(4, 64, z)
         };
 
-        let meet = |game: &mut crate::game::ServerGame<'_>, z: i32, beside| meet_with(game, z, lava, beside);
+        let meet = |game: &mut crate::game::ServerGame<'_>, z: i32, beside| {
+            meet_with(game, z, lava, beside)
+        };
         let flowing_lava = registry
             .resolve(&sunrise_world::chunk::BlockState {
                 name: "minecraft:lava".into(),

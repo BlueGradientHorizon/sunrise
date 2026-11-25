@@ -298,8 +298,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             )
     }
 
-
-
     /// `Mob.getTarget`. Brain-backed mobs read their attack memory; piglins
     /// and hoglins use Sunrise's `ai.target` stand-in. Invalid targets, an
     /// unavailable mob or player binding, or a target without a living handle
@@ -1513,7 +1511,9 @@ pub(in crate::game) mod tests {
                 let kind = game.res.mob_types().get(name).unwrap().clone();
                 game.mobs.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
             }
-            let handle = |game: &crate::game::ServerGame<'_>, id| game.mob(game.entity(id).unwrap()).unwrap();
+            let handle = |game: &crate::game::ServerGame<'_>, id| {
+                game.mob(game.entity(id).unwrap()).unwrap()
+            };
             let golem = game.living(game.entity(21).unwrap()).unwrap();
             // Each brain keeps the memory where its behaviours read it, and the
             // read handle answers it back; clearing erases it.

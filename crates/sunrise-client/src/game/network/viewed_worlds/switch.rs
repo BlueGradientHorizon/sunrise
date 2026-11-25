@@ -158,7 +158,7 @@ mod tests {
     use super::super::tests::{
         AIR, STONE, bound_slot, client, column, data, open, run, run_at, spawn, swap, viewed,
     };
-    use crate::game::Game;
+
     use sunrise_core::nbt::Tag;
     use sunrise_protocol::{
         chunk::{BlockEntityInfo, ChunkData, LightData, Paletted, Section, Strategy},

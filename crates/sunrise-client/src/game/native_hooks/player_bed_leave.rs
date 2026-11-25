@@ -12,7 +12,7 @@ thread_local! {
 
 #[cfg(test)]
 pub(in crate::game) mod player_bed_leave_tests {
-    use crate::game::Game;
+
     use mod_api::{Hooks, ModEntry, PlayerBedLeaveEvent, ServerHost};
     use std::sync::{Arc, Mutex};
     use sunrise_protocol::packets::play::{PlayerCommand, Serverbound};

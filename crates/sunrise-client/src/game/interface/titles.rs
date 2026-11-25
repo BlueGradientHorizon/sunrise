@@ -132,7 +132,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use super::Game;
+
     use mod_api::{ClientHost, Text, TextFormError};
 
     /// What the action bar holds: its plain line, ticks left and whether its colour cycles.

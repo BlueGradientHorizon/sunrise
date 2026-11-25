@@ -90,7 +90,9 @@ impl Hooks for Queries {
 }
 
 /// Guests 12 (the sender) and 13 on a LAN host, with what each is sent.
-fn two_guests(game: &mut crate::game::ServerGame<'_>) -> (mpsc::Receiver<Out>, mpsc::Receiver<Out>) {
+fn two_guests(
+    game: &mut crate::game::ServerGame<'_>,
+) -> (mpsc::Receiver<Out>, mpsc::Receiver<Out>) {
     let net = NetConfig {
         listen: false,
         announce: false,

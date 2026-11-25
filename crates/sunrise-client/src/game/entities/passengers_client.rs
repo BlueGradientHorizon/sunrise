@@ -290,7 +290,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         continue;
                     };
                     let before = self
-                        .side.text_displays
+                        .side
+                        .text_displays
                         .0
                         .get(&(v as i32))
                         .map(|d| d.seat().1)
@@ -378,7 +379,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         });
         for _ in 0..3 {
             let mut vehicles: Vec<u32> = self
-                .side.text_displays
+                .side
+                .text_displays
                 .0
                 .values()
                 .filter_map(|d| d.vehicle)

@@ -692,12 +692,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.side.player_model.as_ref().unwrap(),
             [self.selected, super::held_items::OFFHAND_SLOT].map(|slot| self.stack_in(slot)),
         );
-        self.side
-            .player_model
-            .as_mut()
-            .unwrap()
-            .extra
-            .held_arm_pose = poses;
+        self.side.player_model.as_mut().unwrap().extra.held_arm_pose = poses;
     }
     /// `Entity.turn` for the player, by the mouse, a pad, the arrow keys or an
     /// agent's `turn`.

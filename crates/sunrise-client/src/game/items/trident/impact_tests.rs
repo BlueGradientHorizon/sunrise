@@ -10,7 +10,9 @@ use std::sync::atomic::Ordering;
 #[allow(unused_imports)]
 use sunrise_client::mobs::Mob;
 
-pub(in crate::game) fn aim_trident_at_wall(game: &mut crate::game::ServerGame<'_>) -> mod_api::EntityRef {
+pub(in crate::game) fn aim_trident_at_wall(
+    game: &mut crate::game::ServerGame<'_>,
+) -> mod_api::EntityRef {
     let stone = game
         .pack
         .assets

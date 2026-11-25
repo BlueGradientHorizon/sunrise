@@ -525,7 +525,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_gliding_firework_drops_leads_and_plays_lead_break() {
-        use crate::game::{Audio, Options, Progress, Settings, load_resources};
+        use crate::game::{Options, Progress, Settings, load_resources};
         use sunrise_client::mobs::{Mob, leash::Holder};
         use sunrise_core::geometry::Vec3;
 

@@ -897,7 +897,9 @@ fn only_the_last_eligible_renderer_submits() {
 }
 
 /// A frame's pixels, RGBA.
-pub(in crate::game::client_side) fn drawn_frame(game: &mut crate::game::ClientGame<'_>) -> (Vec<u8>, usize) {
+pub(in crate::game::client_side) fn drawn_frame(
+    game: &mut crate::game::ClientGame<'_>,
+) -> (Vec<u8>, usize) {
     game.side.renderer.0.as_mut().unwrap().screenshot = Some(ScreenshotRequest {
         path: "unused.png".into(),
         size: None,
@@ -906,7 +908,14 @@ pub(in crate::game::client_side) fn drawn_frame(game: &mut crate::game::ClientGa
     });
     game.render_with(|renderer, frame| renderer.render(frame))
         .unwrap();
-    let result = game.side.renderer.0.as_mut().unwrap().screenshot_result.take();
+    let result = game
+        .side
+        .renderer
+        .0
+        .as_mut()
+        .unwrap()
+        .screenshot_result
+        .take();
     let mut pending = result.unwrap().unwrap();
     let image = pending.image_mut();
     (std::mem::take(&mut image.rgba), image.width as usize)

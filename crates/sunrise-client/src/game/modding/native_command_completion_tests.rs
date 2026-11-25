@@ -3,7 +3,6 @@
 //! test, and a registered argument type is asked with the sender, so a provider that completes a
 //! mod's own registry offers only what that sender may use (#4307).
 
-use super::Game;
 use super::native_server::{CommandArguments, command_tree, register_dispatcher};
 use crate::game::lan::LanSettings;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
@@ -173,7 +172,11 @@ fn children(packet: &play::Commands, name: &str) -> Vec<String> {
 }
 
 /// The completions the server answered the guest's request for `command` with.
-fn suggestions(game: &mut crate::game::ServerGame<'_>, rx: &mpsc::Receiver<Out>, command: &str) -> Vec<String> {
+fn suggestions(
+    game: &mut crate::game::ServerGame<'_>,
+    rx: &mpsc::Receiver<Out>,
+    command: &str,
+) -> Vec<String> {
     let mut w = Writer::new();
     w.varint(7);
     w.string(command);

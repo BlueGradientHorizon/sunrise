@@ -1042,22 +1042,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             self.side.sculk.known_revision = Some(revision);
             let loaded: HashSet<(i32, i32)> = self.world.chunks.keys().copied().collect();
-            let arrived: Vec<(i32, i32)> = loaded
-                .difference(&self.side.sculk.known)
-                .copied()
-                .collect();
+            let arrived: Vec<(i32, i32)> =
+                loaded.difference(&self.side.sculk.known).copied().collect();
             for key in arrived {
                 self.sculk_scan_chunk(key);
             }
             // The blocks of every chunk that left, in one pass: a player
             // leaving unloads thousands of chunks at once.
-            let gone: HashSet<(i32, i32)> = self
-                .side
-                .sculk
-                .known
-                .difference(&loaded)
-                .copied()
-                .collect();
+            let gone: HashSet<(i32, i32)> =
+                self.side.sculk.known.difference(&loaded).copied().collect();
             if !gone.is_empty() {
                 self.side
                     .sculk
@@ -2833,7 +2826,7 @@ pub(in crate::game) mod tests {
 #[cfg(test)]
 pub(in crate::game) mod command_damage_listener_tests {
     use super::*;
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
     use sunrise_client::chunk::Chunk;
     use sunrise_core::position::ChunkPos;

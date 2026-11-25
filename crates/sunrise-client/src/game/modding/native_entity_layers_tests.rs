@@ -2,7 +2,6 @@
 //! built and refuses a target that is no living entity type by name; a living type's layers draw
 //! over it in the order they were added, a player's are its model's, a type with none draws none,
 //! and a failing layer is dropped until a resource reload adds it again.
-use super::Game;
 use super::entity_type_rows::EntityTypeRows;
 use super::native_entity_layers::LayerRegistration;
 use mod_api::{

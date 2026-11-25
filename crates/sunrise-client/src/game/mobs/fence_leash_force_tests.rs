@@ -25,7 +25,9 @@ const SLACK: &str = "00006099-0000-0000-0000-000000000002";
 
 /// A host with one placed guest (conn 2), so the server tracks the level and
 /// gives its fence knots their entities.
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
+fn game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),

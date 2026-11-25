@@ -1,7 +1,5 @@
 use crate::game::remote::RemoteDimensionEntry;
-use crate::game::{
-    Game, native_entity_refs::tests::with_client_game, native_lifecycle::NativeLifecycle,
-};
+use crate::game::{native_entity_refs::tests::with_client_game, native_lifecycle::NativeLifecycle};
 use mod_api::ClientHost;
 use sunrise_client::{level_loading::Reason, motion::PlayerMotion};
 use sunrise_core::geometry::Vec3;

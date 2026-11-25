@@ -1,5 +1,4 @@
 //! Production-path storage lifecycle and lifted-pass test support.
-use crate::game::Game;
 use mod_api::{EntityRef, WorldEpoch};
 use std::{
     cell::Cell,

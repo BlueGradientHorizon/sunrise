@@ -32,7 +32,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }) else {
             return false;
         };
-        let mut particle = Particle::terrain(self.side.particles.0.random(), p, [0.0; 3], sprite, tint);
+        let mut particle =
+            Particle::terrain(self.side.particles.0.random(), p, [0.0; 3], sprite, tint);
         particle.set_power(0.2);
         particle.scale(0.6);
         self.side.particles.0.push(particle);
@@ -53,7 +54,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let boxes = self.particle_shape(pos, state);
         sunrise_client::particles::destroy_positions(pos, &boxes, |p, v| {
-            let particle = Particle::terrain(self.side.particles.0.random(), p, v, sprite.clone(), tint);
+            let particle =
+                Particle::terrain(self.side.particles.0.random(), p, v, sprite.clone(), tint);
             self.side.particles.0.push(particle);
         });
     }

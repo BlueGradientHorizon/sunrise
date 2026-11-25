@@ -60,10 +60,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let ctx = self.who_context(Some(Who::Player), None);
         self.post_game_event("minecraft:entity_interact", at, ctx);
         self.swing_arm();
-        if let (Some(player), Some(player_name)) = (
-            self.side.lan_acting_uuid,
-            self.side.lan_acting_name.clone(),
-        ) {
+        if let (Some(player), Some(player_name)) =
+            (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
+        {
             self.native_player_name_entity(player, &player_name, entity_id, &entity_name);
         }
         true

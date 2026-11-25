@@ -34,7 +34,10 @@ struct ParentState {
     tame: bool,
 }
 
-fn parent_state(game: &Game<'_, crate::game::server_side::ServerState>, id: u32) -> Option<ParentState> {
+fn parent_state(
+    game: &Game<'_, crate::game::server_side::ServerState>,
+    id: u32,
+) -> Option<ParentState> {
     if game.resident_target_dimension(super::commands::Target::Mob(id)) != Some(game.dim) {
         return None;
     }

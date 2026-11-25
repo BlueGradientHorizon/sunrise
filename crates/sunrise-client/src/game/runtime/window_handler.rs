@@ -342,7 +342,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         }
         // The world a backup made before its upgrade opens (EditWorldScreen's callback).
-        if let Some(folder) = self.side.title.0.as_mut().and_then(|t| t.take_open_request())
+        if let Some(folder) = self
+            .side
+            .title
+            .0
+            .as_mut()
+            .and_then(|t| t.take_open_request())
             && let Err(error) = self.open_world(&folder, None, None, false, None)
         {
             self.error = Some(error);
@@ -350,7 +355,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         }
         // A Realm's address came back (GetServerDetailsTask hands over to ConnectScreen).
-        if let Some(action) = self.side.title.0.as_mut().and_then(|t| t.take_connect_request())
+        if let Some(action) = self
+            .side
+            .title
+            .0
+            .as_mut()
+            .and_then(|t| t.take_connect_request())
             && let Err(error) = self.title_action(action)
         {
             self.error = Some(error);

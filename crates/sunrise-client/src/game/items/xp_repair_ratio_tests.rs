@@ -89,7 +89,12 @@ fn pickaxe_damage(game: &crate::game::ServerGame<'_>) -> u32 {
 
 /// Mending with 5 points and a part's `answer`: the pickaxe's damage after,
 /// and the experience left for the player.
-fn mend(game: &mut crate::game::ServerGame<'_>, part: &Ratio, damage: u32, answer: Option<f32>) -> (u32, u32) {
+fn mend(
+    game: &mut crate::game::ServerGame<'_>,
+    part: &Ratio,
+    damage: u32,
+    answer: Option<f32>,
+) -> (u32, u32) {
     hold_pickaxe(game, damage);
     part.answer(answer);
     let rest = game.mending(5);

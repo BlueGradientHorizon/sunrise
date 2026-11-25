@@ -88,7 +88,9 @@ impl Hooks for Probe {
     }
 }
 
-pub(in crate::game) fn heard(test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Mutex<Heard>)) -> Heard {
+pub(in crate::game) fn heard(
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Mutex<Heard>),
+) -> Heard {
     hear(|log| with_game(|game| test(game, log)))
 }
 
@@ -673,7 +675,8 @@ pub(in crate::game) fn credit_pig(game: &mut crate::game::ServerGame<'_>) {
     game.world
         .chunks
         .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-    game.side.tickets
+    game.side
+        .tickets
         .0
         .update(Some(sunrise_client::ticket_levels::Sources {
             players: vec![(0, 0)],

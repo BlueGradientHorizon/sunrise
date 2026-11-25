@@ -233,7 +233,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         }
         let query = self
-            .side.recipe_ui
+            .side
+            .recipe_ui
             .0
             .search
             .as_ref()
@@ -386,7 +387,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             draw_registered_book(&layout, ui, (xo, yo), self.side.cursor);
         // The tabs and arrows as painted are the region `ScreenView::regions` reports.
         if self.screen_view_listened() {
-            self.side.screen_state
+            self.side
+                .screen_state
                 .0
                 .drawn_book_tabs
                 .set(registered_book_tab_bounds(&calls, first_category_arrow));

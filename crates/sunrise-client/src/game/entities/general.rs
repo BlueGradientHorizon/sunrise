@@ -821,7 +821,6 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
-
     /// Change a general row's seat. The caller owns mount notifications.
     pub(in crate::game::server_side) fn set_general_mount(
         &mut self,
@@ -949,7 +948,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let chunk = chunk_of(at);
         let quarantined_here = self
-            .side.others
+            .side
+            .others
             .0
             .iter()
             .filter(|other| quarantined_kind(&other.kind) && chunk_of(other.position) == chunk)
@@ -1034,7 +1034,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // the tree's UUIDs may already live there.
         let uuids: HashSet<[i32; 4]> = tree.iter().map(|&index| rows[index].uuid).collect();
         if self
-            .side.levels
+            .side
+            .levels
             .0
             .parked_general_holds_any_uuid(destination, &uuids)
         {
@@ -1317,8 +1318,14 @@ pub(in crate::game::server_side) fn quarantined_kind(kind: &str) -> bool {
 
 /// Whether any UUID of the record tree names a live entity of the level
 /// (`uuid_admission_refused` over the whole tree, in preorder).
-fn general_tree_uuid_admission_refused(game: &Game<'_, crate::game::server_side::ServerState>, record: &GeneralEntityRecord) -> bool {
-    fn refused(game: &Game<'_, crate::game::server_side::ServerState>, record: &GeneralEntityRecord) -> bool {
+fn general_tree_uuid_admission_refused(
+    game: &Game<'_, crate::game::server_side::ServerState>,
+    record: &GeneralEntityRecord,
+) -> bool {
+    fn refused(
+        game: &Game<'_, crate::game::server_side::ServerState>,
+        record: &GeneralEntityRecord,
+    ) -> bool {
         game.uuid_admission_refused(Some(record.uuid))
             || record.passengers.iter().any(|rider| refused(game, rider))
     }

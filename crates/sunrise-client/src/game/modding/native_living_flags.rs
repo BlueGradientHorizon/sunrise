@@ -272,7 +272,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         climbing::on_climbable(&mut world, &self.motion.climbing).unwrap_or(false)
     }
-
 }
 
 impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
@@ -488,7 +487,7 @@ impl ClimbingWorld for FlagClimbing<'_> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use super::super::Game;
+
     use super::super::native_entity_refs::tests::{record_key, with_game};
     use mod_api::{
         BlockPart, EntityRef, Hooks, LivingRef, LoopContext, MakesOpenTrapdoorAboveClimbableEvent,
@@ -693,7 +692,11 @@ pub(in crate::game) mod tests {
         });
     }
 
-    pub(in crate::game) fn guest_server(game: &mut crate::game::ServerGame<'_>, dedicated: bool, owner: bool) {
+    pub(in crate::game) fn guest_server(
+        game: &mut crate::game::ServerGame<'_>,
+        dedicated: bool,
+        owner: bool,
+    ) {
         use super::super::{execution_role::ExecutionRole, lan::LanSettings};
         use sunrise_client::lan::{NetConfig, hub::HubConfig};
         game.options.execution_role = if dedicated {

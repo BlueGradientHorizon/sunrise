@@ -179,7 +179,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 
     fn spawn_level_current(&self, level: SpawnLevel) -> bool {
-        Dim::exists(level.id) && self.side.levels.0.runtime.generation_of(level.id) == level.generation
+        Dim::exists(level.id)
+            && self.side.levels.0.runtime.generation_of(level.id) == level.generation
     }
 
     /// PlayerList's unknown-dimension path uses the Overworld. A runtime level's
@@ -252,7 +253,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     let back = self.dim;
                     self.enter_level(Dim::from_id(dimension))
                         .map_err(|e| e.to_string())?;
-                    self.side.tickets
+                    self.side
+                        .tickets
                         .0
                         .add_spawn(prepared.chunk(), SpawnTicketKind::Player);
                     self.enter_level(back).map_err(|e| e.to_string())?;
@@ -293,13 +295,17 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         position: [feet.x, feet.y, feet.z],
                         rotation,
                     };
-                    self.side.tickets
+                    self.side
+                        .tickets
                         .0
                         .add_spawn(prepared.chunk(), SpawnTicketKind::Player);
                     SpawnTask::Load(prepared)
                 }
                 Err(chunk) => {
-                    self.side.tickets.0.add_spawn(chunk, SpawnTicketKind::Search);
+                    self.side
+                        .tickets
+                        .0
+                        .add_spawn(chunk, SpawnTicketKind::Search);
                     SpawnTask::Find {
                         level,
                         suggestion,
@@ -311,7 +317,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             SpawnTask::Load(prepared) => {
                 if spawn_area_full(&self.world, prepared.chunk(), PLAYER_SPAWN_RADIUS) {
                     // Hand off the pending load range to a fresh Ready ticket.
-                    self.side.tickets
+                    self.side
+                        .tickets
                         .0
                         .add_spawn(prepared.chunk(), SpawnTicketKind::Player);
                     SpawnTask::Ready(prepared)
@@ -320,7 +327,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
             }
             SpawnTask::Ready(prepared) => {
-                self.side.tickets
+                self.side
+                    .tickets
                     .0
                     .add_spawn(prepared.chunk(), SpawnTicketKind::Player);
                 SpawnTask::Ready(prepared)
@@ -337,7 +345,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // does pause-when-empty tick the cache (it only polls chunk work).
             if running {
                 let streaming = &self.streaming;
-                self.side.tickets
+                self.side
+                    .tickets
                     .0
                     .tick_spawn(|center| streaming.chunk_ready_for_saving(center));
             }

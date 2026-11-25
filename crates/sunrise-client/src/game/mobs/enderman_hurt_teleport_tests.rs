@@ -1,7 +1,5 @@
 //! `Enderman.hurtServer` teleports inside the hurt the game layer deals.
-use super::{
-    Audio, Game, Options, Progress, Settings, explosion::BlockInteraction, load_resources,
-};
+use super::{Options, Progress, Settings, explosion::BlockInteraction, load_resources};
 use std::sync::Arc;
 use sunrise_client::{
     chunk::Chunk,

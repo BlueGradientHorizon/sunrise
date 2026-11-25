@@ -291,7 +291,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     #[inline(always)]
     pub(in crate::game) fn hovered_inventory_slot(&self) -> Option<usize> {
         let size = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])?;

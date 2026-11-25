@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod typed_state_range_read_tests {
-    use super::*;
+
     #[test]
     #[ignore = "needs prepared resources, actual pack and scratch homes/cwd"]
     fn loaded_pack_state_ranges_match_typed_controls() {
@@ -20,14 +20,21 @@ mod typed_state_range_read_tests {
         game.build_registries();
         game.set_allow_commands(true);
         assert!(game.run_command("reload"));
-        assert!(game.side.fns.0.enabled.contains(&"file/typed_ranges".to_owned()));
+        assert!(
+            game.side
+                .fns
+                .0
+                .enabled
+                .contains(&"file/typed_ranges".to_owned())
+        );
         assert!(
             game.side.fns.0.store.errors.is_empty(),
             "{:?}",
             game.side.fns.0.store.errors
         );
         assert_eq!(
-            game.side.fns
+            game.side
+                .fns
                 .0
                 .store
                 .predicates
@@ -77,7 +84,10 @@ mod typed_state_range_read_tests {
         assert_eq!(chest, expected_chest);
         let clock = game.world.game_time;
         let mut failures = Vec::new();
-        let mut callback = |game: &mut crate::game::ServerGame<'_>, x: i32, name: &str, expected: bool| {
+        let mut callback = |game: &mut crate::game::ServerGame<'_>,
+                            x: i32,
+                            name: &str,
+                            expected: bool| {
             for (sign, expected) in [("if", expected), ("unless", !expected)] {
                 for h in ["#r", "#s"] {
                     assert!(game.run_command(&format!("scoreboard players set {h} ranges -99")));
@@ -174,14 +184,21 @@ mod typed_state_range_read_tests {
         game.build_registries();
         game.set_allow_commands(true);
         assert!(game.run_command("reload"));
-        assert!(game.side.fns.0.enabled.contains(&"file/typed_ranges".to_owned()));
+        assert!(
+            game.side
+                .fns
+                .0
+                .enabled
+                .contains(&"file/typed_ranges".to_owned())
+        );
         assert!(
             game.side.fns.0.store.errors.is_empty(),
             "{:?}",
             game.side.fns.0.store.errors
         );
         assert_eq!(
-            game.side.fns
+            game.side
+                .fns
                 .0
                 .store
                 .predicates
@@ -249,7 +266,8 @@ mod typed_state_range_read_tests {
         }
         assert!(game.run_command("reload"));
         assert_eq!(
-            game.side.fns
+            game.side
+                .fns
                 .0
                 .store
                 .predicates
@@ -263,7 +281,10 @@ mod typed_state_range_read_tests {
         assert!(game.run_command("item replace block 0 200 0 container.0 with minecraft:stone 3"));
         let chest = game.block_entity_nbt([0, 200, 0]).unwrap();
         let clock = game.world.game_time;
-        let callback = |game: &mut crate::game::ServerGame<'_>, x: i32, name: &str, expected: bool| {
+        let callback = |game: &mut crate::game::ServerGame<'_>,
+                        x: i32,
+                        name: &str,
+                        expected: bool| {
             for (sign, want) in [("if", expected), ("unless", !expected)] {
                 for h in ["#r", "#s"] {
                     assert!(game.run_command(&format!("scoreboard players set {h} ranges -99")));

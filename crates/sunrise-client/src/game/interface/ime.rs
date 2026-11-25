@@ -73,9 +73,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // screen's search (OptionsUi::typing).
             Screen::Options => self.ui.options.typing(),
             Screen::WorldOptions => self.world_options_typing(),
-            Screen::Creative => self.mod_browser_typing() || self.side.creative_screen.0.tab().search,
+            Screen::Creative => {
+                self.mod_browser_typing() || self.side.creative_screen.0.tab().search
+            }
             Screen::BlockEditor => self
-                .side.block_editor
+                .side
+                .block_editor
                 .0
                 .as_ref()
                 .is_some_and(|s| s.text_focused()),

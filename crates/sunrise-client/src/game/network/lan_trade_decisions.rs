@@ -45,7 +45,8 @@ pub(in crate::game) struct TakePlan {
 }
 
 // Keep typed snapshots in closures so no storage's private representation escapes its owner.
-pub(in crate::game) type Restore = Box<dyn FnOnce(&mut Game<'_, crate::game::server_side::ServerState>)>;
+pub(in crate::game) type Restore =
+    Box<dyn FnOnce(&mut Game<'_, crate::game::server_side::ServerState>)>;
 #[derive(Default)]
 pub(in crate::game) struct Journal {
     pub(in crate::game) guests: HashMap<u32, Restore>,

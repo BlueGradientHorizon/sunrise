@@ -120,10 +120,7 @@ impl InstanceGroups for Game<'_, crate::game::client_side::ClientState> {
         if capacity > 16_384 || reserved + (capacity as usize).max(1) > MOD_CAPACITY {
             return Err(GroupError::CapacityExceeded);
         }
-        self.side
-            .prepared_model_draws
-            .borrow_mut()
-            .reserve(16_384);
+        self.side.prepared_model_draws.borrow_mut().reserve(16_384);
         storage.next = storage
             .next
             .checked_add(1)

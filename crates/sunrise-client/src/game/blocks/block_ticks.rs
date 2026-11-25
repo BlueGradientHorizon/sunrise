@@ -21,7 +21,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut laps = sunrise_client::spans::laps();
         // ServerChunkCache.tick: the tickets that time out.
         let world = &self.world;
-        self.side.tickets
+        self.side
+            .tickets
             .0
             .tick_portal(|ticket| portal_ticket_can_expire(world, ticket));
         self.sync_tick_chunks();
@@ -334,9 +335,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.block_ticks
                 .comparator_outputs
                 .retain(|p, _| (p.x >> 4, p.z >> 4) != key);
-            self.side
-                .hoppers
-                .retain(|p, _| (p.0 >> 4, p.2 >> 4) != key);
+            self.side.hoppers.retain(|p, _| (p.0 >> 4, p.2 >> 4) != key);
             // Its moving pistons were saved with it and load back with it.
             self.block_ticks
                 .moving_pistons

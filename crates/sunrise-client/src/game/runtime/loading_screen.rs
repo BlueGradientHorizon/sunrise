@@ -19,7 +19,9 @@ pub(in crate::game) fn leave_fullscreen_after(
     }
 }
 
-pub(in crate::game) fn run_event_loop(mut game: Game<'_, crate::game::client_side::ClientState>) -> Result<()> {
+pub(in crate::game) fn run_event_loop(
+    mut game: Game<'_, crate::game::client_side::ClientState>,
+) -> Result<()> {
     if game.options.headless {
         // No display to open winit's loop on: the game's own loop.
         game.run_headless();

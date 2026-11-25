@@ -3,7 +3,7 @@
 //! coordinator fixtures in decision_tests.rs do not.
 use super::storage::GameHost;
 use super::*;
-use crate::game::{Game, native_entity_refs::tests::with_game};
+use crate::game::native_entity_refs::tests::with_game;
 use std::sync::Arc;
 use sunrise_client::{chunk::Chunk, entities::ArmorStand};
 use sunrise_core::geometry::Vec3;

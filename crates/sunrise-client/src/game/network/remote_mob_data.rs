@@ -531,9 +531,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 m.extra.ints[1] = code;
             }
             if let Some(at) = stare_sound {
-                self.side.audio
-                    .0
-                    .play_unshared("minecraft:entity.enderman.stare", Some(at), 2.5, 1.0);
+                self.side.audio.0.play_unshared(
+                    "minecraft:entity.enderman.stare",
+                    Some(at),
+                    2.5,
+                    1.0,
+                );
             }
         }
     }

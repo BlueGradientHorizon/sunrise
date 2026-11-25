@@ -93,7 +93,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         if self.side.screen_fx.portal == 0.0 {
             let pitch = self.world.random.next_float() * 0.4 + 0.8;
-            self.side.audio
+            self.side
+                .audio
                 .0
                 .play("minecraft:block.portal.trigger", None, 0.25, pitch);
         }

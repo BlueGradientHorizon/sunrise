@@ -147,63 +147,67 @@ fn a_mod_container_draws_the_fluid_its_part_reports_isolated() {
     let root = resource_root(scratch.path());
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
-        crate::game::native_entity_refs::tests::with_game_role_client(root,crate::game::execution_role::ExecutionRole::Client,  |game| {
-            let answer = |a| *part.answer.lock().unwrap() = a;
-            let water_still = LayerContent::Sprite {
-                sprite: "minecraft:block/water_still".into(),
-                mask: Some("neoforge:item/mask/bucket_fluid".into()),
-            };
-
-            // Reporting water draws what a water bucket draws: its still sprite through the
-            // mask, tinted as a held water stack (not white, the empty container's tint).
-            answer(Answer::Water);
-            let canister = drawn(game, "tank:canister");
-            let bucket = drawn(game, "minecraft:water_bucket");
-            assert_eq!(canister.len(), 2, "{canister:?}");
-            assert_eq!(canister[1].content, water_still);
-            assert_eq!(canister[1].tints, bucket[1].tints);
-            assert_ne!(canister[1].tints, vec![-1]);
-
-            // Reporting nothing draws the empty container: the base alone.
-            answer(Answer::Nothing);
-            let empty = drawn(game, "tank:canister");
-            assert_eq!(empty.len(), 1, "{empty:?}");
-
-            // A registered fluid with no look in an item draws the missing sprite through the
-            // mask, untinted, so the mistake shows.
-            answer(Answer::Sludge);
-            let sludge = drawn(game, "tank:canister");
-            assert_eq!(sludge.len(), 2, "{sludge:?}");
-            assert_eq!(
-                sludge[1].content,
-                LayerContent::Sprite {
-                    sprite: "minecraft:missingno".into(),
+        crate::game::native_entity_refs::tests::with_game_role_client(
+            root,
+            crate::game::execution_role::ExecutionRole::Client,
+            |game| {
+                let answer = |a| *part.answer.lock().unwrap() = a;
+                let water_still = LayerContent::Sprite {
+                    sprite: "minecraft:block/water_still".into(),
                     mask: Some("neoforge:item/mask/bucket_fluid".into()),
-                }
-            );
-            assert_eq!(sludge[1].tints, vec![-1]);
+                };
 
-            // Holding none under a model that declares water draws that water untinted (white).
-            answer(Answer::Nothing);
-            let fallback = drawn_with(game, "tank:canister", WATER_FALLBACK);
-            assert_eq!(fallback.len(), 2, "{fallback:?}");
-            assert_eq!(fallback[1].content, water_still);
-            assert_eq!(fallback[1].tints, vec![-1]);
+                // Reporting water draws what a water bucket draws: its still sprite through the
+                // mask, tinted as a held water stack (not white, the empty container's tint).
+                answer(Answer::Water);
+                let canister = drawn(game, "tank:canister");
+                let bucket = drawn(game, "minecraft:water_bucket");
+                assert_eq!(canister.len(), 2, "{canister:?}");
+                assert_eq!(canister[1].content, water_still);
+                assert_eq!(canister[1].tints, bucket[1].tints);
+                assert_ne!(canister[1].tints, vec![-1]);
 
-            // Vanilla's items never ask a part, even one attached to them: the water bucket
-            // keeps vanilla's answer and the empty bucket stays empty.
-            answer(Answer::Water);
-            assert_eq!(drawn(game, "minecraft:bucket").len(), 1);
-            assert_eq!(
-                drawn(game, "minecraft:water_bucket")[1].content,
-                water_still
-            );
-            let asked = part.asked.lock().unwrap().clone();
-            assert!(
-                asked.iter().all(|item| item == "tank:canister"),
-                "{asked:?}"
-            );
-            assert_eq!(asked.len(), 4);
-        });
+                // Reporting nothing draws the empty container: the base alone.
+                answer(Answer::Nothing);
+                let empty = drawn(game, "tank:canister");
+                assert_eq!(empty.len(), 1, "{empty:?}");
+
+                // A registered fluid with no look in an item draws the missing sprite through the
+                // mask, untinted, so the mistake shows.
+                answer(Answer::Sludge);
+                let sludge = drawn(game, "tank:canister");
+                assert_eq!(sludge.len(), 2, "{sludge:?}");
+                assert_eq!(
+                    sludge[1].content,
+                    LayerContent::Sprite {
+                        sprite: "minecraft:missingno".into(),
+                        mask: Some("neoforge:item/mask/bucket_fluid".into()),
+                    }
+                );
+                assert_eq!(sludge[1].tints, vec![-1]);
+
+                // Holding none under a model that declares water draws that water untinted (white).
+                answer(Answer::Nothing);
+                let fallback = drawn_with(game, "tank:canister", WATER_FALLBACK);
+                assert_eq!(fallback.len(), 2, "{fallback:?}");
+                assert_eq!(fallback[1].content, water_still);
+                assert_eq!(fallback[1].tints, vec![-1]);
+
+                // Vanilla's items never ask a part, even one attached to them: the water bucket
+                // keeps vanilla's answer and the empty bucket stays empty.
+                answer(Answer::Water);
+                assert_eq!(drawn(game, "minecraft:bucket").len(), 1);
+                assert_eq!(
+                    drawn(game, "minecraft:water_bucket")[1].content,
+                    water_still
+                );
+                let asked = part.asked.lock().unwrap().clone();
+                assert!(
+                    asked.iter().all(|item| item == "tank:canister"),
+                    "{asked:?}"
+                );
+                assert_eq!(asked.len(), 4);
+            },
+        );
     });
 }

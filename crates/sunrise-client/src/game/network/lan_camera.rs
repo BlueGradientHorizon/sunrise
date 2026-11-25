@@ -177,7 +177,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         match camera {
             Some(id) => {
-                self.side.cmds
+                self.side
+                    .cmds
                     .0
                     .guest_cameras
                     .insert(conn, GuestCamera { id, teleports: 0 });
@@ -238,7 +239,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         }
         let cameras: Vec<(u32, GuestCamera)> = self
-            .side.cmds
+            .side
+            .cmds
             .0
             .guest_cameras
             .iter()

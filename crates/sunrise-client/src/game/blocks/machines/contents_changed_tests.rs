@@ -1,4 +1,4 @@
-use super::{BlockEntity, Game};
+use super::BlockEntity;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
 use mod_api::*;
 use std::sync::{Arc, Mutex};

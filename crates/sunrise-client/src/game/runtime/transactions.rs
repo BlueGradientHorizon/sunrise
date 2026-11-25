@@ -2286,12 +2286,14 @@ pub(in crate::game) mod tests {
                 items[0] = Some(ItemStack::new("minecraft:stick", 2));
             }
             let sticks = |count| ItemStack::new("minecraft:stick", count);
-            let slots = |game: &crate::game::ServerGame<'_>, pos| match game.world.block_entities.get(&pos) {
-                Some(BlockEntity::Chest(items)) => {
-                    items.iter().flatten().map(|s| s.count).sum::<u32>()
-                }
-                _ => panic!("missing chest"),
-            };
+            let slots =
+                |game: &crate::game::ServerGame<'_>, pos| match game.world.block_entities.get(&pos)
+                {
+                    Some(BlockEntity::Chest(items)) => {
+                        items.iter().flatten().map(|s| s.count).sum::<u32>()
+                    }
+                    _ => panic!("missing chest"),
+                };
             assert_eq!(
                 game.level_set_block(level, [1, 64, 4], chest, flags),
                 Ok(true)
@@ -2841,10 +2843,13 @@ pub(in crate::game) mod tests {
             game.level_set_block(level, [2, 64, 4], chest, flags),
             Ok(true)
         );
-        let slots = |game: &crate::game::ServerGame<'_>, pos| match game.world.block_entities.get(&pos) {
-            Some(BlockEntity::Chest(items)) => items.iter().flatten().map(|s| s.count).sum::<u32>(),
-            _ => panic!("no container at {pos:?}"),
-        };
+        let slots =
+            |game: &crate::game::ServerGame<'_>, pos| match game.world.block_entities.get(&pos) {
+                Some(BlockEntity::Chest(items)) => {
+                    items.iter().flatten().map(|s| s.count).sum::<u32>()
+                }
+                _ => panic!("no container at {pos:?}"),
+            };
         for (id, moved) in [("test:pipe", 1), ("test:greedy", 0)] {
             let state = game.pack.assets.registry.default_state(id).unwrap();
             assert_eq!(

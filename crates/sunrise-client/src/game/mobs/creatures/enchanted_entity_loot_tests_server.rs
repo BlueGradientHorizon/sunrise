@@ -328,12 +328,7 @@ pub(in crate::game) fn zombie(game: &mut crate::game::ServerGame<'_>, damage: Da
         .get("minecraft:zombie")
         .unwrap()
         .clone();
-    let mut mob = Mob::new(
-        game.side.next_entity,
-        kind,
-        Vec3::new(0.5, 64.0, 0.5),
-        0.0,
-    );
+    let mut mob = Mob::new(game.side.next_entity, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
     mob.health = 0.0;
     mob.last_damage = Some((damage, 0));
     game.mobs.push(mob.clone());

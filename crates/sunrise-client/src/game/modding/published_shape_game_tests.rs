@@ -1,6 +1,5 @@
 //! #1666: a content block whose block entity publishes its shapes
 //! (`shapes_from_block_entity`), on a game over the prepared resources.
-use crate::game::Game;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
 use mod_api::*;
 use std::sync::Arc;
@@ -53,7 +52,11 @@ pub(super) fn with_bus(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
 
 /// Places `block` at `pos` in the level in place, with its block entity and no shapes
 /// published yet.
-pub(super) fn place(game: &mut crate::game::ServerGame<'_>, block: &str, pos: [i32; 3]) -> BlockEntityRef {
+pub(super) fn place(
+    game: &mut crate::game::ServerGame<'_>,
+    block: &str,
+    pos: [i32; 3],
+) -> BlockEntityRef {
     let level = game.level(game.dim.id()).unwrap();
     let state = game.pack.assets.registry.default_state(block).unwrap();
     assert!(
@@ -262,7 +265,9 @@ fn pathfinding_stands_on_the_published_collision_top() {
                     .unwrap()
             );
         }
-        let floor = |game: &crate::game::ServerGame<'_>, x: i32| game.mob_world_base(&[]).floor_level(x, 65, 2);
+        let floor = |game: &crate::game::ServerGame<'_>, x: i32| {
+            game.mob_world_base(&[]).floor_level(x, 65, 2)
+        };
         assert_eq!((floor(game, 5), floor(game, 6)), (65.0, 64.5));
         assert_eq!(floor(game, 2), 65.0, "declared before the first publish");
         assert_eq!(

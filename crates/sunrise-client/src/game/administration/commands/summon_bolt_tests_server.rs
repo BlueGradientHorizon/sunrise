@@ -125,7 +125,8 @@ pub(in crate::game) fn run_a_bolt_summoned_with_nbt_strikes_and_goes() {
                         );
                     }
                     assert!(
-                        game.side.others
+                        game.side
+                            .others
                             .0
                             .iter()
                             .all(|o| o.kind != "minecraft:lightning_bolt"),

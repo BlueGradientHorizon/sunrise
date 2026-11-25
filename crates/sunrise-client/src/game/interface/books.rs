@@ -536,10 +536,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         shortcut: sunrise_client::clipboard::EditShortcut,
     ) {
-        let signing = matches!(
-            self.side.book,
-            Some(BookScreen::Edit { signing: true, .. })
-        );
+        let signing = matches!(self.side.book, Some(BookScreen::Edit { signing: true, .. }));
         if signing {
             if let Some(BookScreen::Edit {
                 title, title_edit, ..
@@ -816,7 +813,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.lectern_button(key, if forward { 2 } else { 1 });
             return;
         }
-        self.side.audio
+        self.side
+            .audio
             .0
             .play("minecraft:item.book.page_turn", None, 1.0, 1.0);
     }
@@ -971,7 +969,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let inside =
             |x: f32, y: f32, bw: f32, bh: f32| mx >= x && my >= y && mx < x + bw && my < y + bh;
         let click = |game: &mut Self| {
-            game.side.audio
+            game.side
+                .audio
                 .0
                 .play("minecraft:ui.button.click", None, 0.25, 1.0)
         };

@@ -153,7 +153,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             top: &top,
         };
         let renderer = self.side.renderer.0.as_deref_mut().map(|r| r as _);
-        self.side.particles
+        self.side
+            .particles
             .0
             .polytone_gpu_decide(renderer, camera, &source);
     }
@@ -167,7 +168,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) {
         let world = &self.world;
         let renderer = self.side.renderer.0.as_deref_mut().map(|r| r as _);
-        self.side.particles
+        self.side
+            .particles
             .0
             .polytone_gpu_hand_over(renderer, camera, alpha as f32, &|b| {
                 world.light(b[0], b[1], b[2])
@@ -212,7 +214,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `Camera.getNearPlane` at the FOV option, as `getFluidInCamera` asks for it.
     pub(in crate::game::client_side) fn near_plane(&self) -> NearPlane {
         let [width, height] = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map_or([1, 1], |r| [r.config.width, r.config.height]);
@@ -540,8 +543,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let cull_fov = self
                 .fov_degrees(partial, eye)
                 .max((self.settings.fov as i32) as f32);
-            let (near_yaw, near_pitch) =
-                self.side.posed_rotation.unwrap_or((self.yaw, self.pitch));
+            let (near_yaw, near_pitch) = self.side.posed_rotation.unwrap_or((self.yaw, self.pitch));
             let (near_min, near_max) = sunrise_client::camera::near_plane_bounds(
                 cull_fov,
                 size[0] as f32,
@@ -910,14 +912,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if let Some(sampling) = sampling.as_mut() {
                 if !sampling.started() {
                     laps.lap("tp_ctx");
-                    self.side.particles
+                    self.side
+                        .particles
                         .0
                         .set_polytone(self.pack.polytone_particles.clone());
                     if let Some(registry) = &self.pack.polytone_particles {
                         registry.set_biomes(biomes);
                     }
                 }
-                if let Some(step) = sampling.run(self.res.animate(), &mut self.side.particles.0, &ctx) {
+                if let Some(step) =
+                    sampling.run(self.res.animate(), &mut self.side.particles.0, &ctx)
+                {
                     match step {
                         AnimateStep::BlockPart(state, pos) => self.mod_animate_tick(state, pos),
                         AnimateStep::Ambient(options, at) => self.emit_model_ambient(&options, at),
@@ -993,7 +998,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                             f64::from(below) + block_top.max(fluid_top),
                             f64::from(z) + bz,
                         ];
-                        self.side.particles
+                        self.side
+                            .particles
                             .0
                             .add(&ParticleOptions::simple(ty), p, [0.0; 3]);
                     }
@@ -1020,7 +1026,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
                             let p = at.map(|c| f64::from(c) + 0.5);
                             // playLocalSound: guests make their own rain, so a host
                             // must not capture it for them.
-                            self.side.audio.0.play_unshared(name, Some(p), volume, pitch);
+                            self.side
+                                .audio
+                                .0
+                                .play_unshared(name, Some(p), volume, pitch);
                         }
                     }
                 }
@@ -1039,7 +1048,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             _ => unreachable!("directly drawable ambient options are handled by sampling"),
         };
         if !self
-            .side.particles
+            .side
+            .particles
             .0
             .admit_particle_at(at, override_limiter, false)
         {
@@ -1060,9 +1070,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             _ => unreachable!(),
         };
         if let Some(options) = options {
-            self.side.particles
-                .0
-                .add_admitted_with_world(Some(&self.world), &options, at, [0.0; 3]);
+            self.side.particles.0.add_admitted_with_world(
+                Some(&self.world),
+                &options,
+                at,
+                [0.0; 3],
+            );
         }
     }
 
@@ -1101,12 +1114,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // weather around them; nothing without such a pack.
         if let Some(p) = &self.player {
             let feet = [p.position.x, p.position.y, p.position.z];
-            self.side.particles
+            self.side
+                .particles
                 .0
                 .polytone_entity(&level, "minecraft:player", feet);
         }
         let bodies =
-            self.side.particles
+            self.side
+                .particles
                 .0
                 .sample_tracking_bodies(|target| match target {
                     TrackingTarget::LocalPlayer => self.player.as_ref().map(player_tracking_body),
@@ -1136,9 +1151,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.tick_pickups();
         laps.lap("tp_pickups");
         let camera = self.side.particles.0.camera;
-        for (name, at, volume, pitch, delayed) in std::mem::take(&mut self.side.particles.0.sounds) {
+        for (name, at, volume, pitch, delayed) in std::mem::take(&mut self.side.particles.0.sounds)
+        {
             if delayed {
-                self.side.audio
+                self.side
+                    .audio
                     .0
                     .play_distance_delayed(name, at, volume, pitch, camera);
             } else {

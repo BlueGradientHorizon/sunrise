@@ -48,26 +48,30 @@ mod tests {
         mod_platform::testing::with_mods(mods.clone(), || {
             crate::game::api_values::install_parts(&mods).unwrap();
             let root = super::super::mods::content_root(&base, &Default::default()).unwrap();
-            fixture::with_game_role_client(root.prepared().to_owned(), ExecutionRole::Client, |game| {
-                for (id, expected) in [
-                    (
-                        "minecraft:stone",
-                        u32::try_from(vanilla.id("minecraft:stone").unwrap()).unwrap(),
-                    ),
-                    ("numbers:a_item", first_mod_id),
-                    ("numbers:z_item", first_mod_id + 1),
-                ] {
-                    let key = game.item_key(&Identifier::parse(id).unwrap()).unwrap();
-                    assert_eq!(key.registry_id(game), Some(expected), "{id}: API");
-                    assert_eq!(game.item_number(id), Some(expected), "{id}: scatter");
-                }
-                let missing = "numbers:missing";
-                assert!(
-                    game.item_key(&Identifier::parse(missing).unwrap())
-                        .is_none()
-                );
-                assert_eq!(game.item_number(missing), None);
-            });
+            fixture::with_game_role_client(
+                root.prepared().to_owned(),
+                ExecutionRole::Client,
+                |game| {
+                    for (id, expected) in [
+                        (
+                            "minecraft:stone",
+                            u32::try_from(vanilla.id("minecraft:stone").unwrap()).unwrap(),
+                        ),
+                        ("numbers:a_item", first_mod_id),
+                        ("numbers:z_item", first_mod_id + 1),
+                    ] {
+                        let key = game.item_key(&Identifier::parse(id).unwrap()).unwrap();
+                        assert_eq!(key.registry_id(game), Some(expected), "{id}: API");
+                        assert_eq!(game.item_number(id), Some(expected), "{id}: scatter");
+                    }
+                    let missing = "numbers:missing";
+                    assert!(
+                        game.item_key(&Identifier::parse(missing).unwrap())
+                            .is_none()
+                    );
+                    assert_eq!(game.item_number(missing), None);
+                },
+            );
         });
     }
 }

@@ -96,7 +96,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     ];
                     self.side.particles.0.create(&options, p, [0.0; 3]);
                 }
-                Ok(Some(json!({ "ok": true, "live": self.side.particles.0.len() })))
+                Ok(Some(
+                    json!({ "ok": true, "live": self.side.particles.0.len() }),
+                ))
             }
             "signedit" => {
                 let key = (int(1)?, int(2)?, int(3)?);

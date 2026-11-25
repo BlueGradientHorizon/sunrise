@@ -32,7 +32,6 @@ pub(in crate::game) mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use mod_api::__private::game::*;
 
-    use super::super::Game;
     use mod_api::{GlobalPos, Identifier, PlayerRef};
     use sunrise_core::position::BlockPos;
 

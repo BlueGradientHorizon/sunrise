@@ -2,7 +2,7 @@
 
 use super::native_entity_refs::tests::with_game;
 use super::{
-    Dim, Game,
+    Dim,
     commands::Target,
     creatures::{SpawnReason, SpawnSite},
 };

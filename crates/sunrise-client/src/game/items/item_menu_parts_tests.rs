@@ -4,7 +4,6 @@
 //! are asked with the game's loop context, starting from vanilla's answer, and other items are
 //! never asked. The test installs process-wide parts: run it alone with the prepared resources
 //! (`SUNRISE_TEST_RESOURCES`).
-use super::*;
 use mod_api::{
     CanFitInsideContainerItemsEvent, CanGrindstoneRepairEvent, Hooks, IsCombineRepairableEvent,
     ItemPart, LoopContext, ModEntry, Registrar, RegistrationContext,

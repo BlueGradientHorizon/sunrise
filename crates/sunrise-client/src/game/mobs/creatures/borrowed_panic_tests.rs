@@ -412,7 +412,10 @@ pub(in crate::game) fn fresh_dimension(test: &str, cases: &[&str]) -> Option<Dim
     })
 }
 
-pub(in crate::game) fn fixture_game(output: Output, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
+pub(in crate::game) fn fixture_game(
+    output: Output,
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>),
+) {
     if matches!(output, Output::Guest | Output::Mixed) {
         crate::game::native_guest_turn_tests::with_guests(test);
     } else {

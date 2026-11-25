@@ -2,7 +2,7 @@
 //! and a trident: `Entity.load` with `AbstractArrow.readAdditionalSaveData` over the
 //! resident entity.
 use super::Target;
-use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+use crate::game::{Options, Progress, Settings, load_resources};
 use sunrise_client::arrows::Pickup;
 use sunrise_client::projectiles::ProjectileKind;
 use sunrise_core::nbt::Tag;

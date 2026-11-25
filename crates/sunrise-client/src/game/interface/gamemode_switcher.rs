@@ -62,11 +62,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         sunrise_client::widgets::begin_screen(|| {
             sunrise_client::widgets::ScreenInfo::new("gamemode_switcher", "")
         });
-        switcher.hover(
-            w,
-            h,
-            (self.side.cursor.0 as i32, self.side.cursor.1 as i32),
-        );
+        switcher.hover(w, h, (self.side.cursor.0 as i32, self.side.cursor.1 as i32));
         let selected = switcher.selected;
         let atlas = &self.gui.atlas;
         batch.sprite_region(

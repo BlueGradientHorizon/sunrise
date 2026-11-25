@@ -36,7 +36,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         ))
     }
 
-
     /// `LivingEntity.randomTeleport(x, y, z, true, avoid)`: the point `at`
     /// is clamped into the world border and drops to the first block in
     /// `minecraft:entities_can_teleport_to` below it, losing a block of height
@@ -377,7 +376,9 @@ pub(in crate::game) mod tests {
         crate::game::entity::taken_pass_tests::in_both_dimensions(|game, balance| {
             floor_and_zombies(game);
             let zombie = game.living(game.entity(12).unwrap()).unwrap();
-            let at = |game: &crate::game::ServerGame<'_>| game.mobs.iter().find(|m| m.id == 12).unwrap().position;
+            let at = |game: &crate::game::ServerGame<'_>| {
+                game.mobs.iter().find(|m| m.id == 12).unwrap().position
+            };
             // From six blocks up it lands on the floor, one block lower per
             // step down (`randomTeleport`).
             crate::game::entity::taken_pass_tests::assert_mob_spawn_survives(

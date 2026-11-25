@@ -1,5 +1,3 @@
-use super::*;
-
 #[test]
 fn the_creative_sync_covers_inventory_menu_slots_5_to_45_once_each() {
     // CreativeInventoryListener sends every InventoryMenu slot but the crafting ones: the
@@ -55,7 +53,7 @@ fn a_server_slot_update_leaves_an_unsent_creative_click_to_be_sent() {
 }
 
 mod give_stack {
-    use super::*;
+
     use crate::game::api_values::test_snapshot;
     use crate::game::native_entity_refs::tests::with_client_game;
     use crate::game::native_hotbar_slot::hotbar_slot_tests::{logged_in, sent};
@@ -146,7 +144,11 @@ mod give_stack {
         assert!(again.is_empty(), "{again:?}");
     }
 
-    fn component<'a>(game: &crate::game::ClientGame<'_>, stack: &'a Stack, name: &str) -> &'a Component {
+    fn component<'a>(
+        game: &crate::game::ClientGame<'_>,
+        stack: &'a Stack,
+        name: &str,
+    ) -> &'a Component {
         let id = net_id(game, "minecraft:data_component_type", name);
         stack
             .added

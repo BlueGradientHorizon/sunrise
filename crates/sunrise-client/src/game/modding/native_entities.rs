@@ -418,7 +418,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             offer(Slot::Apart(Apart::Dragon), d.id, d.join);
         }
         for (i, other) in self
-            .side.others
+            .side
+            .others
             .0
             .iter()
             .enumerate()
@@ -708,9 +709,12 @@ mod tests {
                             .to_vec(),
                     ),
                 )]);
-                let opaque =
-                    crate::game::ServerGame::other_from_nbt(&mut record, game.side.next_entity, "missing:object")
-                        .unwrap();
+                let opaque = crate::game::ServerGame::other_from_nbt(
+                    &mut record,
+                    game.side.next_entity,
+                    "missing:object",
+                )
+                .unwrap();
                 game.side.others.0.push(opaque);
                 game.native_joins_flush(true, 0);
                 assert_eq!(

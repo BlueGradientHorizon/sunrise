@@ -1,5 +1,7 @@
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_entity_refs::tests::{with_game, with_client_game};
+pub(in crate::game::client_side) use crate::game::native_entity_refs::tests::{
+    with_client_game, with_game,
+};
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::native_guest_turn_tests::with_guests;
 #[allow(unused_imports)]
@@ -281,7 +283,8 @@ pub(in crate::game) mod item_part_tests {
                 game.side.screen = Screen::Creative;
                 game.refresh_creative_tabs();
                 let inv_tab = game
-                    .side.creative_screen
+                    .side
+                    .creative_screen
                     .0
                     .tabs
                     .iter()
@@ -325,7 +328,8 @@ pub(in crate::game) mod item_part_tests {
                 // 4. Creative item-tab hotbar pickup runs ItemPart on HostSide::Client and sends
                 //    SetCreativeModeSlot; creative catalogue display slots do NOT dispatch Parts.
                 let item_tab = game
-                    .side.creative_screen
+                    .side
+                    .creative_screen
                     .0
                     .tabs
                     .iter()

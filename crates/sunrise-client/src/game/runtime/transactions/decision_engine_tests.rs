@@ -31,7 +31,10 @@ fn fixture(game: &mut crate::game::ServerGame<'_>) -> (Target, Identity) {
     )
 }
 
-fn placement(host: &GameHost<'_, '_, crate::game::server_side::ServerState>, menu: &EngineMenu) -> EnginePlan {
+fn placement(
+    host: &GameHost<'_, '_, crate::game::server_side::ServerState>,
+    menu: &EngineMenu,
+) -> EnginePlan {
     let mut preview = menu.clone();
     preview
         .click(&host.game.menu_env(), 9, 0, Input::Pickup)

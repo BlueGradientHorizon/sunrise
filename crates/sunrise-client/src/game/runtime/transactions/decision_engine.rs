@@ -34,7 +34,10 @@ pub(super) struct KeptOwner {
 impl Target {
     /// Check the active action before looking in a slot that an outer action
     /// might have lifted. A missing menu is never the reentrancy mechanism.
-    pub(in crate::game) fn admit<__Side: crate::game::Side>(game: &Game<'_, __Side>, conn: u32) -> Result<Self, Admission> {
+    pub(in crate::game) fn admit<__Side: crate::game::Side>(
+        game: &Game<'_, __Side>,
+        conn: u32,
+    ) -> Result<Self, Admission> {
         if game.transactions.iter().any(|level| {
             level
                 .action
@@ -60,7 +63,10 @@ impl Target {
         self.id
     }
 
-    fn read<'a, __Side: crate::game::Side>(&self, game: &'a Game<'_, __Side>) -> Option<(OwnerStamp, &'a EngineMenu)> {
+    fn read<'a, __Side: crate::game::Side>(
+        &self,
+        game: &'a Game<'_, __Side>,
+    ) -> Option<(OwnerStamp, &'a EngineMenu)> {
         let menus = game.lan.as_ref()?.menus.get(&self.conn)?;
         let inventory = &menus.crafting.inventory;
         Some((inventory.stamp(), inventory.as_deref()?))

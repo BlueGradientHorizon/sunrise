@@ -52,7 +52,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         if control::title_owns_text(&self.side.screen, self.side.title.0.is_some()) {
             let mut state = None;
-            self.side.title
+            self.side
+                .title
                 .0
                 .as_mut()?
                 .edit_focused_text_field(|field| state = Some(visit_box(field, edited)));

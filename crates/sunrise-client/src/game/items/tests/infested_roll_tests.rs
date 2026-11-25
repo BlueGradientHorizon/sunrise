@@ -1,7 +1,6 @@
 //! `LivingEntity.hurtServer` runs `InfestedMobEffect.onMobHurt` for a hit that
 //! was not blocked, even when armor or absorption eats all of it.
-use super::Game;
-use crate::game::{Audio, Options, Progress, Settings, execution_role, load_resources};
+use crate::game::{Options, Progress, Settings, execution_role, load_resources};
 use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
 use sunrise_client::effects::EffectInstance;

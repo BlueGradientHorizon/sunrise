@@ -1,7 +1,6 @@
 //! `LevelRef::explode` through native mod calls: source, interactions, damage type,
 //! calculator, effects and unbounded radius.
 #![cfg(test)]
-use crate::game::Game;
 use crate::game::native_entity_refs::tests::{
     bind_local_player, run_fresh_cases, run_with_game_stack, with_game,
 };
@@ -160,7 +159,10 @@ fn credit_arena(game: &mut crate::game::ServerGame<'_>) {
 }
 
 /// A blast kills a zombie on one health; check its source and rewards at the hit boundary.
-fn kill(source: fn(&mut crate::game::ServerGame<'_>) -> u32, (causing, damage_type, credited): (i32, &str, bool)) {
+fn kill(
+    source: fn(&mut crate::game::ServerGame<'_>) -> u32,
+    (causing, damage_type, credited): (i32, &str, bool),
+) {
     crate::entry::install_client_hooks();
     let deaths = Arc::new(Mutex::new(DeathObservations::default()));
     mod_platform::testing::with_mods(
@@ -184,7 +186,9 @@ fn kill(source: fn(&mut crate::game::ServerGame<'_>) -> u32, (causing, damage_ty
                     interaction: ExplosionInteraction::None,
                     settings: ExplosionSettings::default(),
                 };
-                let mob_kills = |game: &crate::game::ServerGame<'_>| game.stats.get("custom", "minecraft:mob_kills");
+                let mob_kills = |game: &crate::game::ServerGame<'_>| {
+                    game.stats.get("custom", "minecraft:mob_kills")
+                };
                 let expected_kills = mob_kills(game) + if credited { 1 } else { 0 };
                 let expected_credit = credited.then(|| game.entity(11).unwrap());
                 explode(game, blast, Ok(()));
@@ -223,7 +227,11 @@ fn kill(source: fn(&mut crate::game::ServerGame<'_>) -> u32, (causing, damage_ty
     );
 }
 
-fn kills(name: &str, source: fn(&mut crate::game::ServerGame<'_>) -> u32, expected: (i32, &'static str, bool)) {
+fn kills(
+    name: &str,
+    source: fn(&mut crate::game::ServerGame<'_>) -> u32,
+    expected: (i32, &'static str, bool),
+) {
     if run_fresh_cases(
         &format!("game::server_side::native_explosions_tests::{name}"),
         "SUNRISE_EXPLOSION_DEATH_CHILD",
@@ -531,7 +539,9 @@ impl Hooks for Listener {
 
 /// Runs `test` on a fresh game with a stone floor, the
 /// [`Listener`] hearing it, and hands it what was heard.
-fn heard(test: impl Fn(&mut crate::game::ServerGame<'_>, &Arc<Mutex<Heard>>) + Send + Sync + 'static) {
+fn heard(
+    test: impl Fn(&mut crate::game::ServerGame<'_>, &Arc<Mutex<Heard>>) + Send + Sync + 'static,
+) {
     crate::entry::install_client_hooks();
     run_with_game_stack(move || {
         let heard = Arc::new(Mutex::new(Heard::default()));

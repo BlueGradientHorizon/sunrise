@@ -47,8 +47,13 @@ fn repair(id: &str, chest: bool, table: &Enchantments) -> (u32, u32) {
                 .stage_world_tables(&packs, false, &resources)
                 .unwrap()
                 .tables;
-            game.side.world_tables.0.as_mut().unwrap().stations.enchantments =
-                std::sync::Arc::new(table.clone());
+            game.side
+                .world_tables
+                .0
+                .as_mut()
+                .unwrap()
+                .stations
+                .enchantments = std::sync::Arc::new(table.clone());
             let mut stack = ItemStack::new(
                 if chest {
                     "minecraft:diamond_chestplate"

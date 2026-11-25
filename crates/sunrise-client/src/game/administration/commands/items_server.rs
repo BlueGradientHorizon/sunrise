@@ -735,7 +735,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else {
             format!("minecraft:{raw}")
         };
-        self.side.fns
+        self.side
+            .fns
             .0
             .store
             .item_modifiers
@@ -1058,7 +1059,14 @@ pub(in crate::game::server_side) use crate::game::commands::items::mob_equipment
             std::fs::write(functions.join("ready.mcfunction"), "return 1\n").unwrap();
             let features = game.level.enabled_features.clone();
             let stack = game.reload_datapacks(false, &features).unwrap();
-            assert!(game.side.fns.0.store.functions.contains_key("wpenchant:ready"));
+            assert!(
+                game.side
+                    .fns
+                    .0
+                    .store
+                    .functions
+                    .contains_key("wpenchant:ready")
+            );
             let root = game.options.resources.clone();
             let prepared = game.prepare_world_reload(&stack, &root).unwrap();
             game.install_world_tables(prepared);
@@ -1157,7 +1165,8 @@ pub(in crate::game::server_side) use crate::game::commands::items::registered_sl
         game.side.world_root = root;
         game.ensure_datapacks();
         assert_eq!(
-            game.side.fns
+            game.side
+                .fns
                 .0
                 .data_resource("data/parity/slot_source/first_three.json")
                 .unwrap()

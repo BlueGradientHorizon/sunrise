@@ -13,7 +13,7 @@ use sunrise_core::{
 };
 use sunrise_mod_runtime::attachments::{AttachmentCodec, AttachmentError, Attachments, Holder};
 
-use super::{Dim, Game};
+use super::Dim;
 
 static CHARGE: AttachmentType<i32> = AttachmentType {
     namespace: "part_state",

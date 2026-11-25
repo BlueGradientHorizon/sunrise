@@ -795,21 +795,24 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if let Some(p) = self.side.panel.recipes.as_mut() {
                 p.page = to;
             }
-            self.side.audio
+            self.side
+                .audio
                 .0
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
             self.panel_event(owner, BrowserEvent::Page(starts[to] as u32));
             return true;
         }
         if let Some((tab, _, _)) = self.recipe_tab_hovered(layout) {
-            self.side.audio
+            self.side
+                .audio
                 .0
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
             self.panel_event(owner, BrowserEvent::Tab(tab as u32));
             return true;
         }
         if inside(cursor, self.back_button(layout).0) {
-            self.side.audio
+            self.side
+                .audio
                 .0
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
             self.panel_event(owner, BrowserEvent::Back);
@@ -834,7 +837,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         });
         if let Some((i, _)) = action {
             if pages.recipes[i].action == Some(true) {
-                self.side.audio
+                self.side
+                    .audio
                     .0
                     .play("minecraft:ui.button.click", None, 0.25, 1.0);
                 self.panel_event(owner, BrowserEvent::Action(i as u32));

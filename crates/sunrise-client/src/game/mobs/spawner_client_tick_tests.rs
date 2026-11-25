@@ -144,7 +144,10 @@ fn column(k: Pos) -> (i32, i32) {
 }
 
 /// One case's block entity as the server holds it, with its block state and packet type id.
-fn client_tick_entity(game: &crate::game::ClientGame<'_>, e: &serde_json::Value) -> (BlockStateId, i32, BlockEntity) {
+fn client_tick_entity(
+    game: &crate::game::ClientGame<'_>,
+    e: &serde_json::Value,
+) -> (BlockStateId, i32, BlockEntity) {
     let text = |k: &str| e[k].as_str().unwrap().to_owned();
     let flag = |k: &str| e[k].as_bool().unwrap().to_string();
     let (name, kind, properties, entity) = match e["kind"].as_str().unwrap() {
@@ -357,7 +360,10 @@ fn send_column(
 /// The particle and sound requests captured since the tick began, as one stream in the order
 /// they were made: a sound sits after the particles requested before it
 /// (`CapturedSound::particles_before`).
-fn event_stream(game: &mut crate::game::ClientGame<'_>, particles_at_start: u64) -> Vec<serde_json::Value> {
+fn event_stream(
+    game: &mut crate::game::ClientGame<'_>,
+    particles_at_start: u64,
+) -> Vec<serde_json::Value> {
     let particles = game.side.particles.0.requested.replace(Vec::new()).unwrap();
     let sounds = game.side.audio.0.capture.replace(Vec::new()).unwrap();
     let mut out = Vec::new();
@@ -424,7 +430,8 @@ fn start_case(
     };
     game.remote.as_mut().unwrap().profile = sunrise_client::lan::playerdata::ints_uuid(PLAYER);
     game.level.player_uuid = Some(PLAYER);
-    game.side.particles
+    game.side
+        .particles
         .0
         .seed_randoms(0, case["seed"].as_i64().unwrap(), 0);
     // `EnchantingTableBlockEntity.RANDOM`, shared by every table: one stream per case.
@@ -938,6 +945,9 @@ fn a_campfires_smoke_joins_the_engine_in_the_tick_that_made_it() {
                 "particles wait a tick to join the engine"
             );
         }
-        assert!(!game.side.particles.0.is_empty(), "the campfire made no smoke");
+        assert!(
+            !game.side.particles.0.is_empty(),
+            "the campfire made no smoke"
+        );
     });
 }

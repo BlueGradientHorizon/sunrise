@@ -433,7 +433,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     pub(in crate::game::client_side) fn block_editor_click(&mut self) -> bool {
         let size = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map_or([1, 1], |r| [r.config.width, r.config.height]);
@@ -441,7 +442,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let cursor = self.side.cursor;
         let shift = self.has_shift_down();
         let alt = self.side.keys.raw(&KeyCode::AltLeft);
-        let atlas_click = |game: &Game<'_, crate::game::client_side::ClientState>, edit: &mut EditBox| {
+        let atlas_click = |game: &Game<'_, crate::game::client_side::ClientState>,
+                           edit: &mut EditBox| {
             edit.click(&game.gui.atlas, cursor.0, false, false);
         };
         let Some(items) = self.with_block_editor(|s, e| s.editor.items(e, b.width, b.height))
@@ -511,7 +513,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// The left button released: a held slider lets go.
     pub(in crate::game::client_side) fn block_editor_release(&mut self) -> bool {
-        self.side.block_editor
+        self.side
+            .block_editor
             .0
             .as_mut()
             .is_some_and(|screen| screen.dragging.take().is_some())
@@ -529,7 +532,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let shift = self.has_shift_down();
         let types_text = self.types_text();
         let size = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map_or([1, 1], |r| [r.config.width, r.config.height]);
@@ -547,7 +551,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             KeyCode::Enter | KeyCode::NumpadEnter => {
                 let confirms = self
-                    .side.block_editor
+                    .side
+                    .block_editor
                     .0
                     .as_ref()
                     .is_some_and(|s| s.editor.enter_confirms());

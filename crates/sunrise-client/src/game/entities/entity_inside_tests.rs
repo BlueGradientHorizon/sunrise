@@ -2,7 +2,6 @@
 //! `ServerLevel.tick` ticks only the entities in entity-ticking chunks: a mob
 //! past the simulation distance presses no plate, however long it stands on it.
 
-use super::Game;
 use super::native_entity_refs::tests::with_game;
 use std::sync::Arc;
 use sunrise_client::chunk::Chunk;

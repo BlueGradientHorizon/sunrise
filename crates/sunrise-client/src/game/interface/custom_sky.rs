@@ -22,7 +22,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         title: bool,
     ) {
         let Some(mut draws) = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_mut()
             .map(|r| std::mem::take(r.custom_sky_draws()))

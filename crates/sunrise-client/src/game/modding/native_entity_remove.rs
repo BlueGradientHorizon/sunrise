@@ -427,7 +427,8 @@ mod tests {
             ));
             let _ = std::fs::remove_dir_all(&root);
             let shape = game.side.save.0.shape;
-            game.side.save.0 = Arc::new(SaveDir::new(root.clone(), shape, Some(Default::default())));
+            game.side.save.0 =
+                Arc::new(SaveDir::new(root.clone(), shape, Some(Default::default())));
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

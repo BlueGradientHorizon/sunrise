@@ -121,10 +121,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// changes its box, so the next query works the [`BoxReach`] out again.
     pub(in crate::game::server_side) fn vehicle_picked_up(&self) {
         if let Some((_, reach)) = self.side.vehicle_mobs.reach.get() {
-            self.side
-                .vehicle_mobs
-                .reach
-                .set(Some((usize::MAX, reach)));
+            self.side.vehicle_mobs.reach.set(Some((usize::MAX, reach)));
         }
     }
     /// The mobs' [`BoxReach`] while vehicles tick, none otherwise.
@@ -631,7 +628,9 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     ) -> impl Iterator<Item = (usize, &Mob)> {
         let slots = if self.vehicle_mobs_indexed() {
             let stamp = self.mobs.stamp();
-            let cache = &crate::game::Side::vehicle_mobs(&self.side).expect("vehicle_mobs_indexed requires server").riders;
+            let cache = &crate::game::Side::vehicle_mobs(&self.side)
+                .expect("vehicle_mobs_indexed requires server")
+                .riders;
             if cache.borrow().as_ref().is_none_or(|(s, _)| *s != stamp) {
                 let mut by_vehicle = FxHashMap::<u32, Vec<usize>>::default();
                 for (slot, mob) in self.mobs.iter().enumerate() {
@@ -667,7 +666,8 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// over it: a stretch runs, and no native mod is loaded (a hook can move a mob unseen, as
     /// for the carts' `CartIndex`).
     fn vehicle_mobs_indexed(&self) -> bool {
-        crate::game::Side::vehicle_mobs(&self.side).is_some_and(|vm| vm.reach.get().is_some()) && mod_api::__private::mods().is_empty()
+        crate::game::Side::vehicle_mobs(&self.side).is_some_and(|vm| vm.reach.get().is_some())
+            && mod_api::__private::mods().is_empty()
     }
 }
 

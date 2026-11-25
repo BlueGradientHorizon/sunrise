@@ -125,7 +125,6 @@ mod tests {
     use super::*;
     use crate::game::{
         Dim,
-        execution_role::ExecutionRole,
         native_entity_refs::tests::with_game,
         viewed_worlds::tests::{
             client_with_pipe, close as viewed_close, column as viewed_column, open as viewed_open,

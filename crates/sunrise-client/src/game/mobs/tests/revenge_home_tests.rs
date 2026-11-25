@@ -3,7 +3,6 @@
 //! `Mob.isWithinHome(target.blockPosition())`. The zombies run their real
 //! goals on the game's ticks; tools/ and vanilla 26.3 measured the same
 //! scene (no home and radius 12 retaliate, radius 3 does not).
-use crate::game::*;
 use std::sync::Arc;
 use sunrise_client::{chunk::Chunk, mobs::Who};
 use sunrise_core::position::ChunkPos;
@@ -15,7 +14,9 @@ const CASES: [(&str, &str); 3] = [
     ("radius 12", ",home_pos:[I;{x},200,4],home_radius:12"),
 ];
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
+fn game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> crate::game::ServerGame<'a> {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);

@@ -576,7 +576,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn pause_click(&mut self) -> Result<bool> {
         let (w, h) = {
             let size = self
-                .side.renderer
+                .side
+                .renderer
                 .0
                 .as_ref()
                 .map_or([1, 1], |r| [r.config.width, r.config.height]);
@@ -634,7 +635,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn pause_key(&mut self, key: KeyCode) -> Result<bool> {
         let (w, h) = {
             let size = self
-                .side.renderer
+                .side
+                .renderer
                 .0
                 .as_ref()
                 .map_or([1, 1], |r| [r.config.width, r.config.height]);
@@ -853,8 +855,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .is_none_or(|t| t.elapsed().as_millis() >= 1000);
         for (x, y, key, id) in death_buttons(w, h, self.level.hardcore) {
             let is_focused = self.side.death_focus == Some(id);
-            let hover =
-                active && (ui::hovered(self.side.cursor, x, y, 200.0, 20.0) || is_focused);
+            let hover = active && (ui::hovered(self.side.cursor, x, y, 200.0, 20.0) || is_focused);
             ui::button(
                 batch,
                 atlas,
@@ -944,7 +945,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
         }
         let size = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map_or([1, 1], |r| [r.config.width, r.config.height]);

@@ -152,8 +152,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             for &conn in &self.side.lan_guest_swaps {
                 if let Some(index) = host.hub.guests.connection_index(conn) {
                     let guest = &host.hub.guests[index];
-                    if self.side.lan_acting != Some(conn)
-                        || body_id != Some(guest.entity_id as u32)
+                    if self.side.lan_acting != Some(conn) || body_id != Some(guest.entity_id as u32)
                     {
                         guest.residency.extract();
                     }
@@ -186,7 +185,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         }
     }
-
 
     pub(in crate::game::server_side) fn with_specialized_resident_slot<R>(
         &mut self,
@@ -228,7 +226,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Source::DragonPart(_) | Source::Ordinary => SlotAccess::Missing,
         }
     }
-
 }
 
 impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {

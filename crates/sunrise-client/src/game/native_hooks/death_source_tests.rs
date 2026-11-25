@@ -181,7 +181,12 @@ pub(in crate::game) fn observed(
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::server_side::native_hooks_server::death_source_tests::player;
 
-pub(in crate::game) fn mob(game: &mut crate::game::ServerGame<'_>, id: u32, name: &str, position: Vec3) {
+pub(in crate::game) fn mob(
+    game: &mut crate::game::ServerGame<'_>,
+    id: u32,
+    name: &str,
+    position: Vec3,
+) {
     let kind = game.res.mob_types().get(name).unwrap().clone();
     let mut mob = Mob::new(id, kind, position, 0.0);
     mob.persistent = true;
@@ -207,7 +212,10 @@ pub(in crate::game) fn bow() -> ItemStack {
 }
 
 /// Reuse BowItem.releaseUsing, then make its collision deterministic (not its random spread).
-pub(in crate::game) fn player_arrow(game: &mut crate::game::ServerGame<'_>, weapon: &ItemStack) -> u32 {
+pub(in crate::game) fn player_arrow(
+    game: &mut crate::game::ServerGame<'_>,
+    weapon: &ItemStack,
+) -> u32 {
     game.inventory[game.selected] = Some(weapon.clone());
     game.inventory[9] = Some(ItemStack::new("minecraft:arrow", 8));
     game.release_bow(weapon, 20);
@@ -727,7 +735,11 @@ fn a_killed_guest_with_no_combat_entry_reports_its_drops() {
 }
 
 /// A loaded guest at `position` with `health` and a diamond to drop.
-pub(in crate::game) fn standing_guest(game: &mut crate::game::ServerGame<'_>, position: [f64; 3], health: f32) -> u32 {
+pub(in crate::game) fn standing_guest(
+    game: &mut crate::game::ServerGame<'_>,
+    position: [f64; 3],
+    health: f32,
+) -> u32 {
     crate::game::native_player_death::tests::add_guest(game);
     game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
         guest.loaded = true;

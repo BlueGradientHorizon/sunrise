@@ -1,7 +1,6 @@
 //! `/kill` runs death before returning. A typed server hook can veto it;
 //! a later allowed kill dies exactly once.
 use super::kill_die_vibration_tests::{PIG, deaths, run};
-use super::*;
 use mod_api::{Hooks, LivingDeathEvent, ModEntry, ServerHost};
 use mod_platform::testing::with_mods;
 use std::sync::{

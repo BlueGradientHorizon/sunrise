@@ -3,7 +3,6 @@
 //! standing in lava with its eye above the surface and one in water both take
 //! the rider.
 use super::tests::server_game;
-use crate::game::*;
 use sunrise_client::{items::ItemStack, mobs::Mob};
 use sunrise_core::geometry::Vec3;
 

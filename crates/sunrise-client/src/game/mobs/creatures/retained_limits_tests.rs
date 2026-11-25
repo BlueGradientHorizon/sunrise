@@ -44,8 +44,9 @@ fn pending_pushes_deliver_once_and_do_not_cross_world_reset() {
         let level = game.dim.id();
         let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
         let mob = |id, x| Mob::new(id, kind.clone(), Vec3::new(x, 80.0, 0.5), 0.0);
-        let velocity =
-            |game: &crate::game::ServerGame<'_>, id| game.mobs.iter().find(|m| m.id == id).unwrap().velocity;
+        let velocity = |game: &crate::game::ServerGame<'_>, id| {
+            game.mobs.iter().find(|m| m.id == id).unwrap().velocity
+        };
 
         // Only test delivery of already accepted pushes: skip ordinary mob travel in
         // the unloaded chunk so drag and new pushes cannot obscure the impulses.

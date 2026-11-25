@@ -1,6 +1,6 @@
 //! A block's parts decide whether a player breaking it destroyed it (`on_destroyed_by_player`),
 //! in place of `playerWillDestroy` and the removal.
-use crate::game::{BlockEntity, Game, native_entity_refs::tests::with_game};
+use crate::game::{BlockEntity, native_entity_refs::tests::with_game};
 use std::{path::PathBuf, sync::Arc};
 use sunrise_client::{chunk::Chunk, items::ItemStack, motion::PlayerMotion};
 use sunrise_core::{geometry::Vec3, position::ChunkPos};

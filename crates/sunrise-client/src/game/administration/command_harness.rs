@@ -271,7 +271,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     // (`announce_guest_advancements`); the rest is left for the tick.
                     let earned: Vec<_> = {
                         let len = self.adv.announced.len();
-                        let end = self.side.cmds.0.broadcast_announced.clamp(earlier.min(len), len);
+                        let end = self
+                            .side
+                            .cmds
+                            .0
+                            .broadcast_announced
+                            .clamp(earlier.min(len), len);
                         self.adv.announced.drain(earlier.min(len)..end).collect()
                     };
                     if let Some(host) = self.lan.as_mut() {

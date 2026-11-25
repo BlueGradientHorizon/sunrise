@@ -4,7 +4,7 @@
 //! (`SummonCommand.createEntity` passes `finalize = false`; `Entity.load` reads
 //! only the fields it knows) never honour it, while a mob the level loads from
 //! its chunk still does.
-use crate::game::{Audio, Game, Options, Progress, Settings, execution_role, load_resources};
+use crate::game::{Options, Progress, Settings, execution_role, load_resources};
 use std::{collections::HashSet, sync::Arc};
 use sunrise_client::{
     chunk::Chunk,

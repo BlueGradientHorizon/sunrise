@@ -28,7 +28,10 @@ pub(in crate::game) fn stings(game: &crate::game::ServerGame<'_>) -> Vec<(u8, f3
 /// A game whose window player touches one puffed (state 2) pufferfish. The
 /// server acts for the guest `lan_acting`: `playerTouch` runs there, and the
 /// event it sends reaches that player's own client.
-pub(in crate::game) fn with_fish(silent: bool, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
+pub(in crate::game) fn with_fish(
+    silent: bool,
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>),
+) {
     crate::game::native_entity_refs::tests::with_game(|game| {
         game.creative = false;
         // The acting body is the guest's, not a second local player with the same ID.

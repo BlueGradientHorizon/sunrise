@@ -101,7 +101,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.side.agent_last.map(|t| t.elapsed().as_secs()),
             self.options.control.is_some() && !self.side.agent_control_on,
         );
-        if let Some(line) = self.side.repro.0.agent_line(self.side.input_trace.0.events()) {
+        if let Some(line) = self
+            .side
+            .repro
+            .0
+            .agent_line(self.side.input_trace.0.events())
+        {
             lines.push(line);
         }
         lines

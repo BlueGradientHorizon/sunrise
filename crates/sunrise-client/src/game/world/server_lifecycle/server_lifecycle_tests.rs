@@ -100,13 +100,15 @@ fn integrated_stop_finishes_after_an_unencodable_record() {
             let neighbour = (3, -3);
             let deleted = (4, -3);
             let entity = |marker| Tag::compound([("marker", Tag::Int(marker))]);
-            game.side.save
+            game.side
+                .save
                 .0
                 .save_entities(vec![(slot, vec![entity(1)]), (deleted, vec![entity(3)])])
                 .unwrap();
             let invalid = (0..=DISK_WRITE_NESTING_GUARD)
                 .fold(Tag::Int(0), |nested, _| Tag::List(vec![nested]));
-            game.side.save
+            game.side
+                .save
                 .0
                 .save_entities_later(vec![
                     (slot, vec![invalid]),
@@ -167,7 +169,8 @@ fn integrated_stop_propagates_metadata_errors_even_after_a_record_failure() {
                 if mixed {
                     let invalid = (0..=DISK_WRITE_NESTING_GUARD)
                         .fold(Tag::Int(0), |nested, _| Tag::List(vec![nested]));
-                    game.side.save
+                    game.side
+                        .save
                         .0
                         .save_entities(vec![((2, 0), vec![invalid])])
                         .unwrap();
@@ -452,7 +455,8 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                         if config_panic {
                             let registry = &game.pack.assets.registry;
                             let chunk = game
-                                .side.save
+                                .side
+                                .save
                                 .0
                                 .load(0, 0, registry, world_biomes!(game))
                                 .unwrap();

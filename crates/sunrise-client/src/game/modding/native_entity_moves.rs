@@ -494,20 +494,23 @@ pub(in crate::game) mod tests {
                 ));
             let stand = game.entity(13).unwrap();
             assert!(!stand.set_rotation(game, 30.0, 10.0));
-            game.side.others.0.push(super::super::commands::OtherEntity {
-                size_answer: None,
-                attachment_lifetime: Default::default(),
-                knot_check: None,
-                eye: None,
-                join: Default::default(),
-                item_transformation: None,
-                interaction: None,
-                id: 14,
-                kind: "minecraft:marker".into(),
-                position: Vec3::ZERO,
-                yaw: 60.0,
-                pitch: 0.0,
-            });
+            game.side
+                .others
+                .0
+                .push(super::super::commands::OtherEntity {
+                    size_answer: None,
+                    attachment_lifetime: Default::default(),
+                    knot_check: None,
+                    eye: None,
+                    join: Default::default(),
+                    item_transformation: None,
+                    interaction: None,
+                    id: 14,
+                    kind: "minecraft:marker".into(),
+                    position: Vec3::ZERO,
+                    yaw: 60.0,
+                    pitch: 0.0,
+                });
             let marker = game.entity(14).unwrap();
             assert_eq!(marker.head_yaw(game), Some(0.0));
             assert!(!marker.set_head_yaw(game, 10.0));

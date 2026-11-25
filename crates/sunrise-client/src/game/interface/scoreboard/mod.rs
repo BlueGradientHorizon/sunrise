@@ -150,8 +150,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerLevel.getWorldBorder`'s file: each dimension's own
     /// `data/minecraft/world_border.dat`.
     pub(in crate::game::server_side) fn border_path(&self, dim: super::Dim) -> std::path::PathBuf {
-        save::dimension_dir(&self.side.world_root, dim.id())
-            .join("data/minecraft/world_border.dat")
+        save::dimension_dir(&self.side.world_root, dim.id()).join("data/minecraft/world_border.dat")
     }
     /// The border `dim`'s level saved. The Overworld also reads the root file older Sunrise
     /// builds wrote for their one shared border; the other levels start from the default.
@@ -161,12 +160,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> sunrise_client::worldborder::WorldBorder {
         let mut root = save::read_dat(&self.border_path(dim));
         if root.is_none() && dim == super::Dim::Overworld {
-            root = save::read_dat(
-                &self
-                    .side
-                    .world_root
-                    .join("data/minecraft/world_border.dat"),
-            );
+            root = save::read_dat(&self.side.world_root.join("data/minecraft/world_border.dat"));
         }
         root.as_ref()
             .and_then(|root| root.get("data"))

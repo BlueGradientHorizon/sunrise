@@ -5,7 +5,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn biome_key_snapshot(
         &self,
     ) -> std::sync::Arc<mod_api::__private::BiomeKeys> {
-        self.side.world_tables
+        self.side
+            .world_tables
             .0
             .as_ref()
             .map(|tables| tables.data_maps.biome_keys.clone())

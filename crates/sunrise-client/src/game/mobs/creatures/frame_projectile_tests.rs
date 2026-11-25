@@ -1,11 +1,13 @@
 //! A projectile that strikes an item frame hurts it (#11383): `ItemFrame.hurtServer`
 //! gives the item up, an empty frame breaks, and a fixed one refuses the hit.
-use crate::game::{Audio, Game, Options, Progress, Settings, execution_role, load_resources};
+use crate::game::{Options, Progress, Settings, execution_role, load_resources};
 use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
+fn game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),

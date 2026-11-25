@@ -1,5 +1,5 @@
 //! Game event regressions for server-side block actions.
-use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+use crate::game::{Options, Progress, Settings, load_resources};
 use std::sync::Arc;
 use sunrise_client::{
     chunk::Chunk,
@@ -287,7 +287,11 @@ fn a_landing_posts_the_block_game_event_its_rule_posts() {
 fn a_cauldron_use_posts_its_fluid_event_after_the_sound() {
     use sunrise_world::registry::BlockStateId;
     type Posted = (&'static str, [f64; 3], Option<Who>);
-    fn use_on(game: &mut crate::game::ServerGame<'_>, cauldron: BlockStateId, held: ItemStack) -> Vec<Posted> {
+    fn use_on(
+        game: &mut crate::game::ServerGame<'_>,
+        cauldron: BlockStateId,
+        held: ItemStack,
+    ) -> Vec<Posted> {
         game.world.set(2, 4, 3, cauldron).unwrap();
         *game.held_mut() = Some(held);
         super::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));

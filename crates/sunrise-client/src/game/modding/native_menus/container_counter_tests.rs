@@ -5,7 +5,6 @@
 
 use super::tests::sent;
 use crate::game::{
-    Game,
     native_entity_refs::tests::with_game,
     native_item_places::tests::{guest, open_to_lan},
 };

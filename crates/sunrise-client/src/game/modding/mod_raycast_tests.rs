@@ -1,5 +1,4 @@
 //! A client mod's `raycast` and `view_hit` hit loaded blocks only, far terrain on or off.
-use super::*;
 use crate::game::{
     execution_role,
     launch_options::Options,

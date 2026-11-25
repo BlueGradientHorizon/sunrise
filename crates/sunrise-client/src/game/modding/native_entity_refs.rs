@@ -1763,9 +1763,7 @@ pub(in crate::game) mod tests {
         cached: bool,
         test: impl FnOnce(&mut crate::game::ServerGame<'_>),
     ) {
-        use super::super::{
-            Audio, Game, Options, Progress, Settings, load_resources, load_resources_uncached,
-        };
+        use super::super::{Options, Progress, Settings, load_resources, load_resources_uncached};
         use mod_api::Authority;
 
         // Parts registration replaces its metadata snapshot. Finish registration before
@@ -1858,7 +1856,7 @@ pub(in crate::game) mod tests {
         test: impl FnOnce(&mut crate::game::ClientGame<'_>),
     ) {
         use super::super::{
-            Audio, Game, Options, Progress, Settings, load_resources, load_resources_uncached,
+            Audio, Options, Progress, Settings, load_resources, load_resources_uncached,
         };
         use mod_api::Authority;
 
@@ -4762,7 +4760,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn level_shapes_use_empty_context() {
-        use super::super::{Audio, Game, Options, Progress, Settings, load_resources};
+        use super::super::{Options, Progress, Settings, load_resources};
         use mod_api::{Authority, BlockShapeKind};
         use std::{sync::Arc, time::Instant};
         use sunrise_client::chunk::Chunk;
@@ -4900,7 +4898,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn level_block_writes_validate_and_change_world() {
-        use super::super::{Audio, Game, Options, Progress, Settings, load_resources};
+        use super::super::{Options, Progress, Settings, load_resources};
         use mod_api::{Authority, BlockUpdateFlags, HostTransaction};
         use std::{sync::Arc, time::Instant};
         use sunrise_client::{chunk::Chunk, items::ItemStack};

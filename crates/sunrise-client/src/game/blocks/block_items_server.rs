@@ -502,7 +502,12 @@ pub(in crate::game) mod styled_name_model_tests {
         assert!(decoded.block_entities.iter().any(|(at, _)| *at == pos));
         saved
     }
-    fn views(game: &crate::game::ServerGame<'_>, pos: (i32, i32, i32), want: Option<&Tag>, missing: &mut Vec<String>) {
+    fn views(
+        game: &crate::game::ServerGame<'_>,
+        pos: (i32, i32, i32),
+        want: Option<&Tag>,
+        missing: &mut Vec<String>,
+    ) {
         assert!(game.world.loaded(pos.0, pos.2));
         let Some(BlockEntity::Chest(slots)) = game.world.block_entities.get(&pos) else {
             panic!("actual modeled container")

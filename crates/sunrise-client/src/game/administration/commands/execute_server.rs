@@ -346,9 +346,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                     let conn = if attacker {
                                         // `getLastHurtByMob`: the player who hit it,
                                         // not whichever client is reading it.
-                                        self.side.last_hurt_by_player.get(&id).and_then(
-                                            |credit| self.resolve_player_credit(*credit).flatten(),
-                                        )
+                                        self.side.last_hurt_by_player.get(&id).and_then(|credit| {
+                                            self.resolve_player_credit(*credit).flatten()
+                                        })
                                     } else {
                                         None
                                     };
@@ -861,7 +861,11 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// so a killed entity and a later summon of the same UUID can both be
     /// in it; the one the level still holds is the entity.
     pub(in crate::game) fn target_with_uuid(&self, uuid: [i32; 4]) -> Option<Target> {
-        if is_player_in_place(uuid, crate::game::Side::lan_acting_uuid(&self.side), self.level.player_uuid) {
+        if is_player_in_place(
+            uuid,
+            crate::game::Side::lan_acting_uuid(&self.side),
+            self.level.player_uuid,
+        ) {
             if crate::game::Side::native_command_filter(&self.side) {
                 return self
                     .player(sunrise_client::lan::playerdata::ints_uuid(uuid))
@@ -1149,7 +1153,10 @@ pub(in crate::game) mod score_condition_tests {
     #[allow(unused_imports)]
     pub(in crate::game::server_side) use crate::game::game_tests::tests::server_game;
 
-    pub(in crate::game) fn say(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Vec<String>) {
+    pub(in crate::game) fn say(
+        game: &mut crate::game::ServerGame<'_>,
+        command: &str,
+    ) -> (bool, Vec<String>) {
         game.side.chat_capture = Some(Vec::new());
         let ok = game.run_command(command);
         let said = game.side.chat_capture.take().unwrap_or_default();

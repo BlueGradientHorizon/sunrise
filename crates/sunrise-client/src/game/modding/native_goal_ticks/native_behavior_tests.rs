@@ -670,7 +670,9 @@ fn a_villager_without_mod_behaviors_draws_what_a_parts_free_one_does() {
     let _test = TEST.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     // The 50-tick run of one phase: the same villager spot, the same game
     // times, one level random of the test's own.
-    fn fifty_ticks(game: &mut crate::game::ServerGame<'_>) -> ((u64, Option<f64>), (u64, Option<f64>)) {
+    fn fifty_ticks(
+        game: &mut crate::game::ServerGame<'_>,
+    ) -> ((u64, Option<f64>), (u64, Option<f64>)) {
         villager(game, 8, [3.5, 65.0, 3.5]);
         let mut test_level = sunrise_client::health::TestLevel::new(0);
         let mut level = test_level.level();

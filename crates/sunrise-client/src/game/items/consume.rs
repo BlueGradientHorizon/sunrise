@@ -66,9 +66,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// first, and completes the use itself (eating the food there too).
     pub(in crate::game::server_side) fn send_use_item_complete(&mut self) {
         if self.side.lan_acting.is_some() {
-            self.side
-                .guest_entity_events
-                .push(USE_ITEM_COMPLETE_EVENT);
+            self.side.guest_entity_events.push(USE_ITEM_COMPLETE_EVENT);
         }
     }
     /// Server-side `Consumable.emitParticlesAndSounds`.

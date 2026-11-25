@@ -518,7 +518,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             );
         }
         if let Some(pitch) = growl {
-            self.side.audio
+            self.side
+                .audio
                 .0
                 .play("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
         }
@@ -596,7 +597,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
             }
             if let Some((at, pitch)) = growl {
-                self.side.audio
+                self.side
+                    .audio
                     .0
                     .play("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
             }
@@ -628,7 +630,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let at = [d.position.x, d.position.y, d.position.z];
         if flap_was <= -0.3 && flap_now >= -0.3 {
             let pitch = 0.8 + self.world.random.next_float() * 0.3;
-            self.side.audio
+            self.side
+                .audio
                 .0
                 .play("minecraft:entity.ender_dragon.flap", Some(at), 5.0, pitch);
         }
@@ -638,7 +641,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if d.growl < 0 {
                 d.growl = 200 + d.random.next_int_bound(200).unwrap_or(0);
                 let pitch = 0.8 + self.world.random.next_float() * 0.3;
-                self.side.audio
+                self.side
+                    .audio
                     .0
                     .play("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
             }

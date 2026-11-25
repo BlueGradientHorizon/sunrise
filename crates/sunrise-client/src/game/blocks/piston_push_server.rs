@@ -1519,7 +1519,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod order_tests {
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
     use sunrise_client::chunk::Chunk;
     use sunrise_core::geometry::Vec3;
@@ -1949,7 +1949,7 @@ pub(in crate::game) mod order_tests {
 #[cfg(test)]
 pub(in crate::game) mod h255_mob_piston_ground_tests {
     use super::*;
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
     use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
@@ -2161,7 +2161,11 @@ pub(in crate::game) mod h255_mob_piston_ground_tests {
         i
     }
 
-    pub(in crate::game) fn added_push(game: &mut crate::game::ServerGame<'_>, i: usize, movement: Vec3) {
+    pub(in crate::game) fn added_push(
+        game: &mut crate::game::ServerGame<'_>,
+        i: usize,
+        movement: Vec3,
+    ) {
         let m = &game.mobs[i];
         let (bounds, at, step, ground) = (
             m.bounds(),
@@ -2396,7 +2400,7 @@ pub(in crate::game) mod h255_mob_piston_ground_tests {
 pub(in crate::game) mod lid_push_tests {
     use super::h255_mob_piston_ground_tests::with_game;
     use super::{EntityHandle, Lid};
-    use crate::game::Game;
+
     use sunrise_client::mobs::{MobEvent, Species};
     use sunrise_core::geometry::{Aabb, Vec3};
 
@@ -2633,7 +2637,8 @@ pub(in crate::game) mod lid_push_tests {
                 game.boats[0].position.y, 200.0,
                 "the shulker's vehicle stays"
             );
-            let player_y = |game: &crate::game::ServerGame<'_>| game.player.as_ref().unwrap().position.y;
+            let player_y =
+                |game: &crate::game::ServerGame<'_>| game.player.as_ref().unwrap().position.y;
             assert_eq!(player_y(game), 200.0, "its fellow passenger stays");
         });
     }

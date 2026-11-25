@@ -1,7 +1,7 @@
 //! After `armor_stand_manipulate` returns without cancelling, the game finds the stand again by its
 //! id and checks what the click was decided on; a change spends the click and nothing moves.
+use crate::game::InteractTarget;
 use crate::game::hook_meddler_tests::with_meddler;
-use crate::game::{Game, InteractTarget};
 use sunrise_client::entities::ArmorStand;
 use sunrise_client::items::ItemStack;
 use sunrise_core::geometry::Vec3;

@@ -72,7 +72,10 @@ impl Journal {
         }
     }
 
-    pub(in crate::game) fn rollback_in<__Side: crate::game::Side>(mut self, game: &mut crate::game::Game<'_, __Side>) {
+    pub(in crate::game) fn rollback_in<__Side: crate::game::Side>(
+        mut self,
+        game: &mut crate::game::Game<'_, __Side>,
+    ) {
         for kept in std::mem::take(&mut self.owners).into_values() {
             kept.rollback(game);
         }

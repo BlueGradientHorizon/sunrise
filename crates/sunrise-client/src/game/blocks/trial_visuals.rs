@@ -42,7 +42,10 @@ fn flame(ominous: bool) -> T {
 
 impl Game<'_, crate::game::client_side::ClientState> {
     fn particle(&mut self, ty: T, p: [f64; 3], v: [f64; 3]) {
-        self.side.particles.0.add(&ParticleOptions::simple(ty), p, v);
+        self.side
+            .particles
+            .0
+            .add(&ParticleOptions::simple(ty), p, v);
     }
     /// `ClientLevel.playLocalSound`: the sound's seed is the level random's next long, drawn
     /// in turn with the particles' (`Particles::level_random`).

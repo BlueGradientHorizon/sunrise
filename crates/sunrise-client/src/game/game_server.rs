@@ -211,10 +211,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let group = sunrise_client::cooldowns::group(stack, default.as_ref());
         let mut cancel = false;
-        if let (Some(player), Some(name)) = (
-            self.side.lan_acting_uuid,
-            self.side.lan_acting_name.clone(),
-        ) {
+        if let (Some(player), Some(name)) =
+            (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
+        {
             self.native_player_item_cooldown(
                 player,
                 &name,
@@ -641,8 +640,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // MinecraftServer.prepareLevels restores the saved tickets after the
         // built-in levels have been published.
         self.side.tickets.0 = Default::default();
-        self.side.startup_ticket_restore_pending =
-            self.options.execution_role.is_logical_server();
+        self.side.startup_ticket_restore_pending = self.options.execution_role.is_logical_server();
         // The ride the player's file names, once the vehicle is in the world.
         self.side.pending_vehicle = level.root_vehicle;
         self.level = level;
@@ -1409,10 +1407,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         level.xp_level = self.experience.level;
         level.xp_progress = self.experience.progress;
         level.xp_total = self.experience.total;
-        level.root_vehicle = vehicle
-            .as_ref()
-            .map(|v| v.2)
-            .or(self.side.pending_vehicle);
+        level.root_vehicle = vehicle.as_ref().map(|v| v.2).or(self.side.pending_vehicle);
         // The ride's tree, or none once the file's own came back.
         if let Some((tag, ..)) = vehicle {
             let extra = level
@@ -1805,10 +1800,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // NeoForge's CanPlayerSleepEvent: a mod may clear or replace the
         // problem vanilla found, or add one.
         let mut problem = problem.map(str::to_owned);
-        if let (Some(player), Some(name)) = (
-            self.side.lan_acting_uuid,
-            self.side.lan_acting_name.clone(),
-        ) {
+        if let (Some(player), Some(name)) =
+            (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
+        {
             self.native_can_player_sleep(player, &name, head, &mut problem);
         }
         if let Some(problem) = problem {
@@ -1851,10 +1845,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 true,
             );
         }
-        if let (Some(player), Some(name)) = (
-            self.side.lan_acting_uuid,
-            self.side.lan_acting_name.clone(),
-        ) {
+        if let (Some(player), Some(name)) =
+            (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
+        {
             let mut cancel = false;
             self.native_player_bed_enter(player, &name, head, &mut cancel);
             if cancel {
@@ -2190,10 +2183,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.sleep_timer = if wake_immediately { 0 } else { 100 };
         // The active guest's live body wakes here; the hub owns its wake
         // animation and sleeping metadata, not the suspended outer actor.
-        if let Some(i) = self
-            .side
-            .lan_acting
-            .and_then(|conn| self.guest_index(conn))
+        if let Some(i) = self.side.lan_acting.and_then(|conn| self.guest_index(conn))
             && let Some(host) = self.lan.as_mut()
         {
             // The live turn may have changed its bed since entry.

@@ -1,7 +1,7 @@
 //! Actual command execution with prepared resources. Canonical membership is
 //! installed only in a fresh process; no native mod bundle or trait hooks are used.
 use super::*;
-use crate::game::{Audio, Options, Progress, Settings, load_resources};
+use crate::game::{Options, Progress, Settings, load_resources};
 use std::{path::PathBuf, sync::Arc};
 use sunrise_client::{
     chunk::Chunk,

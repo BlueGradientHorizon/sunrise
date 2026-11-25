@@ -197,10 +197,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         self.award_stat("used", "minecraft:firework_rocket", 1);
         self.swing_arm();
-        if let (Some(player), Some(name)) = (
-            self.side.lan_acting_uuid,
-            self.side.lan_acting_name.clone(),
-        ) {
+        if let (Some(player), Some(name)) =
+            (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
+        {
             self.native_player_elytra_boost(player, &name);
         }
         true
@@ -419,10 +418,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         rocket.turn_to_shot();
         rocket.angled = true;
         rocket.owner = owner;
-        rocket.guest = self
-            .side
-            .lan_acting
-            .filter(|_| owner == Some(Who::Player));
+        rocket.guest = self.side.lan_acting.filter(|_| owner == Some(Who::Player));
         self.rockets.push(rocket);
     }
     /// `FireworkRocketItem.useOn`: launch from the clicked point.

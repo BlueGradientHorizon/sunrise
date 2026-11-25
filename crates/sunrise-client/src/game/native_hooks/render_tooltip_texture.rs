@@ -59,7 +59,10 @@ pub(in crate::game) mod render_tooltip_texture_tests {
             h: 100,
         }
     }
-    fn drawn(game: &crate::game::ClientGame<'_>, stack: Option<&ItemStack>) -> Vec<([f32; 2], u32)> {
+    fn drawn(
+        game: &crate::game::ClientGame<'_>,
+        stack: Option<&ItemStack>,
+    ) -> Vec<([f32; 2], u32)> {
         let mut batch = HudBatch::scratch([320, 240]);
         game.tooltip_box(&mut batch, stack, 40.0, 30.0, 60.0, 8.0);
         batch.vertices.iter().map(|v| (v.uv, v.color)).collect()

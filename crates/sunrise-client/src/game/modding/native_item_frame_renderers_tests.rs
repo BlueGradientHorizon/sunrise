@@ -3,7 +3,6 @@
 //! frame model and the item or map on its face, reading the frame's own state; with no renderer
 //! the family's own geometry is unchanged; a failing renderer leaves that geometry until a
 //! resource reload resolves it again.
-use super::Game;
 use super::native_entity_renderers::EntityRendererTable;
 use mod_api::{
     BlockEntityDrawContext, Direction, EntityRenderState, EntityRenderer, Hooks,
@@ -128,7 +127,11 @@ fn frame_frame(game: &mut crate::game::ClientGame<'_>, id: u32, glow: bool) -> V
 /// `frame_geometry`. Used so a deterministic change to the model cannot pass by matching itself.
 /// The framed item, if any, is not included: the registered-renderer test checks that a
 /// successful replacement drops the contents, and the fallback test checks that they stay.
-fn expected_frame(game: &crate::game::ClientGame<'_>, f: &ItemFrame, camera: glam::DVec3) -> Vec<Vertex> {
+fn expected_frame(
+    game: &crate::game::ClientGame<'_>,
+    f: &ItemFrame,
+    camera: glam::DVec3,
+) -> Vec<Vertex> {
     let sprites = &game.gui.atlas.sprites;
     let s = f.step();
     let (x_rot, y_rot) = if s[1] == 0 {
@@ -245,7 +248,10 @@ fn an_item_frame_registration_resolves_to_the_frame_slots() {
 /// Runs `check` on a client game with prepared resources and the scene's frame renderers,
 /// resolved as the first load does. In a child process running only `test`: the registrations are
 /// kept once per process.
-fn in_scene(test: &str, check: impl FnOnce(&mut crate::game::ClientGame<'_>, &Arc<Mutex<Heard>>, &Flaky)) {
+fn in_scene(
+    test: &str,
+    check: impl FnOnce(&mut crate::game::ClientGame<'_>, &Arc<Mutex<Heard>>, &Flaky),
+) {
     if std::env::var_os("SUNRISE_ITEM_FRAME_RENDERERS_CHILD").is_none() {
         let status = std::process::Command::new(std::env::current_exe().unwrap())
             .args([

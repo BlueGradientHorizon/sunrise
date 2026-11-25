@@ -1,6 +1,6 @@
 //! A block's parts decide what a tool makes of it (`tool_modified_state`); whether a player
 //! breaking it destroyed it (`on_destroyed_by_player`) is in `player_destroy_tests.rs`.
-use crate::game::{Game, Hit, native_guest_turn_tests};
+use crate::game::{Hit, native_guest_turn_tests};
 use mod_api::{BlockHit, Hand};
 use std::sync::Arc;
 use sunrise_client::{chunk::Chunk, items::ItemStack};

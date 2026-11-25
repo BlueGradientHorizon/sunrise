@@ -3,7 +3,7 @@
 //! These prepared tests also exercise menu retirement during travel.
 use super::Dim;
 use crate::game::{
-    Game, execution_role::ExecutionRole, lan::LanSettings, lan_actions::GuestCommand,
+    execution_role::ExecutionRole, lan::LanSettings, lan_actions::GuestCommand,
     native_entity_refs::tests::with_game_role,
 };
 use mod_api::{
@@ -159,12 +159,7 @@ fn light(game: &mut crate::game::ServerGame<'_>, cx: i32, cz: i32) {
 fn finish_trip(game: &mut crate::game::ServerGame<'_>, dim: Dim) {
     let home = game.dim;
     for _ in 0..20 {
-        let Some(trip) = game
-            .side
-            .server_trips
-            .iter()
-            .find(|trip| trip.conn == CONN)
-        else {
+        let Some(trip) = game.side.server_trips.iter().find(|trip| trip.conn == CONN) else {
             break;
         };
         let (target_dim, target) = (trip.dim, trip.target);

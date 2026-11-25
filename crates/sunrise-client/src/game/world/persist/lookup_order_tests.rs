@@ -223,8 +223,9 @@ pub(in crate::game::server_side) fn run_a_crossing_without_a_listener_saves_afte
             ],
         );
         game.spawn_loaded_entities();
-        let save =
-            |game: &mut crate::game::ServerGame<'_>| saved_order(&game.entity_chunks(&HashSet::from([key]), false));
+        let save = |game: &mut crate::game::ServerGame<'_>| {
+            saved_order(&game.entity_chunks(&HashSet::from([key]), false))
+        };
         assert_eq!(save(game), vec![vec![0, 0, 1, 2]]);
         // The pig walks up into section 4, which already holds the zombie.
         let id = game.mob_by_uuid([2703, 0, 0, 1]).unwrap();

@@ -440,7 +440,10 @@ fn control_a_source_in_neither_tag_still_fails_without_a_hurt() {
 }
 
 /// The game events (name, source) posted while `f` runs.
-fn events(game: &mut crate::game::ServerGame<'_>, f: impl FnOnce(&mut crate::game::ServerGame<'_>)) -> Vec<(&'static str, Option<Who>)> {
+fn events(
+    game: &mut crate::game::ServerGame<'_>,
+    f: impl FnOnce(&mut crate::game::ServerGame<'_>),
+) -> Vec<(&'static str, Option<Who>)> {
     super::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
     f(game);
     super::sculk::TEST_POSTED_EVENTS.with(|e| {

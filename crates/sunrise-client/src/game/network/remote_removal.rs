@@ -34,7 +34,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
         }
         for id in self
-            .side.text_displays
+            .side
+            .text_displays
             .0
             .values()
             .filter_map(|d| d.vehicle)
@@ -111,7 +112,7 @@ mod tests {
     #[ignore = "daily"]
     fn remove_entities_detaches_only_removed_vehicles() {
         use crate::game::{
-            Audio, Game, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
+            Audio, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
         };
         use sunrise_protocol::packets::play::{self, Clientbound as C};
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -200,7 +201,7 @@ mod tests {
     #[ignore = "daily"]
     fn add_entity_replaces_falling_block_without_removing_other_ids() {
         use crate::game::{
-            Audio, Game, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
+            Audio, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
         };
         use sunrise_protocol::packets::play::{self, Clientbound as C};
 
@@ -290,7 +291,7 @@ mod tests {
     #[ignore = "daily"]
     fn remove_entities_filters_mixed_entity_lists() {
         use crate::game::{
-            Audio, Game, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
+            Audio, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
         };
         use sunrise_protocol::packets::play::{self, Clientbound as C};
 

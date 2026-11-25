@@ -1,7 +1,7 @@
 //! A mod's `teleport_to_level` into another level, kind by kind
 //! (`Entity.teleportCrossDimension`): what each kind keeps, and a kind it cannot move.
+use crate::game::Dim;
 use crate::game::native_entity_refs::tests::with_game;
-use crate::game::{Dim, Game};
 use sunrise_core::geometry::Vec3;
 
 /// A mod's `teleport_to_level` into another level carries an item and an arrow there as

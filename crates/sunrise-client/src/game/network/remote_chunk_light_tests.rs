@@ -1,4 +1,3 @@
-use super::Game;
 use crate::game::{
     in_own_process, native_entity_refs::tests::with_client_game, remote::RemoteDimensionEntry,
 };

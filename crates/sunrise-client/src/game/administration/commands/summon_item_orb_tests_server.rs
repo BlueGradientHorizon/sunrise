@@ -187,7 +187,8 @@ pub(in crate::game) fn run_summon_replies_with_the_custom_name_of_every_kind() {
                 );
             }
             let results: Vec<serde_json::Value> = game
-                .side.cmds
+                .side
+                .cmds
                 .0
                 .results
                 .take()

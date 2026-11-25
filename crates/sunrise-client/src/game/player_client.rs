@@ -509,7 +509,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return None;
         }
         Shows::from_kind(remote.tracked(id)?.0)?;
-        self.side.text_displays
+        self.side
+            .text_displays
             .0
             .get(&id)
             .map(|d| d.position().to_array())

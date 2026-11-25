@@ -1,6 +1,5 @@
 //! `LivingEntity.aiStep` -> `EntityEquipment.tick` -> `CompassItem.inventoryTick` for mobs, and
 //! the compass-only rule a player's `Inventory.tick` shares with them (#3221).
-use super::Game;
 use sunrise_client::{items::ItemStack, motion::PlayerMotion};
 use sunrise_core::{geometry::Vec3, nbt::Tag, position::BlockPos};
 
@@ -8,7 +7,9 @@ const UUID_HIGH: i32 = 3221;
 
 /// A server with chunk (0, 0) loaded and entity-ticking, a stone floor at y 63 and lodestones
 /// at (5, 64, 5) and (7, 64, 7).
-fn lodestone_world(resources: &mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'_> {
+fn lodestone_world(
+    resources: &mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> crate::game::ServerGame<'_> {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);

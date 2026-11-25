@@ -2,7 +2,7 @@
 //! hand clicked on a hanging sign's free side chains another sign onto it, unless
 //! the side the player faces carries click commands, which the click runs instead
 //! (`shouldTryToChainAnotherHangingSign`).
-use crate::game::{Game, Hit};
+use crate::game::Hit;
 use sunrise_client::signs::SignData;
 use sunrise_client::{containers::BlockEntity, items::ItemStack, mobs::Who};
 use sunrise_core::geometry::Vec3;

@@ -8,7 +8,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             && let Some(sunrise_client::mobs::MobEvent::Sound(name, at, volume, pitch)) =
                 zombie_villager::cure_sound(m)
         {
-            self.side.audio
+            self.side
+                .audio
                 .0
                 .play_unshared(&format!("minecraft:{name}"), Some(at), volume, pitch);
         }

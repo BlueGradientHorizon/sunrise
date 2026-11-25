@@ -775,7 +775,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         rotation: Option<(f32, f32)>,
     ) -> bool {
         let Some(pos) = self
-            .side.text_displays
+            .side
+            .text_displays
             .0
             .get(&id)
             .map(RemoteTextDisplay::position)
@@ -784,7 +785,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let is_ticking = self.is_display_ticking(pos);
         let interpolating = self
-            .side.text_displays
+            .side
+            .text_displays
             .0
             .get_mut(&id)
             .is_some_and(|d| d.apply_position_sync(position, rotation, is_ticking));
@@ -806,7 +808,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         relatives: i32,
     ) -> Option<[f64; 3]> {
         let (resolved, interpolated) = self
-            .side.text_displays
+            .side
+            .text_displays
             .0
             .get_mut(&id)?
             .apply_teleport_packet(position, yaw, pitch, relatives);
@@ -825,7 +828,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// through the level callback), before its riders are seated.
     pub(in crate::game::client_side) fn file_snapped_display(&mut self, id: i32) {
         if let Some(at) = self
-            .side.text_displays
+            .side
+            .text_displays
             .0
             .get(&id)
             .map(RemoteTextDisplay::position)
@@ -1082,10 +1086,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// same camera source of truth as `particle_rotation` (`ThirdPersonFront` already baked in).
     pub(in crate::game::client_side) fn display_camera_angles(&self) -> [f32; 2] {
         if self.side.studio.flying() {
-            return [
-                self.side.studio.freecam.yaw,
-                self.side.studio.freecam.pitch,
-            ];
+            return [self.side.studio.freecam.yaw, self.side.studio.freecam.pitch];
         }
         let (yaw, pitch) = self
             .side
@@ -1228,7 +1229,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // so indirect-passenger vehicle chains across displays resolve accurately.
             visible.clear();
             for (&id, display) in self
-                .side.text_displays
+                .side
+                .text_displays
                 .0
                 .iter()
                 .filter(|(_, d)| d.shows == shows)
@@ -1265,7 +1267,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
                 let light = Self::display_light(&self.world, &d, position, on_fire);
                 let outline = self
-                    .side.text_displays
+                    .side
+                    .text_displays
                     .0
                     .get(&id)
                     .and_then(|display| self.display_outline(id, display));
@@ -1379,7 +1382,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let mut visible = std::mem::take(&mut self.side.display_visible_scratch);
         visible.clear();
         for (&id, display) in self
-            .side.text_displays
+            .side
+            .text_displays
             .0
             .iter()
             .filter(|(_, d)| d.shows == Shows::Text)

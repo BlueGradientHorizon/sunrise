@@ -68,7 +68,6 @@ pub(in crate::game) fn lend_inventory_view(
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
-
     /// Why a write to this player's inventory, ender chest or hands is refused
     /// before it starts: a client, a handle with no online player, a dead player.
     pub(in crate::game) fn player_write_gate(

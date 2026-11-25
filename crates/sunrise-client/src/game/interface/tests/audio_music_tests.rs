@@ -122,7 +122,8 @@ fn guardian_and_elder_events_admit_two_independent_loops_each() {
                     br#"{"entity.guardian.attack":{"sounds":["fixture/guardian"]}}"#,
                     &|_, _| true,
                 );
-                game.side.audio
+                game.side
+                    .audio
                     .0
                     .engine
                     .set_test_playback_hook(|sound, _, _, _| {

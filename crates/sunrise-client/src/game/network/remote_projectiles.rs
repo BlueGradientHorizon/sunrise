@@ -397,7 +397,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let smoking: Vec<Vec3> = self.tnts.iter().map(|t| t.position).collect();
         let smoke = ParticleOptions::simple(ParticleType::Smoke);
         for p in smoking {
-            self.side.particles
+            self.side
+                .particles
                 .0
                 .add(&smoke, [p.x, p.y + 0.5, p.z], [0.0; 3]);
         }
@@ -834,7 +835,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if p.is_spectral_arrow() {
                 if !p.stuck {
                     let options = ParticleOptions::simple(ParticleType::Effect);
-                    self.side.particles.0.add(&options, [at.x, at.y, at.z], [0.0; 3]);
+                    self.side
+                        .particles
+                        .0
+                        .add(&options, [at.x, at.y, at.z], [0.0; 3]);
                 }
                 continue;
             }
@@ -889,7 +893,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .map(|p| p.position)
             .collect();
         for p in at {
-            self.side.particles
+            self.side
+                .particles
                 .0
                 .add(&trail, [p.x, p.y + 0.5, p.z], [0.0; 3]);
         }
@@ -917,7 +922,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn smoke_trails(&mut self, at: impl IntoIterator<Item = Vec3>) {
         let smoke = ParticleOptions::simple(ParticleType::Smoke);
         for p in at {
-            self.side.particles
+            self.side
+                .particles
                 .0
                 .add(&smoke, [p.x, p.y + 0.5, p.z], [0.0; 3]);
         }
@@ -1039,7 +1045,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     return false;
                 };
                 if k == ProjectileKind::LlamaSpit {
-                    self.side.particles
+                    self.side
+                        .particles
                         .0
                         .llama_spit_burst(position, [velocity.x, velocity.y, velocity.z]);
                 }
@@ -1312,7 +1319,10 @@ pub(in crate::game) mod nested_spawn_tests {
     }
     type Spawn = fn(&mut crate::game::ClientGame<'_>, u32);
     thread_local! { static PENDING: Cell<Option<(Point, Spawn)>> = const { Cell::new(None) }; }
-    pub(in crate::game::client_side) fn after_lift(game: &mut crate::game::ClientGame<'_>, point: Point) {
+    pub(in crate::game::client_side) fn after_lift(
+        game: &mut crate::game::ClientGame<'_>,
+        point: Point,
+    ) {
         if let Some((expected, spawn)) = PENDING.get()
             && point == expected
         {

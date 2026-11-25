@@ -1,6 +1,6 @@
 //! A `tp` inside a level to chunks not lit yet holds the player (their client's moves are ignored,
 //! `Guest::landing`) until the chunks are lit; however the hold ends, the moves are heard again (#15727).
-use crate::game::{Game, lan::LanHost, lan::LanSettings};
+use crate::game::{lan::LanHost, lan::LanSettings};
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_client::{
     chunk::Chunk,
@@ -326,7 +326,9 @@ fn a_command_arrival_holds_movement_until_lit_then_ticks_damage_again() {
         [at[0] + 1.0, at[1], at[2]]
     );
 
-    let hit = |game: &mut crate::game::ServerGame<'_>| game.mob_hits_player(6.0, at, "minecraft:player_attack");
+    let hit = |game: &mut crate::game::ServerGame<'_>| {
+        game.mob_hits_player(6.0, at, "minecraft:player_attack")
+    };
     assert_eq!(game.as_guest(CONN, hit), Some(true));
     let health = game.lan.as_ref().unwrap().hub.guests[0].health;
     for _ in 0..20 {
@@ -435,8 +437,9 @@ fn respawn_arrivals_hold_movement_then_resume_damage_and_pickups() {
             let guest = game.command_guest(CONN).unwrap();
             assert!(guest.awaiting_teleport.is_none());
             assert!(guest.client_loaded());
-            let hit =
-                |game: &mut crate::game::ServerGame<'_>| game.mob_hits_player(6.0, at, "minecraft:player_attack");
+            let hit = |game: &mut crate::game::ServerGame<'_>| {
+                game.mob_hits_player(6.0, at, "minecraft:player_attack")
+            };
             assert_eq!(game.as_guest(CONN, hit), Some(true));
             let health = game.lan.as_ref().unwrap().hub.guests[0].health;
             game.add_item_entity(ItemStack::new("minecraft:stick", 1), at, Some([0.0; 3]), 0);

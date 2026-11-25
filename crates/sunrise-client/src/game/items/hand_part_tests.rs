@@ -76,7 +76,10 @@ pub(in crate::game) fn with_stick_part(body: impl FnOnce(&mut crate::game::Clien
 
 /// Puts `main` in slot 0, selects it, and ticks until the attack strength is
 /// full and the hand is up.
-pub(in crate::game::client_side) fn settle(game: &mut crate::game::ClientGame<'_>, main: ItemStack) {
+pub(in crate::game::client_side) fn settle(
+    game: &mut crate::game::ClientGame<'_>,
+    main: ItemStack,
+) {
     game.inventory[0] = Some(main);
     game.selected = 0;
     for _ in 0..20 {
@@ -92,10 +95,7 @@ pub(in crate::game::client_side) fn dip(game: &mut crate::game::ClientGame<'_>) 
     (0..6)
         .map(|_| {
             game.tick_hand();
-            let shown = game.side.visible_hands[0]
-                .1
-                .as_ref()
-                .map_or(0, |s| s.count);
+            let shown = game.side.visible_hands[0].1.as_ref().map_or(0, |s| s.count);
             (game.side.heights.main, shown)
         })
         .collect()

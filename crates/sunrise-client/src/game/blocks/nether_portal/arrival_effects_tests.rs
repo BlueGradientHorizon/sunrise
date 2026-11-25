@@ -232,7 +232,12 @@ impl Hooks for RemoveOnArrival {
     }
 }
 
-fn callback_destination(game: &mut crate::game::ServerGame<'_>, id: u32, portal: bool, restart: bool) -> Vec3 {
+fn callback_destination(
+    game: &mut crate::game::ServerGame<'_>,
+    id: u32,
+    portal: bool,
+    restart: bool,
+) -> Vec3 {
     if portal {
         depart(game, id, restart)
     } else {
@@ -244,7 +249,12 @@ fn callback_destination(game: &mut crate::game::ServerGame<'_>, id: u32, portal:
     }
 }
 
-fn complete_callback_arrival(game: &mut crate::game::ServerGame<'_>, id: u32, portal: bool, at: Vec3) {
+fn complete_callback_arrival(
+    game: &mut crate::game::ServerGame<'_>,
+    id: u32,
+    portal: bool,
+    at: Vec3,
+) {
     if portal {
         game.resolve_arrivals();
         assert!(game.portals.arrivals.is_empty());

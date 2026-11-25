@@ -92,7 +92,6 @@ impl Game<'_, crate::game::client_side::ClientState> {
 #[cfg(test)]
 mod tests {
     use crate::game::{
-        Game,
         api_values::TryIntoApi,
         native_entity_refs::tests::{collect_entities_in, run_fresh_cases},
         viewed_worlds::tests::{client, close, column, layered, open, run, spawn},

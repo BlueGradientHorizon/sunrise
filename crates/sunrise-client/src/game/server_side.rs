@@ -1565,18 +1565,23 @@ pub(in crate::game) struct ServerState {
 
     pub(in crate::game::server_side) save: ServerShared<Arc<SaveDir>>,
     /// Must precede session_lock: dropping the writer drains writes while the world is locked.
-    pub(in crate::game::server_side) player_autosaves: ServerOnly<sunrise_client::lan::playerdata::Autosaves>,
-    pub(in crate::game::server_side) session_lock: ServerShared<Option<sunrise_client::save::SessionLock>>,
-    pub(in crate::game::server_side) paused_mob_hurt: ServerOnly<Option<Box<sunrise_client::mobs::PausedMobHurt>>>,
+    pub(in crate::game::server_side) player_autosaves:
+        ServerOnly<sunrise_client::lan::playerdata::Autosaves>,
+    pub(in crate::game::server_side) session_lock:
+        ServerShared<Option<sunrise_client::save::SessionLock>>,
+    pub(in crate::game::server_side) paused_mob_hurt:
+        ServerOnly<Option<Box<sunrise_client::mobs::PausedMobHurt>>>,
     pub(in crate::game::server_side) raiding: ServerOnly<raids::Raiding>,
     /// The world's data packs' content tables, when it has packs (`None`
     /// keeps `Resources.rest`'s own in use).
     pub(in crate::game::server_side) world_tables: ServerShared<Option<WorldTables>>,
     /// Server-owned loot and item snapshots, independent of client preloads.
-    pub(in crate::game::server_side) server_loot: ServerOnly<sunrise_client::structure_blocks::LootSnapshot>,
+    pub(in crate::game::server_side) server_loot:
+        ServerOnly<sunrise_client::structure_blocks::LootSnapshot>,
     /// A server's levels other than the one in place (game/world/levels.rs).
     pub(in crate::game::server_side) levels: ServerOnly<levels::Levels>,
-    pub(in crate::game::server_side) tickets: ServerShared<sunrise_client::ticket_levels::ChunkTickets>,
+    pub(in crate::game::server_side) tickets:
+        ServerShared<sunrise_client::ticket_levels::ChunkTickets>,
     pub(in crate::game::server_side) random_tick_sections:
         ServerOnly<sunrise_client::random_tick_sections::RandomTickSections>,
     /// Entities of types Sunrise does not simulate.
@@ -1585,25 +1590,28 @@ pub(in crate::game) struct ServerState {
     /// Item entities spawned and block entities removed while the block
     /// behaviour ran (spilled contents, popped resources).
     pub(in crate::game::server_side) spill: ServerOnly<spill::Spill>,
-    pub(in crate::game::server_side) creative_catalog: ServerOnly<Arc<sunrise_items::creative_catalog::Catalog>>,
+    pub(in crate::game::server_side) creative_catalog:
+        ServerOnly<Arc<sunrise_items::creative_catalog::Catalog>>,
     /// The mobs lent to the hook calls running now, before they join a level
     /// (game/modding/native_unspawned_mob.rs).
     pub(in crate::game::server_side) lent_mobs: ServerOnly<RefCell<native_unspawned_mob::LentMobs>>,
     /// The game tests read so far, by id (the test instance registry).
-    pub(in crate::game::server_side) test_defs: ServerOnly<
-        std::cell::RefCell<HashMap<String, Option<test_instances::TestDef>>>,
-    >,
+    pub(in crate::game::server_side) test_defs:
+        ServerOnly<std::cell::RefCell<HashMap<String, Option<test_instances::TestDef>>>>,
     /// `GameTestTicker.SINGLETON`: the game tests running on this server.
     pub(in crate::game::server_side) game_tests: ServerOnly<game_tests::GameTests>,
     /// A mod asked for the command trees again (`native_refresh_commands`):
     /// the next server tick asks every mod for its commands and resends them.
     pub(in crate::game::server_side) native_commands: ServerOnly<native_server::NativeCommandState>,
     /// Other players in the current guest turn, including borrowed ancestor bodies.
-    pub(in crate::game::server_side) lan_building_boxes: ServerOnly<building_players::BuildingPlayers>,
+    pub(in crate::game::server_side) lan_building_boxes:
+        ServerOnly<building_players::BuildingPlayers>,
     /// Bodies and their statistics displaced by guest turns, outer first.
-    pub(in crate::game::server_side) lan_displaced_players: ServerOnly<Vec<lan_actions::DisplacedPlayer>>,
+    pub(in crate::game::server_side) lan_displaced_players:
+        ServerOnly<Vec<lan_actions::DisplacedPlayer>>,
     /// A fake player's `perform_action` in progress, and what it refused.
-    pub(in crate::game::server_side) fake_action: ServerOnly<std::sync::Arc<native_server::FakeAction>>,
+    pub(in crate::game::server_side) fake_action:
+        ServerOnly<std::sync::Arc<native_server::FakeAction>>,
     /// A dedicated server's operator, whitelist and ban lists, for `/op`,
     /// `/ban` and friends (`DedicatedPlayerList`).
     pub(in crate::game::server_side) server_lists:
@@ -1614,7 +1622,8 @@ pub(in crate::game) struct ServerState {
     pub(in crate::game::server_side) reload_resources: ServerOnly<mod_api::RetainedListeners>,
     pub(in crate::game::server_side) combat: ServerOnly<combat::CombatTracker>,
     /// Each guest's own `CombatTracker`, out of `combat` between turns.
-    pub(in crate::game::server_side) guest_combat: ServerOnly<std::collections::HashMap<u32, combat::CombatTracker>>,
+    pub(in crate::game::server_side) guest_combat:
+        ServerOnly<std::collections::HashMap<u32, combat::CombatTracker>>,
     pub(in crate::game::server_side) fns: ServerOnly<functions::FnState>,
     pub(in crate::game::server_side) exec: ServerOnly<commands::execute::ExecState>,
 }
@@ -1850,10 +1859,14 @@ impl crate::game::Side for ServerState {
     ) -> &'g mut dyn mod_api::PackDiscoveryContext {
         game
     }
-    fn as_server_host_mut<'a, 'g>(game: &'g mut crate::game::Game<'a, Self>) -> Option<&'g mut dyn mod_api::ServerHost> {
+    fn as_server_host_mut<'a, 'g>(
+        game: &'g mut crate::game::Game<'a, Self>,
+    ) -> Option<&'g mut dyn mod_api::ServerHost> {
         Some(game)
     }
-    fn attachment_store<'a, 'g>(game: &'g mut crate::game::Game<'a, Self>) -> &'g mut dyn mod_api::AttachmentStore {
+    fn attachment_store<'a, 'g>(
+        game: &'g mut crate::game::Game<'a, Self>,
+    ) -> &'g mut dyn mod_api::AttachmentStore {
         game
     }
     fn world_tables(&self) -> Option<&crate::game::WorldTables> {
@@ -1868,7 +1881,11 @@ impl crate::game::Side for ServerState {
     fn session_lock_active(&self) -> bool {
         self.session_lock.0.is_some()
     }
-    fn level_ref(&self, dim: crate::game::Dim, epoch: Option<mod_api::WorldEpoch>) -> Option<mod_api::LevelRef> {
+    fn level_ref(
+        &self,
+        dim: crate::game::Dim,
+        epoch: Option<mod_api::WorldEpoch>,
+    ) -> Option<mod_api::LevelRef> {
         epoch.and_then(|epoch| {
             let key = dim.key();
             let id = mod_api::__private::dimension_id(key)?;
@@ -1879,28 +1896,69 @@ impl crate::game::Side for ServerState {
             ))
         })
     }
-    fn game_side_tag_items<'a>(&self, _remote: &'a Option<crate::game::remote::Remote>, res: &'a crate::game::Resources) -> Option<&'a sunrise_client::items::Items> {
+    fn game_side_tag_items<'a>(
+        &self,
+        _remote: &'a Option<crate::game::remote::Remote>,
+        res: &'a crate::game::Resources,
+    ) -> Option<&'a sunrise_client::items::Items> {
         self.session_lock.0.is_some().then(|| res.items())
     }
-    fn levels(&self) -> Option<&crate::game::levels::Levels> { Some(&self.levels.0) }
-    fn others(&self) -> Option<&sunrise_client::join_seq::ResidentList<crate::game::commands::OtherEntity>> { Some(&self.others.0) }
-    fn held_out(&self) -> &[u32] { &self.held_out }
-    fn fns(&self) -> Option<&crate::game::functions::FnState> { Some(&self.fns.0) }
-    fn cmds(&self) -> Option<&crate::game::commands::extra::CommandExtras> { Some(&self.cmds.0) }
-    fn lan_acting(&self) -> Option<u32> { self.lan_acting }
-    fn lan_acting_entity(&self) -> Option<u32> { self.lan_acting_entity }
-    fn lan_acting_fake(&self) -> bool { self.lan_acting_fake }
-    fn lan_guest_swaps(&self) -> &[u32] { &self.lan_guest_swaps }
-    fn acting_abilities(&self) -> Option<sunrise_client::lan::abilities::PlayerAbilities> { self.acting_abilities }
-    fn native_command_filter(&self) -> bool { self.native_command_filter }
-    fn riding_order(&self) -> i64 { self.riding_order }
-    fn vehicle_mobs(&self) -> Option<&crate::game::server_side::boat_passengers::VehicleMobs> { Some(&self.vehicle_mobs) }
-    fn lan_acting_name(&self) -> Option<&str> { self.lan_acting_name.as_deref() }
-    fn server_tick_deadline(&self) -> Option<std::time::Instant> { self.server_tick_deadline }
+    fn levels(&self) -> Option<&crate::game::levels::Levels> {
+        Some(&self.levels.0)
+    }
+    fn others(
+        &self,
+    ) -> Option<&sunrise_client::join_seq::ResidentList<crate::game::commands::OtherEntity>> {
+        Some(&self.others.0)
+    }
+    fn held_out(&self) -> &[u32] {
+        &self.held_out
+    }
+    fn fns(&self) -> Option<&crate::game::functions::FnState> {
+        Some(&self.fns.0)
+    }
+    fn cmds(&self) -> Option<&crate::game::commands::extra::CommandExtras> {
+        Some(&self.cmds.0)
+    }
+    fn lan_acting(&self) -> Option<u32> {
+        self.lan_acting
+    }
+    fn lan_acting_entity(&self) -> Option<u32> {
+        self.lan_acting_entity
+    }
+    fn lan_acting_fake(&self) -> bool {
+        self.lan_acting_fake
+    }
+    fn lan_guest_swaps(&self) -> &[u32] {
+        &self.lan_guest_swaps
+    }
+    fn acting_abilities(&self) -> Option<sunrise_client::lan::abilities::PlayerAbilities> {
+        self.acting_abilities
+    }
+    fn native_command_filter(&self) -> bool {
+        self.native_command_filter
+    }
+    fn riding_order(&self) -> i64 {
+        self.riding_order
+    }
+    fn vehicle_mobs(&self) -> Option<&crate::game::server_side::boat_passengers::VehicleMobs> {
+        Some(&self.vehicle_mobs)
+    }
+    fn lan_acting_name(&self) -> Option<&str> {
+        self.lan_acting_name.as_deref()
+    }
+    fn server_tick_deadline(&self) -> Option<std::time::Instant> {
+        self.server_tick_deadline
+    }
     fn locate_resident_owner<'a>(
         game: &crate::game::Game<'a, Self>,
         at: sunrise_client::join_seq::residency::table::Location,
-    ) -> Option<sunrise_client::join_seq::residency::table::SourceEntity<(crate::game::commands::Target, bool)>> {
+    ) -> Option<
+        sunrise_client::join_seq::residency::table::SourceEntity<(
+            crate::game::commands::Target,
+            bool,
+        )>,
+    > {
         game.locate_resident_owner(at)
     }
 }

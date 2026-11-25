@@ -605,7 +605,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         entries: Vec<play::GameRuleEntry>,
     ) {
         let Some(o) = self
-            .side.world_options
+            .side
+            .world_options
             .0
             .as_mut()
             .filter(|o| o.view == View::GameRules)
@@ -716,7 +717,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     #[cfg(test)]
     pub(in crate::game) fn world_options_personal_state(&self) -> Option<(i32, i32, u8)> {
-        self.side.world_options
+        self.side
+            .world_options
             .0
             .as_ref()
             .map(|o| (o.personal_mode, o.initial.personal_mode, o.difficulty))
@@ -797,7 +799,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             View::Restrictions => self.draw_restrictions(batch),
             View::GameRules => {
                 if self.side.world_options.0.as_ref().unwrap().rules.is_some() {
-                    self.side.world_options
+                    self.side
+                        .world_options
                         .0
                         .as_ref()
                         .unwrap()
@@ -810,7 +813,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         sunrise_client::screen_draw::RenderPhase::Background,
                     );
                     let tooltip = self
-                        .side.world_options
+                        .side
+                        .world_options
                         .0
                         .as_mut()
                         .unwrap()
@@ -927,7 +931,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
             batch.text_styled(atlas, line, *x, *y, u32::MAX, true);
         }
         if let Some((ax, ay)) = r.action {
-            let is_focused = self.side.world_options.0.as_ref().and_then(|o| o.popup_focus) == Some(0);
+            let is_focused = self
+                .side
+                .world_options
+                .0
+                .as_ref()
+                .and_then(|o| o.popup_focus)
+                == Some(0);
             let hover = ui::hovered(self.side.cursor, ax, ay, 200.0, 20.0) || is_focused;
             let label = Text::translate("chat_restriction.chat_disabled_by_options.action", &[]);
             ui::button(batch, atlas, ax, ay, 200.0, 20.0, &label, true, hover);
@@ -1669,7 +1679,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// on-screen keyboard), and its backspace.
     pub(in crate::game::client_side) fn world_options_text(&mut self, text: Option<&str>) {
         if let Some(rules) = self
-            .side.world_options
+            .side
+            .world_options
             .0
             .as_mut()
             .and_then(|o| o.rules.as_mut())
@@ -1688,7 +1699,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             return;
         }
-        let Some(o) = self.side.world_options.0.as_mut().filter(|o| o.port.focused) else {
+        let Some(o) = self
+            .side
+            .world_options
+            .0
+            .as_mut()
+            .filter(|o| o.port.focused)
+        else {
             return;
         };
         match text {

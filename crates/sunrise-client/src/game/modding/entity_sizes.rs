@@ -78,7 +78,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 continue;
             };
             if let Some(answer) = self.ask_entity_size(id, Pose::Standing, vanilla, previous) {
-                self.side.others.0.update(i, |e| e.size_answer = Some(answer));
+                self.side
+                    .others
+                    .0
+                    .update(i, |e| e.size_answer = Some(answer));
             }
         }
         for i in 0..self.crystals.len() {
@@ -486,7 +489,10 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game::server_side) fn m_pose(game: &crate::game::ServerGame<'_>, i: usize) -> Pose {
+    pub(in crate::game::server_side) fn m_pose(
+        game: &crate::game::ServerGame<'_>,
+        i: usize,
+    ) -> Pose {
         game.mobs[i].pose()
     }
 

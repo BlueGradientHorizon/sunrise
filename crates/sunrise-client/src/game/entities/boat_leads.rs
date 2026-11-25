@@ -406,7 +406,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The fence post of the leash knot with this UUID (`ServerLevel.getEntity`):
     /// a summoned or loaded `minecraft:leash_knot`, which sits on its block.
     pub(in crate::game::server_side) fn knot_by_uuid(&self, uuid: [i32; 4]) -> Option<[i32; 3]> {
-        self.side.others
+        self.side
+            .others
             .0
             .iter()
             .find(|o| o.kind == "minecraft:leash_knot" && self.persist.uuid_of(o.id) == Some(uuid))
@@ -608,7 +609,9 @@ pub(in crate::game) mod tests {
                 .push(Boat::new(id, "oak".into(), Vec3::new(6.5, 100.0, 4.5), 0.0));
             game.persist.uuids.insert(id, uuid);
             game.level.player_uuid = Some([326, 3, 0, 1]);
-            let read = |game: &mut crate::game::ServerGame<'_>| game.command_target_nbt(Target::Boat(id)).unwrap();
+            let read = |game: &mut crate::game::ServerGame<'_>| {
+                game.command_target_nbt(Target::Boat(id)).unwrap()
+            };
             assert!(!game.persist.raw.contains_key(&id));
             assert_eq!(read(game).get("UUID"), Some(&Tag::IntArray(uuid.to_vec())));
             assert!(read(game).get("leash").is_none());

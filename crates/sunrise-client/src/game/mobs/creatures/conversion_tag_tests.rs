@@ -1,5 +1,4 @@
-use super::*;
-use crate::game::{Audio, Options, Progress, Settings, commands::Target, load_resources};
+use crate::game::{Options, Progress, Settings, commands::Target, load_resources};
 use sunrise_core::nbt::Tag;
 
 #[test]

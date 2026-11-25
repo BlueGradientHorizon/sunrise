@@ -2,7 +2,6 @@
 //! `CommandSourceStack.sendSuccess(line, true)`, whose `broadcastToAdmins` tells the other
 //! operators (`PlayerList.isOp`) under `sendCommandFeedback` and the server log under
 //! `logAdminCommands` (#4632).
-use super::Game;
 use mod_api::{Command, PermissionLevel, RegisterCommandsEvent, ServerHost, Text};
 use serde_json::{Value, json};
 use std::sync::{
@@ -70,7 +69,9 @@ impl mod_api::Hooks for Announce {
 
 /// A dedicated server with the `announce` commands and the four players of `PLAYERS`, whose
 /// chat each test reads (by conn).
-fn with_operators(test: impl FnOnce(&mut crate::game::ServerGame<'_>, &[(u32, mpsc::Receiver<Out>)])) {
+fn with_operators(
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, &[(u32, mpsc::Receiver<Out>)]),
+) {
     mod_platform::testing::with_mods(
         vec![mod_api::ModEntry::new("announce", Box::new(Announce))].into(),
         || {
@@ -147,7 +148,10 @@ fn with_operators(test: impl FnOnce(&mut crate::game::ServerGame<'_>, &[(u32, mp
 }
 
 /// The chat components each player was sent since the last read, by conn.
-fn chats(game: &crate::game::ServerGame<'_>, receivers: &[(u32, mpsc::Receiver<Out>)]) -> Vec<(u32, Vec<Value>)> {
+fn chats(
+    game: &crate::game::ServerGame<'_>,
+    receivers: &[(u32, mpsc::Receiver<Out>)],
+) -> Vec<(u32, Vec<Value>)> {
     for g in &game.lan.as_ref().unwrap().hub.guests {
         g.sender.flush();
     }
@@ -207,7 +211,11 @@ fn shape(line: &Value) -> Value {
     })
 }
 
-fn set_rules(game: &mut crate::game::ServerGame<'_>, send_command_feedback: bool, log_admin_commands: bool) {
+fn set_rules(
+    game: &mut crate::game::ServerGame<'_>,
+    send_command_feedback: bool,
+    log_admin_commands: bool,
+) {
     assert!(
         game.ui
             .rules
@@ -361,7 +369,10 @@ fn a_tracking_command_block_is_logged_while_feedback_is_off() {
                     .default_state("minecraft:command_block")
                     .unwrap();
                 game.world.set(1, 64, 1, state).unwrap();
-                let last_output = |game: &crate::game::ServerGame<'_>| match game.world.block_entities.get(&(1, 64, 1))
+                let last_output = |game: &crate::game::ServerGame<'_>| match game
+                    .world
+                    .block_entities
+                    .get(&(1, 64, 1))
                 {
                     Some(BlockEntity::CommandBlock(block)) => {
                         block.last_output.as_ref().map(|line| line.plain())

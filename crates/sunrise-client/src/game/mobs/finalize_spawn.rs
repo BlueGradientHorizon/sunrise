@@ -217,7 +217,11 @@ mod tests {
     }
 
     /// Any other mob for the spawn tests, at the same spot.
-    fn mob_of(game: &crate::game::ServerGame<'_>, id: u32, kind: &str) -> sunrise_client::mobs::Mob {
+    fn mob_of(
+        game: &crate::game::ServerGame<'_>,
+        id: u32,
+        kind: &str,
+    ) -> sunrise_client::mobs::Mob {
         let kind = game.res.mob_types().get(kind).unwrap().clone();
         sunrise_client::mobs::Mob::new(id, kind, Vec3::new(8.0, 65.0, 8.0), 0.0)
     }

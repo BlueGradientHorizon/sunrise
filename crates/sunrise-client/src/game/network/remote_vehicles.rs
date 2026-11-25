@@ -1499,7 +1499,7 @@ mod plugin_seat_tests {
     #[test]
     #[ignore = "daily"]
     fn local_rider_uses_attachments_and_follows_a_moving_seat_chain() {
-        use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+        use crate::game::{Audio, Options, Progress, Settings, load_resources};
         use sunrise_client::{mobs::Mob, motion::PlayerMotion, sprint::Keys};
         use sunrise_core::geometry::Vec3;
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());

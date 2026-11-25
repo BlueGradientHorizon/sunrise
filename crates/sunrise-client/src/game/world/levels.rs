@@ -282,9 +282,6 @@ impl Parked {
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
-
-
-
     /// Visit exactly the actual physical lifetime slot. Resolution releases the
     /// table and its journal before lending storage; no lift, swap or replacement
     /// occurs, including when the visitor unwinds. Logical visibility is a caller
@@ -338,7 +335,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 mod_api::DimensionKey::END => Dim::End,
                 key => Dim::Extra(key),
             };
-            self.side.levels
+            self.side
+                .levels
                 .0
                 .parked
                 .get_mut(&dim)
@@ -525,11 +523,13 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             DimensionKey::END => Dim::End,
             key => Dim::Extra(key),
         };
-        crate::game::Side::levels(&self.side).and_then(|l| l.parked.get(&dim)).is_none_or(|parked| {
-            !parked.persist.removals.contains(&target)
-                && !parked.persist.destroying_vehicles.contains(&target)
-                && !self.removal_pending_in(dim, &target)
-        })
+        crate::game::Side::levels(&self.side)
+            .and_then(|l| l.parked.get(&dim))
+            .is_none_or(|parked| {
+                !parked.persist.removals.contains(&target)
+                    && !parked.persist.destroying_vehicles.contains(&target)
+                    && !self.removal_pending_in(dim, &target)
+            })
     }
 
     pub(in crate::game) fn server_resident_entity(&self, id: u32) -> EntityLookup<Target> {
@@ -1158,7 +1158,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .chain(matches!(back, Dim::Extra(_)).then_some(back));
         for dim in dims.clone() {
             self.enter_level(dim)?;
-            Self::load_saved_level_tickets(&self.side.save.0, &mut self.streaming, &mut self.side.tickets.0);
+            Self::load_saved_level_tickets(
+                &self.side.save.0,
+                &mut self.streaming,
+                &mut self.side.tickets.0,
+            );
             self.validate_mod_chunk_tickets(dim);
         }
         self.side.startup_ticket_restore_pending = false;
@@ -1725,7 +1729,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // Vanilla ticks the chunk source of every level, ticked here or not: the levels left
         // parked purge their tickets and forget their recent lookups too.
         if running.is_some() {
-            self.side.levels
+            self.side
+                .levels
                 .0
                 .tick_parked_chunk_caches(running == Some(true), |dim| !order.contains(&dim));
         }
@@ -1962,7 +1967,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if dim == self.dim {
             self.side.tickets.0.spawn_areas().next().is_some()
         } else {
-            self.side.levels
+            self.side
+                .levels
                 .0
                 .parked
                 .get(&dim)
@@ -1975,7 +1981,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if dim == self.dim {
             self.side.tickets.0.portal_tickets()
         } else {
-            self.side.levels
+            self.side
+                .levels
                 .0
                 .parked
                 .get(&dim)
@@ -1990,7 +1997,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// (`portal_ticket_can_expire`).
     pub(in crate::game::server_side) fn portal_ticket_areas(&self) -> Vec<((i32, i32), i32)> {
         let block_ticking = i32::from(sunrise_client::ticket_levels::BLOCK_TICKING);
-        self.side.tickets
+        self.side
+            .tickets
             .0
             .portal_tickets()
             .iter()
@@ -2000,7 +2008,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// Whether saving is currently disabled (`/save-off`, `ServerLevel.noSave`).
     fn saving_disabled(&self) -> bool {
-        self.side.server_lists
+        self.side
+            .server_lists
             .0
             .as_ref()
             .is_some_and(|lists| !lists.lock().unwrap().autosave)
@@ -2018,7 +2027,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         );
         // A vehicle waiting there for its rider's arrival in another level.
         active.extend(
-            self.side.levels
+            self.side
+                .levels
                 .0
                 .parked
                 .keys()
@@ -2035,7 +2045,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let saving_enabled = !self.saving_disabled();
         let active = self.active_levels();
         let unload_chunks = self
-            .side.levels
+            .side
+            .levels
             .0
             .plan_builtin_drains(|dim| active.contains(&dim), saving_enabled);
         let drained = !unload_chunks.is_empty();
@@ -2045,7 +2056,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             // A chunk-unload listener in an earlier built-in level can force a
             // chunk or otherwise activate this level before its turn.
-            if !self.side.levels.0.parked.contains_key(&dim) || self.active_levels().contains(&dim) {
+            if !self.side.levels.0.parked.contains_key(&dim) || self.active_levels().contains(&dim)
+            {
                 if let Some(p) = self.side.levels.0.parked.get_mut(&dim) {
                     p.idle = 0;
                 }
@@ -2062,7 +2074,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             (saving_enabled, active)
         };
         let closing = self
-            .side.levels
+            .side
+            .levels
             .0
             .plan_custom_closes(|dim| active.contains(&dim), saving_enabled);
         for dim in closing {
@@ -2433,7 +2446,8 @@ mod tests {
                         let custom = Dim::Extra(mod_api::__private::dimension_key(id));
                         let flat =
                             RuntimeLevel::new("minecraft:overworld", RuntimeGenerator::Flat, 1);
-                        game.side.levels
+                        game.side
+                            .levels
                             .0
                             .runtime
                             .queue_open("test_idle", id, flat)
@@ -2441,7 +2455,11 @@ mod tests {
                         game.enter_level(custom).unwrap();
                         dirty_test_chunk(game);
                         queue_unencodable_entity_record(&game.side.save.0);
-                        let disk = SaveDir::new(game.side.save.0.root.clone(), game.side.save.0.shape, None);
+                        let disk = SaveDir::new(
+                            game.side.save.0.root.clone(),
+                            game.side.save.0.shape,
+                            None,
+                        );
                         game.enter_level(Dim::Overworld).unwrap();
                         game.side.levels.0.parked.get_mut(&custom).unwrap().idle = IDLE_TICKS - 1;
                         game.close_idle_levels().unwrap();
@@ -2642,7 +2660,7 @@ mod tests {
     fn prepared_game<'a>(
         resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
     ) -> crate::game::ServerGame<'a> {
-        use crate::game::{Audio, Options, Progress, Settings, load_resources};
+        use crate::game::{Options, Progress, Settings, load_resources};
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -2736,7 +2754,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn slow_ticks_enter_the_ring_and_not_the_log() {
-        use crate::game::{Audio, Options, Progress, Settings, load_resources};
+        use crate::game::{Options, Progress, Settings, load_resources};
         use sunrise_client::server_perf::{ServerPerf, TickDetail, WorldCounts};
         log::set_logger(&LogCapture).expect("no other logger in this test run");
         log::set_max_level(log::LevelFilter::Info);
@@ -2806,7 +2824,7 @@ mod tests {
         home: &std::path::Path,
         world: &std::path::Path,
     ) -> crate::game::ServerGame<'a> {
-        use crate::game::{Audio, Options, Progress, Settings, load_resources};
+        use crate::game::{Options, Progress, Settings, load_resources};
         let settings = Settings::default();
         let loaded = load_resources(
             sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
@@ -2932,7 +2950,12 @@ mod tests {
             let mut resources = None;
             let mut game = open_game(&mut resources, &root, home.path(), &world);
             assert!(!saw_end.load(Ordering::Relaxed), "validation has not run");
-            assert!(game.side.levels.0.parked[&end].streaming.commanded().is_empty());
+            assert!(
+                game.side.levels.0.parked[&end]
+                    .streaming
+                    .commanded()
+                    .is_empty()
+            );
             // An early final save can run after the world is adopted but
             // before ticket activation. The originals on disk must survive.
             game.save_parked_levels(false).unwrap();
@@ -3178,13 +3201,15 @@ mod tests {
             for _ in 0..2000 {
                 game.tick_server(false).unwrap();
                 let nether_ready = game
-                    .side.levels
+                    .side
+                    .levels
                     .0
                     .parked
                     .get(&Dim::Nether)
                     .is_some_and(|p| p.world.chunks.contains_key(&(0, 0)));
                 let end_ready = game
-                    .side.levels
+                    .side
+                    .levels
                     .0
                     .parked
                     .get(&Dim::End)
@@ -3236,7 +3261,10 @@ mod tests {
             assert!(game.side.levels.0.parked.contains_key(&Dim::Nether));
             assert!(game.side.levels.0.parked.contains_key(&Dim::End));
             assert!(
-                game.side.levels.0.parked[&Dim::Nether].world.chunks.is_empty(),
+                game.side.levels.0.parked[&Dim::Nether]
+                    .world
+                    .chunks
+                    .is_empty(),
                 "released Nether chunk unloaded while parked under /tick freeze"
             );
             assert!(
@@ -3327,7 +3355,11 @@ mod tests {
         assert_eq!(game.dim, Dim::Overworld);
         let sizes = (
             game.border.size(),
-            game.side.levels.0.parked_border(Dim::Nether).map(|b| b.size()),
+            game.side
+                .levels
+                .0
+                .parked_border(Dim::Nether)
+                .map(|b| b.size()),
             game.side.levels.0.parked_border(Dim::End).map(|b| b.size()),
         );
         if sizes != (70.0, Some(100.0), Some(59_999_968.0)) {
@@ -3615,7 +3647,8 @@ mod tests {
         let mut want = vec![f32::MAX.to_bits(); 12];
         want.extend([70.0f32, 70.0, 69.0, 68.0].map(f32::to_bits));
         let edge = game
-            .side.save
+            .side
+            .save
             .0
             .calculated_blending(12, 0)
             .expect("(12, 0) was calculated");

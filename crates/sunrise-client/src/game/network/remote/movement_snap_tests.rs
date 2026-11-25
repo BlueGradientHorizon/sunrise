@@ -7,7 +7,7 @@ use crate::game::remote::{shape_meets, snap_target};
 #[ignore = "daily"]
 fn plugin_player_stack_follows_network_moves_and_local_carriers() {
     use crate::game::{
-        Audio, Game, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
+        Audio, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
     };
     use sunrise_client::{motion::PlayerMotion, sprint::Keys};
     use sunrise_core::geometry::Vec3;

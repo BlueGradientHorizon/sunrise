@@ -196,7 +196,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             } else {
                 ParticleType::Splash
             };
-            self.side.particles
+            self.side
+                .particles
                 .0
                 .add(&ParticleOptions::simple(kind), at, velocity);
         }
@@ -301,7 +302,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side.entity_spans.borrow_mut().clear();
         self.side.entity_motion.borrow_mut().clear();
         self.side.entity_motion_posed.borrow_mut().clear();
-        self.side.skin_models
+        self.side
+            .skin_models
             .0
             .borrow_mut()
             .restart(&mut self.side.skin_frame.borrow_mut());
@@ -518,10 +520,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.pickup_trident_geometry(camera, alpha, out);
         self.mark_entity(out.len(), "minecraft:experience_orb");
         // ItemPickupParticle: the render state extracted at partial tick 1.
-        let taken = self.side.pickups.0.live.iter().filter_map(|p| match &p.taken {
-            pickups::Taken::Orb(o) => Some((&**o, pickups::position(p, alpha), 1.0)),
-            _ => None,
-        });
+        let taken = self
+            .side
+            .pickups
+            .0
+            .live
+            .iter()
+            .filter_map(|p| match &p.taken {
+                pickups::Taken::Orb(o) => Some((&**o, pickups::position(p, alpha), 1.0)),
+                _ => None,
+            });
         let frame = self.orb_frame();
         self.orb_geometry(camera, &frame, taken, None, out);
         self.elder_apparition_geometry(alpha, out);
@@ -692,9 +700,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .map_or(self.side.view.y_rot, |(y, _)| y);
         // Packs may move vertices or draw from another camera. The guarded
         // billboard frustum covers TAA's jitter without changing model culling.
-        let fire_view = billboard_frustum.as_ref().filter(|_| {
-            self.side.pack_ids.is_none() && self.side.native_shaders.picked.is_empty()
-        });
+        let fire_view = billboard_frustum
+            .as_ref()
+            .filter(|_| self.side.pack_ids.is_none() && self.side.native_shaders.picked.is_empty());
         let fire_visible = |position, width, height| {
             fire_view.is_none_or(|view| {
                 sunrise_client::fire_render::in_view(view, camera, position, width, height)
@@ -762,9 +770,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // joined the level (`EntityLookup.byId`, as `LevelExtractor.extractVisibleEntities`
         // lists them), whatever the family, before `submitBlockEntities`. Each run of one
         // family is drawn by that family's own geometry.
-        let orb_view = billboard_frustum.as_ref().filter(|_| {
-            self.side.pack_ids.is_none() && self.side.native_shaders.picked.is_empty()
-        });
+        let orb_view = billboard_frustum
+            .as_ref()
+            .filter(|_| self.side.pack_ids.is_none() && self.side.native_shaders.picked.is_empty());
         // What a family sets up once a frame, not once per run: the first run of the family
         // builds it.
         let tnt_sprites = std::cell::OnceCell::new();
@@ -1315,8 +1323,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         view_pitch: f32,
         fov_degrees: f32,
     ) -> HudBatch {
-        self.side.locator_camera =
-            (!title).then_some((camera, view_yaw, view_pitch, fov_degrees));
+        self.side.locator_camera = (!title).then_some((camera, view_yaw, view_pitch, fov_degrees));
         self.hud_with_reload(size, reload_overlay)
     }
     pub(in crate::game::client_side) fn falling_setup(&self) -> FallingSetup<'_> {
@@ -1633,7 +1640,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         && let Some(title) = &mut self.side.title.0
                     {
                         let size = self
-                            .side.window
+                            .side
+                            .window
                             .0
                             .as_ref()
                             .map(|w| w.inner_size())
@@ -1696,7 +1704,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         && !bundle
                         && self.side.creative_screen.0.can_scroll(&self.pack.names)
                     {
-                        self.side.creative_screen.0.wheel(f64::from(d), &self.pack.names);
+                        self.side
+                            .creative_screen
+                            .0
+                            .wheel(f64::from(d), &self.pack.names);
                         screen_scrolled = true;
                     }
                     if self.side.screen == Screen::Inventory
@@ -1731,7 +1742,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     let title_mode = (self.side.screen == Screen::Playing
                         && !self.screen_over_playing())
                     .then(|| {
-                        self.side.title
+                        self.side
+                            .title
                             .0
                             .as_ref()
                             .map(sunrise_client::title::Title::mode_activation)
@@ -1795,7 +1807,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     let panel_release =
                         !pressed && button == MouseButton::Left && self.mod_browser_release();
                     let mut handled = owned_release || panel_release;
-                    if !panel_release && self.side.screen_state.0.screen_instance == initial_instance {
+                    if !panel_release
+                        && self.side.screen_state.0.screen_instance == initial_instance
+                    {
                         let inventory_release = !pressed
                             && matches!(self.side.screen, Screen::Inventory | Screen::Creative)
                             && self.observed_overlay_now().is_none()
@@ -1831,11 +1845,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
                                     self.mounted_widget_mouse_released(mouse, code, modifiers)
                                 };
                             }
-                            if !handled && self.side.screen_state.0.screen_instance == initial_instance {
+                            if !handled
+                                && self.side.screen_state.0.screen_instance == initial_instance
+                            {
                                 handled = receiver.is_some()
                                     && self.container_mouse(button, pressed, false);
                             }
-                            if !handled && self.side.screen_state.0.screen_instance == initial_instance {
+                            if !handled
+                                && self.side.screen_state.0.screen_instance == initial_instance
+                            {
                                 handled =
                                     self.route_screen_button(button, code, pressed, double_click)?;
                             }
@@ -1906,7 +1924,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
                 WindowEvent::RedrawRequested => {
                     let flight_spans = self
-                        .side.flight
+                        .side
+                        .flight
                         .0
                         .as_ref()
                         .filter(|flight| flight.raw)
@@ -2061,7 +2080,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     self.poll_screenshot_writes();
                     let mut consumed = !self.ui.screenshot_messages.is_empty();
                     let finished = self
-                        .side.renderer
+                        .side
+                        .renderer
                         .0
                         .as_mut()
                         .and_then(|r| r.screenshot_result.take())
@@ -2088,7 +2108,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         consumed = true;
                     }
                     if let Some(result) = self
-                        .side.renderer
+                        .side
+                        .renderer
                         .0
                         .as_mut()
                         .and_then(|r| r.capture_result.take())
@@ -2105,9 +2126,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     }
                     self.record_streaming_work(rendered, block_entity_work, &frame_spans);
                     if rendered {
-                        self.side
-                            .frame_stats
-                            .record(elapsed.as_secs_f32() * 1000.0);
+                        self.side.frame_stats.record(elapsed.as_secs_f32() * 1000.0);
                         if let Some((cpu, gpu)) = perf_times {
                             self.record_perf_frame(
                                 elapsed.as_secs_f32() * 1000.0,
@@ -2386,10 +2405,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     hud_layout::paint_items(batch, &g.gui.atlas, &draws, &mut items);
                     if indicator == 2 {
                         // Items and arm follow the camera; the charge belongs to the local player.
-                        let mut progress = g
-                            .side
-                            .hand_strength
-                            .scale(0.0, g.main_hand_attack_speed());
+                        let mut progress =
+                            g.side.hand_strength.scale(0.0, g.main_hand_attack_speed());
                         g.native_hotbar_attack_indicator_progress(
                             native_hooks::HotbarAttackIndicatorProgressCall {
                                 progress: &mut progress,
@@ -2537,7 +2554,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         .position(|s| *s == "player")
                         .unwrap_or(0);
                     let capture = g.side.audio.0.capture.take();
-                    g.side.audio
+                    g.side
+                        .audio
                         .0
                         .play_on(players, "ui.hud.bubble_pop", Some(at), volume, pitch);
                     g.side.audio.0.capture = capture;
@@ -3179,7 +3197,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 } => {
                     self.growth_particles(pos, data);
                     let at = [pos.x, pos.y, pos.z].map(|v| f64::from(v) + 0.5);
-                    self.side.audio
+                    self.side
+                        .audio
                         .0
                         .play("minecraft:item.bone_meal.use", Some(at), 1.0, 1.0);
                 }
@@ -3313,16 +3332,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
                             1.0,
                             1.0,
                         ),
-                        1001 => {
-                            self.side.audio
-                                .0
-                                .play("minecraft:block.dispenser.fail", Some(c), 1.0, 1.2)
-                        }
-                        1002 => {
-                            self.side.audio
-                                .0
-                                .play("minecraft:block.dispenser.launch", Some(c), 1.0, 1.2)
-                        }
+                        1001 => self.side.audio.0.play(
+                            "minecraft:block.dispenser.fail",
+                            Some(c),
+                            1.0,
+                            1.2,
+                        ),
+                        1002 => self.side.audio.0.play(
+                            "minecraft:block.dispenser.launch",
+                            Some(c),
+                            1.0,
+                            1.2,
+                        ),
                         1004 => self.side.audio.0.play(
                             "minecraft:entity.firework_rocket.shoot",
                             Some(c),
@@ -3332,12 +3353,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         1018 => {
                             let r = self.side.particles.0.random();
                             let pitch = (r.next_float() - r.next_float()) * 0.2 + 1.0;
-                            self.side.audio
-                                .0
-                                .play("minecraft:entity.blaze.shoot", Some(c), 2.0, pitch);
+                            self.side.audio.0.play(
+                                "minecraft:entity.blaze.shoot",
+                                Some(c),
+                                2.0,
+                                pitch,
+                            );
                         }
                         1051 => {
-                            let pitch = 0.4 / (self.side.particles.0.random().next_float() * 0.4 + 0.8);
+                            let pitch =
+                                0.4 / (self.side.particles.0.random().next_float() * 0.4 + 0.8);
                             self.side.audio.0.play(
                                 "minecraft:entity.wind_charge.throw",
                                 Some(c),
@@ -3345,16 +3370,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
                                 pitch,
                             );
                         }
-                        1049 => {
-                            self.side.audio
-                                .0
-                                .play("minecraft:block.crafter.craft", Some(c), 1.0, 1.0)
-                        }
-                        1050 => {
-                            self.side.audio
-                                .0
-                                .play("minecraft:block.crafter.fail", Some(c), 1.0, 1.0)
-                        }
+                        1049 => self.side.audio.0.play(
+                            "minecraft:block.crafter.craft",
+                            Some(c),
+                            1.0,
+                            1.0,
+                        ),
+                        1050 => self.side.audio.0.play(
+                            "minecraft:block.crafter.fail",
+                            Some(c),
+                            1.0,
+                            1.0,
+                        ),
                         2000 | 2010 => {
                             use sunrise_client::particles::{ParticleOptions, ParticleType};
                             let particle = if id == 2010 {
@@ -3397,7 +3424,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                                     sy * pow + r.next_gaussian() * 0.01,
                                     sz * pow + r.next_gaussian() * 0.01,
                                 ];
-                                self.side.particles
+                                self.side
+                                    .particles
                                     .0
                                     .add(&ParticleOptions::simple(particle), p, v);
                             }
@@ -3623,7 +3651,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         );
         let random = self.side.particles.0.level_random();
         let pitch = (1.0 + (random.next_float() - random.next_float()) * 0.2) * 0.7;
-        self.side.audio
+        self.side
+            .audio
             .0
             .play_unshared("minecraft:block.end_gateway.spawn", Some(at), 10.0, pitch);
     }
@@ -3703,7 +3732,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Rebuild GPU-owned state after the backend reports device loss.
     pub(in crate::game::client_side) fn recover_device(&mut self) -> Result<()> {
         if !self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_deref()
             .is_some_and(Renderer::device_lost)
@@ -3720,14 +3750,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         self.side.last_device_recovery = Some(now);
         let window = self
-            .side.window
+            .side
+            .window
             .0
             .clone()
             .ok_or("no window for graphics recovery")?;
         log::warn!("Sunrise: rebuilding the renderer after graphics device loss");
         // Drop the old surface and device before opening another on this window.
         let mut old = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .take()
             .ok_or("no renderer for graphics recovery")?;
@@ -3784,7 +3816,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // the next redraw rather than exiting on its error.
             Err(_)
                 if self
-                    .side.renderer
+                    .side
+                    .renderer
                     .0
                     .as_deref()
                     .is_some_and(Renderer::device_lost) =>
@@ -3832,7 +3865,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         self.side.glint_frame = self.capture_glint_frame();
         if self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_mut()
             .is_some_and(|r| r.display_changed())
@@ -3858,7 +3892,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     )
                 });
                 let cursor = self
-                    .side.renderer
+                    .side
+                    .renderer
                     .0
                     .as_ref()
                     .and_then(|r| self.project_window_cursor([r.config.width, r.config.height]))
@@ -3944,7 +3979,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return Ok(false);
         }
         let Some(size) = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
@@ -3962,7 +3998,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             pr.lap("pr_loading");
             drop(prepare);
             return self
-                .side.renderer
+                .side
+                .renderer
                 .0
                 .as_mut()
                 .expect("renderer sized above")
@@ -4010,7 +4047,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             ),
         };
         pr.lap("pr_camera");
-        self.side.audio
+        self.side
+            .audio
             .0
             .set_listener([camera.x, camera.y, camera.z], view_yaw, view_pitch);
         self.follow_audio_stream_entities();
@@ -4351,8 +4389,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             _ => (Vec::new(), None),
         };
-        let mut requested_post_effects =
-            std::mem::take(&mut self.side.requested_post_effects_buf);
+        let mut requested_post_effects = std::mem::take(&mut self.side.requested_post_effects_buf);
         self.sync_requested_post_effects(
             &mut requested_post_effects,
             polytone_effects.iter().map(String::as_str),
@@ -4516,7 +4553,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         pr.lap("pr_lights");
         pack_inputs.frame_timing = self
-            .side.screenshot_sequence
+            .side
+            .screenshot_sequence
             .0
             .as_ref()
             .map(screenshot_sequence::Sequence::timing);
@@ -4608,7 +4646,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             water_plane: if title
                 || underwater
                 || !self
-                    .side.renderer
+                    .side
+                    .renderer
                     .0
                     .as_ref()
                     .is_some_and(|r| r.wants_water_plane())
@@ -4746,8 +4785,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         drop(prepare);
         let debug_passes = self.debug_lists_gpu_passes();
         let lightmap_chart = self.debug_shows_lightmap();
-        let mut prepared_draws =
-            std::mem::take(&mut *self.side.prepared_model_draws.borrow_mut());
+        let mut prepared_draws = std::mem::take(&mut *self.side.prepared_model_draws.borrow_mut());
         let result = match self.side.renderer.0.as_mut() {
             Some(renderer) => {
                 use sunrise_client::client_perf::request::GpuSwitch;
@@ -4756,9 +4794,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 renderer.set_pass_timing(debug_passes || self.side.gpu_passes || recording);
                 renderer.set_lightmap_readback(lightmap_chart);
                 renderer.set_keep_timed_frames(recording);
-                renderer.set_pass_detail(
-                    self.side.gpu_pass_detail || capture_gpu == GpuSwitch::Detail,
-                );
+                renderer
+                    .set_pass_detail(self.side.gpu_pass_detail || capture_gpu == GpuSwitch::Detail);
                 // `gpu_passes` and a capture's `--gpu` are measurements: they take every sample they can.
                 renderer.set_pass_timing_gap(if self.side.gpu_passes || recording {
                     Duration::ZERO
@@ -4790,7 +4827,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // The renderer took the new models when its store grew by them; otherwise they stay
         // pending, or the stores restart (`SkinModels::begin`).
         if self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .and_then(|r| r.skinned_models())
@@ -4868,7 +4906,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 return Ok(self.preset_editor_mouse_clicked(code, double_click));
             }
             let size = self
-                .side.renderer
+                .side
+                .renderer
                 .0
                 .as_ref()
                 .map_or([1, 1], |r| [r.config.width, r.config.height]);
@@ -4887,7 +4926,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let atlas = &self.gui.atlas;
             let shift = self.has_shift_down();
             let (action, sound, widget) =
-                self.side.title
+                self.side
+                    .title
                     .0
                     .as_mut()
                     .map_or((Action::None, false, false), |title| {
@@ -4896,12 +4936,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                             self.side.cursor.1,
                             (b.width, b.height),
                         );
-                        let field = title.press_field(
-                            atlas,
-                            self.side.cursor,
-                            (b.width, b.height),
-                            shift,
-                        );
+                        let field =
+                            title.press_field(atlas, self.side.cursor, (b.width, b.height), shift);
                         let (rule_sound, rules) = title.press_rules_with_outcome(
                             atlas,
                             self.side.cursor,
@@ -4925,7 +4961,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 return Ok(false);
             }
             let size = self
-                .side.renderer
+                .side
+                .renderer
                 .0
                 .as_ref()
                 .map_or([1, 1], |r| [r.config.width, r.config.height]);
@@ -4988,7 +5025,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 true
             }
             Screen::Creative => {
-                self.inventory_mouse_release(!left) || (left && self.side.creative_screen.0.release())
+                self.inventory_mouse_release(!left)
+                    || (left && self.side.creative_screen.0.release())
             }
             Screen::Paused if left_press && self.side.pause_menu => self.pause_click()?,
             Screen::WorldOptions if left_press => self.world_options_click(),
@@ -5013,7 +5051,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Screen::Dead if left_press => self.death_click()?,
             Screen::Advancements if left => {
                 let size = self
-                    .side.renderer
+                    .side
+                    .renderer
                     .0
                     .as_ref()
                     .map_or([1, 1], |r| [r.config.width, r.config.height]);
@@ -5021,7 +5060,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             Screen::Stats if left_press => {
                 let size = self
-                    .side.renderer
+                    .side
+                    .renderer
                     .0
                     .as_ref()
                     .map_or([1, 1], |r| [r.config.width, r.config.height]);
@@ -5067,7 +5107,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let (_, oy) = Self::creative_origin(&batch);
                 (left
                     && self
-                        .side.creative_screen
+                        .side
+                        .creative_screen
                         .0
                         .drag_scrollbar(self.side.cursor.1 - oy))
                     || self.inventory_drag_move()
@@ -5241,7 +5282,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// screen covers it. Only UI dispatch ignores it; world loading and
     /// simulation still see it.
     pub(in crate::game::client_side) fn title_input_active(&self) -> bool {
-        self.side.title.0.is_some() && !matches!(self.side.screen, Screen::DebugOptions | Screen::Mod)
+        self.side.title.0.is_some()
+            && !matches!(self.side.screen, Screen::DebugOptions | Screen::Mod)
     }
     pub(in crate::game::client_side) fn title_screen_key(
         &mut self,
@@ -5258,7 +5300,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let ctrl = self.has_control_down_with_quirk();
         let shift = self.has_shift_down();
         if let Some(sound) = self
-            .side.title
+            .side
+            .title
             .0
             .as_mut()
             .and_then(|t| t.tab_bar_key(key, ctrl, shift))
@@ -5337,8 +5380,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let inline_sprite = |atlas: &str, sprite: &str| self.gui.atlas.inline_sprite(atlas, sprite);
         use block_entity_render::SignOutline;
         let sign_outline =
-            if self.player.is_some() && self.side.camera_type.is_first_person() && self.scoping()
-            {
+            if self.player.is_some() && self.side.camera_type.is_first_person() && self.scoping() {
                 SignOutline::FirstPersonScope
             } else {
                 self.camera_subject().map_or(SignOutline::None, |subject| {

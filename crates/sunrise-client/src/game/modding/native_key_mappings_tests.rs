@@ -3,8 +3,8 @@
 //! overlay opening drops them at once, a binding's modifier must be held, a rebinding moves the
 //! mapping, a mouse press counts for a mapping on its button, and the window losing its focus
 //! lets go of a held mapping.
+use super::Screen;
 use super::event_loop::EventLoopCtl;
-use super::{Game, Screen};
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use mod_api::prelude::ClientInputClientHost;
 use mod_api::*;

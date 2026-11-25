@@ -99,11 +99,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // PrimaryLevelData: the difficulty comes back from level.dat's difficulty_settings.
         self.ui.difficulty = self.level.difficulty_id();
         self.ui.active_clock = OVERWORLD_CLOCK.to_owned();
-        if let Ok(bytes) = std::fs::read(
-            self.side
-                .world_root
-                .join("data/minecraft/world_clocks.dat"),
-        ) && let Ok(raw) = sunrise_world::compression::Compression::Gzip.decode(&bytes, 1 << 20)
+        if let Ok(bytes) =
+            std::fs::read(self.side.world_root.join("data/minecraft/world_clocks.dat"))
+            && let Ok(raw) = sunrise_world::compression::Compression::Gzip.decode(&bytes, 1 << 20)
             && let Ok((root, _)) =
                 sunrise_core::nbt::read_named(&raw, sunrise_core::nbt::Limits::default())
             && let Some(sunrise_core::nbt::Tag::Compound(clocks)) = root.tag.get("data")
@@ -155,10 +153,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // Every clock the world has met is saved; the fields of a clock Sunrise does not model
         // stay as saved, and (like vanilla's codec) rate, partial tick and pause are omitted
         // while they have their defaults.
-        let path = self
-            .side
-            .world_root
-            .join("data/minecraft/world_clocks.dat");
+        let path = self.side.world_root.join("data/minecraft/world_clocks.dat");
         let existing = sunrise_client::save::read_dat(&path);
         let mut data = match existing.as_ref().and_then(|r| r.get("data")) {
             Some(d @ Tag::Compound(_)) => d.clone(),
@@ -225,14 +220,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         }
         if self.side.lan_acting.is_some() {
-            self.side.guest_packets.push(
-                sunrise_protocol::packets::play::Clientbound::SystemChat(
+            self.side
+                .guest_packets
+                .push(sunrise_protocol::packets::play::Clientbound::SystemChat(
                     sunrise_protocol::packets::play::SystemChat {
                         content: sunrise_client::lan::data::component_nbt(&text.component()),
                         overlay: false,
                     },
-                ),
-            );
+                ));
             return;
         }
         if self.is_dedicated_server() {
@@ -346,9 +341,15 @@ pub(in crate::game::server_side) use crate::game::client_side::chat::enchantment
                 .unwrap()
                 .unwrap(),
         );
-        game.side.world_tables.0.as_mut().unwrap().stations.enchantments = synced.clone();
-        std::sync::Arc::make_mut(&mut game.side.world_tables.0.as_mut().unwrap().items).enchantments =
-            synced;
+        game.side
+            .world_tables
+            .0
+            .as_mut()
+            .unwrap()
+            .stations
+            .enchantments = synced.clone();
+        std::sync::Arc::make_mut(&mut game.side.world_tables.0.as_mut().unwrap().items)
+            .enchantments = synced;
         assert!(
             game.active_enchantment_definitions()
                 .get("h024:audit")
@@ -391,9 +392,15 @@ pub(in crate::game::server_side) use crate::game::client_side::chat::enchantment
             assert_eq!(reg.ids("minecraft:item"), item_ids);
             assert_eq!(reg.effects, effects);
         }
-        game.side.world_tables.0.as_mut().unwrap().stations.enchantments = base.clone();
-        std::sync::Arc::make_mut(&mut game.side.world_tables.0.as_mut().unwrap().items).enchantments =
-            base;
+        game.side
+            .world_tables
+            .0
+            .as_mut()
+            .unwrap()
+            .stations
+            .enchantments = base.clone();
+        std::sync::Arc::make_mut(&mut game.side.world_tables.0.as_mut().unwrap().items)
+            .enchantments = base;
         assert!(
             game.active_enchantment_definitions()
                 .get("h024:audit")

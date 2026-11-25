@@ -5,7 +5,7 @@
 //! `SignBlock.otherPlayerIsEditingSign`, `SignBlockEntity.tick` and
 //! `SignBlockEntity.updateSignText`.
 use super::*;
-use crate::game::{Audio, Options, Progress, Settings, lan::LanHost, load_resources};
+use crate::game::{Options, Progress, Settings, lan::LanHost, load_resources};
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_client::{
     chunk::Chunk,

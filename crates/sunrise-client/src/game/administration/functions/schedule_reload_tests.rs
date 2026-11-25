@@ -113,7 +113,8 @@ fn a_pending_event_survives_a_save_and_a_reload() {
     game.side.fns.0 = Default::default();
     game.ensure_datapacks();
     let loaded: Vec<_> = game
-        .side.fns
+        .side
+        .fns
         .0
         .schedule
         .iter()

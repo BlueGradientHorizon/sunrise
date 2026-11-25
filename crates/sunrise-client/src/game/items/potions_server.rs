@@ -2734,7 +2734,7 @@ pub(in crate::game) mod potion_contents_tests;
 
 #[cfg(test)]
 pub(in crate::game) mod mob_absorption_max_tests {
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
     use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
@@ -2906,7 +2906,7 @@ pub(in crate::game) mod mob_absorption_max_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod mob_health_boost_tests {
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
     use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
@@ -3157,7 +3157,7 @@ pub(in crate::game) mod mob_health_boost_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod depleted_absorption_tests {
-    use crate::game::{Audio, Game, Options, Progress, Settings, commands::Target, load_resources};
+    use crate::game::{Options, Progress, Settings, commands::Target, load_resources};
     use std::sync::Arc;
     use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
@@ -3419,7 +3419,7 @@ pub(in crate::game) mod depleted_absorption_tests {
 pub(in crate::game) mod arrow_contents {
     //! Actual in-memory Game potion paths. No run loop, world load or server startup.
     use super::*;
-    use crate::game::{Audio, Options, Progress, Settings, execution_role, load_resources};
+    use crate::game::{Options, Progress, Settings, execution_role, load_resources};
     use serde_json::{Value, json};
     use std::{path::PathBuf, sync::Arc, time::Instant};
     use sunrise_client::chunk::Chunk;

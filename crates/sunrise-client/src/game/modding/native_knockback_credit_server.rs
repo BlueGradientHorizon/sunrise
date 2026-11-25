@@ -65,11 +65,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mob = observed
             .then(|| self.mobs.iter().find(|mob| mob.id as i32 == victim))
             .flatten();
-        let existing_player = self
-            .side
-            .last_hurt_by_player
-            .get(&(victim as u32))
-            .copied();
+        let existing_player = self.side.last_hurt_by_player.get(&(victim as u32)).copied();
         let existing_player_live =
             existing_player.is_some_and(|credit| self.resolve_player_credit(credit).is_some());
         let player = mob.and(existing_player);

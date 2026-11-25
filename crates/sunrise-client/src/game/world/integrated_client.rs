@@ -96,9 +96,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     #[inline(always)]
     #[allow(dead_code)]
     pub(in crate::game) fn integrated_tick_loop_client(&mut self, started: Instant) -> f32 {
-        self.side
-            .debug_charts
-            .log_tick(started, started.elapsed());
+        self.side.debug_charts.log_tick(started, started.elapsed());
         self.side.debug_charts.smoothed_tick_ms
     }
     /// `Minecraft.doWorldLoad`: start the server thread on the world; the

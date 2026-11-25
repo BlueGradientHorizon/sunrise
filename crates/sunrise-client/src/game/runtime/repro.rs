@@ -388,7 +388,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         match words[0] {
             "record-start" => self.record_start_command(&words[1..], Some(reply.clone())),
             "record-stop" => self.record_stop_command(&words[1..], Some(reply.clone())),
-            "record-status" => Ok(Some(Some(self.record_status(self.side.input_trace.0.events())))),
+            "record-status" => Ok(Some(Some(
+                self.record_status(self.side.input_trace.0.events()),
+            ))),
             "record-list" => Ok(Some(Some(self.record_list()))),
             "record-replay" => self.replay_command(&words[1..], Some(reply.clone())),
             "repro-export" => self.export_command(&words[1..], Some(reply.clone())),
@@ -1068,7 +1070,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     pub(in crate::game::client_side) fn poll_pending_replay(&mut self) {
         let Some((in_place, opened, folder, deadline)) = self
-            .side.repro
+            .side
+            .repro
             .0
             .pending_replay
             .as_ref()

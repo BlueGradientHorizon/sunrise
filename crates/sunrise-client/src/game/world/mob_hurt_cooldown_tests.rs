@@ -1,5 +1,5 @@
 use crate::game::*;
-use crate::game::{Audio, Options, Progress, Settings, load_resources};
+use crate::game::{Options, Progress, Settings, load_resources};
 use sunrise_client::chunk::Chunk;
 use sunrise_client::motion::PlayerMotion;
 use sunrise_core::position::ChunkPos;

@@ -416,7 +416,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let border = if dim == self.dim {
             &self.border
         } else {
-            self.side.levels.0.parked_border(dim).unwrap_or(&self.border)
+            self.side
+                .levels
+                .0
+                .parked_border(dim)
+                .unwrap_or(&self.border)
         };
         PortalSide::bounds_of(border)
     }
@@ -1985,10 +1989,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// `canUsePortal(false)` of a mob: what the mob itself decides
     /// (`mobs::mob_can_use_portal`), riding nothing, not asleep, and not
     /// carrying the players this side does.
-    pub(in crate::game) fn mob_portal_eligible(
-        &self,
-        m: &sunrise_client::mobs::Mob,
-    ) -> bool {
+    pub(in crate::game) fn mob_portal_eligible(&self, m: &sunrise_client::mobs::Mob) -> bool {
         sunrise_client::mobs::mob_can_use_portal(m)
             && m.extra.mount.is_none()
             && self.riding != Some(m.id)
@@ -2161,13 +2162,23 @@ pub(in crate::game) mod tests {
     }
 
     /// Runs `test` with a `Gate` installed, on a server with guests 12 and 13.
-    fn with_gate(test: impl FnOnce(&mut crate::game::ServerGame<'_>, &AtomicU32, &Mutex<Vec<(u32, String, String)>>)) {
+    fn with_gate(
+        test: impl FnOnce(
+            &mut crate::game::ServerGame<'_>,
+            &AtomicU32,
+            &Mutex<Vec<(u32, String, String)>>,
+        ),
+    ) {
         with_gate_mode(false, test);
     }
 
     fn with_gate_mode(
         discard: bool,
-        test: impl FnOnce(&mut crate::game::ServerGame<'_>, &AtomicU32, &Mutex<Vec<(u32, String, String)>>),
+        test: impl FnOnce(
+            &mut crate::game::ServerGame<'_>,
+            &AtomicU32,
+            &Mutex<Vec<(u32, String, String)>>,
+        ),
     ) {
         let spare = Arc::new(AtomicU32::new(0));
         let heard = Arc::default();

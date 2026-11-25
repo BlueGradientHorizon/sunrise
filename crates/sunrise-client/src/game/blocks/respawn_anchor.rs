@@ -183,10 +183,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         pos: Option<[i32; 3]>,
         forced: bool,
     ) -> bool {
-        let (Some(player), Some(name)) = (
-            self.side.lan_acting_uuid,
-            self.side.lan_acting_name.clone(),
-        ) else {
+        let (Some(player), Some(name)) =
+            (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
+        else {
             return false;
         };
         let mut cancel = false;
@@ -708,7 +707,7 @@ pub(in crate::game) mod tests {
 
 #[cfg(test)]
 pub(in crate::game) mod connected_spawnpoint_rotation_tests {
-    use crate::game::{Game, lan::LanSettings};
+    use crate::game::lan::LanSettings;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_client::{
         chunk::Chunk,
@@ -1044,15 +1043,16 @@ pub(in crate::game) mod pitch_preservation_controls {
                 game.world.set(x, 99, z, stone).unwrap();
             }
         }
-        let state = |game: &crate::game::ServerGame<'_>, name: &str, properties: &[(&str, &str)]| {
-            let registry = game.pack.assets.registry;
-            let id = registry.default_state(name).unwrap();
-            let mut value = registry.state(id).unwrap().clone();
-            for (key, value_) in properties {
-                value.properties.insert((*key).into(), (*value_).into());
-            }
-            registry.resolve(&value).unwrap()
-        };
+        let state =
+            |game: &crate::game::ServerGame<'_>, name: &str, properties: &[(&str, &str)]| {
+                let registry = game.pack.assets.registry;
+                let id = registry.default_state(name).unwrap();
+                let mut value = registry.state(id).unwrap().clone();
+                for (key, value_) in properties {
+                    value.properties.insert((*key).into(), (*value_).into());
+                }
+                registry.resolve(&value).unwrap()
+            };
         let head = state(
             &game,
             "minecraft:red_bed",

@@ -110,7 +110,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     pub(in crate::game) fn gui_size(&self) -> (f32, f32) {
         let size = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map_or([1280, 720], |r| [r.config.width, r.config.height]);
@@ -220,7 +221,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.ui.options.set_controller_context(context);
         }
         let output = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map_or(Default::default(), |r| r.output());
@@ -241,7 +243,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         sunrise_client::controller_ui::Context {
             player: self.options.player_name(),
             device: self.side.pad.0.device_or_virtual(),
-            detected: detected_controller_style(self.side.pad.0.device.as_ref(), self.side.pad.0.style),
+            detected: detected_controller_style(
+                self.side.pad.0.device.as_ref(),
+                self.side.pad.0.style,
+            ),
             glyphs: self.ui.options.pad_glyphs,
         }
     }
@@ -532,7 +537,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 Event::InstallMod(id) => {
                     if self.player.is_none() {
                         let ui = &mut self.ui.options.mod_browser;
-                        self.side.mod_jobs.0.install(ui, crate::game::game_dir(), id);
+                        self.side
+                            .mod_jobs
+                            .0
+                            .install(ui, crate::game::game_dir(), id);
                     }
                 }
                 // The website, through ConfirmLinkScreen as other links.
@@ -602,7 +610,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some(w) = self.side.window.0.clone() {
             let monitor = w.current_monitor().or_else(|| w.primary_monitor());
             if let Some(modes) = self
-                .side.video_modes
+                .side
+                .video_modes
                 .0
                 .refresh(monitor, sunrise_client::window::monitor_video_modes)
             {
@@ -710,7 +719,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         size: winit::dpi::PhysicalSize<u32>,
     ) -> ResizeState {
         let viewport = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map_or([size.width, size.height], |r| {
@@ -820,14 +830,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 InactivityFpsLimit::Afk
             },
             iconified: self
-                .side.window
+                .side
+                .window
                 .0
                 .as_ref()
                 .is_some_and(|w| w.is_minimized().unwrap_or(false)),
             focused: self.side.focused,
             // Window.isExclusiveFullscreen.
             exclusive_fullscreen: self
-                .side.window
+                .side
+                .window
                 .0
                 .as_ref()
                 .is_some_and(|w| matches!(w.fullscreen(), Some(Fullscreen::Exclusive(_)))),
@@ -842,10 +854,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             has_overlay: false,
         };
         let limit = framerate_limit(self.settings.max_fps as i32, context);
-        let limit =
-            self.settings
-                .sunrise
-                .battery_limit(limit, self.side.title.0.is_none(), self.side.focused);
+        let limit = self.settings.sunrise.battery_limit(
+            limit,
+            self.side.title.0.is_none(),
+            self.side.focused,
+        );
         // A native mod may only lower it (`native_framerate_limit`).
         let mut hooked = limit;
         self.native_framerate_limit(

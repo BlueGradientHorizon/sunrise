@@ -293,7 +293,12 @@ fn record_at(type_key: &str, uuid: [i32; 4], at: [f64; 3], riders: Vec<Tag>) -> 
 }
 
 /// Spawns one tree of `mymod:robot` records and answers its root's row id.
-fn spawn_tree(game: &mut crate::game::ServerGame<'_>, root: [i32; 4], at: [f64; 3], riders: Vec<Tag>) -> u32 {
+fn spawn_tree(
+    game: &mut crate::game::ServerGame<'_>,
+    root: [i32; 4],
+    at: [f64; 3],
+    riders: Vec<Tag>,
+) -> u32 {
     game.load_listed(
         "mymod:robot",
         None,

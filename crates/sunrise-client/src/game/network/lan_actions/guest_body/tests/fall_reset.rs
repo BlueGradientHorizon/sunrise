@@ -27,7 +27,10 @@ pub(in crate::game) const CRITERIA: [&str; 3] = ["any", "short", "five"];
 pub(in crate::game) use crate::game::server_side::lan_actions_server::guest_body::tests::fall_reset::scene;
 
 /// One server packet drain; put a client-tick marker between reports.
-pub(in crate::game) fn drain_moves(g: &mut crate::game::ServerGame<'_>, reports: impl IntoIterator<Item = (f64, u8)>) {
+pub(in crate::game) fn drain_moves(
+    g: &mut crate::game::ServerGame<'_>,
+    reports: impl IntoIterator<Item = (f64, u8)>,
+) {
     g.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
         guest
             .inbox

@@ -1679,7 +1679,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             tag
         } else {
             let other = self
-                .side.others
+                .side
+                .others
                 .0
                 .iter()
                 .find(|o| o.id == root && Self::other_takes_passengers(&o.kind))?;
@@ -2872,7 +2873,7 @@ pub(in crate::game) mod tests;
 #[cfg(test)]
 mod interaction_saved_defaults_tests {
     use super::*;
-    use crate::game::{Audio, Options, Progress, Settings, commands::Target, load_resources};
+    use crate::game::{Options, Progress, Settings, commands::Target, load_resources};
 
     #[test]
     #[ignore = "daily"]
@@ -2928,7 +2929,8 @@ mod interaction_saved_defaults_tests {
         assert!(game.run_command("summon marker 10.5 200 7.5 {UUID:[I;109,0,0,4],data:{audit:7}}"));
         assert!(game.run_command("summon pig 10.5 200 8.5 {UUID:[I;109,0,0,5],NoAI:1b,NoGravity:1b,PersistenceRequired:1b,Health:10f}"));
         let marker_id = game
-            .side.others
+            .side
+            .others
             .0
             .iter()
             .find(|o| game.persist.uuids.get(&o.id) == Some(&[109, 0, 0, 4]))
@@ -2946,7 +2948,8 @@ mod interaction_saved_defaults_tests {
         ] {
             assert!(game.run_command(&format!("summon interaction {} 200 4.5 {{UUID:[I;109,0,0,{n}],Rotation:[15f,-30f],CustomName:\"audit\",Tags:[\"audit\"]{fields}}}", 1.5+3.0*f64::from(n-1))));
             let o = game
-                .side.others
+                .side
+                .others
                 .0
                 .iter()
                 .find(|o| game.persist.uuids.get(&o.id) == Some(&[109, 0, 0, n]))
@@ -3031,7 +3034,7 @@ mod interaction_saved_defaults_tests {
 #[cfg(test)]
 mod loaded_tag_tests {
     use super::*;
-    use crate::game::{Audio, Options, Progress, Settings, commands::Target, load_resources};
+    use crate::game::{Options, Progress, Settings, commands::Target, load_resources};
     use sunrise_client::mobs::Species;
 
     fn check(
@@ -3075,7 +3078,12 @@ mod loaded_tag_tests {
         }
     }
 
-    fn action(game: &mut crate::game::ServerGame<'_>, command: &str, expected: bool, failures: &mut Vec<String>) {
+    fn action(
+        game: &mut crate::game::ServerGame<'_>,
+        command: &str,
+        expected: bool,
+        failures: &mut Vec<String>,
+    ) {
         if game.run_command(command) != expected {
             failures.push(format!("command result: {command}"));
         }
@@ -3274,7 +3282,7 @@ mod loaded_tag_tests {
 #[cfg(test)]
 mod item_display_saved_transform_tests {
     use super::*;
-    use crate::game::{Audio, Options, Progress, Settings, commands::Target, load_resources};
+    use crate::game::{Options, Progress, Settings, commands::Target, load_resources};
     use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
     fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
@@ -3366,7 +3374,8 @@ mod item_display_saved_transform_tests {
             .unwrap_or_default();
         assert!(game.run_command(&format!("summon item_display 6.5 200 6.5 {{UUID:[I;132,0,0,{n}],Rotation:[12.5f,-20f],NoGravity:1b,CustomName:\"display\",Tags:[\"h132\"],item:{{id:\"minecraft:diamond\",count:2,components:{{\"minecraft:custom_data\":{{h132:7}}}}}}{suffix}}}")));
         let o = game
-            .side.others
+            .side
+            .others
             .0
             .iter()
             .find(|o| game.persist.uuid_of(o.id) == Some([132, 0, 0, n]))
@@ -3519,7 +3528,8 @@ mod item_display_saved_transform_tests {
             ] {
                 assert!(game.run_command(&format!("summon item_display 6.5 200 6.5 {{UUID:[I;132,0,0,{n}],transformation:{form},item:{{id:\"minecraft:diamond\",count:1}}}}")));
                 let id = game
-                    .side.others
+                    .side
+                    .others
                     .0
                     .iter()
                     .find(|o| game.persist.uuid_of(o.id) == Some([132, 0, 0, n]))
@@ -3538,7 +3548,8 @@ mod item_display_saved_transform_tests {
                     "summon {kind} 10.5 200 10.5 {{UUID:[I;132,0,0,{n}]{extra}}}"
                 )));
                 let id = game
-                    .side.others
+                    .side
+                    .others
                     .0
                     .iter()
                     .find(|o| game.persist.uuid_of(o.id) == Some([132, 0, 0, n]))
@@ -4250,7 +4261,10 @@ mod invalid_passenger_tests {
     }
     /// Each saved passenger of `id` as (id, UUID word 3, first tag), in order;
     /// `None` when the entity saves no Passengers.
-    fn saved(game: &mut crate::game::ServerGame<'_>, id: u32) -> Option<Vec<(String, Option<i32>, String)>> {
+    fn saved(
+        game: &mut crate::game::ServerGame<'_>,
+        id: u32,
+    ) -> Option<Vec<(String, Option<i32>, String)>> {
         let tag = game.command_target_nbt(Target::Mob(id)).expect("saved mob");
         let Some(Tag::List(list)) = tag.get("Passengers") else {
             return None;
@@ -4450,7 +4464,7 @@ pub(in crate::game) mod thrown_item_tests;
 #[cfg(test)]
 mod h262_enderman_absolute_anger_tests {
     use super::*;
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use sunrise_client::motion::PlayerMotion;
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
     pub(super) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
@@ -4689,7 +4703,7 @@ mod h262_enderman_absolute_anger_tests {
 #[cfg(test)]
 mod sulfur_body_attribute_tests {
     use super::*;
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use sunrise_client::motion::PlayerMotion;
 
     fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
@@ -4970,7 +4984,7 @@ mod sulfur_body_attribute_tests {
 #[cfg(test)]
 mod summoned_knot_tests {
     use super::*;
-    use crate::game::{Audio, Options, Progress, Settings, commands::Target, load_resources};
+    use crate::game::{Options, Progress, Settings, commands::Target, load_resources};
     use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
     fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
@@ -5035,7 +5049,8 @@ mod summoned_knot_tests {
         test(&mut game);
     }
     fn knot_id(game: &crate::game::ServerGame<'_>, n: i32) -> u32 {
-        game.side.others
+        game.side
+            .others
             .0
             .iter()
             .find(|o| game.persist.uuid_of(o.id) == Some([129, 0, 0, n]))
@@ -5111,7 +5126,8 @@ mod summoned_knot_tests {
                 )
             );
             let marker = game
-                .side.others
+                .side
+                .others
                 .0
                 .iter()
                 .find(|o| o.kind == "minecraft:marker")
@@ -5160,7 +5176,8 @@ mod summoned_knot_tests {
             assert!(game.run_command("kill @e[type=leash_knot]"));
             assert!(
                 !game
-                    .side.others
+                    .side
+                    .others
                     .0
                     .iter()
                     .any(|o| o.kind == "minecraft:leash_knot")
@@ -5178,7 +5195,13 @@ mod summoned_knot_tests {
             assert!(game.run_command("summon leash_knot -1.2 200.8 -2.1 {UUID:[I;129,0,0,5]}"));
             let id = knot_id(game, 5);
             assert_eq!(
-                game.side.others.0.iter().find(|o| o.id == id).unwrap().position,
+                game.side
+                    .others
+                    .0
+                    .iter()
+                    .find(|o| o.id == id)
+                    .unwrap()
+                    .position,
                 Vec3::new(-1.5, 200.375, -2.5)
             );
         });
@@ -5267,7 +5290,7 @@ mod summoned_knot_tests {
 #[cfg(test)]
 mod camel_pose_saved_tests {
     use super::*;
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
 
     #[test]
     #[ignore = "daily"]
@@ -5685,7 +5708,7 @@ mod restored_vehicle_transfer_tests {
 #[cfg(test)]
 mod trader_llama_discard_tests {
     use super::*;
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use sunrise_client::motion::PlayerMotion;
 
     fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {

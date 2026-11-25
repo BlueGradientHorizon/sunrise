@@ -798,8 +798,9 @@ mod tests {
         use sunrise_core::nbt::Tag;
         with_game(|game| {
             spawn(game);
-            let values =
-                |game: &crate::game::ServerGame<'_>| armor::values(game.mobs.iter().find(|m| m.id == 12).unwrap());
+            let values = |game: &crate::game::ServerGame<'_>| {
+                armor::values(game.mobs.iter().find(|m| m.id == 12).unwrap())
+            };
             let zombie = living(game, 12);
             // The zombie's own armor is 2, the diamond chestplate's 8 and 2
             // toughness: the write through the handle collects at once.

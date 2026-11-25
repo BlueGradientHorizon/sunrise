@@ -84,7 +84,7 @@ pub(in crate::game::server_side) fn run_gateway_counters_match_actual_vanilla_me
 
 // Exercise the real dispatch with cooldown-only states, so no teleport destination is resolved.
 fn game_gateway_phases() -> [[i32; 2]; 4] {
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
     use sunrise_client::chunk::Chunk;
     use sunrise_core::nbt::Tag;
@@ -156,10 +156,13 @@ fn game_gateway_phases() -> [[i32; 2]; 4] {
         game.creatures.projectiles[0].kind,
         ProjectileKind::EnderPearl
     ));
-    game.side.tickets.0.update(Some(crate::ticket_levels::Sources {
-        forced: vec![(0, 0)],
-        ..Default::default()
-    }));
+    game.side
+        .tickets
+        .0
+        .update(Some(crate::ticket_levels::Sources {
+            forced: vec![(0, 0)],
+            ..Default::default()
+        }));
     assert!(game.entity_ticking_area()(4, 4));
     for &id in &ids {
         let mut state = Traveller::default();

@@ -1,4 +1,4 @@
-use crate::game::{Audio, FallingBlock, Game, Options, Progress, Settings, load_resources};
+use crate::game::{FallingBlock, Options, Progress, Settings, load_resources};
 use sunrise_client::{falling_block::bounds, items::ItemStack, motion::PlayerMotion};
 use sunrise_core::{geometry::Vec3, position::BlockPos, random::RandomSource};
 

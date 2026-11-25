@@ -26,7 +26,9 @@ pub(in crate::game) struct GameHive<'g, 'a> {
     pub(in crate::game) stay: std::cell::Cell<Option<bool>>,
 }
 impl<'g, 'a> GameHive<'g, 'a> {
-    pub(in crate::game::server_side) fn new(game: &'g mut Game<'a, crate::game::server_side::ServerState>) -> Self {
+    pub(in crate::game::server_side) fn new(
+        game: &'g mut Game<'a, crate::game::server_side::ServerState>,
+    ) -> Self {
         Self {
             game,
             stay: Default::default(),
@@ -531,10 +533,11 @@ pub(in crate::game) mod stay_tests {
             game.world
                 .block_entities
                 .insert(key, BlockEntity::Beehive(Box::new(hive)));
-            let inside = |game: &crate::game::ServerGame<'_>| match game.world.block_entities.get(&key) {
-                Some(BlockEntity::Beehive(h)) => h.bees.len(),
-                _ => panic!("the hive is gone"),
-            };
+            let inside =
+                |game: &crate::game::ServerGame<'_>| match game.world.block_entities.get(&key) {
+                    Some(BlockEntity::Beehive(h)) => h.bees.len(),
+                    _ => panic!("the hive is gone"),
+                };
             game.world.day_time = 13_000;
             game.tick_beehive(key);
             assert_eq!((inside(game), game.mobs.len()), (3, 0), "night");

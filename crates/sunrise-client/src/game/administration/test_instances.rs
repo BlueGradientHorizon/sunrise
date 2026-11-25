@@ -95,7 +95,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return None;
         }
         let def = self.read_test_def(id);
-        self.side.test_defs
+        self.side
+            .test_defs
             .0
             .borrow_mut()
             .insert(id.to_owned(), def.clone());

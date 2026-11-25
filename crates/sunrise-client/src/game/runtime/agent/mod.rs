@@ -633,7 +633,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         });
         // Who caused the input, and whether a repro recording runs.
         let mut input = self.side.input_trace.0.summary();
-        self.side.repro
+        self.side
+            .repro
             .0
             .fill_summary(&mut input, self.side.input_trace.0.events());
         state["input"] = input;

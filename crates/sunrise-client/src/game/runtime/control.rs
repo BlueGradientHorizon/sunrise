@@ -209,7 +209,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn summary_with_passes(&self) -> Value {
         let mut summary = self.side.frame_stats.summary();
         let passes = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map(|r| r.own_pass_times())
@@ -304,9 +305,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self.side.screen == Screen::Options
             && self.ui.options.page() == sunrise_client::options_ui::Page::Agent
         {
-            self.ui
-                .options
-                .set_agent_status(self.agent_status_lines(), self.side.repro.0.recording_active());
+            self.ui.options.set_agent_status(
+                self.agent_status_lines(),
+                self.side.repro.0.recording_active(),
+            );
         }
     }
 
@@ -383,10 +385,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return Err("no focused editor accepted character input".into());
         }
         if self.side.book.is_some() {
-            if matches!(
-                self.side.book,
-                Some(super::books::BookScreen::Edit { .. })
-            ) {
+            if matches!(self.side.book, Some(super::books::BookScreen::Edit { .. })) {
                 self.book_type(text);
                 return Ok(());
             }
@@ -616,7 +615,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     (self.side.gpu_passes, self.side.gpu_pass_detail),
                 )?;
                 let support = self
-                    .side.renderer
+                    .side
+                    .renderer
                     .0
                     .as_ref()
                     .and_then(|r| r.pass_detail_support());
@@ -817,7 +817,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     _ => return Err("pad focus true|false".into()),
                 };
                 let id = self
-                    .side.window
+                    .side
+                    .window
                     .0
                     .as_ref()
                     .map_or_else(winit::window::WindowId::dummy, |w| w.id());
@@ -1744,14 +1745,20 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Parallel Tick: the setting, whether the next tick shares its work, and Auto's state.
         let (setting, on, auto) = sunrise_client::parallel::status();
         status["parallel_tick"] = json!({ "setting": setting, "on": on, "auto": auto });
-        let (target, sampled) = self.side.lod.0.as_ref().map_or((0, 0), |lod| lod.progress());
+        let (target, sampled) = self
+            .side
+            .lod
+            .0
+            .as_ref()
+            .map_or((0, 0), |lod| lod.progress());
         status["lod"]["target_tiles"] = target.into();
         status["lod"]["sampled_target_tiles"] = sampled.into();
         let (kept, kept_bytes) = self.side.lod.0.as_ref().map_or((0, 0), |lod| lod.kept());
         status["lod"]["kept_tiles"] = kept.into();
         status["lod"]["kept_mb"] = (kept_bytes >> 20).into();
         let (wanted, refined) = self
-            .side.lod
+            .side
+            .lod
             .0
             .as_ref()
             .map_or((0, 0), |lod| lod.detail_progress());
@@ -1782,7 +1789,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         status["sidebar"] = self.sidebar_status();
         // Who caused the input, and whether a repro recording runs.
         let mut input = self.side.input_trace.0.summary();
-        self.side.repro
+        self.side
+            .repro
             .0
             .fill_summary(&mut input, self.side.input_trace.0.events());
         status["input"] = input;

@@ -1,10 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use crate::game::remote::RemoteDimensionEntry;
-    use crate::game::{
-        Game,
-        native_entity_refs::tests::{run_fresh_cases, with_game_role, with_game_role_client},
+    use crate::game::native_entity_refs::tests::{
+        run_fresh_cases, with_game_role, with_game_role_client,
     };
+    use crate::game::remote::RemoteDimensionEntry;
     use mod_api::*;
     use std::sync::{
         Arc, Mutex,

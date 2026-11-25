@@ -1,5 +1,5 @@
 //! Bootstrap capture, mod registration and the real Game hosts.
-use crate::game::{Game, Options, api_values, execution_role::ExecutionRole, mods};
+use crate::game::{Options, api_values, execution_role::ExecutionRole, mods};
 use mod_api::{Dist, Hooks, Host, ModEntry, PackageInfo, RegistrationContext, RuntimeEnvironment};
 use std::sync::{Arc, Mutex};
 use sunrise_mod_package::selection::LaunchArguments;

@@ -203,11 +203,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         match self.sound_state(sound) {
             Some(SoundState::Waiting | SoundState::Playing) => {
                 let id = sound.fields().id;
-                self.side
-                    .mod_sounds
-                    .changes
-                    .borrow_mut()
-                    .push((id, change));
+                self.side.mod_sounds.changes.borrow_mut().push((id, change));
                 true
             }
             _ => false,
@@ -220,7 +216,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if !self.native_window() {
             return Vec::new();
         }
-        self.side.audio
+        self.side
+            .audio
             .0
             .event_names()
             .iter()

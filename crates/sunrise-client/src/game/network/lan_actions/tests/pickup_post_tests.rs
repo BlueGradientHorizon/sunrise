@@ -145,7 +145,11 @@ pub(in crate::game) fn arm(probe: &Probe, case: &Case) {
     state.notices.clear();
 }
 
-pub(in crate::game) fn spawn(game: &mut crate::game::ServerGame<'_>, at: [f64; 3], case: &Case) -> u32 {
+pub(in crate::game) fn spawn(
+    game: &mut crate::game::ServerGame<'_>,
+    at: [f64; 3],
+    case: &Case,
+) -> u32 {
     let level = game.level(game.dim.id()).unwrap();
     game.level_spawn_item(
         level,
@@ -172,7 +176,11 @@ pub(in crate::game) fn with_probe(probe: &Probe, test: impl FnOnce()) {
 }
 
 /// The host's player picks up through the lifted pass.
-pub(in crate::game) fn host_case(game: &mut crate::game::ServerGame<'_>, probe: &Probe, case: &Case) -> Outcome {
+pub(in crate::game) fn host_case(
+    game: &mut crate::game::ServerGame<'_>,
+    probe: &Probe,
+    case: &Case,
+) -> Outcome {
     clear_ground(game);
     game.inventory
         .fill(Some(ItemStack::new("minecraft:stone", 64)));
@@ -206,7 +214,11 @@ pub(in crate::game) fn host_stat(game: &crate::game::ServerGame<'_>) -> i64 {
 }
 
 /// Guest 12 picks up next to itself.
-pub(in crate::game) fn guest_case(game: &mut crate::game::ServerGame<'_>, probe: &Probe, case: &Case) -> Outcome {
+pub(in crate::game) fn guest_case(
+    game: &mut crate::game::ServerGame<'_>,
+    probe: &Probe,
+    case: &Case,
+) -> Outcome {
     clear_ground(game);
     let room = case.room;
     game.lan

@@ -210,7 +210,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let (w, h) = (batch.width, batch.height);
         // extractBlurredBackground: the debug overlay goes under the screen.
         let size = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map_or([w as u32, h as u32], |r| [r.config.width, r.config.height]);
@@ -274,9 +275,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         let hover = inside && ui::hovered(self.side.cursor, x, cy, BUTTON, 16.0);
                         ui::button(batch, atlas, x, cy, BUTTON, 16.0, &label, !selected, hover);
                     }
-                    if !allowed
-                        && inside
-                        && ui::hovered(self.side.cursor, cx, y, xs[0] - cx, ITEM)
+                    if !allowed && inside && ui::hovered(self.side.cursor, cx, y, xs[0] - cx, ITEM)
                     {
                         tooltip = Some(Text::translate("debug.options.notAllowed.tooltip", &[]));
                     }
@@ -326,7 +325,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         ];
         let active = [
             !self.side.debug_entries.0.is_using_profile(Profile::Default),
-            !self.side.debug_entries.0.is_using_profile(Profile::Performance),
+            !self
+                .side
+                .debug_entries
+                .0
+                .is_using_profile(Profile::Performance),
             true,
             true,
         ];
@@ -691,7 +694,9 @@ pub(in crate::game) mod tests {
         use sunrise_client::debug_keys::KeyAction;
         let mut resources = None;
         let mut game = title_game(&mut resources);
-        assert!(game.player.is_none() && game.side.renderer.0.is_none() && game.integrated.is_none());
+        assert!(
+            game.player.is_none() && game.side.renderer.0.is_none() && game.integrated.is_none()
+        );
         game.debug_key(KeyCode::F3, KeyAction::Press);
         game.debug_key(KeyCode::F3, KeyAction::Release);
         assert!(
@@ -714,7 +719,10 @@ pub(in crate::game) mod tests {
         game.debug_key(KeyCode::F3, KeyAction::Press);
         game.debug_key(KeyCode::F3, KeyAction::Release);
         assert!(!game.side.debug);
-        game.side.debug_entries.0.set_status("fps", Status::AlwaysOn);
+        game.side
+            .debug_entries
+            .0
+            .set_status("fps", Status::AlwaysOn);
         assert!(ScreensClientHost::debug_overlay_visible(&game));
 
         // With no screen open, the hidden HUD suppresses even an always-on entry.
@@ -759,7 +767,9 @@ pub(in crate::game) mod tests {
             game.shows_panorama(),
             "the level-less options retain the panorama"
         );
-        assert!(game.player.is_none() && game.side.renderer.0.is_none() && game.integrated.is_none());
+        assert!(
+            game.player.is_none() && game.side.renderer.0.is_none() && game.integrated.is_none()
+        );
         let frame = game.hud([1280, 720]);
         assert!(
             !frame.vertices.is_empty(),
@@ -791,7 +801,10 @@ pub(in crate::game) mod tests {
         game.debug_key(KeyCode::F6, KeyAction::Press);
         assert!(game.side.screen == Screen::Playing);
         assert!(game.side.title.0.is_some() && game.side.debug_options.is_none());
-        assert_eq!(game.side.title.0.as_ref().unwrap().screen_key(), original_title);
+        assert_eq!(
+            game.side.title.0.as_ref().unwrap().screen_key(),
+            original_title
+        );
         assert!(
             !game.side.captured,
             "closing a title screen must not capture the pointer"

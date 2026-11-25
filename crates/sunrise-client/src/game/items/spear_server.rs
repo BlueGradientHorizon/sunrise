@@ -368,9 +368,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let clip = |from, to| self.clip_collider(from, to);
         let mobs = self.mobs.len();
         let mut boxes = self.hittable_mob_boxes();
-        boxes.extend(
-            (self.side.stab_players.iter().enumerate()).map(|(k, p)| (mobs + k, p.bounds)),
-        );
+        boxes
+            .extend((self.side.stab_players.iter().enumerate()).map(|(k, p)| (mobs + k, p.bounds)));
         hits_in_reach(&boxes, eye, look, movement, reach, clip)
             .into_iter()
             .map(|(i, _)| {

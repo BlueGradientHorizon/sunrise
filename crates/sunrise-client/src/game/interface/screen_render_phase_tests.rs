@@ -1,5 +1,5 @@
 //! Resource-backed Game screen hooks rendered by the real software-Vulkan HUD pipeline.
-use super::{Game, Screen};
+use super::Screen;
 use mod_api::{
     ClientHost, Hooks, ModEntry, ScreenRenderBackgroundEvent, ScreenRenderForegroundEvent,
 };

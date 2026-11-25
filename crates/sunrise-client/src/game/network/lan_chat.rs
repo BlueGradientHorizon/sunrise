@@ -190,10 +190,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
         let hidden = self.chat_hidden_from(|game| {
             let sender = match game.source_entity() {
-                Some(Target::Player) => game
-                    .side
-                    .lan_acting_uuid
-                    .unwrap_or_else(|| game.own_uuid()),
+                Some(Target::Player) => {
+                    game.side.lan_acting_uuid.unwrap_or_else(|| game.own_uuid())
+                }
                 Some(Target::Guest(conn)) => game.command_guest(conn).map_or(0, |guest| guest.uuid),
                 _ => 0, // PlayerChatMessage.system uses the nil UUID.
             };
@@ -228,10 +227,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Option<bool> {
         let hidden = self.chat_hidden_from(|game| {
             let sender = match game.source_entity() {
-                Some(Target::Player) => game
-                    .side
-                    .lan_acting_uuid
-                    .unwrap_or_else(|| game.own_uuid()),
+                Some(Target::Player) => {
+                    game.side.lan_acting_uuid.unwrap_or_else(|| game.own_uuid())
+                }
                 Some(Target::Guest(conn)) => game.command_guest(conn).map_or(0, |guest| guest.uuid),
                 _ => 0,
             };

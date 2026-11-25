@@ -132,7 +132,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             self.side.screen_state.0.build.reopened();
             let layout = self.text_screen_layout(None, gui);
-            self.side.screen_state
+            self.side
+                .screen_state
                 .0
                 .build
                 .sync(self.side.screen, true, None, gui, layout);

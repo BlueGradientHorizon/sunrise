@@ -266,7 +266,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 #[cfg(test)]
 pub(in crate::game) mod swap_hands_tests {
     #[allow(unused_imports)]
-    use crate::game::native_entity_refs::tests::{with_game, with_client_game};
+    use crate::game::native_entity_refs::tests::{with_client_game, with_game};
     #[allow(unused_imports)]
     use mod_api::{Flow, Hooks, PlayerSwapHandsEvent, ServerHost};
     #[allow(unused_imports)]
@@ -304,7 +304,7 @@ pub(in crate::game) mod swap_hands_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod pause_close_tests {
-    use crate::game::{Screen, native_entity_refs::tests::{with_game, with_client_game}};
+    use crate::game::{Screen, native_entity_refs::tests::with_client_game};
     use sunrise_protocol::packets::play::Serverbound as S;
     use winit::keyboard::KeyCode;
 
@@ -337,7 +337,7 @@ pub(in crate::game) mod pause_close_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod creative_close_tests {
-    use crate::game::{Screen, native_entity_refs::tests::{with_game, with_client_game}};
+    use crate::game::{Screen, native_entity_refs::tests::with_client_game};
     use mod_api::{ClientHost, Hooks, ModEntry, ScreenOpening, ScreenOpeningEvent};
     use std::sync::{
         Arc,

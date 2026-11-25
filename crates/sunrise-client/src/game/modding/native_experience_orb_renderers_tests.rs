@@ -2,7 +2,6 @@
 //! `minecraft:experience_orb` draws in place of the billboarded orb quad, reading the orb's
 //! value; with no renderer the family's own geometry is unchanged; a failing renderer leaves that
 //! quad until a resource reload resolves it again.
-use super::Game;
 use super::native_entity_renderers::EntityRendererTable;
 use mod_api::{
     BlockEntityDrawContext, EntityRenderState, EntityRenderer, Hooks, RegisterEntityRenderersEvent,
@@ -171,7 +170,10 @@ fn an_experience_orb_registration_resolves_to_the_orb_slot() {
 /// Runs `check` on a client game with prepared resources and the scene's orb renderer, resolved
 /// as the first load does. In a child process running only `test`: the registrations are kept
 /// once per process.
-fn in_scene(test: &str, check: impl FnOnce(&mut crate::game::ClientGame<'_>, &Arc<Mutex<Heard>>, &Flaky)) {
+fn in_scene(
+    test: &str,
+    check: impl FnOnce(&mut crate::game::ClientGame<'_>, &Arc<Mutex<Heard>>, &Flaky),
+) {
     if std::env::var_os("SUNRISE_EXPERIENCE_ORB_RENDERERS_CHILD").is_none() {
         let status = std::process::Command::new(std::env::current_exe().unwrap())
             .args([

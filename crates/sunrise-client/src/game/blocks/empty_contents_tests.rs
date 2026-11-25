@@ -170,7 +170,8 @@ fn a_part_that_changes_the_dispensers_slots_is_refused_and_undone() {
             game.level_set_block(level, DISPENSER, dispenser.unwrap(), BlockUpdateFlags::NONE);
         assert_eq!(placed, Ok(true));
         let at = (DISPENSER[0], DISPENSER[1], DISPENSER[2]);
-        let slots = |game: &crate::game::ServerGame<'_>| game.world.block_entities[&at].slots().to_vec();
+        let slots =
+            |game: &crate::game::ServerGame<'_>| game.world.block_entities[&at].slots().to_vec();
         game.world.block_entities.get_mut(&at).unwrap().slots_mut()[0] =
             Some(ItemStack::new("minecraft:stick", 1));
         let before = slots(game);

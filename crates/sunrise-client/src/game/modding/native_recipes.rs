@@ -221,7 +221,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let mut stack = stack.try_into_engine(self.items())?;
         if self.remote.is_some()
             && !self
-                .side.creative_screen
+                .side
+                .creative_screen
                 .0
                 .catalog()
                 .item_enabled(&stack, self.enabled_feature_ids())
@@ -557,7 +558,7 @@ mod tests {
         assert_eq!(types, ["minecraft:smelting"]);
     }
 
-    use super::super::native_entity_refs::tests::{with_client_game, with_game_at, with_game_role_client};
+    use super::super::native_entity_refs::tests::{with_client_game, with_game_role_client};
 
     /// With the server's crafting recipes synced, the book still holds the
     /// vanilla ones under their own display ids (a viewer's "+" reads them,
@@ -657,27 +658,31 @@ mod tests {
         sunrise_client::mod_content::build(&base, Path::new(""), &[tagger], &root, &inventory)
             .unwrap();
         assert_eq!(sunrise_client::mod_content::namespaces(&root), ["tagger"]);
-        with_game_role_client(root,crate::game::execution_role::ExecutionRole::Client,  |game| {
-            let ids = [
-                "minecraft:stick",
-                "minecraft:stick_from_bamboo_item",
-                "minecraft:chest",
-                "minecraft:iron_ingot_from_smelting_raw_iron",
-            ];
-            // The integrated server numbers the book's displays by its index.
-            let server = ids.map(|id| {
-                let index = &game.stations().recipe_index;
-                vec![index.first_display(id).unwrap()]
-            });
-            assert_eq!(ids.map(|id| book_ids(game, id)), server);
-            let types = ["minecraft:crafting", "minecraft:smelting"].map(str::to_owned);
-            let sources = game.recipes().recipe_content(&types);
-            for part in sunrise_client::lan::recipes::encode_content(&types, &sources, false) {
-                game.remote_recipe_content(&part);
-            }
-            assert!(game.synced_recipes().is_some());
-            assert_eq!(ids.map(|id| book_ids(game, id)), server);
-        });
+        with_game_role_client(
+            root,
+            crate::game::execution_role::ExecutionRole::Client,
+            |game| {
+                let ids = [
+                    "minecraft:stick",
+                    "minecraft:stick_from_bamboo_item",
+                    "minecraft:chest",
+                    "minecraft:iron_ingot_from_smelting_raw_iron",
+                ];
+                // The integrated server numbers the book's displays by its index.
+                let server = ids.map(|id| {
+                    let index = &game.stations().recipe_index;
+                    vec![index.first_display(id).unwrap()]
+                });
+                assert_eq!(ids.map(|id| book_ids(game, id)), server);
+                let types = ["minecraft:crafting", "minecraft:smelting"].map(str::to_owned);
+                let sources = game.recipes().recipe_content(&types);
+                for part in sunrise_client::lan::recipes::encode_content(&types, &sources, false) {
+                    game.remote_recipe_content(&part);
+                }
+                assert!(game.synced_recipes().is_some());
+                assert_eq!(ids.map(|id| book_ids(game, id)), server);
+            },
+        );
         let _ = std::fs::remove_dir_all(&scratch);
     }
 }

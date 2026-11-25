@@ -177,7 +177,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         section: (i32, i32, i32),
     ) -> bool {
-        self.side.pending_uploads
+        self.side
+            .pending_uploads
             .0
             .iter()
             .any(|upload| upload.key == section)

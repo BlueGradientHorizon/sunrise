@@ -21,7 +21,10 @@ enum Node {
 impl SpawnTree {
     /// `EntityType.loadPassengersRecursive`: read each supported member before
     /// its descendants. A record that cannot be decoded contributes no branch.
-    pub(in crate::game) fn decode(game: &Game<'_, crate::game::server_side::ServerState>, tag: Tag) -> Option<Self> {
+    pub(in crate::game) fn decode(
+        game: &Game<'_, crate::game::server_side::ServerState>,
+        tag: Tag,
+    ) -> Option<Self> {
         let mut members = Vec::new();
         let mut todo = vec![(None, tag)];
         while let Some((parent, mut tag)) = todo.pop() {
@@ -101,7 +104,10 @@ impl SpawnTree {
         })
     }
 
-    pub(in crate::game) fn install(self, game: &mut Game<'_, crate::game::server_side::ServerState>) -> u32 {
+    pub(in crate::game) fn install(
+        self,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
+    ) -> u32 {
         let mut ids = Vec::with_capacity(self.0.len());
         for Member {
             node,

@@ -776,7 +776,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `spawn_test` with the test's level in place.
     fn spawn_test_here(&mut self, info: &mut Info) -> bool {
         let in_place = !self
-            .side.game_tests
+            .side
+            .game_tests
             .0
             .runner
             .as_ref()
@@ -790,7 +791,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return true;
         }
         let Some(mut grid) = self
-            .side.game_tests
+            .side
+            .game_tests
             .0
             .runner
             .as_mut()
@@ -1504,7 +1506,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// `ReportGameListener.say`.
     fn say(&mut self, color: u32, text: String) {
-        self.side.game_tests
+        self.side
+            .game_tests
             .0
             .outbox
             .push(Out::Players(Text::literal(text).with_color(color)));
@@ -1923,7 +1926,8 @@ mod completed_test_coordinate_feedback_tests {
         assert!(game.run_command("execute if score result coords matches 1"));
         assert!(game.run_command("execute if score success coords matches 1"));
         assert!(
-            game.side.game_tests
+            game.side
+                .game_tests
                 .0
                 .ticker
                 .iter()

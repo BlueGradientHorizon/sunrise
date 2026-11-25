@@ -10,7 +10,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         modified: &[std::sync::Arc<sunrise_client::chunk::Chunk>],
     ) -> Result<usize> {
         sunrise_client::spans::time("save_chunks", || {
-            self.side.save
+            self.side
+                .save
                 .0
                 .save_later(modified, self.pack.assets.registry, world_biomes!(self))
         })
@@ -87,7 +88,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // The configuration connection is not a guest and owns no player area.
         // `extra` finishes chunks through radius + 1, even with no players.
         self.streaming.extra.extend(
-            self.side.tickets
+            self.side
+                .tickets
                 .0
                 .spawn_areas()
                 .map(|(center, radius)| (center, radius - 1)),

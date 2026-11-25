@@ -1,4 +1,3 @@
-use super::Game;
 use crate::game::native_guest_turn_tests::with_guests;
 use mod_api::{
     CriterionContext, CriterionTest, CriterionTestError, Identifier, TriggerCriterionError,

@@ -84,7 +84,8 @@ fn a_packs_text_draws_its_expression_uniforms() {
         // A text display in front of the camera, as a server's would arrive.
         let sy = game.world.shape.column().section_index(65).unwrap() as i32;
         game.settings.chunk_fade = 0.0;
-        game.side.renderer
+        game.side
+            .renderer
             .0
             .as_mut()
             .unwrap()

@@ -397,8 +397,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn confirm_link_click(&mut self) -> bool {
         let (w, h) = self.gui_size();
         let url = self.side.links_ui.confirm.clone().unwrap_or_default();
-        let layout =
-            confirm_link_layout(&self.gui.atlas, (w, h), &url, self.side.links_ui.trusted);
+        let layout = confirm_link_layout(&self.gui.atlas, (w, h), &url, self.side.links_ui.trusted);
         for (i, (x, y)) in layout.buttons.iter().enumerate() {
             if !ui::hovered(self.side.cursor, *x, *y, 100.0, 20.0) {
                 continue;

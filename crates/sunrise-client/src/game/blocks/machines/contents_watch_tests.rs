@@ -1,5 +1,4 @@
 //! Behavioral coverage of source-keyed contents watches through real Parts and handles.
-use super::Game;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
 use mod_api::*;
 use std::sync::{Arc, Mutex};
@@ -110,7 +109,10 @@ impl Hooks for SecondWatcher {
     }
 }
 
-fn with_watches(name: &str, test: impl FnOnce(&mut crate::game::ServerGame<'_>, LevelRef, Watcher)) {
+fn with_watches(
+    name: &str,
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, LevelRef, Watcher),
+) {
     if run_fresh_cases(name, "SUNRISE_CONTENTS_WATCH_CHILD", &["game"]) {
         return;
     }

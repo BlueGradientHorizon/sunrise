@@ -182,7 +182,11 @@ fn lit_furnace(game: &crate::game::ClientGame<'_>) -> mod_api::BlockState {
 }
 
 /// Draws `scene` as `DrawContext::draw_scene` does: the result and the vertices drawn.
-fn draw(game: &crate::game::ClientGame<'_>, scene: &Scene, view: SceneView) -> (Result<(), SceneError>, usize) {
+fn draw(
+    game: &crate::game::ClientGame<'_>,
+    scene: &Scene,
+    view: SceneView,
+) -> (Result<(), SceneError>, usize) {
     let mut batch = sunrise_client::hud::HudBatch::scratch([320, 240]);
     let result = crate::game::api_values::aggregates::scene_blocks(&scene.blocks)
         .and_then(|prepared| game.native_draw_scene(&mut batch, RECT, &prepared, scene, view));
@@ -190,7 +194,11 @@ fn draw(game: &crate::game::ClientGame<'_>, scene: &Scene, view: SceneView) -> (
 }
 
 /// A lit furnace's scene `id` run from tick 0 to each of `ticks` in turn, one frame each.
-fn run(game: &mut crate::game::ClientGame<'_>, scene: &Scene, ticks: impl IntoIterator<Item = u64>) {
+fn run(
+    game: &mut crate::game::ClientGame<'_>,
+    scene: &Scene,
+    ticks: impl IntoIterator<Item = u64>,
+) {
     for tick in ticks {
         let mut at = scene.clone();
         at.clock.as_mut().unwrap().tick = tick;

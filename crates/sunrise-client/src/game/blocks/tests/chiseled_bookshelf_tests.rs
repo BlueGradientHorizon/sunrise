@@ -3,7 +3,7 @@
 //! slot the state calls occupied but that holds nothing.
 use crate::game::machines::shelf_signal;
 use crate::game::sculk::TEST_POSTED_EVENTS;
-use crate::game::{Audio, Game, Hit, Options, Progress, Settings, load_resources};
+use crate::game::{Hit, Options, Progress, Settings, load_resources};
 use std::sync::Arc;
 use sunrise_client::{
     chunk::Chunk,

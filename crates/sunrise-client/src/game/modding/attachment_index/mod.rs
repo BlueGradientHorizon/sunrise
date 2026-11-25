@@ -31,9 +31,6 @@ mod query_tests;
 mod saved_entity_tests;
 
 impl Game<'_, crate::game::server_side::ServerState> {
-
-
-
     pub(in crate::game) fn attachment_validate_write(
         &self,
         token: mod_api::AttachmentWriteToken,

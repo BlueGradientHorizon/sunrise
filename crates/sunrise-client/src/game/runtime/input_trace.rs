@@ -42,7 +42,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// and mouse motion skips it, so a player who uses none of them pays
     /// nothing per input event.
     fn tracing_input(&self) -> bool {
-        self.control.is_some() || self.settings.extras.repro_keys || self.side.repro.0.recording_active()
+        self.control.is_some()
+            || self.settings.extras.repro_keys
+            || self.side.repro.0.recording_active()
     }
 
     /// Record an input event and, when a person steps into an agent's run, tell
@@ -62,7 +64,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             || self.agent_busy()
             || self.events.has_waits();
         if self
-            .side.input_trace
+            .side
+            .input_trace
             .0
             .record(self.ticks, origin, kind, agent_active)
         {

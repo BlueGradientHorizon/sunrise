@@ -60,7 +60,10 @@ impl Hooks for RemoveLaterBoat {
     }
 }
 
-fn boats_over_glass<S: crate::game::Side>(game: &mut Game<'_, S>, boats: &[(u32, i32)]) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
+fn boats_over_glass<S: crate::game::Side>(game: &mut Game<'_, S>, boats: &[(u32, i32)])
+where
+    for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host,
+{
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

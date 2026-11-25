@@ -111,7 +111,9 @@ fn a_guest_without_build_rights_neither_empties_nor_fills_a_bucket_under_spawn_p
     let registry = game.pack.assets.registry;
     let air = registry.default_state("minecraft:air").unwrap().0;
     let water = registry.default_state("minecraft:water").unwrap().0;
-    let state = |game: &crate::game::ServerGame<'_>, pos: [i32; 3]| game.world.block(pos[0], pos[1], pos[2]).0;
+    let state = |game: &crate::game::ServerGame<'_>, pos: [i32; 3]| {
+        game.world.block(pos[0], pos[1], pos[2]).0
+    };
     let held = |game: &crate::game::ServerGame<'_>| {
         game.lan.as_ref().unwrap().hub.guests[0].inventory[0]
             .as_ref()

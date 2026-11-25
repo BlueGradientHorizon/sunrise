@@ -1,6 +1,6 @@
 //! Crosshair targeting parity tests (#32 TNT/falling blocks, #34 root-vehicle exclusion) against vanilla 26.3.
 use crate::game::{
-    FallingBlock, Game, InteractTarget, in_own_process,
+    FallingBlock, InteractTarget, in_own_process,
     interactions::RemoteInteraction,
     native_client_session::tests::finish_login,
     native_entity_refs::tests::{with_client_game, with_game},

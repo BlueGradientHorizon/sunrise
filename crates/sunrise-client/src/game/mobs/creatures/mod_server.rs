@@ -313,7 +313,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             g.side.combat.0.refuse_player_hit = refused;
             g.side.combat.0.projectile_attacker = shooter;
             let saved_effect_attacker = g
-                .side.combat
+                .side
+                .combat
                 .0
                 .enchantment_projectile_attacker
                 .replace(effect_attacker);
@@ -877,12 +878,18 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let victim = self.mobs.get(index)?;
         let (id, join) = (victim.id, victim.join);
         while self
-            .side.paused_mob_hurt
+            .side
+            .paused_mob_hurt
             .0
             .as_ref()
             .is_some_and(|hit| hit.victim == id && hit.join == join)
         {
-            let mut paused = *self.side.paused_mob_hurt.0.take().expect("matching paused hit");
+            let mut paused = *self
+                .side
+                .paused_mob_hurt
+                .0
+                .take()
+                .expect("matching paused hit");
             // Nested hits from this callback are independent of the suspended hit.
             self.mobs[index].release_hurt_pause();
             match paused.action {
@@ -1769,8 +1776,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     Who::Player => self.mob_pushes_player(power, x, z, source, apply_blocking),
                     Who::Mob(id) => {
                         let attack = self.attack_of_who(source.attacker);
-                        let plan =
-                            self.prepare_knockback_credit(id as i32, None, self.side.combat.0.attack());
+                        let plan = self.prepare_knockback_credit(
+                            id as i32,
+                            None,
+                            self.side.combat.0.attack(),
+                        );
                         let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
                         if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
                             let level = crate::game::entity::damage_level_of!(
@@ -2140,8 +2150,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 MobEvent::Infested { at, velocities } => self.spawn_infested(at, velocities),
                 MobEvent::Gift { target, item } => self.receive_gift(target, item),
                 MobEvent::HurtSelf { mob, kind, amount } => {
-                    let plan =
-                        self.prepare_knockback_credit(mob as i32, None, self.side.combat.0.attack());
+                    let plan = self.prepare_knockback_credit(
+                        mob as i32,
+                        None,
+                        self.side.combat.0.attack(),
+                    );
                     let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
                     if let Some(index) = self.mob_index.find(&self.mobs, mob) {
                         self.mobs[index].damage(
@@ -3221,10 +3234,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             } else {
                 *self.held_mut() = Some(filled);
             }
-            if let (Some(player), Some(name)) = (
-                self.side.lan_acting_uuid,
-                self.side.lan_acting_name.clone(),
-            ) {
+            if let (Some(player), Some(name)) =
+                (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
+            {
                 self.native_player_bucket_entity(player, &name, id, &species);
             }
             self.swing_arm();
@@ -3235,10 +3247,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.mobs[index].alive() && self.age_lock_takes(&self.mobs[index], &item) {
             let entity_id = self.mobs[index].id;
             self.set_age_locked(index);
-            if let (Some(player), Some(name)) = (
-                self.side.lan_acting_uuid,
-                self.side.lan_acting_name.clone(),
-            ) {
+            if let (Some(player), Some(name)) =
+                (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
+            {
                 self.native_player_toggle_entity_age_lock(
                     player,
                     &name,
@@ -4344,9 +4355,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// player (#1077). None where the view stands for nobody: no player of
     /// the game's own, a fake one, or a guest's turn acting in its place.
     pub(in crate::game::server_side) fn player_identity(&self) -> Option<([i32; 4], u32)> {
-        if self.side.lan_acting_fake
-            || self.side.lan_acting_uuid.is_some()
-            || self.player.is_none()
+        if self.side.lan_acting_fake || self.side.lan_acting_uuid.is_some() || self.player.is_none()
         {
             return None;
         }
@@ -5247,8 +5256,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !matches!(source.attacker, Some(Who::Mob(_))) {
             return;
         }
-        let plan =
-            self.prepare_knockback_credit(victim as i32, source.attacker, self.side.combat.0.attack());
+        let plan = self.prepare_knockback_credit(
+            victim as i32,
+            source.attacker,
+            self.side.combat.0.attack(),
+        );
         let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
         if let Some(mob) = self.mobs.iter_mut().find(|mob| mob.id == victim) {
             sunrise_client::health::KnockbackCredit::accepted_mob_hit(&mut credit, mob);
@@ -5340,10 +5352,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.swing_arm();
         self.consume_held();
         if kind == ProjectileKind::Egg
-            && let (Some(player), Some(name)) = (
-                self.side.lan_acting_uuid,
-                self.side.lan_acting_name.clone(),
-            )
+            && let (Some(player), Some(name)) =
+                (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
         {
             self.native_player_egg_throw(player, &name);
         }

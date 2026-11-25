@@ -1,6 +1,5 @@
 //! `LevelRef::explosion_destroy_blocks` through the native handle on a fresh game.
 #![cfg(test)]
-use crate::game::Game;
 use crate::game::native_entity_refs::tests::{bind_local_player, run_with_game_stack, with_game};
 use mod_api::{
     BlockPart, EntityRef, ExplosionDestroyError, ExplosionDetonateEvent, ExplosionInteraction,

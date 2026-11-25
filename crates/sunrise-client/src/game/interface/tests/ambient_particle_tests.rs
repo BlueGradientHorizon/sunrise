@@ -36,7 +36,8 @@ fn an_ambient_block_or_item_particle_needs_a_name_of_the_level() {
         game.emit_model_ambient(&item("minecraft:apple"), at);
         game.emit_model_ambient(&block("minecraft:stone"), at);
         let drawn: Vec<_> = game
-            .side.particles
+            .side
+            .particles
             .0
             .requested
             .as_ref()

@@ -265,7 +265,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // keep the existing exact mesh-culling path.
         let precheck = self.settings.sunrise.entity_culling == EntityCullingMode::Asynchronous
             && self
-                .side.occlusion
+                .side
+                .occlusion
                 .0
                 .async_culler
                 .as_ref()
@@ -491,7 +492,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     } else {
                         format!("minecraft:{name}")
                     };
-                    self.side.audio.0.play_unshared(&id, Some(at), volume, pitch);
+                    self.side
+                        .audio
+                        .0
+                        .play_unshared(&id, Some(at), volume, pitch);
                 }
                 MobEvent::LandingDust {
                     state,
@@ -515,7 +519,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 } => {
                     if let Some(ty) = ParticleType::from_name(kind) {
                         let options = ParticleOptions::simple(ty);
-                        self.side.particles
+                        self.side
+                            .particles
                             .0
                             .send_particles(&options, at, spread, speed, count);
                     }
@@ -593,10 +598,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
         out: &mut Vec<Vertex>,
     ) {
         // ItemPickupParticle: a picked-up arrow flying to its collector.
-        let taken = self.side.pickups.0.live.iter().filter_map(|p| match &p.taken {
-            super::pickups::Taken::Arrow(a) => Some((&**a, super::pickups::position(p, alpha))),
-            _ => None,
-        });
+        let taken = self
+            .side
+            .pickups
+            .0
+            .live
+            .iter()
+            .filter_map(|p| match &p.taken {
+                super::pickups::Taken::Arrow(a) => Some((&**a, super::pickups::position(p, alpha))),
+                _ => None,
+            });
         self.projectile_geometry(camera, alpha, taken, out);
     }
     pub(in crate::game) fn projectile_geometry<'a>(
@@ -859,7 +870,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// Whether this frame's models can be posed on the GPU (`begin_skinning`).
     pub(in crate::game::client_side) fn skinning(&self) -> bool {
-        self.side.renderer
+        self.side
+            .renderer
             .0
             .as_ref()
             .is_some_and(|r| r.skins_entities() && r.skinned_models().is_some())

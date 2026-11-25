@@ -131,7 +131,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return false;
         };
         let Some(size) = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
@@ -154,7 +155,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         use sunrise_client::container_screen::{HotbarKey, hotbar_swap};
         use sunrise_client::menu::Input;
         let Some(size) = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
@@ -190,7 +192,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             || (self.side.screen == Screen::Creative && !self.side.creative_screen.0.tab().search))
             && !self.dialog_open();
         let Some(size) = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])

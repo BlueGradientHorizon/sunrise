@@ -468,10 +468,11 @@ pub(in crate::game) mod tests {
             game.world
                 .block_entities
                 .insert(key, BlockEntity::Spawner(Box::new(spawner)));
-            let delay = |game: &crate::game::ServerGame<'_>| match game.world.block_entities.get(&key) {
-                Some(BlockEntity::Spawner(s)) => s.spawn_delay,
-                _ => panic!("the spawner is gone"),
-            };
+            let delay =
+                |game: &crate::game::ServerGame<'_>| match game.world.block_entities.get(&key) {
+                    Some(BlockEntity::Spawner(s)) => s.spawn_delay,
+                    _ => panic!("the spawner is gone"),
+                };
             for expected in [2, 1, 0] {
                 let mut before = game.world.random.clone();
                 game.tick_spawner(key).unwrap();

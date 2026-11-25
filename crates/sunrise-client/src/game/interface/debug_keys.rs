@@ -138,7 +138,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             || self.station_typing()
             || (self.title_input_active()
                 && self
-                    .side.title
+                    .side
+                    .title
                     .0
                     .as_mut()
                     .is_some_and(|t| t.focused_field().is_some()));
@@ -276,10 +277,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.send(Serverbound::PingRequest(Ping { time }));
         }
         if has_level
-            && let Some(wanted) = self
-                .side
-                .debug_charts
-                .subscription_request(self.side.debug)
+            && let Some(wanted) = self.side.debug_charts.subscription_request(self.side.debug)
         {
             // `dedicated_server_tick_time` is registry id 0.
             let subscriptions = if wanted { vec![0] } else { vec![] };
@@ -377,7 +375,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // (`Renderer::lightmap_sample`). Whether there are any is part of the cache's key, so
         // a sample that stops being current is not painted again from it.
         let lightmap = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .filter(|_| self.debug_shows_lightmap())
@@ -459,7 +458,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return rate;
         }
         let rate = self
-            .side.window
+            .side
+            .window
             .0
             .as_ref()
             .and_then(|w| w.current_monitor())
@@ -471,7 +471,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn debug_fps_line(&self, d: &mut debug_overlay::Displayer) {
         let limit = self.framerate_limit();
         let present = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map_or("", |r| match r.config.present_mode {
@@ -486,7 +487,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         });
         // Sunrise: with frame generation running, the frames reaching the screen too.
         let generated = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .and_then(|r| r.frame_generation_share())
@@ -729,7 +731,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             DebugAction::ShowHitboxes if player => {
                 let on = self
-                    .side.debug_entries
+                    .side
+                    .debug_entries
                     .0
                     .toggle_status("entity_hitboxes", self.side.debug);
                 self.debug_translated(if on {
@@ -746,7 +749,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             DebugAction::ShowChunkBorders if player => {
                 let on = self
-                    .side.debug_entries
+                    .side
+                    .debug_entries
                     .0
                     .toggle_status("chunk_borders", self.side.debug);
                 self.debug_translated(if on {

@@ -2,7 +2,7 @@
 //! lifts, and the hub's click runs with the host lifted out of the game. The fixtures use the
 //! LAN host with two guests (`with_guests`), which needs prepared resources.
 use super::transactions::decision::{Admission, engine::Target};
-use crate::game::{Game, native_guest_turn_tests::with_guests};
+use crate::game::native_guest_turn_tests::with_guests;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use sunrise_client::menu::{Kind, Menu};
 

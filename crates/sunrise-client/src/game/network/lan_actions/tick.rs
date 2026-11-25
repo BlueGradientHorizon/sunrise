@@ -1,9 +1,7 @@
 #[allow(unused_imports)]
 use super::*;
 
-impl<__Side: crate::game::Side> Game<'_, __Side> {
-    
-}
+impl<__Side: crate::game::Side> Game<'_, __Side> {}
 
 #[cfg(test)]
 impl crate::game::ServerGame<'_> {

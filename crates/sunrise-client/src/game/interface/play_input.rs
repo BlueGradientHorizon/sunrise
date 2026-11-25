@@ -149,7 +149,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // A pad's toggle-sneak isn't holding it: it has no release that would end it.
             Source::Keyboard => {
                 !(slot == SNEAK && self.settings.controller.toggle_sneak)
-                    && self.side.pad.0.holds_action(["key.sneak", "key.sprint"][slot])
+                    && self
+                        .side
+                        .pad
+                        .0
+                        .holds_action(["key.sneak", "key.sprint"][slot])
             }
             Source::Pad => self.side.physical_keys.iter().any(|physical| {
                 self.settings

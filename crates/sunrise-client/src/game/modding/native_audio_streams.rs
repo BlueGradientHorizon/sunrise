@@ -26,7 +26,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             StreamPlacement::Entity(entity) => self.entity_position(entity),
             StreamPlacement::Flat | StreamPlacement::At(_) => None,
         };
-        self.side.audio
+        self.side
+            .audio
             .0
             .open_stream(calling_mod()?, spec, entity_pos, source)
             .map(AudioStreamRef::new)
@@ -34,7 +35,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Places every entity-following stream at its entity, or stops it where the client
     /// tracks no such entity. Once a frame, beside the listener's own update.
     pub(in crate::game::client_side) fn follow_audio_stream_entities(&self) {
-        self.side.audio
+        self.side
+            .audio
             .0
             .follow_stream_entities(|entity| self.entity_position(entity));
     }

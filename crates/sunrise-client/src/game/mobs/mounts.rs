@@ -1019,7 +1019,9 @@ pub(in crate::game) trait DismountWorld {
     /// `DismountHelper.canDismountTo(level, passenger, box)`.
     fn can_dismount_to(&self, bounds: Aabb) -> bool;
 }
-pub(in crate::game) struct GameDismountWorld<'a, 'g>(pub(in crate::game) &'a Game<'g, crate::game::server_side::ServerState>);
+pub(in crate::game) struct GameDismountWorld<'a, 'g>(
+    pub(in crate::game) &'a Game<'g, crate::game::server_side::ServerState>,
+);
 impl DismountWorld for GameDismountWorld<'_, '_> {
     fn lava(&self, p: [i32; 3]) -> bool {
         let g = self.0;
@@ -1639,7 +1641,7 @@ pub(in crate::game) mod tests {
     pub(in crate::game) fn server_game(
         resources: &mut Option<std::sync::Arc<crate::game::Resources>>,
     ) -> Option<Box<crate::game::ServerGame<'_>>> {
-        use crate::game::{Audio, Options, Progress, Settings, load_resources};
+        use crate::game::{Options, Progress, Settings, load_resources};
         let root = std::env::var_os("SUNRISE_TEST_RESOURCES")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| {
@@ -1668,15 +1670,9 @@ pub(in crate::game) mod tests {
         options.resources = root.clone();
         options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
         let res = resources.insert(loaded.resources);
-        let mut game = crate::game::ServerGame::new(
-            res,
-            loaded.pack,
-            loaded.gui?,
-            options,
-            settings,
-            None,
-        )
-        .ok()?;
+        let mut game =
+            crate::game::ServerGame::new(res, loaded.pack, loaded.gui?, options, settings, None)
+                .ok()?;
         game.reset_entity_residency();
         game.native_lifecycle
             .begin_open(mod_api::Authority::IntegratedServer);
@@ -1745,7 +1741,10 @@ pub(in crate::game) mod tests {
 
     /// Feeds `item` to mob 0 and collects the sounds and the `minecraft:eat`
     /// game events it made.
-    pub(in crate::game) fn feed(game: &mut crate::game::ServerGame<'_>, item: &str) -> (bool, Shown) {
+    pub(in crate::game) fn feed(
+        game: &mut crate::game::ServerGame<'_>,
+        item: &str,
+    ) -> (bool, Shown) {
         game.inventory[game.selected] = Some(ItemStack::new(item, 2));
         game.start_audio_capture();
         crate::game::sculk::TEST_POSTED_EVENTS
@@ -1889,7 +1888,10 @@ pub(in crate::game) mod tests {
 
     /// Equips `item` on mob 0 and collects the sounds and the `minecraft:equip`
     /// game events it made.
-    pub(in crate::game) fn equip(game: &mut crate::game::ServerGame<'_>, item: &str) -> (bool, Shown) {
+    pub(in crate::game) fn equip(
+        game: &mut crate::game::ServerGame<'_>,
+        item: &str,
+    ) -> (bool, Shown) {
         game.inventory[game.selected] = Some(ItemStack::new(item, 2));
         game.start_audio_capture();
         crate::game::sculk::TEST_POSTED_EVENTS

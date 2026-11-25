@@ -60,7 +60,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Some(CombatPlayer::InPlace);
         }
         if let Some((depth, body)) = self
-            .side.lan_displaced_players
+            .side
+            .lan_displaced_players
             .0
             .iter()
             .enumerate()
@@ -141,7 +142,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Err(TurnRefused::Nested);
         }
         let other_boxes =
-            self.side.lan_building_boxes
+            self.side
+                .lan_building_boxes
                 .0
                 .for_turn(conn, Some(outer), building_players(host));
         let fresh = host.hub.guests[i].motion.is_none();
@@ -272,8 +274,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 total: g.xp_total,
             },
         );
-        let level_up_sound =
-            std::mem::replace(&mut self.side.level_up_sound, play.level_up_sound);
+        let level_up_sound = std::mem::replace(&mut self.side.level_up_sound, play.level_up_sound);
         // The host's held keys stay theirs: the guest holds only sneak, and a
         // screen the guest opens (`keys.clear()`) leaves the host walking.
         let (sneaking, sprinting, guest_vehicle) = (g.sneaking, g.sprinting, g.vehicle);
@@ -389,10 +390,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.side.lan_acting.replace(conn),
             self.side.lan_acting_permission.replace(g.permission),
             self.side.lan_acting_entity.replace(g.entity_id as u32),
-            std::mem::replace(
-                &mut self.side.lan_acting_spawn_protection,
-                spawn_protection,
-            ),
+            std::mem::replace(&mut self.side.lan_acting_spawn_protection, spawn_protection),
         );
         self.side.lan_displaced_players.0.push(DisplacedPlayer {
             body: player,
@@ -570,8 +568,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         // ServerPlayer.connection.send: the guest's own entity events.
         let entity_id = host.hub.guests[i].entity_id;
-        let outgoing_events =
-            std::mem::replace(&mut self.side.guest_entity_events, entity_events);
+        let outgoing_events = std::mem::replace(&mut self.side.guest_entity_events, entity_events);
         if host.hub.guests[i].participates_online() {
             for event in outgoing_events {
                 host.hub.send_to(
@@ -588,8 +585,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             host.hub.entity_event(entity_id, event);
         }
         // ServerItemCooldowns.onCooldownStarted: the guest's own cooldown.
-        let outgoing_cooldowns =
-            std::mem::replace(&mut self.side.guest_cooldowns, cooldown_events);
+        let outgoing_cooldowns = std::mem::replace(&mut self.side.guest_cooldowns, cooldown_events);
         if host.hub.guests[i].participates_online() {
             for (group, duration) in outgoing_cooldowns {
                 host.hub.send_to(
@@ -603,7 +599,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         host.hub.guests[i].residency.extract();
         self.hook.begin_loan();
-        let outer_player = self.side.lan_displaced_players.0.pop().expect("open guest turn");
+        let outer_player = self
+            .side
+            .lan_displaced_players
+            .0
+            .pop()
+            .expect("open guest turn");
         (
             self.side.lan_acting,
             self.side.lan_acting_permission,
@@ -709,8 +710,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .insert(key, BlockEntity::Chest(self.side.ender_items.clone()));
                 self.side.ender_open = Some(key);
             }
-            play.level_up_sound =
-                std::mem::replace(&mut self.side.level_up_sound, level_up_sound);
+            play.level_up_sound = std::mem::replace(&mut self.side.level_up_sound, level_up_sound);
             let new_xp = std::mem::replace(&mut self.experience, outer_player.experience);
             g.xp_level = new_xp.level;
             g.xp_progress = new_xp.progress;
@@ -890,7 +890,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // An inner turn can move, kill, or change the mode of a hub-owned body.
         if let (Some(actor), Some(host)) = (self.side.lan_acting, self.lan.as_ref()) {
             self.side.lan_building_boxes.0 =
-                self.side.lan_building_boxes
+                self.side
+                    .lan_building_boxes
                     .0
                     .for_turn(actor, None, building_players(host));
         }
@@ -909,7 +910,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .or_else(|| {
                 conn.is_none().then_some(())?;
                 Some(
-                    self.side.lan_displaced_players
+                    self.side
+                        .lan_displaced_players
                         .0
                         .first()?
                         .body

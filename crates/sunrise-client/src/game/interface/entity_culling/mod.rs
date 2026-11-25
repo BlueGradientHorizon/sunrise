@@ -35,7 +35,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> bool {
         let hidden = self.occlusion_hidden(Some(vertices), start, None);
         if hidden
-            && !(self.side.occlusion.0.shadow_casters.0 && self.hide_spans_from(start, vertices.len()))
+            && !(self.side.occlusion.0.shadow_casters.0
+                && self.hide_spans_from(start, vertices.len()))
         {
             if self.settings.sunrise.entity_culling == EntityCullingMode::Asynchronous
                 && let Some(culler) = &self.side.occlusion.0.async_culler
@@ -101,7 +102,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let margin = Vec3::new(1.0e-4, 1.0e-4, 1.0e-4);
         let bounds = render_bounds.inflate(margin);
         let scene = section_scene!(self);
-        if self.side.occlusion.0.terrain_sections_occlude(&scene, bounds) {
+        if self
+            .side
+            .occlusion
+            .0
+            .terrain_sections_occlude(&scene, bounds)
+        {
             if let Some(culler) = &self.side.occlusion.0.async_culler {
                 culler.record_entity_culled();
             }
@@ -111,7 +117,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             EntityCullingMode::Off => EntityCullDecision::Bypass,
             EntityCullingMode::Synchronous => {
                 if self
-                    .side.occlusion
+                    .side
+                    .occlusion
                     .0
                     .entity_hidden_sync(&scene, None, 0, Some(bounds))
                 {
@@ -122,11 +129,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             EntityCullingMode::Asynchronous => {
                 let Some(culler) = &self.side.occlusion.0.async_culler else {
-                    return if self
-                        .side.occlusion
-                        .0
-                        .entity_hidden_sync(&scene, None, 0, Some(bounds))
-                    {
+                    return if self.side.occlusion.0.entity_hidden_sync(
+                        &scene,
+                        None,
+                        0,
+                        Some(bounds),
+                    ) {
                         EntityCullDecision::Hidden
                     } else {
                         EntityCullDecision::CheckVertices

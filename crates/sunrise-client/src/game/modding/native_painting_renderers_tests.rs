@@ -2,7 +2,6 @@
 //! `minecraft:painting` draws in place of the painting's quads, reading the facing and size; with no
 //! renderer the family's own geometry is unchanged; a failing renderer leaves those quads until a
 //! resource reload resolves it again.
-use super::Game;
 use super::native_entity_renderers::EntityRendererTable;
 use mod_api::{
     BlockEntityDrawContext, Direction, EntityRenderState, EntityRenderer, Hooks,
@@ -122,7 +121,11 @@ fn painting_frame(game: &mut crate::game::ClientGame<'_>, id: u32) -> Vec<Vertex
 
 /// An independent baseline of the vanilla painting quads for `p` at `camera`, not going through
 /// `painting_geometry`. Used so a deterministic change to the quads cannot pass by matching itself.
-fn expected_quads(game: &crate::game::ClientGame<'_>, p: &Painting, camera: glam::DVec3) -> Vec<Vertex> {
+fn expected_quads(
+    game: &crate::game::ClientGame<'_>,
+    p: &Painting,
+    camera: glam::DVec3,
+) -> Vec<Vertex> {
     let sprites = &game.gui.atlas.sprites;
     let Some(back) = sprites.get("painting/back").copied() else {
         return Vec::new();
@@ -285,7 +288,10 @@ fn a_painting_registration_resolves_to_the_painting_slot() {
 /// Runs `check` on a client game with prepared resources and the scene's painting renderer,
 /// resolved as the first load does. In a child process running only `test`: the registrations are
 /// kept once per process.
-fn in_scene(test: &str, check: impl FnOnce(&mut crate::game::ClientGame<'_>, &Arc<Mutex<Heard>>, &Flaky)) {
+fn in_scene(
+    test: &str,
+    check: impl FnOnce(&mut crate::game::ClientGame<'_>, &Arc<Mutex<Heard>>, &Flaky),
+) {
     if std::env::var_os("SUNRISE_PAINTING_RENDERERS_CHILD").is_none() {
         let status = std::process::Command::new(std::env::current_exe().unwrap())
             .args([

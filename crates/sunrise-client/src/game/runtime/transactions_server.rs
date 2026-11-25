@@ -928,7 +928,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let world = if dim == self.dim {
                 Some(&mut self.world)
             } else {
-                self.side.levels.0.parked_mut(dim).map(|level| &mut level.world)
+                self.side
+                    .levels
+                    .0
+                    .parked_mut(dim)
+                    .map(|level| &mut level.world)
             };
             if let Some(world) = world {
                 world.modified.insert(chunk);

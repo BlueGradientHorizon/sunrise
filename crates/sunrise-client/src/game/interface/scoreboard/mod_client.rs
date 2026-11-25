@@ -99,7 +99,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // The faces of the players the list shows.
         let faces: std::collections::HashSet<u128> = self
-            .side.tab_list
+            .side
+            .tab_list
             .0
             .displayed_ids(&players, &self.score.board)
             .iter()

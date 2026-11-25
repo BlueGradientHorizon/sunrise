@@ -5,7 +5,10 @@ use super::*;
 #[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
 
-pub(in crate::game) fn fixture(expected: Option<ItemStack>, run: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
+pub(in crate::game) fn fixture(
+    expected: Option<ItemStack>,
+    run: impl FnOnce(&mut crate::game::ServerGame<'_>),
+) {
     fixture_with_source(expected, None, run);
 }
 
@@ -33,7 +36,11 @@ pub(in crate::game) fn arrow(weapon: Option<ItemStack>) -> Projectile {
     shot.id = 912;
     shot
 }
-pub(in crate::game) fn hit(game: &mut crate::game::ServerGame<'_>, shot: &Projectile, amount: f32) -> bool {
+pub(in crate::game) fn hit(
+    game: &mut crate::game::ServerGame<'_>,
+    shot: &Projectile,
+    amount: f32,
+) -> bool {
     let mut damage = Damage::of(DamageKind::Arrow);
     damage.from = Some([shot.position.x, shot.position.y, shot.position.z]);
     game.damage_projectile_with_weapon(shot, 70, amount, damage, None)

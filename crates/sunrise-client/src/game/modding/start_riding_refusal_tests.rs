@@ -9,7 +9,7 @@ use mod_api::{EntityMountEvent, EntityRef, Flow, Hooks, ServerHost, StartRidingR
 use sunrise_client::{chunk::Chunk, mobs::Mob};
 use sunrise_core::geometry::Vec3;
 
-use super::{Dim, Game, commands::Target, native_entity_refs::tests::with_game};
+use super::{Dim, commands::Target, native_entity_refs::tests::with_game};
 
 fn add_mob(game: &mut crate::game::ServerGame<'_>, id: u32, name: &str) -> EntityRef {
     let kind = game.res.mob_types().get(name).unwrap().clone();

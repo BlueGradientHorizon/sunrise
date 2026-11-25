@@ -321,7 +321,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 if let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut()) {
                     m.focused = Some(i);
                 }
-                self.side.audio
+                self.side
+                    .audio
                     .0
                     .play("minecraft:ui.button.click", None, 0.25, 1.0);
                 self.try_move_items(index);
@@ -333,7 +334,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `MerchantScreen.mouseDragged`: the held scroller follows the cursor.
     pub(in crate::game::client_side) fn merchant_drag(&mut self) -> bool {
         let Some(size) = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
@@ -373,7 +375,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         else {
             return false;
         };
-        self.side.audio
+        self.side
+            .audio
             .0
             .play("minecraft:ui.button.click", None, 0.25, 1.0);
         self.try_move_items(index);

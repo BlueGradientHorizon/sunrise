@@ -1,5 +1,4 @@
 //! `execute if items entity <dropped item> contents ...`: `ItemEntity.getSlot`.
-use super::*;
 use sunrise_client::items::ItemStack;
 
 /// `ItemEntity.getSlot(0)` returns its stack (`SlotAccess.of(this::getItem,

@@ -233,7 +233,6 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn client_box_queries_use_live_display_positions_and_section_order() {
-        use super::Game;
         use mod_api::Host;
         use std::sync::Arc;
         use sunrise_client::chunk::Chunk;
@@ -393,7 +392,6 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn client_crossings_land_in_tick_order_and_before_hooks_read_them() {
-        use super::Game;
         use mod_api::{Hooks, Host, HostSide, ModEntry, PlayerTickPostEvent};
         use std::sync::{Arc, Mutex};
         use sunrise_client::chunk::Chunk;
@@ -468,29 +466,30 @@ pub(in crate::game) mod tests {
                     .insert((x, 0), Arc::new(Chunk::empty(x, 0)));
             }
         };
-        let add = |game: &mut crate::game::ClientGame<'_>, id: i32, name: &str, position: [f64; 3]| {
-            let kind = game
-                .remote
-                .as_ref()
-                .unwrap()
-                .builtin
-                .get("minecraft:entity_type")
-                .unwrap()
-                .id(name)
+        let add =
+            |game: &mut crate::game::ClientGame<'_>, id: i32, name: &str, position: [f64; 3]| {
+                let kind = game
+                    .remote
+                    .as_ref()
+                    .unwrap()
+                    .builtin
+                    .get("minecraft:entity_type")
+                    .unwrap()
+                    .id(name)
+                    .unwrap();
+                game.handle_packet(C::AddEntity(play::AddEntity {
+                    id,
+                    uuid: id as u128,
+                    kind,
+                    position,
+                    velocity: [0.0; 3],
+                    yaw: 0,
+                    pitch: 0,
+                    head_yaw: 0,
+                    data: 0,
+                }))
                 .unwrap();
-            game.handle_packet(C::AddEntity(play::AddEntity {
-                id,
-                uuid: id as u128,
-                kind,
-                position,
-                velocity: [0.0; 3],
-                yaw: 0,
-                pitch: 0,
-                head_yaw: 0,
-                data: 0,
-            }))
-            .unwrap();
-        };
+            };
         let sync = |game: &mut crate::game::ClientGame<'_>, id: i32, to: [f64; 3]| {
             game.handle_packet(C::EntityPositionSync(play::EntityPositionSync {
                 id,
@@ -583,8 +582,9 @@ pub(in crate::game) mod tests {
                             passengers: vec![7],
                         }))
                         .unwrap();
-                        let near =
-                            |game: &crate::game::ClientGame<'_>| ids(game, [39.5, 60.0, 2.0], [41.5, 70.0, 4.0]);
+                        let near = |game: &crate::game::ClientGame<'_>| {
+                            ids(game, [39.5, 60.0, 2.0], [41.5, 70.0, 4.0])
+                        };
                         assert!(near(game).is_empty());
                         // No teleport duration: the display snaps, and its rider with it.
                         sync(game, 92, [40.5, 65.5, 3.0]);

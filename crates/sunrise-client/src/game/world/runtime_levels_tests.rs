@@ -281,7 +281,10 @@ fn place_block(game: &mut crate::game::ServerGame<'_>, id: &str, block: &str) {
 }
 
 /// The block at (1, -50, 1) of the open level `id`, loading it as `place_block` does.
-fn block_at(game: &mut crate::game::ServerGame<'_>, id: &str) -> sunrise_world::registry::BlockStateId {
+fn block_at(
+    game: &mut crate::game::ServerGame<'_>,
+    id: &str,
+) -> sunrise_world::registry::BlockStateId {
     let dim = super::Dim::extra(id).unwrap();
     game.enter_level(dim).unwrap();
     game.streaming.forced.insert((0, 0));
@@ -1646,7 +1649,8 @@ fn reopening_one_id_with_any_seed_reuses_the_metadata_its_first_open_leaked() {
         let mut first = None;
         for seed in [1, 2, 3, i64::MIN, i64::MAX] {
             let level = RuntimeLevel::new("minecraft:overworld", RuntimeGenerator::Flat, seed);
-            game.side.levels
+            game.side
+                .levels
                 .0
                 .runtime
                 .queue_open("cycle", "cycle:a", level)
@@ -1670,7 +1674,10 @@ fn reopening_one_id_with_any_seed_reuses_the_metadata_its_first_open_leaked() {
             unload_as(game, "cycle", "cycle:a").unwrap();
             game.apply_runtime_levels();
             assert!(!game.runtime_level_is_open("cycle:a"));
-            assert_eq!(game.side.levels.0.runtime.seeds().get("cycle:a").copied(), None);
+            assert_eq!(
+                game.side.levels.0.runtime.seeds().get("cycle:a").copied(),
+                None
+            );
         }
     });
 }

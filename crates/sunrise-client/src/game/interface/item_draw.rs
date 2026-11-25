@@ -738,9 +738,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// The `GLINT_TEXTURING` inputs of this frame (`WorldSink` picks `ENTITY_SCALE` per quad).
     pub(in crate::game::client_side) fn glint(&self) -> Option<item_render::Glint> {
-        self.side
-            .glint_frame
-            .glint(item_render::Glint::ITEM_SCALE)
+        self.side.glint_frame.glint(item_render::Glint::ITEM_SCALE)
     }
     /// Submit a resolved item under `pose` (camera-relative) at `light`
     /// (packed lightmap coordinates).
@@ -928,15 +926,21 @@ impl Game<'_, crate::game::client_side::ClientState> {
         out: &mut Vec<Vertex>,
     ) {
         // ItemPickupParticle: the render state extracted at partial tick 1.
-        let taken = self.side.pickups.0.live.iter().filter_map(|p| match &p.taken {
-            super::pickups::Taken::Item(item) => Some(ItemEntityDraw {
-                item,
-                at: super::pickups::position(p, alpha),
-                partial: 1.0,
-                entity: false,
-            }),
-            _ => None,
-        });
+        let taken = self
+            .side
+            .pickups
+            .0
+            .live
+            .iter()
+            .filter_map(|p| match &p.taken {
+                super::pickups::Taken::Item(item) => Some(ItemEntityDraw {
+                    item,
+                    at: super::pickups::position(p, alpha),
+                    partial: 1.0,
+                    entity: false,
+                }),
+                _ => None,
+            });
         self.item_entity_geometry(camera, taken, out);
     }
 

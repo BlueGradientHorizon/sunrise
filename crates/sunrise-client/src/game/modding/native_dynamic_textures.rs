@@ -44,9 +44,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> Result<(), DynamicTextureError> {
         let owner = mod_api::content::crash::current_native_mod();
         let (pool, mut names) = self.gui.atlas.dynamic_names();
-        self.side
-            .dynamic_textures
-            .free(pool, &mut names, owner, id)
+        self.side.dynamic_textures.free(pool, &mut names, owner, id)
     }
     /// What the calling mod may still create.
     pub(in crate::game) fn dynamic_texture_budget(

@@ -287,10 +287,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     }
                 }
             }
-            if let (Some(player), Some(name)) = (
-                self.side.lan_acting_uuid,
-                self.side.lan_acting_name.clone(),
-            ) {
+            if let (Some(player), Some(name)) =
+                (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
+            {
                 self.native_player_riptide(player, &name);
             }
             return;
@@ -846,8 +845,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                     let causing = self.causer_id(owner_who);
                                     let decision =
                                         crate::game::entity::causer_decision!(self, causing);
-                                    let mut credit =
-                                        plan.lend(&mut self.side.last_hurt_by_player);
+                                    let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
                                     let from_pos = Some([t.position.x, t.position.y, t.position.z]);
                                     let join = self.mobs[mob_idx].join;
                                     let (victim, lend) = crate::game::entity::victim_and_causer!(
@@ -1229,7 +1227,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn trident_release_rechecks_stack_durability_after_charge() {
-        use crate::game::{Audio, Options, PlayerMotion, Progress, Settings, load_resources};
+        use crate::game::{Options, PlayerMotion, Progress, Settings, load_resources};
         use sunrise_core::nbt::Tag;
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -1313,7 +1311,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn riptide_launch_preserves_float_push() {
-        use crate::game::{Audio, Options, PlayerMotion, Progress, Settings, load_resources};
+        use crate::game::{Options, PlayerMotion, Progress, Settings, load_resources};
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(

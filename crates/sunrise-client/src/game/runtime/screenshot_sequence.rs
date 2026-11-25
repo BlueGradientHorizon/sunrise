@@ -176,7 +176,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         command: Option<&str>,
     ) -> Result<()> {
-        if self.side.screenshot_sequence.0.is_none() || command.is_none_or(|c| READ_ONLY.contains(&c)) {
+        if self.side.screenshot_sequence.0.is_none()
+            || command.is_none_or(|c| READ_ONLY.contains(&c))
+        {
             return Ok(());
         }
         if command == Some("quit") {
@@ -212,7 +214,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// refused is drawn again; the last is saved, and the reply sent.
     pub(in crate::game::client_side) fn render_sequence_frame(&mut self) -> Result<bool> {
         let sequence = self
-            .side.screenshot_sequence
+            .side
+            .screenshot_sequence
             .0
             .as_ref()
             .expect("a running sequence");
@@ -257,7 +260,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return Ok(!failed);
         }
         let sequence = self
-            .side.screenshot_sequence
+            .side
+            .screenshot_sequence
             .0
             .as_mut()
             .expect("a running sequence");

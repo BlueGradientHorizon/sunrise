@@ -252,7 +252,7 @@ mod tests {
     use super::super::{
         Dim, native_entity_refs::tests::run_fresh_cases, native_guest_turn_tests::with_guests,
     };
-    use super::{Game, LevelRef};
+    use super::LevelRef;
     use mod_api::{__private::particle_named_key, ParticleOptions, WorldEpoch};
     use std::sync::{Arc, mpsc};
     use sunrise_client::lan::{Out, PlayerSender};

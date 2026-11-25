@@ -1113,7 +1113,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         if let Some(to) = step {
             self.side.panel.page = to;
-            self.side.audio
+            self.side
+                .audio
                 .0
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
             return true;

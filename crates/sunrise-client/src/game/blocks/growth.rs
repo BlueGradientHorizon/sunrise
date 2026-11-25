@@ -121,7 +121,7 @@ pub(in crate::game) fn install_live_features(
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use super::{Arc, Game, build_live_features, install_live_features};
+    use super::{Arc, build_live_features, install_live_features};
     use mod_api::{self, BonemealEvent, BonemealSource, Flow, Hooks, HostSide};
     use std::sync::{Mutex, MutexGuard, PoisonError};
     use sunrise_client::items::ItemStack;

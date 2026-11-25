@@ -307,7 +307,11 @@ fn refusing_a_capability_insert_does_not_journal_the_slot() {
     });
 }
 
-fn prepare_counted_admission(game: &mut crate::game::ServerGame<'_>, mode: i32, counts: [u32; 3]) -> ItemResource {
+fn prepare_counted_admission(
+    game: &mut crate::game::ServerGame<'_>,
+    mode: i32,
+    counts: [u32; 3],
+) -> ItemResource {
     let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&TARGET) else {
         unreachable!();
     };
@@ -347,7 +351,11 @@ fn admission_checks_the_offer_before_clamping_to_room() {
     });
 }
 
-fn transfer_to_filtered_container(game: &mut crate::game::ServerGame<'_>, resource: &ItemResource, amount: u64) {
+fn transfer_to_filtered_container(
+    game: &mut crate::game::ServerGame<'_>,
+    resource: &ItemResource,
+    amount: u64,
+) {
     source(game, "minecraft:hopper", HOPPER_SLOTS);
     let level = game.level("minecraft:overworld").unwrap();
     let from = level

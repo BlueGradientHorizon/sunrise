@@ -77,9 +77,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) fn with_headless_game(run: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
-    use crate::game::{
-        Audio, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
-    };
+    use crate::game::{Options, Progress, Settings, execution_role::ExecutionRole, load_resources};
 
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let save = tempfile::tempdir().unwrap();

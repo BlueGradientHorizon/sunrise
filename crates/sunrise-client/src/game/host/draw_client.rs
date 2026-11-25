@@ -269,7 +269,10 @@ impl<'a, 'g> GameCameraDrawContext<'a, 'g> {
 }
 
 impl<'a, 'g> GameDrawContext<'a, 'g> {
-    pub(crate) fn new(game: &'a Game<'g, crate::game::client_side::ClientState>, surface: &'a mut crate::hud::HudBatch) -> Self {
+    pub(crate) fn new(
+        game: &'a Game<'g, crate::game::client_side::ClientState>,
+        surface: &'a mut crate::hud::HudBatch,
+    ) -> Self {
         Self {
             game,
             surface,

@@ -1,9 +1,9 @@
 //! A client's `LevelRef::brightness`, `EntityRef::set_sprinting` and the server's
 //! `tick_rate_is_frozen`.
 
+use super::execution_role::ExecutionRole;
 use super::native_entity_refs::tests::with_game;
 use super::native_guest_turn_tests::with_guests;
-use super::{Game, execution_role::ExecutionRole};
 use mod_api::LightLayer;
 
 /// A client reads the light of the level it shows, only while logged in.

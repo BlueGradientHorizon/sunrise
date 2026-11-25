@@ -2,7 +2,6 @@
 //! a renderer draws that renderer's geometry in place of its flying item, one without keeps its
 //! item, a vanilla boat is unchanged, the later registration for a type wins, an unknown type is
 //! refused by name, and a resource reload keeps the registered renderer in use.
-use super::Game;
 use super::native_entity_renderers::EntityRendererTable;
 use mod_api::{BlockEntityDrawContext, EntityRenderState, EntityRenderer};
 use std::{

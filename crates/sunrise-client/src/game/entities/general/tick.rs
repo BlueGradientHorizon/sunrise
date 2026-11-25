@@ -287,7 +287,11 @@ fn general_tick_subscribed(catalog: &GeneralTypeCatalog) -> Vec<bool> {
 /// removal — `entity_remove` leaves it in the list until the sweep — or
 /// rewrite its mount. The row's identity is its place: nothing in the pass
 /// reorders the storage, so an index read now is the row it names.
-fn general_row_live(game: &Game<'_, crate::game::server_side::ServerState>, index: usize, mount: Option<u32>) -> bool {
+fn general_row_live(
+    game: &Game<'_, crate::game::server_side::ServerState>,
+    index: usize,
+    mount: Option<u32>,
+) -> bool {
     game.resident_entities
         .general
         .rows

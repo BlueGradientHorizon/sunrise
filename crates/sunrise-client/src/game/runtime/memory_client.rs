@@ -70,7 +70,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
 }
 
 impl PendingMemory {
-    pub(in crate::game) fn start(game: &Game<'_, crate::game::client_side::ClientState>, cost: MemoryCost) -> Option<Self> {
+    pub(in crate::game) fn start(
+        game: &Game<'_, crate::game::client_side::ClientState>,
+        cost: MemoryCost,
+    ) -> Option<Self> {
         cost.measure(|| {
             let inputs = game.client_memory_inputs();
             let (job, request) = match Self::spawn(

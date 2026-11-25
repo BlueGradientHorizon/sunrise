@@ -169,7 +169,11 @@ fn without_parts_the_piglin_safe_armor_tag_decides_isolated() {
 
 /// A calm adult piglin 4 blocks from the survival host, who wears `head` and `feet`, ticked
 /// for 100 ticks; whether it took the host as its target.
-fn targets_the_wearer(game: &mut crate::game::ServerGame<'_>, head: Option<&str>, feet: Option<&str>) -> bool {
+fn targets_the_wearer(
+    game: &mut crate::game::ServerGame<'_>,
+    head: Option<&str>,
+    feet: Option<&str>,
+) -> bool {
     game.options.dedicated = Some(Vec::new());
     game.build_registries();
     game.set_allow_commands(true);

@@ -2,7 +2,6 @@
 //! goal's water search, iron golem spawning) read the shape its block entity publishes,
 //! on the #1666 fixture.
 use super::published_shape_game_tests::{BUS, FULL, HALF, SMALL, place, shapes, with_bus};
-use crate::game::Game;
 use crate::game::native_entity_refs::tests::run_fresh_cases;
 use mod_api::*;
 use sunrise_client::mobs::goals::{Cx, Goal, Panic};

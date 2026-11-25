@@ -119,10 +119,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self.stats.loaded
             || self.remote.is_some()
             || self.no_player_here()
-            || self
-                .side
-                .crash_save
-                .holds_interrupted(self.side.lan_acting)
+            || self.side.crash_save.holds_interrupted(self.side.lan_acting)
         {
             return;
         }

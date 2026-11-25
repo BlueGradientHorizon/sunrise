@@ -107,7 +107,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 #[cfg(test)]
 mod tests {
     use crate::game::{
-        Dim, Game,
+        Dim,
         view_pass::tests::{Sent, host_a_viewer, open_game, sent},
     };
     use mod_api::{

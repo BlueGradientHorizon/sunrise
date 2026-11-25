@@ -309,7 +309,11 @@ fn attack_range_pick_outside_interact_range_falls_through_to_item_use() {
 /// A cushion the stored pick selected, spawned where `with_pick_game` puts an
 /// entity and raised to the player's eye so the look ray crosses it.
 pub(in crate::game) fn with_picked_cushion(
-    run: impl FnOnce(&mut crate::game::ClientGame<'_>, &mut sunrise_protocol::connection::Connection, CrosshairTarget),
+    run: impl FnOnce(
+        &mut crate::game::ClientGame<'_>,
+        &mut sunrise_protocol::connection::Connection,
+        CrosshairTarget,
+    ),
 ) {
     let selected = Arc::new(Mutex::new(None));
     let mods = vec![mod_api::ModEntry::new(

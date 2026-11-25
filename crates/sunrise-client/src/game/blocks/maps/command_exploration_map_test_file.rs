@@ -91,14 +91,10 @@ mod command_exploration_map_tests {
             .and_then(|d| d.other("minecraft:map_decorations"))
             .cloned();
         game.save_maps();
-        let saved = sunrise_client::save::read_dat(
-            &game.side.world_root.join("data/minecraft/maps/0.dat"),
-        );
+        let saved =
+            sunrise_client::save::read_dat(&game.side.world_root.join("data/minecraft/maps/0.dat"));
         let counter = sunrise_client::save::read_dat(
-            &game
-                .side
-                .world_root
-                .join("data/minecraft/maps/last_id.dat"),
+            &game.side.world_root.join("data/minecraft/maps/last_id.dat"),
         );
         let headers = saved.as_ref().and_then(|t| t.get("data")).map(|d| {
             (

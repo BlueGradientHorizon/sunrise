@@ -6,11 +6,12 @@ use super::{
         ANCHOR, charge_anchor, light_spawn_chunks, server_with_a_nether_anchor,
     },
 };
-use crate::game::Game;
 use mod_api::{RespawnTarget, RespawnTargetUnavailable, ServerHost};
 
 /// Guest 2's answer, asked through its handle from the Overworld, which stays in place.
-fn respawn_target(game: &mut crate::game::ServerGame<'_>) -> Result<RespawnTarget, RespawnTargetUnavailable> {
+fn respawn_target(
+    game: &mut crate::game::ServerGame<'_>,
+) -> Result<RespawnTarget, RespawnTargetUnavailable> {
     let player = game.player(game.command_guest(2).unwrap().uuid).unwrap();
     let host: &mut dyn ServerHost = game;
     let answer = player.respawn_target(host);

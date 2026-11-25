@@ -106,7 +106,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     fn now_playing_song(&self) -> Option<sunrise_client::text::Text> {
         let id = self.side.music.current_instance()?;
         let location = self
-            .side.audio
+            .side
+            .audio
             .0
             .engine
             .instance(id)?
@@ -212,7 +213,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             ridden,
             camera_position: self.side.audio.0.listener,
         };
-        self.side.audio
+        self.side
+            .audio
             .0
             .set_listener_reserve(self.settings.extras.ui_sound_reserve);
         // Client mods' sounds asked for since the last update start with it, then their stops

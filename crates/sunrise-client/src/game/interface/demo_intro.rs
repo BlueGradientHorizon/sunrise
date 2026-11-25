@@ -105,9 +105,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.side.demo_intro = Some(intro);
                 self.commit_screen_transition();
             } else {
-                self.set_screen_with(Screen::DemoIntro, |game| {
-                    game.side.demo_intro = Some(intro)
-                });
+                self.set_screen_with(Screen::DemoIntro, |game| game.side.demo_intro = Some(intro));
             }
             if self.side.screen == Screen::DemoIntro {
                 self.capture(false);
@@ -230,7 +228,7 @@ mod tests {
     use super::*;
     use crate::game::{
         in_own_process,
-        native_entity_refs::tests::{with_game, with_client_game},
+        native_entity_refs::tests::with_client_game,
         remote::tests::{connect_menu_test, spawn_menu_test},
     };
     use mod_api::{ClientHost, Hooks, ModEntry, ScreenOpening, ScreenOpeningEvent};
@@ -360,11 +358,7 @@ mod tests {
                             assert!(game.demo_intro_click());
                             assert_eq!(game.side.screen, Screen::ConfirmLink);
                             game.close_confirm_link();
-                            assert_eq!(
-                                game.side.screen,
-                                Screen::Playing,
-                                "Buy returns to the HUD"
-                            );
+                            assert_eq!(game.side.screen, Screen::Playing, "Buy returns to the HUD");
                             assert!(
                                 !game.side.agent_pointer,
                                 "closing the link confirmation requests capture"

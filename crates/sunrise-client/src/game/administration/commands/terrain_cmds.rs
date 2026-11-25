@@ -814,7 +814,7 @@ pub(in crate::game) mod loot_mine_component_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod loot_position_tests {
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
 
     #[test]
     #[ignore = "daily"]
@@ -920,7 +920,7 @@ pub(in crate::game) mod loot_position_tests {
 #[cfg(test)]
 pub(in crate::game) mod loot_kill_target_tests {
     use super::*;
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
     use sunrise_client::{chunk::Chunk, containers::BlockEntity};
     #[test]

@@ -65,7 +65,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     #[inline(always)]
     pub(in crate::game::client_side) fn command_block_open_at(&self, pos: Pos) -> bool {
-        self.side.command_block_screen
+        self.side
+            .command_block_screen
             .0
             .as_ref()
             .is_some_and(|s| s.cart.is_none() && s.pos == pos)
@@ -76,7 +77,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// the block state here (vanilla's `CommandBlockEntity.Mode`).
     pub(in crate::game::client_side) fn command_block_data_arrived(&mut self, pos: Pos) {
         if self
-            .side.command_block_screen
+            .side
+            .command_block_screen
             .0
             .as_ref()
             .is_none_or(|s| s.cart.is_some() || s.pos != pos)
@@ -266,14 +268,20 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.side.cursor.0.floor() as i32,
             self.side.cursor.1.floor() as i32,
         );
-        self.side.command_block_screen
+        self.side
+            .command_block_screen
             .0
             .as_mut()
             .is_some_and(|s| s.command.scroll(mouse, f64::from(amount)))
     }
     /// The command box's completion request for an `ask_server` node.
     pub(in crate::game) fn command_block_suggestion_request(&mut self) -> Option<(i32, String)> {
-        self.side.command_block_screen.0.as_mut()?.command.take_request()
+        self.side
+            .command_block_screen
+            .0
+            .as_mut()?
+            .command
+            .take_request()
     }
     /// The server's completions for the command box's `ask_server` request.
     pub(in crate::game::client_side) fn command_block_server_suggestions(
@@ -304,10 +312,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 dispatcher: super::chat::chat_tree(&self.remote),
                 registries: &self.ui.registries,
             };
-            let (x, y) = (
-                f64::from(self.side.cursor.0),
-                f64::from(self.side.cursor.1),
-            );
+            let (x, y) = (f64::from(self.side.cursor.0), f64::from(self.side.cursor.1));
             let double_click = s.command.live_double_click(x, y);
             if s.command.click(&m, &c, x, y, double_click) {
                 self.side.command_block_screen.0 = Some(s);
@@ -315,7 +320,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
         }
         let size = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map_or([1, 1], |r| [r.config.width, r.config.height]);
@@ -389,7 +395,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             KeyCode::Escape | KeyCode::Enter | KeyCode::NumpadEnter => true,
             _ => {
                 if let Some(shortcut) = shortcut {
-                    s.command.shortcut(&m, &c, shortcut, &mut self.side.clipboard.0);
+                    s.command
+                        .shortcut(&m, &c, shortcut, &mut self.side.clipboard.0);
                     true
                 } else {
                     s.command.field_key(&m, &c, key, shift, ctrl)

@@ -123,7 +123,8 @@ fn a_ticking_gateway_counts_its_age_in_its_block_entity() {
     game.update_chunk_tickets();
     assert!(game.block_ticking_area()(40, 8));
     // What `/data get block` and the chunk save encode (`TheEndGatewayBlockEntity.saveAdditional`).
-    let age = |game: &crate::game::ServerGame<'_>| match game.world.block_entities.get(&(40, 64, 8)) {
+    let age = |game: &crate::game::ServerGame<'_>| match game.world.block_entities.get(&(40, 64, 8))
+    {
         Some(BlockEntity::EndGateway(g)) => Some(g.age),
         _ => None,
     };

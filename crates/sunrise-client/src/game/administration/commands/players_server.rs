@@ -178,11 +178,9 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
 
     /// Native console calls cannot reach an outer turn's displaced player.
     /// Ordinary command resolution is unchanged, including nested turns.
-    pub(in crate::game) fn native_command_player_available(
-        &self,
-        guest: &Guest,
-    ) -> bool {
-        !crate::game::Side::native_command_filter(&self.side) || self.entity(guest.entity_id as u32).is_some()
+    pub(in crate::game) fn native_command_player_available(&self, guest: &Guest) -> bool {
+        !crate::game::Side::native_command_filter(&self.side)
+            || self.entity(guest.entity_id as u32).is_some()
     }
 
     /// `EntitySelector.findEntities` with a UUID: the player with it, else

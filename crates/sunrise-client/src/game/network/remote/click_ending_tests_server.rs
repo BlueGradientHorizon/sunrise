@@ -82,7 +82,7 @@ fn an_end_crystal_click_on_a_block_ends_there() {
 fn flint_and_steel_use_on_ends_the_click() {
     use crate::game::Hit;
     use crate::game::{
-        Audio, Game, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
+        Audio, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
     };
     use sunrise_client::{first_person::Hand, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;

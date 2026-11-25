@@ -495,10 +495,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .is_none_or(|h| h.count <= 1 || current.is_none());
         if moves
             && target.is_some()
-            && let (Some(player), Some(name)) = (
-                self.side.lan_acting_uuid,
-                self.side.lan_acting_name.clone(),
-            )
+            && let (Some(player), Some(name)) =
+                (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
         {
             let stand = self.armor_stands[i].id as i32;
             let slot_name = ["mainhand", "offhand", "feet", "legs", "chest", "head"][slot];
@@ -2404,7 +2402,7 @@ pub(in crate::game) mod stand_lodestone_inventory_tick_tests {
 #[cfg(test)]
 pub(in crate::game) mod postbaseline_lodestone_controls {
     //! Added after baseline: source-backed slots and preservation, not new runtime breadth.
-    use super::Game;
+
     use std::sync::Arc;
     use sunrise_client::{chunk::Chunk, entities::ArmorStand, items::ItemStack};
     use sunrise_core::position::BlockPos;
@@ -2491,10 +2489,13 @@ pub(in crate::game) mod postbaseline_lodestone_controls {
         let (all, mixed, inactive) = (id(100), id(101), id(102));
         // Direct class ticks do not refresh the headless fixture's tickets.
         // Use the existing ticket model: only chunk zero is forced to tick.
-        game.side.tickets.0.update(Some(crate::ticket_levels::Sources {
-            forced: vec![(0, 0)],
-            ..Default::default()
-        }));
+        game.side
+            .tickets
+            .0
+            .update(Some(crate::ticket_levels::Sources {
+                forced: vec![(0, 0)],
+                ..Default::default()
+            }));
         assert!(game.entity_ticking_area()(4, 4));
         assert!(!game.entity_ticking_area()(65, 65));
         assert!(game.world.loaded(65, 65));

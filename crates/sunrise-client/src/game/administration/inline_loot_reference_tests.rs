@@ -13,7 +13,9 @@ const MISSING_MESSAGE: &str = "Failed to parse structure: Failed to parse either
      Second: Failed to parse either. First: Not a list: \"parity:il_none\"; \
      Second: Failed to get element parity:il_none from registry minecraft:loot_table";
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
+fn game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -117,7 +119,10 @@ fn score(game: &crate::game::ServerGame<'_>, name: &str) -> i32 {
 /// `/loot give @s loot <table>`: whether it ran and what it said first; then,
 /// under `execute store` from 31, the stored result and success; then the
 /// diamonds the player holds (cleared).
-fn give(game: &mut crate::game::ServerGame<'_>, table: &str) -> (bool, Option<String>, i32, i32, i32) {
+fn give(
+    game: &mut crate::game::ServerGame<'_>,
+    table: &str,
+) -> (bool, Option<String>, i32, i32, i32) {
     game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(&format!("loot give @s loot {table}"));
     let said = game.side.chat_capture.take().unwrap_or_default();

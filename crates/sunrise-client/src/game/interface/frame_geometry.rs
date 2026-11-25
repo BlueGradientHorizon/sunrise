@@ -196,13 +196,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return (out, runs);
         }
         let a = alpha as f32;
-        let interpolated_pitch = self
-            .side
-            .player_model
-            .as_ref()
-            .map_or(self.pitch, |model| {
-                model.previous_head_pitch + a * (self.pitch - model.previous_head_pitch)
-            });
+        let interpolated_pitch = self.side.player_model.as_ref().map_or(self.pitch, |model| {
+            model.previous_head_pitch + a * (self.pitch - model.previous_head_pitch)
+        });
         // FirstPersonHandsAndItemsRenderer: the swing goes to the hand that
         // swings; each hand has its inverse arm height (the swap scale is 1
         // for every item but spears).

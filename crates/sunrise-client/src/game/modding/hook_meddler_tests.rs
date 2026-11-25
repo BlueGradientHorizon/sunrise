@@ -2,7 +2,6 @@
 //! the game's check after a hook that can change the world: once armed, it runs one action at the
 //! first of the hooks it listens to, and does not cancel.
 use super::native_entity_refs::tests::with_game;
-use crate::game::Game;
 use mod_api::{
     ArmorStandManipulateEvent, EntityMountEvent, Flow, HangingBreakEvent, Hooks,
     PlayerShearEntityEvent, ServerHost,

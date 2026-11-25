@@ -266,7 +266,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     fn rebuild_remote_tabs(&mut self) -> Option<usize> {
         self.adv_cache();
         let cache = self
-            .side.adv_ui
+            .side
+            .adv_ui
             .0
             .cache
             .as_ref()
@@ -301,7 +302,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     fn adv_cache(&mut self) {
         if self
-            .side.adv_ui
+            .side
+            .adv_ui
             .0
             .cache
             .as_ref()
@@ -374,7 +376,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     fn adv_view(&mut self) -> View {
         self.adv_cache();
         let c = self
-            .side.adv_ui
+            .side
+            .adv_ui
             .0
             .cache
             .as_ref()
@@ -399,7 +402,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             (tabs, Some(visible))
         };
         let tab = self
-            .side.adv_ui
+            .side
+            .adv_ui
             .0
             .tab
             .as_ref()
@@ -544,10 +548,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let (left, top) = window(w, h);
         let (ix, iy) = (left + 9.0, top + 18.0);
         // Centre each tab the first time it is drawn.
-        let (sx, sy) = self.side.adv_ui.0.tab_state_mut().map_or((0.0, 0.0), |tab| {
-            let bounds = tab.bounds;
-            *tab.scroll.get_or_insert_with(|| bounds.center())
-        });
+        let (sx, sy) = self
+            .side
+            .adv_ui
+            .0
+            .tab_state_mut()
+            .map_or((0.0, 0.0), |tab| {
+                let bounds = tab.bounds;
+                *tab.scroll.get_or_insert_with(|| bounds.center())
+            });
         let (sx, sy) = (sx.floor() as i32, sy.floor() as i32);
         self.adv_tick_hover(&view, sx, sy, left, top);
         let atlas = &self.gui.atlas;
@@ -615,7 +624,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Some(_) => {
                 let start = batch.vertices.len();
                 let all = self
-                    .side.adv_ui
+                    .side
+                    .adv_ui
                     .0
                     .cache
                     .as_ref()
@@ -794,7 +804,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     fn adv_tick_hover(&mut self, view: &View, sx: i32, sy: i32, left: f32, top: f32) {
         let now = Instant::now();
         let ticks = self
-            .side.adv_ui
+            .side
+            .adv_ui
             .0
             .last_frame
             .map_or(0.0, |t| (now - t).as_secs_f32() * 20.0)
@@ -805,7 +816,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let mut hovered = None;
         if mx > 0 && mx < INSIDE_W && my > 0 && my < INSIDE_H {
             let widgets = self
-                .side.adv_ui
+                .side
+                .adv_ui
                 .0
                 .cache
                 .as_ref()
@@ -1046,7 +1058,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             200.0,
             20.0,
         ) {
-            self.side.audio
+            self.side
+                .audio
                 .0
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
             self.close_advancements();

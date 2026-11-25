@@ -3,7 +3,6 @@
 //! canceled Pre skips the model, layers and the later name tag and leash passes, but not its
 //! flames and shadow. Canceling only Living Pre still calls Player Post without a model. Culled
 //! entities are not asked; the hooks run in draw queue order.
-use super::Game;
 use mod_api::{
     BlockEntityDrawContext, Hooks, RenderLivingPostEvent, RenderLivingPreEvent,
     RenderPlayerPostEvent, RenderPlayerPreEvent,

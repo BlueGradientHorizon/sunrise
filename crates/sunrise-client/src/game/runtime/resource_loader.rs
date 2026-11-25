@@ -393,7 +393,9 @@ impl WorldRestLoader {
     }
 }
 
-pub(in crate::game) fn write_report(game: &Game<'_, crate::game::client_side::ClientState>) -> Result<()> {
+pub(in crate::game) fn write_report(
+    game: &Game<'_, crate::game::client_side::ClientState>,
+) -> Result<()> {
     if let Some(path) = &game.options.report {
         let report = serde_json::json!({
             "frames": game.side.frames,

@@ -288,7 +288,9 @@ pub(in crate::game) struct PlayerEntityState<'a> {
 }
 
 /// The game's world for predicates.
-pub(in crate::game) struct View<'a, 'g>(pub(in crate::game) &'a Game<'g, crate::game::server_side::ServerState>);
+pub(in crate::game) struct View<'a, 'g>(
+    pub(in crate::game) &'a Game<'g, crate::game::server_side::ServerState>,
+);
 impl adv::World for View<'_, '_> {
     fn predicate(&self, id: &str) -> Option<&Value> {
         self.0.side.fns.0.store.predicates.get(id)
@@ -572,10 +574,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self.adv.loaded
             || self.remote.is_some()
             || self.no_player_here()
-            || self
-                .side
-                .crash_save
-                .holds_interrupted(self.side.lan_acting)
+            || self.side.crash_save.holds_interrupted(self.side.lan_acting)
         {
             return;
         }
@@ -1286,10 +1285,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut allowed = Vec::with_capacity(unlocked.len());
         let mut refused = Vec::new();
         let mut taken_back = 0;
-        if let (Some(player), Some(name)) = (
-            self.side.lan_acting_uuid,
-            self.side.lan_acting_name.clone(),
-        ) {
+        if let (Some(player), Some(name)) =
+            (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
+        {
             for recipe in unlocked {
                 let mut cancel = false;
                 self.native_player_recipe_discovered(player, &name, recipe, &mut cancel);
@@ -1397,10 +1395,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.side.lan_acting_fake {
             return;
         }
-        if let (Some(player), Some(name)) = (
-            self.side.lan_acting_uuid,
-            self.side.lan_acting_name.clone(),
-        ) {
+        if let (Some(player), Some(name)) =
+            (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
+        {
             self.native_player_advancement_done(player, &name, &a.id);
         }
         if self.defer_merchant_reward(a) {
@@ -2920,7 +2917,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn mob_name_components_read_live_text_without_saved_nbt() {
-        use crate::game::{Audio, Options, Settings, commands::Target, load_resources};
+        use crate::game::{Options, Settings, commands::Target, load_resources};
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -3005,7 +3002,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn mob_predicate_view_reads_active_effect_instances() {
-        use crate::game::{Audio, Options, Settings, commands::Target, load_resources};
+        use crate::game::{Options, Settings, commands::Target, load_resources};
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -3378,7 +3375,7 @@ pub(in crate::game) mod tests {
 #[cfg(test)]
 pub(in crate::game) mod structure_tag_tests {
     use super::View;
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use serde_json::json;
     use sunrise_client::advancements::{World, id_matches};
 
@@ -3492,7 +3489,7 @@ pub(in crate::game) mod random_chance_command_tests {
     #[test]
     #[ignore = "daily"]
     fn registered_named_random_chance_uses_real_source_and_world_draws() {
-        use crate::game::{Audio, Options, Settings, load_resources};
+        use crate::game::{Options, Settings, load_resources};
         use std::time::Instant;
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -3835,7 +3832,8 @@ pub(in crate::game) mod movement_predicate_tests {
         let mut failures = Vec::new();
         for (name, p, want) in probes {
             assert!(
-                game.side.fns
+                game.side
+                    .fns
                     .0
                     .store
                     .predicates

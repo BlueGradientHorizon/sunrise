@@ -90,10 +90,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return false;
         }
         // A break inside another's hook keeps where the outer one's drops go.
-        let outer = std::mem::replace(
-            &mut self.side.break_collect,
-            into_inventory.then(Vec::new),
-        );
+        let outer = std::mem::replace(&mut self.side.break_collect, into_inventory.then(Vec::new));
         let broke = self.player_break_block(pos).unwrap_or_else(|e| {
             log::warn!("a mod's break at {pos:?} failed: {e}");
             false

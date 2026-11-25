@@ -1,4 +1,4 @@
-use super::{BlockEntity, CacheOptions, Game, Vertex, in_own_process};
+use super::{BlockEntity, CacheOptions, Vertex, in_own_process};
 use glam::DVec3;
 use sunrise_client::{
     camera::CameraType,

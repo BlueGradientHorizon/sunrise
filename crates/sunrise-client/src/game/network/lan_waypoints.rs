@@ -56,7 +56,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .unwrap_or_default()
             }),
             transmitting: self
-                .side.cmds
+                .side
+                .cmds
                 .0
                 .waypoints
                 .as_ref()
@@ -71,7 +72,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 )
             }),
             icon: self
-                .side.cmds
+                .side
+                .cmds
                 .0
                 .waypoint_icons
                 .get(&Target::Guest(g.conn))

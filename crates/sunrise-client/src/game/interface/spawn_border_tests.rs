@@ -1,7 +1,4 @@
-use crate::game::{
-    Game,
-    native_entity_refs::tests::{run_fresh_cases, with_client_game},
-};
+use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use sunrise_core::{position::BlockPos, storage::PackedStorage};
 use sunrise_protocol::{
     chunk::{ChunkData, LightData, Paletted, Section, Strategy},
@@ -103,7 +100,11 @@ fn states(game: &crate::game::ClientGame<'_>) -> [BlockStateId; 3] {
 }
 
 /// Column (-1, -1) with the given blocks at x = z = -1: `(y, state, fluid)`.
-fn send_column(game: &mut crate::game::ClientGame<'_>, words: Option<Vec<i64>>, blocks: &[(i32, BlockStateId, bool)]) {
+fn send_column(
+    game: &mut crate::game::ClientGame<'_>,
+    words: Option<Vec<i64>>,
+    blocks: &[(i32, BlockStateId, bool)],
+) {
     let shape = DimensionType::vanilla(OVERWORLD);
     let sections: Vec<_> = (0..shape.sections())
         .map(|s| {

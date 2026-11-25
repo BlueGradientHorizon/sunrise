@@ -225,7 +225,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .join("resources.zip");
         if path.is_file() {
             self.side.server_packs.0.packs.local_world();
-            self.side.server_packs.0.packs.push_local(WORLD_PACK_ID, path);
+            self.side
+                .server_packs
+                .0
+                .packs
+                .push_local(WORLD_PACK_ID, path);
         }
     }
     /// `ConnectScreen`: the server's setting decides what its packs do
@@ -279,7 +283,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let setting = self.server_setting();
         let prompt = Prompt::for_server(setting);
         if prompt != Prompt::Pending && (!p.required || prompt != Prompt::Declined) {
-            self.side.server_packs
+            self.side
+                .server_packs
                 .0
                 .packs
                 .push(p.id, &p.url, parse_sha1(&p.hash));
@@ -390,12 +395,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // before the server's packs can ask for theirs (`ServerPacks` keeps
         // its own reload from overlapping).
         let selection_reloading = self
-            .side.pack_reload
+            .side
+            .pack_reload
             .0
             .as_ref()
             .is_some_and(|r| r.kind() == ReloadKind::Selection);
         let finished = self
-            .side.server_packs
+            .side
+            .server_packs
             .0
             .queue
             .as_ref()
@@ -565,13 +572,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .with_title_color(sunrise_client::hud::rgba(255, 85, 85, 255));
             // Audio playback notices retain the player's existing F1 visibility rule.
             let hide_with_f1 = matches!(report.hook, "AudioStream::read" | "AudioStream::drop");
-            self.side
-                .toast_manager
-                .queued
-                .push_back(Toast::Diagnostic {
-                    toast,
-                    hide_with_f1,
-                });
+            self.side.toast_manager.queued.push_back(Toast::Diagnostic {
+                toast,
+                hide_with_f1,
+            });
         }
     }
 
@@ -611,7 +615,10 @@ mod tests {
 
     const PACK_IDS: [u128; 2] = [31, 32];
 
-    fn with_pack_prompt(required: bool, test: impl FnOnce(&mut crate::game::ClientGame<'_>, &mut Connection, &Path)) {
+    fn with_pack_prompt(
+        required: bool,
+        test: impl FnOnce(&mut crate::game::ClientGame<'_>, &mut Connection, &Path),
+    ) {
         const ADDRESS: &str = "pack-test.invalid";
         let dir = tempfile::tempdir().unwrap();
         sunrise_client::logging::set_player_dir(dir.path().to_owned());
@@ -830,7 +837,8 @@ mod tests {
                             let spec = StreamSpec::new(SoundSource::Voice, 2, 48_000);
                             let (dropped, retired) = mpsc::channel();
                             let _handle = game
-                                .side.audio
+                                .side
+                                .audio
                                 .0
                                 .open_stream(OWNER, &spec, None, Box::new(BrokenSource(dropped)))
                                 .unwrap();

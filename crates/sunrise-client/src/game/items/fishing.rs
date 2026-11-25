@@ -547,10 +547,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         // The mods hear a server player's cast or reel-in first.
         if self.player.is_some()
-            && let (Some(uuid), Some(name)) = (
-                self.side.lan_acting_uuid,
-                self.side.lan_acting_name.clone(),
-            )
+            && let (Some(uuid), Some(name)) =
+                (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
         {
             let state = match self.hook.as_ref() {
                 None => 0,
@@ -967,10 +965,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             } else {
                 // The mods hear a server player's fish bite, and may call it
                 // off: the wait starts over.
-                if let (Some(uuid), Some(name)) = (
-                    self.side.lan_acting_uuid,
-                    self.side.lan_acting_name.clone(),
-                ) {
+                if let (Some(uuid), Some(name)) =
+                    (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
+                {
                     let mut cancel = false;
                     self.native_player_fish(uuid, &name, 1, &mut cancel);
                     if cancel {
@@ -1375,7 +1372,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             .map(|pl| (pl.position, f64::from(pl.dimensions.height)))
                     })
                     .or_else(|| {
-                        self.side.others
+                        self.side
+                            .others
                             .0
                             .iter()
                             .find(|o| o.id == id && o.kind == "minecraft:leash_knot")

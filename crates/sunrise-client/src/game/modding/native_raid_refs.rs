@@ -26,7 +26,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if level.dimension() == self.dim.key() {
             self.side.raiding.0.raids_mut(level.dimension_id())
         } else {
-            self.side.levels
+            self.side
+                .levels
                 .0
                 .parked_mut_of(level.dimension_id())?
                 .raiding
@@ -263,7 +264,8 @@ mod tests {
                 game.read_raids();
                 let current = game.level(game.dim.id()).unwrap();
                 let (id, _) = game
-                    .side.raiding
+                    .side
+                    .raiding
                     .0
                     .raids_mut(current.dimension_id())
                     .unwrap()
@@ -277,7 +279,8 @@ mod tests {
                 assert!(other.is_active(game));
                 game.raid_command_stop(id);
                 let tick_id = game
-                    .side.raiding
+                    .side
+                    .raiding
                     .0
                     .raids_mut(current.dimension_id())
                     .unwrap()
@@ -308,7 +311,13 @@ mod tests {
         });
     }
 
-    fn raider_mob(game: &mut crate::game::ServerGame<'_>, id: u32, raid: i32, wave: i32, health: f32) {
+    fn raider_mob(
+        game: &mut crate::game::ServerGame<'_>,
+        id: u32,
+        raid: i32,
+        wave: i32,
+        health: f32,
+    ) {
         let kind = game
             .res
             .mob_types()
@@ -431,7 +440,8 @@ mod tests {
             game.read_raids();
             let current = game.level(game.dim.id()).unwrap();
             let (other_id, _) = game
-                .side.raiding
+                .side
+                .raiding
                 .0
                 .raids_mut(current.dimension_id())
                 .unwrap()
@@ -475,7 +485,8 @@ mod tests {
             assert_eq!(level.raid_at(game, [10, 70, 10]), None);
             assert_eq!(level.raid(game, raid.id()), Some(raid));
             assert!(
-                game.side.levels
+                game.side
+                    .levels
                     .0
                     .parked_of(level.dimension_id())
                     .unwrap()

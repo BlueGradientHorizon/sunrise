@@ -237,8 +237,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .activate(position, yaw, pitch, self.settings.fov);
             }
             TopBarAction::ToggleLockToPath => {
-                self.side.studio.freecam.locked_to_path =
-                    !self.side.studio.freecam.locked_to_path;
+                self.side.studio.freecam.locked_to_path = !self.side.studio.freecam.locked_to_path;
             }
             TopBarAction::ToggleFreecam => {
                 if self.side.studio.freecam.active {
@@ -487,8 +486,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The top bar and the timeline over the HUD, while Studio is up in play.
     pub(in crate::game::client_side) fn draw_studio_bars(&mut self, batch: &mut super::HudBatch) {
-        if !EDITOR || self.ui.hide_gui || self.side.screen != Screen::Playing || !self.studio_up()
-        {
+        if !EDITOR || self.ui.hide_gui || self.side.screen != Screen::Playing || !self.studio_up() {
             return;
         }
         self.side.studio.topbar.render(
@@ -601,7 +599,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             && (self.replay.driver.is_some() || self.side.studio.freecam.active)
         {
             let size = self
-                .side.renderer
+                .side
+                .renderer
                 .0
                 .as_ref()
                 .map(|renderer| [renderer.config.width, renderer.config.height])
@@ -641,10 +640,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// The free camera flies by the movement keys, once per frame.
     pub(in crate::game::client_side) fn studio_fly(&mut self, elapsed: Duration) {
-        if !self.side.studio.flying()
-            || self.side.screen != Screen::Playing
-            || self.dialog_open()
-        {
+        if !self.side.studio.flying() || self.side.screen != Screen::Playing || self.dialog_open() {
             return;
         }
         use winit::keyboard::KeyCode;
@@ -680,16 +676,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // The rest are the editor's.
             _ if !EDITOR => {}
             KeyCode::KeyF => self.handle_studio_timeline_action(TimelineAction::ToggleFreecam),
-            KeyCode::KeyT => {
-                self.side.studio.timeline.visible = !self.side.studio.timeline.visible
-            }
+            KeyCode::KeyT => self.side.studio.timeline.visible = !self.side.studio.timeline.visible,
             KeyCode::KeyM => self.add_studio_marker(),
             KeyCode::Home => self.handle_studio_topbar_action(
                 sunrise_client::studio::TopBarAction::ResetCameraToPlayer,
             ),
             KeyCode::KeyL => {
-                self.side.studio.freecam.locked_to_path =
-                    !self.side.studio.freecam.locked_to_path;
+                self.side.studio.freecam.locked_to_path = !self.side.studio.freecam.locked_to_path;
             }
             KeyCode::KeyK => self.handle_studio_timeline_action(TimelineAction::AddCameraKeyframe),
             KeyCode::Delete => {

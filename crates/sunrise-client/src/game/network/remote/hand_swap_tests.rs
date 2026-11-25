@@ -1,6 +1,6 @@
 use crate::game::{
-    Audio, Game, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
-    native_entity_refs::tests::{with_game, with_client_game},
+    Audio, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
+    native_entity_refs::tests::with_client_game,
 };
 use sunrise_client::{items::ItemStack, mobs::Mob};
 use sunrise_core::geometry::Vec3;

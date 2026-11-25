@@ -848,12 +848,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         {
             return layout;
         }
-        if let Some(answer) =
-            self.side.screen_state
-                .0
-                .build
-                .effects_answer(self.side.frames, self.side.screen, *space)
-        {
+        if let Some(answer) = self.side.screen_state.0.build.effects_answer(
+            self.side.frames,
+            self.side.screen,
+            *space,
+        ) {
             return answer;
         }
         // Asked while the screen is laid out: nothing is drawn beside it yet.

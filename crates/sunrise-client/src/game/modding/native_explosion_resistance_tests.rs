@@ -1,6 +1,5 @@
 //! Explosion resistance reads through native mod handles on a fresh game.
 #![cfg(test)]
-use crate::game::Game;
 use crate::game::execution_role::ExecutionRole;
 use crate::game::native_entity_refs::tests::{run_with_game_stack, with_game_role};
 use mod_api::{
@@ -130,7 +129,9 @@ fn blast() -> ([f64; 3], f32, bool, ExplosionInteraction) {
 }
 
 /// Runs `test` on a fresh game with the resisting mod.
-fn with_resisting_mod(test: impl Fn(&mut crate::game::ServerGame<'_>, &Resisting) + Send + Sync + 'static) {
+fn with_resisting_mod(
+    test: impl Fn(&mut crate::game::ServerGame<'_>, &Resisting) + Send + Sync + 'static,
+) {
     run_with_game_stack(move || {
         let parts = Resisting::default();
         let mods: mod_api::Mods = vec![ModEntry::new("test", Box::new(parts.clone()))].into();

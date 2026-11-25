@@ -94,9 +94,15 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             }
             "minecraft:advancement" => LocalRegistry::Advancements(&self.adv.tree),
             "minecraft:game_rule" => LocalRegistry::Rules(&self.level.rule_registry),
-            "minecraft:predicate" => LocalRegistry::Json(&crate::game::Side::fns(&self.side)?.store.predicates),
-            "minecraft:item_modifier" => LocalRegistry::Json(&crate::game::Side::fns(&self.side)?.store.item_modifiers),
-            "minecraft:slot_source" => LocalRegistry::Json(&crate::game::Side::fns(&self.side)?.store.slot_sources),
+            "minecraft:predicate" => {
+                LocalRegistry::Json(&crate::game::Side::fns(&self.side)?.store.predicates)
+            }
+            "minecraft:item_modifier" => {
+                LocalRegistry::Json(&crate::game::Side::fns(&self.side)?.store.item_modifiers)
+            }
+            "minecraft:slot_source" => {
+                LocalRegistry::Json(&crate::game::Side::fns(&self.side)?.store.slot_sources)
+            }
             "minecraft:loot_table" => LocalRegistry::Loot(self.items()),
             "minecraft:recipe" => LocalRegistry::Recipes(self.recipes()),
             "minecraft:trade_set" => LocalRegistry::HashJson(&self.stations().trades.sets),
@@ -226,8 +232,11 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
         }
         if registry == "minecraft:dimension" {
             return identifiers(
-                std::iter::once(self.dim.id())
-                    .chain(crate::game::Side::levels(&self.side).into_iter().flat_map(|l| l.parked.keys().map(|dimension| dimension.id()))),
+                std::iter::once(self.dim.id()).chain(
+                    crate::game::Side::levels(&self.side)
+                        .into_iter()
+                        .flat_map(|l| l.parked.keys().map(|dimension| dimension.id())),
+                ),
             );
         }
         if registry == "minecraft:trial_spawner" {
@@ -292,10 +301,11 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             return Some(self.sync_tag_contains(&registry, &id, &tag));
         }
         if registry == "minecraft:slot_source" {
-            return Some(
-                crate::game::Side::fns(&self.side)
-                    .is_some_and(|f| f.store.slot_source_tag(&tag).is_ok_and(|members| members.iter().any(|member| member == &id))),
-            );
+            return Some(crate::game::Side::fns(&self.side).is_some_and(|f| {
+                f.store
+                    .slot_source_tag(&tag)
+                    .is_ok_and(|members| members.iter().any(|member| member == &id))
+            }));
         }
         if registry == "minecraft:villager_trade" {
             return Some(

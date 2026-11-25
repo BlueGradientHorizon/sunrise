@@ -38,7 +38,12 @@ mod tests {
     use sunrise_client::ticket_levels::Sources;
     use sunrise_core::position::ChunkPos;
 
-    fn assert_reads(game: &crate::game::ServerGame<'_>, level: LevelRef, pos: [i32; 3], expected: Option<bool>) {
+    fn assert_reads(
+        game: &crate::game::ServerGame<'_>,
+        level: LevelRef,
+        pos: [i32; 3],
+        expected: Option<bool>,
+    ) {
         assert_eq!(level.entity_ticking(game, pos), expected);
         assert_eq!(level.should_tick_blocks_at(game, pos), expected);
     }

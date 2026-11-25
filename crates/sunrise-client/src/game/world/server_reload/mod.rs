@@ -106,7 +106,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some(tables) = &self.side.world_tables.0 {
             prepared.loot.bind_from(&tables.loot_modifier_manager);
         }
-        self.side.reload_resources.0.install(prepared.retained, &skipped);
+        self.side
+            .reload_resources
+            .0
+            .install(prepared.retained, &skipped);
         self.side.structure_templates.clear();
     }
     /// The retained server reload listeners of the last successful reload.

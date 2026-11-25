@@ -1,5 +1,5 @@
 //! Registered play-Ping regression with the production sender-flush completion boundary.
-use crate::game::{Game, lan::LanSettings};
+use crate::game::lan::LanSettings;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_client::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
 use sunrise_protocol::{

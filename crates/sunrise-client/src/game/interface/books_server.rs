@@ -88,10 +88,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.set_lectern_powered(key, false);
             self.set_lectern_has_book(key, false, None);
             self.container_changed(key);
-            if let (Some(player), Some(name)) = (
-                self.side.lan_acting_uuid,
-                self.side.lan_acting_name.clone(),
-            ) {
+            if let (Some(player), Some(name)) =
+                (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
+            {
                 self.native_player_take_lectern_book(
                     player,
                     &name,
@@ -104,10 +103,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.side.lectern_pulses.push((key, 2));
             self.server_level_event_at(1043, [key.0, key.1, key.2], 0);
             self.container_changed(key);
-            if let (Some(player), Some(name)) = (
-                self.side.lan_acting_uuid,
-                self.side.lan_acting_name.clone(),
-            ) {
+            if let (Some(player), Some(name)) =
+                (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
+            {
                 self.native_player_lectern_page_change(
                     player,
                     &name,
@@ -212,10 +210,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         ];
         self.server_play_sound("minecraft:item.book.put", at, 1.0, 1.0);
         self.container_changed(key);
-        if let (Some(player), Some(name)) = (
-            self.side.lan_acting_uuid,
-            self.side.lan_acting_name.clone(),
-        ) {
+        if let (Some(player), Some(name)) =
+            (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
+        {
             self.native_player_insert_lectern_book(player, &name, pos, &book.item);
         }
         true

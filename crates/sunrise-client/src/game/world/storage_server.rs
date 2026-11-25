@@ -122,13 +122,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // part, and a part that went away (`getBlockEntity(pos) != this`) ends
         // it. A double chest whose other half broke would otherwise show a
         // shorter container.
-        if self
-            .side
-            .open_container_slots
-            .is_some_and(|(open, slots)| {
-                self.container == Some(open) && self.open_container_size() < slots
-            })
-        {
+        if self.side.open_container_slots.is_some_and(|(open, slots)| {
+            self.container == Some(open) && self.open_container_size() < slots
+        }) {
             self.close_container_server();
             return;
         }

@@ -284,7 +284,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn pad_guide_status(&self) -> Value {
         let pad = &self.settings.controller;
         let column = |left: bool| -> Vec<Value> {
-            self.side.pad
+            self.side
+                .pad
                 .0
                 .guide_shown
                 .iter()

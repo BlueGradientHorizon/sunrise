@@ -1,5 +1,4 @@
 //! Statistic rewrites use the same counter/dirty/criteria path as ordinary awards.
-use super::*;
 use mod_api::{Flow, Hooks, PlayerStatAwardEvent, ServerHost};
 use std::sync::{
     Arc,

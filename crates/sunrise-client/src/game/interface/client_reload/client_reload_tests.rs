@@ -672,7 +672,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
 #[test]
 #[ignore = "daily"]
 fn client_reload_reads_real_assets_with_pack_overrides() {
-    use crate::game::native_entity_refs::tests::{with_client_game, with_game};
+    use crate::game::native_entity_refs::tests::with_client_game;
     use mod_api::{self, ModEntry};
     use mod_api::{AddClientReloadListenersEvent, Hooks};
     use mod_platform::testing::with_mods;
@@ -881,7 +881,7 @@ fn client_reload_reads_real_assets_with_pack_overrides() {
 #[test]
 #[ignore = "daily"]
 fn client_setup_reaches_each_listener_once_per_firing() {
-    use crate::game::native_entity_refs::tests::{with_client_game, with_game};
+    use crate::game::native_entity_refs::tests::with_client_game;
     use mod_api::{ClientSetupContext, Hooks, ModEntry};
     use mod_platform::testing::with_mods;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -920,7 +920,7 @@ fn client_setup_reaches_each_listener_once_per_firing() {
 #[ignore = "daily"]
 fn only_the_first_local_client_is_the_client_start() {
     use crate::game::execution_role::ExecutionRole;
-    use crate::game::native_entity_refs::tests::{with_client_game, with_game};
+    use crate::game::native_entity_refs::tests::with_game;
 
     with_game(|game| {
         game.options.execution_role = ExecutionRole::Client;

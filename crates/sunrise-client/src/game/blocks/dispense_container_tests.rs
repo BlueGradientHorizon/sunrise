@@ -3,8 +3,8 @@
 //! different items), picks up before it places, sends the remainder into the dispenser or out
 //! of its front, and dispenses an unchanged container where nothing moves.
 use crate::game::{
-    Dim, Game, api_values::test_snapshot, dispense_fixture,
-    native_entity_refs::tests::run_fresh_cases, transactions::After,
+    Dim, api_values::test_snapshot, dispense_fixture, native_entity_refs::tests::run_fresh_cases,
+    transactions::After,
 };
 use mod_api::{prelude::ItemsServerHost, *};
 use std::sync::{Arc, Mutex};
@@ -337,7 +337,10 @@ fn with_dispenser(test: impl FnOnce(&mut crate::game::ServerGame<'_>, LevelRef))
     with_dispenser_notices(Notices::default(), |game, level, _| test(game, level));
 }
 
-fn with_dispenser_notices(notices: Notices, test: impl FnOnce(&mut crate::game::ServerGame<'_>, LevelRef, &Notices)) {
+fn with_dispenser_notices(
+    notices: Notices,
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, LevelRef, &Notices),
+) {
     let mods: Mods = vec![ModEntry::new(
         "containers",
         Box::new(Containers(notices.clone())),
@@ -1023,7 +1026,10 @@ fn dispenser_replacement_before_notice_replay_does_not_receive_the_notice() {
     });
 }
 
-fn run_dispenser_replacement(replacement: Replacement, tick: impl FnOnce(&mut crate::game::ServerGame<'_>, LevelRef)) {
+fn run_dispenser_replacement(
+    replacement: Replacement,
+    tick: impl FnOnce(&mut crate::game::ServerGame<'_>, LevelRef),
+) {
     let notices = Notices {
         replacement,
         ..Notices::default()

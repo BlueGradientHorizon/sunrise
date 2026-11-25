@@ -250,7 +250,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::Game;
+
     use super::super::commands::peaceful_tests::{TRADER, with_types};
     use super::super::execution_role::ExecutionRole;
     use super::super::native_entity_refs::tests::with_game;

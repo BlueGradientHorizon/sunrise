@@ -3,7 +3,9 @@
 use crate::game::{
     Dim, Game,
     execution_role::ExecutionRole,
-    native_entity_refs::tests::{fixture_root, run_fresh_cases, with_game, with_game_role, with_game_role_client},
+    native_entity_refs::tests::{
+        fixture_root, run_fresh_cases, with_game, with_game_role, with_game_role_client,
+    },
 };
 use mod_api::{
     BlockPart, EnchantPowerBonusEvent, Hooks, Host, LevelReadError, ModEntry, Mods, Registrar,
@@ -253,7 +255,13 @@ fn enchant_power_query_reads_the_logged_in_client_level() {
     );
 }
 
-pub(in crate::game::client_side) fn place<S: crate::game::Side>(game: &mut Game<'_, S>, offset: [i32; 3], block: &str) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
+pub(in crate::game::client_side) fn place<S: crate::game::Side>(
+    game: &mut Game<'_, S>,
+    offset: [i32; 3],
+    block: &str,
+) where
+    for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host,
+{
     let state = game.pack.assets.registry.default_state(block).unwrap();
     let [x, y, z] = [0, 1, 2].map(|i| TABLE[i] + offset[i]);
     game.world.set(x, y, z, state).unwrap();

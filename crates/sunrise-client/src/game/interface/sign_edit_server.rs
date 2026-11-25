@@ -456,10 +456,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     #[inline(always)]
     pub(in crate::game) fn open_sign_editor_server(&mut self, pos: (i32, i32, i32), front: bool) {
-        if let (Some(player), Some(name)) = (
-            self.side.lan_acting_uuid,
-            self.side.lan_acting_name.clone(),
-        ) {
+        if let (Some(player), Some(name)) =
+            (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
+        {
             self.native_player_open_sign(player, &name, [pos.0, pos.1, pos.2], front);
         }
     }

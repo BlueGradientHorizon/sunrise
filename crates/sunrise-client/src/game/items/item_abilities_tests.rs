@@ -1,5 +1,4 @@
 #![cfg(test)]
-use super::Game;
 use super::item_abilities::ability;
 use mod_api::{CanPerformActionEvent, Hooks, Host, ItemPart, Registrar, RegistrationContext};
 use std::sync::Arc;

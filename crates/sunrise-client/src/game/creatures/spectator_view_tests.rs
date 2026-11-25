@@ -1,12 +1,11 @@
 //! `Entity.isInvisibleTo`: a spectator sees an invisible body as the translucent
 //! one (`LivingEntityRenderer.submit`'s `forceTransparent`), anyone else not at all.
-use crate::game::{Audio, Game, Options, Progress, Settings, execution_role, load_resources};
+use crate::game::{Audio, Options, Progress, Settings, execution_role, load_resources};
 use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
 use sunrise_client::command::args::GameMode;
 use sunrise_client::mobs::{Mob, MobTypes};
 use sunrise_core::geometry::Vec3;
-use sunrise_core::position::ChunkPos;
 
 /// The prepared vanilla resources.
 fn root() -> std::path::PathBuf {

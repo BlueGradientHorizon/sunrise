@@ -52,12 +52,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             height: batch.height as i32,
         };
         let atlas = &self.gui.atlas;
-        let draws =
-            self.side
-                .subtitles
-                .overlay
-                .borrow_mut()
-                .extract(&frame, &atlas.font, now_ms());
+        let draws = self
+            .side
+            .subtitles
+            .overlay
+            .borrow_mut()
+            .extract(&frame, &atlas.font, now_ms());
         hud_layout::paint(batch, atlas, &draws);
     }
 }

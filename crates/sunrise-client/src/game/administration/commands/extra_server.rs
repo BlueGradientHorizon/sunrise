@@ -373,7 +373,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// harness waits for them, as vanilla's oracle resolves at once).
     pub(in crate::game::server_side) fn profile_fetches_pending(&mut self) -> bool {
         let mut resolver = self.skin_profiles.borrow_mut();
-        self.side.cmds
+        self.side
+            .cmds
             .0
             .profile_fetches
             .iter()
@@ -562,7 +563,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
     pub(in crate::game) fn waypoint_icon(&self, t: Target) -> Icon {
-        self.side.cmds
+        self.side
+            .cmds
             .0
             .waypoint_icons
             .get(&self.waypoint_target(t))

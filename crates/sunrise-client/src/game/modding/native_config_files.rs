@@ -321,7 +321,9 @@ impl GameConfigFiles {
     }
 }
 
-fn world_root(game: &Game<'_, crate::game::server_side::ServerState>) -> Result<FileRoot, ConfigFileError> {
+fn world_root(
+    game: &Game<'_, crate::game::server_side::ServerState>,
+) -> Result<FileRoot, ConfigFileError> {
     if game.side.world_root.as_os_str().is_empty() {
         return Err(ConfigFileError::NoWorld);
     }
@@ -922,7 +924,9 @@ mod tests {
         assert!(!world.exists());
         as_mod("fd", || {
             assert_eq!(
-                crate::game::ServerGame::data_files().read(&path("server-cache")).unwrap(),
+                crate::game::ServerGame::data_files()
+                    .read(&path("server-cache"))
+                    .unwrap(),
                 b"game-cache"
             );
         });

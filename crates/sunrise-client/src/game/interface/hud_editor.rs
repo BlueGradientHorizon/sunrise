@@ -70,12 +70,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.capture(false);
     }
     pub(in crate::game::client_side) fn close_hud_editor(&mut self) {
-        let from_options = self
-            .side
-            .pvp
-            .editor
-            .take()
-            .is_some_and(|e| e.from_options);
+        let from_options = self.side.pvp.editor.take().is_some_and(|e| e.from_options);
         self.settings.save(&crate::game::options_path());
         if from_options {
             self.open_options_at(false, sunrise_client::options_ui::Page::Pvp);

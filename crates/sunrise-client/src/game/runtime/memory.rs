@@ -177,7 +177,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         );
         for dim in self.side.levels.0.parked_dims() {
             if let Some(mobs) = self.side.levels.0.parked_mobs(dim) {
-                let loose = self.side.levels.0.parked_entity_counts(dim).unwrap_or_default();
+                let loose = self
+                    .side
+                    .levels
+                    .0
+                    .parked_entity_counts(dim)
+                    .unwrap_or_default();
                 level(mobs, loose);
             }
         }

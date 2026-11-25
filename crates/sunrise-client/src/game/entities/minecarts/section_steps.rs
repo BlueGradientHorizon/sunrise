@@ -62,13 +62,20 @@ pub(in crate::game) fn tick_riding(
     Some((i, true, stored.then_some((from, to)), player_step))
 }
 
-pub(in crate::game) fn tell(game: &mut Game<'_, crate::game::server_side::ServerState>, id: u32, step: Option<(Vec3, Vec3)>) {
+pub(in crate::game) fn tell(
+    game: &mut Game<'_, crate::game::server_side::ServerState>,
+    id: u32,
+    step: Option<(Vec3, Vec3)>,
+) {
     if let Some((from, to)) = step {
         game.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
     }
 }
 
-pub(in crate::game) fn tell_player(game: &mut Game<'_, crate::game::server_side::ServerState>, step: Option<(Vec3, Vec3)>) {
+pub(in crate::game) fn tell_player(
+    game: &mut Game<'_, crate::game::server_side::ServerState>,
+    step: Option<(Vec3, Vec3)>,
+) {
     if let Some((from, to)) = step
         && let Ok(id) = u32::try_from(game.own_entity_id())
     {

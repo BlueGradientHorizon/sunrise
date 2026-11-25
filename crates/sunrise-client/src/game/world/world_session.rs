@@ -8,7 +8,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Packs screen with the selection it had.
     pub(in crate::game::client_side) fn reopen_data_packs(&mut self) -> Result<()> {
         let action = self
-            .side.title
+            .side
+            .title
             .0
             .as_mut()
             .and_then(|t| t.reopen_data_packs_action());
@@ -175,12 +176,6 @@ impl Game<'_, crate::game::client_side::ClientState> {
         );
         self.open_integrated(folder, name, seed, creative, create)
     }
-
-    /// Load authoritative world state synchronously, without client entry or
-    /// integrated-server selection: a test-only convenience over the same two
-    /// steps production startup calls separately (`prepare_world_and_rules`,
-    /// then `finish_open_world`).
-    
 
     /// Leaving the game with a world open (window closed, Quit, `quit`):
     /// menu items go back (Player.closeContainer), then the world is saved,

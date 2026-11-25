@@ -1,7 +1,7 @@
 // Test module extracted without changing its logical path.
 use super::*;
 use crate::game::BlockEntity;
-use crate::game::{Audio, Options, Progress, Settings, load_resources};
+use crate::game::{Options, Progress, Settings, load_resources};
 use sunrise_core::nbt::parse_snbt;
 
 #[test]

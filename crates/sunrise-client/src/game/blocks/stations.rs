@@ -2797,9 +2797,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn tooltip_part_lines_come_after_the_name_and_never_for_a_hidden_tooltip() {
-        use crate::game::native_entity_refs::tests::{
-            run_fresh_cases, with_client_game, with_game,
-        };
+        use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
         use mod_api::{
             self, ClientHost, Hooks, ItemPart, ItemTooltipEvent, ModEntry, Mods, Registrar,
             TooltipEvent,

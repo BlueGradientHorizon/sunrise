@@ -432,7 +432,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     fn save_datapack_settings(&self) {
         let disabled: Vec<&String> = self
-            .side.fns
+            .side
+            .fns
             .0
             .packs
             .iter()
@@ -447,16 +448,33 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.sync_enchantment_registries();
         let reg = &mut self.ui.registries;
         reg.functions = self.side.fns.0.store.functions.keys().cloned().collect();
-        reg.function_tags = self.side.fns.0.store.function_tags.keys().cloned().collect();
+        reg.function_tags = self
+            .side
+            .fns
+            .0
+            .store
+            .function_tags
+            .keys()
+            .cloned()
+            .collect();
         reg.predicates = self.side.fns.0.store.predicates.keys().cloned().collect();
-        reg.item_modifiers = self.side.fns.0.store.item_modifiers.keys().cloned().collect();
+        reg.item_modifiers = self
+            .side
+            .fns
+            .0
+            .store
+            .item_modifiers
+            .keys()
+            .cloned()
+            .collect();
         let sources = reg
             .by_registry
             .entry("minecraft:slot_source".into())
             .or_default();
         sources.ids = self.side.fns.0.store.slot_sources.keys().cloned().collect();
         sources.tags = self
-            .side.fns
+            .side
+            .fns
             .0
             .store
             .slot_source_tags
@@ -464,13 +482,21 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .filter(|id| self.side.fns.0.store.slot_source_tag(id).is_ok())
             .cloned()
             .collect();
-        reg.schedules = self.side.fns.0.schedule.iter().map(|s| s.id.clone()).collect();
+        reg.schedules = self
+            .side
+            .fns
+            .0
+            .schedule
+            .iter()
+            .map(|s| s.id.clone())
+            .collect();
 
         reg.datapacks_enabled = std::iter::once("vanilla".to_owned())
             .chain(self.side.fns.0.enabled.iter().cloned())
             .collect();
         reg.datapacks_disabled = self
-            .side.fns
+            .side
+            .fns
             .0
             .packs
             .iter()
@@ -521,7 +547,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 
     fn sync_schedule_registry(&mut self) {
-        self.ui.registries.schedules = self.side.fns.0.schedule.iter().map(|s| s.id.clone()).collect();
+        self.ui.registries.schedules = self
+            .side
+            .fns
+            .0
+            .schedule
+            .iter()
+            .map(|s| s.id.clone())
+            .collect();
     }
 
     // ---- scheduled events ------------------------------------------------------
@@ -624,7 +657,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let now = self.world.game_time;
         loop {
             let due = self
-                .side.fns
+                .side
+                .fns
                 .0
                 .schedule
                 .iter()
@@ -678,7 +712,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         // The existing runner applies this level to nested function calls too.
         let permission = self
-            .side.fns
+            .side
+            .fns
             .0
             .permission
             .replace(sunrise_client::command::vanilla::GAMEMASTERS);
@@ -800,7 +835,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     return Ok(Vec::new());
                 }
                 Ok(self
-                    .side.fns
+                    .side
+                    .fns
                     .0
                     .store
                     .tag_functions(tag)
@@ -809,7 +845,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .collect())
             }
             None => self
-                .side.fns
+                .side
+                .fns
                 .0
                 .store
                 .functions
@@ -851,7 +888,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .command_source
             .unwrap_or_else(|| self.player_source());
         let call = if self
-            .side.exec
+            .side
+            .exec
             .0
             .prepared_function
             .as_ref()
@@ -1082,7 +1120,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.side.fns.0.schedule.retain(|e| e.id != schedule_id);
         }
         if !self
-            .side.fns
+            .side
+            .fns
             .0
             .schedule
             .iter()
@@ -1131,7 +1170,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             ..text::Style::default()
         };
         let description = self
-            .side.fns
+            .side
+            .fns
             .0
             .packs
             .iter()
@@ -1146,7 +1186,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let source = if id == "vanilla" {
             "pack.source.builtin"
         } else if self
-            .side.fns
+            .side
+            .fns
             .0
             .packs
             .iter()
@@ -1154,7 +1195,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             "pack.source.feature"
         } else if self
-            .side.fns
+            .side
+            .fns
             .0
             .packs
             .iter()
@@ -1251,7 +1293,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         Ok(1)
     }
     fn missing_pack_features(&self, id: &str) -> Vec<String> {
-        self.side.fns
+        self.side
+            .fns
             .0
             .packs
             .iter()
@@ -1280,7 +1323,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .filter(|p| self.missing_pack_features(p).is_empty())
             .collect();
         available.sort_by(|a, b| datapack::compare_ids(a, b));
-        let known = |g: &Self, n: &str| n == "vanilla" || g.side.fns.0.packs.iter().any(|p| p.id == n);
+        let known =
+            |g: &Self, n: &str| n == "vanilla" || g.side.fns.0.packs.iter().any(|p| p.id == n);
         match id {
             "datapack.create" => self.create_pack(ctx),
             "datapack.list" => {
@@ -1357,7 +1401,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         if ctx.has("before") { i } else { i + 1 }
                     } else if !ctx.has("last")
                         && self
-                            .side.fns
+                            .side
+                            .fns
                             .0
                             .packs
                             .iter()
@@ -1389,7 +1434,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     return Err(err("commands.datapack.disable.failed", &[&name]));
                 }
                 if self
-                    .side.fns
+                    .side
+                    .fns
                     .0
                     .packs
                     .iter()
@@ -1400,7 +1446,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     return Err(err("sunrise.datapack.required", &[&name]));
                 }
                 if self
-                    .side.fns
+                    .side
+                    .fns
                     .0
                     .packs
                     .iter()
@@ -1452,8 +1499,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
             &self.level.enabled_features,
             &additional,
         );
-        stack.enabled =
-            datapack::selected_ids(stack.packs.iter().map(Arc::as_ref), &self.side.fns.0.enabled);
+        stack.enabled = datapack::selected_ids(
+            stack.packs.iter().map(Arc::as_ref),
+            &self.side.fns.0.enabled,
+        );
         let prepared = match self.prepare_pack_condition_reload(&stack) {
             Ok(prepared) => prepared,
             Err(error) => {
@@ -1521,7 +1570,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .map_err(|e| err("argument.nbt.invalid", &[&e]))?;
             value
         } else {
-            self.side.fns
+            self.side
+                .fns
                 .0
                 .store
                 .predicates
@@ -1690,20 +1740,27 @@ mod tests {
             .unwrap();
             game.load_world(request).unwrap();
             assert!(
-                game.side.fns.0.store.functions.contains_key("first_open:block"),
+                game.side
+                    .fns
+                    .0
+                    .store
+                    .functions
+                    .contains_key("first_open:block"),
                 "first-open admission errors: {:?}",
                 game.side.fns.0.store.errors
             );
             assert!(
                 !game
-                    .side.fns
+                    .side
+                    .fns
                     .0
                     .store
                     .functions
                     .contains_key("first_open:invalid")
             );
             assert!(
-                game.side.fns
+                game.side
+                    .fns
                     .0
                     .store
                     .errors
@@ -1809,7 +1866,8 @@ mod tests {
                         );
                         assert!(!store.functions.contains_key("fnmod:unknown"));
                         let refusal = |game: &crate::game::ServerGame<'_>, id: &str| {
-                            game.side.fns
+                            game.side
+                                .fns
                                 .0
                                 .store
                                 .errors
@@ -1908,7 +1966,8 @@ mod tests {
             game.set_allow_commands(true);
             assert_eq!(game.side.fns.0.store.tag_functions("h155c:pair").len(), 2);
             assert!(
-                game.side.fns
+                game.side
+                    .fns
                     .0
                     .store
                     .functions
@@ -1948,7 +2007,10 @@ mod tests {
                 assert!(g.run_command("scoreboard players set #r h155c 91"));
                 assert!(g.run_command("scoreboard players set #s h155c 17"));
             }
-            fn capture(g: &mut crate::game::ServerGame<'_>, line: &str) -> (Vec<String>, Vec<(bool, i32)>) {
+            fn capture(
+                g: &mut crate::game::ServerGame<'_>,
+                line: &str,
+            ) -> (Vec<String>, Vec<(bool, i32)>) {
                 g.side.chat_capture = Some(Vec::new());
                 g.side.cmds.0.results = Some(Vec::new());
                 assert!(g.run_command(line));
@@ -2199,7 +2261,8 @@ mod tests {
             game.set_allow_commands(true);
             for name in ["zero", "five", "fail", "fallthrough", "admit"] {
                 assert!(
-                    game.side.fns
+                    game.side
+                        .fns
                         .0
                         .store
                         .functions
@@ -2405,7 +2468,8 @@ mod tests {
             assert_eq!(first.id_of(&first_instance), Some(&modifier_id));
             assert_eq!(first.modifiers().len(), 1);
             let first_generation = Arc::downgrade(
-                game.side.world_tables
+                game.side
+                    .world_tables
                     .0
                     .as_ref()
                     .unwrap()
@@ -2462,7 +2526,8 @@ mod tests {
             let old_root = game.options.resources.clone();
             let old_data = game.pack.data_source.clone();
             let old_tables = game
-                .side.world_tables
+                .side
+                .world_tables
                 .0
                 .as_ref()
                 .map(|tables| tables as *const _);
@@ -2485,7 +2550,8 @@ mod tests {
             assert!(Arc::ptr_eq(&game.loop_context, &old_context));
             assert_eq!(
                 old_tables,
-                game.side.world_tables
+                game.side
+                    .world_tables
                     .0
                     .as_ref()
                     .map(|tables| tables as *const _)
@@ -2718,7 +2784,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn function_pack_rejects_invalid_ordinary_lines_before_execution() {
-        use crate::game::{Audio, Options, Settings, load_resources};
+        use crate::game::{Options, Settings, load_resources};
         use std::time::Instant;
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -2816,7 +2882,8 @@ mod tests {
         for name in ["bad", "forbidden", "macro_bad", "slash"] {
             assert!(
                 !game
-                    .side.fns
+                    .side
+                    .fns
                     .0
                     .store
                     .functions
@@ -2830,7 +2897,8 @@ mod tests {
                     .contains(&format!("h144:{name}"))
             );
             assert!(
-                game.side.fns
+                game.side
+                    .fns
                     .0
                     .store
                     .errors
@@ -2863,7 +2931,15 @@ mod tests {
         game.reload_datapacks(true, &game.level.enabled_features.clone())
             .unwrap();
         assert!(game.side.fns.0.store.functions.contains_key("h144:good"));
-        assert!(!game.side.fns.0.store.functions.contains_key("h144:forbidden"));
+        assert!(
+            !game
+                .side
+                .fns
+                .0
+                .store
+                .functions
+                .contains_key("h144:forbidden")
+        );
         assert!(
             !game
                 .ui
@@ -2889,7 +2965,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn macro_lines_need_a_variable_and_parse_after_substitution() {
-        use crate::game::{Audio, Options, Settings, load_resources};
+        use crate::game::{Options, Settings, load_resources};
         use std::time::Instant;
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -2958,7 +3034,8 @@ mod tests {
             .unwrap();
         assert!(!game.side.fns.0.store.functions.contains_key("h166:novar"));
         assert!(
-            game.side.fns
+            game.side
+                .fns
                 .0
                 .store
                 .errors
@@ -2993,7 +3070,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn unless_function_keeps_a_fallthrough_after_running_it_once() {
-        use crate::game::{Audio, Options, Settings, load_resources};
+        use crate::game::{Options, Settings, load_resources};
         use std::time::Instant;
         use sunrise_client::datapack::FunctionLine;
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -3245,7 +3322,7 @@ mod tests {
 #[cfg(test)]
 mod entity_score_tests {
     use super::*;
-    use crate::game::{Audio, Options, Progress, Settings, commands::Target, load_resources};
+    use crate::game::{Options, Progress, Settings, commands::Target, load_resources};
     use sunrise_core::nbt::Tag;
 
     #[test]
@@ -3349,7 +3426,7 @@ mod entity_score_tests {
     #[test]
     #[ignore = "daily"]
     fn folder_metadata_rejection_reaches_actual_function_commands() {
-        use crate::game::{Audio, Options, Settings, load_resources};
+        use crate::game::{Options, Settings, load_resources};
         use std::time::Instant;
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -3445,7 +3522,8 @@ mod entity_score_tests {
                     if valid { 17 } else { -99 }
                 );
                 assert_eq!(
-                    game.side.fns
+                    game.side
+                        .fns
                         .0
                         .store
                         .functions
@@ -3460,7 +3538,8 @@ mod entity_score_tests {
                     valid
                 );
                 assert_eq!(
-                    game.side.fns
+                    game.side
+                        .fns
                         .0
                         .packs
                         .iter()
@@ -3481,7 +3560,7 @@ mod required_tag_tests {
     #[test]
     #[ignore = "daily"]
     fn real_pack_required_tag_failures_execute_no_partial_functions() {
-        use crate::game::{Audio, Options, Settings, load_resources};
+        use crate::game::{Options, Settings, load_resources};
         use std::time::{Instant, SystemTime, UNIX_EPOCH};
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -3588,7 +3667,8 @@ mod required_tag_tests {
         );
         for name in ["a", "b", "c"] {
             assert!(
-                game.side.fns
+                game.side
+                    .fns
                     .0
                     .store
                     .functions
@@ -3597,14 +3677,17 @@ mod required_tag_tests {
         }
         for name in tags.as_object().unwrap().keys() {
             assert!(
-                game.side.fns
+                game.side
+                    .fns
                     .0
                     .store
                     .function_tags
                     .contains_key(&format!("h145:{name}"))
             );
         }
-        let score = |game: &crate::game::ServerGame<'_>, key: &str| game.score.board.score(key, "h145").unwrap().value;
+        let score = |game: &crate::game::ServerGame<'_>, key: &str| {
+            game.score.board.score(key, "h145").unwrap().value
+        };
         let reset = |game: &mut crate::game::ServerGame<'_>| {
             for key in ["a", "b", "c", "order"] {
                 run(game, &format!("scoreboard players set {key} h145 0"));
@@ -3755,7 +3838,14 @@ mod required_tag_tests {
             }
             game.side.world_root = dir.clone();
             game.reload_datapacks(false, &[]).unwrap();
-            assert!(game.side.fns.0.store.predicates.contains_key("h121:reference"));
+            assert!(
+                game.side
+                    .fns
+                    .0
+                    .store
+                    .predicates
+                    .contains_key("h121:reference")
+            );
             assert!(
                 game.ui
                     .registries
@@ -3908,7 +3998,8 @@ mod required_tag_tests {
                 "all_reach_cycle_a",
             ] {
                 assert!(
-                    game.side.fns
+                    game.side
+                        .fns
                         .0
                         .store
                         .predicates

@@ -32,7 +32,10 @@ pub(in crate::game) struct HookedAttributeTooltips<'a, 'g> {
 }
 
 impl<'a, 'g> HookedAttributeTooltips<'a, 'g> {
-    pub(in crate::game) fn new(game: &'a Game<'g, crate::game::client_side::ClientState>, player: Option<(u128, i32)>) -> Self {
+    pub(in crate::game) fn new(
+        game: &'a Game<'g, crate::game::client_side::ClientState>,
+        player: Option<(u128, i32)>,
+    ) -> Self {
         Self { game, player }
     }
 }
