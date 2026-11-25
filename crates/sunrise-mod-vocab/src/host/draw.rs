@@ -559,18 +559,50 @@ pub trait WorldDrawContext {
     fn quads(&mut self, quads: &[WorldQuad]) -> Result<(), DrawError> {
         unimplemented!("WorldDrawContext::world_draw_quads")
     }
-    /// Submit world quads drawn by the mod pipeline `pipeline`: its shader gets each
-    /// quad's texture coordinate and colour, and its blend and depth modes apply. Checks
-    /// `RenderPipelineRef` validity and staleness ([`PipelineDrawError::Pipeline`]), skips
-    /// any quad with non-finite coordinates or UVs individually without rejecting valid quads
-    /// in the same slice, and lets quad storage grow dynamically into the GPU buffers. Within
-    /// a stage, pipeline quads draw after its plain quads and lines, in the order submitted.
+    /// Submit world quads drawn by the mod pipeline `pipeline`: shorthand over
+    /// [`Self::draw_vertices`] for pipelines using the default `PositionTexColor` vertex format
+    /// and [`PrimitiveTopology::Quads`]. Checks `RenderPipelineRef` validity and staleness
+    /// ([`PipelineDrawError::Pipeline`]), refuses non-`Quads` pipelines
+    /// ([`PipelineDrawError::TopologyMismatch`]) and custom vertex-format pipelines
+    /// ([`PipelineDrawError::VertexFormatMismatch`]), skips any quad with non-finite coordinates
+    /// or UVs individually without rejecting valid quads in the same slice, and lets quad storage
+    /// grow dynamically into the GPU buffers. Within a stage, pipeline draws run after plain
+    /// quads and lines, in the order submitted.
     fn pipeline_quads(
         &mut self,
         pipeline: RenderPipelineRef,
         quads: &[PipelineQuad],
     ) -> Result<(), PipelineDrawError> {
         unimplemented!("WorldDrawContext::pipeline_quads")
+    }
+    /// Draw a retained GPU [`MeshRef`] with `pipeline`, recording a POD draw command with zero
+    /// per-frame CPU vertex copying. Validates pipeline liveness, mesh ownership/liveness,
+    /// per-binding strides against the pipeline's [`VertexFormat`] bindings, and vertex/index/
+    /// instance bounds before queueing (never panics, never triggers a GPU validation error).
+    fn draw_mesh(
+        &mut self,
+        pipeline: RenderPipelineRef,
+        mesh: MeshRef,
+        draw: MeshDraw,
+        bindings: &DrawBindings<'_>,
+    ) -> Result<(), PipelineDrawError> {
+        let _ = (pipeline, mesh, draw, bindings);
+        Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid))
+    }
+    /// Draw transient per-frame vertex (and optional index) byte slices with `pipeline`,
+    /// uploaded into growing per-view GPU byte pages (bounded only by `max_buffer_size`).
+    /// Validates pipeline liveness, binding count and stride alignment, and vertex/index/instance
+    /// bounds before queueing.
+    fn draw_vertices(
+        &mut self,
+        pipeline: RenderPipelineRef,
+        vertices: &[&[u8]],
+        indices: Option<(IndexFormat, &[u8])>,
+        draw: MeshDraw,
+        bindings: &DrawBindings<'_>,
+    ) -> Result<(), PipelineDrawError> {
+        let _ = (pipeline, vertices, indices, draw, bindings);
+        Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid))
     }
     /// A label at world position `at`, drawn as vanilla draws a name tag
     /// (`SubmitNodeCollection.submitNameTag`): 0.5 blocks above `at`, facing the camera,
@@ -626,6 +658,22 @@ pub trait WorldDrawContext {
         let _ = (model, instances);
         unimplemented!("WorldDrawContext::draw_model_instances")
     }
+    /// Run `draw` with `modifier` pushed onto the active pipeline modifier stack (NeoForge's
+    /// `RenderSystem.renderWithPipelineModifier`). Applies to `lines`, `quads`, `pipeline_quads`,
+    /// and `draw_model_instances` drawn inside `draw` (not `name_tag` labels). Only the
+    /// modifier's `depth` applies to the built-in `lines`, `quads` and `draw_model_instances`;
+    /// the whole `PipelineModifier` applies to a registered pipeline drawn with `pipeline_quads`.
+    ///
+    /// Scopes nest: the most recently pushed modifier applies first, then older ones, so for a
+    /// field set by two modifiers the outermost wins (`PipelineModifierStack.apply`). The
+    /// modifier is popped automatically when `draw` returns or unwinds.
+    fn with_pipeline_modifier(
+        &mut self,
+        modifier: PipelineModifierRef,
+        draw: &mut dyn FnMut(&mut dyn WorldDrawContext),
+    ) {
+        let _ = (modifier, draw);
+    }
     /// Supply this frame's value for a mod-declared shader-pack uniform ([`PackUniformDecl`]).
     /// Returns `true` when `name` matches a registered mod uniform with the matching
     /// [`PackUniformType`], and `false` otherwise (never panics). When the declaration specifies
@@ -662,6 +710,52 @@ pub trait PrepareRenderBuffersContext {
         stage: RenderLevelStage,
         quads: &[WorldQuad],
     ) -> Result<PreparedWorldDraw, DrawError>;
+
+    /// Prepare a batch of mod-pipeline quads for `stage` (standard pass stages or
+    /// [`RenderLevelStage::OitTranslucent`]). Refuses pipelines whose effective
+    /// [`PrimitiveTopology`] is not [`PrimitiveTopology::Quads`]
+    /// ([`PipelineDrawError::TopologyMismatch`]). At `OitTranslucent`, a pipeline without
+    /// [`RenderPipeline::order_independent`] or with [`PipelineBlend::Opaque`] is refused with
+    /// [`PipelineDrawError::Pipeline`] (`RenderPipelineError::Invalid`), logged once per mod and
+    /// pipeline. Individual quads with non-finite coordinates or UVs are skipped.
+    fn pipeline_quads(
+        &mut self,
+        stage: RenderLevelStage,
+        pipeline: RenderPipelineRef,
+        quads: &[PipelineQuad],
+    ) -> Result<PreparedWorldDraw, PipelineDrawError> {
+        let _ = (stage, pipeline, quads);
+        Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid))
+    }
+
+    /// Prepare a retained GPU [`MeshRef`] draw for `stage` (standard pass stages or
+    /// [`RenderLevelStage::OitTranslucent`]).
+    fn draw_mesh(
+        &mut self,
+        stage: RenderLevelStage,
+        pipeline: RenderPipelineRef,
+        mesh: MeshRef,
+        draw: MeshDraw,
+        bindings: &DrawBindings<'_>,
+    ) -> Result<PreparedWorldDraw, PipelineDrawError> {
+        let _ = (stage, pipeline, mesh, draw, bindings);
+        Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid))
+    }
+
+    /// Prepare a transient per-frame vertex/index draw for `stage` (standard pass stages or
+    /// [`RenderLevelStage::OitTranslucent`]).
+    fn draw_vertices(
+        &mut self,
+        stage: RenderLevelStage,
+        pipeline: RenderPipelineRef,
+        vertices: &[&[u8]],
+        indices: Option<(IndexFormat, &[u8])>,
+        draw: MeshDraw,
+        bindings: &DrawBindings<'_>,
+    ) -> Result<PreparedWorldDraw, PipelineDrawError> {
+        let _ = (stage, pipeline, vertices, indices, draw, bindings);
+        Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid))
+    }
 }
 
 /// Draw batches prepared for the active standard render stage, in call order.

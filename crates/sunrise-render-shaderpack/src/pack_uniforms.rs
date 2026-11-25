@@ -740,6 +740,28 @@ fn shadow_ortho(shadow: &Shadow) -> (Mat4, Mat4) {
     (projection, invert_affine(projection))
 }
 
+/// `shadowProjection` and its inverse for this frame: `shadow_ortho`'s, or the perspective
+/// `shadow_camera` gives with `shadowMapFov`.
+fn shadow_projection(frame: &Frame, shadow: &Shadow) -> (Mat4, Mat4) {
+    match shadow.fov {
+        Some(_) => {
+            let light = shadow_light(frame, shadow);
+            let (_, projection) = shadow_camera(light, frame.camera, shadow);
+            (projection, projection.inverse())
+        }
+        None => shadow_ortho(shadow),
+    }
+}
+
+/// The `shadowModelView` and `shadowProjection` a pack reads this frame, in that order, for a
+/// mod that draws into the shadow pass.
+pub fn shadow_view(frame: &Frame, shadow: &Shadow) -> (Mat4, Mat4) {
+    (
+        shadow_model_view(frame, shadow).0,
+        shadow_projection(frame, shadow).0,
+    )
+}
+
 /// JOML's `Matrix4f.invertAffine()`, operation by operation.
 fn invert_affine(m: Mat4) -> Mat4 {
     let g = |c: usize, r: usize| m.col(c)[r];
@@ -946,14 +968,7 @@ impl FrameUniforms {
             ),
             None => (frame.sky.fog_color, frame.distance * 0.9, frame.distance),
         };
-        let light = shadow_light(frame, &self.shadow);
-        let (shadow_projection, shadow_projection_inverse) = match self.shadow.fov {
-            Some(_) => {
-                let (_, projection) = shadow_camera(light, frame.camera, &self.shadow);
-                (projection, projection.inverse())
-            }
-            None => shadow_ortho(&self.shadow),
-        };
+        let (shadow_projection, shadow_projection_inverse) = shadow_projection(frame, &self.shadow);
         let (shadow_view, shadow_view_inverse) = shadow_model_view(frame, &self.shadow);
         let day_time = inputs.day_time.rem_euclid(24000) as i32;
         let world_day = inputs.day_time.div_euclid(24000);

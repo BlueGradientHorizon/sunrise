@@ -360,6 +360,9 @@ pub fn references(root: &Path, manifest: &sunrise_mod_package::Manifest) -> Resu
     }
 }
 
+/// The include that opts a program into the order-independent transparency passes.
+const OIT_INCLUDE: &str = "minecraft:shaders/include/oit.glsl";
+
 /// Translates and validates every GLSL core shader program in a mod's `files`
 /// (`assets/<namespace>/shaders/core/<path>.vsh` and `.fsh`) through `sunrise_mod_pipeline`
 /// (the same code the game uses), returning how many programs were checked and each refusal as
@@ -459,8 +462,40 @@ pub fn pipeline_shaders(
                 fragment_dir: &dir,
                 fragment: dummy_fsh,
             };
+            let extracted = match sunrise_mod_pipeline::extract_vertex_inputs(&vsh_text) {
+                Ok(v) => v,
+                Err(e) => {
+                    refused.push(format!("{vsh_file}: {e}"));
+                    continue;
+                }
+            };
+            let is_default = extracted.iter().all(|(n, t)| {
+                sunrise_mod_pipeline::DEFAULT_VERTEX_INPUTS
+                    .iter()
+                    .any(|(dn, dt)| dn == n && dt == t)
+            });
+            let custom_refs: Vec<(&str, &str)> = extracted
+                .iter()
+                .map(|(n, t)| (n.as_str(), t.as_str()))
+                .collect();
+            let (extracted_bindings, pc_size) =
+                sunrise_mod_pipeline::extract_mod_bindings(&vsh_text, dummy_fsh, textured);
+            let mod_bindings: Vec<sunrise_mod_pipeline::ModBinding<'_>> = extracted_bindings
+                .iter()
+                .map(|(name, kind)| sunrise_mod_pipeline::ModBinding {
+                    name: name.as_str(),
+                    kind: *kind,
+                })
+                .collect();
             let options = sunrise_mod_pipeline::Options {
                 textured,
+                vertex_inputs: if is_default {
+                    &sunrise_mod_pipeline::DEFAULT_VERTEX_INPUTS
+                } else {
+                    &custom_refs
+                },
+                mod_bindings: &mod_bindings,
+                push_constant_size: pc_size,
                 check_backends: true,
                 ..Default::default()
             };
@@ -533,12 +568,58 @@ pub fn pipeline_shaders(
             fragment_dir: &fragment_dir,
             fragment: &fsh_text,
         };
+        let extracted = match sunrise_mod_pipeline::extract_vertex_inputs(&vsh_text) {
+            Ok(v) => v,
+            Err(e) => {
+                refused.push(format!("{vertex_file}: {e}"));
+                continue;
+            }
+        };
+        let is_default = extracted.iter().all(|(n, t)| {
+            sunrise_mod_pipeline::DEFAULT_VERTEX_INPUTS
+                .iter()
+                .any(|(dn, dt)| dn == n && dt == t)
+        });
+        let custom_refs: Vec<(&str, &str)> = extracted
+            .iter()
+            .map(|(n, t)| (n.as_str(), t.as_str()))
+            .collect();
+        let (extracted_bindings, pc_size) =
+            sunrise_mod_pipeline::extract_mod_bindings(&vsh_text, &fsh_text, textured);
+        let mod_bindings: Vec<sunrise_mod_pipeline::ModBinding<'_>> = extracted_bindings
+            .iter()
+            .map(|(name, kind)| sunrise_mod_pipeline::ModBinding {
+                name: name.as_str(),
+                kind: *kind,
+            })
+            .collect();
         let options = sunrise_mod_pipeline::Options {
             textured,
+            vertex_inputs: if is_default {
+                &sunrise_mod_pipeline::DEFAULT_VERTEX_INPUTS
+            } else {
+                &custom_refs
+            },
+            mod_bindings: &mod_bindings,
+            push_constant_size: pc_size,
             check_backends: true,
             ..Default::default()
         };
-        if let Err(problems) = sunrise_mod_pipeline::translate(&sources, &options, &include) {
+        // A program joins the OIT passes by including `oit.glsl`, directly or through another
+        // include: watch the includes the translation resolves instead of reading the source.
+        let includes_oit = std::sync::atomic::AtomicBool::new(false);
+        let watching = |id: &str| {
+            if id == OIT_INCLUDE {
+                includes_oit.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+            include(id)
+        };
+        if let Err(problems) = sunrise_mod_pipeline::translate(&sources, &options, &watching) {
+            refused.extend(problems.into_iter().map(|p| p.to_string()));
+        } else if includes_oit.load(std::sync::atomic::Ordering::Relaxed)
+            && let Err(problems) =
+                sunrise_mod_pipeline::translate_oit(&sources, &options, false, &include)
+        {
             refused.extend(problems.into_iter().map(|p| p.to_string()));
         }
     }
@@ -775,5 +856,67 @@ mod tests {
             assert!(text.contains(word), "{text}");
         }
         assert_eq!(report.json()["dependencies"], dependencies);
+    }
+
+    #[test]
+    fn pipeline_shaders_validates_oit_variants_and_refuses_alpha_only_color_output() {
+        let mut files = BTreeMap::new();
+        files.insert(
+            "assets/example/shaders/core/good_oit.fsh".to_owned(),
+            b"\
+#version 330
+#include <minecraft:dynamictransforms.glsl>
+#include <minecraft:oit.glsl>
+in vec2 texCoord0;
+in vec4 vertexColor;
+#ifndef OIT_ALPHA_ONLY
+out vec4 fragColor;
+#endif
+void main() {
+    vec4 color = vertexColor * ColorModulator;
+#ifdef OIT_ALPHA_ONLY
+    executeAlphaOnlyPhase(gl_FragCoord.z, color.a);
+#else
+#ifdef OIT_ACCUMULATE
+    color = sampleColorForAccumulation(color);
+#endif
+    fragColor = color;
+#endif
+}
+"
+            .to_vec(),
+        );
+        let (count, refused) = pipeline_shaders(&files, None);
+        assert_eq!(count, 1);
+        assert!(
+            refused.is_empty(),
+            "expected valid OIT shader to pass: {refused:?}"
+        );
+
+        files.insert(
+            "assets/example/shaders/core/bad_oit.fsh".to_owned(),
+            b"\
+#version 330
+#include <minecraft:oit.glsl>
+in vec4 vertexColor;
+out vec4 fragColor;
+void main() {
+#ifdef OIT_ALPHA_ONLY
+    executeAlphaOnlyPhase(gl_FragCoord.z, vertexColor.a);
+#else
+    fragColor = sampleColorForAccumulation(vertexColor);
+#endif
+}
+"
+            .to_vec(),
+        );
+        let (count, refused) = pipeline_shaders(&files, None);
+        assert_eq!(count, 2);
+        assert!(
+            refused
+                .iter()
+                .any(|r| r.contains("bad_oit.fsh") && r.contains("OIT depth_bounds")),
+            "expected bad OIT shader refusal at depth_bounds, got: {refused:?}"
+        );
     }
 }

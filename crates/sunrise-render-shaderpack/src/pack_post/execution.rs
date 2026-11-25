@@ -13,7 +13,7 @@ use sunrise_render_core::UniformFrameView;
 use sunrise_shaders::{BUFFERS, Group, SHADOW_COLORS};
 
 use super::construction::*;
-use super::mod_pack::{ModDrawChunk, ModPassSlot, ModUniformValue};
+use super::mod_pack::{MOD_SET_BASE, ModDrawChunk, ModDrawKind, ModPassSlot, ModUniformValue};
 use crate::PollLive;
 use crate::pack_entities::{
     BEAM, BLOCK, BLOCK_TRANSLUCENT, DESTROY, ENTITY, PARTICLE, PARTICLE_TRANSLUCENT, TRANSLUCENT,
@@ -200,6 +200,24 @@ impl PackPost {
     /// Mod pipeline slots currently bound to compiled shader-pack programs in this pack.
     pub fn bound_mod_slots(&self) -> &[usize] {
         &self.bound_mod_slots
+    }
+
+    /// The shadow pass as `frame` sees it, or `None` when the pack has no shadow pass: the map's
+    /// side in texels, `shadowDistance`, and the column-major `shadowModelView` and
+    /// `shadowProjection` (camera-relative space).
+    pub fn shadow_state(
+        &self,
+        frame: &UniformFrameView<'_>,
+    ) -> Option<(u32, f32, [f32; 16], [f32; 16])> {
+        let targets = self.shadow_targets.as_ref()?;
+        let shadow = &self.uniforms.shadow;
+        let (model_view, projection) = crate::pack_uniforms::shadow_view(frame, shadow);
+        Some((
+            targets.size,
+            shadow.distance,
+            model_view.to_cols_array(),
+            projection.to_cols_array(),
+        ))
     }
 
     /// Counts of currently allocated mod auxiliary `(depth, opaque_depth)` targets.
@@ -1532,7 +1550,7 @@ impl PackPost {
             let has_draws = self
                 .mod_draws
                 .iter()
-                .any(|d| d.slot == m.slot && !d.quads.is_empty());
+                .any(|d| d.slot == m.slot && !d.is_empty());
             if !has_draws {
                 continue;
             }
@@ -1555,12 +1573,42 @@ impl PackPost {
                     self.draws.bind(&mut rp, stage);
                 }
                 for chunk in &self.mod_draws {
-                    if chunk.slot != m.slot || chunk.quads.is_empty() {
+                    if chunk.slot != m.slot || chunk.is_empty() {
                         continue;
                     }
-                    rp.set_vertex_buffer(0, chunk.vertices.slice(..));
-                    rp.set_index_buffer(chunk.indices.slice(..), wgpu::IndexFormat::Uint32);
-                    rp.draw_indexed(chunk.quads.start * 6..chunk.quads.end * 6, 0, 0..1);
+                    // The mod's own vertex stage has its frame uniforms and set 1 after the
+                    // pack's sets; the pack's vertex stage reads the mod's set 1 at index 1.
+                    let mut set1 = 1;
+                    if m.mod_vertex {
+                        let Some(globals) = &chunk.mod_globals else {
+                            continue;
+                        };
+                        rp.set_bind_group(MOD_SET_BASE, globals, &[]);
+                        set1 = MOD_SET_BASE + 1;
+                    }
+                    if m.has_mod_bind_group {
+                        let Some((ref bg, ref offsets)) = chunk.mod_bind_group else {
+                            continue;
+                        };
+                        rp.set_bind_group(set1, bg, offsets);
+                    }
+                    for (binding, buffer, range) in &chunk.vertex_buffers {
+                        rp.set_vertex_buffer(*binding, buffer.slice(range.clone()));
+                    }
+                    match &chunk.kind {
+                        ModDrawKind::Vertices { vertices } => {
+                            rp.draw(vertices.clone(), chunk.instances.clone());
+                        }
+                        ModDrawKind::Indexed {
+                            buffer,
+                            format,
+                            indices,
+                            base_vertex,
+                        } => {
+                            rp.set_index_buffer(buffer.slice(..), *format);
+                            rp.draw_indexed(indices.clone(), *base_vertex, chunk.instances.clone());
+                        }
+                    }
                 }
             }
             if slot != ModPassSlot::Shadow {
@@ -2752,7 +2800,7 @@ impl PackPost {
                 && self
                     .mod_draws
                     .iter()
-                    .any(|d| d.slot == m.slot && !d.quads.is_empty())
+                    .any(|d| d.slot == m.slot && !d.is_empty())
         });
         let cache_hit = !has_shadow_entities
             && !has_shadow_mod_draws
