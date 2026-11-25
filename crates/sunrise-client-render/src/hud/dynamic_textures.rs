@@ -320,6 +320,15 @@ impl Store {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
+    /// The live view of texture `handle`, cloned, and its revision (unique per GPU texture made,
+    /// so a bind group built for a texture made again is stale), under one lock; `None` when it
+    /// has no GPU texture: its creation failed, or the device was lost.
+    pub fn view(&self, handle: u64) -> Option<(wgpu::TextureView, u64)> {
+        self.lock()
+            .get(&handle)
+            .map(|gpu| (gpu.view.clone(), gpu.revision))
+    }
+
     /// Under one lock, for each of `drawn` that has no bind group in `held` of its current
     /// revision, push it to `out` with its view and revision, or with `None` when it no longer
     /// exists. A view is cloned only for a bind group that must be made again.
