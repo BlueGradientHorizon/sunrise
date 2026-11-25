@@ -472,14 +472,49 @@ impl Game<'_> {
                 )
             });
         d.priority(format!(
-            "{} fps{generated} T: {}{present} @{refresh}Hz",
+            "{} fps{generated} T: {}{present} @{refresh}Hz{}",
             self.fps.round() as i32,
             if limit == 260 {
                 "inf".into()
             } else {
                 limit.to_string()
             },
+            self.debug_fps_suffix(),
         ));
+    }
+
+    /// The mods' texts for the frame rate line, each after a space, in mod load order; a
+    /// disabled mod's is left out.
+    fn debug_fps_suffix(&self) -> String {
+        let texts = self.debug_fps_texts.borrow();
+        let mut shown: Vec<_> = texts
+            .iter()
+            .filter_map(|(id, text)| {
+                let index = mod_api::__private::mod_index(id)?;
+                mod_api::__private::mod_index_on(index).then_some((index, text))
+            })
+            .collect();
+        shown.sort_by_key(|(index, _)| *index);
+        shown
+            .into_iter()
+            .map(|(_, text)| format!(" {text}"))
+            .collect()
+    }
+
+    /// `DebugEntryFps.display` with a mod's own text after vanilla's, as Dynamic FPS adds its
+    /// state there: `text` replaces what the calling mod set before, and `None` takes it away.
+    /// Line breaks become spaces, as the line is one line. False, setting nothing, when no mod
+    /// is calling.
+    pub(in crate::game) fn set_debug_fps_text(&self, text: Option<&str>) -> bool {
+        let Some(id) = mod_api::content::crash::current_native_mod() else {
+            return false;
+        };
+        let mut texts = self.debug_fps_texts.borrow_mut();
+        texts.retain(|(owner, _)| *owner != id);
+        if let Some(text) = text.filter(|text| !text.is_empty()) {
+            texts.push((id, text.replace(['\n', '\r'], " ")));
+        }
+        true
     }
     /// `DebugEntrySimplePerformanceImpactors`.
     pub(super) fn debug_performance_lines(&self, d: &mut debug_overlay::Displayer) {
@@ -1486,6 +1521,54 @@ impl DensityCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A mod's text follows F3's frame rate line, several in mod load order; `None` takes it
+    /// away, and a call outside a mod sets nothing.
+    #[test]
+    #[ignore = "daily"]
+    fn mods_add_their_text_to_the_frame_rate_line() {
+        use mod_api::{Hooks, ModEntry};
+        use sunrise_client::crash::{ModCall, enter_native_mod};
+        struct Quiet;
+        #[mod_api::__subscriptions]
+        impl Hooks for Quiet {}
+        let as_mod = |id: &'static str, f: &mut dyn FnMut()| {
+            let _call = enter_native_mod(ModCall {
+                id,
+                hook: "client_tick_post",
+                part: None,
+            });
+            f()
+        };
+        let mods = vec![
+            ModEntry::new("first", Box::new(Quiet)),
+            ModEntry::new("second", Box::new(Quiet)),
+        ];
+        mod_platform::testing::with_mods(mods.into(), || {
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
+                let line = |game: &Game<'_>| {
+                    let mut d = debug_overlay::Displayer::default();
+                    game.debug_fps_line(&mut d);
+                    let (left, _) = d.columns(&[]);
+                    left.into_iter().next().unwrap()
+                };
+                let vanilla = line(game);
+                assert!(!game.set_debug_fps_text(Some("outside")));
+                assert_eq!(line(game), vanilla);
+                as_mod("second", &mut || {
+                    assert!(game.set_debug_fps_text(Some("§c(2 fps)\nidle")));
+                });
+                as_mod("first", &mut || {
+                    assert!(game.set_debug_fps_text(Some("one")));
+                });
+                assert_eq!(line(game), format!("{vanilla} one §c(2 fps) idle"));
+                as_mod("first", &mut || {
+                    assert!(game.set_debug_fps_text(None));
+                });
+                assert_eq!(line(game), format!("{vanilla} §c(2 fps) idle"));
+            });
+        });
+    }
 
     fn block(x: i32) -> QueryReply {
         QueryReply::Block {
