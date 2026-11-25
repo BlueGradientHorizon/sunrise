@@ -11,6 +11,9 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `minecraft:container`, as a shulker box item keeps them.
     /// API 370.
     pub(in crate::game) fn native_item_container(&self, item: &str, slots: &mut Option<u32>) {
-        *slots = mod_api::__private::parts_installation::item_container_slots(self, item);
+        *slots = mod_api::__private::parts_installation::item_container_slots(
+            crate::game::Side::as_host(self),
+            item,
+        );
     }
 }

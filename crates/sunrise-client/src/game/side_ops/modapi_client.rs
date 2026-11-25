@@ -19,7 +19,22 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     pub(in crate::game) fn client_entity_residence(&self, holder: mod_api::EntityRef) -> Residence {
-        if self.native_client_entity_target(holder).is_some() {
+        let Some(remote) = self.remote.as_ref() else {
+            return Residence::Missing;
+        };
+        if self.native_lifecycle.epoch() != Some(holder.epoch()) {
+            return Residence::Missing;
+        }
+        let Ok(id) = i32::try_from(holder.id()) else {
+            return Residence::Missing;
+        };
+        if (id == remote.entity_id && self.player.is_some())
+            || self.dragon.as_ref().is_some_and(|dragon| {
+                crate::game::server_side::dragon::dragon_part_index(dragon.id, holder.id())
+                    .is_some()
+            })
+            || remote.tracked(id).is_some()
+        {
             Residence::Found
         } else {
             Residence::Missing

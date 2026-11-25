@@ -55,7 +55,7 @@ impl ResidentBlockEntityReadOnly for ResidentReadBlockEntity<'_> {
 
 /// Shared sequential client block-entity view + mutable `ClientHost` backend.
 pub(in crate::game) struct ClientBlockEntityAccess<'g, 'w> {
-    pub game: &'g mut Game<'w, crate::game::client_side::ClientState>,
+    pub game: &'g mut crate::game::ClientGame<'w>,
     pub subject: BlockEntityRef,
 }
 

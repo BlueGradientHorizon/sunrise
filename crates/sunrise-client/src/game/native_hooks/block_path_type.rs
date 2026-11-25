@@ -1,7 +1,7 @@
 use super::*;
 use crate::game::native_level_signals::ReadLevel;
 
-impl ReadLevel<'_, '_> {
+impl<S: crate::game::Side> ReadLevel<'_, '_, S> {
     /// Positional `IBlockExtension.getBlockPathType`, before all vanilla classification.
     /// `None` declines; the read-only level host reads this same owning level.
     pub(in crate::game) fn native_block_path_type(

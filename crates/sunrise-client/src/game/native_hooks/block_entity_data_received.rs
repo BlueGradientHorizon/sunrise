@@ -8,7 +8,7 @@ use mod_api::{
 };
 
 struct ClientDataReadAccess<'g, 'w> {
-    game: &'g Game<'w, crate::game::client_side::ClientState>,
+    game: &'g crate::game::ClientGame<'w>,
     subject: BlockEntityRef,
 }
 

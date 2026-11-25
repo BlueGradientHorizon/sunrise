@@ -486,42 +486,6 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     ) {
         self.fire_player_tick_post(call);
     }
-    /// Whether block `block`'s block entity ticks (`EntityBlock.getTicker`):
-    /// set `ticks` when it is yours. Asked for each of the block's states
-    /// when a world opens.
-    /// Set `ticks` to true to make it tick, and never clear a value an earlier mod or mixin set.
-    pub(in crate::game) fn native_block_entity_ticks(&self, block: &str, ticks: &mut bool) {
-        self.fire_block_entity_ticks(block, ticks);
-    }
-    /// Whether the owner of this menu accepts button `id`. The active menu's owner
-    /// decides its own IDs; the game does not impose a shared numeric range.
-    pub(in crate::game) fn native_menu_button_valid(
-        &self,
-        menu: &str,
-        block: Option<&str>,
-        id: i32,
-        accepted: &mut bool,
-    ) {
-        self.fire_menu_button_valid(menu, block, id, accepted);
-    }
-
-    /// A server broadcast line is about to be logged and sent. Change `line`
-    /// or set `cancel` to drop it.
-    pub(in crate::game) fn native_broadcast_message(&self, line: &mut Text, cancel: &mut bool) {
-        self.fire_broadcast_message(line, cancel);
-    }
-    /// A hopper is about to move one item between containers, a composter's
-    /// bone meal included. Set `cancel` to leave it in its source slot. A chest
-    /// boat or minecart is reported at the block it is in.
-    pub(in crate::game) fn native_inventory_move_item(
-        &self,
-        source: [i32; 3],
-        destination: [i32; 3],
-        item: &str,
-        cancel: &mut bool,
-    ) {
-        self.fire_inventory_move_item(source, destination, item, cancel);
-    }
     /// `ItemStack.useOn`: both logical sides answer after the block passed.
     /// Client reads and local effects cannot perform authoritative writes.
     pub(in crate::game) fn native_use_on(&mut self, call: mod_api::__private::UseOnCall<'_>) {
@@ -758,21 +722,6 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     ) {
         self.fire_entity_tick_post(dimension, entities, kinds);
     }
-    /// LivingEntity.knockback before resistance and motion, after the unchanged v1 hook.
-    /// Cancellation from either hook wins. Attacker is the attacking entity's network id,
-    /// falling back to the victim's last hurt-by mob, or 0 when unknown; `attacker_main` and
-    /// `attacker_off` are what it holds (a player's selected and off-hand stacks, a mob's main hand), none when unknown. Player attackers
-    /// include the guest whose action runs. Includes mob melee and armor-stand sweeps, not
-    /// direct velocity pushes (explosions, Punch arrows, hoglin throws). Non-finite changes
-    /// are restored before resistance. Server-side, without self: damage borrows the victim.
-    /// Whether a mod hears projectiles' impacts (`native_projectile_impact`):
-    /// set `hears`. Asked once a server tick before the projectiles fly; only
-    /// then does the tick keep the copy of each flying projectile that a
-    /// canceled impact flies on from, so a game without such a mod pays
-    /// nothing. Server-side.
-    pub(in crate::game) fn native_hears_projectile_impacts(&self, hears: &mut bool) {
-        self.fire_hears_projectile_impacts(hears);
-    }
 }
 
 /// Register namespaced NBT component types before content loads.
@@ -965,7 +914,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// one. On a client it is the copy of what the server synced: `set` and
     /// `remove` change only the copy.
     pub(in crate::game) fn attachments(&mut self) -> &mut dyn AttachmentStore {
-        self
+        crate::game::Side::attachment_store(self)
     }
     /// Read a loaded, light-emitting block. No implicit chunk loading.
     pub(in crate::game) fn lit_block_name(&self, pos: [i32; 3]) -> Option<mod_api::BlockKey> {

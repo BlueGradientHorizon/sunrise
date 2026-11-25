@@ -131,7 +131,7 @@ macro_rules! impl_tags {
     };
 }
 pub(super) use impl_tags;
-impl_tags!(super::Game<'_>, game, game.native_tag_items());
+impl_tags!(super::Game<'_, S>, game, game.native_tag_items(); generics(S: crate::game::Side));
 
 #[cfg(test)]
 pub(in crate::game) const PACK_BINDING_CASES: [(&str, &[u8], bool); 3] = [

@@ -58,7 +58,7 @@ use screen_chars::chars_to_type;
 use sunrise_client::containers::ModBlockEntity as EngineBlockEntity;
 
 pub(in crate::game) struct ContentsChangedGuard<'a, 'game> {
-    pub(in crate::game) game: &'a mut Game<'game>,
+    pub(in crate::game) game: &'a mut crate::game::ServerGame<'game>,
 }
 
 /// Write back a `menu_button` cursor edit without revalidating an untouched stack.

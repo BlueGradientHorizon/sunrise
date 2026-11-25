@@ -23,7 +23,7 @@ pub(in crate::game) struct ResidentGeneralRow<'a> {
 }
 
 pub(in crate::game) struct GeneralTickAccess<'g, 'w, 'k> {
-    pub(in crate::game) game: &'g mut Game<'w, crate::game::server_side::ServerState>,
+    pub(in crate::game) game: &'g mut crate::game::ServerGame<'w>,
     pub(in crate::game) subject: EntityRef,
     pub(in crate::game) kind: &'k str,
 }

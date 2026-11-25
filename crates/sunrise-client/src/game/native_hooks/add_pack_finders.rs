@@ -1,18 +1,21 @@
 use super::*;
 
-impl<__Side: crate::game::Side> mod_api::PackDiscoveryContext for Game<'_, __Side> {
-    fn live_host(&mut self) -> Option<mod_api::HostSide<'_>> {
-        Some(super::super::execution_role::host_side(self))
-    }
+macro_rules! impl_pack_discovery_context {
+    ($game:ty) => {
+        impl mod_api::PackDiscoveryContext for $game {
+            fn live_host(&mut self) -> Option<mod_api::HostSide<'_>> {
+                Some(super::super::execution_role::host_side(self))
+            }
 
-    fn client_text(&self) -> Option<&dyn mod_api::prelude::ClientTextClientHost> {
-        if self.is_logical_server() {
-            None
-        } else {
-            Some(self)
+            fn client_text(&self) -> Option<&dyn mod_api::prelude::ClientTextClientHost> {
+                crate::game::Side::as_client_text_host(self)
+            }
         }
-    }
+    };
 }
+
+impl_pack_discovery_context!(crate::game::ServerGame<'_>);
+impl_pack_discovery_context!(crate::game::ClientGame<'_>);
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Register sources when a resource or data pack repository is discovered.
@@ -22,7 +25,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     ) {
         let mods = self.mods.clone();
         crate::game::native_hooks::fire::fire_add_pack_finders(
-            self,
+            crate::game::Side::as_pack_discovery_context_mut(self),
             |listen| packs.register_listener(listen),
             |id| mods.code_owner_enabled(id),
         );

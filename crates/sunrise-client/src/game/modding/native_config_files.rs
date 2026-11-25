@@ -38,7 +38,7 @@ impl FileRoot {
     }
 }
 
-impl Game<'_, crate::game::server_side::ServerState> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The calling mod's own files in the game's `config/` folder, beside
     /// `options.txt` (beside `server.properties` on a dedicated server):
     /// its folder `config/<mod id>/` and the files beside it named
@@ -54,14 +54,17 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &DATA_FILES
     }
 
-    pub(in crate::game) fn world_data_files(&self) -> &dyn ConfigFiles {
-        self
-    }
     /// Whether a mod with the `sunrise-mod.toml` id `id` is installed: a
     /// native or content package (Fabric's `FabricLoader.isModLoaded`,
     /// NeoForge's `ModList.isLoaded`). The list is fixed at startup.
     pub(in crate::game) fn is_loaded(id: &str) -> bool {
         mod_api::__private::loaded_mods().get(id).is_some()
+    }
+}
+
+impl Game<'_, crate::game::server_side::ServerState> {
+    pub(in crate::game) fn world_data_files(&self) -> &dyn ConfigFiles {
+        self
     }
 }
 

@@ -159,15 +159,15 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         // The rest of Incoming releases the turn and ingress credit after publication/rollback.
     }
 }
-struct MainContext<'a, 'resources> {
-    game: &'a mut Game<'resources>,
+struct MainContext<'a, 'resources, S: crate::game::Side> {
+    game: &'a mut Game<'resources, S>,
     epoch: &'a Arc<Epoch>,
     endpoint: Endpoint,
     receiver: &'a mod_api::__private::game::PayloadReceiver,
     disconnect: Option<Text>,
     failure: Option<CallbackFailure>,
 }
-impl IPayloadContext for MainContext<'_, '_> {
+impl<S: crate::game::Side> IPayloadContext for MainContext<'_, '_, S> {
     fn player(&self) -> Result<PlayerRef, PayloadContextError> {
         if !self.epoch.active() || self.disconnect.is_some() {
             return Err(PayloadContextError::Disconnected);
@@ -199,7 +199,7 @@ impl IPayloadContext for MainContext<'_, '_> {
         if self.endpoint.side() != Side::Server {
             return Err(PayloadContextError::WrongSide);
         }
-        Ok(self.game)
+        S::as_server_host_mut(self.game).ok_or(PayloadContextError::WrongSide)
     }
     fn client_host(&mut self) -> Result<&mut dyn mod_api::ClientHost, PayloadContextError> {
         if !self.epoch.active() || self.disconnect.is_some() {
@@ -208,7 +208,7 @@ impl IPayloadContext for MainContext<'_, '_> {
         if self.endpoint.side() != Side::Client {
             return Err(PayloadContextError::WrongSide);
         }
-        Ok(self.game)
+        S::as_client_host_mut(self.game).ok_or(PayloadContextError::WrongSide)
     }
     fn reply(
         &mut self,

@@ -1,12 +1,12 @@
 //! The game's implementations of the mod API's service traits.
 #[allow(unused_imports)]
-use crate::game::{Game, api_values::TryIntoEngine};
+use crate::game::{ClientGame, ServerGame, api_values::TryIntoEngine};
 #[allow(unused_imports)]
 use mod_api::*;
 #[allow(unused_imports)]
 use std::sync::Arc;
 
-impl<__Side: crate::game::Side> ClientSession for Game<'_, __Side> {
+impl ClientSession for ClientGame<'_> {
     fn client_server(&self) -> Option<ClientServer<'_>> {
         self.native_client_server()
     }
@@ -23,7 +23,7 @@ impl<__Side: crate::game::Side> ClientSession for Game<'_, __Side> {
         self.native_client_frame_stats()
     }
 }
-impl<__Side: crate::game::Side> Commands for Game<'_, __Side> {
+impl Commands for ServerGame<'_> {
     fn refresh_commands(&mut self) {
         self.native_refresh_commands()
     }
@@ -49,18 +49,18 @@ impl<__Side: crate::game::Side> Commands for Game<'_, __Side> {
         self.native_run_command_with_output(line)
     }
 }
-impl<__Side: crate::game::Side> Levels for Game<'_, __Side> {
+impl Levels for ServerGame<'_> {
     fn list_levels(&self) -> Vec<LevelRef> {
         self.native_list_levels()
     }
 }
-impl<__Side: crate::game::Side> Messages for Game<'_, __Side> {
+impl Messages for ServerGame<'_> {
     fn broadcast(&self, line: Text) -> Result<(), mod_api::text::TextFormError> {
         self.native_broadcast(sunrise_client_lib::api_text::to_serialized_engine(&line)?);
         Ok(())
     }
 }
-impl<__Side: crate::game::Side> Players for Game<'_, __Side> {
+impl Players for ServerGame<'_> {
     fn server_players(&self) -> Vec<PlayerRef> {
         self.native_server_players()
     }
@@ -74,7 +74,7 @@ impl<__Side: crate::game::Side> Players for Game<'_, __Side> {
         self.native_singleplayer_profile()
     }
 }
-impl<__Side: crate::game::Side> Profiles for Game<'_, __Side> {
+impl Profiles for ServerGame<'_> {
     fn resolve_name(&self, name: &str) -> ProfileResolution {
         self.native_resolve_profile(sunrise_client::skins::NameOrId::Name(name.to_owned()))
     }
@@ -82,7 +82,7 @@ impl<__Side: crate::game::Side> Profiles for Game<'_, __Side> {
         self.native_resolve_profile(sunrise_client::skins::NameOrId::Id(uuid))
     }
 }
-impl<__Side: crate::game::Side> RuntimeLevels for Game<'_, __Side> {
+impl RuntimeLevels for ServerGame<'_> {
     fn open(&mut self, id: &str, level: RuntimeLevel) -> Result<LevelRef, RuntimeLevelError> {
         self.runtime_level_open(id, level)
     }

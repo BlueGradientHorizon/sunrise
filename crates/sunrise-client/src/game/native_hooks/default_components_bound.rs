@@ -7,6 +7,9 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         &mut self,
         cause: mod_api::TagsUpdateCause,
     ) {
-        crate::game::native_hooks::fire::fire_default_components_bound(self, cause);
+        crate::game::native_hooks::fire::fire_default_components_bound(
+            crate::game::Side::as_reload_context(self),
+            cause,
+        );
     }
 }

@@ -8,6 +8,10 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         registry: &str,
         cause: mod_api::DataMapsUpdateCause,
     ) {
-        crate::game::native_hooks::fire::fire_data_maps_updated(self, registry, cause);
+        crate::game::native_hooks::fire::fire_data_maps_updated(
+            crate::game::Side::as_reload_context(self),
+            registry,
+            cause,
+        );
     }
 }

@@ -5,7 +5,7 @@
 // The generated impls convert error types that are already equal; TODO(#2273): make the generator skip it.
 #![allow(clippy::useless_conversion, clippy::unit_arg)]
 #[allow(unused_imports)]
-use super::Game;
+use super::{ClientGame, ServerGame};
 #[allow(unused_imports)]
 use super::api_values::{ItemBoundary, TryIntoApi, TryIntoEnginePreservingCount};
 #[allow(unused_imports)]
@@ -18,13 +18,19 @@ pub(in crate::game) mod phase_contexts;
 pub(crate) mod services;
 include!(concat!(env!("OUT_DIR"), "/game_host_generated.rs"));
 
-impl<__Side: crate::game::Side> Host for Game<'_, __Side> {
+impl Host for ServerGame<'_> {
     fn backend(&self) -> Option<BackendRef<'_>> {
         Some(BackendRef::of(self))
     }
 }
 
-impl ServerHost for Game<'_, crate::game::server_side::ServerState> {
+impl Host for ClientGame<'_> {
+    fn backend(&self) -> Option<BackendRef<'_>> {
+        Some(BackendRef::of(self))
+    }
+}
+
+impl ServerHost for ServerGame<'_> {
     fn backend_mut(&mut self) -> Option<BackendMutRef<'_>> {
         Some(BackendMutRef::of(self))
     }
@@ -109,12 +115,13 @@ impl ServerHost for Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl ClientHost for Game<'_, crate::game::client_side::ClientState> {
+impl ClientHost for ClientGame<'_> {
     fn client_backend_mut(&mut self) -> Option<ClientBackendMutRef<'_>> {
         Some(ClientBackendMutRef::of(self))
     }
 }
 
-impl<__Side: crate::game::Side> Backend for Game<'_, __Side> {}
-impl BackendMut for Game<'_, crate::game::server_side::ServerState> {}
-impl ClientBackendMut for Game<'_, crate::game::client_side::ClientState> {}
+impl Backend for ServerGame<'_> {}
+impl Backend for ClientGame<'_> {}
+impl BackendMut for ServerGame<'_> {}
+impl ClientBackendMut for ClientGame<'_> {}

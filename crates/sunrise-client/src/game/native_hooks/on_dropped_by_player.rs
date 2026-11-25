@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_, crate::game::server_side::ServerState> {
+impl crate::game::ServerGame<'_> {
     /// `IItemExtension.onDroppedByPlayer`: `player` pressed the drop key on
     /// `stack` (`all`: the whole stack, else one item), before anything
     /// leaves the slot. Set `canceled` and the stack stays where it is.
@@ -16,7 +16,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl Game<'_, crate::game::server_side::ServerState> {
+impl crate::game::ServerGame<'_> {
     /// `ItemStack.onDroppedByPlayer` for the acting player's drop key: true
     /// when the selected stack's Part refused the drop. Nothing runs for an
     /// empty slot or an item without the Part.

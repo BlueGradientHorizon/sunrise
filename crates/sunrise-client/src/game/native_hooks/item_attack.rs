@@ -2,7 +2,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl<__Side: crate::game::Side> Game<'_, __Side> {
+impl crate::game::ServerGame<'_> {
     /// `IItemExtension.onLeftClickEntity`: `player`, holding `stack`, is
     /// about to attack the entity `entity` of type `kind`, where
     /// `Player.attack` starts, once `attack_entity` let the blow through and
@@ -18,6 +18,9 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     ) {
         self.fire_on_left_click_entity(player, stack, entity, kind, canceled);
     }
+}
+
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `IItemExtension.onEntitySwing`: the player in place (`entity`) is
     /// about to swing `stack` in `hand`, where `LivingEntity.swing` starts.
     /// Set `canceled` and no swing starts: no animation, no packet.

@@ -2684,6 +2684,57 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn native_world_saved(&mut self, wait: bool) {
         self.fire_world_saved(wait);
     }
+    /// On a server `RecipesHost::known_recipes` has no client recipe-book UI state.
+    pub(in crate::game) fn known_recipes(&mut self) -> Arc<[i32]> {
+        Arc::from([])
+    }
+    /// On a server `RecipesHost::recipe_book_category` has no client recipe-book UI state.
+    pub(in crate::game) fn recipe_book_category(
+        &mut self,
+        _kind: &str,
+    ) -> Option<mod_api::item::recipe_book::RecipeBookCategory> {
+        None
+    }
+    /// Whether block `block`'s block entity ticks (`EntityBlock.getTicker`):
+    /// set `ticks` when it is yours. Asked for each of the block's states
+    /// when a world opens.
+    /// Set `ticks` to true to make it tick, and never clear a value an earlier mod or mixin set.
+    pub(in crate::game) fn native_block_entity_ticks(&self, block: &str, ticks: &mut bool) {
+        self.fire_block_entity_ticks(block, ticks);
+    }
+    /// Whether the owner of this menu accepts button `id`. The active menu's owner
+    /// decides its own IDs; the game does not impose a shared numeric range.
+    pub(in crate::game) fn native_menu_button_valid(
+        &self,
+        menu: &str,
+        block: Option<&str>,
+        id: i32,
+        accepted: &mut bool,
+    ) {
+        self.fire_menu_button_valid(menu, block, id, accepted);
+    }
+    /// A server broadcast line is about to be logged and sent. Change `line`
+    /// or set `cancel` to drop it.
+    pub(in crate::game) fn native_broadcast_message(&self, line: &mut Text, cancel: &mut bool) {
+        self.fire_broadcast_message(line, cancel);
+    }
+    /// A hopper is about to move one item between containers, a composter's
+    /// bone meal included. Set `cancel` to leave it in its source slot. A chest
+    /// boat or minecart is reported at the block it is in.
+    pub(in crate::game) fn native_inventory_move_item(
+        &self,
+        source: [i32; 3],
+        destination: [i32; 3],
+        item: &str,
+        cancel: &mut bool,
+    ) {
+        self.fire_inventory_move_item(source, destination, item, cancel);
+    }
+    /// Whether a mod hears projectiles' impacts (`native_projectile_impact`):
+    /// set `hears`. Asked once a server tick before the projectiles fly.
+    pub(in crate::game) fn native_hears_projectile_impacts(&self, hears: &mut bool) {
+        self.fire_hears_projectile_impacts(hears);
+    }
 }
 
 #[cfg(test)]
