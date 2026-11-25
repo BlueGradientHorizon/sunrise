@@ -3040,7 +3040,11 @@ mod dynamic_quads {
         let at = |x: u32, y: u32| frame[(y * SIZE + x) as usize];
         assert_eq!(at(32, 32), COLOUR);
         assert_eq!(at(20, 44), COLOUR);
-        assert_eq!(at(4, 4), BLACK, "outside the quad");
+        assert_eq!(
+            at(4, 4),
+            [0, 0, 0, 0],
+            "outside the quad the cleared target is untouched"
+        );
     }
 
     /// A texture released after its quad was submitted draws vanilla's missing texture

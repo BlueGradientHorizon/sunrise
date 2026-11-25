@@ -3861,15 +3861,15 @@ mod tests {
     fn a_textured_quad_of_a_texture_that_is_not_live_or_a_plain_render_type_draws_nothing() {
         use sunrise_client_render::mod_pipelines::{BuiltinRenderType, Pipelines};
         crate::game::native_entity_refs::tests::with_client_game(|game| {
-            std::sync::Arc::get_mut(&mut game.pack.render)
-                .expect("the test game's render assets are not shared")
-                .mod_pipelines = Pipelines::load(
+            let mut render = sunrise_client_render::assets::RenderAssets::unpublished();
+            render.mod_pipelines = Pipelines::load(
                 &sunrise_assets::resource_source::ResourceSource::directory(
                     "/nonexistent/sunrise-test-assets".into(),
                 ),
                 7,
             )
             .unwrap();
+            game.pack.render = std::sync::Arc::new(render);
             let texture = mod_api::Identifier::parse("example:dynamic/none").unwrap();
             let mut d = draw();
             for kind in [
