@@ -1649,6 +1649,20 @@ impl Game<'_> {
         );
         canceled
     }
+    /// The files dropped in this event-loop pass, fired as one list for the open screen
+    /// (`Screen.onFilesDrop`). Nothing is built with no listener or no screen.
+    pub(in crate::game) fn fire_dropped_files(&mut self) {
+        if self.dropped_files.is_empty() {
+            return;
+        }
+        let paths = std::mem::take(&mut self.dropped_files);
+        if !mod_api::__private::listened(mod_api::HookId::ScreenFilesDropped) {
+            return;
+        }
+        if let Some(receiver) = self.observed_input_screen() {
+            self.native_screen_files_dropped(&receiver.view(), &paths);
+        }
+    }
     /// The grabbing mod screen's raw pointer motion (`screen_pointer_motion`), unscaled.
     pub(in crate::game) fn screen_pointer_motion(&self, delta: [f64; 2]) {
         if delta == [0.0; 2]

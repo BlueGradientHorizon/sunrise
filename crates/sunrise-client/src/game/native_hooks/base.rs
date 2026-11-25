@@ -1119,6 +1119,16 @@ impl Game<'_> {
     ) {
         self.fire_screen_mouse_moved_pre(screen, delta, modifiers, canceled);
     }
+    /// Files dropped on the window while a screen is open (`Screen.onFilesDrop`, called by
+    /// `MouseHandler.onDrop` with the whole drop): `paths` are the operating system's, in its
+    /// order. Observe only.
+    pub(in crate::game) fn native_screen_files_dropped(
+        &self,
+        screen: &ScreenView<'_>,
+        paths: &[std::path::PathBuf],
+    ) {
+        self.fire_screen_files_dropped(screen, paths);
+    }
     /// Raw device motion while the open mod screen holds the pointer grab.
     pub(in crate::game) fn native_screen_pointer_motion(
         &self,
