@@ -557,15 +557,7 @@ mod tests {
         assert_eq!(types, ["minecraft:smelting"]);
     }
 
-    use super::super::native_entity_refs::tests::{with_client_game, with_game, with_game_at};
-    use mod_api::{ItemStack, RecipeInput, RecipeLookupError};
-
-    fn stack(item: &str) -> Option<ItemStack> {
-        ItemStack::new(
-            mod_api::__private::item_key(&format!("minecraft:{item}")).unwrap(),
-            1,
-        )
-    }
+    use super::super::native_entity_refs::tests::{with_client_game, with_game_at};
 
     /// With the server's crafting recipes synced, the book still holds the
     /// vanilla ones under their own display ids (a viewer's "+" reads them,

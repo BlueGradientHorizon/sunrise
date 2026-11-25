@@ -241,8 +241,8 @@ sunrise-client game::client_side::wind_client::wind_charged_tests::a_wind_charge
 sunrise-client game::server_side::wither_star_tests::a_withers_nether_star_lives_12000_ticks lib daily game-boot
 sunrise-client game::client_side::beacon_cull_tests::a_beam_draws_inside_the_render_distance_only_and_leaves_with_its_column lib daily resources
 sunrise-client game::client_side::mod_raycast_tests::mod_raycasts_hit_loaded_blocks_only_with_far_terrain_on_or_off lib daily resources
-sunrise-client game::client_side::ominous_item_spawner_client::client_clock_tests::client_spawner_clock_advances lib daily game-boot
-sunrise-client game::client_side::piston_push_client::client_lid_tests::a_shulker_lid_spares_what_shares_its_vehicle_on_client lib daily game-boot
-sunrise-client game::client_side::potions::tests::typed_cloud_remote_metadata_keeps_valid_options_on_malformed_update lib daily game-boot
-sunrise-client game::client_side::world_fluids_tests_client::liquid_part_predicts_the_same_target_on_connected_client lib daily game-boot
-sunrise-client game::server_side::native_entity_refs::tests::server_box_queries_use_live_display_positions_and_section_order lib daily game-boot
+sunrise-client game::client_side::ominous_item_spawner_client::client_clock_tests::client_spawner_clock_advances lib daily resources
+sunrise-client game::client_side::piston_push_client::client_lid_tests::a_shulker_lid_spares_what_shares_its_vehicle_on_client lib daily resources
+sunrise-client game::client_side::potions::tests::typed_cloud_remote_metadata_keeps_valid_options_on_malformed_update lib daily child-process
+sunrise-client game::client_side::world_fluids_tests_client::liquid_part_predicts_the_same_target_on_connected_client lib daily resources
+sunrise-client game::server_side::native_entity_refs::tests::server_box_queries_use_live_display_positions_and_section_order lib daily resources

@@ -224,7 +224,6 @@ pub(in crate::game) mod tests {
         use mod_api::Host;
         use std::sync::Arc;
         use sunrise_client::chunk::Chunk;
-        use sunrise_core::nbt::Compound;
         use sunrise_protocol::{
             connection::Pipe,
             entity_data::Value,

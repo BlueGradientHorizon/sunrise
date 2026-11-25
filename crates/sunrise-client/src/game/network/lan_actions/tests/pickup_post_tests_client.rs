@@ -49,6 +49,7 @@ pub(in crate::game::client_side) use sunrise_client::motion::PlayerMotion;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
 
+#[allow(dead_code)]
 pub(in crate::game) fn host_animations(game: &Game<'_>) -> u64 {
     game.pickups.0.made().get("item").copied().unwrap_or(0)
 }
