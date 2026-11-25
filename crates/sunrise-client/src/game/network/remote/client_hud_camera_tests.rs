@@ -158,12 +158,20 @@ pub(in crate::game) fn spawn(game: &mut crate::game::ClientGame<'_>, entity: i32
     .unwrap();
 }
 
-pub(in crate::game) fn data(game: &mut crate::game::ClientGame<'_>, entity: i32, values: Vec<(u8, i32, Value)>) {
+pub(in crate::game) fn data(
+    game: &mut crate::game::ClientGame<'_>,
+    entity: i32,
+    values: Vec<(u8, i32, Value)>,
+) {
     game.handle_packet(C::SetEntityData(play::SetEntityData { id: entity, values }))
         .unwrap();
 }
 
-pub(in crate::game) fn attributes(game: &mut crate::game::ClientGame<'_>, entity: i32, values: &[(&str, f64)]) {
+pub(in crate::game) fn attributes(
+    game: &mut crate::game::ClientGame<'_>,
+    entity: i32,
+    values: &[(&str, f64)],
+) {
     let values = values
         .iter()
         .map(|(name, base)| play::AttributeSnapshot {
@@ -184,7 +192,13 @@ pub(in crate::game) fn num(v: &serde_json::Value, key: &str) -> f64 {
 }
 
 /// A mount at `entity` carrying `rider`, with the health the case gives it.
-pub(in crate::game) fn mount(game: &mut crate::game::ClientGame<'_>, entity: i32, rider: i32, max: f64, health: f64) {
+pub(in crate::game) fn mount(
+    game: &mut crate::game::ClientGame<'_>,
+    entity: i32,
+    rider: i32,
+    max: f64,
+    health: f64,
+) {
     spawn(game, entity, "minecraft:horse");
     attributes(game, entity, &[("minecraft:max_health", max)]);
     data(

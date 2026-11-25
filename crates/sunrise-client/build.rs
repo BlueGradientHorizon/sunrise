@@ -15,7 +15,10 @@ fn rewrite_host_generated(path: &Path) {
                 .strip_suffix(" for Game<'_> {")
                 .unwrap()
                 .trim();
-            if tr.ends_with("ClientHost") || tr.ends_with("ClientBackendMut") || tr.ends_with("ClientBackend") {
+            if tr.ends_with("ClientHost")
+                || tr.ends_with("ClientBackendMut")
+                || tr.ends_with("ClientBackend")
+            {
                 out.push_str(&format!(
                     "impl {tr} for Game<'_, crate::game::client_side::ClientState> {{\n"
                 ));

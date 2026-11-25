@@ -10,13 +10,20 @@ use crate::game::{
     native_entity_refs::tests::with_client_game, native_hotbar_slot::hotbar_slot_tests::logged_in,
 };
 
-pub(in crate::game) fn with_isolated_client(name: &str, body: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
+pub(in crate::game) fn with_isolated_client(
+    name: &str,
+    body: impl FnOnce(&mut crate::game::ClientGame<'_>),
+) {
     let (_, module) = module_path!().split_once("::").unwrap();
     let test = format!("{module}::{name}");
     crate::game::in_own_process(&test, || with_client_game(body));
 }
 
-pub(in crate::game) fn registry_id(game: &crate::game::ClientGame<'_>, registry: &str, name: &str) -> i32 {
+pub(in crate::game) fn registry_id(
+    game: &crate::game::ClientGame<'_>,
+    registry: &str,
+    name: &str,
+) -> i32 {
     game.remote
         .as_ref()
         .unwrap()

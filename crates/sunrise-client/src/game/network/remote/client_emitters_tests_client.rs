@@ -52,7 +52,8 @@ pub(in crate::game) fn assert_bursts(
         }
     }
     let actual: Vec<_> = game
-        .side.particles
+        .side
+        .particles
         .0
         .requested
         .as_mut()
@@ -63,7 +64,9 @@ pub(in crate::game) fn assert_bursts(
     assert_eq!(actual, expected);
 }
 
-pub(in crate::game) fn capture_requests(game: &mut Game<'_, crate::game::client_side::ClientState>) -> LegacyRandom {
+pub(in crate::game) fn capture_requests(
+    game: &mut Game<'_, crate::game::client_side::ClientState>,
+) -> LegacyRandom {
     const SEED: i64 = 719;
     game.side.particles.0.seed_randoms(SEED, 11, 12);
     game.side.particles.0.requested = Some(Vec::new());

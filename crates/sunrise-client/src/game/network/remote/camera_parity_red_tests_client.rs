@@ -456,11 +456,16 @@ pub(in crate::game) fn run_camera_consumers_streaming_particles_debug_and_specta
 
         // 3. F3 debug entries report camera entity position, biome, and light.
         game.side.debug = true;
-        game.side.debug_entries
+        game.side
+            .debug_entries
             .0
             .set_status("player_position", Status::InOverlay);
-        game.side.debug_entries.0.set_status("biome", Status::InOverlay);
-        game.side.debug_entries
+        game.side
+            .debug_entries
+            .0
+            .set_status("biome", Status::InOverlay);
+        game.side
+            .debug_entries
             .0
             .set_status("light_levels", Status::InOverlay);
         let mut displayer = Displayer::default();
@@ -482,10 +487,12 @@ pub(in crate::game) fn run_camera_consumers_streaming_particles_debug_and_specta
         );
 
         // 4. F3 gizmos: chunk_borders bounds match 26.3 ChunkBorderRenderer; hitboxes follow EntityHitboxDebugRenderer.
-        game.side.debug_entries
+        game.side
+            .debug_entries
             .0
             .set_status("chunk_borders", Status::AlwaysOn);
-        game.side.debug_entries
+        game.side
+            .debug_entries
             .0
             .set_status("entity_hitboxes", Status::Never);
         let border_gizmos = game.debug_gizmos(1.0, [96.5, 301.62, 96.5]);
@@ -502,10 +509,12 @@ pub(in crate::game) fn run_camera_consumers_streaming_particles_debug_and_specta
         assert_eq!(min_z.to_bits(), want_min_z, "chunk_borders min_z");
         assert_eq!(max_z.to_bits(), want_max_z, "chunk_borders max_z");
 
-        game.side.debug_entries
+        game.side
+            .debug_entries
             .0
             .set_status("chunk_borders", Status::Never);
-        game.side.debug_entries
+        game.side
+            .debug_entries
             .0
             .set_status("entity_hitboxes", Status::AlwaysOn);
         let hitbox_gizmos = game.debug_gizmos(1.0, [96.5, 301.62, 96.5]);
@@ -1347,22 +1356,24 @@ pub(in crate::game) fn run_particle_camera_before_first_frame_and_after_reset_26
     let after = &w["after_first_frame"];
     let after_reset = &w["after_camera_reset_before_next_frame"];
 
-    let accepted = |game: &mut Game<'_, crate::game::client_side::ClientState>, pos: [f64; 3]| -> bool {
-        game.side.particles.0.clear();
-        game.side.particles
-            .0
-            .add(&ParticleOptions::simple(ParticleType::Flame), pos, [0.0; 3]);
-        // ParticleEngine::add queues into `pending` (vanilla `particlesToAdd`) until the next tick.
-        let level = ParticleLevel {
-            world: &game.world,
-            facts: game.res.facts(),
-            collision: game.collision,
-            player: None,
-            cached_chunk: std::cell::Cell::new(None),
+    let accepted =
+        |game: &mut Game<'_, crate::game::client_side::ClientState>, pos: [f64; 3]| -> bool {
+            game.side.particles.0.clear();
+            game.side
+                .particles
+                .0
+                .add(&ParticleOptions::simple(ParticleType::Flame), pos, [0.0; 3]);
+            // ParticleEngine::add queues into `pending` (vanilla `particlesToAdd`) until the next tick.
+            let level = ParticleLevel {
+                world: &game.world,
+                facts: game.res.facts(),
+                collision: game.collision,
+                player: None,
+                cached_chunk: std::cell::Cell::new(None),
+            };
+            game.side.particles.0.tick(&level);
+            game.side.particles.0.len() == 1
         };
-        game.side.particles.0.tick(&level);
-        game.side.particles.0.len() == 1
-    };
 
     with_client_game(|game| {
         let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);

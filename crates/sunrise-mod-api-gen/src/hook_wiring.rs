@@ -114,11 +114,7 @@ fn owner_matches(item: &syn::ItemImpl, expected: &str) -> bool {
     let is_generic_game_actual = actual
         .strip_prefix("Game<'_,")
         .and_then(|s| s.strip_suffix('>'))
-        .is_some_and(|param| {
-            item.generics
-                .type_params()
-                .any(|tp| tp.ident == param)
-        });
+        .is_some_and(|param| item.generics.type_params().any(|tp| tp.ident == param));
     match expected {
         "ServerGame<'_>" => is_server_actual,
         "ClientGame<'_>" => is_client_actual,

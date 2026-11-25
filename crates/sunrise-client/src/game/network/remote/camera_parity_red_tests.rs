@@ -78,7 +78,11 @@ pub(in crate::game) fn entity_type_id(game: &crate::game::ClientGame<'_>, kind: 
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::client_side::remote_client::tests::camera_parity_red_tests::setup_remote_overworld;
 
-pub(in crate::game) fn add_player_info(game: &mut crate::game::ClientGame<'_>, id: i32, uuid: u128) {
+pub(in crate::game) fn add_player_info(
+    game: &mut crate::game::ClientGame<'_>,
+    id: i32,
+    uuid: u128,
+) {
     game.handle_packet(C::PlayerInfoUpdate(play::PlayerInfoUpdate {
         actions: 1, // ADD_PLAYER
         entries: vec![play::PlayerInfo {

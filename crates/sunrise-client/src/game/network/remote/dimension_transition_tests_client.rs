@@ -168,7 +168,8 @@ fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
                                 );
                                 assert!(
                                     !game
-                                        .side.audio
+                                        .side
+                                        .audio
                                         .0
                                         .heard
                                         .contains_key("minecraft:entity.player.levelup")

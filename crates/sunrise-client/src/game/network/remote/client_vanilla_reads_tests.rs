@@ -186,7 +186,9 @@ fn the_client_count_follows_the_entity_tick_not_the_motion() {
                     let _connection = join(game);
                     add(game, 20, "minecraft:pig");
                     add(game, 21, "minecraft:minecart");
-                    let counts = |game: &crate::game::ClientGame<'_>| [PLAYER, 20, 21].map(|id| tick_count(game, id));
+                    let counts = |game: &crate::game::ClientGame<'_>| {
+                        [PLAYER, 20, 21].map(|id| tick_count(game, id))
+                    };
                     // Before the client has loaded: the player counts, its tick does not run.
                     game.remote.as_mut().unwrap().loaded_sent = false;
                     game.tick_remote().unwrap();
@@ -413,13 +415,14 @@ fn the_contextual_bar_facts_read_the_jumpable_mount_and_the_tracked_waypoints() 
                     (host.jumpable_vehicle(), host.has_waypoints())
                 };
                 assert_eq!(facts(game), (None, false));
-                let ride = |game: &mut crate::game::ClientGame<'_>, vehicle: u32, passengers: Vec<i32>| {
-                    game.handle_packet(C::SetPassengers(play::SetPassengers {
-                        vehicle: vehicle as i32,
-                        passengers,
-                    }))
-                    .unwrap();
-                };
+                let ride =
+                    |game: &mut crate::game::ClientGame<'_>, vehicle: u32, passengers: Vec<i32>| {
+                        game.handle_packet(C::SetPassengers(play::SetPassengers {
+                            vehicle: vehicle as i32,
+                            passengers,
+                        }))
+                        .unwrap();
+                    };
                 for (id, kind) in [
                     (30, "minecraft:horse"),
                     (31, "minecraft:pig"),
@@ -499,7 +502,8 @@ fn a_respawned_player_counts_from_its_admission() {
                 .unwrap();
                 assert!(game.player.is_none());
                 let me = mod_api::EntityRef::new(game.native_lifecycle.epoch().unwrap(), PLAYER);
-                let count = |game: &crate::game::ClientGame<'_>| me.tick_count(game as &dyn ClientHost);
+                let count =
+                    |game: &crate::game::ClientGame<'_>| me.tick_count(game as &dyn ClientHost);
                 assert_eq!(count(game), Some(0));
                 game.tick_remote().unwrap();
                 assert_eq!(count(game), Some(1));

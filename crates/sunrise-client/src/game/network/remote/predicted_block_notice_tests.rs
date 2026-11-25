@@ -40,7 +40,10 @@ impl mod_api::Hooks for Mod {
         r.block_part(stone, self.0.clone());
     }
 }
-fn with_client(name: &str, test: impl FnOnce(&mut crate::game::ClientGame<'_>, &Observer, BlockStateId)) {
+fn with_client(
+    name: &str,
+    test: impl FnOnce(&mut crate::game::ClientGame<'_>, &Observer, BlockStateId),
+) {
     let selector = format!("game::remote::tests::predicted_block_notice_tests::{name}");
     if run_fresh_cases(
         &selector,

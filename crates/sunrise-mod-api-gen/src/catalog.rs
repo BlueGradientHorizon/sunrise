@@ -834,7 +834,10 @@ impl Declared {
                                 | "pack_discovery"
                         )
                     );
-                let side = entry.get("side").and_then(|v| v.as_str()).map(str::to_owned);
+                let side = entry
+                    .get("side")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned);
                 entry.entry("target").or_insert_with(|| {
                     if is_free_assoc {
                         format!("sunrise_client::game::native_hooks::{area}::native_{name}").into()

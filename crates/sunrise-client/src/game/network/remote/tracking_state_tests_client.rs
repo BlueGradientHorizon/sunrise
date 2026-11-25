@@ -57,7 +57,10 @@ fn tracking_emitters_follow_the_packet_target() {
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.0, 64.0, 0.0)).unwrap());
     game.side.particles.0.seed_randoms(42, 43, 44);
 
-    let check = |game: &Game<'_, crate::game::client_side::ClientState>, ty, feet: [f64; 3], height: f32| {
+    let check = |game: &Game<'_, crate::game::client_side::ClientState>,
+                 ty,
+                 feet: [f64; 3],
+                 height: f32| {
         let mut seen = false;
         for (options, at, velocity) in game.side.particles.0.requested.as_ref().unwrap() {
             if options.ty != ty {

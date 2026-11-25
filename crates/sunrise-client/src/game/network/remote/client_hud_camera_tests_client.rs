@@ -154,7 +154,10 @@ fn a_watched_rider_gets_hearts_for_the_dragon_and_local_player_but_not_a_boat() 
 }
 
 /// The server-side scene of one recorded case, delivered as the packets a client gets.
-pub(in crate::game) fn set_up(game: &mut Game<'_, crate::game::client_side::ClientState>, case: &serde_json::Value) {
+pub(in crate::game) fn set_up(
+    game: &mut Game<'_, crate::game::client_side::ClientState>,
+    case: &serde_json::Value,
+) {
     let game_type = match case["gameMode"].as_str().unwrap() {
         "survival" => 0,
         "creative" => 1,

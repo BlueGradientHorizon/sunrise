@@ -17,7 +17,11 @@ pub(in crate::game) fn with_isolated_client(name: &str, body: impl FnOnce()) {
     crate::game::in_own_process(&test, body);
 }
 
-pub(in crate::game) fn registry_id(game: &crate::game::ClientGame<'_>, registry: &str, name: &str) -> i32 {
+pub(in crate::game) fn registry_id(
+    game: &crate::game::ClientGame<'_>,
+    registry: &str,
+    name: &str,
+) -> i32 {
     game.remote
         .as_ref()
         .unwrap()

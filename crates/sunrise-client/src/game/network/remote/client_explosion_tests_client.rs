@@ -91,12 +91,19 @@ fn explosion_validates_impulse_and_result_without_suppressing_effects() {
                 assert!(game.side.particles.0.pending_len() > 0);
                 game.tick_particle_engine();
                 assert!(
-                    game.side.particles
+                    game.side
+                        .particles
                         .0
                         .live()
                         .any(|p| p.ty == ParticleType::Explosion)
                 );
-                assert!(game.side.particles.0.live().any(|p| p.ty == ParticleType::Smoke));
+                assert!(
+                    game.side
+                        .particles
+                        .0
+                        .live()
+                        .any(|p| p.ty == ParticleType::Smoke)
+                );
             }
         },
     );

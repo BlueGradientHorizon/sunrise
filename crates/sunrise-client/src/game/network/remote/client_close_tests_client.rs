@@ -134,28 +134,30 @@ fn server_close_keeps_shown_native_screen_alive_for_closing_and_veto() {
                                     Ids::from_names(vec![MENU.to_owned()]),
                                 );
 
-                            let open_native = |game: &mut Game<'_, crate::game::client_side::ClientState>, window: i32| {
-                                deliver(
-                                    game,
-                                    C::CustomPayload(CustomPayload {
-                                        channel: CHANNEL.into(),
-                                        data: menu_extra::encode(&Message {
-                                            window,
-                                            pos: Some(POS),
-                                            data: Vec::new(),
-                                        })
-                                        .unwrap(),
-                                    }),
-                                );
-                                deliver(
-                                    game,
-                                    C::OpenScreen(play::OpenScreen {
-                                        container: window,
-                                        menu: 0,
-                                        title: Tag::String("Native".into()),
-                                    }),
-                                );
-                            };
+                            let open_native =
+                                |game: &mut Game<'_, crate::game::client_side::ClientState>,
+                                 window: i32| {
+                                    deliver(
+                                        game,
+                                        C::CustomPayload(CustomPayload {
+                                            channel: CHANNEL.into(),
+                                            data: menu_extra::encode(&Message {
+                                                window,
+                                                pos: Some(POS),
+                                                data: Vec::new(),
+                                            })
+                                            .unwrap(),
+                                        }),
+                                    );
+                                    deliver(
+                                        game,
+                                        C::OpenScreen(play::OpenScreen {
+                                            container: window,
+                                            menu: 0,
+                                            title: Tag::String("Native".into()),
+                                        }),
+                                    );
+                                };
 
                             // 1. Decoded server ContainerClose keeps live reads valid during Closing.
                             open_native(game, 14);

@@ -782,9 +782,7 @@ pub(super) fn emit<'a>(
                 match hook.side {
                     Side::Server => "impl crate::game::ServerGame<'_>".to_owned(),
                     Side::Client => "impl crate::game::ClientGame<'_>".to_owned(),
-                    Side::Both => {
-                        "impl<S: crate::game::Side> crate::game::Game<'_, S>".to_owned()
-                    }
+                    Side::Both => "impl<S: crate::game::Side> crate::game::Game<'_, S>".to_owned(),
                 }
             } else if receiver.ident == "ReadLevel" {
                 "impl<S: crate::game::Side> ReadLevel<'_, '_, S>".to_owned()

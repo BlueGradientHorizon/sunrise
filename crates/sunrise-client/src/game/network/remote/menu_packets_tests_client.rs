@@ -6,7 +6,9 @@ pub(in crate::game::client_side) use crate::game::remote::tests::menu_packets_te
 pub(in crate::game::client_side) use crate::game::remote::tests::menu_packets_tests::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::{
-    Game, Screen, in_own_process, mount_menu::CHEST, native_entity_refs::tests::{with_game, with_client_game},
+    Game, Screen, in_own_process,
+    mount_menu::CHEST,
+    native_entity_refs::tests::{with_client_game, with_game},
 };
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use std::time::{Duration, Instant};
@@ -197,7 +199,11 @@ fn remote_mount_is_installed_before_screen_init_and_keeps_all_columns() {
                     }))
                     .unwrap();
                     game.remote.as_mut().unwrap().level_load.finish();
-                    let open = |game: &mut Game<'_, crate::game::client_side::ClientState>, container, entity, species, columns| {
+                    let open = |game: &mut Game<'_, crate::game::client_side::ClientState>,
+                                container,
+                                entity,
+                                species,
+                                columns| {
                         let ty = game.res.mob_types().get(species).unwrap().clone();
                         game.mobs.push(Mob::new(entity as u32, ty, Vec3::ZERO, 0.0));
                         game.handle_packet(C::MountScreenOpen(MountScreenOpen {
