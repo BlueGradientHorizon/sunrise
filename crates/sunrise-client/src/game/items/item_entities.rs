@@ -318,7 +318,12 @@ impl Game<'_> {
                 if environment.should_play_lava_hurt_sound(item.ticks) {
                     // `Entity.lavaHurt` pitches the burn from `this.random`, the item's own.
                     let pitch = 2.0 + item.random.next_float() * 0.4;
-                    self.server_play_sound("minecraft:entity.generic.burn", [item.position.x, item.position.y, item.position.z], 0.4, pitch);
+                    self.server_play_sound(
+                        "minecraft:entity.generic.burn",
+                        [item.position.x, item.position.y, item.position.z],
+                        0.4,
+                        pitch,
+                    );
                 }
                 if !environment.alive {
                     if merging

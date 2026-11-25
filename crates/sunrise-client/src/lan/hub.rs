@@ -3373,10 +3373,9 @@ impl Hub {
                 T::Block | T::BlockMarker | T::FallingDust | T::DustPillar | T::BlockCrumble,
                 D::Block(state),
             ) => Some(ParticleData::State(state.0 as i32)),
-            (
-                T::Block | T::BlockMarker | T::FallingDust | T::DustPillar | T::BlockCrumble,
-                _,
-            ) => return None,
+            (T::Block | T::BlockMarker | T::FallingDust | T::DustPillar | T::BlockCrumble, _) => {
+                return None;
+            }
             (T::Dust, D::ColorScale { rgb, scale }) => {
                 Some(ParticleData::ColorScale(rgb_int(*rgb), *scale))
             }

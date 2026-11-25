@@ -35,8 +35,6 @@ pub(in crate::game::client_side) use crate::game::server_side::boats::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use std::{collections::HashMap, f32::consts::PI, sync::Arc};
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::actions::Action;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::entity_rules::EntityRules;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::{

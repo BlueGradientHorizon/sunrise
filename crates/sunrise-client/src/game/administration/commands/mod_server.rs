@@ -643,9 +643,7 @@ impl Game<'_> {
                     });
                 }
                 if self.lan.is_some() {
-                    if capture_say
-                        && let Some(capture) = self.server.chat_capture.as_mut()
-                    {
+                    if capture_say && let Some(capture) = self.server.chat_capture.as_mut() {
                         capture.push(line);
                     }
                 } else if let Some(capture) = self.server.chat_capture.as_mut() {
@@ -670,9 +668,7 @@ impl Game<'_> {
                             secure: false,
                         });
                     }
-                    if capture_me
-                        && let Some(capture) = self.server.chat_capture.as_mut()
-                    {
+                    if capture_me && let Some(capture) = self.server.chat_capture.as_mut() {
                         capture.push(line);
                     }
                 } else if let Some(capture) = self.server.chat_capture.as_mut() {

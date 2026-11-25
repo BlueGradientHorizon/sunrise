@@ -2626,7 +2626,12 @@ impl Game<'_> {
             for d in drops {
                 self.spawn_at_location(at, 0.0, d);
             }
-            self.server_play_sound("minecraft:entity.armadillo.brush", [at.x, at.y, at.z], 1.0, 1.0);
+            self.server_play_sound(
+                "minecraft:entity.armadillo.brush",
+                [at.x, at.y, at.z],
+                1.0,
+                1.0,
+            );
             let who = sunrise_client::mobs::Who::Mob(self.mobs[i].id);
             let ctx = self.who_context(Some(who), None);
             self.post_game_event("minecraft:entity_interact", [at.x, at.y, at.z], ctx);
@@ -2813,7 +2818,12 @@ impl Game<'_> {
                         Some(next),
                     );
                 }
-                self.server_play_sound("minecraft:block.respawn_anchor.charge", Self::center(target), 1.0, 1.0);
+                self.server_play_sound(
+                    "minecraft:block.respawn_anchor.charge",
+                    Self::center(target),
+                    1.0,
+                    1.0,
+                );
                 return Ok((shrink(stack), CLICK));
             }
             return Ok((Some(stack), FAIL));
@@ -2845,7 +2855,12 @@ impl Game<'_> {
                 source: None,
             });
         self.process_level_events()?;
-        self.server_play_sound("minecraft:item.honeycomb.wax_on", Self::center(target), 1.0, 1.0);
+        self.server_play_sound(
+            "minecraft:item.honeycomb.wax_on",
+            Self::center(target),
+            1.0,
+            1.0,
+        );
         Ok((shrink(stack), CLICK))
     }
     pub(in crate::game) fn dispense_potion(
@@ -2942,7 +2957,12 @@ impl Game<'_> {
         if !self.in_block_tag("minecraft:beehives", &name) || level.is_none_or(|l| l < 5) {
             return Ok(false);
         }
-        self.server_play_sound("minecraft:block.beehive.shear", Self::center(target), 1.0, 1.0);
+        self.server_play_sound(
+            "minecraft:block.beehive.shear",
+            Self::center(target),
+            1.0,
+            1.0,
+        );
         // BeehiveBlock.dropHoneycomb (harvest/beehive), then
         // releaseBeesAndResetHoneyLevel and the shear event.
         let p = [target.0, target.1, target.2];
@@ -3207,7 +3227,12 @@ impl Game<'_> {
             // setItemSlot: a body item without `equippable` posts UNEQUIP.
             let ctx = self.who_context(Some(sunrise_client::mobs::Who::Mob(id)), None);
             self.post_game_event("minecraft:unequip", [at.x, at.y, at.z], ctx);
-            self.server_play_sound("minecraft:entity.sulfur_cube.absorb", [at.x, at.y, at.z], 1.0, 1.0);
+            self.server_play_sound(
+                "minecraft:entity.sulfur_cube.absorb",
+                [at.x, at.y, at.z],
+                1.0,
+                1.0,
+            );
             return true;
         }
         false

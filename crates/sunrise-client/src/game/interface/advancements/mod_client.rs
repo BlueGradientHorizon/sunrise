@@ -41,8 +41,6 @@ pub(in crate::game::client_side) use std::{
     sync::Arc,
 };
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::actions::Action;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::{
     advancements::{self as adv, EntityView, Frame, ItemView, Progress, Tree},
     effects::PlayerEffects,

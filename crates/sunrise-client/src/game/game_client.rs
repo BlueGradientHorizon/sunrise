@@ -411,6 +411,19 @@ impl Game<'_> {
         self.mark_motion(out.len(), 0);
         self.mark_stage(out.len(), "NONE");
     }
+    pub(crate) fn close_container_client(&mut self) {
+        assert!(
+            !self.is_logical_server(),
+            "close_container_client called on Server role"
+        );
+        self.pad_clear_focus();
+        self.mod_browser_closed();
+        self.reset_inventory_clicks();
+        self.close_station_client();
+        self.mount_closed();
+        self.recipe_ui.0.reset_screen();
+        self.remote_close_container();
+    }
     /// Shared window/socket ScreenEvent Pre → the captured screen → cancellable Post.
     /// A declined event is never offered to a replacement screen or its bindings.
     pub(in crate::game) fn dispatch_screen_key(
@@ -2700,6 +2713,44 @@ impl Game<'_> {
         self.pack.item_renderer.end_gui_frame();
         batch
     }
+    /// `LeverBlock.makeParticle` at full scale: a powered lever puffs one red
+    /// dust on the clicking client (`LeverBlock.useWithoutItem`).
+    pub(in crate::game) fn lever_puff(&mut self, pos: [i32; 3]) {
+        assert!(
+            !self.is_logical_server(),
+            "lever_puff called on Server role"
+        );
+        let state = self.world.block(pos[0], pos[1], pos[2]);
+        let Some(registry_state) = self.pack.assets.registry.state(state) else {
+            return;
+        };
+        let prop = |key: &str| registry_state.properties.get(key).map(String::as_str);
+        if prop("powered") != Some("true") {
+            return;
+        }
+        // FACING is horizontal; getConnectedDirection is the face's direction.
+        let facing = match prop("facing") {
+            Some("north") => [0, 0, -1],
+            Some("south") => [0, 0, 1],
+            Some("west") => [-1, 0, 0],
+            Some("east") => [1, 0, 0],
+            _ => return,
+        };
+        let connected = match prop("face") {
+            Some("ceiling") => [0, -1, 0],
+            Some("floor") => [0, 1, 0],
+            _ => facing,
+        };
+        let at = |base: i32, i: usize| {
+            f64::from(base) + 0.5 + 0.1 * f64::from(-facing[i]) + 0.2 * f64::from(-connected[i])
+        };
+        let p = [at(pos[0], 0), at(pos[1], 1), at(pos[2], 2)];
+        self.particles.0.add(
+            &sunrise_client::particles::ParticleOptions::dust([1.0, 0.0, 0.0], 1.0),
+            p,
+            [0.0; 3],
+        );
+    }
     /// The entity whose geometry starts at vertex `start` (0: none), for frame
     /// generation to follow its own motion. Each run lasts until the next mark.
     pub(crate) fn mark_motion(&self, start: usize, id: u64) {
@@ -2955,6 +3006,430 @@ impl Game<'_> {
         }
         false
     }
+    pub(in crate::game) fn process_client_level_events(
+        &mut self,
+        events: Vec<LevelEvent>,
+    ) -> Result<()> {
+        for event in events {
+            match event {
+                LevelEvent::LevelEvent {
+                    id: 2001,
+                    pos,
+                    data,
+                    ..
+                } => {
+                    // LevelEventHandler plays the block's break sound before asking for debris.
+                    let state = BlockStateId(data as u32);
+                    let p = [pos.x, pos.y, pos.z];
+                    self.play_break_sound(p, state);
+                    self.destroy_particles(p, state);
+                }
+                LevelEvent::LevelEvent {
+                    id: 3006,
+                    pos,
+                    data,
+                    ..
+                } => self.sculk_charge_event(pos, data),
+                LevelEvent::LevelEvent { id: 3007, pos, .. } => self.shriek_event(pos),
+                // LevelEventHandler 1010 and 1011: a jukebox's song starts
+                // (`playJukeboxSong`) or stops, and the parrots nearby dance or stop.
+                LevelEvent::LevelEvent {
+                    id: 1010,
+                    pos,
+                    data,
+                    ..
+                } => self.jukebox_song_event([pos.x, pos.y, pos.z], data),
+                LevelEvent::LevelEvent { id: 1011, pos, .. } => {
+                    self.jukebox_stop_event([pos.x, pos.y, pos.z])
+                }
+                // LevelEventHandler 2019 and 2020: the crack on a face of the
+                // block being mined, with its hit sound for 2020.
+                LevelEvent::LevelEvent {
+                    id: id @ (2019 | 2020),
+                    pos,
+                    data,
+                    ..
+                } => {
+                    let face = sunrise_core::geometry::Direction::ALL[data.clamp(0, 5) as usize];
+                    self.breaking_block_effects([pos.x, pos.y, pos.z], face.normal(), id == 2020);
+                }
+                LevelEvent::LevelEvent {
+                    id: 3008,
+                    pos,
+                    data,
+                    ..
+                } => self.brush_complete_event([pos.x, pos.y, pos.z], data),
+                LevelEvent::LevelEvent { id: 2004, pos, .. } => {
+                    self.spawner_burst([pos.x, pos.y, pos.z])
+                }
+                // LevelEventHandler 1505: the growth particles, then the sound.
+                LevelEvent::LevelEvent {
+                    id: 1505,
+                    pos,
+                    data,
+                    ..
+                } => {
+                    self.growth_particles(pos, data);
+                    let at = [pos.x, pos.y, pos.z].map(|v| f64::from(v) + 0.5);
+                    self.audio
+                        .0
+                        .play("minecraft:item.bone_meal.use", Some(at), 1.0, 1.0);
+                }
+                LevelEvent::LevelEvent {
+                    id: 2015,
+                    pos,
+                    data,
+                    ..
+                } => self.dragon_egg_particles([pos.x, pos.y, pos.z], data),
+                LevelEvent::LevelEvent {
+                    id: 2016,
+                    pos,
+                    data,
+                    ..
+                } => self.shulker_teleport_particles([pos.x, pos.y, pos.z], data),
+                LevelEvent::LevelEvent {
+                    id: 2017,
+                    pos,
+                    data,
+                    ..
+                } => self.consume_teleport_particles([pos.x, pos.y, pos.z], data),
+                LevelEvent::LevelEvent {
+                    id: 2018,
+                    pos,
+                    data,
+                    ..
+                } => self.enderman_teleport_particles([pos.x, pos.y, pos.z], data),
+                LevelEvent::LevelEvent { id: 2003, pos, .. } => {
+                    self.eye_break_particles([pos.x, pos.y, pos.z]);
+                }
+                LevelEvent::LevelEvent {
+                    id: 2013,
+                    pos,
+                    data,
+                    ..
+                } => self.smash_dust(pos, data),
+                // LevelEventHandler 2002 and 2007: a potion's splash.
+                LevelEvent::LevelEvent {
+                    id: 2002,
+                    pos,
+                    data,
+                    ..
+                } => self.potion_splash_particles(pos, data, false),
+                LevelEvent::LevelEvent {
+                    id: 2007,
+                    pos,
+                    data,
+                    ..
+                } => self.potion_splash_particles(pos, data, true),
+                LevelEvent::LevelEvent {
+                    id: id @ 3002..=3005,
+                    pos,
+                    data,
+                    ..
+                } => self.block_particle_event(id, pos, data),
+                LevelEvent::LevelEvent {
+                    id: 1500,
+                    pos,
+                    data,
+                    ..
+                } => self.composter_fill_event(pos, data == 1),
+                // LevelEventHandler 1504: the stalactite's drip particle.
+                LevelEvent::LevelEvent { id: 1504, pos, .. } => self.dripstone_drip_particle(pos),
+                // LevelEventHandler 2006: the dragon fireball's burst.
+                LevelEvent::LevelEvent {
+                    id: 2006,
+                    pos,
+                    data,
+                    ..
+                } => self.dragon_fireball_burst(pos, data),
+                // LevelEventHandler 2009: a wet sponge drying.
+                LevelEvent::LevelEvent { id: 2009, pos, .. } => {
+                    self.puffs_above_block(pos, sunrise_client::particles::ParticleType::Cloud)
+                }
+                // LevelEventHandler 2011 and 2012: a bee growing a crop, a
+                // turtle egg laid.
+                LevelEvent::LevelEvent {
+                    id: 2011 | 2012,
+                    pos,
+                    data,
+                    ..
+                } => self.turtle_egg_particles(pos, data),
+                // LevelEventHandler 2014: a straw bed destroyed, with no sound.
+                LevelEvent::LevelEvent {
+                    id: 2014,
+                    pos,
+                    data,
+                    ..
+                } => self.destroy_particles([pos.x, pos.y, pos.z], BlockStateId(data as u32)),
+                // EnderDragonFight.spawnNewGateway: an always-visible burst
+                // and a sound at the gateway for every nearby player.
+                LevelEvent::LevelEvent { id: 3000, pos, .. } => {
+                    self.process_level_events_end_gateway_client(pos);
+                }
+                // LevelEventHandler 3009: a sniffer egg cracking.
+                LevelEvent::LevelEvent { id: 3009, pos, .. } => {
+                    self.sniffer_egg_crack_particles(pos)
+                }
+                LevelEvent::LevelEvent {
+                    id: id @ 3011..=3021,
+                    pos,
+                    data,
+                    ..
+                } => self.trial_level_event(id, [pos.x, pos.y, pos.z], data),
+                // LevelEvent.SOUND_PORTAL_TRAVEL: LevelEventHandler.levelEvent
+                // plays SimpleSoundInstance.forLocalAmbience (ambient, no
+                // position). EndPortalBlock.entityInside travels through
+                // TeleportTransition.PLAY_PORTAL_SOUND, which sends 1032 to
+                // the traveling player. The packet's position is BlockPos.ZERO,
+                // so a positional play would not be heard; at None is the
+                // relative sound, and it is not captured for other players.
+                LevelEvent::LevelEvent { id: 1032, .. } => {
+                    self.process_level_events_portal_travel_client();
+                }
+                // LevelEventHandler dispenser/crafter sounds and directional smoke.
+                LevelEvent::LevelEvent {
+                    id: id @ (1000 | 1001 | 1002 | 1004 | 1018 | 1049 | 1050 | 1051 | 2000 | 2010),
+                    pos,
+                    data,
+                    ..
+                } => {
+                    let c = [
+                        f64::from(pos.x) + 0.5,
+                        f64::from(pos.y) + 0.5,
+                        f64::from(pos.z) + 0.5,
+                    ];
+                    match id {
+                        1000 => self.audio.0.play(
+                            "minecraft:block.dispenser.dispense",
+                            Some(c),
+                            1.0,
+                            1.0,
+                        ),
+                        1001 => {
+                            self.audio
+                                .0
+                                .play("minecraft:block.dispenser.fail", Some(c), 1.0, 1.2)
+                        }
+                        1002 => {
+                            self.audio
+                                .0
+                                .play("minecraft:block.dispenser.launch", Some(c), 1.0, 1.2)
+                        }
+                        1004 => self.audio.0.play(
+                            "minecraft:entity.firework_rocket.shoot",
+                            Some(c),
+                            1.0,
+                            1.2,
+                        ),
+                        1018 => {
+                            let r = self.particles.0.random();
+                            let pitch = (r.next_float() - r.next_float()) * 0.2 + 1.0;
+                            self.audio
+                                .0
+                                .play("minecraft:entity.blaze.shoot", Some(c), 2.0, pitch);
+                        }
+                        1051 => {
+                            let pitch = 0.4 / (self.particles.0.random().next_float() * 0.4 + 0.8);
+                            self.audio.0.play(
+                                "minecraft:entity.wind_charge.throw",
+                                Some(c),
+                                0.5,
+                                pitch,
+                            );
+                        }
+                        1049 => {
+                            self.audio
+                                .0
+                                .play("minecraft:block.crafter.craft", Some(c), 1.0, 1.0)
+                        }
+                        1050 => {
+                            self.audio
+                                .0
+                                .play("minecraft:block.crafter.fail", Some(c), 1.0, 1.0)
+                        }
+                        2000 | 2010 => {
+                            use sunrise_client::particles::{ParticleOptions, ParticleType};
+                            let particle = if id == 2010 {
+                                ParticleType::WhiteSmoke
+                            } else {
+                                ParticleType::Smoke
+                            };
+                            let s = match data {
+                                0 => [0, -1, 0],
+                                1 => [0, 1, 0],
+                                2 => [0, 0, -1],
+                                3 => [0, 0, 1],
+                                4 => [-1, 0, 0],
+                                _ => [1, 0, 0],
+                            };
+                            for _ in 0..10 {
+                                let r = self.particles.0.random();
+                                let pow = r.next_double() * 0.2 + 0.01;
+                                let (sx, sy, sz) =
+                                    (f64::from(s[0]), f64::from(s[1]), f64::from(s[2]));
+                                let p = [
+                                    f64::from(pos.x)
+                                        + sx * 0.6
+                                        + 0.5
+                                        + sx * 0.01
+                                        + (r.next_double() - 0.5) * sz * 0.5,
+                                    f64::from(pos.y)
+                                        + sy * 0.6
+                                        + 0.5
+                                        + sy * 0.01
+                                        + (r.next_double() - 0.5) * sy * 0.5,
+                                    f64::from(pos.z)
+                                        + sz * 0.6
+                                        + 0.5
+                                        + sz * 0.01
+                                        + (r.next_double() - 0.5) * sx * 0.5,
+                                ];
+                                let v = [
+                                    sx * pow + r.next_gaussian() * 0.01,
+                                    sy * pow + r.next_gaussian() * 0.01,
+                                    sz * pow + r.next_gaussian() * 0.01,
+                                ];
+                                self.particles
+                                    .0
+                                    .add(&ParticleOptions::simple(particle), p, v);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                LevelEvent::LevelEvent { id, pos, .. } => {
+                    let c = Some([
+                        f64::from(pos.x) + 0.5,
+                        f64::from(pos.y) + 0.5,
+                        f64::from(pos.z) + 0.5,
+                    ]);
+                    let sound = match id {
+                        1503 => Some(("minecraft:block.end_portal_frame.fill", 1.0)),
+                        1501 => Some(("minecraft:block.lava.extinguish", 0.5)),
+                        1009 => Some(("minecraft:block.fire.extinguish", 0.5)),
+                        1502 => Some(("minecraft:block.redstone_torch.burnout", 0.5)),
+                        1033 => Some(("minecraft:block.chorus_flower.grow", 1.0)),
+                        1034 => Some(("minecraft:block.chorus_flower.death", 1.0)),
+                        1045 => Some(("minecraft:block.pointed_dripstone.land", 2.0)),
+                        1052 => Some(("minecraft:block.sulfur_spike.land", 2.0)),
+                        1046 => Some((
+                            "minecraft:block.pointed_dripstone.drip_lava_into_cauldron",
+                            2.0,
+                        )),
+                        1047 => Some((
+                            "minecraft:block.pointed_dripstone.drip_water_into_cauldron",
+                            2.0,
+                        )),
+                        // LevelEvent.SOUND_ZOMBIE_WOODEN_DOOR (attack, break).
+                        1019 => Some(("minecraft:entity.zombie.attack_wooden_door", 2.0)),
+                        1021 => Some(("minecraft:entity.zombie.break_wooden_door", 2.0)),
+                        1026 => Some(("minecraft:entity.zombie.infect", 2.0)),
+                        1027 => Some(("minecraft:entity.zombie_villager.converted", 2.0)),
+                        1030 => Some(("minecraft:block.anvil.use", 1.0)),
+                        1029 => Some(("minecraft:block.anvil.destroy", 1.0)),
+                        1031 => Some(("minecraft:block.anvil.land", 0.3)),
+                        1042 => Some(("minecraft:block.grindstone.use", 1.0)),
+                        1044 => Some(("minecraft:block.smithing_table.use", 1.0)),
+                        // LevelEvent.SOUND_PAGE_TURN (a lectern's page).
+                        1043 => Some(("minecraft:item.book.page_turn", 1.0)),
+                        // LevelEvent.SOUND_PHANTOM_BITE: a phantom's bite.
+                        1039 => Some(("minecraft:entity.phantom.bite", 0.3)),
+                        // LevelEvent.SOUND_SPLASH_POTION and its instant twin.
+                        1053 | 1054 => Some(("minecraft:entity.splash_potion.break", 1.0)),
+                        _ => None,
+                    };
+                    if let Some((name, volume)) = sound {
+                        self.process_level_events_sound_client(id, c, name, volume);
+                    }
+                    // LevelEventHandler draws smoke after the sound.
+                    match id {
+                        1501 => self.puffs_above_block(
+                            pos,
+                            sunrise_client::particles::ParticleType::LargeSmoke,
+                        ),
+                        1502 => self.torch_burnout_smoke(pos),
+                        1503 => self.end_portal_frame_smoke(pos),
+                        _ => {}
+                    }
+                }
+                LevelEvent::BlockEntityEvent { pos, a, b, .. } => {
+                    self.block_entity_event([pos.x, pos.y, pos.z], a, b)
+                }
+                // NoteBlock.triggerEvent: a NOTE particle above, coloured by
+                // the note (`note / 24.0` in the x speed).
+                LevelEvent::BlockEvent {
+                    pos,
+                    state,
+                    kind: "note_particle",
+                } => {
+                    use sunrise_client::particles::{ParticleOptions, ParticleType};
+                    let note = self
+                        .pack
+                        .assets
+                        .registry
+                        .state(state)
+                        .and_then(|s| s.properties.get("note")?.parse::<f64>().ok())
+                        .unwrap_or(0.0);
+                    self.particles.0.add(
+                        &ParticleOptions::simple(ParticleType::Note),
+                        [
+                            f64::from(pos.x) + 0.5,
+                            f64::from(pos.y) + 1.2,
+                            f64::from(pos.z) + 0.5,
+                        ],
+                        [note / 24.0, 0.0, 0.0],
+                    );
+                }
+                LevelEvent::BlockEvent {
+                    pos,
+                    state,
+                    kind: "candle_smoke",
+                } => self.candle_smoke([pos.x, pos.y, pos.z], state),
+                // The block at `pos` has just replaced `state`: Block.pushEntitiesUp.
+                LevelEvent::BlockEvent {
+                    pos,
+                    state,
+                    kind: "push_entities_up",
+                } => {
+                    self.push_entities_up(
+                        pos,
+                        state,
+                        self.world.block(pos.x, pos.y, pos.z),
+                        |_| true,
+                    );
+                }
+                // Client piston replay emits notification-only GameEvents (block_destroy).
+                LevelEvent::GameEvent { .. }
+                | LevelEvent::Sound { .. }
+                | LevelEvent::DropResources { .. }
+                | LevelEvent::BlockEvent {
+                    kind: "note_custom_sound",
+                    ..
+                } => {}
+                other @ (LevelEvent::ContainerLootTable { .. }
+                | LevelEvent::FallingBlock { .. }
+                | LevelEvent::Player { .. }
+                | LevelEvent::PrimeTnt { .. }
+                | LevelEvent::BlockEvent {
+                    kind:
+                        "dispense" | "golem" | "command_block" | "structure_block" | "test_block"
+                        | "test_block_tick" | "brushable" | "hatch" | "hatch_sniffer" | "hatch_turtles"
+                        | "portal_spawn" | "spawn_ghastling" | "shrieker_respond",
+                    ..
+                }) => {
+                    let _ = &other;
+                    debug_assert!(
+                        false,
+                        "server-only LevelEvent reached process_client_level_events: {other:?}"
+                    );
+                }
+                LevelEvent::GrowTree { .. }
+                | LevelEvent::PlaceFeature { .. }
+                | LevelEvent::BlockEvent { .. } => {}
+            }
+        }
+        Ok(())
+    }
     #[inline(always)]
     pub(in crate::game) fn process_level_events_end_gateway_client(&mut self, pos: BlockPos) {
         let at = [
@@ -3113,6 +3588,19 @@ impl Game<'_> {
             && let Some(projection) = self.renderer_pointer_projection()
         {
             self.client.cursor = projection.project_pointer(position).subpixel();
+        }
+    }
+    pub(in crate::game) fn remove_local_player_body(&mut self) {
+        self.reset_client_item_use();
+        self.hook.discard();
+        let id = self.player.as_ref().map(|player| player.entity_id as u32);
+        self.resident_entities.local_player.retire();
+        self.player_state.attachments.retire();
+        self.player = None;
+        if self.remote.is_some()
+            && let Some(id) = id
+        {
+            self.pick_section_remove(id);
         }
     }
     pub(in crate::game::client_side) fn render(&mut self) -> Result<bool> {
@@ -4561,444 +5049,10 @@ impl Game<'_> {
         }
         Ok(false)
     }
+    #[allow(dead_code)]
     #[inline(always)]
     pub(in crate::game) fn set_client_message(&mut self, text: String) {
         self.client.message = Some((text, Instant::now()));
-    }
-    pub(in crate::game) fn process_client_level_events(
-        &mut self,
-        events: Vec<LevelEvent>,
-    ) -> Result<()> {
-        for event in events {
-            match event {
-                LevelEvent::LevelEvent {
-                    id: 2001,
-                    pos,
-                    data,
-                    ..
-                } => {
-                    // LevelEventHandler plays the block's break sound before asking for debris.
-                    let state = BlockStateId(data as u32);
-                    let p = [pos.x, pos.y, pos.z];
-                    self.play_break_sound(p, state);
-                    self.destroy_particles(p, state);
-                }
-                LevelEvent::LevelEvent {
-                    id: 3006,
-                    pos,
-                    data,
-                    ..
-                } => self.sculk_charge_event(pos, data),
-                LevelEvent::LevelEvent { id: 3007, pos, .. } => self.shriek_event(pos),
-                // LevelEventHandler 1010 and 1011: a jukebox's song starts
-                // (`playJukeboxSong`) or stops, and the parrots nearby dance or stop.
-                LevelEvent::LevelEvent {
-                    id: 1010,
-                    pos,
-                    data,
-                    ..
-                } => self.jukebox_song_event([pos.x, pos.y, pos.z], data),
-                LevelEvent::LevelEvent { id: 1011, pos, .. } => {
-                    self.jukebox_stop_event([pos.x, pos.y, pos.z])
-                }
-                // LevelEventHandler 2019 and 2020: the crack on a face of the
-                // block being mined, with its hit sound for 2020.
-                LevelEvent::LevelEvent {
-                    id: id @ (2019 | 2020),
-                    pos,
-                    data,
-                    ..
-                } => {
-                    let face = sunrise_core::geometry::Direction::ALL[data.clamp(0, 5) as usize];
-                    self.breaking_block_effects([pos.x, pos.y, pos.z], face.normal(), id == 2020);
-                }
-                LevelEvent::LevelEvent {
-                    id: 3008,
-                    pos,
-                    data,
-                    ..
-                } => self.brush_complete_event([pos.x, pos.y, pos.z], data),
-                LevelEvent::LevelEvent { id: 2004, pos, .. } => {
-                    self.spawner_burst([pos.x, pos.y, pos.z])
-                }
-                // LevelEventHandler 1505: the growth particles, then the sound.
-                LevelEvent::LevelEvent {
-                    id: 1505,
-                    pos,
-                    data,
-                    ..
-                } => {
-                    self.growth_particles(pos, data);
-                    let at = [pos.x, pos.y, pos.z].map(|v| f64::from(v) + 0.5);
-                    self.audio
-                        .0
-                        .play("minecraft:item.bone_meal.use", Some(at), 1.0, 1.0);
-                }
-                LevelEvent::LevelEvent {
-                    id: 2015,
-                    pos,
-                    data,
-                    ..
-                } => self.dragon_egg_particles([pos.x, pos.y, pos.z], data),
-                LevelEvent::LevelEvent {
-                    id: 2016,
-                    pos,
-                    data,
-                    ..
-                } => self.shulker_teleport_particles([pos.x, pos.y, pos.z], data),
-                LevelEvent::LevelEvent {
-                    id: 2017,
-                    pos,
-                    data,
-                    ..
-                } => self.consume_teleport_particles([pos.x, pos.y, pos.z], data),
-                LevelEvent::LevelEvent {
-                    id: 2018,
-                    pos,
-                    data,
-                    ..
-                } => self.enderman_teleport_particles([pos.x, pos.y, pos.z], data),
-                LevelEvent::LevelEvent { id: 2003, pos, .. } => {
-                    self.eye_break_particles([pos.x, pos.y, pos.z]);
-                }
-                LevelEvent::LevelEvent {
-                    id: 2013,
-                    pos,
-                    data,
-                    ..
-                } => self.smash_dust(pos, data),
-                // LevelEventHandler 2002 and 2007: a potion's splash.
-                LevelEvent::LevelEvent {
-                    id: 2002,
-                    pos,
-                    data,
-                    ..
-                } => self.potion_splash_particles(pos, data, false),
-                LevelEvent::LevelEvent {
-                    id: 2007,
-                    pos,
-                    data,
-                    ..
-                } => self.potion_splash_particles(pos, data, true),
-                LevelEvent::LevelEvent {
-                    id: id @ 3002..=3005,
-                    pos,
-                    data,
-                    ..
-                } => self.block_particle_event(id, pos, data),
-                LevelEvent::LevelEvent {
-                    id: 1500,
-                    pos,
-                    data,
-                    ..
-                } => self.composter_fill_event(pos, data == 1),
-                // LevelEventHandler 1504: the stalactite's drip particle.
-                LevelEvent::LevelEvent { id: 1504, pos, .. } => self.dripstone_drip_particle(pos),
-                // LevelEventHandler 2006: the dragon fireball's burst.
-                LevelEvent::LevelEvent {
-                    id: 2006,
-                    pos,
-                    data,
-                    ..
-                } => self.dragon_fireball_burst(pos, data),
-                // LevelEventHandler 2009: a wet sponge drying.
-                LevelEvent::LevelEvent { id: 2009, pos, .. } => {
-                    self.puffs_above_block(pos, sunrise_client::particles::ParticleType::Cloud)
-                }
-                // LevelEventHandler 2011 and 2012: a bee growing a crop, a
-                // turtle egg laid.
-                LevelEvent::LevelEvent {
-                    id: 2011 | 2012,
-                    pos,
-                    data,
-                    ..
-                } => self.turtle_egg_particles(pos, data),
-                // LevelEventHandler 2014: a straw bed destroyed, with no sound.
-                LevelEvent::LevelEvent {
-                    id: 2014,
-                    pos,
-                    data,
-                    ..
-                } => self.destroy_particles([pos.x, pos.y, pos.z], BlockStateId(data as u32)),
-                // EnderDragonFight.spawnNewGateway: an always-visible burst
-                // and a sound at the gateway for every nearby player.
-                LevelEvent::LevelEvent { id: 3000, pos, .. } => {
-                    self.process_level_events_end_gateway_client(pos);
-                }
-                // LevelEventHandler 3009: a sniffer egg cracking.
-                LevelEvent::LevelEvent { id: 3009, pos, .. } => {
-                    self.sniffer_egg_crack_particles(pos)
-                }
-                LevelEvent::LevelEvent {
-                    id: id @ 3011..=3021,
-                    pos,
-                    data,
-                    ..
-                } => self.trial_level_event(id, [pos.x, pos.y, pos.z], data),
-                // LevelEvent.SOUND_PORTAL_TRAVEL: LevelEventHandler.levelEvent
-                // plays SimpleSoundInstance.forLocalAmbience (ambient, no
-                // position). EndPortalBlock.entityInside travels through
-                // TeleportTransition.PLAY_PORTAL_SOUND, which sends 1032 to
-                // the traveling player. The packet's position is BlockPos.ZERO,
-                // so a positional play would not be heard; at None is the
-                // relative sound, and it is not captured for other players.
-                LevelEvent::LevelEvent { id: 1032, .. } => {
-                    self.process_level_events_portal_travel_client();
-                }
-                // LevelEventHandler dispenser/crafter sounds and directional smoke.
-                LevelEvent::LevelEvent {
-                    id: id @ (1000 | 1001 | 1002 | 1004 | 1018 | 1049 | 1050 | 1051 | 2000 | 2010),
-                    pos,
-                    data,
-                    ..
-                } => {
-                    let c = [
-                        f64::from(pos.x) + 0.5,
-                        f64::from(pos.y) + 0.5,
-                        f64::from(pos.z) + 0.5,
-                    ];
-                    match id {
-                        1000 => self
-                            .audio
-                            .0
-                            .play("minecraft:block.dispenser.dispense", Some(c), 1.0, 1.0),
-                        1001 => self
-                            .audio
-                            .0
-                            .play("minecraft:block.dispenser.fail", Some(c), 1.0, 1.2),
-                        1002 => self
-                            .audio
-                            .0
-                            .play("minecraft:block.dispenser.launch", Some(c), 1.0, 1.2),
-                        1004 => self
-                            .audio
-                            .0
-                            .play("minecraft:entity.firework_rocket.shoot", Some(c), 1.0, 1.2),
-                        1018 => {
-                            let r = self.particles.0.random();
-                            let pitch = (r.next_float() - r.next_float()) * 0.2 + 1.0;
-                            self.audio
-                                .0
-                                .play("minecraft:entity.blaze.shoot", Some(c), 2.0, pitch);
-                        }
-                        1051 => {
-                            let pitch = 0.4 / (self.particles.0.random().next_float() * 0.4 + 0.8);
-                            self.audio
-                                .0
-                                .play("minecraft:entity.wind_charge.throw", Some(c), 0.5, pitch);
-                        }
-                        1049 => self
-                            .audio
-                            .0
-                            .play("minecraft:block.crafter.craft", Some(c), 1.0, 1.0),
-                        1050 => self
-                            .audio
-                            .0
-                            .play("minecraft:block.crafter.fail", Some(c), 1.0, 1.0),
-                        2000 | 2010 => {
-                            use sunrise_client::particles::{ParticleOptions, ParticleType};
-                            let particle = if id == 2010 {
-                                ParticleType::WhiteSmoke
-                            } else {
-                                ParticleType::Smoke
-                            };
-                            let s = match data {
-                                0 => [0, -1, 0],
-                                1 => [0, 1, 0],
-                                2 => [0, 0, -1],
-                                3 => [0, 0, 1],
-                                4 => [-1, 0, 0],
-                                _ => [1, 0, 0],
-                            };
-                            for _ in 0..10 {
-                                let r = self.particles.0.random();
-                                let pow = r.next_double() * 0.2 + 0.01;
-                                let (sx, sy, sz) =
-                                    (f64::from(s[0]), f64::from(s[1]), f64::from(s[2]));
-                                let p = [
-                                    f64::from(pos.x)
-                                        + sx * 0.6
-                                        + 0.5
-                                        + sx * 0.01
-                                        + (r.next_double() - 0.5) * sz * 0.5,
-                                    f64::from(pos.y)
-                                        + sy * 0.6
-                                        + 0.5
-                                        + sy * 0.01
-                                        + (r.next_double() - 0.5) * sy * 0.5,
-                                    f64::from(pos.z)
-                                        + sz * 0.6
-                                        + 0.5
-                                        + sz * 0.01
-                                        + (r.next_double() - 0.5) * sx * 0.5,
-                                ];
-                                let v = [
-                                    sx * pow + r.next_gaussian() * 0.01,
-                                    sy * pow + r.next_gaussian() * 0.01,
-                                    sz * pow + r.next_gaussian() * 0.01,
-                                ];
-                                self.particles
-                                    .0
-                                    .add(&ParticleOptions::simple(particle), p, v);
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                LevelEvent::LevelEvent { id, pos, .. } => {
-                    let c = Some([
-                        f64::from(pos.x) + 0.5,
-                        f64::from(pos.y) + 0.5,
-                        f64::from(pos.z) + 0.5,
-                    ]);
-                    let sound = match id {
-                        1503 => Some(("minecraft:block.end_portal_frame.fill", 1.0)),
-                        1501 => Some(("minecraft:block.lava.extinguish", 0.5)),
-                        1009 => Some(("minecraft:block.fire.extinguish", 0.5)),
-                        1502 => Some(("minecraft:block.redstone_torch.burnout", 0.5)),
-                        1033 => Some(("minecraft:block.chorus_flower.grow", 1.0)),
-                        1034 => Some(("minecraft:block.chorus_flower.death", 1.0)),
-                        1045 => Some(("minecraft:block.pointed_dripstone.land", 2.0)),
-                        1052 => Some(("minecraft:block.sulfur_spike.land", 2.0)),
-                        1046 => Some((
-                            "minecraft:block.pointed_dripstone.drip_lava_into_cauldron",
-                            2.0,
-                        )),
-                        1047 => Some((
-                            "minecraft:block.pointed_dripstone.drip_water_into_cauldron",
-                            2.0,
-                        )),
-                        // LevelEvent.SOUND_ZOMBIE_WOODEN_DOOR (attack, break).
-                        1019 => Some(("minecraft:entity.zombie.attack_wooden_door", 2.0)),
-                        1021 => Some(("minecraft:entity.zombie.break_wooden_door", 2.0)),
-                        1026 => Some(("minecraft:entity.zombie.infect", 2.0)),
-                        1027 => Some(("minecraft:entity.zombie_villager.converted", 2.0)),
-                        1030 => Some(("minecraft:block.anvil.use", 1.0)),
-                        1029 => Some(("minecraft:block.anvil.destroy", 1.0)),
-                        1031 => Some(("minecraft:block.anvil.land", 0.3)),
-                        1042 => Some(("minecraft:block.grindstone.use", 1.0)),
-                        1044 => Some(("minecraft:block.smithing_table.use", 1.0)),
-                        // LevelEvent.SOUND_PAGE_TURN (a lectern's page).
-                        1043 => Some(("minecraft:item.book.page_turn", 1.0)),
-                        // LevelEvent.SOUND_PHANTOM_BITE: a phantom's bite.
-                        1039 => Some(("minecraft:entity.phantom.bite", 0.3)),
-                        // LevelEvent.SOUND_SPLASH_POTION and its instant twin.
-                        1053 | 1054 => Some(("minecraft:entity.splash_potion.break", 1.0)),
-                        _ => None,
-                    };
-                    if let Some((name, volume)) = sound {
-                        self.process_level_events_sound_client(id, c, name, volume);
-                    }
-                    // LevelEventHandler draws smoke after the sound.
-                    match id {
-                        1501 => self.puffs_above_block(
-                            pos,
-                            sunrise_client::particles::ParticleType::LargeSmoke,
-                        ),
-                        1502 => self.torch_burnout_smoke(pos),
-                        1503 => self.end_portal_frame_smoke(pos),
-                        _ => {}
-                    }
-                }
-                LevelEvent::BlockEntityEvent { pos, a, b, .. } => {
-                    self.block_entity_event([pos.x, pos.y, pos.z], a, b)
-                }
-                // NoteBlock.triggerEvent: a NOTE particle above, coloured by
-                // the note (`note / 24.0` in the x speed).
-                LevelEvent::BlockEvent {
-                    pos,
-                    state,
-                    kind: "note_particle",
-                } => {
-                    use sunrise_client::particles::{ParticleOptions, ParticleType};
-                    let note = self
-                        .pack
-                        .assets
-                        .registry
-                        .state(state)
-                        .and_then(|s| s.properties.get("note")?.parse::<f64>().ok())
-                        .unwrap_or(0.0);
-                    self.particles.0.add(
-                        &ParticleOptions::simple(ParticleType::Note),
-                        [
-                            f64::from(pos.x) + 0.5,
-                            f64::from(pos.y) + 1.2,
-                            f64::from(pos.z) + 0.5,
-                        ],
-                        [note / 24.0, 0.0, 0.0],
-                    );
-                }
-                LevelEvent::BlockEvent {
-                    pos,
-                    state,
-                    kind: "candle_smoke",
-                } => self.candle_smoke([pos.x, pos.y, pos.z], state),
-                // The block at `pos` has just replaced `state`: Block.pushEntitiesUp.
-                LevelEvent::BlockEvent {
-                    pos,
-                    state,
-                    kind: "push_entities_up",
-                } => {
-                    self.push_entities_up(
-                        pos,
-                        state,
-                        self.world.block(pos.x, pos.y, pos.z),
-                        |_| true,
-                    );
-                }
-                // Client piston replay emits notification-only GameEvents (block_destroy).
-                LevelEvent::GameEvent { .. }
-                | LevelEvent::Sound { .. }
-                | LevelEvent::DropResources { .. }
-                | LevelEvent::BlockEvent {
-                    kind: "note_custom_sound",
-                    ..
-                } => {}
-                other @ (LevelEvent::ContainerLootTable { .. }
-                | LevelEvent::FallingBlock { .. }
-                | LevelEvent::Player { .. }
-                | LevelEvent::PrimeTnt { .. }
-                | LevelEvent::BlockEvent {
-                    kind: "dispense"
-                        | "golem"
-                        | "command_block"
-                        | "structure_block"
-                        | "test_block"
-                        | "test_block_tick"
-                        | "brushable"
-                        | "hatch"
-                        | "hatch_sniffer"
-                        | "hatch_turtles"
-                        | "portal_spawn"
-                        | "spawn_ghastling"
-                        | "shrieker_respond",
-                    ..
-                }) => {
-                    let _ = &other;
-                    debug_assert!(
-                        false,
-                        "server-only LevelEvent reached process_client_level_events: {other:?}"
-                    );
-                }
-                LevelEvent::GrowTree { .. }
-                | LevelEvent::PlaceFeature { .. }
-                | LevelEvent::BlockEvent { .. } => {}
-            }
-        }
-        Ok(())
-    }
-    pub(crate) fn close_container_client(&mut self) {
-        assert!(
-            !self.is_logical_server(),
-            "close_container_client called on Server role"
-        );
-        self.pad_clear_focus();
-        self.mod_browser_closed();
-        self.reset_inventory_clicks();
-        self.close_station_client();
-        self.mount_closed();
-        self.recipe_ui.0.reset_screen();
-        self.remote_close_container();
     }
     pub(in crate::game::client_side) fn set_window_cursor(
         &mut self,
@@ -5151,58 +5205,5 @@ impl Game<'_> {
             dynamic_visible: Some(dynamic_visible),
         };
         draw(&scene);
-    }
-
-    /// `LeverBlock.makeParticle` at full scale: a powered lever puffs one red
-    /// dust on the clicking client (`LeverBlock.useWithoutItem`).
-    pub(in crate::game) fn lever_puff(&mut self, pos: [i32; 3]) {
-        assert!(
-            !self.is_logical_server(),
-            "lever_puff called on Server role"
-        );
-        let state = self.world.block(pos[0], pos[1], pos[2]);
-        let Some(registry_state) = self.pack.assets.registry.state(state) else {
-            return;
-        };
-        let prop = |key: &str| registry_state.properties.get(key).map(String::as_str);
-        if prop("powered") != Some("true") {
-            return;
-        }
-        // FACING is horizontal; getConnectedDirection is the face's direction.
-        let facing = match prop("facing") {
-            Some("north") => [0, 0, -1],
-            Some("south") => [0, 0, 1],
-            Some("west") => [-1, 0, 0],
-            Some("east") => [1, 0, 0],
-            _ => return,
-        };
-        let connected = match prop("face") {
-            Some("ceiling") => [0, -1, 0],
-            Some("floor") => [0, 1, 0],
-            _ => facing,
-        };
-        let at = |base: i32, i: usize| {
-            f64::from(base) + 0.5 + 0.1 * f64::from(-facing[i]) + 0.2 * f64::from(-connected[i])
-        };
-        let p = [at(pos[0], 0), at(pos[1], 1), at(pos[2], 2)];
-        self.particles.0.add(
-            &sunrise_client::particles::ParticleOptions::dust([1.0, 0.0, 0.0], 1.0),
-            p,
-            [0.0; 3],
-        );
-    }
-
-    pub(in crate::game) fn remove_local_player_body(&mut self) {
-        self.reset_client_item_use();
-        self.hook.discard();
-        let id = self.player.as_ref().map(|player| player.entity_id as u32);
-        self.resident_entities.local_player.retire();
-        self.player_state.attachments.retire();
-        self.player = None;
-        if self.remote.is_some()
-            && let Some(id) = id
-        {
-            self.pick_section_remove(id);
-        }
     }
 }

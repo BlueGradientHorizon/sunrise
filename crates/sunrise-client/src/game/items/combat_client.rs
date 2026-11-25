@@ -26,6 +26,28 @@ pub(in crate::game::client_side) use sunrise_client::{
 pub(in crate::game::client_side) use sunrise_core::random::RandomSource;
 
 impl Game<'_> {
+    /// `LivingEntity.makeDrownParticles`: `count` bubbles around the entity
+    /// (vanilla's eight), moving with it.
+    pub(in crate::game) fn drown_particles(
+        &mut self,
+        at: [f64; 3],
+        velocity: [f64; 3],
+        count: i32,
+    ) {
+        assert!(
+            !self.is_logical_server(),
+            "drown_particles called on Server role"
+        );
+        let bubble = ParticleOptions::simple(ParticleType::Bubble);
+        for _ in 0..count {
+            let mut triangle = || {
+                let r = self.particles.0.random();
+                r.next_double() - r.next_double()
+            };
+            let p = [at[0] + triangle(), at[1] + triangle(), at[2] + triangle()];
+            self.particles.0.add(&bubble, p, velocity);
+        }
+    }
     /// Entity event 67 from a server, for this client's own player or an
     /// entity it draws.
     pub(in crate::game) fn remote_drown(&mut self, id: i32) {
@@ -47,28 +69,6 @@ impl Game<'_> {
         };
         if let Some((at, v)) = body {
             self.drown_particles(at, v, 8);
-        }
-    }
-    /// `LivingEntity.makeDrownParticles`: `count` bubbles around the entity
-    /// (vanilla's eight), moving with it.
-    pub(in crate::game) fn drown_particles(
-        &mut self,
-        at: [f64; 3],
-        velocity: [f64; 3],
-        count: i32,
-    ) {
-        assert!(
-            !self.is_logical_server(),
-            "drown_particles called on Server role"
-        );
-        let bubble = ParticleOptions::simple(ParticleType::Bubble);
-        for _ in 0..count {
-            let mut triangle = || {
-                let r = self.particles.0.random();
-                r.next_double() - r.next_double()
-            };
-            let p = [at[0] + triangle(), at[1] + triangle(), at[2] + triangle()];
-            self.particles.0.add(&bubble, p, velocity);
         }
     }
 }

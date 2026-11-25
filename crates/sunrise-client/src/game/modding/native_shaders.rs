@@ -189,12 +189,18 @@ impl Game<'_> {
                     now.elapsed().as_millis()
                 );
                 if reload {
-                    self.client_system_message(Text::literal(format!("Shader pack {} reloaded", m.name)));
+                    self.client_system_message(Text::literal(format!(
+                        "Shader pack {} reloaded",
+                        m.name
+                    )));
                 }
             }
             Err(problems) => {
                 log::warn!("shader pack {name} refused: {}", problems.join("; "));
-                self.client_system_message(Text::colored(format!("Shader pack {name} refused:"), RED));
+                self.client_system_message(Text::colored(
+                    format!("Shader pack {name} refused:"),
+                    RED,
+                ));
                 for p in problems {
                     self.client_system_message(Text::colored(p, RED));
                 }

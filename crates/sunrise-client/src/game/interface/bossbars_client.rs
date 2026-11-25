@@ -42,6 +42,7 @@ impl Game<'_> {
             .boss_overlay
             .apply(packet, boss_overlay::now_millis());
     }
+    #[allow(dead_code)]
     #[inline(always)]
     pub(in crate::game) fn publish_boss_bars_client(&mut self, event: &play::BossEvent, now: u128) {
         self.client.boss_overlay.apply(event, now);

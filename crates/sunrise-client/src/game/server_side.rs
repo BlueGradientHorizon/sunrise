@@ -847,6 +847,13 @@ pub(in crate::game) mod xp_repair_ratio_tests;
 #[path = "mobs/zombie_reinforcements.rs"]
 pub(in crate::game) mod zombie_reinforcements;
 
+#[path = "network/lan_actions/acting_state.rs"]
+pub(in crate::game) mod acting_state;
+#[path = "server_side/server_effects.rs"]
+pub(in crate::game) mod server_effects;
+#[path = "items/using_item.rs"]
+pub(in crate::game) mod using_item;
+
 #[path = "runtime/agent/mod_server.rs"]
 pub(in crate::game) mod agent_server;
 #[path = "world/autosave_server.rs"]
@@ -876,8 +883,6 @@ pub(in crate::game) mod crafting_recipe_kind_tests_server;
 pub(in crate::game) mod creatures_server;
 #[path = "interface/debug_lines_server.rs"]
 pub(in crate::game) mod debug_lines_server;
-#[path = "runtime/events_server.rs"]
-pub(in crate::game) mod events_server;
 #[path = "entities/fireworks_server.rs"]
 pub(in crate::game) mod fireworks_server;
 #[path = "game_server.rs"]
@@ -915,8 +920,6 @@ pub(in crate::game) mod nautili_server;
 pub(in crate::game) mod packs_server;
 #[path = "interface/pad/mod_server.rs"]
 pub(in crate::game) mod pad_server;
-#[path = "interface/perspective_server.rs"]
-pub(in crate::game) mod perspective_server;
 #[path = "entities/pick_entity_server.rs"]
 pub(in crate::game) mod pick_entity_server;
 #[path = "blocks/piston_push_server.rs"]
@@ -935,12 +938,6 @@ pub(in crate::game) mod repro_server;
 pub(in crate::game) mod saving_server;
 #[path = "blocks/sculk_server.rs"]
 pub(in crate::game) mod sculk_server;
-#[path = "network/lan_actions/acting_state.rs"]
-pub(in crate::game) mod acting_state;
-#[path = "server_side/server_effects.rs"]
-pub(in crate::game) mod server_effects;
-#[path = "items/using_item.rs"]
-pub(in crate::game) mod using_item;
 #[path = "interface/shader_packs_server.rs"]
 pub(in crate::game) mod shader_packs_server;
 #[path = "interface/sign_edit_server.rs"]

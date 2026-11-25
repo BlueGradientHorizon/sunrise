@@ -466,9 +466,11 @@ impl Game<'_> {
                 }
             }
             waxes
-        } else if let Some((_, sound, _, _, particle, _)) =
-            self.block_transform(stack, hit, self.held_mapping(sunrise_client::actions::Action::Sneak))
-        {
+        } else if let Some((_, sound, _, _, particle, _)) = self.block_transform(
+            stack,
+            hit,
+            self.held_mapping(sunrise_client::actions::Action::Sneak),
+        ) {
             self.transform_particle(&particle, hit.pos);
             self.play_client_local_sound(
                 LevelSound::new(&sound, at, 1.0, 1.0).in_source(mod_api::SoundSource::Blocks),

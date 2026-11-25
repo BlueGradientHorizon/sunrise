@@ -21,7 +21,6 @@ use std::{
     sync::Arc,
 };
 #[allow(unused_imports)]
-#[allow(unused_imports)]
 use sunrise_client::{
     advancements::{self as adv, EntityView, Frame, ItemView, Progress, Tree},
     effects::PlayerEffects,
@@ -1466,7 +1465,9 @@ impl Game<'_> {
                                     &text.component(),
                                 ));
                         }
-                        if self.lan.is_none() { self.server_system_message(text); }
+                        if self.lan.is_none() {
+                            self.server_system_message(text);
+                        }
                     }
                 }
             }

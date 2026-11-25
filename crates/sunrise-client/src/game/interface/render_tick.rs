@@ -761,6 +761,7 @@ impl Game<'_> {
     }
 
     /// The client level's particle sources and the engine's tick, in one go.
+    #[allow(dead_code)]
     pub(in crate::game) fn tick_particles(&mut self) {
         self.tick_particle_sources();
         self.tick_particle_engine();

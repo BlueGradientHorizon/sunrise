@@ -105,6 +105,7 @@ impl Game<'_> {
         self.server.acting_input.use_item = held;
     }
 
+    #[allow(dead_code)]
     #[inline(always)]
     pub(in crate::game) fn server_set_acting_sprint(&mut self, held: bool) {
         assert!(
@@ -135,6 +136,7 @@ impl Game<'_> {
         std::mem::replace(&mut self.server.acting_input, next)
     }
 
+    #[allow(dead_code)]
     #[inline(always)]
     pub(in crate::game) fn server_take_pending_guest_ui(&mut self) -> ServerPendingGuestUi {
         assert!(

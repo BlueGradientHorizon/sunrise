@@ -14,7 +14,13 @@ impl Game<'_> {
                     let at = [player.position.x, player.position.y, player.position.z];
                     if player.is_on_fire() {
                         let pitch = extinguish_pitch(&mut game.server.effect_rng);
-                        game.server_play_sound_on(SoundSource::Players.index(), "minecraft:entity.generic.extinguish_fire", at, 0.7, pitch);
+                        game.server_play_sound_on(
+                            SoundSource::Players.index(),
+                            "minecraft:entity.generic.extinguish_fire",
+                            at,
+                            0.7,
+                            pitch,
+                        );
                     }
                     if let Some(player) = game.player.as_mut() {
                         player.set_remaining_fire_ticks(ticks.min(0));
@@ -40,7 +46,13 @@ impl Game<'_> {
                 let at = [stand.position.x, stand.position.y, stand.position.z];
                 if stand.is_on_fire() {
                     let pitch = extinguish_pitch(&mut self.server.effect_rng);
-                    self.server_play_sound_on(SoundSource::Neutral.index(), "minecraft:entity.generic.extinguish_fire", at, 0.7, pitch);
+                    self.server_play_sound_on(
+                        SoundSource::Neutral.index(),
+                        "minecraft:entity.generic.extinguish_fire",
+                        at,
+                        0.7,
+                        pitch,
+                    );
                 }
                 self.armor_stands[index].fire_ticks = ticks.min(0);
                 true

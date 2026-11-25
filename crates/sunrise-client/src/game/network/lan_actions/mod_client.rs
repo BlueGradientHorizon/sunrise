@@ -93,6 +93,5 @@ pub(in crate::game::client_side) use winit::keyboard::KeyCode;
 #[path = "interaction_client.rs"]
 pub(in crate::game) mod interaction;
 
-#[cfg(test)]
 #[path = "pickups_client.rs"]
 pub(in crate::game) mod pickups;

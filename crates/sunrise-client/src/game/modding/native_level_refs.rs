@@ -643,10 +643,9 @@ impl Game<'_> {
             return None;
         }
         let (offhand, sneaking) = match self.player_handle_read(player)? {
-            PlayerRead::Acting { .. } if self.dim.key() == level.dimension() => (
-                self.offhand.as_ref(),
-                self.server_acting_sneak(),
-            ),
+            PlayerRead::Acting { .. } if self.dim.key() == level.dimension() => {
+                (self.offhand.as_ref(), self.server_acting_sneak())
+            }
             PlayerRead::Guest(guest) if guest.dimension == level.dimension_id() => {
                 (guest.offhand.as_ref(), guest.sneaking)
             }

@@ -307,7 +307,12 @@ impl Game<'_> {
         if self.cushion_in_fire(&self.cushions[placed]) {
             self.break_cushion(placed, false);
         }
-        self.server_play_sound("minecraft:entity.cushion.place", [position.x, position.y, position.z], 0.75, 0.8);
+        self.server_play_sound(
+            "minecraft:entity.cushion.place",
+            [position.x, position.y, position.z],
+            0.75,
+            0.8,
+        );
         let ctx = self.who_context(Some(sunrise_client::mobs::Who::Player), None);
         self.post_game_event(
             "minecraft:entity_place",
@@ -482,12 +487,7 @@ impl Game<'_> {
         };
         self.start_riding(id);
         let p = self.cushions[i].position;
-        self.server_play_sound(
-            "minecraft:entity.cushion.sit",
-            [p.x, p.y, p.z],
-            1.0,
-            1.0,
-        );
+        self.server_play_sound("minecraft:entity.cushion.sit", [p.x, p.y, p.z], 1.0, 1.0);
         self.swing_arm();
         true
     }
@@ -512,12 +512,7 @@ impl Game<'_> {
             // BlockAttachedEntity.kill, before dropItem.
             self.entity_killed_event_by([p.x, p.y, p.z], source);
         }
-        self.server_play_sound(
-            "minecraft:entity.cushion.break",
-            [p.x, p.y, p.z],
-            1.0,
-            1.0,
-        );
+        self.server_play_sound("minecraft:entity.cushion.break", [p.x, p.y, p.z], 1.0, 1.0);
         self.cushion_break_particles(&c);
         // `Cushion.dropItem`: the item unless drops are off or the cause is a
         // player with infinite materials (the TNT's owner for a blast).

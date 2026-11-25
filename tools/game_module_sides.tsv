@@ -1,4 +1,5 @@
 module	side	reason	paths
+acting_state	server	touches only ServerState acting input and pending UI fields	game/network/lan_actions/acting_state.rs
 activity	client	touches only client-owned fields	game/runtime/activity.rs
 advancements	server	touches only server-owned fields (opposite-side functions moved to advancements_client)	game/interface/advancements/mod.rs
 advancements_screen	client	touches only ClientState fields	game/interface/advancements_screen.rs
@@ -78,7 +79,6 @@ class_tags_tests	game	touches neither ClientState nor ServerState fields	game/wo
 client_ambient	client	touches only client-owned fields	game/interface/client_ambient.rs
 client_attack_targets	client	touches only ClientState fields	game/items/client_attack_targets.rs
 client_cracks	client	touches only ClientState fields	game/modding/client_cracks.rs
-client_engine_forwarders	client	touches only client-owned engine fields	game/interface/client_engine_forwarders.rs
 client_executor	client	touches only ClientState fields	game/modding/client_executor.rs
 client_item_extensions	client	touches only client-owned fields	game/modding/client_item_extensions.rs
 client_reload	client	touches only ClientState fields	game/interface/client_reload/mod.rs
@@ -866,6 +866,7 @@ screenshot_writer	game	touches neither ClientState nor ServerState fields	game/i
 sculk	client	touches only client-owned fields (opposite-side functions moved to sculk_server)	game/blocks/sculk.rs
 sculk_fixture	server	touches only ServerState fields	game/blocks/sculk_fixture.rs
 seats	server	touches only server-owned fields	game/entities/seats.rs
+server_effects	server	touches only ServerState portable effect queues	game/server_side/server_effects.rs
 server_lifecycle	server	touches only ServerState fields	game/world/server_lifecycle/mod.rs
 server_links	client	touches only ClientState fields	game/network/server_links.rs
 server_packs	client	touches only ClientState fields	game/world/server_packs.rs
@@ -968,7 +969,7 @@ upload_pace	game	touches neither ClientState nor ServerState fields	game/interfa
 use_hand	server	touches only server-owned fields (opposite-side functions moved to use_hand_client)	game/items/use_hand.rs
 use_same_item_tests	client	touches only ClientState fields	game/items/use_same_item_tests.rs
 use_stop_tests	server	touches only ServerState fields	game/items/use_stop_tests.rs
-using_item	client	touches only ClientState fields	game/items/using_item.rs
+using_item	server	touches only server-owned fields	game/items/using_item.rs
 vault	server	touches only ServerState fields	game/blocks/vault.rs
 vehicle_removal_tests	server	touches only ServerState fields	game/entities/vehicle_removal_tests.rs
 vehicle_teleport	server	touches only ServerState fields	game/entities/vehicle_teleport.rs

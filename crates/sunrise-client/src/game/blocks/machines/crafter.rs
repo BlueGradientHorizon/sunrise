@@ -367,12 +367,7 @@ impl Game<'_> {
             .then(|| self.translate_with_fallback("gui.togglable_slot", "Click to disable slot"))
     }
     /// A click in the crafter menu: `CrafterMenu` on the verified menu engine.
-    pub(in crate::game) fn crafter_click(
-        &mut self,
-        slot: usize,
-        shift: bool,
-        right: bool,
-    ) -> bool {
+    pub(in crate::game) fn crafter_click(&mut self, slot: usize, shift: bool, right: bool) -> bool {
         if !self.crafter_open() {
             return false;
         }

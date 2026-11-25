@@ -199,11 +199,6 @@ impl Game<'_> {
             log::warn!("the world clocks were not written: {e}");
         }
     }
-    /// Command suggestions include the world's currently named random sequences.
-    pub(in crate::game::server_side) fn suggestion_registries(&mut self) -> &mut Registries {
-        self.ui.registries.random_sequences = self.server.rand_sequences.ids();
-        &mut self.ui.registries
-    }
     /// A server-side system message: captured, queued to the acting player, or logged.
     pub(in crate::game) fn server_system_message(&mut self, text: Text) {
         assert!(
@@ -230,6 +225,11 @@ impl Game<'_> {
         } else {
             log::info!("System chat: {}", text.plain());
         }
+    }
+    /// Command suggestions include the world's currently named random sequences.
+    pub(in crate::game::server_side) fn suggestion_registries(&mut self) -> &mut Registries {
+        self.ui.registries.random_sequences = self.server.rand_sequences.ids();
+        &mut self.ui.registries
     }
 }
 

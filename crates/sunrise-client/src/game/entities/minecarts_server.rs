@@ -79,8 +79,6 @@ pub(in crate::game::server_side) use crate::game::minecarts::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use std::{collections::HashMap, sync::Arc};
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::actions::Action;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_client::entity_rules::EntityRules;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_client::join_seq::{JoinList, ListStamp};

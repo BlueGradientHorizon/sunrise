@@ -4,46 +4,6 @@ pub(in crate::game::server_side) use super::*;
 pub(in crate::game::server_side) use crate::game::lan_actions::effects::*;
 
 impl Game<'_> {
-    #[inline(always)]
-    pub(in crate::game) fn lan_broken_block_positions(&self) -> Vec<[f64; 3]> {
-        let Some(host) = self.lan.as_ref() else {
-            return Vec::new();
-        };
-        host.broken
-            .iter()
-            .copied()
-            .chain(
-                self.server
-                    .lan_events
-                    .iter()
-                    .filter(|event| event.kind == 2001)
-                    .map(|event| event.pos.map(f64::from)),
-            )
-            .collect()
-    }
-    /// `LivingEntity.tick`'s arrows and bee stingers falling out of the
-    /// players' bodies, and their counts for the players around
-    /// (`DATA_ARROW_COUNT_ID`, `DATA_STINGER_COUNT_ID`).
-    pub(in crate::game::server_side) fn lan_stuck(&mut self, paused: bool) {
-        let Some(host) = self.lan.as_mut() else {
-            return;
-        };
-        if !paused {
-            self.combat.0.stuck.tick();
-        }
-        host.hub.guests.update_all(|g| {
-            g.shoulders = crate::game::shoulders::shoulder_variants(g.saved.as_ref());
-            g.stuck = match self.guest_combat.0.get_mut(&g.conn) {
-                Some(combat) => {
-                    if !paused {
-                        combat.stuck.tick();
-                    }
-                    (combat.stuck.arrows, combat.stuck.stingers)
-                }
-                None => (0, 0),
-            };
-        });
-    }
     /// `InstrumentItem.play`'s `level.playSound(player, ...)`: the others hear
     /// a guest's horn now, the guest's own client played it as it used it.
     /// The horn is bound to the guest (`playSound(player, player, ...)`).
@@ -159,6 +119,24 @@ impl Game<'_> {
         // A stop whose removal waited for these sounds follows that removal (#4522).
         self.run_tracking_after_sounds();
     }
+    #[allow(dead_code)]
+    #[inline(always)]
+    pub(in crate::game) fn lan_broken_block_positions(&self) -> Vec<[f64; 3]> {
+        let Some(host) = self.lan.as_ref() else {
+            return Vec::new();
+        };
+        host.broken
+            .iter()
+            .copied()
+            .chain(
+                self.server
+                    .lan_events
+                    .iter()
+                    .filter(|event| event.kind == 2001)
+                    .map(|event| event.pos.map(f64::from)),
+            )
+            .collect()
+    }
     /// A level sound's old emitter must still be known at playback. Keep
     /// sounds needing a new pairing queued, with their later removals held.
     pub(in crate::game) fn lan_prepare_captured_sounds(
@@ -173,5 +151,28 @@ impl Game<'_> {
         };
         host.hub
             .prepare_captured_sounds(&mut self.server.pending_sounds, entities);
+    }
+    /// `LivingEntity.tick`'s arrows and bee stingers falling out of the
+    /// players' bodies, and their counts for the players around
+    /// (`DATA_ARROW_COUNT_ID`, `DATA_STINGER_COUNT_ID`).
+    pub(in crate::game::server_side) fn lan_stuck(&mut self, paused: bool) {
+        let Some(host) = self.lan.as_mut() else {
+            return;
+        };
+        if !paused {
+            self.combat.0.stuck.tick();
+        }
+        host.hub.guests.update_all(|g| {
+            g.shoulders = crate::game::shoulders::shoulder_variants(g.saved.as_ref());
+            g.stuck = match self.guest_combat.0.get_mut(&g.conn) {
+                Some(combat) => {
+                    if !paused {
+                        combat.stuck.tick();
+                    }
+                    (combat.stuck.arrows, combat.stuck.stingers)
+                }
+                None => (0, 0),
+            };
+        });
     }
 }

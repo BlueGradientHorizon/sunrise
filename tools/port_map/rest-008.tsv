@@ -134,7 +134,7 @@ MinecartDispenseItemBehavior.getRailShape	inline	crates/sunrise-client/src/game/
 ProjectileDispenseBehavior.execute	port	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_projectile
 ProjectileDispenseBehavior.playSound	inline	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_projectile	returns the level event that dispense_item posts
 ShearsDispenseItemBehavior.execute	port	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_shears
-ShearsDispenseItemBehavior.tryShearBeehive	port	crates/sunrise-client/src/game/blocks/dispenser_client.rs::Game::shear_beehive
+ShearsDispenseItemBehavior.tryShearBeehive	port	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::shear_beehive
 ShulkerBoxDispenseBehavior.execute	port	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_shulker_box
 SpawnEggItemBehavior.execute	port	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_spawn_egg
 SulfurCubeBlockDispenseItemBehavior.execute	inline	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_default_method	the swallow branch of dispense_default_method

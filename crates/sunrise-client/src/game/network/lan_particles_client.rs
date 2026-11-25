@@ -9,7 +9,14 @@ pub(in crate::game::client_side) use crate::game::server_side::lan_particles::pa
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::lan_particles::send_snowflake_particle;
 #[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::server_side::lan_particles::server_particle_from_options;
+#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::lan_particles::*;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::lan::server_effects::{
+    ServerExplosion, ServerExplosionParticle, ServerParticle, ServerParticleData,
+    ServerQueuedParticle,
+};
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use mod_api::{SoundSource, client::particles::PositionSource};
 #[allow(unused_imports)]

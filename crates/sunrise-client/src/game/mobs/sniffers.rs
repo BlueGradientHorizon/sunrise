@@ -105,9 +105,12 @@ impl Game<'_> {
             let at = [m.position.x, m.position.y, m.position.z];
             // playSearchingSound is playLocalSound: silence does not mute it.
             if sniffer::state(m) == sniffer::SEARCHING && m.age.is_multiple_of(20) {
-                self.audio
-                    .0
-                    .play_unshared("minecraft:entity.sniffer.searching", Some(at), 1.0, 1.0);
+                self.audio.0.play_unshared(
+                    "minecraft:entity.sniffer.searching",
+                    Some(at),
+                    1.0,
+                    1.0,
+                );
                 continue;
             }
             if !sniffer::digging(m) {
@@ -145,12 +148,7 @@ impl Game<'_> {
                     if age.is_multiple_of(10) {
                         let sniffer = Some((id, self.mobs[i].kind.id.as_str()));
                         let hit = self
-                            .block_sound_type(
-                                ground,
-                                below,
-                                sniffer,
-                                mod_api::BlockSoundCause::Dig,
-                            )
+                            .block_sound_type(ground, below, sniffer, mod_api::BlockSoundCause::Dig)
                             .hit;
                         self.audio.0.play_unshared(&hit, Some(at), 0.5, 0.5);
                     }

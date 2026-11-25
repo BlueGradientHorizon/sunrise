@@ -305,7 +305,10 @@ impl Game<'_> {
     }
     /// Level event 1010: the song from the jukebox, and the "Now Playing" overlay.
     pub(in crate::game::client_side) fn start_song(&mut self, pos: [i32; 3], song: &str) {
-        assert!(!self.is_logical_server(), "start_song called on server role");
+        assert!(
+            !self.is_logical_server(),
+            "start_song called on server role"
+        );
         self.stop_sound(pos);
         let Some(s) = self.items().songs.get(song).cloned() else {
             return;
@@ -339,7 +342,10 @@ impl Game<'_> {
         self.notify_record_playing(pos, false);
     }
     pub(in crate::game) fn stop_sound(&mut self, pos: [i32; 3]) {
-        assert!(!self.is_logical_server(), "stop_sound called on server role");
+        assert!(
+            !self.is_logical_server(),
+            "stop_sound called on server role"
+        );
         if let Some(id) = self.client.jukebox_sounds.remove(&(pos[0], pos[1], pos[2])) {
             self.audio.0.stop_and_release(id);
         }

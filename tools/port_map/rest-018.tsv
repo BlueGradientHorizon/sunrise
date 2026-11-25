@@ -50,7 +50,7 @@ ServerGamePacketListenerImpl.handleSpectatorAction	port	crates/sunrise-client/sr
 ServerGamePacketListenerImpl.sendGameRuleValues	port	crates/sunrise-client/src/game/network/lan_actions/packets.rs::Game::lan_guest_packet	ClientCommand action 2 arm: the game rule list for ops
 ServerGamePacketListenerImpl.addGameRuleValue	inline	crates/sunrise-client/src/game/network/lan_actions/packets.rs::Game::lan_guest_packet	the value list is built in the same arm
 ServerGamePacketListenerImpl.handleSetCreativeModeSlot	port	crates/sunrise-client/src/game/network/lan_actions/packets.rs::Game::lan_guest_packet	gap: minor: slot 0 (craft result) is accepted where vanilla takes 1 to 45, and the stack max is not checked for a set
-ServerGamePacketListenerImpl.updateSignText	inline	crates/sunrise-client/src/game/interface/sign_edit.rs::Game::lan_sign_update	the sign write is in lan_sign_update
+ServerGamePacketListenerImpl.updateSignText	inline	crates/sunrise-client/src/game/interface/sign_edit_server.rs::Game::lan_sign_update	the sign write is in lan_sign_update
 ServerGamePacketListenerImpl.handlePlayerAbilities	port	crates/sunrise-client/src/lan/hub.rs::Hub::process_inbox	PlayerAbilities arm: flying only when the guest may fly
 ServerGamePacketListenerImpl.handleClientInformation	port	crates/sunrise-client/src/lan/hub.rs::Hub::process_inbox	gap: player: the hat-layer change is not sent to the other players (UPDATE_HAT)
 ServerGamePacketListenerImpl.handleChangeDifficulty	port	crates/sunrise-client/src/game/network/lan_actions/packets.rs::Game::lan_guest_packet	ChangeDifficulty arm: permission 2 or more, not locked, 0 to 3

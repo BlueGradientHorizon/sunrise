@@ -134,7 +134,16 @@ impl TeleportConsumeWorld for MobTeleporter<'_, '_> {
         matches!(self.usage, MobConsumption::Fox(_))
     }
     fn teleport_sound(&mut self, _: Dim, at: Vec3, fox: bool) -> Result<(), ()> {
-        self.game.server_play_sound(if fox { "minecraft:entity.fox.teleport" } else { "minecraft:item.chorus_fruit.teleport" }, [at.x, at.y, at.z], 1.0, 1.0);
+        self.game.server_play_sound(
+            if fox {
+                "minecraft:entity.fox.teleport"
+            } else {
+                "minecraft:item.chorus_fruit.teleport"
+            },
+            [at.x, at.y, at.z],
+            1.0,
+            1.0,
+        );
         Ok(())
     }
     fn block_position(&mut self) -> Result<BlockPos, ()> {

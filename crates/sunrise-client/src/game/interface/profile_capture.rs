@@ -1041,7 +1041,10 @@ impl Game<'_> {
             gpu_ms,
             detail,
             || WorldCounts {
-                players: self.remote.as_ref().map_or(0, |r| r.listed_player_count() as u32),
+                players: self
+                    .remote
+                    .as_ref()
+                    .map_or(0, |r| r.listed_player_count() as u32),
                 chunks: self.world.chunks.len() as u32,
                 entities,
             },

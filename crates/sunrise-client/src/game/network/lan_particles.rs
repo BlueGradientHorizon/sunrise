@@ -54,12 +54,11 @@ pub(in crate::game) fn server_particle_from_options(
     }
     let rgb = [options.color[0], options.color[1], options.color[2]];
     let data = match options.ty {
-        T::Block | T::BlockMarker | T::FallingDust | T::DustPillar | T::BlockCrumble => {
-            match state {
-                Some(state) => ServerParticleData::Block(state),
-                None => ServerParticleData::None,
-            }
-        }
+        T::Block | T::BlockMarker | T::FallingDust | T::DustPillar | T::BlockCrumble => match state
+        {
+            Some(state) => ServerParticleData::Block(state),
+            None => ServerParticleData::None,
+        },
         T::Dust => ServerParticleData::ColorScale {
             rgb,
             scale: options.scale,

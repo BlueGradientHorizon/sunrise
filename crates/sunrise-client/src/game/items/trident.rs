@@ -323,7 +323,11 @@ impl Game<'_> {
                             LevelSound::new(&sound, at, 1.0, 1.0).in_source(SoundSource::Players);
                         self.play_bound_sound(sound, player, None);
                     }
-                    _ => if let Some(at) = at { self.server_play_sound(&sound, at, 1.0, 1.0); },
+                    _ => {
+                        if let Some(at) = at {
+                            self.server_play_sound(&sound, at, 1.0, 1.0);
+                        }
+                    }
                 }
                 if let (Some(player), Some(name)) = (
                     self.server.lan_acting_uuid,
@@ -1215,7 +1219,12 @@ impl Game<'_> {
         };
         if extinguished {
             let pitch = 1.6 + (t.random.next_float() - t.random.next_float()) * 0.4;
-            self.server_play_sound("minecraft:entity.generic.extinguish_fire", [to.x, to.y, to.z], 0.7, pitch);
+            self.server_play_sound(
+                "minecraft:entity.generic.extinguish_fire",
+                [to.x, to.y, to.z],
+                0.7,
+                pitch,
+            );
         }
     }
     /// `ThrownTrident.tryPickup` for a trident that has landed or is

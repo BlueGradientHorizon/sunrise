@@ -44,89 +44,6 @@ pub(in crate::game::client_side) use sunrise_client::{
 };
 
 impl Game<'_> {
-    pub(in crate::game::client_side) fn open_merchant_state_client(&mut self, state: MerchantState) {
-        assert!(
-            !self.is_logical_server(),
-            "open_merchant_state_client called on Server role"
-        );
-        let mut s = Station::new_kind(Kind::Merchant, [0, 0, 0]);
-        s.merchant = Some(Box::new(state));
-        self.station = Some(s);
-        self.set_screen(super::Screen::Inventory);
-        self.capture(false);
-        self.set_mapping_held("key.use", false);
-    }
-    /// A server's trading window (no mob here: the server keeps it).
-    pub(in crate::game) fn open_remote_merchant(
-        &mut self,
-        session: merchant::Session,
-        name: Option<Text>,
-    ) {
-        self.open_merchant_state_client(MerchantState {
-            session: Box::new(session),
-            scroll: 0,
-            dragging: false,
-            focused: None,
-            mob: None,
-            name,
-        });
-    }
-    /// Opens a client-only merchant preview without a mob (`sunrise-ctl trade`).
-    pub(in crate::game) fn open_preview_merchant(
-        &mut self,
-        profession: &str,
-        variant: &str,
-        level: i32,
-    ) {
-        assert!(
-            !self.is_logical_server(),
-            "open_preview_merchant called on Server role"
-        );
-        let profession = if profession.contains(':') {
-            profession.to_owned()
-        } else {
-            format!("minecraft:{profession}")
-        };
-        let variant = format!("minecraft:{}", variant.trim_start_matches("minecraft:"));
-        let level = level.clamp(1, 5);
-        let origin = self
-            .player
-            .as_ref()
-            .map_or([0.0; 3], |p| [p.position.x, p.position.y, p.position.z]);
-        let mut offers = Vec::new();
-        for l in 1..=level {
-            let set = self.stations().trades.set_for(&profession, l);
-            if let Some(sequence) = self.stations().trades.sequence(&set) {
-                let mut random = merchant::sequence_random(self.level.seed, &sequence);
-                let ctx = TradeContext {
-                    items: self.items(),
-                    enchantments: &self.stations().enchantments,
-                    variant: &variant,
-                    origin,
-                    maps: None,
-                };
-                offers.extend(
-                    self.stations()
-                        .trades
-                        .offers_from_set(&ctx, &set, &mut random),
-                );
-            }
-        }
-        let mut session = merchant::Session::new(offers, true);
-        session.profession = profession;
-        session.variant = variant;
-        session.level = level;
-        session.xp = merchant::min_xp(level);
-        session.origin = origin;
-        self.open_merchant_state_client(MerchantState {
-            session: Box::new(session),
-            scroll: 0,
-            dragging: false,
-            focused: None,
-            mob: None,
-            name: None,
-        });
-    }
     /// `MerchantScreen` rendering.
     pub(in crate::game::client_side) fn draw_merchant(&mut self, batch: &mut HudBatch) -> bool {
         let (ox, oy) = self.inventory_origin(batch);
@@ -461,5 +378,91 @@ impl Game<'_> {
             .play("minecraft:ui.button.click", None, 0.25, 1.0);
         self.try_move_items(index);
         true
+    }
+    pub(in crate::game::client_side) fn open_merchant_state_client(
+        &mut self,
+        state: MerchantState,
+    ) {
+        assert!(
+            !self.is_logical_server(),
+            "open_merchant_state_client called on Server role"
+        );
+        let mut s = Station::new_kind(Kind::Merchant, [0, 0, 0]);
+        s.merchant = Some(Box::new(state));
+        self.station = Some(s);
+        self.set_screen(super::Screen::Inventory);
+        self.capture(false);
+        self.set_mapping_held("key.use", false);
+    }
+    /// Opens a client-only merchant preview without a mob (`sunrise-ctl trade`).
+    pub(in crate::game) fn open_preview_merchant(
+        &mut self,
+        profession: &str,
+        variant: &str,
+        level: i32,
+    ) {
+        assert!(
+            !self.is_logical_server(),
+            "open_preview_merchant called on Server role"
+        );
+        let profession = if profession.contains(':') {
+            profession.to_owned()
+        } else {
+            format!("minecraft:{profession}")
+        };
+        let variant = format!("minecraft:{}", variant.trim_start_matches("minecraft:"));
+        let level = level.clamp(1, 5);
+        let origin = self
+            .player
+            .as_ref()
+            .map_or([0.0; 3], |p| [p.position.x, p.position.y, p.position.z]);
+        let mut offers = Vec::new();
+        for l in 1..=level {
+            let set = self.stations().trades.set_for(&profession, l);
+            if let Some(sequence) = self.stations().trades.sequence(&set) {
+                let mut random = merchant::sequence_random(self.level.seed, &sequence);
+                let ctx = TradeContext {
+                    items: self.items(),
+                    enchantments: &self.stations().enchantments,
+                    variant: &variant,
+                    origin,
+                    maps: None,
+                };
+                offers.extend(
+                    self.stations()
+                        .trades
+                        .offers_from_set(&ctx, &set, &mut random),
+                );
+            }
+        }
+        let mut session = merchant::Session::new(offers, true);
+        session.profession = profession;
+        session.variant = variant;
+        session.level = level;
+        session.xp = merchant::min_xp(level);
+        session.origin = origin;
+        self.open_merchant_state_client(MerchantState {
+            session: Box::new(session),
+            scroll: 0,
+            dragging: false,
+            focused: None,
+            mob: None,
+            name: None,
+        });
+    }
+    /// A server's trading window (no mob here: the server keeps it).
+    pub(in crate::game) fn open_remote_merchant(
+        &mut self,
+        session: merchant::Session,
+        name: Option<Text>,
+    ) {
+        self.open_merchant_state_client(MerchantState {
+            session: Box::new(session),
+            scroll: 0,
+            dragging: false,
+            focused: None,
+            mob: None,
+            name,
+        });
     }
 }

@@ -35,6 +35,8 @@ pub(in crate::game::server_side) use crate::game::client_side::potions::mob_effe
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::potions::potion_cloud_to_nbt;
 #[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::potions::sound_on_added;
+#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::potions::splash_distance_sqr;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::potions::thrown_projectile;
@@ -646,7 +648,12 @@ impl Game<'_> {
                         collect_dragon_breath(player.bounds(), &mut self.breath_clouds)
                 {
                     let player_pos = [player.position.x, player.position.y, player.position.z];
-                    self.server_play_sound("minecraft:item.bottle.fill_dragonbreath", player_pos, 1.0, 1.0);
+                    self.server_play_sound(
+                        "minecraft:item.bottle.fill_dragonbreath",
+                        player_pos,
+                        1.0,
+                        1.0,
+                    );
                     self.post_entity_event("minecraft:fluid_pickup", Who::Player);
                     let cloud = sunrise_client::advancements::EntityView {
                         kind: "minecraft:area_effect_cloud".into(),

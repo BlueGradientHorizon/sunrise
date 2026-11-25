@@ -3,11 +3,11 @@ FireworkRocketEntity.defineSynchedData	skip:java		SynchedEntityData definitions;
 FireworkRocketEntity.shouldRender	port	crates/sunrise-client/src/game/entities/fireworks.rs::Game::rocket_geometry	attached rockets are not drawn; camera range is the caller's check
 FireworkRocketEntity.onHitEntity	port	crates/sunrise-client/src/game/entities/fireworks.rs::Game::tick_rockets	a rocket fired from a crossbow or dispenser tests entity hits in flight and bursts on what it strikes
 FireworkRocketEntity.onHitBlock	inline	crates/sunrise-client/src/game/entities/fireworks.rs::Game::tick_rockets	a block hit ends the angled rocket early and explodes it; vanilla explodes only when it has explosions and skips the block entityInside effect
-FireworkRocketEntity.dealExplosionDamage	port	crates/sunrise-client/src/game/entities/fireworks_client.rs::Game::explode_rocket	damage 5+2 per explosion; attached target takes the full blast, others within 5 blocks with line of sight
+FireworkRocketEntity.dealExplosionDamage	port	crates/sunrise-client/src/game/entities/fireworks.rs::Game::explode_rocket	damage 5+2 per explosion; attached target takes the full blast, others within 5 blocks with line of sight
 FireworkRocketEntity.addAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::firework_rocket_to_nbt	Life, LifeTime, FireworksItem, ShotAtAngle and HasBeenShot, over `Projectile`'s Owner (only when it is the player) and LeftOwner
 FireworkRocketEntity.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::firework_rocket_from_nbt	Life, LifeTime (0 when absent), FireworksItem and ShotAtAngle, with Owner and LeftOwner
 FireworkRocketEntity.getExplosions	port	crates/sunrise-client/src/game/entities/fireworks.rs::fireworks_of	explosion list from the item's fireworks component, empty without one
-FireworkRocketEntity.calculateHorizontalHurtKnockbackDirection	inline	crates/sunrise-client/src/game/entities/fireworks_client.rs::Game::explode_rocket	knockback direction is the blast point to the target, which the mob damage gets as its from point
+FireworkRocketEntity.calculateHorizontalHurtKnockbackDirection	inline	crates/sunrise-client/src/game/entities/fireworks.rs::Game::explode_rocket	knockback direction is the blast point to the target, which the mob damage gets as its from point
 FishingHook.<init>	port	crates/sunrise-client/src/game/items/fishing.rs::Game::use_fishing_rod	the player cast: start point, velocity with the 0.0103365 triangle, luck and lure from the rod
 FishingHook.defineSynchedData	skip:java		synced hooked id and biting flag; Sunrise keeps them on the Hook struct and sends them in Hook::track
 FishingHook.canHitEntity	port	crates/sunrise-client/src/game/items/fishing.rs::Game::tick_fishing	hook catches living mobs, other players (not the owner) and dropped items it touches
@@ -77,7 +77,7 @@ ThrownTrident.defineSynchedData	skip:java		loyalty and foil synced fields; Sunri
 ThrownTrident.isAcceptibleReturnOwner	port	crates/sunrise-client/src/game/items/trident.rs::Game::tick_tridents	the loyalty return needs the owner's eye position; gap: minor: no separate alive or spectator check
 ThrownTrident.findHitEntities	port	crates/sunrise-client/src/arrows.rs::Ticker::step_move_and_hit	one entity hit per trident, none once it has dealt damage
 ThrownTrident.hitBlockEnchantmentEffects	port	crates/sunrise-client/src/game/items/trident.rs::Game::channel_rod_hit	gap: minor: only Channeling's hit_block effect (lightning on a rod in a storm) is modelled
-ThrownTrident.tryPickup	port	crates/sunrise-client/src/game/items/trident_client.rs::Game::trident_taken	all three pickup modes and the no-physics owner's return; gap: inventory overflow drops instead of refusing pickup
+ThrownTrident.tryPickup	port	crates/sunrise-client/src/game/items/trident.rs::Game::trident_taken	all three pickup modes and the no-physics owner's return; gap: inventory overflow drops instead of refusing pickup
 ThrownTrident.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt/trident.rs::trident_from_nbt	pickup, Owner, LeftOwner, HasBeenShot and DealtDamage survive load; ThrownTrident::from_nbt reads loyalty from the saved stack
 ThrownTrident.getLoyaltyFromItem	port	crates/sunrise-client/src/game/items/trident.rs::Game::release_trident	loyalty level read from the thrown stack when the trident is released
 AbstractHurtingProjectile.shouldRenderAtSqrDistance	skip:ui		distance culling for the fireball model; Sunrise culls with its own range check

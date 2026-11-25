@@ -130,7 +130,7 @@ DialogCommand.clearDialog	port	crates/sunrise-client/src/game/administration/com
 DifficultyCommand.register	port	crates/sunrise-command/src/vanilla.rs::registered	difficulty syntax (vanilla.rs line 284)
 DifficultyCommand.setDifficulty	port	crates/sunrise-client/src/game/administration/commands/mod.rs::Game::cmd_difficulty	already-same error, set, hostile mobs removed on peaceful
 EffectCommands.register	port	crates/sunrise-command/src/vanilla.rs::registered	effect syntax
-EffectCommands.computeDurationInTicks	port	crates/sunrise-client/src/game/administration/commands/effects_client.rs::Game::cmd_effect_give	duration arm inside cmd_effect_give
+EffectCommands.computeDurationInTicks	port	crates/sunrise-client/src/game/administration/commands/effects.rs::Game::cmd_effect_give	duration arm inside cmd_effect_give
 EffectCommands.clearEffect	port	crates/sunrise-client/src/game/administration/commands/effects.rs::Game::cmd_effect_clear	clear one effect; tracker feedback
 EmoteCommands.register	port	crates/sunrise-command/src/vanilla.rs::registered	/me syntax; emote text in cmd_say (commands.rs)
 EnchantCommand.register	port	crates/sunrise-command/src/vanilla.rs::registered	enchant syntax (vanilla.rs line 189)

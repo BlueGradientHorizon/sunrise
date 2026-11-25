@@ -21,7 +21,11 @@ impl Game<'_> {
         };
         if (180..=200).contains(&t) {
             let o = off();
-            self.server_particle_at(crate::lan::server_effects::ServerParticle::simple(ParticleType::ExplosionEmitter), [p.x + o[0], p.y + 2.0 + o[1], p.z + o[2]], [0.0; 3]);
+            self.server_particle_at(
+                crate::lan::server_effects::ServerParticle::simple(ParticleType::ExplosionEmitter),
+                [p.x + o[0], p.y + 2.0 + o[1], p.z + o[2]],
+                [0.0; 3],
+            );
         }
         // Only the fight's own dragon has a fight (`dragonFight`): elsewhere
         // (`/summon`), or summoned in the End after the fight is won, a

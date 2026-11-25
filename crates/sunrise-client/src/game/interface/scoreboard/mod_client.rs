@@ -6,6 +6,9 @@ pub(in crate::game::client_side) use crate::game::server_side::scoreboard::GameE
 pub(in crate::game::client_side) use crate::game::server_side::scoreboard::Recorded;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::scoreboard::ScoreState;
+#[cfg(test)]
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::server_side::scoreboard::local_tab_players;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::scoreboard::tab_players_needed;
 #[allow(unused_imports)]

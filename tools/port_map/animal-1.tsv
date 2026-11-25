@@ -107,7 +107,7 @@ Camel.getRiddenSpeed	inline	crates/sunrise-client/src/mobs/equine.rs::ridden_ste
 Camel.getRiddenRotation	port	crates/sunrise-client/src/mobs/equine.rs::Goal::ridden_step	ticked in #3512; `Camel.getRiddenRotation` is cited at crates/sunrise-client/src/mobs/equine.rs:589 (in a comment, so `where` names the enclosing fn)
 Camel.onPlayerJump	inline	crates/sunrise-client/src/mobs/camel.rs::dash	the cooldown, ground and refuse_to_move gates
 Camel.handleStartJump	port	crates/sunrise-client/src/mobs/camel.rs::dash	dash sound and dashing flag; no entity_action game event
-Camel.mobInteract	port	crates/sunrise-client/src/game/mobs/mounts_client.rs::Game::interact_mount	inventory on sneak, feeding, riding
+Camel.mobInteract	port	crates/sunrise-client/src/game/mobs/mounts.rs::Game::interact_mount	inventory on sneak, feeding, riding
 Camel.onElasticLeashPull	port	crates/sunrise-client/src/mobs/camel.rs::on_elastic_leash_pull
 Camel.canMate	port	crates/sunrise-client/src/mobs/goals.rs::Breed::can_use	both sides need AbstractHorse.canParent (not ridden and at full health; a camel is always tame), and only camels pair
 Camel.getBodyAnchorAnimationYOffset	port	crates/sunrise-client/src/game/mobs/mounts.rs::Game::position_rider	gap: sitting or standing height only, no sit/stand transition interpolation

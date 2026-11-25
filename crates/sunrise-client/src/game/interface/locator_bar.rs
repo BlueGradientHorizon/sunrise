@@ -15,8 +15,6 @@ use sunrise_protocol::packets::play::TrackedWaypoint;
 #[path = "tests/locator_bar_tests.rs"]
 mod tests;
 
-/// `Player.getEyeHeight` while standing.
-
 impl Game<'_> {
     /// `ClientPacketListener.handleWaypoint`.
     pub(in crate::game::client_side) fn handle_waypoint(&mut self, packet: &TrackedWaypoint) {

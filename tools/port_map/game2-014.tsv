@@ -3,7 +3,7 @@ HoneyBlock.fallOn	port	crates/sunrise-world/src/block_landing.rs::BlockLandingRe
 HoneyBlock.isSlidingDown	inline	crates/sunrise-client/src/entities.rs::ArmorStand::apply_honey_slide	stand side-slide after travel; player motion, mob ai and ItemEntity retain their separate existing honey paths
 HoneyBlock.maybeDoSlideAchievement	port	crates/sunrise-client/src/game/interface/advancements/mod.rs::Game::trigger_honey_slide	gap: minor: the every-20-ticks check sits in the caller, Game::tick
 HoneyBlock.doSlideMovement	inline	crates/sunrise-client/src/motion.rs::MotionWorld::honey_block_inside	velocity damping and fall distance reset
-HoneyBlock.showParticles	port	crates/sunrise-client/src/game/blocks/block_particles.rs::Game::honey_slide_particles	five honey block particles at the entity
+HoneyBlock.showParticles	port	crates/sunrise-client/src/game/blocks/block_particles_client.rs::Game::honey_entity_particles	five honey block particles at the entity
 IceBlock.randomTick	port	crates/sunrise-world/src/level/tick.rs::Sim::random_tick_block	melts through Sim::ice_melt when block light is above 11 minus dampening
 InfestedBlock.spawnInfestation	inline	crates/sunrise-client/src/game/game_server.rs::Game::break_block_as_player	silverfish at the broken block's bottom centre when blocks drop and there is no silk touch; poof via mob_poof
 InfestedBlock.infestedStateByHost	inline	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::handle_mob_events	the name swap minecraft:X to minecraft:infested_X in MobEvent::Infest; the host list is checked by the silverfish goals
@@ -74,8 +74,8 @@ LiquidBlock.getFluidState	port	crates/sunrise-world/src/level/update.rs::Sim::fl
 LiquidBlock.updateShape	port	crates/sunrise-world/src/level/shapes.rs::Sim::update_shape_class	bubble column schedule below
 LiquidBlock.neighborChanged	port	crates/sunrise-world/src/level/fluids.rs::Sim::liquid_block_changed	gap: minor: spread and bubble-column tick only; the Neo fluid interaction check is not ported here
 LiquidBlock.pickupBlock	port	crates/sunrise-world/src/level/fluids.rs::Sim::pickup_block	source blocks only, leaves air and yields the bucket
-LoomBlock.useWithoutItem	port	crates/sunrise-client/src/game/blocks/stations.rs::Game::open_station	opens the loom station
-LoomBlock.getMenuProvider	port	crates/sunrise-client/src/game/blocks/stations.rs::Game::open_station	the loom menu over the block position
+LoomBlock.useWithoutItem	port	crates/sunrise-client/src/game/blocks/stations_server.rs::Game::open_station	opens the loom station
+LoomBlock.getMenuProvider	port	crates/sunrise-client/src/game/blocks/stations_server.rs::Game::open_station	the loom menu over the block position
 Mirror.mirror	inline	crates/sunrise-world/src/worldgen/structure/processor.rs::turn_facing	a hanging entity's Facing takes the same axis flips (LEFT_RIGHT swaps north and south, FRONT_BACK west and east) before the rotation; a block state's mirrored result is the exported per-state table (StateTransforms::mirror)
 Mirror.getRotation	inline	crates/sunrise-world/src/worldgen/structure/processor.rs::turn_facing	the 180 degree turn an axis-flipped facing implies is the swap turn_facing makes; for a block state it is already in the exported mirror table
 MossyCarpetBlock.makeShapes	skip:data	-	collision and outline shapes are precomputed from the data

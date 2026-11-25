@@ -19,11 +19,13 @@ impl Game<'_> {
         self.server.pending_sounds.clear();
     }
 
+    #[allow(dead_code)]
     #[inline(always)]
     pub(in crate::game) fn audio_capture_active(&self) -> bool {
         self.server.audio_capture_active
     }
 
+    #[allow(dead_code)]
     #[inline(always)]
     pub(in crate::game) fn audio_capture_len(&self) -> usize {
         self.server.pending_sounds.len()

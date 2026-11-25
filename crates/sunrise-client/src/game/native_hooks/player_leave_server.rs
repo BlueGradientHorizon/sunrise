@@ -3,7 +3,7 @@ pub(in crate::game::server_side) use super::Game;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::native_hooks::player_leave::*;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{lan::guest::Guest, text::Text};
+pub(in crate::game::server_side) use sunrise_client::lan::guest::Guest;
 
 #[cfg(test)]
 pub(in crate::game) mod player_leave_tests {

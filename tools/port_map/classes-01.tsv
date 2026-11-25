@@ -123,9 +123,9 @@ MinecartFurnace.getDefaultDisplayBlockState	port	crates/sunrise-client/src/game/
 MinecartFurnace.getMaxSpeed	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::max_speed	half speed on land, three quarters of 0.2 in water
 MinecartFurnace.interact	inline	crates/sunrise-client/src/game/entities/minecarts.rs::Game::interact_cart	furnace arm
 MinecartFurnace.readAdditionalSaveData	port	crates/sunrise-client/src/game/entities/minecarts.rs::Minecart::from_nbt
-MinecartFurnace.tick	inline	crates/sunrise-client/src/game/entities/minecarts_client.rs::Game::tick_cart	furnace variant: fuel counts down, push clears at zero, smoke puffs
-MinecartSpawner.tick	port	crates/sunrise-client/src/game/entities/minecarts_client.rs::Game::tick_cart	BaseSpawner.serverTick at the cart's block (spawner.rs server_tick_spawner_of); its broadcastEvent is an entity event on the cart
-MinecartSpawner.createTicker	port	crates/sunrise-client/src/game/entities/minecarts_client.rs::Game::tick_cart	the server ticker: the CartKind::Spawner arm
+MinecartFurnace.tick	inline	crates/sunrise-client/src/game/entities/minecarts.rs::Game::tick_cart	furnace variant: fuel counts down, push clears at zero, smoke puffs
+MinecartSpawner.tick	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::tick_cart	BaseSpawner.serverTick at the cart's block (spawner.rs server_tick_spawner_of); its broadcastEvent is an entity event on the cart
+MinecartSpawner.createTicker	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::tick_cart	the server ticker: the CartKind::Spawner arm
 MinecartSpawner.readAdditionalSaveData	port	crates/sunrise-client/src/game/entities/minecarts.rs::Minecart::from_nbt	BaseSpawner.load
 MinecartSpawner.addAdditionalSaveData	port	crates/sunrise-client/src/game/entities/minecarts.rs::Minecart::to_nbt	BaseSpawner.save
 MinecartSpawner.getDefaultDisplayBlockState	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::display_state	the spawner block

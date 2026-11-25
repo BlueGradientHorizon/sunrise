@@ -1251,7 +1251,14 @@ impl Game<'_> {
                             EntityCollision::Deflected { first, rot } => {
                                 if first {
                                     old_yaw += rot;
-                                    if let Some(at) = breeze { self.server_play_sound("minecraft:entity.breeze.deflect", at, 1.0, 1.0); }
+                                    if let Some(at) = breeze {
+                                        self.server_play_sound(
+                                            "minecraft:entity.breeze.deflect",
+                                            at,
+                                            1.0,
+                                            1.0,
+                                        );
+                                    }
                                 }
                             }
                             EntityCollision::Hooked => {

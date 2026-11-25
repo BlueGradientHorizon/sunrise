@@ -225,8 +225,8 @@ impl Game<'_> {
         let (knockback, knockback_attack) = self.extra_knockback(&target_kind, scale);
         let player = self.player.as_ref();
         let from = player.map(|p| [p.position.x, p.position.y, p.position.z]);
-        if knockback_attack {
-            if let Some(at) = from { self.server_play_sound("minecraft:entity.player.attack.knockback", at, 1.0, 1.0); }
+        if knockback_attack && let Some(at) = from {
+            self.server_play_sound("minecraft:entity.player.attack.knockback", at, 1.0, 1.0);
         }
         let old_health = self.mobs[index].health;
         let source = match from {
@@ -355,8 +355,10 @@ impl Game<'_> {
                 );
                 self.sweep_attack(at, from, Some(target), scale);
             }
-            if crit || sweep.is_none() {
-                if let Some(at) = from { self.server_play_sound(sound, at, 1.0, 1.0); }
+            if (crit || sweep.is_none())
+                && let Some(at) = from
+            {
+                self.server_play_sound(sound, at, 1.0, 1.0);
             }
             self.remember_player_target(Some(id));
             // The hurt or death sound the mob raised (getHurtSound / getDeathSound,
@@ -402,7 +404,9 @@ impl Game<'_> {
                 p.cause_food_exhaustion(0.1);
             }
         } else {
-            if let Some(at) = from { self.server_play_sound("minecraft:entity.player.attack.nodamage", at, 1.0, 1.0); }
+            if let Some(at) = from {
+                self.server_play_sound("minecraft:entity.player.attack.nodamage", at, 1.0, 1.0);
+            }
         }
     }
     /// `Player.attack`'s damage against `target_kind` (with the attack
@@ -474,10 +478,11 @@ impl Game<'_> {
         let full = scale > 0.9;
         let player = self.player.as_ref();
         let from = player.map(|p| [p.position.x, p.position.y, p.position.z]);
-        if full && player.is_some_and(|p| p.sprinting) {
-            if let Some(at) = from {
-                self.server_play_sound("minecraft:entity.player.attack.knockback", at, 1.0, 1.0);
-            }
+        if full
+            && player.is_some_and(|p| p.sprinting)
+            && let Some(at) = from
+        {
+            self.server_play_sound("minecraft:entity.player.attack.knockback", at, 1.0, 1.0);
         }
         let crit = living.is_some() && crit;
         if let Some(at) = sweep {
@@ -496,7 +501,9 @@ impl Game<'_> {
             } else {
                 "minecraft:entity.player.attack.weak"
             };
-            if let Some(at) = from { self.server_play_sound(sound, at, 1.0, 1.0); }
+            if let Some(at) = from {
+                self.server_play_sound(sound, at, 1.0, 1.0);
+            }
         }
         // Player.magicCrit: the enchantments added damage.
         if let Some(id) = magic {
@@ -513,7 +520,9 @@ impl Game<'_> {
         target: Option<(Aabb, mace::Spared)>,
         scale: f32,
     ) {
-        if let Some(at) = from { self.server_play_sound("minecraft:entity.player.attack.sweep", at, 1.0, 1.0); }
+        if let Some(at) = from {
+            self.server_play_sound("minecraft:entity.player.attack.sweep", at, 1.0, 1.0);
+        }
         if let Some((area, mob)) = target {
             self.sweep_damage(area, mob, scale);
         }

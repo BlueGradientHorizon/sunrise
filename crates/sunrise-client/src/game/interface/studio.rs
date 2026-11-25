@@ -74,7 +74,10 @@ impl Game<'_> {
                             self.settings.fov.clamp(1.0, 179.0),
                         );
                         self.capture(true);
-                        self.client_system_message(Text::translate("sunrise.studio.freecam.enabled", &[]));
+                        self.client_system_message(Text::translate(
+                            "sunrise.studio.freecam.enabled",
+                            &[],
+                        ));
                     } else {
                         self.client_system_message(Text::translate(
                             "sunrise.studio.freecam.unavailable",
@@ -85,13 +88,21 @@ impl Game<'_> {
                 Some("off") => {
                     self.client.studio.freecam.deactivate();
                     self.capture(false);
-                    self.client_system_message(Text::translate("sunrise.studio.freecam.disabled", &[]));
+                    self.client_system_message(Text::translate(
+                        "sunrise.studio.freecam.disabled",
+                        &[],
+                    ));
                 }
-                _ => self.client_system_message(Text::translate("sunrise.studio.freecam.usage", &[])),
+                _ => {
+                    self.client_system_message(Text::translate("sunrise.studio.freecam.usage", &[]))
+                }
             },
             "keyframe" => {
                 let Some(driver) = self.replay.driver.as_ref() else {
-                    self.client_system_message(Text::translate("sunrise.studio.replay.inactive", &[]));
+                    self.client_system_message(Text::translate(
+                        "sunrise.studio.replay.inactive",
+                        &[],
+                    ));
                     return true;
                 };
                 let time_ms = driver.position_ms();
@@ -147,7 +158,10 @@ impl Game<'_> {
                             &[&index.to_string()],
                         ));
                     }
-                    _ => self.client_system_message(Text::translate("sunrise.studio.keyframe.usage", &[])),
+                    _ => self.client_system_message(Text::translate(
+                        "sunrise.studio.keyframe.usage",
+                        &[],
+                    )),
                 }
             }
             "path" => match words.get(1).copied() {
@@ -159,7 +173,10 @@ impl Game<'_> {
                 }
                 Some("unlock") => {
                     self.client.studio.freecam.locked_to_path = false;
-                    self.client_system_message(Text::translate("sunrise.studio.path.unlocked", &[]));
+                    self.client_system_message(Text::translate(
+                        "sunrise.studio.path.unlocked",
+                        &[],
+                    ));
                 }
                 _ => self.client_system_message(Text::translate("sunrise.studio.path.usage", &[])),
             },

@@ -908,6 +908,7 @@ impl Game<'_> {
         }
     }
     /// `LecternBlock.openScreen`: reading the lectern's book.
+    #[allow(dead_code)]
     pub(in crate::game) fn open_lectern(&mut self, pos: [i32; 3]) -> bool {
         assert!(
             !self.is_logical_server(),

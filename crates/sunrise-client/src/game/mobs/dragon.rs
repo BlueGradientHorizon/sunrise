@@ -6475,7 +6475,12 @@ impl Game<'_> {
             }
         };
         let n = normalize(normalize(dir));
-        self.server_play_sound("minecraft:entity.ender_dragon.shoot", [at.x, at.y, at.z], 10.0, 1.0);
+        self.server_play_sound(
+            "minecraft:entity.ender_dragon.shoot",
+            [at.x, at.y, at.z],
+            10.0,
+            1.0,
+        );
         let owner = self.dragon.as_ref().map(|d| Who::Mob(d.id));
         let mut p = sunrise_client::projectiles::Projectile::new(
             sunrise_client::projectiles::ProjectileKind::DragonFireball,

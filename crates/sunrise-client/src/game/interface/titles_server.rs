@@ -16,13 +16,13 @@ impl Game<'_> {
             self.is_logical_server(),
             "server_send_overlay_message called on Client role"
         );
-        self.server.guest_packets.push(
-            sunrise_protocol::packets::play::Clientbound::SystemChat(
+        self.server
+            .guest_packets
+            .push(sunrise_protocol::packets::play::Clientbound::SystemChat(
                 sunrise_protocol::packets::play::SystemChat {
                     content: sunrise_client::lan::data::component_nbt(&message.component()),
                     overlay: true,
                 },
-            ),
-        );
+            ));
     }
 }

@@ -82,6 +82,7 @@ impl Game<'_> {
     }
     /// The client ticks of these spawners, then the shown mobs of spawners
     /// that are gone go.
+    #[allow(dead_code)]
     pub(in crate::game) fn client_tick_spawners(&mut self, keys: &[Pos]) {
         for &key in keys {
             self.client_tick_spawner(key);

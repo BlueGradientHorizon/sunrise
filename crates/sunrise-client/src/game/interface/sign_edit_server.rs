@@ -23,105 +23,6 @@ pub(in crate::game::server_side) use sunrise_protocol::packets::play::{
 pub(in crate::game::server_side) use winit::keyboard::KeyCode;
 
 impl Game<'_> {
-    #[inline(always)]
-    pub(in crate::game) fn open_sign_editor_server(&mut self, pos: (i32, i32, i32), front: bool) {
-        if let (Some(player), Some(name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
-        ) {
-            self.native_player_open_sign(player, &name, [pos.0, pos.1, pos.2], front);
-        }
-    }
-    /// Run a sign's `run_command` line as the prefixed command vanilla runs
-    /// it as: a leading slash is allowed, errors are not reported (the NULL
-    /// source).
-    pub(in crate::game) fn run_sign_command(&mut self, pos: [i32; 3], command: &str) {
-        let source = self.sign_command_source(pos);
-        let line = command.strip_prefix('/').unwrap_or(command);
-        self.exec.0 = Default::default();
-        let permission = std::mem::replace(&mut self.ui.registries.permission, 2);
-        let _ = self.execute_line(line, source);
-        self.ui.registries.permission = permission;
-        // InventoryChangeTrigger fires as slots change, not on the next tick.
-        if self.player.is_some() {
-            self.check_inventory_trigger();
-        }
-    }
-    /// `Player.sendOverlayMessage(CLICK_ACTIONS_DISABLED)`: red text on the
-    /// action bar. A guest gets a packet, so its own client translates it.
-    pub(in crate::game) fn sign_click_actions_disabled(&mut self) {
-        self.server_send_overlay_message(
-            sunrise_client::text::Text::translate("sign.click_actions_disabled", &[])
-                .with_color(sunrise_client::text::RED),
-        );
-    }
-    /// `Player.getUUID` of the acting player: the one a sign remembers as its
-    /// editor.
-    pub(in crate::game::server_side) fn sign_editor_uuid(&mut self) -> u128 {
-        sunrise_client::lan::playerdata::ints_uuid(self.acting_player_uuid())
-    }
-    /// `SignBlock.otherPlayerIsEditingSign`: the sign at `key` belongs to
-    /// someone else's editor right now.
-    pub(in crate::game) fn other_player_is_editing_sign(&mut self, key: (i32, i32, i32)) -> bool {
-        match self.world.block_entities.sign_editor(&key) {
-            Some(holder) => holder != self.sign_editor_uuid(),
-            None => false,
-        }
-    }
-    /// `SignText.hasEditableText` of the side the player faces: if every line is
-    /// plain text, the editor rewrites nothing a player would miss.
-    pub(in crate::game) fn sign_side_has_editable_text(
-        &self,
-        key: (i32, i32, i32),
-        front: bool,
-    ) -> bool {
-        match self.world.block_entities.get(&key) {
-            Some(BlockEntity::Sign(sign)) => {
-                let side = if front { &sign.front } else { &sign.back };
-                side.has_editable_text()
-            }
-            _ => false,
-        }
-    }
-    /// `SignBlockEntity.tick` (`clearInvalidPlayerWhoMayEdit`): a sign keeps its
-    /// editor only while that player is here and within the block interaction
-    /// range plus four blocks of it.
-    pub(in crate::game) fn tick_sign_editors(&mut self) {
-        let held: Vec<(i32, i32, i32)> =
-            self.world.block_entities.sign_editors().copied().collect();
-        for pos in held {
-            match self.world.block_entities.sign_editor(&pos) {
-                Some(who) if self.sign_editor_in_range(who, pos) => {}
-                Some(_) => self.world.block_entities.set_sign_editor(pos, None),
-                // A sign that is gone, or one no editor holds.
-                None => self.world.block_entities.forget_sign_editor(pos),
-            }
-        }
-    }
-    /// `SignBlockEntity.playerIsTooFarAwayToEdit`: a player who left is no
-    /// player at all (`Level.getPlayerByUUID` finds nobody).
-    pub(in crate::game::server_side) fn sign_editor_in_range(
-        &self,
-        who: u128,
-        pos: (i32, i32, i32),
-    ) -> bool {
-        let at = [pos.0, pos.1, pos.2];
-        let me = self
-            .level
-            .player_uuid
-            .map(sunrise_client::lan::playerdata::ints_uuid);
-        if me == Some(who) && self.player.is_some() {
-            return self.eye_position().is_some_and(|eye| {
-                sunrise_client::lan::guest::within_block_range(eye, self.reach() + 4.0, at)
-            });
-        }
-        self.lan.as_ref().is_some_and(|host| {
-            host.hub
-                .guests
-                .iter()
-                .any(|g| g.uuid == who && g.within_block_range(at, 4.0))
-        })
-    }
     /// `ServerPlayer.openTextEdit` for the guest whose action opened a sign:
     /// the block, then the editor, on its client, and the guest may write on it.
     pub(in crate::game) fn lan_open_sign_editor(
@@ -246,5 +147,104 @@ impl Game<'_> {
         }
         self.world.block_entities.set_sign_editor(key, None);
         self.mark_block_entity_updated(key);
+    }
+    #[inline(always)]
+    pub(in crate::game) fn open_sign_editor_server(&mut self, pos: (i32, i32, i32), front: bool) {
+        if let (Some(player), Some(name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) {
+            self.native_player_open_sign(player, &name, [pos.0, pos.1, pos.2], front);
+        }
+    }
+    /// `SignBlock.otherPlayerIsEditingSign`: the sign at `key` belongs to
+    /// someone else's editor right now.
+    pub(in crate::game) fn other_player_is_editing_sign(&mut self, key: (i32, i32, i32)) -> bool {
+        match self.world.block_entities.sign_editor(&key) {
+            Some(holder) => holder != self.sign_editor_uuid(),
+            None => false,
+        }
+    }
+    /// Run a sign's `run_command` line as the prefixed command vanilla runs
+    /// it as: a leading slash is allowed, errors are not reported (the NULL
+    /// source).
+    pub(in crate::game) fn run_sign_command(&mut self, pos: [i32; 3], command: &str) {
+        let source = self.sign_command_source(pos);
+        let line = command.strip_prefix('/').unwrap_or(command);
+        self.exec.0 = Default::default();
+        let permission = std::mem::replace(&mut self.ui.registries.permission, 2);
+        let _ = self.execute_line(line, source);
+        self.ui.registries.permission = permission;
+        // InventoryChangeTrigger fires as slots change, not on the next tick.
+        if self.player.is_some() {
+            self.check_inventory_trigger();
+        }
+    }
+    /// `Player.sendOverlayMessage(CLICK_ACTIONS_DISABLED)`: red text on the
+    /// action bar. A guest gets a packet, so its own client translates it.
+    pub(in crate::game) fn sign_click_actions_disabled(&mut self) {
+        self.server_send_overlay_message(
+            sunrise_client::text::Text::translate("sign.click_actions_disabled", &[])
+                .with_color(sunrise_client::text::RED),
+        );
+    }
+    /// `SignBlockEntity.playerIsTooFarAwayToEdit`: a player who left is no
+    /// player at all (`Level.getPlayerByUUID` finds nobody).
+    pub(in crate::game::server_side) fn sign_editor_in_range(
+        &self,
+        who: u128,
+        pos: (i32, i32, i32),
+    ) -> bool {
+        let at = [pos.0, pos.1, pos.2];
+        let me = self
+            .level
+            .player_uuid
+            .map(sunrise_client::lan::playerdata::ints_uuid);
+        if me == Some(who) && self.player.is_some() {
+            return self.eye_position().is_some_and(|eye| {
+                sunrise_client::lan::guest::within_block_range(eye, self.reach() + 4.0, at)
+            });
+        }
+        self.lan.as_ref().is_some_and(|host| {
+            host.hub
+                .guests
+                .iter()
+                .any(|g| g.uuid == who && g.within_block_range(at, 4.0))
+        })
+    }
+    /// `Player.getUUID` of the acting player: the one a sign remembers as its
+    /// editor.
+    pub(in crate::game::server_side) fn sign_editor_uuid(&mut self) -> u128 {
+        sunrise_client::lan::playerdata::ints_uuid(self.acting_player_uuid())
+    }
+    /// `SignText.hasEditableText` of the side the player faces: if every line is
+    /// plain text, the editor rewrites nothing a player would miss.
+    pub(in crate::game) fn sign_side_has_editable_text(
+        &self,
+        key: (i32, i32, i32),
+        front: bool,
+    ) -> bool {
+        match self.world.block_entities.get(&key) {
+            Some(BlockEntity::Sign(sign)) => {
+                let side = if front { &sign.front } else { &sign.back };
+                side.has_editable_text()
+            }
+            _ => false,
+        }
+    }
+    /// `SignBlockEntity.tick` (`clearInvalidPlayerWhoMayEdit`): a sign keeps its
+    /// editor only while that player is here and within the block interaction
+    /// range plus four blocks of it.
+    pub(in crate::game) fn tick_sign_editors(&mut self) {
+        let held: Vec<(i32, i32, i32)> =
+            self.world.block_entities.sign_editors().copied().collect();
+        for pos in held {
+            match self.world.block_entities.sign_editor(&pos) {
+                Some(who) if self.sign_editor_in_range(who, pos) => {}
+                Some(_) => self.world.block_entities.set_sign_editor(pos, None),
+                // A sign that is gone, or one no editor holds.
+                None => self.world.block_entities.forget_sign_editor(pos),
+            }
+        }
     }
 }

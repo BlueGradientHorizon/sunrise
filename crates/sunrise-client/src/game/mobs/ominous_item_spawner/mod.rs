@@ -171,7 +171,13 @@ impl Game<'_> {
             let at = block(s.position);
             let center = at.map(|v| f64::from(v) + 0.5);
             if s.tick_count == s.spawn_item_after - ABOUT_TO_SPAWN {
-                self.server_play_sound_on(6, "minecraft:block.trial_spawner.about_to_spawn_item", center, 1.0, 1.0);
+                self.server_play_sound_on(
+                    6,
+                    "minecraft:block.trial_spawner.about_to_spawn_item",
+                    center,
+                    1.0,
+                    1.0,
+                );
             }
             if s.tick_count >= s.spawn_item_after {
                 self.spawn_ominous_item(s);

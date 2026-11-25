@@ -17,7 +17,7 @@ armor_stands::setup_anim_tests	-	armor_stand_prepares_humanoid_then_overrides_on
 autosave	impl Game<'_>	finish_player_autosaves	-	server	touches only server-owned fields
 autosave	impl Game<'_>	on_tick_rate_changed	-	server	touches only server-owned fields
 autosave	impl Game<'_>	save_game_metadata	-	server	touches only server-owned fields
-autosave	impl Game<'_>	save_game_with	-	client	touches only client-owned fields
+autosave	impl Game<'_>	save_game_with	-	server	touches only server-owned fields
 beehives	impl HiveHost for GameHive<'_, '_>	add	-	client	whole trait impl touches only client-owned fields
 beehives	impl HiveHost for GameHive<'_, '_>	bees_stay_in_hive	-	client	whole trait impl touches only client-owned fields
 beehives	impl HiveHost for GameHive<'_, '_>	blocked	-	client	whole trait impl touches only client-owned fields
@@ -37,12 +37,9 @@ block_screen_effect_draw_tests	-	sample_eye_in_water	#[cfg(test)]	server	touches
 boat_leads	impl Game<'_>	interact_boat_leash	-	client	touches only client-owned fields
 boats	impl Game<'_>	boat_bubble_splash	-	client	touches only client-owned fields
 boats	impl Game<'_>	boat_geometry	-	client	touches only client-owned fields
-boats	impl Game<'_>	lava_hurt_sound	-	client	touches only client-owned fields
-boats	impl Game<'_>	tick_boat_client	-	client	touches only client-owned fields
 boats	impl Game<'_>	water_plane	-	client	touches only client-owned fields
 books	impl Game<'_>	lan_edit_book	-	server	touches only server-owned fields
 books	impl Game<'_>	lectern_menu_done	-	server	touches only server-owned fields
-books	impl Game<'_>	take_lectern_book	-	server	touches only server-owned fields
 books	impl Game<'_>	tick_lecterns	-	server	touches only server-owned fields
 books	impl Game<'_>	use_book	-	server	touches only server-owned fields
 books	impl Game<'_>	use_lectern	-	server	touches only server-owned fields
@@ -59,19 +56,19 @@ brush	impl Game<'_>	brush_complete_event	-	client	touches only client-owned fiel
 brush	impl Game<'_>	brush_dust	-	client	touches only client-owned fields
 bundle_use_tests	-	bundle_completes_on_tick_200	#[cfg(test)]	game	touches both client-owned and server-owned fields
 campfire_douse	impl Game<'_>	predict_campfire_douse	-	client	touches only client-owned fields
-campfire_douse	impl Game<'_>	use_campfire_douse_client	-	client	touches only client-owned fields
 cauldron_interactions::tests	-	cauldron_client_skips_custom_prediction	#[cfg(test)]	client	touches only client-owned fields
 cauldron_interactions::tests	-	cauldron_outer_abort_discards_effects_and_drops	#[cfg(test)]	client	touches only client-owned fields
+chat	impl Game<'_>	as_console	-	server	touches only server-owned fields
 chat	impl Game<'_>	load_world_state	-	server	touches only server-owned fields
-chat	impl Game<'_>	player_message	-	server	touches only server-owned fields
 chat	impl Game<'_>	save_world_state	-	server	touches only server-owned fields
+chat	impl Game<'_>	server_system_message	-	server	touches only server-owned fields
 chat	impl Game<'_>	suggestion_registries	-	server	touches only server-owned fields
-chat	impl Game<'_>	system_message	-	server	touches only server-owned fields
 chat::damage_type_registry_tests	-	a_world_packs_damage_type_parses_in_damage	#[cfg(test)]	server	touches only server-owned fields
 chat::enchantment_snapshot_tests	-	synchronized_definitions_refresh_existing_enchantment_views	#[cfg(test)]	server	touches only server-owned fields
 chat::end_clock_tests	-	run	#[cfg(test)]	server	touches only server-owned fields
 chat::end_clock_tests	-	time_moves_the_clock_the_end_runs_on	#[cfg(test)]	server	touches only server-owned fields
 combat	impl Game<'_>	drown_particles	-	client	touches only client-owned fields
+combat	impl Game<'_>	remote_drown	-	client	touches only client-owned fields
 combat::bee_sting_tests	-	a_landed_sting_sets_the_stinger_and_poisons_on_normal_and_hard	#[cfg(test)]	client	touches only client-owned fields
 combat::bee_sting_tests	-	a_refused_sting_leaves_the_bee_alone	#[cfg(test)]	client	touches only client-owned fields
 combat::bee_sting_tests	-	sting_sounds	#[cfg(test)]	client	touches only client-owned fields
@@ -138,7 +135,6 @@ commands::data::saved_tag_tests	-	say	#[cfg(test)]	server	touches only server-ow
 commands::data::saved_tag_tests	-	tag_list_is_not_repeated_to_the_operators	#[cfg(test)]	server	touches only server-owned fields
 commands::data::saved_tag_tests	-	with_command_game	#[cfg(test)]	server	touches only server-owned fields
 commands::data::tests	-	merging_display_nbt_keeps_the_uuid_and_forces_the_start_delay	#[cfg(test)]	server	touches only server-owned fields
-commands::effects	impl Game<'_>	cmd_effect_give	-	client	touches only client-owned fields
 commands::enchant_tests	-	enchant_outcome	#[cfg(test)]	server	touches only server-owned fields
 commands::enchant_tests	-	integrated_enchant_updates_the_clients_selected_slot	#[cfg(test)]	client	touches only client-owned fields
 commands::execute	impl Game<'_>	command_chunk_loaded	-	server	touches only server-owned fields
@@ -258,10 +254,8 @@ commands::test_runs	impl Game<'_>	test_info_at	-	server	touches only server-owne
 commands::test_runs	impl Game<'_>	test_info_for	-	server	touches only server-owned fields
 commands::test_runs	impl Game<'_>	test_verify	-	server	touches only server-owned fields
 commands::text_commands	impl Game<'_>	titles_or_packet	-	server	touches only server-owned fields
-commands::text_commands	impl Game<'_>	titles_or_packet_client	-	client	touches only client-owned fields
 commands::world_cmds	impl Game<'_>	change_recipes	-	server	touches only server-owned fields
 commands::world_cmds	impl Game<'_>	cmd_particle	-	server	touches only server-owned fields
-commands::world_cmds	impl Game<'_>	cmd_particle_client	-	client	touches only client-owned fields
 commands::world_cmds	impl Game<'_>	cmd_rotate	-	server	touches only server-owned fields
 commands::world_cmds	impl Game<'_>	cmd_spreadplayers	-	server	touches only server-owned fields
 commands::world_cmds	impl Game<'_>	cmd_swing	-	server	touches only server-owned fields
@@ -290,9 +284,7 @@ commands::world_cmds::registered_damage_tests::creaking_borrowed	-	run_borrowed_
 commands::world_cmds::vehicle_damage_command_tests	-	attribute_guests	#[cfg(test)]	server	touches only server-owned fields
 commands::world_cmds::vehicle_damage_command_tests	-	direct_guest_attributes_adopt_the_target_and_restore_the_issuer	#[cfg(test)]	server	touches only server-owned fields
 commands::world_cmds::vehicle_damage_command_tests	-	existing_attribute_operations_keep_their_exact_success_messages	#[cfg(test)]	server	touches only server-owned fields
-consume	impl Game<'_>	emit_living_teleport	-	client	touches only client-owned fields
 consume	impl Game<'_>	entity_teleport_particles	-	client	touches only client-owned fields
-consume	impl Game<'_>	finish_consuming	-	client	touches only client-owned fields
 consume	impl TeleportConsumeWorld for MobTeleporter<'_, '_>	block_position	-	client	whole trait impl touches only client-owned fields
 consume	impl TeleportConsumeWorld for MobTeleporter<'_, '_>	directional_particles	-	client	whole trait impl touches only client-owned fields
 consume	impl TeleportConsumeWorld for MobTeleporter<'_, '_>	get_random	-	client	whole trait impl touches only client-owned fields
@@ -320,7 +312,6 @@ core_tests::pet_order_tests	-	game	#[cfg(test)]	client	touches only client-owned
 core_tests::wind_charge_burst_tests	-	a_nether_charge_bursts_above_the_nethers_top	#[cfg(test)]	game	touches both client-owned and server-owned fields
 crafting_recipe_kind_tests	-	registered_crafting_remainder_drops_through_server_item_toss	#[cfg(test)]	game	touches both client-owned and server-owned fields
 crafting_recipe_kind_tests	-	unregistered_serializer_failed_reload_preserves_previous_recipes	#[cfg(test)]	server	touches only server-owned fields
-creaking	impl Game<'_>	creaking_tear_down	-	client	touches only client-owned fields
 creatures	-	a_hand_egg_checks_and_spawns_the_type_named_by_its_component	#[cfg(test)]	server	touches only server-owned fields
 creatures	impl Game<'_>	add_projectile	-	server	touches only server-owned fields
 creatures	impl Game<'_>	arrow_event	-	client	touches only client-owned fields
@@ -366,13 +357,13 @@ creatures	impl Game<'_>	projectile_shoot_event	-	server	touches only server-owne
 creatures	impl Game<'_>	remember_mob_player_credit	-	server	touches only server-owned fields
 creatures	impl Game<'_>	resolve_player_credit	-	server	touches only server-owned fields
 creatures	impl Game<'_>	resolve_player_responsible	#[cfg(test)]	server	touches only server-owned fields
-creatures	impl Game<'_>	set_age_locked	-	client	touches only client-owned fields
+creatures	impl Game<'_>	set_age_locked	-	server	touches only server-owned fields
 creatures	impl Game<'_>	skinning	-	client	touches only client-owned fields
 creatures	impl Game<'_>	throw_item	-	server	touches only server-owned fields
 creatures	impl Game<'_>	tick_creature_entities	-	server	touches only server-owned fields
 creatures	impl Game<'_>	tick_creatures	-	server	touches only server-owned fields
 creatures	impl Game<'_>	tick_projectiles_now	-	server	touches only server-owned fields
-creatures	impl Game<'_>	touch_arrows	-	client	touches only client-owned fields
+creatures	impl Game<'_>	touch_arrows	-	server	touches only server-owned fields
 creatures	impl Game<'_>	use_spawn_egg	-	server	touches only server-owned fields
 creatures::armor_destroy_tests	-	body_armor_guards_and_break_event_are_preserved	#[cfg(test)]	game	touches both client-owned and server-owned fields
 creatures::armor_destroy_tests	-	sun_protection_uses_mob_draw_and_broadcasts_break	#[cfg(test)]	game	touches both client-owned and server-owned fields
@@ -471,43 +462,21 @@ creatures::spawn_egg_mob_tests	-	game	#[cfg(test)]	client	touches only client-ow
 creatures::world_view	impl Game<'_>	mob_world_base	-	server	touches only server-owned fields
 crossbow::tests	-	bow_and_crossbow_shots_sound_at_the_feet_not_the_eye	#[cfg(test)]	client	touches only client-owned fields
 crossbow::tests	-	game_with_player	#[cfg(test)]	client	touches only client-owned fields
-cushions	impl Game<'_>	cushion_break_particles	-	client	touches only client-owned fields
 cushions	impl Game<'_>	cushion_geometry	-	client	touches only client-owned fields
-cushions	impl Game<'_>	get_up_from_cushion	-	client	touches only client-owned fields
-cushions	impl Game<'_>	interact_cushion	-	client	touches only client-owned fields
-cushions	impl Game<'_>	remove_cushion	-	client	touches only client-owned fields
 debug_lines	impl Game<'_>	server_debug_lines	-	server	touches only server-owned fields
-decorated_pot	impl Game<'_>	use_decorated_pot	-	client	touches only client-owned fields
 deflect	impl Game<'_>	deflect	-	client	touches only client-owned fields
 deflect	impl Game<'_>	shulker_bullet_hurt	-	client	touches only client-owned fields
 disabled_block_tests::tests	-	inert_dispense_keeps_a_legacy_over_max_stack_without_events	#[cfg(test)]; #[cfg(test)]	client	touches only client-owned fields
 disabled_block_tests::tests	-	rejected_dispense_reply_preserves_the_disabled_owners_fallback	#[cfg(test)]; #[cfg(test)]	client	touches only client-owned fields
-dispense_fixture	impl Game<'_>	dispense_case_client_finish	-	client	touches only client-owned fields
-dispenser	impl Game<'_>	dispense_brush	-	client	touches only client-owned fields
-dispenser	impl Game<'_>	dispense_equipment	-	client	touches only client-owned fields
-dispenser	impl Game<'_>	dispense_glowstone	-	client	touches only client-owned fields
-dispenser	impl Game<'_>	dispense_honeycomb	-	client	touches only client-owned fields
-dispenser	impl Game<'_>	dispense_potion	-	client	touches only client-owned fields
-dispenser	impl Game<'_>	dispense_tnt	-	client	touches only client-owned fields
-dispenser	impl Game<'_>	dispenser_event	-	client	touches only client-owned fields
-dispenser	impl Game<'_>	shear_beehive	-	client	touches only client-owned fields
-dispenser	impl Game<'_>	shear_entity	-	client	touches only client-owned fields
-dispenser	impl Game<'_>	shear_off_leashes	-	client	touches only client-owned fields
-dispenser	impl Game<'_>	sulfur_cube_swallow	-	client	touches only client-owned fields
-dispenser::tests	-	the_faced_block_answers_before_the_item_and_vanilla_stands_when_no_part_listens	#[cfg(test)]	client	touches only client-owned fields
 dragon	impl Game<'_>	boss_bar_draws	-	client	touches only client-owned fields
 dragon	impl Game<'_>	boss_music	-	client	touches only client-owned fields
 dragon	impl Game<'_>	dragon_geometry	-	client	touches only client-owned fields
-dragon	impl Game<'_>	dragon_spawn_ambient	-	client	touches only client-owned fields
 dragon	impl Game<'_>	remote_dragon_phase_tick	-	client	touches only client-owned fields
-dragon	impl Game<'_>	respawn_growl	-	client	touches only client-owned fields
-dragon	impl Game<'_>	spawn_dragon_fireball	-	client	touches only client-owned fields
 dragon	impl Game<'_>	tick_remote_dragon	-	client	touches only client-owned fields
 dragon::thorns_tests	-	check_answer	#[cfg(test)]	client	touches only client-owned fields
 dragon::thorns_tests	-	dragon_takes_player_thorns_through_its_body	#[cfg(test)]	client	touches only client-owned fields
 dragon::thorns_tests	-	pair	#[cfg(test)]	client	touches only client-owned fields
 dragon::thorns_tests	-	with_game	#[cfg(test)]	client	touches only client-owned fields
-dragon::walls	impl Game<'_>	dragon_check_walls	-	client	touches only client-owned fields
 enchant_effects	impl Game<'_>	apply_piercing_effect	-	client	touches only client-owned fields
 end	impl Game<'_>	begin_crystal_geometry	-	client	touches only client-owned fields
 end	impl Game<'_>	end_flash_sky	-	client	touches only client-owned fields
@@ -520,14 +489,12 @@ entity	impl Game<'_>	nonliving_fall_on	-	client	touches only client-owned fields
 entity_sizes	impl Game<'_>	client_object_dimensions	-	client	touches only client-owned fields
 entity_sizes::tests	-	client_copies_of_other_kinds_ask_and_take_the_answer	#[cfg(test)]	client	touches only client-owned fields
 entity_sizes::tests	-	white_outline	#[cfg(test)]	client	touches only client-owned fields
-events	impl Game<'_>	combat_last_hit	-	server	touches only server-owned fields
 extinguish::extinguish_tests	-	heard	#[cfg(test)]	client	touches only client-owned fields
 falling_blocks	impl Game<'_>	falling_model_vertices	-	client	touches only client-owned fields
 fangs	impl Game<'_>	insert_fangs	-	client	touches only client-owned fields
 fangs	impl Game<'_>	remote_fangs_event	-	client	touches only client-owned fields
 fangs	impl Game<'_>	tick_remote_fangs	-	client	touches only client-owned fields
 fireworks	impl Game<'_>	boost_firework	-	server	touches only server-owned fields
-fireworks	impl Game<'_>	explode_rocket	-	client	touches only client-owned fields
 fireworks	impl Game<'_>	launch_angled_rocket	-	server	touches only server-owned fields
 fireworks	impl Game<'_>	launch_firework	-	server	touches only server-owned fields
 fireworks	impl Game<'_>	remote_firework_explosion	-	client	touches only client-owned fields
@@ -536,7 +503,6 @@ fireworks	impl Game<'_>	rocket_hurt_mobs	-	server	touches only server-owned fiel
 fireworks	impl Game<'_>	rocket_hurt_player	-	server	touches only server-owned fields
 fireworks	impl Game<'_>	rocket_moved	-	server	touches only server-owned fields
 fireworks	impl Game<'_>	rocket_spark	-	client	touches only client-owned fields
-fireworks	impl Game<'_>	tick_rocket	-	client	touches only client-owned fields
 fireworks::events_tests	-	a_falling_rocket_hits_the_ground_and_one_in_water_splashes	#[cfg(test)]	client	touches only client-owned fields
 fireworks::events_tests	-	a_silent_rocket_bursts_without_blast_or_twinkle	#[cfg(test)]	client	touches only client-owned fields
 fireworks::events_tests	-	tick_particles	#[cfg(test)]	client	touches only client-owned fields
@@ -558,10 +524,7 @@ fishing	impl Game<'_>	tick_remote_hooks	-	client	touches only client-owned field
 fishing::fishing_targets_tests	-	reset_arena	#[cfg(test)]	client	touches only client-owned fields
 fishing::fishing_targets_tests	-	run_case	#[cfg(test)]	client	touches only client-owned fields
 fishing::fishing_targets_tests	-	run_extra_case	#[cfg(test)]	client	touches only client-owned fields
-frames	impl Game<'_>	break_frame_by	-	client	touches only client-owned fields
 frames	impl Game<'_>	frame_geometry	-	client	touches only client-owned fields
-frames	impl Game<'_>	set_frame_item	-	client	touches only client-owned fields
-frames	impl Game<'_>	tick_item_frames	-	client	touches only client-owned fields
 game	impl Game<'_>	acting_player_uuid	-	server	touches only server-owned fields
 game	impl Game<'_>	add_cooldown	-	server	touches only server-owned fields
 game	impl Game<'_>	add_item_entity_prepared	-	server	touches only server-owned fields
@@ -577,7 +540,8 @@ game	impl Game<'_>	clear_entities_client_render_caches	-	client	touches only cli
 game	impl Game<'_>	clear_entities_client_transient_blocks	-	client	touches only client-owned fields
 game	impl Game<'_>	clear_entities_server_missing_professions	-	server	touches only server-owned fields
 game	impl Game<'_>	client_particle_geometry	-	client	touches only client-owned fields
-game	impl Game<'_>	close_container	-	server	touches only server-owned fields
+game	impl Game<'_>	close_container_client	-	client	touches only client-owned fields
+game	impl Game<'_>	close_container_server	-	server	touches only server-owned fields
 game	impl Game<'_>	dispatch_screen_key	-	client	touches only client-owned fields
 game	impl Game<'_>	dispatch_window_key	-	client	touches only client-owned fields
 game	impl Game<'_>	entity_geometry	-	client	touches only client-owned fields
@@ -596,7 +560,7 @@ game	impl Game<'_>	hud_layers	-	client	touches only client-owned fields
 game	impl Game<'_>	hud_with_reload	-	client	touches only client-owned fields
 game	impl Game<'_>	item_fall_on	-	server	touches only server-owned fields
 game	impl Game<'_>	item_pick	-	server	touches only server-owned fields
-game	impl Game<'_>	lever_puff	-	server	touches only server-owned fields
+game	impl Game<'_>	lever_puff	-	client	touches only client-owned fields
 game	impl Game<'_>	lie_in_bed	-	server	touches only server-owned fields
 game	impl Game<'_>	load_saved_inventory	-	server	touches only server-owned fields
 game	impl Game<'_>	mark_motion	-	client	touches only client-owned fields
@@ -607,15 +571,17 @@ game	impl Game<'_>	pick	-	server	touches only server-owned fields
 game	impl Game<'_>	pick_unfiltered	-	server	touches only server-owned fields
 game	impl Game<'_>	pointer_space	-	client	touches only client-owned fields
 game	impl Game<'_>	prepare_window_event	-	client	touches only client-owned fields
+game	impl Game<'_>	process_client_level_events	-	client	touches only client-owned fields
 game	impl Game<'_>	process_level_events	-	server	touches only server-owned fields
 game	impl Game<'_>	process_level_events_end_gateway_client	-	client	touches only client-owned fields
-game	impl Game<'_>	process_level_events_note_custom_sound_client	-	client	touches only client-owned fields
 game	impl Game<'_>	process_level_events_portal_travel_client	-	client	touches only client-owned fields
 game	impl Game<'_>	process_level_events_sound_client	-	client	touches only client-owned fields
+game	impl Game<'_>	process_server_level_events	-	server	touches only server-owned fields
 game	impl Game<'_>	project_window_cursor	-	client	touches only client-owned fields
 game	impl Game<'_>	rebuild_chunk_tickets	-	server	touches only server-owned fields
 game	impl Game<'_>	recover_device	-	client	touches only client-owned fields
 game	impl Game<'_>	refresh_window_cursor	-	client	touches only client-owned fields
+game	impl Game<'_>	remove_local_player_body	-	client	touches only client-owned fields
 game	impl Game<'_>	render	-	client	touches only client-owned fields
 game	impl Game<'_>	render_and_flip	-	client	touches only client-owned fields
 game	impl Game<'_>	render_with	-	client	touches only client-owned fields
@@ -667,7 +633,6 @@ item_use::tests	-	render_hand_submits_both_skinned_arms_in_draw_order	#[cfg(test
 jukebox	impl Game<'_>	start_song_server	-	server	touches only server-owned fields
 jukebox	impl Game<'_>	stop_song	-	server	touches only server-owned fields
 lan	impl Game<'_>	lan_control	-	client	touches only client-owned fields
-lan	impl Game<'_>	lan_disconnect_client	-	client	touches only client-owned fields
 lan::merchant_packet_tests	-	merchant_take_keeps_packet_snapshot_until_price_refresh	#[cfg(test)]	client	touches only client-owned fields
 lan::tracking_hook_tests	-	a_stop_waiting_for_a_sound_is_heard_after_its_removal	#[cfg(test)]	client	touches only client-owned fields
 lan_actions::attack_checks::tests	-	attacking_an_item_an_orb_oneself_or_an_arrow_kicks_the_player	#[cfg(test)]	server	touches only server-owned fields
@@ -679,14 +644,14 @@ lan_actions::commands	impl Game<'_>	send_admin_feedback	-	server	touches only se
 lan_actions::crack_feedback_tests	-	run_crack_packets_follow_start_clock_and_strict_observer_radius	#[cfg(test)]	server	touches only server-owned fields
 lan_actions::death_state	impl Game<'_>	guest_death_canceled	-	server	touches only server-owned fields
 lan_actions::death_state	impl Game<'_>	guest_fatal_source	-	server	touches only server-owned fields
-lan_actions::effects	impl Game<'_>	guest_instrument_sound	-	client	touches only client-owned fields
-lan_actions::effects	impl Game<'_>	guest_use_sounds	-	client	touches only client-owned fields
-lan_actions::effects	impl Game<'_>	lan_broadcast_effects	-	client	touches only client-owned fields
+lan_actions::effects	impl Game<'_>	guest_instrument_sound	-	server	touches only server-owned fields
+lan_actions::effects	impl Game<'_>	guest_use_sounds	-	server	touches only server-owned fields
+lan_actions::effects	impl Game<'_>	lan_broadcast_effects	-	server	touches only server-owned fields
 lan_actions::effects	impl Game<'_>	lan_broken_block_positions	-	server	touches only server-owned fields
-lan_actions::effects	impl Game<'_>	lan_prepare_captured_sounds	-	client	touches only client-owned fields
+lan_actions::effects	impl Game<'_>	lan_prepare_captured_sounds	-	server	touches only server-owned fields
 lan_actions::effects	impl Game<'_>	lan_stuck	-	server	touches only server-owned fields
 lan_actions::guest_body	impl Game<'_>	guest_accepted_move	-	server	touches only server-owned fields
-lan_actions::guest_body	impl Game<'_>	guest_motion_events	-	client	touches only client-owned fields
+lan_actions::guest_body	impl Game<'_>	guest_motion_events	-	server	touches only server-owned fields
 lan_actions::guest_body	impl Game<'_>	guest_server_tick	-	server	touches only server-owned fields
 lan_actions::guest_body::tests::fall_reset	-	scene	#[cfg(test)]	server	touches only server-owned fields
 lan_actions::guest_body::tests::travel	-	send	#[cfg(test)]	server	touches only server-owned fields
@@ -703,7 +668,7 @@ lan_actions::menus	impl Game<'_>	guest_container_opener	-	server	touches only se
 lan_actions::menus	impl Game<'_>	guest_may_open	-	server	touches only server-owned fields
 lan_actions::packets	impl Game<'_>	guest_may_set_creative_slot	-	server	touches only server-owned fields
 lan_actions::packets	impl Game<'_>	lan_guest_packet_inner	-	server	touches only server-owned fields
-lan_actions::pickups	impl Game<'_>	guest_orbs	-	client	touches only client-owned fields
+lan_actions::pickups	impl Game<'_>	guest_orbs	-	server	touches only server-owned fields
 lan_actions::pickups	impl Game<'_>	guest_pickups	-	server	touches only server-owned fields
 lan_actions::pickups::pickup_post_tests	-	guest_pickup_hooks_name_the_ground_item_entity	#[cfg(test)]	server	touches only server-owned fields
 lan_actions::pickups::pickup_post_tests	-	host_animations	#[cfg(test)]	client	touches only client-owned fields
@@ -738,24 +703,16 @@ lan_actions::tick::spectator_body_tick_tests	-	pre_teleport_to_unloaded_edge_kee
 lan_actions::turns	impl Game<'_>	as_guest_messaged	-	server	touches only server-owned fields
 lan_actions::turns	impl Game<'_>	combat_player	-	server	touches only server-owned fields
 lan_actions::turns	impl Game<'_>	for_each_player	-	server	touches only server-owned fields
-lan_actions::turns	impl Game<'_>	guest_hurt_sound	-	client	touches only client-owned fields
+lan_actions::turns	impl Game<'_>	guest_hurt_sound	-	server	touches only server-owned fields
 lan_actions::turns	impl Game<'_>	guest_turn	-	server	touches only server-owned fields
-lan_actions::turns	impl Game<'_>	guest_turn_client_enter_screens	-	client	touches only client-owned fields
-lan_actions::turns	impl Game<'_>	guest_turn_client_leave_input	-	client	touches only client-owned fields
-lan_actions::turns	impl Game<'_>	guest_turn_client_leave_screens	-	client	touches only client-owned fields
-lan_actions::turns	impl Game<'_>	guest_turn_client_take_input	-	client	touches only client-owned fields
-lan_actions::turns	impl Game<'_>	guest_turn_client_replace_message	-	client	touches only client-owned fields
 lan_actions::turns	impl Game<'_>	projectile_player_owner_id	-	server	touches only server-owned fields
 lan_actions::turns	impl Game<'_>	record_interrupted_turn	-	server	touches only server-owned fields
 lan_actions::turns	impl Game<'_>	record_open_turns	-	server	touches only server-owned fields
 lan_actions::turns	impl Game<'_>	remember_player_projectile_target	-	server	touches only server-owned fields
 lan_actions::turns	impl Game<'_>	with_own_record	-	server	touches only server-owned fields
-lan_particles	impl Game<'_>	evaporation_smoke	-	client	touches only client-owned fields
-lan_particles	impl Game<'_>	landing_dust	-	client	touches only client-owned fields
+lan_particles	impl Game<'_>	client_landing_dust	-	client	touches only client-owned fields
 lan_particles	impl Game<'_>	remote_explode	-	client	touches only client-owned fields
 lan_particles	impl Game<'_>	remote_level_particles	-	client	touches only client-owned fields
-lan_particles	impl Game<'_>	snowflake_particle	-	client	touches only client-owned fields
-lan_trade_decisions	impl Game<'_>	merchant_sound	-	client	touches only client-owned fields
 lan_trade_decisions_tests	-	restock_after_hero_change	#[cfg(test)]	client	touches only client-owned fields
 lan_vehicles	impl Game<'_>	object_target	-	client	touches only client-owned fields
 leads	impl Game<'_>	interact_leash_with_item_context	-	client	touches only client-owned fields
@@ -780,31 +737,23 @@ level_particles	impl Game<'_>	torch_burnout_smoke	-	client	touches only client-o
 level_particles::phantom_bite_tests	-	with_game	#[cfg(test)]	client	touches only client-owned fields
 level_sounds	impl Game<'_>	play_client_level_sound	-	client	touches only client-owned fields
 level_sounds	impl Game<'_>	play_client_local_sound	-	client	touches only client-owned fields
-level_sounds	impl Game<'_>	play_immediate_level_sound	-	client	touches only client-owned fields
 lightning	impl Game<'_>	load_bolt	-	server	touches only server-owned fields
 lightning	impl Game<'_>	thunder_hit_state	-	server	touches only server-owned fields
 lightning	impl Game<'_>	tick_thunder	-	server	touches only server-owned fields
 lightning::tests	-	conversion_post_reads_original_and_lightning_outcome	#[cfg(test)]	server	touches only server-owned fields
 llamas	impl Game<'_>	interact_llama	-	client	touches only client-owned fields
 llamas	impl Game<'_>	llama_sound	-	client	touches only client-owned fields
-mace	impl Game<'_>	mace_smash_self	-	client	touches only client-owned fields
 mace	impl Game<'_>	smash_dust	-	client	touches only client-owned fields
 machines::crafter	impl Game<'_>	crafter_slot_clicked	-	client	touches only client-owned fields
 maps	impl Game<'_>	map_texture	-	client	touches only client-owned fields
 maps	impl Game<'_>	map_vertices	-	client	touches only client-owned fields
 maps	impl Game<'_>	use_lodestone_compass	-	client	touches only client-owned fields
-melee	impl Game<'_>	attack_effects	-	client	touches only client-owned fields
-melee	impl Game<'_>	sweep_attack	-	client	touches only client-owned fields
 memory	impl Game<'_>	memory_inputs	-	client	touches only client-owned fields
-menu_clicks	impl Game<'_>	click_inventory	-	server	touches only server-owned fields
 menu_clicks	impl Game<'_>	creative_display_click_server	-	server	touches only server-owned fields
-menu_clicks	impl Game<'_>	creative_throw_carrying	-	server	touches only server-owned fields
 menu_clicks	impl Game<'_>	menu_session_with_game_server	-	server	touches only server-owned fields
 minecarts	impl Game<'_>	cart_geometry	-	client	touches only client-owned fields
 minecarts	impl Game<'_>	place_minecart	-	server	touches only server-owned fields
-minecarts	impl Game<'_>	prime_cart	-	client	touches only client-owned fields
 minecarts	impl Game<'_>	start_cart_sounds	-	client	touches only client-owned fields
-minecarts	impl Game<'_>	tick_cart	-	client	touches only client-owned fields
 minecarts::lifetime_tests	-	a_bound_cart_survives_the_parked_level_swap	#[cfg(test)]	server	touches only server-owned fields
 minecarts::lifetime_tests	-	bound_cart_case	#[cfg(test)]	server	touches only server-owned fields
 minecarts::lifetime_tests	-	destroyed_carts_retain_authoritative_state_and_retire_their_registration	#[cfg(test)]	server	touches only server-owned fields
@@ -819,13 +768,6 @@ mods	impl Game<'_>	apply_mods_reload	-	server	touches only server-owned fields
 mods	impl Game<'_>	install_loop_context	-	client	touches only client-owned fields
 mods	impl Game<'_>	sync_native_switches	-	client	touches only client-owned fields
 mods::tests::inventory	-	code_only_reload_publishes_one_new_inventory_after_prepare_and_preserves_old_readers	#[cfg(test)]	server	touches only server-owned fields
-mount_menu	impl Game<'_>	show_mount_menu	-	server	touches only server-owned fields
-mounts	impl Game<'_>	interact_mount	-	client	touches only client-owned fields
-mounts	impl Game<'_>	interact_steerable	-	client	touches only client-owned fields
-mounts	impl Game<'_>	shear_saddle	-	client	touches only client-owned fields
-mounts::tests	-	a_chest_on_a_donkey_or_mule_plays_its_own_sound_at_full_volume	#[cfg(test)]	client	touches only client-owned fields
-mounts::tests	-	equip	#[cfg(test)]	client	touches only client-owned fields
-mounts::tests	-	feed	#[cfg(test)]	client	touches only client-owned fields
 names	impl Game<'_>	name_mob	-	server	touches only server-owned fields
 native_block_sounds	impl Game<'_>	play_break_sound	-	client	touches only client-owned fields
 native_components	impl Game<'_>	enchantments_compatible	-	server	touches only server-owned fields
@@ -1024,7 +966,6 @@ native_hooks::farmland_trample::tests	-	ordinary_moves_and_short_farmland_landin
 native_hooks::flip_frame::tests	-	flip_frame_follows_render_frame_post_on_presented_frames_only	#[cfg(test)]	game	touches both client-owned and server-owned fields
 native_hooks::general_entity_tick::tests	-	general_subject_and_host_writes_commit_or_abort_together	#[cfg(test)]	server	touches only server-owned fields
 native_hooks::gui_ticks	impl Game<'_>	gui_ticks	-	client	touches only client-owned fields
-native_hooks::hud_mode	impl Game<'_>	set_hud_mode	-	server	touches only server-owned fields
 native_hooks::hud_mode::tests	-	hud_mode_game_bridge_respects_client_and_guest_guards	#[cfg(test)]	game	calls native_hooks::fire pub(super) dispatch method
 native_hooks::incoming_tests	-	held_durability_retains_the_stack_hand_and_explicit_break_slot	-	server	touches only server-owned fields
 native_hooks::item_fall_on_tests	-	a_dropped_item_lands_on_a_fall_on_part	#[cfg(test)]	server	touches only server-owned fields
@@ -1107,11 +1048,6 @@ native_item_places::tests	-	stand_equipment_effects_wait_for_root_commit	#[cfg(t
 native_level_sound_except_tests	-	cross_level_transaction_replays_effects_in_request_level_and_preserves_packet_order	#[cfg(test)]	client	touches only client-owned fields
 native_lifecycle	impl Game<'_>	native_lifecycle_world_closed	-	client	touches only client-owned fields
 native_living_effects::tests	-	a_client_reads_the_local_players_effect_blend_factors	#[cfg(test)]	client	touches only client-owned fields
-native_living_refs	impl Game<'_>	equip_item_effects	-	client	touches only client-owned fields
-native_living_refs::tests	-	armor_stand_first_tick_equipment_change_fires_after_base_tick	#[cfg(test)]	client	touches only client-owned fields
-native_living_refs::tests	-	mob_equipment_writes_emit_vanilla_equip_events	#[cfg(test)]	client	touches only client-owned fields
-native_living_refs::tests	-	stand_and_dragon_equipment_writes_run_on_equip_item	#[cfg(test)]	client	touches only client-owned fields
-native_living_refs::tests	-	the_host_players_body_and_saddle_are_slots_and_saved_in_equipment	#[cfg(test)]	client	touches only client-owned fields
 native_living_writes::tests	-	with_uses	#[cfg(test)]	client	touches only client-owned fields
 native_menu_refs	impl Game<'_>	menu_carried	-	server	touches only server-owned fields
 native_menu_refs	impl Game<'_>	menu_slot	-	server	touches only server-owned fields
@@ -1192,7 +1128,6 @@ paintings	impl Game<'_>	drop_painting	-	client	touches only client-owned fields
 pandas	impl Game<'_>	panda_effects	-	client	touches only client-owned fields
 passengers	impl Game<'_>	passenger_riding_position_inner	-	client	touches only client-owned fields
 passengers	impl Game<'_>	position_riders	-	client	touches only client-owned fields
-perspective	impl Game<'_>	local_stuck_counts	-	server	touches only server-owned fields
 pick_entity	impl Game<'_>	pick_knot_fence	-	server	touches only server-owned fields
 pick_entity::tests	-	server_entity_pick_returns_lead_and_delegates_dragon_parts	#[cfg(test)]	server	touches only server-owned fields
 piston_carry_state	impl Game<'_>	finish_piston_position_changes_client	-	client	touches only client-owned fields
@@ -1205,7 +1140,6 @@ piston_push::carrying::shoving::tests	-	a_predicted_collider_shove_passes_the_se
 piston_push::h255_mob_piston_ground_tests	-	with_role_game	#[cfg(test)]	server	touches only server-owned fields
 play_keys::swap_hands_tests	-	a_guest_swap_through_its_connection_is_heard_once_and_sends_the_hands	#[cfg(test)]	server	touches only server-owned fields
 player_destroy_item_tests	-	run_isolated	#[cfg(test)]	game	touches both client-owned and server-owned fields
-player_equip	impl Game<'_>	player_equipped	-	client	touches only client-owned fields
 player_spawn	impl Game<'_>	spawn_player_client	-	client	touches only client-owned fields
 potent_sulfur	impl Game<'_>	client_tick_potent_sulfur	-	client	touches only client-owned fields
 potent_sulfur	impl Game<'_>	spawn_geyser_particle	-	client	touches only client-owned fields
@@ -1219,14 +1153,9 @@ potions	impl Game<'_>	use_potion_item	-	server	touches only server-owned fields
 potions::cloud_water_tests	-	run_a_cloud_in_water_resets_its_fall_distance_and_a_dry_one_keeps_it	#[cfg(test)]	server	touches only server-owned fields
 potions::tests	-	cloud_spawns_during_pass	#[cfg(test)]	server	touches only server-owned fields
 potions::tests	-	residency_cloud_load_expiry_bottling_and_late_ids	#[cfg(test)]	server	touches only server-owned fields
-projectile_spawned	impl Game<'_>	apply_spawned_effect	-	client	touches only client-owned fields
 projectile_spawned_tests	-	played	#[cfg(test)]	client	touches only client-owned fields
 projectile_spawned_tests	-	requirements_draw_the_level_random_before_each_effect	#[cfg(test)]	client	touches only client-owned fields
 projectile_spawned_tests	-	stack_then_weapon_in_component_order	#[cfg(test)]	client	touches only client-owned fields
-raids	impl Game<'_>	drink_ominous_bottle	-	client	touches only client-owned fields
-raids	impl Game<'_>	raid_horn_client	-	client	touches only client-owned fields
-raids	impl Game<'_>	raid_omen_added	-	client	touches only client-owned fields
-raids	impl Game<'_>	sync_villager_raids_client	-	client	touches only client-owned fields
 raids::bar_players_tests	-	raid_bars	#[cfg(test)]	client	touches only client-owned fields
 remote	impl Game<'_>	apply_packet	-	client	touches only client-owned fields
 remote	impl Game<'_>	draw_reconfiguring	-	client	touches only client-owned fields
@@ -1483,8 +1412,6 @@ remote::ui	impl Game<'_>	remote_overlay	-	client	touches only client-owned field
 remote::ui	impl Game<'_>	remote_player_attack	-	client	touches only client-owned fields
 remote_tags::tests	-	reload_publishes_retained_and_bound_empty_tags_to_loot_and_clients	#[cfg(test)]	server	touches only server-owned fields
 repro	impl Game<'_>	start_recording_world_root_server	-	server	touches only server-owned fields
-respawn_anchor	impl Game<'_>	charge_anchor	-	client	touches only client-owned fields
-respawn_anchor	impl Game<'_>	destroy_straw_bed	-	client	touches only client-owned fields
 saving	impl Game<'_>	begin_closing_save	-	client	touches only client-owned fields
 saving	impl Game<'_>	begin_control_save	-	client	touches only client-owned fields
 saving	impl Game<'_>	poll_closing_save	-	client	touches only client-owned fields
@@ -1503,26 +1430,35 @@ scoreboard	impl Game<'_>	draw_tab_list	-	client	touches only client-owned fields
 scoreboard	impl Game<'_>	flush_skin_slots	-	client	touches only client-owned fields
 sculk	impl Game<'_>	entity_event_by	-	server	touches only server-owned fields
 sculk	impl Game<'_>	entity_event_context	-	server	touches only server-owned fields
+sculk	impl Game<'_>	player_context	-	server	touches only server-owned fields
 sculk	impl Game<'_>	post_game_event	-	server	touches only server-owned fields
 sculk	impl Game<'_>	post_game_event_with	-	server	touches only server-owned fields
 sculk	impl Game<'_>	projectile_own_event	-	server	touches only server-owned fields
+sculk	impl Game<'_>	tick_entity_events	-	server	touches only server-owned fields
 sculk	impl Game<'_>	tick_mob_sculk_events	-	server	touches only server-owned fields
+sculk	impl Game<'_>	tick_player_sculk_events	-	server	touches only server-owned fields
 sculk	impl Game<'_>	tick_sculk_blocks	-	server	touches only server-owned fields
 sculk	impl Game<'_>	try_summon_warden	-	server	touches only server-owned fields
-sculk_fixture	impl Game<'_>	sculk_scenario_drain_capture_client	-	client	touches only client-owned fields
-sculk_fixture	impl Game<'_>	sculk_scenario_set_capture_client	-	client	touches only client-owned fields
 shader_packs::player_status_tests	-	pack_status_follows_the_player	#[cfg(test)]	server	touches only server-owned fields
 shader_packs::player_status_tests	-	pack_status_leaves_queued_effects_alone	#[cfg(test)]	server	touches only server-owned fields
+sign_edit	impl Game<'_>	lan_open_sign_editor	-	server	touches only server-owned fields
+sign_edit	impl Game<'_>	lan_sign_update	-	server	touches only server-owned fields
 sign_edit	impl Game<'_>	open_sign_editor_server	-	server	touches only server-owned fields
+sign_edit	impl Game<'_>	other_player_is_editing_sign	-	server	touches only server-owned fields
 sign_edit	impl Game<'_>	run_sign_command	-	server	touches only server-owned fields
 sign_edit	impl Game<'_>	sign_click_actions_disabled	-	server	touches only server-owned fields
+sign_edit	impl Game<'_>	sign_editor_in_range	-	server	touches only server-owned fields
+sign_edit	impl Game<'_>	sign_editor_uuid	-	server	touches only server-owned fields
+sign_edit	impl Game<'_>	sign_side_has_editable_text	-	server	touches only server-owned fields
+sign_edit	impl Game<'_>	tick_sign_editors	-	server	touches only server-owned fields
 spawner	impl Game<'_>	acting_player_is_op	-	server	touches only server-owned fields
-spear	impl Game<'_>	damage_stats_and_hearts	-	client	touches only client-owned fields
 spear	impl Game<'_>	play_at_feet	-	client	touches only client-owned fields
 stacked_on_other_tests	-	a_lan_hub_click_is_decided_the_same_way	#[cfg(test)]	server	touches only server-owned fields
 stacked_on_other_tests	-	with_local	#[cfg(test)]	game	touches both client-owned and server-owned fields
 stacked_on_other_tests::item_part_tests	-	item_part_client_prediction_reconciliation_and_creative_pickups	#[cfg(test)]	client	touches only client-owned fields
 stations	impl Game<'_>	add_experience_levels	-	server	touches only server-owned fields
+stations	impl Game<'_>	close_station_server	-	server	touches only server-owned fields
+stations	impl Game<'_>	open_station	-	server	touches only server-owned fields
 stations	impl Game<'_>	play_level_up	-	server	touches only server-owned fields
 stations	impl Game<'_>	tick_brewing_stand	-	server	touches only server-owned fields
 storage	impl Game<'_>	close_ender_chest	-	server	touches only server-owned fields
@@ -1534,8 +1470,7 @@ sulfur_cubes	impl Game<'_>	sulfur_sound	-	client	touches only client-owned field
 test_instances	impl Game<'_>	highlight_test_pos	-	client	touches only client-owned fields
 test_instances	impl Game<'_>	test_instance_marker_geometry	-	client	touches only client-owned fields
 text_displays::tests	-	handle_teleport_keeps_display_easing	#[cfg(test)]	server	touches only server-owned fields
-titles	impl Game<'_>	send_overlay_message	-	server	touches only server-owned fields
-tnt	impl Game<'_>	spawn_primed_tnt	-	client	touches only client-owned fields
+titles	impl Game<'_>	server_send_overlay_message	-	server	touches only server-owned fields
 tnt::tests	-	particle_count	#[cfg(test)]	client	touches only client-owned fields
 tnt::tests	-	run_portal_blast_sulfur_cube_uses_only_positive_cooldown	#[cfg(test)]	client	touches only client-owned fields
 tnt::tests	-	run_silent_creeper_keeps_the_blast_after_its_source_is_removed	#[cfg(test)]	client	touches only client-owned fields
@@ -1550,19 +1485,17 @@ trading	impl Game<'_>	draw_merchant	-	client	touches only client-owned fields
 trading	impl Game<'_>	merchant_click	-	client	touches only client-owned fields
 trading	impl Game<'_>	merchant_drag	-	client	touches only client-owned fields
 trading	impl Game<'_>	merchant_key	-	client	touches only client-owned fields
-transactions	impl<'g> Game<'g>	run_after	-	client	touches only client-owned fields
-transactions::tests	-	cauldron_effects_wait_for_root_and_abort_with_inventory	#[cfg(test)]	client	touches only client-owned fields
+trading	impl Game<'_>	open_merchant_state_client	-	client	touches only client-owned fields
+trading	impl Game<'_>	open_preview_merchant	-	client	touches only client-owned fields
+trading	impl Game<'_>	open_remote_merchant	-	client	touches only client-owned fields
 trident	impl Game<'_>	draw_tridents	-	client	touches only client-owned fields
 trident	impl Game<'_>	pickup_trident_geometry	-	client	touches only client-owned fields
-trident	impl Game<'_>	trident_block_effects	-	client	touches only client-owned fields
-trident	impl Game<'_>	trident_taken	-	client	touches only client-owned fields
 trident::impact_tests	-	a_discarded_trident_does_not_apply_its_captured_impact	#[cfg(test)]	client	touches only client-owned fields
 trident::impact_tests	-	a_refused_trident_contact_keeps_the_contact_and_finishes_the_tick	#[cfg(test)]	client	touches only client-owned fields
 use_hand::bow_enchantment_tests	-	game_with_player	#[cfg(test)]	client	touches only client-owned fields
 use_hand::scaffolding_inside_tests	-	a_click_from_inside_a_scaffolding_block_places_on_the_opposite_face	#[cfg(test)]	client	touches only client-owned fields
 vault	impl Game<'_>	vault_events	-	client	touches only client-owned fields
 vehicle_removal_tests	-	wind_charged_mob_removal_cannot_reenter_through_its_own_burst	#[cfg(test)]	client	touches only client-owned fields
-villagers	impl Game<'_>	particles_around	-	client	touches only client-owned fields
 wind	impl Game<'_>	throw_wind_charge	-	client	touches only client-owned fields
 wind	impl Game<'_>	wind_charge_geometry	-	client	touches only client-owned fields
 wind::wind_charged_tests	-	a_silent_wind_charge_bursts_without_a_sound	#[cfg(test)]	client	touches only client-owned fields

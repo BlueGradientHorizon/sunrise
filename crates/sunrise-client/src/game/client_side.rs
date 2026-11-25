@@ -732,7 +732,6 @@ pub(in crate::game) mod stacked_on_other_tests_client;
 pub(in crate::game) mod sulfur_cubes_client;
 #[path = "administration/test_instances_client.rs"]
 pub(in crate::game) mod test_instances_client;
-#[cfg(test)]
 #[path = "entities/tnt_client.rs"]
 pub(in crate::game) mod tnt_client;
 #[path = "items/trading_client.rs"]

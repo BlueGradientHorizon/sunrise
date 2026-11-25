@@ -624,13 +624,19 @@ impl Game<'_> {
                     if self.detect_structure_size(pos) {
                         self.server_system_message(message("structure_block.size_success", &name));
                     } else {
-                        self.server_system_message(Text::translate("structure_block.size_failure", &[]));
+                        self.server_system_message(Text::translate(
+                            "structure_block.size_failure",
+                            &[],
+                        ));
                     }
                 }
                 UpdateType::UpdateData => {}
             },
             None => {
-                self.server_system_message(message("structure_block.invalid_structure_name", &p.name));
+                self.server_system_message(message(
+                    "structure_block.invalid_structure_name",
+                    &p.name,
+                ));
             }
         }
         // `setChanged` and `sendBlockUpdated`: the clients get the new data.

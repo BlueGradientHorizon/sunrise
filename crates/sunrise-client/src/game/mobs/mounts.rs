@@ -451,7 +451,12 @@ impl Game<'_> {
         self.trigger_item_entity("minecraft:player_sheared_equipment", &saddle, &target);
         // attemptToShearEquipment: playSound(equippable.shearingSound()).
         if !silent {
-            self.server_play_sound("minecraft:item.saddle.unequip", [at.x, at.y, at.z], 1.0, 1.0);
+            self.server_play_sound(
+                "minecraft:item.saddle.unequip",
+                [at.x, at.y, at.z],
+                1.0,
+                1.0,
+            );
         }
         Some(true)
     }

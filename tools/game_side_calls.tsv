@@ -13,8 +13,8 @@ client	agent::face_pick_tests	impl Hooks for Picks	-	#[cfg(test)]	trait_impl	-	t
 client	armor_stands_client	impl Game<'_>	armor_layers	-	method	server	called
 client	armor_stands_client	impl Game<'_>	break_armor_stand_by_anything	-	method	server,test	called
 client	armor_stands_client	impl Game<'_>	break_armor_stand_by_hit	-	method	server	called
-client	autosave_client	impl Game<'_>	save_game_with	-	method	server,game,test	called
 client	beacon	impl Game<'_>	beacon_geometry	-	method	test	called
+client	beacon	impl Game<'_>	beacon_opened	-	method	server	called
 client	beacon	impl Game<'_>	client_tick_beacon	-	method	game	called
 client	beacon	impl Game<'_>	tick_beacon_at	-	method	game	called
 client	beacon	impl Game<'_>	world_surface	-	method	server	called
@@ -23,6 +23,7 @@ client	beehives_client	impl HiveHost for GameHive<'_, '_>	-	-	trait_impl	-	trait
 client	block_breaking	impl Game<'_>	break_block	-	method	server,game,test	called
 client	block_breaking	impl Game<'_>	destroy_block_progress	-	method	server,game	called
 client	block_breaking	impl Game<'_>	destroy_progress_event	-	method	server	called
+client	block_breaking	impl Game<'_>	drop_bundle_content	-	method	server	called
 client	block_breaking	impl Game<'_>	mine_block_with_held	-	method	server,test	called
 client	block_editor	-	cycle	-	fn	game	called
 client	block_editor	-	footer_action	-	fn	game	called
@@ -49,8 +50,6 @@ client	block_screen_effect_draw_tests	impl Hooks for ReceiveCancelled	-	#[cfg(te
 client	boat_leads_client	impl Game<'_>	interact_boat_leash	-	method	server	called
 client	boats_client	impl Game<'_>	boat_bubble_splash	-	method	server	called
 client	boats_client	impl Game<'_>	boat_geometry	-	method	test	called
-client	boats_client	impl Game<'_>	lava_hurt_sound	-	method	server,game	called
-client	boats_client	impl Game<'_>	tick_boat_client	-	method	server	called
 client	books	impl Game<'_>	book_screen	-	method	server	called
 client	books	impl Game<'_>	close_book	-	method	server	called
 client	books	impl Game<'_>	follow_lectern	-	method	server	called
@@ -64,6 +63,7 @@ client	books	impl Game<'_>	remote_use_book	-	method	game	called
 client	books	impl Game<'_>	resolve_held_book	-	method	server	called
 client	books	impl Game<'_>	set_lectern_has_book	-	method	server	called
 client	books	impl Game<'_>	set_lectern_powered	-	method	server	called
+client	books	impl Game<'_>	take_lectern_book	-	method	server	called
 client	bookshelves	impl Game<'_>	enchant_power	-	method	server	called
 client	bookshelves	impl Game<'_>	resolve_enchant_particles	-	method	server	called
 client	bossbars_client	impl Game<'_>	publish_boss_bars_client	-	method	server	called
@@ -73,18 +73,17 @@ client	brush_client	impl Game<'_>	brush_complete_event	-	method	server	called
 client	brush_client	impl Game<'_>	brush_dust	-	method	server,game	called
 client	camera_hud	impl Game<'_>	camera_vehicle_health	-	method	test	called
 client	campfire_douse_client	impl Game<'_>	predict_campfire_douse	-	method	game	called
-client	campfire_douse_client	impl Game<'_>	use_campfire_douse_client	-	method	server	called
 client	chat	-	block_properties	-	fn	game	called
 client	chat	-	command_export	-	fn	test	called
 client	chat	impl Game<'_>	active_clock	-	method	test	called
 client	chat	impl Game<'_>	advance_clock	-	method	server,test	called
 client	chat	impl Game<'_>	allow_commands	-	method	server,game	called
-client	chat	impl Game<'_>	as_console	-	method	server,test	called
 client	chat	impl Game<'_>	build_registries	-	method	server,test	called
 client	chat	impl Game<'_>	chat_abilities	-	method	game	called
 client	chat	impl Game<'_>	chat_line	-	method	generated	called
 client	chat	impl Game<'_>	chat_server_suggestions	-	method	game	called
 client	chat	impl Game<'_>	chat_tree_for	-	method	game	called
+client	chat	impl Game<'_>	client_system_message	-	method	server	called
 client	chat	impl Game<'_>	command_clock_state	-	method	server,game	called
 client	chat	impl Game<'_>	command_clock_time	-	method	server,game,test	called
 client	chat	impl Game<'_>	component_hover_effect	-	method	test	called
@@ -118,20 +117,6 @@ client	client_cracks	impl Game<'_>	set_client_mining	-	method	game	called
 client	client_cracks	impl Game<'_>	update_local_crack	-	method	server	called
 client	client_cracks::tests	impl BlockPart for ExtraPositions	-	#[cfg(test)]	trait_impl	-	trait-impl
 client	client_cracks::tests	impl Hooks for Register	-	#[cfg(test)]	trait_impl	-	trait-impl
-client	client_engine_forwarders	impl Game<'_>	client_audio_play	-	method	server	called
-client	client_engine_forwarders	impl Game<'_>	client_audio_play_bound	-	method	server	called
-client	client_engine_forwarders	impl Game<'_>	client_audio_play_on	-	method	server	called
-client	client_engine_forwarders	impl Game<'_>	client_audio_play_unshared	-	method	server	called
-client	client_engine_forwarders	impl Game<'_>	client_audio_set_world	-	method	server	called
-client	client_engine_forwarders	impl Game<'_>	client_audio_stop_sounds	-	method	server	called
-client	client_engine_forwarders	impl Game<'_>	client_particles_add	-	method	server	called
-client	client_engine_forwarders	impl Game<'_>	client_particles_add_with	-	method	server	called
-client	client_engine_forwarders	impl Game<'_>	client_particles_elder_guardian	-	method	server	called
-client	client_engine_forwarders	impl Game<'_>	client_particles_explosion	-	method	server	called
-client	client_engine_forwarders	impl Game<'_>	client_particles_llama_spit_burst	-	method	server	called
-client	client_engine_forwarders	impl Game<'_>	client_particles_send_particles	-	method	server	called
-client	client_engine_forwarders	impl Game<'_>	client_particles_tracking_emitter	-	method	server	called
-client	client_engine_forwarders	impl Game<'_>	client_recipe_ui_reset_screen	-	method	server	called
 client	client_executor	impl Game<'_>	client_executor	-	method	generated	called
 client	client_executor::tests	impl Drop for PanickingPayload	-	#[cfg(test)]	trait_impl	-	trait-impl
 client	client_item_extensions	impl<'a> Registration<'a>	register_listener	-	method	game	called
@@ -159,12 +144,14 @@ client	clipboard	impl Game<'_>	types_text	-	method	game	called
 client	clipboard::tests	impl Hooks for Mod	-	#[cfg(test)]	trait_impl	-	trait-impl
 client	clipboard::tests	impl crate::game::event_loop::EventLoopCtl for NoEventLoop	-	#[cfg(test)]	trait_impl	-	trait-impl
 client	combat_client	impl Game<'_>	drown_particles	-	method	server	called
+client	combat_client	impl Game<'_>	remote_drown	-	method	server	called
 client	command_blocks	impl Game<'_>	apply_command_block	-	method	test	called
 client	command_blocks	impl Game<'_>	can_use_game_master_blocks	-	method	server,game	called
 client	command_blocks	impl Game<'_>	command_block	-	method	server	called
 client	command_blocks	impl Game<'_>	command_block_auto	-	method	server	called
 client	command_blocks	impl Game<'_>	command_block_data_arrived	-	method	game	called
 client	command_blocks	impl Game<'_>	command_block_loaded	-	method	server	called
+client	command_blocks	impl Game<'_>	command_block_open_at	-	method	server	called
 client	command_blocks	impl Game<'_>	command_block_output	-	method	server	called
 client	command_blocks	impl Game<'_>	command_block_placed	-	method	game	called
 client	command_blocks	impl Game<'_>	command_block_server_suggestions	-	method	game	called
@@ -176,15 +163,13 @@ client	command_blocks	impl Game<'_>	lan_set_command_block	-	method	server	called
 client	command_blocks	impl Game<'_>	open_command_block	-	method	server	called
 client	command_blocks	impl Game<'_>	open_command_block_if_editable	-	method	game	called
 client	command_blocks	impl Game<'_>	open_edit_screen	-	method	game	called
-client	commands_client::effects	impl Game<'_>	cmd_effect_give	-	method	server	called
 client	commands_client::execute	impl Game<'_>	target_eye_height	-	method	server,game	called
 client	commands_client::extra	impl Game<'_>	profile_fetches_pending_client	-	method	server	called
 client	commands_client::extra	impl Game<'_>	tick_profile_fetches_client	-	method	server	called
 client	commands_client::raid	impl Game<'_>	cmd_raid	-	method	server	called
-client	commands_client::text_commands	impl Game<'_>	titles_or_packet_client	-	method	server	called
-client	commands_client::world_cmds	impl Game<'_>	cmd_particle_client	-	method	server	called
 client	commands_client::world_cmds::particle_command_tests	-	drawn	#[cfg(test)]	fn	test	called
 client	composter	-	is_composter	-	fn	server,game	called
+client	composter	impl Game<'_>	commit_composter_effects	-	method	server	called
 client	composter	impl Game<'_>	composter_capability_extract	-	method	server	called
 client	composter	impl Game<'_>	composter_capability_insert	-	method	server	called
 client	composter	impl Game<'_>	composter_container_insert	-	method	server	called
@@ -194,8 +179,6 @@ client	composter	impl Game<'_>	composter_takes	-	method	game	called
 client	composter	impl Game<'_>	use_composter	-	method	server	called
 client	composter	impl Game<'_>	villager_compost_items	-	method	server	called
 client	composter	impl Drop for ScopedRandom<'_, '_>	-	-	trait_impl	-	trait-impl
-client	consume_client	impl Game<'_>	emit_living_teleport	-	method	server	called
-client	consume_client	impl Game<'_>	finish_consuming	-	method	server,test	called
 client	consume_client	impl TeleportConsumeWorld for MobTeleporter<'_, '_>	-	-	trait_impl	-	trait-impl
 client	container_hooks	impl Container for Open<'_, '_>	-	-	trait_impl	-	trait-impl
 client	container_hooks	impl hud::Canvas for Canvas<'_>	-	-	trait_impl	-	trait-impl
@@ -221,7 +204,6 @@ client	copper_golems	impl Game<'_>	recheck_golem_openers	-	method	server	called
 client	copper_golems	impl Game<'_>	use_golem_statue	-	method	server	called
 client	core_tests_client	-	exercise_blank_inventory_presses	#[cfg(test)]	fn	test	called
 client	core_tests_client::pet_order_tests	-	game	#[cfg(test)]	fn	test	called
-client	creaking_client	impl Game<'_>	creaking_tear_down	-	method	server	called
 client	creative_hotbar	impl Game<'_>	mapped_key_down	-	method	server,test	called
 client	creative_screen	impl Game<'_>	creative_inventory_open	-	method	server	called
 client	creatures_client	impl Game<'_>	arrow_event	-	method	server,game	called
@@ -234,15 +216,10 @@ client	creatures_client	impl Game<'_>	item_burst	-	method	server	called
 client	creatures_client	impl Game<'_>	mob_pearl_teleport	-	method	server	called
 client	creatures_client	impl Game<'_>	mooshroom_shear_puff	-	method	server	called
 client	creatures_client	impl Game<'_>	projectile_geometry	-	method	game	called
-client	creatures_client	impl Game<'_>	set_age_locked	-	method	server	called
-client	creatures_client	impl Game<'_>	touch_arrows	-	method	server,test	called
 client	creatures_client::living_draw	impl Game<'_>	living_geometry	-	method	game	called
 client	creatures_client::projectiles_120_124_tests	-	step_recording	#[cfg(test)]	fn	test	called
 client	creatures_client::spawn_egg_mob_tests	-	game	#[cfg(test)]	fn	test	called
 client	crossbow_client::tests	-	game_with_player	#[cfg(test)]	fn	test	called
-client	cushions_client	impl Game<'_>	get_up_from_cushion	-	method	server	called
-client	cushions_client	impl Game<'_>	interact_cushion	-	method	server,test	called
-client	cushions_client	impl Game<'_>	remove_cushion	-	method	server	called
 client	debug_keys	impl Game<'_>	block_entity_tag	-	method	server	called
 client	debug_keys	impl Game<'_>	change_game_mode	-	method	server	called
 client	debug_keys	impl Game<'_>	debug_overlay_visible	-	method	generated	called
@@ -252,7 +229,6 @@ client	debug_lines	impl Game<'_>	column_height	-	method	server	called
 client	debug_lines	impl Game<'_>	debug_entity_count	-	method	server	called
 client	debug_lines	impl Game<'_>	debug_entity_sections	-	method	server	called
 client	debug_renderer_tests	impl Hooks for Marker	-	#[cfg(test)]	trait_impl	-	trait-impl
-client	decorated_pot_client	impl Game<'_>	use_decorated_pot	-	method	server	called
 client	deflect_client	impl Game<'_>	deflect	-	method	server,game,test	called
 client	deflect_client	impl Game<'_>	shulker_bullet_hurt	-	method	server,game	called
 client	demo_intro::tests	impl Hooks for KeepDemoOpen	-	#[cfg(test)]	trait_impl	-	trait-impl
@@ -261,25 +237,10 @@ client	dialogs	impl Game<'_>	clear_dialog	-	method	server	called
 client	dialogs	impl Game<'_>	dialog_open	-	method	server,test	called
 client	dialogs	impl Game<'_>	show_dialog	-	method	test	called
 client	dialogs	impl Game<'_>	show_play_dialog	-	method	server	called
-client	dispense_fixture_client	impl Game<'_>	dispense_case_client_finish	-	method	server	called
-client	dispenser_client	impl Game<'_>	dispense_brush	-	method	server	called
-client	dispenser_client	impl Game<'_>	dispense_equipment	-	method	server,test	called
-client	dispenser_client	impl Game<'_>	dispense_glowstone	-	method	server	called
-client	dispenser_client	impl Game<'_>	dispense_honeycomb	-	method	server	called
-client	dispenser_client	impl Game<'_>	dispense_potion	-	method	server	called
-client	dispenser_client	impl Game<'_>	dispense_tnt	-	method	server	called
-client	dispenser_client	impl Game<'_>	dispenser_event	-	method	server	called
-client	dispenser_client	impl Game<'_>	shear_beehive	-	method	server	called
-client	dispenser_client	impl Game<'_>	shear_entity	-	method	server,test	called
-client	dispenser_client	impl Game<'_>	sulfur_cube_swallow	-	method	server,test	called
 client	dragon_client	impl Game<'_>	boss_bar_draws	-	method	server,test	called
-client	dragon_client	impl Game<'_>	dragon_spawn_ambient	-	method	server	called
-client	dragon_client	impl Game<'_>	respawn_growl	-	method	server	called
-client	dragon_client	impl Game<'_>	spawn_dragon_fireball	-	method	server,test	called
 client	dragon_client::thorns_tests	-	check_answer	#[cfg(test)]	fn	test	called
 client	dragon_client::thorns_tests	-	pair	#[cfg(test)]	fn	test	called
 client	dragon_client::thorns_tests	-	with_game	#[cfg(test)]	fn	test	called
-client	dragon_client::walls	impl Game<'_>	dragon_check_walls	-	method	server,test	called
 client	enchant_effects_client	impl Game<'_>	apply_piercing_effect	-	method	server	called
 client	enchant_power_beam_tests	impl BlockPart for QueryProbe	-	#[cfg(test)]	trait_impl	-	trait-impl
 client	enchant_power_beam_tests	impl Hooks for QueryProbe	-	#[cfg(test)]	trait_impl	-	trait-impl
@@ -297,7 +258,6 @@ client	entity_culling	impl Game<'_>	standing_entity_in_view	-	method	server,game
 client	entity_culling	impl Game<'_>	view_scale	-	method	server	called
 client	entity_sizes_client	impl Game<'_>	client_object_dimensions	-	method	server	called
 client	entity_sizes_client::tests	-	white_outline	#[cfg(test)]	fn	test	called
-client	entity_sounds	impl Game<'_>	play_mob_bound_sound	-	method	game	called
 client	entity_sounds	impl Game<'_>	play_player_bound_sound	-	method	server,game	called
 client	events	impl Events	note_hit	-	method	game	called
 client	extinguish_client::extinguish_tests	-	heard	#[cfg(test)]	fn	test	called
@@ -306,8 +266,6 @@ client	extras	impl Game<'_>	extras_frame	-	method	test	called
 client	extras	impl Game<'_>	frame_reading	-	method	game	called
 client	falling_blocks_client	impl Game<'_>	falling_model_vertices	-	method	game,test	called
 client	fangs_client	impl Game<'_>	insert_fangs	-	method	server,test	called
-client	fireworks_client	impl Game<'_>	explode_rocket	-	method	test	called
-client	fireworks_client	impl Game<'_>	tick_rocket	-	method	game	called
 client	fishing_client	impl Game<'_>	remote_hook_ends	-	method	server	called
 client	fishing_client	impl Game<'_>	remote_hook_motion	-	method	game	called
 client	fishing_client	impl Game<'_>	rod_hand_position	-	method	server	called
@@ -326,10 +284,7 @@ client	fov	impl Game<'_>	tick_fov	-	method	test	called
 client	fov	impl Game<'_>	use_spyglass	-	method	server	called
 client	frame_geometry	impl Game<'_>	hand_geometry	-	method	test	called
 client	frame_geometry	impl Game<'_>	submit_first_person_arm	-	method	game	called
-client	frames_client	impl Game<'_>	break_frame_by	-	method	server,game,test	called
 client	frames_client	impl Game<'_>	frame_geometry	-	method	test	called
-client	frames_client	impl Game<'_>	set_frame_item	-	method	server	called
-client	frames_client	impl Game<'_>	tick_item_frames	-	method	server,test	called
 client	friends	impl Game<'_>	friends_lan_closed	#[cfg(feature = "friends")]	method	server	called
 client	friends	impl Game<'_>	friends_lan_closed	#[cfg(not(feature = "friends"))]	method	server	called
 client	friends	impl Game<'_>	tick_friends	#[cfg(feature = "friends")]	method	server	called
@@ -342,6 +297,7 @@ client	game_client	impl Game<'_>	camera_orientation	-	method	server,game	called
 client	game_client	impl Game<'_>	candle_smoke	-	method	server,game	called
 client	game_client	impl Game<'_>	clear_entities_client_render_caches	-	method	server	called
 client	game_client	impl Game<'_>	clear_entities_client_transient_blocks	-	method	server	called
+client	game_client	impl Game<'_>	close_container_client	-	method	server	called
 client	game_client	impl Game<'_>	dispatch_screen_key	-	method	game,test	called
 client	game_client	impl Game<'_>	dispatch_window_key	-	method	test	called
 client	game_client	impl Game<'_>	finish_close_world	-	method	test	called
@@ -351,12 +307,14 @@ client	game_client	impl Game<'_>	finish_open_world_sections_client	-	method	serv
 client	game_client	impl Game<'_>	handle_window_event_inner	-	method	test	called
 client	game_client	impl Game<'_>	hud_layers	-	method	test	called
 client	game_client	impl Game<'_>	hud_with_reload	-	method	test	called
+client	game_client	impl Game<'_>	lever_puff	-	method	server	called
 client	game_client	impl Game<'_>	mark_motion	-	method	server,game,test	called
 client	game_client	impl Game<'_>	pointer_space	-	method	game	called
+client	game_client	impl Game<'_>	process_client_level_events	-	method	server	called
 client	game_client	impl Game<'_>	process_level_events_end_gateway_client	-	method	server	called
-client	game_client	impl Game<'_>	process_level_events_note_custom_sound_client	-	method	server	called
 client	game_client	impl Game<'_>	process_level_events_portal_travel_client	-	method	server	called
 client	game_client	impl Game<'_>	process_level_events_sound_client	-	method	server	called
+client	game_client	impl Game<'_>	remove_local_player_body	-	method	server	called
 client	game_client	impl Game<'_>	render_and_flip	-	method	test	called
 client	game_client	impl Game<'_>	render_with	-	method	game,test	called
 client	game_client	impl Game<'_>	set_client_message	-	method	server	called
@@ -489,24 +447,9 @@ client	jukebox	impl Game<'_>	stop_sound	-	method	server	called
 client	jukebox	impl Game<'_>	tick_jukebox	-	method	game,test	called
 client	jukebox	impl Game<'_>	update_song_volumes	-	method	game	called
 client	jukebox	impl Game<'_>	use_jukebox	-	method	server,test	called
-client	lan_actions_client::effects	impl Game<'_>	guest_instrument_sound	-	method	server	called
-client	lan_actions_client::effects	impl Game<'_>	guest_use_sounds	-	method	server	called
-client	lan_actions_client::effects	impl Game<'_>	lan_broadcast_effects	-	method	server,test	called
-client	lan_actions_client::effects	impl Game<'_>	lan_prepare_captured_sounds	-	method	server	called
-client	lan_actions_client::guest_body	impl Game<'_>	guest_motion_events	-	method	server	called
 client	lan_actions_client::interaction	impl Game<'_>	creative_item_enabled	-	method	server	called
-client	lan_actions_client::pickups	impl Game<'_>	guest_orbs	-	method	server,test	called
 client	lan_actions_client::pickups::pickup_post_tests	-	host_animations	#[cfg(test)]	fn	test	called
-client	lan_actions_client::turns	impl Game<'_>	guest_hurt_sound	-	method	server	called
-client	lan_actions_client::turns	impl Game<'_>	guest_turn_client_enter_screens	-	method	server	called
-client	lan_actions_client::turns	impl Game<'_>	guest_turn_client_leave_input	-	method	server	called
-client	lan_actions_client::turns	impl Game<'_>	guest_turn_client_leave_screens	-	method	server	called
-client	lan_actions_client::turns	impl Game<'_>	guest_turn_client_replace_message	-	method	server	called
-client	lan_actions_client::turns	impl Game<'_>	guest_turn_client_take_input	-	method	server	called
-client	lan_client	impl Game<'_>	lan_disconnect_client	-	method	server	called
-client	lan_particles_client	impl Game<'_>	evaporation_smoke	-	method	server,game	called
-client	lan_particles_client	impl Game<'_>	landing_dust	-	method	server	called
-client	lan_particles_client	impl Game<'_>	snowflake_particle	-	method	server	called
+client	lan_particles_client	impl Game<'_>	client_landing_dust	-	method	server	called
 client	lan_screen	impl Game<'_>	apply_world_options	-	method	server	called
 client	lan_screen	impl Game<'_>	close_world_options	-	method	test	called
 client	lan_screen	impl Game<'_>	open_world_options	-	method	test	called
@@ -521,6 +464,7 @@ client	lan_stations	impl Game<'_>	lan_lectern_click	-	method	game	called
 client	lan_stations	impl Game<'_>	lan_lectern_valid	-	method	game	called
 client	lan_stations	impl Game<'_>	lan_open_lectern	-	method	server	called
 client	lan_stations	impl Game<'_>	lan_open_station	-	method	server,test	called
+client	lan_stations	impl Game<'_>	lan_send_station	-	method	server	called
 client	lan_stations	impl Game<'_>	lan_station_beacon	-	method	server	called
 client	lan_stations	impl Game<'_>	lan_station_button	-	method	server	called
 client	lan_stations	impl Game<'_>	lan_station_click	-	method	game	called
@@ -531,7 +475,6 @@ client	lan_stations	impl Game<'_>	lan_station_rename	-	method	server	called
 client	lan_stations	impl Game<'_>	lan_station_valid	-	method	game,test	called
 client	lan_stations	impl Game<'_>	lan_stations_tick	-	method	server	called
 client	lan_stations::anvil_tests	impl Hooks for Observe	-	#[cfg(test)]	trait_impl	-	trait-impl
-client	lan_trade_decisions_client	impl Game<'_>	merchant_sound	-	method	server	called
 client	lan_trade_decisions_tests_client	-	restock_after_hero_change	#[cfg(test)]	fn	test	called
 client	lan_vehicles_client	impl Game<'_>	object_target	-	method	game	called
 client	leads_client	impl Game<'_>	interact_leash_with_item_context	-	method	server,test	called
@@ -554,7 +497,6 @@ client	level_particles_client	impl Game<'_>	torch_burnout_smoke	-	method	server	
 client	level_particles_client::phantom_bite_tests	-	with_game	#[cfg(test)]	fn	test	called
 client	level_sounds_client	impl Game<'_>	play_client_level_sound	-	method	game	called
 client	level_sounds_client	impl Game<'_>	play_client_local_sound	-	method	server,game	called
-client	level_sounds_client	impl Game<'_>	play_immediate_level_sound	-	method	server	called
 client	lightning	-	thunder_strike_column	-	fn	server	called
 client	lightning	-	sunrise_client::impl_joined	-	macro_invoc	-	macro-invoc
 client	lightning	-	sunrise_mod_runtime::impl_attachment_lifetime	-	macro_invoc	-	macro-invoc
@@ -593,17 +535,16 @@ client	locator_bar	impl Game<'_>	has_waypoints	-	method	generated	called
 client	locator_bar	impl Game<'_>	jumpable_vehicle	-	method	generated	called
 client	locator_bar	impl Game<'_>	own_uuid	-	method	server,game	called
 client	loom	impl Game<'_>	paint_screen	-	method	server	called
-client	mace_client	impl Game<'_>	mace_smash_self	-	method	server	called
 client	mace_client	impl Game<'_>	smash_dust	-	method	server	called
 client	machines_client::crafter	impl Game<'_>	crafter_slot_clicked	-	method	game,test	called
 client	maps_client	impl Game<'_>	map_texture	-	method	game	called
 client	maps_client	impl Game<'_>	map_vertices	-	method	server	called
 client	maps_client	impl Game<'_>	use_lodestone_compass	-	method	server	called
-client	melee_client	impl Game<'_>	attack_effects	-	method	server,game	called
-client	melee_client	impl Game<'_>	sweep_attack	-	method	server	called
 client	memory_client	impl Game<'_>	memory_inputs	-	method	server	called
 client	menu_clicks	impl Game<'_>	anvil_menu_session	-	method	game	called
+client	menu_clicks	impl Game<'_>	click_inventory	-	method	server	called
 client	menu_clicks	impl Game<'_>	click_open_inventory	-	method	server	called
+client	menu_clicks	impl Game<'_>	creative_throw_carrying	-	method	server	called
 client	menu_clicks	impl Game<'_>	deliver_client_anvil_update	-	method	game	called
 client	menu_clicks	impl Game<'_>	hovered_inventory_slot	-	method	server	called
 client	menu_clicks	impl Game<'_>	inventory_quick_move	-	method	server	called
@@ -612,8 +553,6 @@ client	menu_clicks	impl Game<'_>	menu_session	-	method	server,game,test	called
 client	menu_clicks	impl Game<'_>	menu_session_with_game	-	method	game	called
 client	menu_clicks	impl Game<'_>	reset_inventory_clicks	-	method	server	called
 client	menu_clicks	impl Game<'_>	run_client_anvil_click	-	method	game	called
-client	minecarts_client	impl Game<'_>	prime_cart	-	method	server,game	called
-client	minecarts_client	impl Game<'_>	tick_cart	-	method	game,test	called
 client	mob_blocks	impl Game<'_>	elder_apparition_geometry	-	method	game	called
 client	mob_sounds	impl Game<'_>	start_guardian_sound	-	method	server	called
 client	mob_sounds	impl Game<'_>	start_sniffer_digging_sound	-	method	server	called
@@ -642,18 +581,11 @@ client	mount_menu	impl Game<'_>	mount_closed	-	method	server	called
 client	mount_menu	impl Game<'_>	mount_contents	-	method	game	called
 client	mount_menu	impl Game<'_>	mount_store	-	method	game	called
 client	mount_menu	impl Game<'_>	open_mount_menu	-	method	server,test	called
-client	mount_menu	impl Game<'_>	open_ridden_mount_menu	-	method	server	called
+client	mount_menu	impl Game<'_>	show_mount_menu	-	method	server	called
 client	mount_menu	impl Game<'_>	tick_mount_menu	-	method	game	called
-client	mounts_client	impl Game<'_>	interact_mount	-	method	server,test	called
-client	mounts_client	impl Game<'_>	shear_saddle	-	method	server	called
-client	mounts_client::tests	-	equip	#[cfg(test)]	fn	test	called
-client	mounts_client::tests	-	feed	#[cfg(test)]	fn	test	called
 client	moving_pistons	impl Game<'_>	moving_piston_geometry	-	method	test	called
 client	moving_pistons	impl Game<'_>	section_mesh_pending_in	-	method	game	called
 client	moving_pistons	impl Game<'_>	section_of	-	method	game	called
-client	music	impl Game<'_>	audio_capture_active	-	method	server	called
-client	music	impl Game<'_>	audio_capture_len	-	method	server,test	called
-client	music	impl Game<'_>	start_audio_capture	-	method	server	called
 client	music	impl Game<'_>	tick_sound_engine	-	method	test	called
 client	names	-	name_component	-	fn	server	called
 client	names	impl Game<'_>	own_profile_name	-	method	server	called
@@ -899,7 +831,6 @@ client	native_key_mappings_tests	impl EventLoopCtl for NoLoop	-	#[cfg(test)]	tra
 client	native_key_mappings_tests	impl Hooks for Keys	-	#[cfg(test)]	trait_impl	-	trait-impl
 client	native_lifecycle_client	impl Game<'_>	native_lifecycle_world_closed	-	method	server,test	called
 client	native_living_blocking	impl Game<'_>	living_is_blocking	-	method	generated	called
-client	native_living_refs_client	impl Game<'_>	equip_item_effects	-	method	server	called
 client	native_living_writes_client::tests	-	with_uses	#[cfg(test)]	fn	test	called
 client	native_local_player_writes	impl Game<'_>	move_local_player_by	-	method	generated	called
 client	native_local_player_writes	impl Game<'_>	player_reset_fall_distance	-	method	generated	called
@@ -952,6 +883,7 @@ client	native_net	impl Game<'_>	send_chat	-	method	generated	called
 client	native_net	impl Game<'_>	send_packet	-	method	generated	called
 client	native_net::packet_hold	impl Game<'_>	drop_held	-	method	generated,test	called
 client	native_net::packet_hold	impl Game<'_>	hold_packets	-	method	generated,test	called
+client	native_net::packet_hold	impl Game<'_>	publish_mod_held	-	method	server	called
 client	native_net::packet_hold	impl Game<'_>	release_held	-	method	generated,test	called
 client	native_net::packet_hold	impl Game<'_>	send_or_hold_play	-	method	game	called
 client	native_net::packet_hold	impl Game<'_>	send_play	-	method	game	called
@@ -1037,6 +969,7 @@ client	pad_menu	impl Game<'_>	pad_targets	-	method	test	called
 client	paintings_client	impl Game<'_>	drop_painting	-	method	server	called
 client	passengers_client	impl Game<'_>	passenger_riding_position_inner	-	method	server	called
 client	passengers_client	impl Game<'_>	position_riders	-	method	server,game,test	called
+client	payload_transport	impl Deferred	publish	-	method	server	called
 client	payload_transport	impl Game<'_>	has_channel	-	method	generated	called
 client	payload_transport	impl Game<'_>	player_send_payload	-	method	generated	called
 client	payload_transport	impl Game<'_>	players_send_payload	-	method	generated	called
@@ -1118,11 +1051,9 @@ client	play_input	impl Game<'_>	play_mouse	-	method	test	called
 client	play_input	impl Game<'_>	press_device_key	-	method	test	called
 client	play_input	impl Game<'_>	release_device_key	-	method	test	called
 client	play_input	impl Game<'_>	remove_device_key	-	method	server,test	called
-client	play_input	impl Game<'_>	sneak_or_right_shift_held	-	method	server	called
 client	play_keys	impl Game<'_>	key_pressed	-	method	test	called
 client	play_keys::creative_close_tests	impl Hooks for Veto	-	#[cfg(test)]	trait_impl	-	trait-impl
 client	play_keys::swap_hands_tests	impl Hooks for Torch	-	#[cfg(test)]	trait_impl	-	trait-impl
-client	player_equip_client	impl Game<'_>	player_equipped	-	method	server,test	called
 client	player_spawn_client	impl Game<'_>	spawn_player_client	-	method	server	called
 client	pointer_capture	impl Game<'_>	capture	-	method	server,game	called
 client	pointer_capture	impl Game<'_>	screen_over_playing	-	method	test	called
@@ -1131,6 +1062,7 @@ client	potions	-	collect_dragon_breath	-	fn	server,test	called
 client	potions	-	mob_can_be_affected	-	fn	server	called
 client	potions	-	mob_effect_id	-	fn	server	called
 client	potions	-	potion_cloud_to_nbt	-	fn	server,test	called
+client	potions	-	sound_on_added	-	fn	server	called
 client	potions	-	splash_distance_sqr	-	fn	server	called
 client	potions	-	thrown_projectile	-	fn	server	called
 client	potions	impl CloudSettings	lingering	-	method	server	called
@@ -1160,6 +1092,7 @@ client	potions	impl Game<'_>	spawn_infested	-	method	server	called
 client	potions	impl Game<'_>	splash_on_player	-	method	server	called
 client	potions	impl Game<'_>	step_remote_thrown	-	method	test	called
 client	potions	impl Game<'_>	tick_client_effects	-	method	test	called
+client	potions	impl Game<'_>	tick_drinking	-	method	server	called
 client	potions	impl Game<'_>	tick_effects	-	method	server	called
 client	potions	impl Game<'_>	tick_mob_effects	-	method	server,test	called
 client	potions	impl Game<'_>	tick_potion_clouds	-	method	test	called
@@ -1197,13 +1130,10 @@ client	profile_capture	-	reports_dir	-	fn	game	called
 client	profile_capture	-	shown	-	fn	server,game	called
 client	profile_capture	impl Game<'_>	profiler_client_only	-	method	game	called
 client	profile_capture	impl Profile	new	-	method	game	called
-client	projectile_spawned_client	impl Game<'_>	apply_spawned_effect	-	method	server	called
 client	pumpkin	impl Game<'_>	use_pumpkin	-	method	server,test	called
 client	pvp	impl Game<'_>	pvp_attacked	-	method	game	called
 client	pvp	impl Game<'_>	pvp_hurt	-	method	game	called
 client	pvp	impl Game<'_>	pvp_mutes_sound	-	method	game	called
-client	raids_client	impl Game<'_>	raid_horn_client	-	method	server	called
-client	raids_client	impl Game<'_>	sync_villager_raids_client	-	method	server	called
 client	raids_client::bar_players_tests	-	raid_bars	#[cfg(test)]	fn	test	called
 client	recipe_book	impl Game<'_>	forget_book	-	method	server	called
 client	recipe_book	impl Game<'_>	menu_transfer_answer	-	method	server	called
@@ -1374,8 +1304,6 @@ client	resource_loader	impl GameCpuResources	load	-	method	game,test	called
 client	resource_loader	impl WorldRestLoader	finish	-	method	test	called
 client	resource_loader	impl WorldRestLoader	ready	-	method	test	called
 client	resource_loader	impl From<LoaderFailure> for Box<dyn std::error::Error>	-	-	trait_impl	-	trait-impl
-client	respawn_anchor_client	impl Game<'_>	charge_anchor	-	method	server	called
-client	respawn_anchor_client	impl Game<'_>	destroy_straw_bed	-	method	server	called
 client	saving_client	impl Game<'_>	begin_closing_save	-	method	game	called
 client	saving_client	impl Game<'_>	request_client_quit	-	method	generated	called
 client	saving_client::tests	-	finish_staged_save	#[cfg(test)]	fn	test	called
@@ -1387,8 +1315,6 @@ client	screen_backgrounds	impl Game<'_>	shows_panorama	-	method	game	called
 client	screen_backgrounds	impl Game<'_>	title_screen_render_view	-	method	test	called
 client	screen_build	impl Game<'_>	build_screen	-	method	server,game,test	called
 client	screen_build	impl Game<'_>	built_container	-	method	test	called
-client	screen_build	impl Game<'_>	chat_screen_open	-	method	server	called
-client	screen_build	impl Game<'_>	playing_screen_open	-	method	server	called
 client	screen_build	impl Game<'_>	release_mappings_on_screen_open	-	method	game	called
 client	screen_build	impl Game<'_>	screen_regions	-	method	game	called
 client	screen_build	impl ObservedScreen	view	-	method	game,test	called
@@ -1414,6 +1340,7 @@ client	sculk	impl Game<'_>	darkness_blend	-	method	server	called
 client	sculk	impl Game<'_>	entity_killed_event	-	method	server,game	called
 client	sculk	impl Game<'_>	entity_killed_event_by	-	method	server	called
 client	sculk	impl Game<'_>	entity_motion_events	-	method	server	called
+client	sculk	impl Game<'_>	in_water_at	-	method	server	called
 client	sculk	impl Game<'_>	item_landing_event	-	method	server	called
 client	sculk	impl Game<'_>	landing_state	-	method	server	called
 client	sculk	impl Game<'_>	listener_slots	-	method	server	called
@@ -1426,7 +1353,6 @@ client	sculk	impl Game<'_>	mob_slot	-	method	server	called
 client	sculk	impl Game<'_>	mob_vibration_particle	-	method	server	called
 client	sculk	impl Game<'_>	motion_steps_mut	-	method	server	called
 client	sculk	impl Game<'_>	mount_events	-	method	server	called
-client	sculk	impl Game<'_>	player_context	-	method	server,game	called
 client	sculk	impl Game<'_>	player_projectile_shot	-	method	server	called
 client	sculk	impl Game<'_>	post_block_game_event	-	method	server,game	called
 client	sculk	impl Game<'_>	post_entity_event	-	method	server,game	called
@@ -1453,7 +1379,6 @@ client	sculk	impl Game<'_>	spawn_position	-	method	server	called
 client	sculk	impl Game<'_>	state_dampens	-	method	server	called
 client	sculk	impl Game<'_>	step_on_redstone_ore	-	method	server	called
 client	sculk	impl Game<'_>	supporting_block	-	method	server	called
-client	sculk	impl Game<'_>	tick_player_sculk_events	-	method	server	called
 client	sculk	impl Game<'_>	tick_sculk_block	-	method	server	called
 client	sculk	impl Game<'_>	tick_sculk_entities	-	method	server,test	called
 client	sculk	impl Game<'_>	use_redstone_ore	-	method	server	called
@@ -1466,8 +1391,6 @@ client	sculk	impl Index	iter	-	method	server	called
 client	sculk	impl Index	within	-	method	server	called
 client	sculk	impl SculkState	swap_level	-	method	server	called
 client	sculk	impl SculkState	swap_player	-	method	server	called
-client	sculk_fixture_client	impl Game<'_>	sculk_scenario_drain_capture_client	-	method	server	called
-client	sculk_fixture_client	impl Game<'_>	sculk_scenario_set_capture_client	-	method	server	called
 client	server_links	-	valid_untrusted_uri	-	fn	server	called
 client	shader_packs	-	picks_material_pack	-	fn	game	called
 client	shader_packs	impl Game<'_>	mark_entity	-	method	server	called
@@ -1481,18 +1404,15 @@ client	shelf	impl Game<'_>	shelf_hit	-	method	game	called
 client	shelf	impl Game<'_>	shelf_items	-	method	test	called
 client	shelf	impl Game<'_>	use_shelf	-	method	server	called
 client	sign_edit	impl Game<'_>	chains_hanging_sign	-	method	server	called
-client	sign_edit	impl Game<'_>	lan_open_sign_editor	-	method	server	called
-client	sign_edit	impl Game<'_>	lan_sign_update	-	method	server	called
 client	sign_edit	impl Game<'_>	open_sign_editor	-	method	test	called
-client	sign_edit	impl Game<'_>	open_text_edit	-	method	game	called
 client	sign_edit	impl Game<'_>	sign_command_source	-	method	server	called
 client	sign_edit	impl Game<'_>	sign_consumes_click	-	method	server	called
-client	sign_edit	impl Game<'_>	tick_sign_editors	-	method	game	called
 client	sign_edit	impl Game<'_>	use_sign_applicator	-	method	server	called
 client	sign_edit	impl Game<'_>	use_sign_empty_hand	-	method	server	called
 client	sniffers	impl Game<'_>	hatch_sniffer	-	method	server	called
 client	sniffers	impl Game<'_>	lay_sniffer_egg	-	method	server	called
-client	sniffers	impl Game<'_>	tick_sniffer_effects	-	method	game	called
+client	sniffers	impl Game<'_>	tick_sniffer_client	-	method	server	called
+client	sniffers	impl Game<'_>	tick_sniffer_server	-	method	server	called
 client	social	impl Game<'_>	social_hides	-	method	game	called
 client	social	impl Default for Social	-	-	trait_impl	-	trait-impl
 client	spawner	impl Game<'_>	add_planned	-	method	server,test	called
@@ -1510,7 +1430,6 @@ client	spawner	impl Game<'_>	spawner_geometry	-	method	game	called
 client	spawner	impl Game<'_>	tick_spawner	-	method	game	called
 client	spawner	impl Game<'_>	update_spawner_display	-	method	server,game	called
 client	spawner	impl Game<'_>	use_spawn_egg_on_spawner	-	method	server	called
-client	spear_client	impl Game<'_>	damage_stats_and_hearts	-	method	server	called
 client	spear_client	impl Game<'_>	play_at_feet	-	method	server	called
 client	stacked_on_other	-	local_pickup_id	-	fn	game	called
 client	stacked_on_other	impl Game<'_>	journal_guest_click	-	method	server,game	called
@@ -1521,12 +1440,12 @@ client	stacked_on_other	impl Game<'_>	stacked_pickup	-	method	server,game	called
 client	stacked_on_other	impl<'a, 'g> ActionTarget<GameHost<'a, 'g>> for PickupTarget<'_>	-	-	trait_impl	-	trait-impl
 client	stations	impl Game<'_>	anvil_item_name	-	method	game,test	called
 client	stations	impl Game<'_>	anvil_used	-	method	test	called
-client	stations	impl Game<'_>	close_station	-	method	server	called
+client	stations	impl Game<'_>	close_station_client	-	method	server	called
 client	stations	impl Game<'_>	draw_tooltip_lines	-	method	game	called
 client	stations	impl Game<'_>	give_levels	-	method	game	called
 client	stations	impl Game<'_>	give_or_drop	-	method	server	called
 client	stations	impl Game<'_>	item_resource_tooltip	-	method	generated	called
-client	stations	impl Game<'_>	open_station	-	method	server	called
+client	stations	impl Game<'_>	max_stack	-	method	server	called
 client	stations	impl Game<'_>	options_advanced_tooltips	-	method	game	called
 client	stations	impl Game<'_>	play_at	-	method	server	called
 client	stations	impl Game<'_>	stack_hover_name	-	method	game	called
@@ -1537,6 +1456,7 @@ client	stations	impl Game<'_>	station_click	-	method	server	called
 client	stations	impl Game<'_>	station_info	-	method	test	called
 client	stations	impl Game<'_>	tooltip_box	-	method	test	called
 client	stations	impl Game<'_>	translate_with_fallback	-	method	server	called
+client	stations	impl Kind	from_block	-	method	server	called
 client	stations	impl Kind	has_result	-	method	game	called
 client	stations	impl Kind	inputs	-	method	game	called
 client	stations	impl Station	new	-	method	test	called
@@ -1562,7 +1482,6 @@ client	storage	impl Game<'_>	play_container_sound	-	method	server	called
 client	storage	impl Game<'_>	refuse_locked_container	-	method	server,test	called
 client	storage	impl Game<'_>	refuses	-	method	server	called
 client	storage	impl Game<'_>	resolve_container_sound	-	method	server	called
-client	storage	impl Game<'_>	tick_container_reach_client	-	method	server	called
 client	subtitle_hud	impl Game<'_>	tick_subtitles	-	method	server	called
 client	sulfur_cubes_client	impl Game<'_>	sulfur_sound	-	method	server	called
 client	sync_background_tests::background	impl Hooks for Background	-	#[cfg(test)]	trait_impl	-	trait-impl
@@ -1578,7 +1497,6 @@ client	text_displays	impl RemoteTextDisplay	tick	-	method	test	called
 client	text_displays	impl Shows	from_kind	-	method	server	called
 client	titles	impl Game<'_>	set_hud_overlay	-	method	server	called
 client	titles	impl Game<'_>	set_overlay_message	-	method	generated	called
-client	tnt_client	impl Game<'_>	spawn_primed_tnt	-	method	server,test	called
 client	tnt_client::tests	-	run_portal_blast_sulfur_cube_uses_only_positive_cooldown	#[cfg(test)]	fn	test	called
 client	tnt_client::tests	-	run_silent_creeper_keeps_the_blast_after_its_source_is_removed	#[cfg(test)]	fn	test	called
 client	tnt_client::tests	-	run_silent_launched_potions_and_bottles_keep_their_impact	#[cfg(test)]	fn	test	called
@@ -1592,28 +1510,16 @@ client	totem	impl Game<'_>	remote_totem	-	method	server	called
 client	totem	impl Game<'_>	sync_mob_death_protection	-	method	server	called
 client	totem	impl Game<'_>	totem_event	-	method	server	called
 client	totem	impl Game<'_>	update_totem_ready	-	method	server	called
-client	transactions_client	impl<'g> Game<'g>	run_after	-	method	server	called
+client	trading_client	impl Game<'_>	open_preview_merchant	-	method	server	called
+client	trading_client	impl Game<'_>	open_remote_merchant	-	method	server	called
 client	trial_visuals	impl Game<'_>	client_tick_trial_spawner	-	method	game	called
 client	trial_visuals	impl Game<'_>	client_tick_vault	-	method	server,game	called
 client	trial_visuals	impl Game<'_>	trial_level_event	-	method	server	called
 client	trident_client	impl Game<'_>	draw_tridents	-	method	server	called
-client	trident_client	impl Game<'_>	trident_block_effects	-	method	server	called
-client	trident_client	impl Game<'_>	trident_taken	-	method	server	called
 client	tutorial	impl super::Game<'_>	reset_tutorial	-	method	server	called
 client	tutorial	impl super::Game<'_>	tutorial_destroy	-	method	game	called
 client	tutorial	impl super::Game<'_>	tutorial_get_item	-	method	server,game	called
 client	use_hand_client::bow_enchantment_tests	-	game_with_player	#[cfg(test)]	fn	test	called
-client	using_item	impl Game<'_>	consume_placed	-	method	server	called
-client	using_item	impl Game<'_>	release_used_item	-	method	server	called
-client	using_item	impl Game<'_>	start_eating	-	method	server	called
-client	using_item	impl Game<'_>	stop_active_item_use	-	method	server,test	called
-client	using_item	impl Game<'_>	stop_use_replaced	-	method	server	called
-client	using_item	impl Game<'_>	stop_using_item	-	method	server,test	called
-client	using_item	impl Game<'_>	tick_using	-	method	server,test	called
-client	using_item	impl Game<'_>	use_instrument	-	method	server	called
-client	using_item	impl Game<'_>	use_vibrates	-	method	server	called
-client	using_item	impl Game<'_>	use_vibration	-	method	server	called
-client	using_item	impl UseStart	of	-	method	game,test	called
 client	vault_client	impl Game<'_>	vault_events	-	method	server	called
 client	viewed_worlds::routing	impl Game<'_>	route_viewed_bundle	-	method	server	called
 client	viewed_worlds::routing	impl From<ViewedLevelsError> for RouteError	-	-	trait_impl	-	trait-impl
@@ -1627,7 +1533,6 @@ client	viewed_worlds::tests	-	open	#[cfg(test)]	fn	test	called
 client	viewed_worlds::tests	-	run	#[cfg(test)]	fn	test	called
 client	viewed_worlds::tests	-	spawn	#[cfg(test)]	fn	test	called
 client	viewed_worlds::tests	impl mod_api::Hooks for Portal	-	#[cfg(test)]	trait_impl	-	trait-impl
-client	villagers_client	impl Game<'_>	particles_around	-	method	server	called
 client	wind_client	impl Game<'_>	throw_wind_charge	-	method	server	called
 client	wind_client::wind_charged_tests	-	heard	#[cfg(test)]	fn	test	called
 client	window_handler	impl Game<'_>	handle_window_event	-	method	test	called
@@ -1646,6 +1551,24 @@ client	zombie_villagers	impl Game<'_>	cure_zombie_villager	-	method	server	calle
 client	zombie_villagers	impl Game<'_>	interact_zombie_villager	-	method	server	called
 client	zombie_villagers	impl Game<'_>	zombie_killed	-	method	server	called
 client	zombie_villagers	impl Game<'_>	zombie_villager_cure_sound	-	method	server	called
+server	acting_state	impl Game<'_>	server_acting_attack	-	method	client	called
+server	acting_state	impl Game<'_>	server_acting_sneak	-	method	client	called
+server	acting_state	impl Game<'_>	server_acting_sprint	-	method	client	called
+server	acting_state	impl Game<'_>	server_acting_use	-	method	client	called
+server	acting_state	impl Game<'_>	server_clear_acting_input	-	method	client	called
+server	acting_state	impl Game<'_>	server_open_ridden_mount_menu	-	method	client	called
+server	acting_state	impl Game<'_>	server_replace_acting_input	-	method	client	called
+server	acting_state	impl Game<'_>	server_replace_pending_guest_ui	-	method	client	called
+server	acting_state	impl Game<'_>	server_request_command_block	-	method	client	called
+server	acting_state	impl Game<'_>	server_request_lectern	-	method	client	called
+server	acting_state	impl Game<'_>	server_request_mount_menu	-	method	client	called
+server	acting_state	impl Game<'_>	server_request_sign_editor	-	method	client	called
+server	acting_state	impl Game<'_>	server_set_acting_attack	-	method	client	called
+server	acting_state	impl Game<'_>	server_set_acting_input	-	method	client	called
+server	acting_state	impl Game<'_>	server_set_acting_sneak	-	method	client	called
+server	acting_state	impl Game<'_>	server_set_acting_sprint	-	method	client	called
+server	acting_state	impl Game<'_>	server_set_acting_use	-	method	client	called
+server	acting_state	impl Game<'_>	server_take_pending_guest_ui	-	method	client	called
 server	advancements	-	adv_name	-	fn	game	called
 server	advancements	-	item_view	-	fn	game	called
 server	advancements	-	text_of	-	fn	client	called
@@ -1916,6 +1839,7 @@ server	attachment_index::players	impl Game<'_>	bind_player_attachments	-	method	
 server	autosave_server	impl Game<'_>	finish_player_autosaves	-	method	client	called
 server	autosave_server	impl Game<'_>	on_tick_rate_changed	-	method	client,game	called
 server	autosave_server	impl Game<'_>	save_game_metadata	-	method	client	called
+server	autosave_server	impl Game<'_>	save_game_with	-	method	client	called
 server	beds	impl Game<'_>	bed_can_sleep_now	-	method	test	called
 server	beds	impl Game<'_>	free_player_beds	-	method	client	called
 server	beds	impl Game<'_>	sleep_problem	-	method	game	called
@@ -1952,7 +1876,6 @@ server	block_particles	impl Game<'_>	block_particle_sprite	-	method	client	calle
 server	block_particles	impl Game<'_>	block_provider_options	-	method	client	called
 server	block_particles	impl Game<'_>	crack_particle	-	method	client	called
 server	block_particles	impl Game<'_>	falling_block_face_sprite	-	method	game	called
-server	block_particles	impl Game<'_>	honey_slide_particles	-	method	client	called
 server	block_particles	impl Game<'_>	particle_shape	-	method	client	called
 server	block_particles	impl Game<'_>	particle_sprite	-	method	client,test	called
 server	block_particles	impl Game<'_>	transform_particle	-	method	game	called
@@ -2032,6 +1955,7 @@ server	boats	impl Game<'_>	handle_bubble_column_effect	-	method	client	called
 server	boats	impl Game<'_>	hurt_boat	-	method	game,test	called
 server	boats	impl Game<'_>	hurt_boat_result	-	method	test	called
 server	boats	impl Game<'_>	in_lava	-	method	game	called
+server	boats	impl Game<'_>	lava_hurt_sound	-	method	client	called
 server	boats	impl Game<'_>	record_boat_lid_movement	-	method	game	called
 server	boats	impl Game<'_>	refresh_boat_status	-	method	client	called
 server	boats	impl Game<'_>	riding_chest_boat	-	method	client	called
@@ -2045,7 +1969,6 @@ server	boats	impl Game<'_>	vehicle_fall_reset	-	method	game	called
 server	boats::below_world	impl Game<'_>	cart_in_world	-	method	game	called
 server	boats::placement	impl RayWorld for OutlineFluidRay<'_, '_>	-	-	trait_impl	-	trait-impl
 server	books_server	impl Game<'_>	lectern_menu_done	-	method	client,test	called
-server	books_server	impl Game<'_>	take_lectern_book	-	method	client	called
 server	books_server	impl Game<'_>	tick_lecterns	-	method	test	called
 server	books_server	impl Game<'_>	write_book	-	method	client,test	called
 server	bossbars	impl Game<'_>	publish_boss_bars	-	method	test	called
@@ -2078,7 +2001,8 @@ server	cauldron_interactions::tests	-	setup	#[cfg(test)]	fn	test	called
 server	cauldron_interactions::tests	-	unchanged	#[cfg(test)]	fn	test	called
 server	cauldron_interactions::tests	impl Hooks for TestMod	-	#[cfg(test)]	trait_impl	-	trait-impl
 server	cauldron_interactions::tests	impl mod_api::Interaction for Syrup	-	#[cfg(test)]	trait_impl	-	trait-impl
-server	chat_server	impl Game<'_>	system_message	-	method	client,game,test	called
+server	chat_server	impl Game<'_>	as_console	-	method	client	called
+server	chat_server	impl Game<'_>	server_system_message	-	method	client	called
 server	combat	impl CombatTracker	kill_credit	-	method	game	called
 server	combat	impl Game<'_>	clear_dead_player_target	-	method	client	called
 server	combat	impl Game<'_>	current_attack	-	method	game	called
@@ -2090,7 +2014,6 @@ server	combat	impl Game<'_>	note_player_attacker	-	method	test	called
 server	combat	impl Game<'_>	record_combat	-	method	game	called
 server	combat	impl Game<'_>	remember_mob_target	-	method	game	called
 server	combat	impl Game<'_>	remember_player_target	-	method	game	called
-server	combat	impl Game<'_>	remote_drown	-	method	client	called
 server	combat	impl Game<'_>	with_attack	-	method	game	called
 server	combat	impl From<PlayerCredit> for u128	-	-	trait_impl	-	trait-impl
 server	combat::bee_sting_tests	-	spawn	#[cfg(test)]	fn	test	called
@@ -2203,6 +2126,7 @@ server	consume	impl Game<'_>	apply_use_remainder	-	method	client	called
 server	consume	impl Game<'_>	consumable	-	method	client,game,test	called
 server	consume	impl Game<'_>	emit_consume	-	method	client,game,test	called
 server	consume	impl Game<'_>	feet	-	method	client	called
+server	consume	impl Game<'_>	finish_consuming	-	method	client	called
 server	consume	impl Game<'_>	portal_particles	-	method	client	called
 server	consume	impl Game<'_>	random_teleport	-	method	test	called
 server	consume	impl Game<'_>	send_use_item_complete	-	method	client	called
@@ -2223,6 +2147,7 @@ server	container_loot::tests	impl mod_api::Hooks for FillListener	-	#[cfg(test)]
 server	creaking	-	heart_signal	-	fn	game	called
 server	creaking	impl Game<'_>	creaking_heart_broken	-	method	game	called
 server	creaking	impl Game<'_>	creaking_hurt	-	method	game	called
+server	creaking	impl Game<'_>	creaking_tear_down	-	method	client	called
 server	creaking	impl Game<'_>	scan_for_hearts	-	method	game	called
 server	creaking	impl Game<'_>	tick_creaking_heart	-	method	game	called
 server	creaking	impl HeartHost for Host<'_>	-	-	trait_impl	-	trait-impl
@@ -2244,9 +2169,11 @@ server	creatures_server	impl Game<'_>	player_view	-	method	client,game,test	call
 server	creatures_server	impl Game<'_>	projectile_hit_landed	-	method	game	called
 server	creatures_server	impl Game<'_>	projectile_shoot_event	-	method	game	called
 server	creatures_server	impl Game<'_>	remember_mob_player_credit	-	method	test	called
+server	creatures_server	impl Game<'_>	set_age_locked	-	method	client	called
 server	creatures_server	impl Game<'_>	tick_creature_entities	-	method	test	called
 server	creatures_server	impl Game<'_>	tick_creatures	-	method	test	called
 server	creatures_server	impl Game<'_>	tick_projectiles_now	-	method	game	called
+server	creatures_server	impl Game<'_>	touch_arrows	-	method	client	called
 server	creatures_server::borrowed_panic_tests	-	breathing_tick	#[cfg(test)]	fn	test	called
 server	creatures_server::borrowed_panic_tests	-	run_fixture	#[cfg(test)]	fn	test	called
 server	creatures_server::borrowed_panic_tests	-	with_consumer_game	#[cfg(test)]	fn	test	called
@@ -2288,12 +2215,16 @@ server	crossbow	impl Game<'_>	use_crossbow	-	method	test	called
 server	cushions	-	aabb	-	fn	client	called
 server	cushions	-	snap_yaw	-	fn	client	called
 server	cushions	impl Game<'_>	break_cushion_by	-	method	game	called
+server	cushions	impl Game<'_>	cushion_break_particles	-	method	client	called
 server	cushions	impl Game<'_>	cushion_break_particles_server	-	method	client	called
 server	cushions	impl Game<'_>	cushion_hit	-	method	client	called
 server	cushions	impl Game<'_>	cushion_spawn	-	method	game	called
 server	cushions	impl Game<'_>	dismount_in_portal	-	method	game	called
 server	cushions	impl Game<'_>	dismount_removed_vehicle	-	method	client	called
+server	cushions	impl Game<'_>	get_up_from_cushion	-	method	client	called
 server	cushions	impl Game<'_>	infinite_materials	-	method	client	called
+server	cushions	impl Game<'_>	interact_cushion	-	method	client	called
+server	cushions	impl Game<'_>	remove_cushion	-	method	client	called
 server	cushions	impl Game<'_>	removed_vehicle_dismount_point	-	method	game	called
 server	cushions	impl Game<'_>	seat_cushion_mobs	-	method	client	called
 server	cushions	impl Game<'_>	state_view_blocking	-	method	client	called
@@ -2304,6 +2235,7 @@ server	damage_item_tests	impl ItemPart for Wear	-	#[cfg(test)]	trait_impl	-	trai
 server	decorated_pot	-	pot_data_in	-	fn	game	called
 server	decorated_pot	impl Game<'_>	pot_data	-	method	game,test	called
 server	decorated_pot	impl Game<'_>	pot_tag	-	method	client	called
+server	decorated_pot	impl Game<'_>	use_decorated_pot	-	method	client	called
 server	dedicated	-	log	-	fn	game	called
 server	dedicated	-	preflight	-	fn	game	called
 server	dedicated	-	set_auto_save	-	fn	game	called
@@ -2369,9 +2301,15 @@ server	dispenser	impl Game<'_>	commit_dispensed	-	method	client	called
 server	dispenser	impl Game<'_>	consume_with_remainder	-	method	client,game	called
 server	dispenser	impl Game<'_>	default_execute	-	method	client	called
 server	dispenser	impl Game<'_>	dispense_add_remainder	-	method	generated	called
+server	dispenser	impl Game<'_>	dispense_brush	-	method	client	called
 server	dispenser	impl Game<'_>	dispense_default	-	method	generated	called
 server	dispenser	impl Game<'_>	dispense_default_in_level	-	method	client,game	called
+server	dispenser	impl Game<'_>	dispense_equipment	-	method	client	called
+server	dispenser	impl Game<'_>	dispense_glowstone	-	method	client	called
+server	dispenser	impl Game<'_>	dispense_honeycomb	-	method	client	called
 server	dispenser	impl Game<'_>	dispense_item	-	method	test	called
+server	dispenser	impl Game<'_>	dispense_potion	-	method	client	called
+server	dispenser	impl Game<'_>	dispense_tnt	-	method	client	called
 server	dispenser	impl Game<'_>	dispense_with_remainder	-	method	generated	called
 server	dispenser	impl Game<'_>	dispenser_block_name	-	method	client	called
 server	dispenser	impl Game<'_>	dispenser_empty_hive	-	method	client	called
@@ -2382,9 +2320,13 @@ server	dispenser	impl Game<'_>	pos_of	-	method	client,game	called
 server	dispenser	impl Game<'_>	prop	-	method	client	called
 server	dispenser	impl Game<'_>	put_on_player	-	method	client	called
 server	dispenser	impl Game<'_>	sequence_loot	-	method	client,game	called
+server	dispenser	impl Game<'_>	shear_beehive	-	method	client	called
+server	dispenser	impl Game<'_>	shear_entity	-	method	client	called
 server	dispenser	impl Game<'_>	shear_mooshroom	-	method	client	called
+server	dispenser	impl Game<'_>	shear_off_leashes	-	method	client	called
 server	dispenser	impl Game<'_>	spawn_at_location	-	method	client,game	called
 server	dispenser	impl Game<'_>	spawn_mob_at	-	method	game,test	called
+server	dispenser	impl Game<'_>	sulfur_cube_swallow	-	method	client	called
 server	dispenser	impl Game<'_>	targets_at	-	method	client	called
 server	dispenser	impl Game<'_>	with_props	-	method	client,game,test	called
 server	dispenser	impl Drop for DispenseScope<'_, '_>	-	-	trait_impl	-	trait-impl
@@ -2422,6 +2364,7 @@ server	dragon	impl Game<'_>	dragon_hurts_player	-	method	test	called
 server	dragon	impl Game<'_>	dragon_look_normalised	-	method	client	called
 server	dragon	impl Game<'_>	dragon_part_boxes	-	method	game	called
 server	dragon	impl Game<'_>	dragon_rays	-	method	client	called
+server	dragon	impl Game<'_>	dragon_spawn_ambient	-	method	client	called
 server	dragon	impl Game<'_>	dragon_status	-	method	client	called
 server	dragon	impl Game<'_>	dragon_wing_knock_back	-	method	test	called
 server	dragon	impl Game<'_>	draw_boss_bars	-	method	client	called
@@ -2438,8 +2381,10 @@ server	dragon	impl Game<'_>	remote_dragon_hurt	-	method	game	called
 server	dragon	impl Game<'_>	remote_dragon_motion	-	method	game	called
 server	dragon	impl Game<'_>	remove_remote_dragon	-	method	client	called
 server	dragon	impl Game<'_>	resident_dragon_part	-	method	client,game	called
+server	dragon	impl Game<'_>	respawn_growl	-	method	client	called
 server	dragon	impl Game<'_>	rocket_blast_dragon	-	method	client	called
 server	dragon	impl Game<'_>	spawn_dragon_facing	-	method	game	called
+server	dragon	impl Game<'_>	spawn_dragon_fireball	-	method	client	called
 server	dragon	impl Game<'_>	spawn_dragon_spawned	-	method	game	called
 server	dragon	impl Game<'_>	spawn_remote_dragon	-	method	game	called
 server	dragon	impl Game<'_>	special_targets	-	method	client	called
@@ -2455,6 +2400,7 @@ server	dragon::residency	impl Default for DragonPart	-	-	trait_impl	-	trait-impl
 server	dragon::residency	impl sunrise_mod_runtime::attachments::HasAttachmentLifetime for Dragon	-	-	trait_impl	-	trait-impl
 server	dragon::residency	impl sunrise_mod_runtime::attachments::HasAttachmentLifetime for DragonPart	-	-	trait_impl	-	trait-impl
 server	dragon::thorns_tests	-	thorny	#[cfg(test)]	fn	test	called
+server	dragon::walls	impl Game<'_>	dragon_check_walls	-	method	client	called
 server	dragon::walls_tests	impl BlockPart for May	-	#[cfg(test)]	trait_impl	-	trait-impl
 server	dragon::walls_tests	impl Hooks for Walls	-	#[cfg(test)]	trait_impl	-	trait-impl
 server	dynamic_light_emission	impl Game<'_>	ask_chunk_light_emission	-	method	client,game,test	called
@@ -2608,7 +2554,6 @@ server	explosion::explosion_part_tests	impl Hooks for SkullMod	-	#[cfg(test)]	tr
 server	explosion::explosion_part_tests	impl mod_api::BlockEntityPart for DropSave	-	#[cfg(test)]	trait_impl	-	trait-impl
 server	explosion_detonate::tests	impl Hooks for Noop	-	#[cfg(test)]	trait_impl	-	trait-impl
 server	explosion_detonate::tests	impl Hooks for Probe	-	#[cfg(test)]	trait_impl	-	trait-impl
-server	explosion_settings	impl Default for BlastEffects	-	-	trait_impl	-	trait-impl
 server	extinguish	impl Game<'_>	may_interact_at	-	method	client	called
 server	falling_blocks	impl Game<'_>	fall_step	-	method	client	called
 server	falling_blocks	impl Game<'_>	tick_one_falling	-	method	test	called
@@ -2676,12 +2621,15 @@ server	frames	-	frame_owner	-	fn	client	called
 server	frames	-	hanging_drop_position	-	fn	client	called
 server	frames	-	sound	-	fn	client	called
 server	frames	impl Game<'_>	before_block	-	method	client,game	called
+server	frames	impl Game<'_>	break_frame_by	-	method	client	called
 server	frames	impl Game<'_>	drop_frame_items	-	method	client	called
 server	frames	impl Game<'_>	frame_hit	-	method	client	called
 server	frames	impl Game<'_>	frame_output_changed	-	method	client,game	called
 server	frames	impl Game<'_>	frame_survives	-	method	client	called
 server	frames	impl Game<'_>	hanging_break_cancelled	-	method	client	called
 server	frames	impl Game<'_>	hanging_place_cancelled	-	method	client	called
+server	frames	impl Game<'_>	set_frame_item	-	method	client	called
+server	frames	impl Game<'_>	tick_item_frames	-	method	client	called
 server	functions	-	overlay_files	-	fn	test	called
 server	functions	-	pack_stack	-	fn	test	called
 server	functions	impl FnState	enabled	#[cfg(test)]	method	test	called
@@ -2714,12 +2662,11 @@ server	game_server	impl Game<'_>	add_cooldown	-	method	client,game	called
 server	game_server	impl Game<'_>	add_item_entity_prepared	-	method	game	called
 server	game_server	impl Game<'_>	apply_use_cooldown	-	method	client,game	called
 server	game_server	impl Game<'_>	clear_entities	-	method	client,test	called
-server	game_server	impl Game<'_>	close_container	-	method	client,test	called
+server	game_server	impl Game<'_>	close_container_server	-	method	client	called
 server	game_server	impl Game<'_>	finish_close_world_server	-	method	client	called
 server	game_server	impl Game<'_>	finish_close_world_server_clear_bosses	-	method	client	called
 server	game_server	impl Game<'_>	finish_close_world_server_clear_player_beds	-	method	client	called
 server	game_server	impl Game<'_>	finish_open_world	-	method	test	called
-server	game_server	impl Game<'_>	lever_puff	-	method	game	called
 server	game_server	impl Game<'_>	load_saved_inventory	-	method	test	called
 server	game_server	impl Game<'_>	mob_hit	-	method	client,game,test	called
 server	game_server	impl Game<'_>	open_block_effect_menu	-	method	client,test	called
@@ -2993,8 +2940,13 @@ server	lan_actions_server::commands	impl Game<'_>	guest_suggestions	-	method	gam
 server	lan_actions_server::commands	impl Game<'_>	run_guest_command_told	-	method	game,test	called
 server	lan_actions_server::commands	impl Game<'_>	send_admin_feedback	-	method	test	called
 server	lan_actions_server::crack_feedback_tests	-	run_crack_packets_follow_start_clock_and_strict_observer_radius	#[cfg(test)]	fn	test	called
+server	lan_actions_server::effects	impl Game<'_>	guest_instrument_sound	-	method	client	called
+server	lan_actions_server::effects	impl Game<'_>	guest_use_sounds	-	method	client	called
+server	lan_actions_server::effects	impl Game<'_>	lan_broadcast_effects	-	method	client	called
 server	lan_actions_server::effects	impl Game<'_>	lan_broken_block_positions	-	method	client	called
+server	lan_actions_server::effects	impl Game<'_>	lan_prepare_captured_sounds	-	method	client	called
 server	lan_actions_server::guest_body	impl Game<'_>	guest_accepted_move	-	method	game,test	called
+server	lan_actions_server::guest_body	impl Game<'_>	guest_motion_events	-	method	client	called
 server	lan_actions_server::guest_body	impl Game<'_>	guest_server_tick	-	method	test	called
 server	lan_actions_server::guest_body::tests::fall_reset	-	scene	#[cfg(test)]	fn	test	called
 server	lan_actions_server::guest_body::tests::travel	-	send	#[cfg(test)]	fn	test	called
@@ -3005,6 +2957,7 @@ server	lan_actions_server::interaction	impl Game<'_>	knot_at_id	-	method	game	ca
 server	lan_actions_server::menus	impl Game<'_>	guest_container_opener	-	method	game	called
 server	lan_actions_server::menus	impl Game<'_>	guest_may_open	-	method	client,game	called
 server	lan_actions_server::packets	impl Game<'_>	lan_guest_packet_inner	-	method	game	called
+server	lan_actions_server::pickups	impl Game<'_>	guest_orbs	-	method	client	called
 server	lan_actions_server::pickups	impl Game<'_>	guest_pickups	-	method	test	called
 server	lan_actions_server::respawn	impl Game<'_>	guest_combat_record	-	method	game	called
 server	lan_actions_server::respawn	impl Game<'_>	guest_die	-	method	test	called
@@ -3018,6 +2971,7 @@ server	lan_actions_server::tick::building_cache_tests	-	seen_by_builder	#[cfg(te
 server	lan_actions_server::turns	impl Game<'_>	as_guest_messaged	-	method	client,game	called
 server	lan_actions_server::turns	impl Game<'_>	combat_player	-	method	test	called
 server	lan_actions_server::turns	impl Game<'_>	for_each_player	-	method	client,game	called
+server	lan_actions_server::turns	impl Game<'_>	guest_hurt_sound	-	method	client	called
 server	lan_actions_server::turns	impl Game<'_>	guest_turn	-	method	game	called
 server	lan_actions_server::turns	impl Game<'_>	projectile_player_owner_id	-	method	game	called
 server	lan_actions_server::turns	impl Game<'_>	record_open_turns	-	method	game	called
@@ -3073,14 +3027,18 @@ server	lan_mobs	impl Game<'_>	send_guest_motion	-	method	game	called
 server	lan_particles	-	decode_mod_particle	-	fn	client	called
 server	lan_particles	-	particle_position_source	-	fn	client	called
 server	lan_particles	-	send_snowflake_particle	-	fn	client	called
+server	lan_particles	-	server_particle_from_options	-	fn	client	called
 server	lan_particles	impl Game<'_>	entity_powder_snow_particles	-	method	client,game	called
+server	lan_particles	impl Game<'_>	evaporation_smoke	-	method	client	called
 server	lan_particles	impl Game<'_>	flush_lan_explosions	-	method	game	called
 server	lan_particles	impl Game<'_>	flush_lan_particles	-	method	game,test	called
 server	lan_particles	impl Game<'_>	flush_native_sounds	-	method	game,test	called
-server	lan_particles	impl Game<'_>	lan_level_particles	-	method	client	called
-server	lan_particles	impl Game<'_>	lan_send_particles	-	method	client	called
 server	lan_particles	impl Game<'_>	powder_snow_particle	-	method	game	called
 server	lan_particles	impl Game<'_>	received_particle	-	method	client	called
+server	lan_particles	impl Game<'_>	server_landing_dust	-	method	client	called
+server	lan_particles	impl Game<'_>	server_level_particles	-	method	client	called
+server	lan_particles	impl Game<'_>	server_send_particles	-	method	client	called
+server	lan_particles	impl Game<'_>	snowflake_particle	-	method	client	called
 server	lan_particles::tests	-	test_hub	#[cfg(test)]	fn	test	called
 server	lan_particles::tests	impl mod_api::Hooks for MeasuredParticle	-	#[cfg(test)]	trait_impl	-	trait-impl
 server	lan_pvp	-	meets_players	-	fn	game	called
@@ -3095,6 +3053,7 @@ server	lan_trade_decisions	impl Game<'_>	commit_merchant_effect	-	method	client	
 server	lan_trade_decisions	impl Game<'_>	journal_merchant_mob	-	method	game	called
 server	lan_trade_decisions	impl Game<'_>	lan_merchant_click	-	method	game,test	called
 server	lan_trade_decisions	impl Game<'_>	menu_click_in_progress	-	method	game	called
+server	lan_trade_decisions	impl Game<'_>	merchant_sound	-	method	client	called
 server	lan_trade_decisions	impl Game<'_>	merchant_take_active	-	method	client	called
 server	lan_trade_decisions_tests	-	open	#[cfg(test)]	fn	test	called
 server	lan_trade_decisions_tests	-	prepare_work	#[cfg(test)]	fn	test	called
@@ -3141,11 +3100,14 @@ server	leads	impl Game<'_>	player_leashed	-	method	client	called
 server	leads	impl Game<'_>	tie_knot	-	method	client	called
 server	leads	impl Game<'_>	tie_player_leads	-	method	client	called
 server	level_particles	impl Game<'_>	breaking_block_effects	-	method	game,test	called
+server	level_particles	impl Game<'_>	growth_particles	-	method	client	called
 server	level_particles	impl Game<'_>	is_stalactite	-	method	client	called
 server	level_particles	impl Game<'_>	level_event_at	-	method	client,game,test	called
+server	level_particles	impl Game<'_>	turtle_egg_particles	-	method	client	called
 server	level_sounds	impl Game<'_>	ask_level_sound	-	method	client,game	called
 server	level_sounds	impl Game<'_>	play_bound_sound	-	method	client,game	called
 server	level_sounds	impl Game<'_>	play_client_player_sound	-	method	client,game,test	called
+server	level_sounds	impl Game<'_>	play_immediate_level_sound	-	method	client	called
 server	level_sounds	impl Game<'_>	send_bound_sounds	-	method	client	called
 server	level_sounds	impl Game<'_>	send_level_sound	-	method	client,game	called
 server	level_sounds	impl<'a> LevelSound<'a>	in_source	-	method	client,game	called
@@ -3184,6 +3146,7 @@ server	mace	-	can_smash	-	fn	client	called
 server	mace	-	stack_smash_damage	-	fn	client	called
 server	mace	impl Game<'_>	attack_source	-	method	test	called
 server	mace	impl Game<'_>	hurt_by_player	-	method	test	called
+server	mace	impl Game<'_>	mace_smash_self	-	method	client	called
 server	mace	impl Game<'_>	pvp_hit_after	-	method	game	called
 server	mace	impl Game<'_>	settle_dealt_absorbed	-	method	game	called
 server	mace	impl Game<'_>	smash_damage_bonus	-	method	test	called
@@ -3221,6 +3184,7 @@ server	machines::contents_watch_tests	impl BlockPart for Watcher	-	#[cfg(test)]	
 server	machines::contents_watch_tests	impl Hooks for SecondWatcher	-	#[cfg(test)]	trait_impl	-	trait-impl
 server	machines::contents_watch_tests	impl Hooks for Watcher	-	#[cfg(test)]	trait_impl	-	trait-impl
 server	machines::crafter	impl Game<'_>	crafter_at	-	method	client	called
+server	machines::crafter	impl Game<'_>	crafter_click	-	method	client	called
 server	machines::crafter	impl Game<'_>	crafter_open	-	method	client	called
 server	machines::crafter	impl Game<'_>	crafter_result	-	method	client	called
 server	machines::crafter	impl Game<'_>	crafter_slot_position	-	method	client	called
@@ -3280,11 +3244,13 @@ server	maps	impl MapData	fresh	-	method	game,test	called
 server	maps	impl Default for Maps	-	-	trait_impl	-	trait-impl
 server	melee	impl Game<'_>	area_critical_hit	-	method	client	called
 server	melee	impl Game<'_>	attack	-	method	client,game,test	called
+server	melee	impl Game<'_>	attack_effects	-	method	client	called
 server	melee	impl Game<'_>	attack_mob	-	method	game	called
 server	melee	impl Game<'_>	attack_strength_scale	-	method	client,game	called
 server	melee	impl Game<'_>	attack_strength_scale_at	-	method	game	called
 server	melee	impl Game<'_>	critical_attack	-	method	client,game	called
 server	melee	impl Game<'_>	strike_general_row	-	method	game	called
+server	melee	impl Game<'_>	sweep_attack	-	method	client	called
 server	melee	impl Game<'_>	sweep_attack_position	-	method	game	called
 server	memory	-	mb	-	fn	client	called
 server	memory	impl Game<'_>	census_chunks	-	method	client	called
@@ -3295,9 +3261,7 @@ server	memory	impl PendingMemory	start	-	method	client	called
 server	memory	impl Drop for MemoryCancellation	-	-	trait_impl	-	trait-impl
 server	memory	impl Drop for ServerMemoryRequest	-	-	trait_impl	-	trait-impl
 server	mending_pick_tests	impl mod_api::Hooks for GrantMending	-	#[cfg(test)]	trait_impl	-	trait-impl
-server	menu_clicks_server	impl Game<'_>	click_inventory	-	method	client	called
 server	menu_clicks_server	impl Game<'_>	creative_display_click_server	-	method	client	called
-server	menu_clicks_server	impl Game<'_>	creative_throw_carrying	-	method	client	called
 server	menu_clicks_server	impl Game<'_>	menu_session_with_game_server	-	method	client	called
 server	minecart_moves	impl Game<'_>	move_cart	-	method	game	called
 server	minecarts_server::lifetime_tests	-	bound_cart_case	#[cfg(test)]	fn	test	called
@@ -3338,17 +3302,18 @@ server	mod_api_host	impl<'a: 'b, 'b, T: std::ops::DerefMut<Target = Ticks>> mod_
 server	mod_container_openers	impl Game<'_>	mod_container_opener	-	method	client	called
 server	mod_container_openers_tests::tests	-	with_container	#[cfg(test)]; #[cfg(test)]	fn	test	called
 server	mods_server	impl Game<'_>	apply_mods_reload	-	method	game	called
-server	mount_menu_server	impl Game<'_>	show_mount_menu	-	method	client	called
 server	mounts	-	on_top	-	fn	client,game	called
 server	mounts	-	start_riding_jump	-	fn	game	called
 server	mounts	-	steering_item	-	fn	client	called
 server	mounts	impl Game<'_>	charge_mount_jump	-	method	client	called
 server	mounts	impl Game<'_>	draw_jump_bar	-	method	client	called
 server	mounts	impl Game<'_>	feed_mount	-	method	client	called
+server	mounts	impl Game<'_>	interact_mount	-	method	client	called
 server	mounts	impl Game<'_>	jumpable_mount	-	method	client	called
 server	mounts	impl Game<'_>	mount_index	-	method	client,game	called
 server	mounts	impl Game<'_>	mount_jumping	-	method	client	called
 server	mounts	impl Game<'_>	position_rider	-	method	client	called
+server	mounts	impl Game<'_>	shear_saddle	-	method	client	called
 server	mounts	impl Game<'_>	tick_mount_riding	-	method	test	called
 server	mounts	impl Game<'_>	use_steering_stick	-	method	test	called
 server	mounts	impl MountState	reset_jump	-	method	client	called
@@ -3356,6 +3321,8 @@ server	mounts	impl DismountWorld for GameDismountWorld<'_, '_>	-	-	trait_impl	-	
 server	mounts::ride_dismount_tests	impl DismountWorld for Ground	-	#[cfg(test)]	trait_impl	-	trait-impl
 server	mounts::sneak_dismount_tests	-	with_horse	#[cfg(test)]	fn	test	called
 server	mounts::sneak_dismount_tests	impl Hooks for KeepRider	-	#[cfg(test)]	trait_impl	-	trait-impl
+server	mounts::tests	-	equip	#[cfg(test)]	fn	test	called
+server	mounts::tests	-	feed	#[cfg(test)]	fn	test	called
 server	mounts::tests	-	mount	#[cfg(test)]	fn	test	called
 server	mounts::tests	-	server_game	#[cfg(test)]	fn	test	called
 server	mounts::tests	impl DismountWorld for Sea	-	#[cfg(test)]	trait_impl	-	trait-impl
@@ -3807,7 +3774,6 @@ server	native_hooks_server::build_creative_mode_tab_contents::tests	-	install_de
 server	native_hooks_server::can_start_swimming	impl Game<'_>	ask_swim_eligibility	-	method	game	called
 server	native_hooks_server::contents_changed	impl Game<'_>	contents_notice_active	-	method	game	called
 server	native_hooks_server::death_source_tests	-	player	#[cfg(test)]	fn	test	called
-server	native_hooks_server::hud_mode	impl Game<'_>	set_hud_mode	-	method	generated,test	called
 server	native_hooks_server::level_world	impl Game<'_>	level_random_mut	-	method	game	called
 server	native_hooks_server::living_death_post::tests	-	sheep	#[cfg(test)]	fn	test	called
 server	native_hooks_server::loot	impl Game<'_>	native_block_loot	-	method	game,test	called
@@ -4020,6 +3986,7 @@ server	native_living_position::tests	-	floor_and_zombies	#[cfg(test)]	fn	test	ca
 server	native_living_refs	-	hand_slot	-	fn	client	called
 server	native_living_refs	-	lend_equipment	-	fn	game	called
 server	native_living_refs	impl Game<'_>	damage_player_equipment	-	method	test	called
+server	native_living_refs	impl Game<'_>	equip_item_effects	-	method	client	called
 server	native_living_refs	impl Game<'_>	equipment_stack_for	-	method	client,game	called
 server	native_living_refs	impl Game<'_>	equippable_slot_sound	-	method	game	called
 server	native_living_refs	impl Game<'_>	living	-	method	game,generated,test	called
@@ -4636,11 +4603,11 @@ server	piston_push_server::h255_mob_piston_ground_tests	-	with_role_game	#[cfg(t
 server	player_equip	impl Game<'_>	apply_equipment	-	method	client,test	called
 server	player_equip	impl Game<'_>	player_equipment	-	method	client	called
 server	player_equip	impl Game<'_>	player_equipment_changed	-	method	client	called
+server	player_equip	impl Game<'_>	player_equipped	-	method	client	called
 server	player_equip	impl Game<'_>	player_on_equip	-	method	client	called
 server	player_residency	impl Game<'_>	bind_local_player_residency	-	method	client,game,test	called
 server	player_residency	impl Game<'_>	install_fishing_hook	-	method	client	called
 server	player_residency	impl Game<'_>	known_resident_entity_uuid_at	-	method	game	called
-server	player_residency	impl Game<'_>	remove_local_player_body	-	method	client,test	called
 server	player_spawn	impl Game<'_>	spawn_player	-	method	client	called
 server	potent_sulfur	impl Game<'_>	launch_local_player_ticker	-	method	client	called
 server	potent_sulfur	impl Game<'_>	potent_sulfur_source	-	method	client	called
@@ -4659,16 +4626,19 @@ server	projectile_block_impacts	impl Game<'_>	target_block_hit	-	method	client	c
 server	projectile_spawned	-	float_provider	-	fn	client	called
 server	projectile_spawned	-	level_sound	-	fn	client	called
 server	projectile_spawned	-	spawned_effect	-	fn	client	called
+server	projectile_spawned	impl Game<'_>	apply_spawned_effect	-	method	client	called
 server	projectile_spawned	impl Game<'_>	spawn_projectile	-	method	client,test	called
 server	projectile_spawned_tests	-	enchanted	#[cfg(test)]	fn	test	called
 server	projectile_spawned_tests	-	ignite	#[cfg(test)]	fn	test	called
 server	projectile_spawned_tests	-	sound	#[cfg(test)]	fn	test	called
 server	projectile_spawned_tests	-	with_enchantments	#[cfg(test)]	fn	test	called
 server	raids	impl Game<'_>	difficulty_id	-	method	game	called
+server	raids	impl Game<'_>	drink_ominous_bottle	-	method	client	called
 server	raids	impl Game<'_>	omen_tick	-	method	client	called
 server	raids	impl Game<'_>	raid_command_create	-	method	client	called
 server	raids	impl Game<'_>	raid_command_stop	-	method	client	called
 server	raids	impl Game<'_>	raid_glow	-	method	client	called
+server	raids	impl Game<'_>	raid_omen_added	-	method	client	called
 server	raids	impl Game<'_>	raid_set_omen	-	method	client	called
 server	raids	impl Game<'_>	raid_status_text	-	method	client	called
 server	raids	impl Game<'_>	raiding_nearby	-	method	client	called
@@ -4700,6 +4670,8 @@ server	respawn_anchor	impl Game<'_>	anchor_takes	-	method	game	called
 server	respawn_anchor	impl Game<'_>	anchor_with_charges	-	method	client	called
 server	respawn_anchor	impl Game<'_>	bed_wake_pose	-	method	game	called
 server	respawn_anchor	impl Game<'_>	block_collision_shape_in	-	method	game	called
+server	respawn_anchor	impl Game<'_>	charge_anchor	-	method	client	called
+server	respawn_anchor	impl Game<'_>	destroy_straw_bed	-	method	client	called
 server	respawn_anchor	impl Game<'_>	find_respawn_and_use	-	method	test	called
 server	respawn_anchor	impl Game<'_>	named_block_in_tag	-	method	client,game	called
 server	respawn_anchor	impl Game<'_>	set_respawn_point	-	method	game	called
@@ -4724,6 +4696,7 @@ server	saving_server	impl Game<'_>	poll_closing_save_chunks_server	-	method	clie
 server	saving_server	impl Game<'_>	poll_closing_save_entities_server	-	method	client	called
 server	saving_server	impl Game<'_>	poll_closing_save_flush_server	-	method	client	called
 server	saving_server	impl Game<'_>	save_level	-	method	client,test	called
+server	scoreboard	-	local_tab_players	#[cfg(test)]	fn	test	called
 server	scoreboard	-	tab_players_needed	-	fn	client	called
 server	scoreboard	impl Game<'_>	cart_push_allowed	-	method	game	called
 server	scoreboard	impl Game<'_>	draw_scoreboard	-	method	client	called
@@ -4748,16 +4721,29 @@ server	scoreboard	impl Game<'_>	tick_scoreboard	-	method	test	called
 server	scoreboard	impl Env for GameEnv<'_, '_>	-	-	trait_impl	-	trait-impl
 server	sculk_server	impl Game<'_>	entity_event_by	-	method	client,game	called
 server	sculk_server	impl Game<'_>	entity_event_context	-	method	client,game	called
+server	sculk_server	impl Game<'_>	player_context	-	method	client	called
 server	sculk_server	impl Game<'_>	post_game_event	-	method	client,game,test	called
 server	sculk_server	impl Game<'_>	post_game_event_with	-	method	client	called
 server	sculk_server	impl Game<'_>	projectile_own_event	-	method	game	called
+server	sculk_server	impl Game<'_>	tick_entity_events	-	method	client	called
 server	sculk_server	impl Game<'_>	tick_mob_sculk_events	-	method	client,test	called
+server	sculk_server	impl Game<'_>	tick_player_sculk_events	-	method	client	called
 server	sculk_server	impl Game<'_>	try_summon_warden	-	method	client	called
 server	seats	-	could_accept_passenger	-	fn	client	called
 server	seats	impl Game<'_>	general_seat	-	method	client	called
 server	seats	impl Game<'_>	seat	-	method	client	called
 server	seats	impl Game<'_>	seat_static_mobs	-	method	client	called
 server	seats	impl Seat	passenger_position	-	method	client	called
+server	server_effects	impl Game<'_>	audio_capture_active	-	method	client	called
+server	server_effects	impl Game<'_>	audio_capture_len	-	method	client	called
+server	server_effects	impl Game<'_>	play_mob_bound_sound	-	method	client	called
+server	server_effects	impl Game<'_>	server_particle_at	-	method	client	called
+server	server_effects	impl Game<'_>	server_play_bound_sound	-	method	client	called
+server	server_effects	impl Game<'_>	server_play_sound	-	method	client	called
+server	server_effects	impl Game<'_>	server_play_sound_on	-	method	client	called
+server	server_effects	impl Game<'_>	server_play_sound_seeded	-	method	client	called
+server	server_effects	impl Game<'_>	start_audio_capture	-	method	client	called
+server	server_effects	impl Game<'_>	stop_audio_capture	-	method	client	called
 server	server_lifecycle::interrupted_turn_tests	impl mod_api::Hooks for Logouts	-	#[cfg(test)]	trait_impl	-	trait-impl
 server	server_reload	impl Game<'_>	prepare_server_reload	-	method	game	called
 server	server_reload	impl Game<'_>	reload_resources	-	method	generated	called
@@ -4797,9 +4783,14 @@ server	shield	impl Game<'_>	raise_shield	-	method	game	called
 server	shield	impl Game<'_>	stack_in	-	method	client,game,test	called
 server	shield	impl Game<'_>	stack_in_mut	-	method	client,game,test	called
 server	shoulders	-	shoulder_variants	-	fn	client	called
+server	sign_edit_server	impl Game<'_>	lan_open_sign_editor	-	method	client	called
+server	sign_edit_server	impl Game<'_>	lan_sign_update	-	method	client	called
 server	sign_edit_server	impl Game<'_>	open_sign_editor_server	-	method	client	called
+server	sign_edit_server	impl Game<'_>	other_player_is_editing_sign	-	method	client	called
 server	sign_edit_server	impl Game<'_>	run_sign_command	-	method	client	called
 server	sign_edit_server	impl Game<'_>	sign_click_actions_disabled	-	method	client	called
+server	sign_edit_server	impl Game<'_>	sign_side_has_editable_text	-	method	client	called
+server	sign_edit_server	impl Game<'_>	tick_sign_editors	-	method	client	called
 server	slot_changes	impl Game<'_>	mod_menu_slot_changed	-	method	game	called
 server	slot_changes	impl Game<'_>	reconcile_click_slot_changes	-	method	game	called
 server	slot_changes	impl Drop for SlotChangedGuard<'_, '_>	-	-	trait_impl	-	trait-impl
@@ -4812,6 +4803,7 @@ server	slot_take_tests	impl mod_api::ItemPart for TakeOne	-	#[cfg(test)]	trait_i
 server	spawn_save_tests	impl Hooks for SaveOnSpawnJoin	-	#[cfg(test)]	trait_impl	-	trait-impl
 server	spawner_server	impl Game<'_>	acting_player_is_op	-	method	client,game	called
 server	spear	impl Game<'_>	cannot_attack_with_item	-	method	client	called
+server	spear	impl Game<'_>	damage_stats_and_hearts	-	method	client	called
 server	spear	impl Game<'_>	hittable_mob_boxes	-	method	client	called
 server	spear	impl Game<'_>	jab	-	method	client	called
 server	spear	impl Game<'_>	kinetic_hit_ticks	-	method	client	called
@@ -4859,6 +4851,8 @@ server	state_digest	impl DigestParts for sunrise_client::projectiles::Projectile
 server	state_digest	impl DigestParts for tnt::PrimedTnt	-	#[cfg(feature = "state-digest")]	trait_impl	-	trait-impl
 server	state_digest	impl DigestParts for trident::ThrownTrident	-	#[cfg(feature = "state-digest")]	trait_impl	-	trait-impl
 server	stations_server	impl Game<'_>	add_experience_levels	-	method	client,game	called
+server	stations_server	impl Game<'_>	close_station_server	-	method	client	called
+server	stations_server	impl Game<'_>	open_station	-	method	client	called
 server	stations_server	impl Game<'_>	tick_brewing_stand	-	method	game,test	called
 server	stats	impl Game<'_>	award_custom_stat	-	method	client,game	called
 server	stats	impl Game<'_>	award_stat	-	method	client,game	called
@@ -4888,12 +4882,13 @@ server	test_instances	impl Game<'_>	test_name	-	method	game	called
 server	test_instances	impl Game<'_>	test_rotation	-	method	game	called
 server	test_instances	impl Game<'_>	test_structure_box	-	method	game	called
 server	test_instances	impl TestDefSample for TestDef	-	#[cfg(test)]	trait_impl	-	trait-impl
-server	titles_server	impl Game<'_>	send_overlay_message	-	method	client,game	called
+server	titles_server	impl Game<'_>	server_send_overlay_message	-	method	client	called
 server	tnt	-	sunrise_client::impl_joined	-	macro_invoc	-	macro-invoc
 server	tnt	-	sunrise_mod_runtime::impl_attachment_lifetime	-	macro_invoc	-	macro-invoc
 server	tnt	impl Game<'_>	add_primed_tnt	-	method	client,test	called
 server	tnt	impl Game<'_>	finish_tnt_piston_move	-	method	game	called
 server	tnt	impl Game<'_>	seat_tnt_mobs	-	method	client	called
+server	tnt	impl Game<'_>	spawn_primed_tnt	-	method	client	called
 server	tnt	impl Game<'_>	tick_one_tnt	-	method	test	called
 server	tnt	impl Game<'_>	tnt_face_sprites	-	method	client,test	called
 server	tnt	impl Game<'_>	tnt_geometry	-	method	client,test	called
@@ -4924,7 +4919,6 @@ server	trading	impl Game<'_>	merchant_sync_in	-	method	client	called
 server	trading	impl Game<'_>	merchant_sync_out	-	method	client	called
 server	trading	impl Game<'_>	merchant_targets	-	method	client	called
 server	trading	impl Game<'_>	open_merchant	-	method	client	called
-server	trading	impl Game<'_>	open_remote_merchant	-	method	game,test	called
 server	trading	impl Game<'_>	try_move_items	-	method	client	called
 server	trading	impl MerchantState	progress	-	method	client	called
 server	trading	impl merchant::MapMaker for GameMaps<'_>	-	-	trait_impl	-	trait-impl
@@ -4976,6 +4970,7 @@ server	transactions	impl<'g> Game<'g>	pending_transaction_payloads	#[cfg(test)]	
 server	transactions	impl<'g> Game<'g>	publish_holder_changed	-	method	client	called
 server	transactions	impl<'g> Game<'g>	publish_quick_move_notices	-	method	game	called
 server	transactions	impl<'g> Game<'g>	put_composter_random	-	method	client	called
+server	transactions	impl<'g> Game<'g>	run_after	-	method	client	called
 server	transactions	impl<'g> Game<'g>	scoped_storage	-	method	client,game	called
 server	transactions	impl<'g> Game<'g>	settle_mount_replies	-	method	game	called
 server	transactions	impl<'g> Game<'g>	storage_scope	-	method	client,game,test	called
@@ -5012,14 +5007,27 @@ server	trident	-	remote_tick	-	fn	client	called
 server	trident	impl Game<'_>	in_water_or_rain	-	method	client	called
 server	trident	impl Game<'_>	release_trident	-	method	client,game,test	called
 server	trident	impl Game<'_>	tick_tridents	-	method	test	called
+server	trident	impl Game<'_>	trident_block_effects	-	method	client	called
 server	trident	impl Game<'_>	trident_geometry	-	method	client	called
 server	trident	impl Game<'_>	trident_max_damage	-	method	client	called
+server	trident	impl Game<'_>	trident_taken	-	method	client	called
 server	trident	impl Game<'_>	use_trident	-	method	game,test	called
 server	trident::impact_tests	-	aim_trident_at_wall	#[cfg(test)]	fn	test	called
 server	trident::tests	impl ProjectileWorld for Air	-	#[cfg(test)]	trait_impl	-	trait-impl
 server	use_hand	impl Game<'_>	release_bow	-	method	client,test	called
 server	use_hand	impl Game<'_>	use_hand	-	method	test	called
 server	use_hand::scaffolding_inside_tests	-	name	#[cfg(test)]	fn	test	called
+server	using_item	impl Game<'_>	consume_placed	-	method	client	called
+server	using_item	impl Game<'_>	release_used_item	-	method	client	called
+server	using_item	impl Game<'_>	start_eating	-	method	client	called
+server	using_item	impl Game<'_>	stop_active_item_use	-	method	client	called
+server	using_item	impl Game<'_>	stop_use_replaced	-	method	client	called
+server	using_item	impl Game<'_>	stop_using_item	-	method	client	called
+server	using_item	impl Game<'_>	tick_using_server	-	method	client	called
+server	using_item	impl Game<'_>	use_instrument	-	method	client	called
+server	using_item	impl Game<'_>	use_vibrates	-	method	client	called
+server	using_item	impl Game<'_>	use_vibration	-	method	client	called
+server	using_item	impl UseStart	of	-	method	client	called
 server	vault	impl Game<'_>	set_vault_state	-	method	client	called
 server	vault	impl Game<'_>	take_vault	-	method	client	called
 server	vault	impl Game<'_>	tick_vault	-	method	game,test	called

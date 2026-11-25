@@ -339,7 +339,7 @@ cushion_model	Option<sunrise_client::mobs::Part>	client	client (survey + review)
 entity_models	EntityModels	client	client (survey; review=common from unpruned BFS, group=entity-models)	337	side	-
 carts	sunrise_client::join_seq::JoinList<minecarts::Minecart, false>	game	shared (survey + review)	338	-	-
 watched_vehicles	Vec<lan_vehicles::WatchedVehicle>	server	server (survey + review)	339	side	-
-jukebox_sounds	HashMap<(i32, i32, i32), u64>	game	shared (survey + review)	340	-	-
+jukebox_sounds	HashMap<(i32, i32, i32), u64>	client	client (ClientState jukebox sound handles)	340	side	-
 bolts	sunrise_client::join_seq::ResidentList<lightning::Bolt>	game	shared (survey + review)	341	-	-
 maps	maps::Maps	game	shared (survey + review)	342	-	-
 fight	dragon::Fight	server	server (survey; review=common from unpruned BFS, group=portals-end)	343	side	-
@@ -604,3 +604,11 @@ camera_type	sunrise_client::camera::CameraType	client	client (survey + review)	6
 requested_camera_type	std::cell::Cell<Option<sunrise_client::camera::CameraType>>	client	client (survey + review)	602	side	-
 fangs	fangs::FangState	game	shared (survey + review)	603	-	-
 player_model	Option<Mob>	client	client (survey; index 604 is last field so drop order unchanged in ClientState tail)	604	side	-
+acting_input	acting_state::ServerActingInput	server	server (acting player input snapshot)	605	side	-
+pending_guest_ui	acting_state::ServerPendingGuestUi	server	server (acting player pending UI requests)	606	side	-
+audio_capture_active	bool	server	server (portable server audio recorder gate)	607	game	-
+pending_sounds	Vec<sunrise_client_core::sound_source::ServerSound>	server	server (portable server sound queue)	608	game	-
+pending_particles	Vec<crate::lan::server_effects::ServerQueuedParticle>	server	server (portable server particle queue)	609	game	-
+pending_explosions	Vec<crate::lan::server_effects::ServerExplosion>	server	server (portable server explosion queue)	610	game	-
+pending_native_sounds	Vec<creatures::NativeSound>	server	server (portable server native sound queue)	611	game	-
+effect_rng	sunrise_core::random::LegacyRandom	server	server (server effect pitch RNG)	612	game	-

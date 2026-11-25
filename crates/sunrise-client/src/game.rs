@@ -180,6 +180,8 @@ pub(in crate::game) use server_side::acting_state;
 pub(in crate::game) use server_side::advancements;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::ahead;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::server_effects;
 #[cfg(test)]
 #[path = "game/mobs/allay_jukebox_source_tests.rs"]
 mod allay_jukebox_source_tests;
@@ -2377,14 +2379,14 @@ mod upload_pace;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::use_same_item_tests;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::using_item;
-#[allow(unused_imports)]
 pub(in crate::game) use client_side::viewed_worlds;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::use_hand;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::use_stop_tests;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::using_item;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::vault;
 #[cfg(test)]

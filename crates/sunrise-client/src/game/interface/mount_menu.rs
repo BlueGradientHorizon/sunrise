@@ -33,6 +33,7 @@ pub(in crate::game) struct MountMenu {
 }
 impl MountMenu {
     /// The mount whose menu is open.
+    #[allow(dead_code)]
     pub(in crate::game::client_side) fn opened_mob(&self) -> Option<u32> {
         self.open.as_ref().map(|o| o.mob)
     }
@@ -137,6 +138,7 @@ impl Game<'_> {
     /// (`AbstractMountInventoryMenu.stillValid` with
     /// `Player.isWithinEntityInteractionRange(mount, 4.0)`: 7 blocks away, 9
     /// in creative).
+    #[allow(dead_code)]
     pub(in crate::game) fn tick_mount_menu(&mut self) {
         // A server's menu ends when the server closes it.
         if self.remote.is_some() {

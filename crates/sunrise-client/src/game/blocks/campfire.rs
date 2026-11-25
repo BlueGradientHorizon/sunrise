@@ -8,8 +8,8 @@ use super::{
 };
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{
-    Result, block_entities::Pos, block_entity_render::vertex_light,
-    camera::rotate_degrees, containers::BlockEntity, items::ItemStack, mesher::Vertex, mobs::Who,
+    Result, block_entities::Pos, block_entity_render::vertex_light, camera::rotate_degrees,
+    containers::BlockEntity, items::ItemStack, mesher::Vertex, mobs::Who,
 };
 use sunrise_client_render::block_entity_reach::Reach;
 use sunrise_core::position::BlockPos;

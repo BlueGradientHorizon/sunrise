@@ -447,7 +447,12 @@ impl Game<'_> {
         self.server.next_entity += 1;
         let (_, uuid) = sunrise_client::mobs::living_random();
         self.persist.uuids.insert(stand.id, uuid);
-        self.server_play_sound("minecraft:entity.armor_stand.place", [foot.x, foot.y, foot.z], 0.75, 0.8);
+        self.server_play_sound(
+            "minecraft:entity.armor_stand.place",
+            [foot.x, foot.y, foot.z],
+            0.75,
+            0.8,
+        );
         // ArmorStandItem.useOn: the stand's ENTITY_PLACE, by the player.
         let ctx = self.player_context(None);
         self.post_game_event("minecraft:entity_place", [foot.x, foot.y, foot.z], ctx);

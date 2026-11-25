@@ -1497,16 +1497,13 @@ impl Game<'_> {
             .map(|v| v.2)
             .or(self.server.pending_vehicle);
         // The ride's tree, or none once the file's own came back.
-        match vehicle {
-            Some((tag, ..)) => {
-                let extra = level
-                    .player_extra
-                    .get_or_insert_with(|| sunrise_core::nbt::Tag::Compound(Default::default()));
-                if let sunrise_core::nbt::Tag::Compound(map) = extra {
-                    map.insert("RootVehicle".into(), tag);
-                }
+        if let Some((tag, ..)) = vehicle {
+            let extra = level
+                .player_extra
+                .get_or_insert_with(|| sunrise_core::nbt::Tag::Compound(Default::default()));
+            if let sunrise_core::nbt::Tag::Compound(map) = extra {
+                map.insert("RootVehicle".into(), tag);
             }
-            None => {}
         }
         if let Some(p) = &self.player {
             level.position = Some([p.position.x, p.position.y, p.position.z]);

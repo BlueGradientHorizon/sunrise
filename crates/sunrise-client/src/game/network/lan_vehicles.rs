@@ -634,7 +634,12 @@ impl Game<'_> {
                         speed,
                     } = event
                     {
-                        self.server_landing_dust(state, Vec3::new(at[0], at[1], at[2]), count, speed);
+                        self.server_landing_dust(
+                            state,
+                            Vec3::new(at[0], at[1], at[2]),
+                            count,
+                            speed,
+                        );
                     }
                 }
                 let Some(pause) = pause else {

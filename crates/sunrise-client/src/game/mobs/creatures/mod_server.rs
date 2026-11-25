@@ -230,41 +230,6 @@ fn a_hand_egg_checks_and_spawns_the_type_named_by_its_component() {
 }
 
 impl Game<'_> {
-    /// `AgeableMob.setAgeLocked`: a golden dandelion on mob `index` flips its
-    /// age lock (a tadpole's or an ageable mob's own `setAgeLockedData`) and is
-    /// used up; a locked mob stays (`setPersistenceRequired`), and the lock's
-    /// use or unuse sound plays at its block for everyone near.
-    pub(in crate::game) fn set_age_locked(&mut self, index: usize) {
-        let m = &mut self.mobs[index];
-        if m.species() == Species::Tadpole {
-            sunrise_client::mobs::aquatic::set_age_locked_data(m);
-        } else {
-            sunrise_client::mobs::ai::set_age_locked_data(m);
-        }
-        self.consume_held();
-        let m = &mut self.mobs[index];
-        let locked = m.extra.age_locked;
-        if locked {
-            m.persistent = true;
-        }
-        // Level.playSound(null, blockPosition, ..): the middle of the block.
-        let at = [
-            m.position.x.floor() + 0.5,
-            m.position.y.floor() + 0.5,
-            m.position.z.floor() + 0.5,
-        ];
-        let chunk = (
-            m.position.x.floor() as i32 >> 4,
-            m.position.z.floor() as i32 >> 4,
-        );
-        self.world.modified.insert(chunk);
-        let sound = if locked {
-            "minecraft:item.golden_dandelion.use"
-        } else {
-            "minecraft:item.golden_dandelion.unuse"
-        };
-        self.server_play_sound(sound, at, 1.0, 1.0);
-    }
     /// Adds a projectile, giving it an id from the entity counter
     /// (`Entity.id`, the same counter as the rest) when it has none. Its id.
     pub(in crate::game) fn add_projectile(
@@ -1552,7 +1517,13 @@ impl Game<'_> {
                     count,
                 } => {
                     if let Some(ty) = sunrise_client::particles::ParticleType::from_name(kind) {
-                        self.server_level_particles(&crate::lan::server_effects::ServerParticle::simple(ty), at, spread, speed, count);
+                        self.server_level_particles(
+                            &crate::lan::server_effects::ServerParticle::simple(ty),
+                            at,
+                            spread,
+                            speed,
+                            count,
+                        );
                     }
                 }
                 MobEvent::ItemParticles {
@@ -1562,7 +1533,15 @@ impl Game<'_> {
                     speed,
                     count,
                 } => {
-                    self.server_level_particles(&crate::lan::server_effects::ServerParticle::item(sunrise_client::items::ItemStack::new(item, 1)), at, spread, speed, count);
+                    self.server_level_particles(
+                        &crate::lan::server_effects::ServerParticle::item(
+                            sunrise_client::items::ItemStack::new(item, 1),
+                        ),
+                        at,
+                        spread,
+                        speed,
+                        count,
+                    );
                 }
                 MobEvent::Sound(name, at, volume, pitch) => {
                     self.server_play_sound(&full_id(name), at, volume, pitch)
@@ -2228,7 +2207,12 @@ impl Game<'_> {
                     pitch,
                 } => {
                     if self.mob_crossbow_ammo(mob, &weapon) {
-                        self.server_play_sound("minecraft:item.crossbow.loading_end", at, 1.0, pitch);
+                        self.server_play_sound(
+                            "minecraft:item.crossbow.loading_end",
+                            at,
+                            1.0,
+                            pitch,
+                        );
                     }
                 }
                 MobEvent::Spawn(mut m) => {
@@ -2608,13 +2592,18 @@ impl Game<'_> {
                     // Mob particle bursts (hearts, smoke, splashes) around a point.
                     if let Some(ty) = sunrise_client::particles::ParticleType::from_name(kind) {
                         if ty == sunrise_client::particles::ParticleType::SonicBoom {
-                            self.lan_sonic_boom(&crate::lan::server_effects::ServerParticle::simple(ty), at);
+                            self.lan_sonic_boom(
+                                &crate::lan::server_effects::ServerParticle::simple(ty),
+                                at,
+                            );
                         }
                         // Count 0: one particle exactly there, at rest.
-                        if count == 0 {
-                            if ty != sunrise_client::particles::ParticleType::SonicBoom {
-                                self.server_particle_at(crate::lan::server_effects::ServerParticle::simple(ty), at, [0.0; 3]);
-                            }
+                        if count == 0 && ty != sunrise_client::particles::ParticleType::SonicBoom {
+                            self.server_particle_at(
+                                crate::lan::server_effects::ServerParticle::simple(ty),
+                                at,
+                                [0.0; 3],
+                            );
                         }
                         for _ in 0..count {
                             let r = &mut self.world.random;
@@ -2628,28 +2617,40 @@ impl Game<'_> {
                                 r.next_gaussian() * 0.02,
                                 r.next_gaussian() * 0.02,
                             ];
-                            self.server_particle_at(crate::lan::server_effects::ServerParticle::simple(ty), p, v);
+                            self.server_particle_at(
+                                crate::lan::server_effects::ServerParticle::simple(ty),
+                                p,
+                                v,
+                            );
                         }
                     }
                 }
                 MobEvent::AroundSelf {
-                    mob,
-                    event,
-                    feet,
-                    ..
+                    mob, event, feet, ..
                 } => {
                     self.lan_entity_event(mob as i32, event, feet);
                 }
                 MobEvent::ParticleAt { kind, at, velocity } => {
                     if let Some(ty) = sunrise_client::particles::ParticleType::from_name(kind) {
-                        self.server_particle_at(crate::lan::server_effects::ServerParticle::simple(ty), at, velocity);
+                        self.server_particle_at(
+                            crate::lan::server_effects::ServerParticle::simple(ty),
+                            at,
+                            velocity,
+                        );
                     }
                 }
                 MobEvent::ParticleColored {
                     at,
                     color: [r, g, b],
                 } => {
-                    self.server_particle_at(crate::lan::server_effects::ServerParticle::colored(sunrise_client::particles::ParticleType::EntityEffect, [r, g, b, 1.0]), at, [0.0; 3]);
+                    self.server_particle_at(
+                        crate::lan::server_effects::ServerParticle::colored(
+                            sunrise_client::particles::ParticleType::EntityEffect,
+                            [r, g, b, 1.0],
+                        ),
+                        at,
+                        [0.0; 3],
+                    );
                 }
                 MobEvent::Experience { at, amount } => self.add_orb(at, amount),
                 MobEvent::AxolotlSupportPlayer { mob } => {
@@ -3934,7 +3935,7 @@ impl Game<'_> {
                 at,
                 spread,
                 speed: [0.2; 3],
-                count: count as i32,
+                count,
                 randomization: 0,
                 except: None,
             });
@@ -4081,66 +4082,6 @@ impl Game<'_> {
         self.server.next_entity += 1;
         p.id = self.server.next_entity;
         self.spawn_mob_projectile(p);
-    }
-
-    pub(in crate::game) fn touch_arrows(&mut self) {
-        use sunrise_client::arrows::Touch;
-        let Some(p) = self.player.as_ref() else {
-            return;
-        };
-        if p.health.dead_or_dying() || self.spectator() {
-            return;
-        }
-        let w = f64::from(p.dimensions.width) / 2.0;
-        let reach = Aabb::new(
-            Vec3::new(p.position.x - w, p.position.y, p.position.z - w),
-            Vec3::new(
-                p.position.x + w,
-                p.position.y + f64::from(p.dimensions.height),
-                p.position.z + w,
-            ),
-        )
-        .inflate(Vec3::new(1.0, 0.5, 1.0));
-        let creative = self.creative;
-        let mut projectiles = self.creatures.projectiles.lift();
-        #[cfg(test)]
-        super::entity::taken_pass_tests::after_take(self);
-        let mut picked = Vec::new();
-        projectiles.retain(|shot| {
-            let Some(a) = shot.arrow.as_ref().filter(|a| !a.removed) else {
-                return true;
-            };
-            let at = shot.position;
-            let bounds = Aabb::new(
-                Vec3::new(at.x - 0.25, at.y, at.z - 0.25),
-                Vec3::new(at.x + 0.25, at.y + 0.5, at.z + 0.25),
-            );
-            if !bounds.intersects(reach) {
-                return true;
-            }
-            let taken = match a.player_touch(creative) {
-                Touch::Ignore => false,
-                Touch::Take => true,
-                Touch::Give(stack) => self.add_stack_to_inventory(stack).is_none() || creative,
-            };
-            if taken {
-                let r = &mut self.world.random;
-                let pitch = (r.next_float() - r.next_float()) * 1.4 + 2.0;
-                self.server_play_sound("minecraft:entity.item.pickup", [at.x, at.y, at.z], 0.2, pitch);
-                picked.push(shot.clone());
-            }
-            !taken
-        });
-        self.creatures.projectiles.restore(
-            projectiles,
-            sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
-        );
-        for shot in picked {
-            self.add_pickup(
-                crate::game::client_side::pickups::Taken::Arrow(Box::new(shot)),
-                crate::game::client_side::pickups::Collector::Player,
-            );
-        }
     }
     /// `LivingEntity.die` / `dropAllDeathLoot`. Does not finish a hurt.
     pub(in crate::game) fn mob_die(&mut self, m: &Mob) {
@@ -4937,7 +4878,12 @@ impl Game<'_> {
                     }
                     section_steps::teleport_player(self, to);
                     self.hurt_player_by("minecraft:ender_pearl", damage);
-                    self.server_play_sound("minecraft:entity.player.teleport", [to.x, to.y, to.z], 1.0, 1.0);
+                    self.server_play_sound(
+                        "minecraft:entity.player.teleport",
+                        [to.x, to.y, to.z],
+                        1.0,
+                        1.0,
+                    );
                 }
                 if let Some(Who::Mob(id)) = p.owner {
                     self.mob_pearl_teleport(p, id, hit);
@@ -5222,7 +5168,11 @@ impl Game<'_> {
                             atp[1] + r.next_gaussian() * 0.2,
                             atp[2] + r.next_gaussian() * 0.2,
                         ];
-                        self.server_particle_at(crate::lan::server_effects::ServerParticle::simple(ty), at, [0.0; 3]);
+                        self.server_particle_at(
+                            crate::lan::server_effects::ServerParticle::simple(ty),
+                            at,
+                            [0.0; 3],
+                        );
                     }
                 }
                 self.projectile_hit_landed_event(p.id, p.owner, hit);
@@ -5297,6 +5247,41 @@ impl Game<'_> {
         if let Some(mob) = self.mobs.iter_mut().find(|mob| mob.id == victim) {
             sunrise_client::health::KnockbackCredit::accepted_mob_hit(&mut credit, mob);
         }
+    }
+    /// `AgeableMob.setAgeLocked`: a golden dandelion on mob `index` flips its
+    /// age lock (a tadpole's or an ageable mob's own `setAgeLockedData`) and is
+    /// used up; a locked mob stays (`setPersistenceRequired`), and the lock's
+    /// use or unuse sound plays at its block for everyone near.
+    pub(in crate::game) fn set_age_locked(&mut self, index: usize) {
+        let m = &mut self.mobs[index];
+        if m.species() == Species::Tadpole {
+            sunrise_client::mobs::aquatic::set_age_locked_data(m);
+        } else {
+            sunrise_client::mobs::ai::set_age_locked_data(m);
+        }
+        self.consume_held();
+        let m = &mut self.mobs[index];
+        let locked = m.extra.age_locked;
+        if locked {
+            m.persistent = true;
+        }
+        // Level.playSound(null, blockPosition, ..): the middle of the block.
+        let at = [
+            m.position.x.floor() + 0.5,
+            m.position.y.floor() + 0.5,
+            m.position.z.floor() + 0.5,
+        ];
+        let chunk = (
+            m.position.x.floor() as i32 >> 4,
+            m.position.z.floor() as i32 >> 4,
+        );
+        self.world.modified.insert(chunk);
+        let sound = if locked {
+            "minecraft:item.golden_dandelion.use"
+        } else {
+            "minecraft:item.golden_dandelion.unuse"
+        };
+        self.server_play_sound(sound, at, 1.0, 1.0);
     }
     /// Throwables and spawn eggs (SnowballItem/EggItem/EnderpearlItem/SpawnEggItem.use).
     pub(in crate::game::server_side) fn throw_item(&mut self, stack: &ItemStack) -> Result<bool> {
@@ -6038,6 +6023,70 @@ impl Game<'_> {
         let flushed = self.flush_wind_bursts();
         self.native_tick_post_batch(round);
         flushed
+    }
+    pub(in crate::game) fn touch_arrows(&mut self) {
+        use sunrise_client::arrows::Touch;
+        let Some(p) = self.player.as_ref() else {
+            return;
+        };
+        if p.health.dead_or_dying() || self.spectator() {
+            return;
+        }
+        let w = f64::from(p.dimensions.width) / 2.0;
+        let reach = Aabb::new(
+            Vec3::new(p.position.x - w, p.position.y, p.position.z - w),
+            Vec3::new(
+                p.position.x + w,
+                p.position.y + f64::from(p.dimensions.height),
+                p.position.z + w,
+            ),
+        )
+        .inflate(Vec3::new(1.0, 0.5, 1.0));
+        let creative = self.creative;
+        let mut projectiles = self.creatures.projectiles.lift();
+        #[cfg(test)]
+        super::entity::taken_pass_tests::after_take(self);
+        let mut picked = Vec::new();
+        projectiles.retain(|shot| {
+            let Some(a) = shot.arrow.as_ref().filter(|a| !a.removed) else {
+                return true;
+            };
+            let at = shot.position;
+            let bounds = Aabb::new(
+                Vec3::new(at.x - 0.25, at.y, at.z - 0.25),
+                Vec3::new(at.x + 0.25, at.y + 0.5, at.z + 0.25),
+            );
+            if !bounds.intersects(reach) {
+                return true;
+            }
+            let taken = match a.player_touch(creative) {
+                Touch::Ignore => false,
+                Touch::Take => true,
+                Touch::Give(stack) => self.add_stack_to_inventory(stack).is_none() || creative,
+            };
+            if taken {
+                let r = &mut self.world.random;
+                let pitch = (r.next_float() - r.next_float()) * 1.4 + 2.0;
+                self.server_play_sound(
+                    "minecraft:entity.item.pickup",
+                    [at.x, at.y, at.z],
+                    0.2,
+                    pitch,
+                );
+                picked.push(shot.clone());
+            }
+            !taken
+        });
+        self.creatures.projectiles.restore(
+            projectiles,
+            sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
+        );
+        for shot in picked {
+            self.add_pickup(
+                crate::game::client_side::pickups::Taken::Arrow(Box::new(shot)),
+                crate::game::client_side::pickups::Collector::Player,
+            );
+        }
     }
     /// `SpawnEggItem.useOn` for a block, or `use` for a fluid source.
     pub(in crate::game::server_side) fn use_spawn_egg(

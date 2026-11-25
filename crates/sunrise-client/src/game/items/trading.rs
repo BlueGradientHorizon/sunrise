@@ -477,7 +477,10 @@ impl Game<'_> {
             name: None,
         });
     }
-    pub(in crate::game::server_side) fn open_merchant_state_server(&mut self, state: MerchantState) {
+    pub(in crate::game::server_side) fn open_merchant_state_server(
+        &mut self,
+        state: MerchantState,
+    ) {
         assert!(
             self.is_logical_server(),
             "open_merchant_state_server called on Client role"

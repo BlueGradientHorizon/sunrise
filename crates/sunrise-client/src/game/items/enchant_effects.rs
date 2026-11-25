@@ -1267,7 +1267,12 @@ impl Game<'_> {
             &mut random_source::entity(),
         );
         if let Some(pitch) = pitch {
-            self.server_play_sound("minecraft:particle.soul_escape", [position.x, position.y, position.z], 0.6, pitch);
+            self.server_play_sound(
+                "minecraft:particle.soul_escape",
+                [position.x, position.y, position.z],
+                0.6,
+                pitch,
+            );
         }
         particle
     }

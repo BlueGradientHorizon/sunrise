@@ -271,8 +271,12 @@ impl Game<'_> {
             .map(|p| [p.position.x, p.position.y, p.position.z]);
         let (played, start, middle) = charge_sounds(now, self.server.crossbow_sounds, sounds);
         self.server.crossbow_sounds = played;
-        if let Some(sound) = start { if let Some(at) = at { self.server_play_sound(sound, at, 0.5, 1.0); } }
-        if let Some(sound) = middle { if let Some(at) = at { self.server_play_sound(sound, at, 0.5, 1.0); } }
+        if let (Some(sound), Some(at)) = (start, at) {
+            self.server_play_sound(sound, at, 0.5, 1.0);
+        }
+        if let (Some(sound), Some(at)) = (middle, at) {
+            self.server_play_sound(sound, at, 0.5, 1.0);
+        }
         let charged = stack.data().is_some_and(|d| !d.charged.is_empty());
         if now >= 1.0 && !charged {
             // tryLoadProjectiles / ProjectileWeaponItem.draw.
@@ -314,7 +318,9 @@ impl Game<'_> {
                 self.consume_player_slot(i, 1);
             }
             let pitch = 1.0 / (self.world.random.next_float() * 0.5 + 1.0) + 0.2;
-            if let Some(at) = at { self.server_play_sound(sounds[2], at, 1.0, pitch); }
+            if let Some(at) = at {
+                self.server_play_sound(sounds[2], at, 1.0, pitch);
+            }
         }
     }
     /// `CrossbowItem.performShooting`.
