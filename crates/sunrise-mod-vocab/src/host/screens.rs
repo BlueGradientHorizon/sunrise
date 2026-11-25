@@ -189,10 +189,9 @@ pub trait ScreensClientHost {
     fn window_focused(&self) -> bool;
     /// Side: client.
     /// Whether the pointer is over the game window, focused or not, as the window system last
-    /// reported its enter and leave (`Window`'s cursor-enter events in vanilla's event polling).
-    /// With [`Self::window_focused`] false, true means the window is hovered in the background.
-    /// False before the pointer has entered the window. Dynamic FPS keeps a hovered background
-    /// window's frame rate up.
+    /// reported its enter and leave. Vanilla 26.3 has a cursor-enter event only; the leave
+    /// comes from the window system. With [`Self::window_focused`] false, true means the window
+    /// is hovered in the background. False before the pointer has entered the window.
     fn window_hovered(&self) -> bool;
     /// Side: client.
     /// Whether the window is fully hidden (occluded): covered by other windows, on another

@@ -1,7 +1,6 @@
 use super::*;
 
 impl Game<'_> {
-    /// The last window focus state reported by the window system.
     /// Whether the pointer is over the window, focused or not (the window system's enter and
     /// leave events).
     pub(in crate::game) fn window_hovered(&self) -> bool {
@@ -11,6 +10,7 @@ impl Game<'_> {
     pub(in crate::game) fn window_occluded(&self) -> bool {
         self.window_occluded
     }
+    /// The last window focus state reported by the window system.
     pub(in crate::game) fn window_focused(&self) -> bool {
         self.focused
     }
