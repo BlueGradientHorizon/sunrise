@@ -1107,8 +1107,13 @@ impl Game<'_> {
                 self.res.facts(),
                 self.collision,
             );
-            self.particles
-                .add_admitted_with_level(Some(&level), &options, at, [0.0; 3]);
+            self.particles.add_admitted_with_level(
+                Some(&level),
+                &options,
+                at,
+                [0.0; 3],
+                override_limiter,
+            );
         }
     }
 

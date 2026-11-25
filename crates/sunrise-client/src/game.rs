@@ -1670,6 +1670,11 @@ mod native_registry_ids_tests;
 #[cfg(test)]
 #[path = "game/modding/native_registry_processor_tests.rs"]
 mod native_registry_processor_tests;
+#[path = "game/modding/native_render_hooks.rs"]
+mod native_render_hooks;
+#[cfg(test)]
+#[path = "game/modding/native_render_hooks_tests.rs"]
+mod native_render_hooks_tests;
 #[cfg(test)]
 #[path = "game/modding/native_render_pair_tests.rs"]
 pub(in crate::game) mod native_render_pair_tests;
@@ -2795,6 +2800,7 @@ struct GameLevel<'w> {
     /// (`Entity.isIgnoringBlockTriggers`).
     trigger_extras: Vec<Aabb>,
     biomes: &'w Biomes,
+    biome_keys: Option<&'w mod_api::__private::BiomeKeys>,
     /// `BiomeManager`'s zoom over this level's seed, for `biome_name`.
     biome_zoom: sunrise_core::biome::BiomeZoom,
     seed: i64,
@@ -5749,6 +5755,9 @@ impl Game<'_> {
             building_player_boxes,
             player_collision,
             biomes: world_biomes!(self),
+            biome_keys: (self.serving.is_some() || self.options.dedicated.is_some())
+                .then(|| self.world_tables.as_ref().map(|t| &*t.data_maps.biome_keys))
+                .flatten(),
             biome_zoom: self.streaming.biome_zoom,
             seed: self.level.seed,
             behaviours: self.res.behaviours(),
