@@ -2,7 +2,6 @@ use super::*;
 
 impl Game<'_> {
     /// A mod's scale over `source`'s volume, the sounds playing now included.
-
     pub(in crate::game) fn set_sound_source_scale(
         &mut self,
         source: mod_api::SoundSource,
@@ -13,13 +12,11 @@ impl Game<'_> {
     }
 
     /// A mod's scale over `source`'s volume, the master's included for another source.
-
     pub(in crate::game) fn sound_source_scale(&self, source: mod_api::SoundSource) -> f32 {
         self.audio.engine.source_scale(sound_source_index(source))
     }
 
     /// A mod pauses every sound, or resumes them; applied with the game's own pause each tick.
-
     pub(in crate::game) fn set_sounds_paused(&mut self, paused: bool) {
         self.mod_sounds_paused = paused;
     }

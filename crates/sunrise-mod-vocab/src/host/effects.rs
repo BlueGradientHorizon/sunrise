@@ -22,8 +22,8 @@ pub trait EffectsClientHost {
     /// (music, a record), as the Options volume sliders update live channels
     /// (`SoundEngine.updateCategoryVolume`). It multiplies the player's slider, which keeps its
     /// own value and is never saved with the scale; the master's scale scales every source.
-    /// 1 undoes it. One scale per source for all mods: the last call wins. Dynamic FPS lowers
-    /// the volume while the window is in the background.
+    /// 1 undoes it. One scale per source for all mods: the last call wins. A mod may lower the
+    /// volume while the window is in the background, for example.
     fn set_sound_source_scale(&mut self, source: SoundSource, scale: f32);
     /// Side: client.
     /// A mod's scale over `source`'s volume (`set_sound_source_scale`), 1 when none is set. For

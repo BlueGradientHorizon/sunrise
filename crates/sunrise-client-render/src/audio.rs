@@ -2062,7 +2062,9 @@ impl Audio {
     /// mixer is locked only when the volumes changed.
     fn sync_stream_gain(&mut self, mod_gain: f32) {
         let gain = std::array::from_fn(|source| {
-            self.engine.final_source_volume(source).clamp(0.0, 1.0) * mod_gain
+            self.engine.final_source_volume(source).clamp(0.0, 1.0)
+                * self.engine.source_scale(source)
+                * mod_gain
         });
         if gain != self.stream_gain_sent
             && let Ok(mut m) = self.backend.mixer.lock()
