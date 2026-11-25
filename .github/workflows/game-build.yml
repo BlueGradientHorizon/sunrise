@@ -214,7 +214,14 @@ jobs:
         run: |
           python3 .workflow-tools/tools/check_macho.py --minos 11.0 --sdk 15.5 --plist NSMicrophoneUsageDescription \
             "$BIN/sunrise-client" "$BIN/sunrise-ctl" "$BIN/sunrise-perf" "$BIN/sunrise-prepare" "$BIN/sunrise-server" "$BIN/sunrise-port-pack"
-          rcodesign print-signature-info "$BIN/sunrise-client" | grep -E 'flags|identifier'
+          # Dev's programs carry only the linker's ad hoc signature: no hardened runtime, no entitlements, any identifier.
+          for binary in sunrise-client sunrise-ctl sunrise-perf sunrise-prepare sunrise-server sunrise-port-pack; do
+            info=$(rcodesign print-signature-info "$BIN/$binary")
+            grep -E 'flags:|identifier:' <<< "$info"
+            grep -q 'flags: CodeSignatureFlags(ADHOC | LINKER_SIGNED)' <<< "$info" \
+              || { echo "::error::$binary is not signed ad hoc by the linker alone"; exit 1; }
+            ! grep -qi entitlements <<< "$info" || { echo "::error::$binary carries entitlements"; exit 1; }
+          done
       - name: Verify macOS executable architecture
         if: matrix.mac && env.CROSS != 'on'
         run: |
