@@ -125,8 +125,9 @@ pub mod ladder;
 pub mod surface;
 mod travel;
 pub use fluids::{
-    BubbleColumn, FluidResources, FluidTags, LAVA, PlayerFluids, RiddenBoat, SwimEntry, WATER,
-    bubble_column_at, bubble_column_push, bubble_column_push_over, bubble_column_surfaces,
+    BubbleColumn, FluidClip, FluidRayProvider, FluidResources, FluidTags, LAVA, PlayerFluids,
+    RiddenBoat, SwimEntry, WATER, bubble_column_at, bubble_column_push, bubble_column_push_over,
+    bubble_column_surfaces, clip_world_with_fluids,
 };
 pub(crate) use surface::ModBlockFactors;
 #[cfg(any(test, feature = "test-dry-side"))]

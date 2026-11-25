@@ -809,9 +809,10 @@ handle, an entity the client doesn't track and a level it doesn't show:
   `view_vector` and `distance_to_sqr(host, pos)` read and move it.
 - `entity.up_vector(host)` is `Entity.getUpVector`, the view vector turned toward the zenith. `on_block(host)` is
   `Entity.getOnPos`: the supporting block of an entity on the ground (the solid block under its box nearest it),
-  else the block under its feet. `pick(host, distance)` clips `Entity.pick`'s ray from the eyes along the view
-  against block outlines, no fluids, and returns the `ClipHit` (its `miss` set for a miss); entities are
-  clipped by `LevelRef::ray_trace_nearest_entity` or `ray_trace_entities`, not `pick`.
+  else the block under its feet. `pick(host, distance, include_fluids)` clips `Entity.pick`'s ray from the eyes
+  along the view against block outlines and optional fluids (`ClipFluid::Any`/`None`), returning the `ClipHit` (its
+  `miss` set for a miss); entities are clipped by `LevelRef::ray_trace_nearest_entity` or `ray_trace_entities`, not
+  `pick`.
   `is_multipart(host)` and `visit_parts(host, &mut visitor)` follow NeoForge's `IEntityExtension.isMultipartEntity`
   and `getParts`. The visitor can break early. It visits the ender dragon's eight `EnderDragonPart`s (not the Parts
   of this API), head, neck, body, three tail segments and
