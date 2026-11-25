@@ -6,6 +6,10 @@
 //!   initializer gives;
 //! - an array declared with a `const int`'s size takes the constant's expression.
 
+use std::ops::Range;
+
+use super::located::{Lines, Origin};
+
 /// The longest shader rewritten (vanilla's, includes expanded, are a few KiB).
 const MAX_LEN: usize = 64 * 1024;
 
@@ -14,11 +18,12 @@ const MAX_LEN: usize = 64 * 1024;
 const SCAN_BUDGET: usize = 64 << 20;
 
 /// `text` with the rewrites, where they apply; anything they can't follow is left as it was.
-pub(super) fn fixups(text: &str) -> String {
-    if text.len() > MAX_LEN {
-        return text.to_owned();
+/// Each line keeps where it came from: a copy of a function, the lines of its body.
+pub(super) fn fixups(text: Lines) -> Lines {
+    if text.text().len() > MAX_LEN {
+        return text;
     }
-    size_by_int_constants(&size_unsized_arrays(&specialize_sampler_params(text)))
+    size_by_int_constants(size_unsized_arrays(specialize_sampler_params(text)))
 }
 
 /// The most `const int`s a shader's arrays are sized by.
@@ -28,7 +33,14 @@ const MAX_INT_CONSTANTS: usize = 256;
 /// accesses (`name[n]`) are left as they are. Two constants of one name and different values in
 /// one scope, which only exclusive `#if` branches allow, leave the text as it was; the same one
 /// twice is a guarded include pasted twice.
-fn size_by_int_constants(text: &str) -> String {
+fn size_by_int_constants(mut lines: Lines) -> Lines {
+    let edits = int_constant_sizes(lines.text());
+    lines.edit(edits);
+    lines
+}
+
+/// The edits of [`size_by_int_constants`]: none where it leaves the text as it was.
+fn int_constant_sizes(text: &str) -> Vec<(Range<usize>, String)> {
     struct Constant<'a> {
         name: &'a str,
         expression: &'a str,
@@ -47,7 +59,7 @@ fn size_by_int_constants(text: &str) -> String {
                     constants[c].to = i;
                 }
                 if scopes.is_empty() {
-                    return text.to_owned();
+                    return Vec::new();
                 }
             }
             b'c' if text[i..].starts_with("const int ")
@@ -66,9 +78,9 @@ fn size_by_int_constants(text: &str) -> String {
                         let same = scope.iter().find(|&&c| constants[c].name == name);
                         match same {
                             Some(&c) if constants[c].expression == expression => {}
-                            Some(_) => return text.to_owned(),
+                            Some(_) => return Vec::new(),
                             None if constants.len() == MAX_INT_CONSTANTS => {
-                                return text.to_owned();
+                                return Vec::new();
                             }
                             None => {
                                 scope.push(constants.len());
@@ -90,10 +102,9 @@ fn size_by_int_constants(text: &str) -> String {
         i += 1;
     }
     if constants.is_empty() {
-        return text.to_owned();
+        return Vec::new();
     }
-    let mut out = String::with_capacity(text.len());
-    let mut copied = 0;
+    let mut edits = Vec::new();
     let mut at = 0;
     while let Some(found) = text[at..].find('[') {
         let open = at + found;
@@ -112,14 +123,9 @@ fn size_by_int_constants(text: &str) -> String {
         if !declares_an_array(text, open) {
             continue;
         }
-        out.push_str(&text[copied..=open]);
-        out.push('(');
-        out.push_str(constant.expression);
-        out.push(')');
-        copied = close;
+        edits.push((open + 1..close, format!("({})", constant.expression)));
     }
-    out.push_str(&text[copied..]);
-    out
+    edits
 }
 
 /// Whether the `[` at `open` follows `type name`, so it sizes a declaration.
@@ -208,6 +214,8 @@ struct SamplerFn {
     samplers: Vec<(usize, String)>,
     /// `None` for a prototype.
     body: Option<String>,
+    /// Where the body starts (its `{`).
+    body_at: usize,
     return_type: String,
 }
 
@@ -251,6 +259,7 @@ fn sampler_functions(text: &str) -> Vec<SamplerFn> {
                         } else {
                             (next + 1, None)
                         };
+                        let body_at = next;
                         out.push(SamplerFn {
                             name: name.to_owned(),
                             start: type_at,
@@ -258,6 +267,7 @@ fn sampler_functions(text: &str) -> Vec<SamplerFn> {
                             params,
                             samplers,
                             body,
+                            body_at,
                             return_type: return_type.to_owned(),
                         });
                         i = end;
@@ -389,8 +399,10 @@ fn chosen_samplers(f: &SamplerFn, args: &[&str]) -> Vec<String> {
 
 /// One pass per function with `sampler2D` parameters, until none is left or one can't be
 /// followed (a caller passes something that is no sampler's name).
-fn specialize_sampler_params(original: &str) -> String {
-    let mut text = original.to_owned();
+fn specialize_sampler_params(original: Lines) -> Lines {
+    let mut text = original.text().to_owned();
+    // The text with where each line came from, edited with it.
+    let mut lines = original.clone();
     // Bytes scanned for calls so far, against [`SCAN_BUDGET`].
     let scanned = std::cell::Cell::new(0usize);
     let spent = || scanned.get() > SCAN_BUDGET;
@@ -420,7 +432,7 @@ fn specialize_sampler_params(original: &str) -> String {
                 break;
             }
             // None left to copy.
-            return text;
+            return lines;
         };
         let spans = spans_of(f);
         let found = calls(&scanned, &text, &f.name, &spans);
@@ -535,17 +547,30 @@ fn specialize_sampler_params(original: &str) -> String {
                 params.join(", ")
             )
         };
-        let copies_of = |g: &SamplerFn| -> String {
-            variants
-                .iter()
-                .map(|chosen| match &g.body {
-                    Some(_) => {
+        // A copy's lines come from the function's: its header's line, then its body's line for
+        // line while the copy keeps their count (else the line it starts on).
+        let copies_of = |g: &SamplerFn| -> Lines {
+            let header = lines.origin_at(g.start);
+            let mut copies = Lines::default();
+            for chosen in &variants {
+                match &g.body {
+                    Some(written) => {
                         let body = specialize(g, chosen).map(|(b, _)| b).unwrap_or_default();
-                        format!("{} {body}\n", signature(g, chosen))
+                        copies.push(&format!("{} ", signature(g, chosen)), header);
+                        let from: &[Option<Origin>] = lines.origins_from(g.body_at);
+                        if body.matches('\n').count() == written.matches('\n').count() {
+                            for (n, piece) in body.split_inclusive('\n').enumerate() {
+                                copies.push(piece, from[n]);
+                            }
+                        } else {
+                            copies.push(&body, from[0]);
+                        }
+                        copies.push("\n", header);
                     }
-                    None => format!("{};\n", signature(g, chosen)),
-                })
-                .collect()
+                    None => copies.push(&format!("{};\n", signature(g, chosen)), header),
+                }
+            }
+            copies
         };
         // Rebuild from the back: the calls, then the function's own spans (each prototype and
         // definition becomes its copies). A call nested in another's arguments starts after it,
@@ -559,24 +584,26 @@ fn specialize_sampler_params(original: &str) -> String {
             .flatten()
             .filter_map(|s| sampler_declaration_end(&text, s))
             .max();
-        let mut edits: Vec<(usize, Option<(usize, String)>)> =
+        let mut edits: Vec<(usize, Option<(usize, Lines)>)> =
             call_starts.into_iter().map(|at| (at, None)).collect();
-        let (mut moved, mut move_to) = (String::new(), None);
+        let (mut moved, mut move_to) = (Lines::default(), None);
         for g in &same {
             match (
                 &g.body,
                 declared.filter(|&end| end > g.start && end <= first_call),
             ) {
                 (Some(_), Some(end)) => {
-                    edits.push((g.start, Some((g.end, String::new()))));
-                    moved.push_str(&copies_of(g));
+                    edits.push((g.start, Some((g.end, Lines::default()))));
+                    moved.push_lines(&copies_of(g));
                     move_to = Some(end);
                 }
                 _ => edits.push((g.start, Some((g.end, copies_of(g))))),
             }
         }
         if let Some(end) = move_to {
-            edits.push((end, Some((end, format!("\n{moved}")))));
+            let mut with = Lines::uniform("\n", lines.origin_at(end));
+            with.push_lines(&moved);
+            edits.push((end, Some((end, with))));
         }
         // Pack text is untrusted: edits that overlap, or off the text, leave it as it was.
         let mut spans: Vec<(usize, usize)> = edits
@@ -590,8 +617,8 @@ fn specialize_sampler_params(original: &str) -> String {
         edits.sort_by_key(|(start, _)| std::cmp::Reverse(*start));
         let mut sound = true;
         for (start, edit) in edits {
-            let (end, with) = match edit {
-                Some(span) => span,
+            let (end, with, with_lines) = match edit {
+                Some((end, with)) => (end, with.text().to_owned(), Some(with)),
                 None => {
                     let found = calls(&scanned, &text, &f.name, &[])
                         .into_iter()
@@ -606,7 +633,7 @@ fn specialize_sampler_params(original: &str) -> String {
                         .map(|(_, a)| a.trim())
                         .collect();
                     let copy = format!("{}_hz_{}", f.name, chosen_samplers(f, &args).join("_"));
-                    (end, format!("{copy}({})", rest.join(", ")))
+                    (end, format!("{copy}({})", rest.join(", ")), None)
                 }
             };
             if start > end || text.get(start..end).is_none() || spent() {
@@ -614,19 +641,23 @@ fn specialize_sampler_params(original: &str) -> String {
                 break;
             }
             text.replace_range(start..end, &with);
+            match with_lines {
+                Some(with) => lines.replace_lines(start..end, with),
+                None => lines.replace(start..end, &with),
+            }
         }
         if !sound {
             break;
         }
     }
     // One that couldn't be followed: the shader as written, never half rewritten.
-    original.to_owned()
+    original
 }
 
 /// Each array declared without a size that an initializer sizes: `T[] name = T[](a, b)` and
 /// `T name[] = T[](a, b)` (or `T[2](...)`) are written with the size.
-fn size_unsized_arrays(text: &str) -> String {
-    let mut text = text.to_owned();
+fn size_unsized_arrays(mut lines: Lines) -> Lines {
+    let mut text = lines.text().to_owned();
     let mut closing = closings(&text);
     // Each array sized reads the text's brackets again: a few hundred are plenty.
     let mut left = 256;
@@ -694,9 +725,11 @@ fn size_unsized_arrays(text: &str) -> String {
         // Sized in the constructor too, where it isn't.
         if text[bracket + 1..bracket_end].trim().is_empty() {
             text.replace_range(bracket + 1..bracket_end, &size);
+            lines.replace(bracket + 1..bracket_end, &size);
         }
         let at = statement_start + empty + 1;
         text.replace_range(at..at + close, &size);
+        lines.replace(at..at + close, &size);
         // The declarator is before `=`, so `=` moved by what its size changed.
         from = eq + 1 + size.len() - close;
         closing = closings(&text);
@@ -705,7 +738,7 @@ fn size_unsized_arrays(text: &str) -> String {
             break;
         }
     }
-    text
+    lines
 }
 
 #[cfg(test)]

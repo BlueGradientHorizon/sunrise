@@ -305,3 +305,48 @@ fn only_an_active_include_override_selects_or_refuses_clouds() {
         }
     }
 }
+
+/// What only the clouds' pipeline refuses, after the translation, names the declaration it is
+/// about: a vanilla sampler read in an included file (no clouds pass binds one) at that file's
+/// line, and a colour target written with integers at the stage's output.
+#[test]
+fn a_refusal_after_the_translation_names_the_declaration() {
+    let tinted = "// tint\nuniform sampler2D Sampler1;\nvec4 tint() { return texture(Sampler1, vec2(0.5)); }\n";
+    let fsh = fragment(
+        "#moj_import <minecraft:tint.glsl>\nlayout(location = 0) out vec4 fragColor;",
+        "    fragColor = vertexColor * tint();",
+    );
+    let defaults = source(&[(VSH, CLOUDS_VSH), (FSH, CLOUDS_FSH)]);
+    let tint = "assets/minecraft/shaders/include/tint.glsl";
+    let root = source(&[(VSH, CLOUDS_VSH), (FSH, &fsh), (tint, tinted)]);
+    let refused = load_clouds(&root, &defaults).unwrap_err();
+    let at = |file: &str, line, message: &str| {
+        sunrise_glsl::Location {
+            file: file.into(),
+            line,
+        }
+        .error(message)
+        .to_string()
+    };
+    assert_eq!(
+        refused.why,
+        at(
+            "minecraft:shaders/include/tint.glsl",
+            2,
+            "Sampler1 is not a sampler of this pipeline"
+        )
+    );
+    let integers = fragment(
+        "layout(location = 0) out ivec4 fragColor;",
+        "    fragColor = ivec4(vertexColor * 255.0);",
+    );
+    let refused = clouds(&integers).unwrap_err();
+    assert_eq!(
+        refused.why,
+        at(
+            "minecraft:shaders/core/clouds.fsh",
+            3,
+            "its fragment stage writes colour target 0 with something other than floats"
+        )
+    );
+}

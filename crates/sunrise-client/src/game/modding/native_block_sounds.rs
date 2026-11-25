@@ -67,9 +67,9 @@ impl Game<'_> {
     }
     /// `LevelEventHandler`'s break sound (level event 2001, which a client's predicted break
     /// also plays): the block's break sound at its centre, at `(volume + 1) / 2` and pitch × 0.8.
-    /// None for air.
+    /// None for air, or when a part on the block cancels it (`play_break_sound`).
     pub(in crate::game) fn play_break_sound(&mut self, pos: [i32; 3], state: BlockStateId) {
-        if self.res.facts().is_air(state) {
+        if self.res.facts().is_air(state) || self.mod_play_break_sound(state, pos) {
             return;
         }
         let sound = self.selected_block_sound(pos, state, None, BlockSoundCause::Break);

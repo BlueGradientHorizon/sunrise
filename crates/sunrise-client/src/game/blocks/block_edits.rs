@@ -4,7 +4,7 @@
 //! the block entities and the watched blocks of each block changed.
 use super::{
     Game,
-    transactions::{StrictBlockStep, StrictBlockSteps, take_replay_row},
+    transactions::{ReplayEntity, StrictBlockStep, StrictBlockSteps},
 };
 use mod_api::{BlockEdit, BlockEditError, Heightmap};
 use std::sync::Arc;
@@ -104,6 +104,7 @@ impl Game<'_> {
         let mut made =
             make_block_entities(&wanted, |state| self.new_block_entity_for_state(*state))
                 .into_iter();
+        let mut replaced_placements = Vec::new();
         if publication.is_some() {
             // Keep the original row, including absence, before the strict writer creates or
             // removes a resident. Keep its drops suppressed just as in an immediate bulk edit.
@@ -118,6 +119,14 @@ impl Game<'_> {
                             .is_some_and(|row| row.fits(&now)))
                 {
                     self.journal_block_entity(pos);
+                    if self
+                        .world
+                        .block_entities
+                        .generation(&pos)
+                        .is_some_and(|generation| self.is_placement_entity(pos, generation))
+                    {
+                        replaced_placements.push(pos);
+                    }
                 }
             }
         }
@@ -128,6 +137,10 @@ impl Game<'_> {
             |_| made.next().flatten(),
             publication.as_ref().map(|_| &mut steps),
         );
+        for pos in replaced_placements {
+            self.world.block_names.remove(&pos);
+            self.world.forget_block_entity_source(pos);
+        }
         if let Some(publication) = publication {
             self.after_commit(super::transactions::After::BulkBlocks(
                 publication,
@@ -375,7 +388,7 @@ fn replace_block_entities(
             if let Some(step) = staged.as_deref_mut().and_then(|steps| steps.get_mut(&pos))
                 && step.row.is_none()
             {
-                step.row = Some(take_replay_row(world, pos));
+                step.row = Some(ReplayEntity::take(world, pos));
             } else {
                 world.block_entities.remove(&pos);
             }
