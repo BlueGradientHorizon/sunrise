@@ -149,8 +149,9 @@ commit on main. In order:
    never an `sdk-<sha>` SDK), and publishes the SDK's generated modding book (`modding-book-generated.yml`).
 
 A failed Dev build is retried with **Re-run failed jobs** on its `nightly build` run: only the failed jobs and those
-after them run again, every SDK or game leg that built is kept, and a published `sdk-<sha>` is never rebuilt (a new
-dispatch of the same commit reuses it too, and skips a commit already published or drafted that day). Only a new commit, a fix,
+after them run again, every SDK or game leg that built is kept, and a public `sdk-<sha>` is never rebuilt (a new
+dispatch of the same commit reuses it too; an SDK that is still a draft is built again and its draft replaced). A
+commit already published or drafted that day is skipped. Only a new commit, a fix,
 builds everything again. `BLACKSMITH_DEV_MACOS=on` (a repository variable the owner sets; unset is off) moves the
 macOS legs of a Dev build, the SDK's and the game's, to Blacksmith while `BLACKSMITH` stays `off` for everything else.
 
