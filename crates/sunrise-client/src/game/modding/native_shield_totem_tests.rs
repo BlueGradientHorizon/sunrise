@@ -3,7 +3,8 @@
 use super::entity::damage_level_of;
 use super::native_entity_refs::tests::with_game;
 use mod_api::{
-    self, Hand, HitHost, Hooks, LivingDamagePostEvent, LivingShieldBlockEvent, LivingUseTotemEvent,
+    self, Hand, HitHost, Hooks, LivingDamagePostEvent, LivingDeathProtectionEvent,
+    LivingShieldBlockEvent, LivingUseTotemEvent,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_client::mobs::{Damage, DamageKind, Mob};
@@ -20,6 +21,8 @@ struct Heard {
     set_block: Option<(bool, f32)>,
     refuse_hand: Option<Hand>,
     random_draw: bool,
+    /// What `living_death_protection` answers with, if anything: a worn accessory's item, one.
+    lend: Option<&'static str>,
 }
 
 struct Probe(Arc<Mutex<Heard>>);
@@ -38,6 +41,21 @@ impl Hooks for Probe {
         }
         if heard.random_draw {
             level.with_random(|random| random.next_int());
+        }
+    }
+    fn living_death_protection(
+        &self,
+        _: &mut dyn HitHost,
+        event: &mut LivingDeathProtectionEvent<'_>,
+    ) {
+        let mut heard = self.0.lock().unwrap();
+        heard.order.push("protection");
+        if event.protector.is_none()
+            && let Some(item) = heard.lend.take()
+        {
+            use super::api_values::TryIntoApi;
+            let stack = sunrise_client::items::ItemStack::new(item, 1);
+            *event.protector = Some(stack.try_into_api().unwrap());
         }
     }
     fn living_damage_post(&self, _: &mut dyn HitHost, _: &mut LivingDamagePostEvent<'_>) {
@@ -207,6 +225,48 @@ fn an_uncanceled_totem_saves_the_mob() {
         ]
     );
     assert_eq!(heard.order, ["shield", "totem", "totem", "post"]);
+}
+
+/// A protector a mod keeps outside the hands (#5751) is asked once neither hand protected, and
+/// saves the mob as a hand's totem would, using up nothing in its hands.
+#[test]
+#[ignore = "daily"]
+fn a_mods_protector_from_outside_the_hands_saves_the_mob() {
+    let totem = sunrise_client::items::ItemStack::new("minecraft:totem_of_undying", 1);
+    let saved = heard(
+        Heard {
+            refuse_hand: Some(Hand::Main),
+            lend: Some("minecraft:totem_of_undying"),
+            ..Heard::default()
+        },
+        |game| {
+            let mut hit = zombie(game, 226008);
+            hit.extra.set_main_hand_stack(Some(totem.clone()));
+            game.mobs.push(hit);
+            assert!(game.mob_hits_mob(226008, 1000.0, Damage::of(DamageKind::Generic)));
+            let hit = &game.mobs[0];
+            assert_eq!(hit.health, 1.0, "saved");
+            assert_eq!(
+                hit.extra.main_hand_stack(),
+                Some(&totem),
+                "the refused hand keeps its totem"
+            );
+        },
+    );
+    assert_eq!(saved.order, ["shield", "totem", "protection", "post"]);
+    // With no answer the mob dies, and a stack without the component is no answer.
+    let died = heard(
+        Heard {
+            lend: Some("minecraft:stick"),
+            ..Heard::default()
+        },
+        |game| {
+            game.mobs.push(zombie(game, 226009));
+            assert!(game.mob_hits_mob(226009, 1000.0, Damage::of(DamageKind::Generic)));
+            assert_eq!(game.mobs[0].health, 0.0);
+        },
+    );
+    assert_eq!(died.order, ["shield", "protection", "post"]);
 }
 
 /// The hit's level is the one the hit draws from: a mod's draw moves the world's random on by
