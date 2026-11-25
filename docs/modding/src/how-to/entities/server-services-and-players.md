@@ -339,7 +339,7 @@ fires when a world is opened to LAN.
 
 `host.tick_rate_is_frozen()` is `TickRateManager.isFrozen` (`/tick freeze`): `Some(true)` while the server's
 ticking is frozen, `None` on a client. A frozen server still runs the ticks `/tick step` asks for, so
-`server_tick_start`'s `world_running` can be true while it is frozen; read this to tell a frozen server from a
+`server_tick`'s `ServerTickPhase::ServerTickStart { world_running }` can be true while it is frozen; read this to tell a frozen server from a
 paused level.
 
 ## Weather
