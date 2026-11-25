@@ -960,16 +960,21 @@ mod tests {
                         );
                         out
                     };
-                    // The left half of a double chest draws alone, with no neighbour to pair with.
+                    // `ChestModel.createDoubleBodyLeftLayer`: bottom, lid and lock, each a cuboid with every
+                    // face but WEST (`allOfEnumExcept`), so 3 * 5 faces of 4 vertices; the half draws
+                    // alone, with no neighbour to pair with.
                     let out = special(left, Mat4::IDENTITY, u32::MAX);
-                    assert!(!out.is_empty());
-                    // Non-finite quads from a pose past the finite range are skipped.
+                    assert_eq!(out.len(), 3 * 5 * 4);
+                    // `ChestModel.createSingleBodyLayer`: bottom, lid and lock, 3 * 6 faces of 4 vertices.
+                    let finite = special(chest, Mat4::IDENTITY, u32::MAX);
+                    assert_eq!(finite.len(), 3 * 6 * 4);
+                    // Every quad of a pose past the finite range is skipped, not the draw refused.
                     let out = special(
                         chest,
                         Mat4::from_scale(Vec3::splat(f32::INFINITY)),
                         u32::MAX,
                     );
-                    assert!(out.is_empty());
+                    assert_eq!(out.len(), 0);
                     // EndCubeSpecialRenderer: all six faces, and the starfield stays opaque when faded.
                     let out = special(gateway, Mat4::IDENTITY, 0x80FF_FFFF);
                     assert_eq!(out.len(), 24);
@@ -977,9 +982,10 @@ mod tests {
                         out.iter()
                             .all(|v| v.layer & sunrise_client::gfx::OIT_ENTITY == 0)
                     );
-                    // The enchanting table: its block-state faces, then the book.
+                    // The enchanting table's book is `BookModel.createBodyLayer`: left_lid, right_lid,
+                    // seam, left_pages, right_pages and two flip pages, 7 cuboids of 6 faces of 4 vertices.
                     let out = special(table, Mat4::IDENTITY, u32::MAX);
-                    assert!(!out.is_empty());
+                    assert_eq!(out.len(), 7 * 6 * 4);
                     let model = game.native_block_state_model(table).unwrap();
                     let slot = mod_api::__private::game::Fields::fields(&model).slot;
                     assert!(!game.model_faces(slot).unwrap().is_empty());
