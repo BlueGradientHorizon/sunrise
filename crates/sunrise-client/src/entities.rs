@@ -38,6 +38,7 @@ pub fn slime_step_on_scale(velocity_y: f64) -> Option<f64> {
     (abs_delta_y < 0.1).then_some(0.4 + abs_delta_y * 0.2)
 }
 
+pub mod arrows;
 mod fluids;
 mod item_environment;
 mod item_fall;

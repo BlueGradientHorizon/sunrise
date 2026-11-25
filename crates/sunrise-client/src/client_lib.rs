@@ -10,7 +10,7 @@ pub mod advancements;
 pub mod ambience;
 pub mod animate_tick;
 pub mod api_text;
-pub mod arrows;
+pub use entities::arrows;
 pub mod bed_geometry;
 pub mod block_contact;
 pub mod block_sounds;
