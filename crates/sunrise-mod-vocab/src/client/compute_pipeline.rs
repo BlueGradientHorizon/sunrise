@@ -331,9 +331,11 @@ mod tests {
 
         let mut compute = Vec::new();
         let mut pipelines: Vec<RenderPipeline> = Vec::new();
+        let mut render_types = Vec::new();
         let mut event = crate::RegisterRenderPipelinesEvent {
             mod_id: "owner_mod",
             pipelines: &mut pipelines,
+            render_types: &mut render_types,
             compute_pipelines: &mut compute,
         };
         event.compute_pipeline(pipeline);
