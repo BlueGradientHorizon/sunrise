@@ -1,10 +1,13 @@
 //! Dropped-item handles for native server mods.
+#[allow(unused_imports)]
 use super::{
     Game,
     api_values::{project_stack, stack_read_metadata},
     commands::Target,
 };
+#[allow(unused_imports)]
 use mod_api::{EntityRef, ItemEntityRef, ItemStackView};
+#[allow(unused_imports)]
 use sunrise_client::{
     items::ItemStack,
     lan::playerdata::{ints_uuid, uuid_ints},
@@ -12,7 +15,7 @@ use sunrise_client::{
 
 impl Game<'_> {
     /// Resolve the stable item identity, reusing the caller's known slot while it still matches.
-    pub(super) fn native_item_entity_index(
+    pub(in crate::game) fn native_item_entity_index(
         &self,
         item: ItemEntityRef,
         hint: Option<usize>,
@@ -32,13 +35,13 @@ impl Game<'_> {
 
     /// Narrows an entity to a dropped item, or None for another kind, a
     /// stale handle, a client, or an item temporarily taken out for ticking.
-    pub(super) fn item_entity(&self, entity: EntityRef) -> Option<ItemEntityRef> {
+    pub(in crate::game) fn item_entity(&self, entity: EntityRef) -> Option<ItemEntityRef> {
         let item = ItemEntityRef::new(entity);
         self.native_item_entity_index(item, None).map(|_| item)
     }
 
     /// Lend `ItemEntity.getItem`. Encode components only when the reader projects the view.
-    pub(super) fn item_entity_stack(
+    pub(in crate::game) fn item_entity_stack(
         &self,
         item: ItemEntityRef,
         read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
@@ -56,7 +59,11 @@ impl Game<'_> {
     /// stacks are refused: vanilla discards the item on its next tick. To
     /// remove an item entity, use the removal handle. False also for an
     /// unavailable item or outside a server.
-    pub(super) fn item_entity_set_stack(&mut self, item: ItemEntityRef, stack: ItemStack) -> bool {
+    pub(in crate::game) fn item_entity_set_stack(
+        &mut self,
+        item: ItemEntityRef,
+        stack: ItemStack,
+    ) -> bool {
         if stack.count == 0 || &*stack.item == "minecraft:air" {
             return false;
         }
@@ -66,7 +73,7 @@ impl Game<'_> {
 
     /// The signed pickup delay; the legacy infinite sentinel reads as vanilla's
     /// 32767. None also covers a stored value outside i32.
-    pub(super) fn item_entity_pickup_delay(&self, item: ItemEntityRef) -> Option<i32> {
+    pub(in crate::game) fn item_entity_pickup_delay(&self, item: ItemEntityRef) -> Option<i32> {
         let delay = self
             .dropped
             .get(self.native_item_entity_index(item, None)?)?
@@ -79,7 +86,11 @@ impl Game<'_> {
     }
 
     /// `ItemEntity.setPickUpDelay`.
-    pub(super) fn item_entity_set_pickup_delay(&mut self, item: ItemEntityRef, ticks: i32) -> bool {
+    pub(in crate::game) fn item_entity_set_pickup_delay(
+        &mut self,
+        item: ItemEntityRef,
+        ticks: i32,
+    ) -> bool {
         let Some(index) = self.native_item_entity_index(item, None) else {
             return false;
         };
@@ -88,22 +99,25 @@ impl Game<'_> {
     }
 
     /// `ItemEntity.setDefaultPickUpDelay`: ten ticks.
-    pub(super) fn item_entity_set_default_pickup_delay(&mut self, item: ItemEntityRef) -> bool {
+    pub(in crate::game) fn item_entity_set_default_pickup_delay(
+        &mut self,
+        item: ItemEntityRef,
+    ) -> bool {
         self.item_entity_set_pickup_delay(item, 10)
     }
 
     /// `ItemEntity.setNoPickUpDelay`.
-    pub(super) fn item_entity_set_no_pickup_delay(&mut self, item: ItemEntityRef) -> bool {
+    pub(in crate::game) fn item_entity_set_no_pickup_delay(&mut self, item: ItemEntityRef) -> bool {
         self.item_entity_set_pickup_delay(item, 0)
     }
 
     /// `ItemEntity.setNeverPickUp`: the infinite-delay sentinel 32767.
-    pub(super) fn item_entity_set_never_pickup(&mut self, item: ItemEntityRef) -> bool {
+    pub(in crate::game) fn item_entity_set_never_pickup(&mut self, item: ItemEntityRef) -> bool {
         self.item_entity_set_pickup_delay(item, i32::from(i16::MAX))
     }
 
     /// `ItemEntity.getAge`, including negative lifetime sentinels.
-    pub(super) fn item_entity_age(&self, item: ItemEntityRef) -> Option<i32> {
+    pub(in crate::game) fn item_entity_age(&self, item: ItemEntityRef) -> Option<i32> {
         Some(
             self.dropped
                 .get(self.native_item_entity_index(item, None)?)?
@@ -113,7 +127,7 @@ impl Game<'_> {
 
     /// The UUID set by `ItemEntity.setTarget`, limiting pickup to that player;
     /// None also means an unavailable item. This is not the thrower.
-    pub(super) fn item_entity_target(&self, item: ItemEntityRef) -> Option<u128> {
+    pub(in crate::game) fn item_entity_target(&self, item: ItemEntityRef) -> Option<u128> {
         self.dropped
             .get(self.native_item_entity_index(item, None)?)?
             .target
@@ -121,7 +135,7 @@ impl Game<'_> {
     }
 
     /// `ItemEntity.setTarget`; None allows any player to pick it up.
-    pub(super) fn item_entity_set_target(
+    pub(in crate::game) fn item_entity_set_target(
         &mut self,
         item: ItemEntityRef,
         target: Option<u128>,
@@ -132,26 +146,10 @@ impl Game<'_> {
         self.journal_set_item_target(index, target.map(uuid_ints));
         true
     }
-
-    /// `ItemEntity.getOwner`: the thrower as a resolved entity, not the pickup
-    /// target. None for no thrower, an unloaded or different-level thrower,
-    /// an unavailable handle, or one Sunrise cannot resolve.
-    pub(super) fn item_entity_owner(&self, item: ItemEntityRef) -> Option<EntityRef> {
-        let uuid = self
-            .dropped
-            .get(self.native_item_entity_index(item, None)?)?
-            .thrower?;
-        let target = self.target_by_uuid(ints_uuid(uuid))?;
-        if self.target_level(target) != self.dim {
-            return None;
-        }
-        let id = u32::try_from(self.network_entity_id(target)?).ok()?;
-        self.entity(id)
-    }
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use crate::game::api_values::test_snapshot;

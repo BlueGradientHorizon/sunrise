@@ -29,7 +29,7 @@ impl Game<'_> {
     /// the wake-up fade. Morning uses (false, false), explicit leave/sneak
     /// and bed-rule refusal use (false, true), and generic stop-sleeping,
     /// death and living-entity continuation failure use (true, true).
-    pub(in crate::game) fn native_player_bed_leave(
+    pub(in crate::game::server_side) fn native_player_bed_leave(
         &mut self,
         player: u128,
         name: &str,

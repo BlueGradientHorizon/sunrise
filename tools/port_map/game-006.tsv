@@ -26,8 +26,8 @@ LightningBolt.spawnFire	port	crates/sunrise-client/src/game/entities/lightning_s
 LightningBolt.randomWalkCleaningCopper	inline	crates/sunrise-world/src/level/tick.rs::Sim::lightning_clear_copper	3 to 5 walks of up to 8 steps
 LightningBolt.randomStepCleaningCopper	inline	crates/sunrise-world/src/level/tick.rs::Sim::lightning_clear_copper	up to 10 random blocks in the 3x3x3 cube, first weathering copper steps back
 LightningBolt.shouldRenderAtSqrDistance	port	crates/sunrise-client/src/game/entities/lightning.rs::Game::bolt_instances	ticked in #3514; `LightningBolt.shouldRenderAtSqrDistance` is cited at crates/sunrise-client/src/game/entities/lightning.rs:591
-LinearInterpolationHandler.create	inline	crates/sunrise-client/src/game/network/remote/motion.rs::Game::move_entity	3 steps (lerps.insert); only on a server's client, a local game moves boats, carts and bobbers directly
-LinearInterpolationHandler.startInterpolating	inline	crates/sunrise-client/src/game/network/remote/motion.rs::Game::move_entity	target kept as Lerp with steps 3
+LinearInterpolationHandler.create	inline	crates/sunrise-client/src/game/network/remote/motion_client.rs::Game::move_entity	3 steps (lerps.insert); only on a server's client, a local game moves boats, carts and bobbers directly
+LinearInterpolationHandler.startInterpolating	inline	crates/sunrise-client/src/game/network/remote/motion_client.rs::Game::move_entity	target kept as Lerp with steps 3
 LinearInterpolationHandler.doInterpolate	inline	crates/sunrise-client/src/game/network/remote/tick_client.rs::Game::tick_remote_entities	gap: minor: position eased by 1/steps; a boat's or minecart's yaw is set at once, not eased
 LivingEntity.<init>	port	crates/sunrise-client/src/mobs.rs::Mob::new	box, health, random yaw
 LivingEntity.canFreeze	port	crates/sunrise-client/src/mobs/ai/freezing.rs::can_freeze	the freeze_immune_entity_types tag and the freeze_immune_wearables on every armour slot, with the class answers below
@@ -61,7 +61,7 @@ LivingEntity.breakItem	port	crates/sunrise-client/src/game.rs::Game::damage_held
 LivingEntity.dropExperience	inline	crates/sunrise-client/src/mobs/drops.rs::die	orbs only when a player killed it and mob_drops is on
 LivingEntity.getKnockback	port	crates/sunrise-client/src/game/items/enchant_effects.rs::Game::extra_knockback	gap: minor: the Knockback enchant halved (player and gear::knockback for mobs); the attack_knockback attribute counts only for the hoglin shove
 LivingEntity.dropFromLootTable	port	crates/sunrise-client/src/mobs/drops.rs::roll	the entity table from its random sequence
-LivingEntity.dropFromEntityInteractLootTable	port	crates/sunrise-client/src/game/mobs/creatures/mod_client.rs::Game::interact_armadillo	brush/armadillo is the only table that uses it
+LivingEntity.dropFromEntityInteractLootTable	port	crates/sunrise-client/src/game/mobs/creatures/mod_client_server.rs::Game::interact_armadillo	brush/armadillo is the only table that uses it
 LivingEntity.dropFromShearingLootTable	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::interact_mob	sheep by colour; snow golem and bogged in interact_shear_mob; gap: minor: a mooshroom's five mushrooms are hardcoded, not read from the table
 LivingEntity.getFallDamageSound	inline	crates/sunrise-client/src/mobs/landing.rs::MobLanding::living_fall_sound	a monster gets entity.hostile.big_fall and entity.hostile.small_fall, anything else the generic pair; a player's comes from landing.rs
 LivingEntity.getHitbox	missing		minor: a rider's hitbox is not cut at its seat height; spear and melee tests use the full box
@@ -71,7 +71,7 @@ LivingEntity.isAlive	port	crates/sunrise-client/src/mobs.rs::Mob::alive	not remo
 LivingEntity.setIgnoreFallDamageFromCurrentImpulse	port	crates/sunrise-world/src/living_fall.rs::ImpulseContext::set_ignore_fall_damage	40 ticks of grace
 LivingEntity.getDamageAfterArmorAbsorb	inline	crates/sunrise-client/src/mobs.rs::Mob::damage_with	the player's armor wear is health.rs hurt_armor; the mob path also scales armor effectiveness (breach)
 LivingEntity.getKillCredit	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::mob_die	the last player to hit it, else the last mob
-LivingEntity.getTicksSinceLastKineticHitFeedback	port	crates/sunrise-client/src/game/items/spear.rs::Game::kinetic_hit_ticks
+LivingEntity.getTicksSinceLastKineticHitFeedback	port	crates/sunrise-client/src/game/items/spear_server.rs::Game::kinetic_hit_ticks
 LivingEntity.swapHandItems	inline	crates/sunrise-client/src/game/network/remote/packets_entity_client.rs::Game::apply_entity_event_packet	entity event 55 swaps another player's hands; handled by `Game::apply_entity_event_packet`
 LivingEntity.getAttackRangeWith	inline	crates/sunrise-client/src/game.rs::Game::reach	gap: minor: only the spear's range is item specific (spear.rs REACH); other items use the default reach
 LivingEntity.SwingState.getAnimation	port	crates/sunrise-client/src/first_person.rs::SwingState::animation	partial-tick interpolation wraps a restarted animation forward through one
@@ -85,10 +85,10 @@ LivingEntity.updateFallFlyingMovement	port	crates/sunrise-client/src/motion.rs::
 LivingEntity.travelRidden	inline	crates/sunrise-client/src/mobs/living.rs::Mob::travel	the rider's input is applied in equine.rs ridden_step, nautilus.rs ridden and happy_ghast.rs ridden
 LivingEntity.calculateEntityAnimation	port	crates/sunrise-client/src/mobs/living.rs::Mob::update_walk_animation	a passenger's legs are held still at draw time (anim.rs)
 LivingEntity.causeExtraKnockback	port	crates/sunrise-client/src/game/items/enchant_effects.rs::Game::extra_knockback_direction	target pushed along the attacker's yaw; the attacker stops sprinting
-LivingEntity.wasRecentlyStabbed	inline	crates/sunrise-client/src/game/items/spear.rs::Game::spear_tick	Game::stabbed with contact_cooldown_ticks
-LivingEntity.rememberStabbedEntity	inline	crates/sunrise-client/src/game/items/spear.rs::Game::spear_tick	stabbed.insert(key, now)
-LivingEntity.stabbedEntities	port	crates/sunrise-client/src/game/items/spear.rs::Game::spear_tick	the living entities stabbed in one use feed the minecraft:spear_mobs trigger
-LivingEntity.stabAttack	port	crates/sunrise-client/src/game/items/spear.rs::Game::stab_mob	gap: minor: the player's spear only; mobs never stab
+LivingEntity.wasRecentlyStabbed	inline	crates/sunrise-client/src/game/items/spear_server.rs::Game::spear_tick	Game::stabbed with contact_cooldown_ticks
+LivingEntity.rememberStabbedEntity	inline	crates/sunrise-client/src/game/items/spear_server.rs::Game::spear_tick	stabbed.insert(key, now)
+LivingEntity.stabbedEntities	port	crates/sunrise-client/src/game/items/spear_server.rs::Game::spear_tick	the living entities stabbed in one use feed the minecraft:spear_mobs trigger
+LivingEntity.stabAttack	port	crates/sunrise-client/src/game/items/spear_server.rs::Game::stab_mob	gap: minor: the player's spear only; mobs never stab
 LivingEntity.handleHandSwap	skip:other		the LAN server sends both changed slots in one SetEquipment instead of entity event 55; clients end in the same state
 LivingEntity.handleEquipmentChanges	port	crates/sunrise-client/src/lan/entity.rs::ServerEntity::send_equipment	changed slots as one SetEquipment
 LivingEntity.updatePlayersWithNewEquipment	inline	crates/sunrise-client/src/lan/entity.rs::ServerEntity::send_equipment	the packet is built there
@@ -110,7 +110,7 @@ LivingEntity.getEquipmentSlotForItem	inline	crates/sunrise-client/src/game/mobs/
 LivingEntity.createEquipmentSlotAccess	inline	crates/sunrise-client/src/game/administration/commands/items.rs::Game::slots_named	/item slot names such as armor.head and weapon.mainhand
 LivingEntity.getEquipmentSlot	inline	crates/sunrise-client/src/game/administration/commands/items.rs::Game::slots_named	slot names instead of the numeric ids 98, 99 and 100 and up
 LivingEntity.getSlot	port	crates/sunrise-client/src/game/administration/commands/items.rs::Game::slots_named	for the player and mobs through /item
-LivingEntity.recreateFromPacket	port	crates/sunrise-client/src/game/network/remote/tracking.rs::Game::spawn_entity	position, head yaw and movement of a server's mob
+LivingEntity.recreateFromPacket	port	crates/sunrise-client/src/game/network/remote/tracking_client.rs::Game::spawn_entity	position, head yaw and movement of a server's mob
 LivingEntity.getPassengerRidingPosition	port	crates/sunrise-client/src/mobs/riders.rs::seat	gap: minor: attachments are a table by species, not scaled by the age scale
 LivingEntity.lerpHeadRotationStep	inline	crates/sunrise-client/src/game/network/remote/tick_client.rs::Game::tick_remote_entities	head_lerps: 1/steps of the way to the target yaw
 LivingEntity.isInvulnerableTo	inline	crates/sunrise-client/src/mobs.rs::Mob::damage_with	gap: minor: the invulnerable flag only; no enchantment damage immunity

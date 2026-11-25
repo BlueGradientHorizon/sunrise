@@ -22,10 +22,10 @@ MultiPartModel.Unbaked.visualEqualityGroup	skip:java		key for sharing identical 
 MultiPartModel.Unbaked.resolveDependencies	inline	crates/sunrise-client-render/src/models/catalog.rs::StateModels::load	model names gathered from every multipart selector
 MultiPartModel.Unbaked.bake	inline	crates/sunrise-client-render/src/models/catalog.rs::StateModels::load	shared bake per definition; per-state selection stored in states
 Selector.instantiate	port	crates/sunrise-assets/src/blockstate/bind.rs::BlockStateDefinition::bind	a selector without a condition applies to every state
-BlockStateModelWrapper.update	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::block_model_vertices	gap: player: no tint layers, so carried or cart blocks with tint sources (grass, leaves) are drawn untinted
-BlockStateModelWrapper.updateTints	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::block_model_vertices	each face's tint index is multiplied by its default tint, then drawn by tinted_block_model_vertices
+BlockStateModelWrapper.update	port	crates/sunrise-client/src/game/entities/minecarts_client.rs::Game::block_model_vertices	gap: player: no tint layers, so carried or cart blocks with tint sources (grass, leaves) are drawn untinted
+BlockStateModelWrapper.updateTints	port	crates/sunrise-client/src/game/entities/minecarts_client.rs::Game::block_model_vertices	each face's tint index is multiplied by its default tint, then drawn by tinted_block_model_vertices
 BlockStateModelWrapper.Unbaked.bake	skip:java		builds the wrapper object; Sunrise passes the transform straight to block_model_vertices
-CompositeBlockModel.update	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::special_block_model	the special model of a chest, head, banner and the like comes on top of the block model
+CompositeBlockModel.update	port	crates/sunrise-client/src/game/entities/minecarts_client.rs::Game::special_block_model	the special model of a chest, head, banner and the like comes on top of the block model
 CompositeBlockModel.Unbaked.bake	skip:java		builds the composite object; no separate step in Sunrise
 ConditionalBlockModel.update	inline	crates/sunrise-client-render/src/block_entity_render.rs::BlockEntityRenderer::render_one	Christmas chest texture chosen in the chest branch by extended_christmas()
 ConditionalBlockModel.Unbaked.bake	skip:java		builds the conditional object; the chest branch picks the texture when drawing
@@ -58,11 +58,11 @@ BlockEntityWithBoundingBoxRenderer.submit	port	crates/sunrise-client/src/gizmos.
 BlockEntityWithBoundingBoxRenderer.renderInvisibleBlocks	inline	crates/sunrise-client/src/gizmos.rs::Gizmos::bounding_box	barrier, light, air and structure void markers with their own colours
 BlockEntityWithBoundingBoxRenderer.renderStructureVoids	inline	crates/sunrise-client/src/game/administration/structure_edit.rs::Game::bounding_box_gizmos	a StructureVoid marker for every structure void cell of the box, at gizmos.rs::InvisibleBlock::StructureVoid's colour
 BrightnessCombiner.acceptDouble	inline	crates/sunrise-client-render/src/block_entity_render.rs::BlockEntityRenderer::render_one	brighter of the two chest halves per channel, in the chest branch
-BrushableBlockRenderer.extractRenderState	inline	crates/sunrise-client/src/game/blocks/brush.rs::Game::brushable_geometry	the item and hit direction are read from the block entity
-BrushableBlockRenderer.submit	port	crates/sunrise-client/src/game/blocks/brush.rs::Game::brushable_geometry	the item drawn on the brushed face, sliding out with the dust stage
-BrushableBlockRenderer.translations	inline	crates/sunrise-client/src/game/blocks/brush.rs::Game::brushable_geometry	the per-face offset, 0.075 per dust stage
-CampfireRenderer.extractRenderState	inline	crates/sunrise-client/src/game/blocks/campfire.rs::Game::campfire_geometry	facing and per-slot item seed read there
-CampfireRenderer.submit	port	crates/sunrise-client/src/game/blocks/campfire.rs::Game::campfire_geometry	items on the four sides, drawn within 64 blocks
+BrushableBlockRenderer.extractRenderState	inline	crates/sunrise-client/src/game/blocks/brush_client.rs::Game::brushable_geometry	the item and hit direction are read from the block entity
+BrushableBlockRenderer.submit	port	crates/sunrise-client/src/game/blocks/brush_client.rs::Game::brushable_geometry	the item drawn on the brushed face, sliding out with the dust stage
+BrushableBlockRenderer.translations	inline	crates/sunrise-client/src/game/blocks/brush_client.rs::Game::brushable_geometry	the per-face offset, 0.075 per dust stage
+CampfireRenderer.extractRenderState	inline	crates/sunrise-client/src/game/blocks/campfire_client.rs::Game::campfire_geometry	facing and per-slot item seed read there
+CampfireRenderer.submit	port	crates/sunrise-client/src/game/blocks/campfire_client.rs::Game::campfire_geometry	items on the four sides, drawn within 64 blocks
 ChestRenderer.createModelTransformation	inline	crates/sunrise-client-render/src/block_entity_render.rs::BlockEntityRenderer::render_one	chest turn about its centre in the chest branch
 ConduitRenderer.createEyeLayer	skip:data		model layer; Sunrise loads the conduit parts from exported model data in BlockEntityRenderer::load
 ConduitRenderer.createWindLayer	skip:data		model layer; Sunrise loads the conduit parts from exported model data in BlockEntityRenderer::load
@@ -80,8 +80,8 @@ DecoratedPotRenderer.getExtents	port	crates/sunrise-client/src/item_render/speci
 HangingSignRenderer.extractRenderState	inline	crates/sunrise-client-render/src/block_entity_render.rs::BlockEntityRenderer::render_one	gap: minor: the text filtering option is not read
 LecternRenderer.extractRenderState	inline	crates/sunrise-client-render/src/block_entity_render.rs::BlockEntityRenderer::render_one	book drawn only when has_book is set, turned by facing
 LecternRenderer.submit	port	crates/sunrise-client-render/src/block_entity_render.rs::BlockEntityRenderer::render_one	the crack overlay on the lectern book is redrawn by BlockEntityRenderer::render_breaking
-PistonHeadRenderer.submit	port	crates/sunrise-client/src/game/blocks/moving_pistons.rs::Game::moving_piston_geometry	head and base blocks drawn at their offsets
-PistonHeadRenderer.createMovingBlock	port	crates/sunrise-client/src/game/blocks/moving_pistons.rs::Game::moving_block_vertices	gap: minor: the tint is the particle sprite colour, not the block's tint sources
+PistonHeadRenderer.submit	port	crates/sunrise-client/src/game/blocks/moving_pistons_client.rs::Game::moving_piston_geometry	head and base blocks drawn at their offsets
+PistonHeadRenderer.createMovingBlock	port	crates/sunrise-client/src/game/blocks/moving_pistons_client.rs::Game::moving_block_vertices	gap: minor: the tint is the particle sprite colour, not the block's tint sources
 ShelfRenderer.extractRenderState	inline	crates/sunrise-client/src/game/blocks/shelf.rs::Game::shelf_geometry	the three items, the facing and align-to-bottom are read from the block entity
 ShelfRenderer.submit	port	crates/sunrise-client/src/game/blocks/shelf.rs::Game::shelf_geometry	three items drawn facing out, 0.3125 apart and 0.25 down
 ShelfRenderer.submitItem	inline	crates/sunrise-client/src/game/blocks/shelf.rs::Game::shelf_geometry	the slot offset and quarter scale, aligned to the bottom or centred
@@ -109,7 +109,7 @@ TheEndGatewayRenderer.submit	port	crates/sunrise-client-render/src/block_entity_
 TheEndPortalRenderer.submit	port	crates/sunrise-client-render/src/block_entity_render.rs::BlockEntityRenderer::render_one	portal slab in the end portal branch
 TrialSpawnerRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/spawner.rs::display_pose	same spin and scale rule as spawners
 TrialSpawnerRenderer.submit	port	crates/sunrise-client/src/game/mobs/spawner_client.rs::Game::spawner_geometry	trial spawner display mob drawn in the same pass
-VaultRenderer.extractRenderState	inline	crates/sunrise-client/src/game/blocks/vault.rs::Game::vault_geometry	display item and spin read there
-VaultRenderer.submit	port	crates/sunrise-client/src/game/blocks/vault.rs::Game::vault_geometry	item cluster at the vault centre with spin
+VaultRenderer.extractRenderState	inline	crates/sunrise-client/src/game/blocks/vault_client.rs::Game::vault_geometry	display item and spin read there
+VaultRenderer.submit	port	crates/sunrise-client/src/game/blocks/vault_client.rs::Game::vault_geometry	item cluster at the vault centre with spin
 BlockEntityRenderState.extractBase	skip:java		copies position, state, light and crack progress; Sunrise passes these as arguments
 BlockEntityRenderState.fillCrashReportCategory	skip:debug		crash report detail

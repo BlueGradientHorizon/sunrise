@@ -616,7 +616,7 @@ impl Game<'_> {
     /// block is spared. With `answers`, a state whose parts declare their
     /// answer pure is asked once and answered from there after. The level is
     /// not changed.
-    pub(in crate::game) fn cell_explosion_resistance(
+    pub(in crate::game::server_side) fn cell_explosion_resistance(
         &mut self,
         pos: [i32; 3],
         rules: &BlastRules,
@@ -682,7 +682,7 @@ impl Game<'_> {
     }
     /// The rules of the blast going off now, `resists` overriding one block's
     /// resistance and `portal_proof` as its source has it.
-    pub(in crate::game) fn blast_rules(
+    pub(in crate::game::server_side) fn blast_rules(
         &self,
         resists: Option<([i32; 3], f32)>,
         portal_proof: bool,
@@ -1647,7 +1647,7 @@ impl Game<'_> {
     }
     /// `ExplosionEvent.Start` for the explosion `start`: true when a mod
     /// cancels it, and nothing of it happens.
-    pub(in crate::game) fn explosion_start_cancelled(
+    pub(in crate::game::server_side) fn explosion_start_cancelled(
         &mut self,
         start: &ExplosionStart<'_>,
     ) -> bool {
@@ -1777,7 +1777,7 @@ impl Game<'_> {
 
     /// The blast going off now as the hooks hear it, with the source and
     /// causing entity the combat state holds.
-    pub(in crate::game) fn explosion_start<'a>(
+    pub(in crate::game::server_side) fn explosion_start<'a>(
         &self,
         center: [f64; 3],
         radius: f32,

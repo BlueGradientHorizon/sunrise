@@ -4,7 +4,7 @@ use super::Game;
 
 /// A player an orb may follow: the feet, the point the orb homes on and the
 /// player's UUID (None for a host with no saved UUID).
-pub(super) type OrbCandidate = ([f64; 3], [f64; 3], Option<u128>, u32);
+pub(in crate::game) type OrbCandidate = ([f64; 3], [f64; 3], Option<u128>, u32);
 
 /// `ExperienceOrb.followNearbyPlayer`'s scan distance.
 const SCAN_DISTANCE: f64 = 8.0;
@@ -13,7 +13,11 @@ impl Game<'_> {
     /// The point orb `i` homes on this tick (`ExperienceOrb.followNearbyPlayer`):
     /// the nearest of `followed` within 8 blocks, unless the mods choose
     /// another player or none.
-    pub(super) fn orb_target(&mut self, i: usize, followed: &[OrbCandidate]) -> Option<[f64; 3]> {
+    pub(in crate::game) fn orb_target(
+        &mut self,
+        i: usize,
+        followed: &[OrbCandidate],
+    ) -> Option<[f64; 3]> {
         let o = &self.orbs[i];
         let (id, at, join) = (o.id, o.position, o.join);
         let distance = |feet: &[f64; 3]| -> f64 {

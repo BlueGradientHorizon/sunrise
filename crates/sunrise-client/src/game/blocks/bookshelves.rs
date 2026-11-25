@@ -84,7 +84,7 @@ impl Game<'_> {
 
     /// Snapshot at world entry/parts reload, or after received tags and tag-update listeners
     /// are published. Particle workers receive state answers, never a host or mod callback.
-    pub(in crate::game) fn resolve_enchant_particles(&self) {
+    pub(in crate::game::client_side) fn resolve_enchant_particles(&self) {
         if self.is_logical_server() {
             return;
         }

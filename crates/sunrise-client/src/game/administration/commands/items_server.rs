@@ -796,7 +796,7 @@ impl Game<'_> {
         }
     }
     /// The shared slot writer, with stand events suppressed for transactional replay.
-    pub(in crate::game) fn slot_set_with_effects(
+    pub(in crate::game::server_side) fn slot_set_with_effects(
         &mut self,
         s: &Slot,
         stack: Option<ItemStack>,

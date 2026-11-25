@@ -69,7 +69,7 @@ impl Game<'_> {
 
     /// `ServerPlayer.completeUsingItem`: the player's own client is told
     /// first, and completes the use itself (eating the food there too).
-    pub(in crate::game) fn send_use_item_complete(&mut self) {
+    pub(in crate::game::server_side) fn send_use_item_complete(&mut self) {
         if self.server.lan_acting.is_some() {
             self.server
                 .guest_entity_events
@@ -91,7 +91,7 @@ impl Game<'_> {
         self.apply_use_remainder(stack);
         self.apply_use_cooldown(stack);
     }
-    pub(in crate::game) fn apply_use_remainder(&mut self, used: &ItemStack) {
+    pub(in crate::game::server_side) fn apply_use_remainder(&mut self, used: &ItemStack) {
         if self.creative || self.held().map_or(0, |stack| stack.count) >= used.count {
             return;
         }
@@ -105,7 +105,7 @@ impl Game<'_> {
             }
         }
     }
-    pub(in crate::game) fn feet(&self) -> Option<[f64; 3]> {
+    pub(in crate::game::server_side) fn feet(&self) -> Option<[f64; 3]> {
         self.player
             .as_ref()
             .map(|p| [p.position.x, p.position.y, p.position.z])
@@ -217,7 +217,7 @@ impl Game<'_> {
 
     /// Run the original user's effective effect list, never re-reading its hand.
     /// If a built-in can no longer act, continue the list but refuse the finish.
-    pub(in crate::game) fn apply_consumable_effects(
+    pub(in crate::game::server_side) fn apply_consumable_effects(
         &mut self,
         stack: &ItemStack,
         effects: &[ConsumeEffect],
@@ -271,7 +271,7 @@ impl Game<'_> {
     }
 
     /// Specialized player drinks have already applied their built-in component listener.
-    pub(in crate::game) fn apply_drink_effects(&mut self, stack: &ItemStack) {
+    pub(in crate::game::server_side) fn apply_drink_effects(&mut self, stack: &ItemStack) {
         if let Some(consumable) = self.consumable(stack) {
             self.apply_consumable_effects(stack, &consumable.effects, None);
         }
@@ -422,10 +422,6 @@ impl Game<'_> {
             .get(tag)
             .is_some_and(|s| s.contains(&**name))
     }
-    /// `LivingEntity.handleEntityEvent(46)` for this client: 128 portal
-    /// particles from the old position to the new one. The local player's
-    /// random is the particle engine's.
-    pub(in crate::game) fn portal_particles(&mut self) {}
     /// `LivingEntity.stopRiding`.
     pub(in crate::game) fn stop_riding(&mut self) {
         let Some(id) = self.riding else {

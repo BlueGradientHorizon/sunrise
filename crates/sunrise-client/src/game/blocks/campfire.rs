@@ -2,22 +2,27 @@
 //! and the block entity's `cookTick` (lit) and `cooldownTick` (unlit). The
 //! items drawn on the fire are `campfire_geometry`'s; a server's clients get
 //! them through the block entity's update tag (`lan::chunks::entity_tag`).
+#[allow(unused_imports)]
 use super::{
     Game,
     item_draw::{BlockItemDraw, block_entity_pose},
 };
+#[allow(unused_imports)]
 use sunrise_assets::item_model::DisplayContext;
+#[allow(unused_imports)]
 use sunrise_client::{
     Result, block_entities::Pos, block_entity_render::vertex_light, camera::rotate_degrees,
     containers::BlockEntity, items::ItemStack, mesher::Vertex, mobs::Who,
 };
+#[allow(unused_imports)]
 use sunrise_client_render::block_entity_reach::Reach;
+#[allow(unused_imports)]
 use sunrise_core::position::BlockPos;
 
 /// The `campfire_cooking` recipe kind (`RecipeType.CAMPFIRE_COOKING`).
-const KIND: &str = "minecraft:campfire_cooking";
+pub(in crate::game) const KIND: &str = "minecraft:campfire_cooking";
 
-fn is_campfire(name: &str) -> bool {
+pub(in crate::game) fn is_campfire(name: &str) -> bool {
     matches!(
         sunrise_client::block_entity_types::factory_block(name),
         "minecraft:campfire" | "minecraft:soul_campfire"
@@ -143,95 +148,16 @@ impl Game<'_> {
         Ok(())
     }
 
-    fn sleep_idle_campfire(&mut self, pos: Pos, lit: bool) {
+    pub(in crate::game::server_side) fn sleep_idle_campfire(&mut self, pos: Pos, lit: bool) {
         if matches!(self.world.block_entities.get(&pos), Some(BlockEntity::Campfire(c)) if c.idle(lit))
         {
             self.world.block_entities.sleep(pos);
         }
     }
 
-    /// `CampfireRenderer`: each cooking item lies on the fire, slot `i`
-    /// turned to `Direction.from2DDataValue((i + facing) % 4)`, laid flat
-    /// (90° about X), at a corner and three eighths of its size, drawn as a
-    /// FIXED item seeded by the block's position plus the slot.
-    pub(in crate::game) fn campfire_geometry(&self, camera: glam::DVec3, out: &mut Vec<Vertex>) {
-        self.campfire_items(camera, |d| {
-            self.submit_item_world(d.state, d.pose, d.light, out);
-        });
-    }
-
-    /// The items [`Self::campfire_geometry`] draws, in `CampfireRenderer.submit`'s order.
-    pub(in crate::game::server_side) fn campfire_items(
-        &self,
-        camera: glam::DVec3,
-        mut draw: impl FnMut(BlockItemDraw),
-    ) {
-        let _items = sunrise_client::spans::raw_flight_guard("block_entity_items");
-        let reach = Reach::Default;
-        sunrise_client::spans::note_block_entity_item_visits(|| {
-            self.world.block_entities.len() as u64
-        });
-        for (key, entity) in &self.world.block_entities {
-            let BlockEntity::Campfire(c) = entity else {
-                continue;
-            };
-            if c.items.iter().all(Option::is_none) {
-                continue;
-            }
-            if !reach.should_render([key.0, key.1, key.2], camera, 0) {
-                continue;
-            }
-            // Direction.get2DDataValue: south 0, west 1, north 2, east 3.
-            let state = self.world.block(key.0, key.1, key.2);
-            let facing = match self
-                .pack
-                .assets
-                .registry
-                .state(state)
-                .and_then(|s| s.properties.get("facing"))
-                .map(String::as_str)
-            {
-                Some("west") => 1,
-                Some("north") => 2,
-                Some("east") => 3,
-                _ => 0,
-            };
-            let light = vertex_light(self.world.light(key.0, key.1, key.2));
-            let packed = BlockPos::new(key.0, key.1, key.2).pack();
-            for (i, stack) in c.items.iter().enumerate() {
-                let Some(stack) = stack else {
-                    continue;
-                };
-                let seed = (packed as i32).wrapping_add(i as i32);
-                let item = self.resolve_item(stack, DisplayContext::Fixed, None, seed);
-                if item.is_empty() {
-                    continue;
-                }
-                let mut pose = block_entity_pose(*key, camera);
-                pose.translate(0.5, 0.449_218_75, 0.5);
-                // Direction.toYRot: 90° per 2D step from south.
-                rotate_degrees(&mut pose, 1, -(((i + facing) % 4) as f32 * 90.0));
-                rotate_degrees(&mut pose, 0, 90.0);
-                pose.translate(-0.3125, -0.3125, 0.0);
-                pose.scale(0.375, 0.375, 0.375);
-                draw(BlockItemDraw {
-                    #[cfg(test)]
-                    stack,
-                    #[cfg(test)]
-                    display: DisplayContext::Fixed,
-                    #[cfg(test)]
-                    seed,
-                    state: &item,
-                    pose: pose.to_glam(),
-                    light,
-                });
-            }
-        }
-    }
-
     /// `Containers.dropItemStack(level, x, y, z, stack)` at the block's
     /// integer position.
-    pub(in crate::game) fn campfire_drop(&mut self, pos: Pos, stack: ItemStack) {
+    pub(in crate::game::server_side) fn campfire_drop(&mut self, pos: Pos, stack: ItemStack) {
         let at = BlockPos::new(pos.0, pos.1, pos.2);
         for piece in
             sunrise_world::level::removal::drop_item_stack(&mut self.world.random, at, stack.count)
@@ -251,7 +177,7 @@ impl Game<'_> {
 
 #[cfg(test)]
 #[path = "tests/campfire_tests.rs"]
-mod campfire_tests;
+pub(in crate::game) mod campfire_tests;
 
 #[cfg(test)]
 #[path = "tests/block_entity_items_tests.rs"]

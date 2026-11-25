@@ -193,7 +193,7 @@ impl Game<'_> {
 impl Game<'_> {
     /// A scoped click decision fully consumes the packet. Unsubscribed layouts use the same
     /// default router without opening an action or allocating its read set.
-    pub(in crate::game) fn menu_clicked_decided(
+    pub(in crate::game::server_side) fn menu_clicked_decided(
         &mut self,
         conn: u32,
         click: &sunrise_protocol::packets::play::ContainerClick,

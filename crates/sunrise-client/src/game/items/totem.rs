@@ -37,34 +37,6 @@ impl Game<'_> {
             .unwrap_or_default()
             .to_vec()
     }
-    /// What each armed mob's hands carry as `minecraft:death_protection`, for
-    /// `Mob::use_death_protection` (the mob has no item data of its own): any
-    /// item with the component counts, not only the totem.
-    pub(in crate::game) fn sync_mob_death_protection(&mut self) {
-        let items = self.res.items();
-        let of = |id: Option<&str>, stack: Option<&ItemStack>| {
-            let item = stack.map(|s| &*s.item).or(id)?;
-            match stack {
-                Some(stack) => stack.death_protection(items.get(item)).map(<[_]>::to_vec),
-                None => items
-                    .get(item)
-                    .and_then(|info| info.death_protection.clone()),
-            }
-        };
-        for m in self.mobs.iter_mut().filter(|m| !m.removed) {
-            if m.extra.main_hand_id().is_none() && m.extra.off_hand_id().is_none() {
-                m.extra.hand_protection = None;
-                continue;
-            }
-            m.extra.hand_protection = Some(sunrise_client::mobs::HandProtection {
-                main: of(m.extra.main_hand_id(), m.extra.main_hand_stack()),
-                off: of(
-                    m.extra.off_hand_id(),
-                    m.extra.slot_stack(sunrise_items::equipment::OFFHAND),
-                ),
-            });
-        }
-    }
     /// Whether either hand holds a death-protection item, for the next hurt:
     /// the window's player once a tick, a server's player for each of its
     /// turns.
@@ -88,7 +60,7 @@ impl Game<'_> {
 
     /// Entity event 35 from a server, for this client's own player or an
     /// entity it draws.
-    pub(in crate::game) fn remote_totem(&mut self, id: i32) {
+    pub(in crate::game::client_side) fn remote_totem(&mut self, id: i32) {
         if let Some((target, bounds)) = self.remote_tracking_body(id) {
             self.totem_event(
                 target,
@@ -102,7 +74,7 @@ impl Game<'_> {
     /// `ClientPacketListener.handleEntityEvent` 35: the totem particles (a
     /// 30-tick emitter) and its sound, heard here only (`playLocalSound`),
     /// and the player's own rumble.
-    pub(in crate::game) fn totem_event(&mut self, target: TrackingTarget, body: Body) {
+    pub(in crate::game::client_side) fn totem_event(&mut self, target: TrackingTarget, body: Body) {
         self.particles.0.tracking_emitter_for(
             ParticleOptions::simple(ParticleType::TotemOfUndying),
             target,

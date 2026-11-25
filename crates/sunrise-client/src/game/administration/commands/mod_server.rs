@@ -1938,7 +1938,7 @@ impl Game<'_> {
     /// vertical motion is zeroed and it is on the ground; a mob's navigation
     /// stops (`PathfinderMob`; the others hold no path). The players' own
     /// ground is their clients'.
-    pub(in crate::game) fn tp_lands(&mut self, t: Target) {
+    pub(in crate::game::server_side) fn tp_lands(&mut self, t: Target) {
         // Player placement already handles motion and fall-flying ground state.
         if matches!(t, Target::Player | Target::Guest(_)) {
             return;

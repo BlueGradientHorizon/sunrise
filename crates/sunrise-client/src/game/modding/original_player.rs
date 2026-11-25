@@ -258,7 +258,7 @@ impl Game<'_> {
     /// when `player_clone` is listened, assigns the replacement's destination dimension
     /// without placing it, reinitializes the replacement `ServerPlayer`, and dispatches
     /// `player_clone` with both holders journaled to `host.transaction`.
-    pub(in crate::game) fn restore_cloned_player(
+    pub(in crate::game::server_side) fn restore_cloned_player(
         &mut self,
         conn: u32,
         destination: Dim,

@@ -71,7 +71,7 @@ fn window(wanted: &Wanted) -> String {
 
 impl Game<'_> {
     /// A `sunrise:perf` payload from `conn`.
-    pub(in crate::game) fn guest_perf(&mut self, conn: u32, data: &[u8]) {
+    pub(in crate::game::server_side) fn guest_perf(&mut self, conn: u32, data: &[u8]) {
         let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
             return;
         };
@@ -111,14 +111,14 @@ impl Game<'_> {
     }
 
     /// Sends `reply` to the guest on `conn`, if it is still here.
-    pub(in crate::game) fn perf_reply(&self, conn: u32, reply: &Reply) {
+    pub(in crate::game::server_side) fn perf_reply(&self, conn: u32, reply: &Reply) {
         if let Some(guest) = self.lan.as_ref().and_then(|h| h.hub.guest(conn)) {
             guest.send(&payload(reply));
         }
     }
 
     /// What guests asked since the last tick, and a stop when the guest whose capture runs has left.
-    pub(in crate::game) fn take_perf_asked(&mut self) -> Vec<Asked> {
+    pub(in crate::game::server_side) fn take_perf_asked(&mut self) -> Vec<Asked> {
         let served = &mut self.profile.served;
         let mut asked = std::mem::take(&mut served.asked);
         if let Some(r) = served.requester.as_mut()
@@ -136,7 +136,7 @@ impl Game<'_> {
     }
 
     /// The capture `name` asked for runs, in the file at `path`.
-    pub(in crate::game) fn perf_started(
+    pub(in crate::game::server_side) fn perf_started(
         &mut self,
         conn: u32,
         name: String,
@@ -164,7 +164,7 @@ impl Game<'_> {
     }
 
     /// The capture `conn` asked for could not begin.
-    pub(in crate::game) fn perf_refused(&self, conn: u32, why: Refusal) {
+    pub(in crate::game::server_side) fn perf_refused(&self, conn: u32, why: Refusal) {
         self.perf_reply(conn, &Reply::Refused(why));
     }
 
@@ -223,7 +223,7 @@ impl Game<'_> {
     }
 
     /// Sends the next chunk of each file that is due, at most [`sunrise_client::perf_net::RATE`] a second and not while the guest has a backlog.
-    pub(in crate::game) fn pump_perf_files(&mut self) {
+    pub(in crate::game::server_side) fn pump_perf_files(&mut self) {
         let now = Instant::now();
         let mut sending = std::mem::take(&mut self.profile.served.sending);
         sending.retain_mut(|s| {
@@ -250,7 +250,7 @@ impl Game<'_> {
     }
 
     /// On the server thread, between two ticks: begins and ends the captures guests asked for.
-    pub(in crate::game) fn serve_perf_asked(&mut self) {
+    pub(in crate::game::server_side) fn serve_perf_asked(&mut self) {
         self.pump_perf_files();
         for asked in self.take_perf_asked() {
             match asked {

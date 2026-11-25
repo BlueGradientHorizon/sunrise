@@ -62,7 +62,7 @@ impl Game<'_> {
     }
 
     /// True if `id` (or the wire entity behind a synthetic special-target id) is the camera entity.
-    pub(in crate::game) fn is_pick_camera(&self, id: u32) -> bool {
+    pub(in crate::game::client_side) fn is_pick_camera(&self, id: u32) -> bool {
         let Some(camera) = self.pick_camera_id() else {
             return false;
         };

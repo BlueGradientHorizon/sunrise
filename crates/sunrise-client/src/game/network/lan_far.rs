@@ -31,7 +31,7 @@ fn send(sender: &PlayerSender, data: Vec<u8>) {
 
 impl Game<'_> {
     /// A `sunrise:lod` payload from `conn`.
-    pub(super) fn guest_far_terrain(&mut self, conn: u32, data: &[u8]) {
+    pub(in crate::game::server_side) fn guest_far_terrain(&mut self, conn: u32, data: &[u8]) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -78,7 +78,7 @@ impl Game<'_> {
 
     /// The tiles the far terrain thread finished go to their players, once
     /// their connections have room.
-    pub(super) fn flush_far_terrain(&mut self) {
+    pub(in crate::game) fn flush_far_terrain(&mut self) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };

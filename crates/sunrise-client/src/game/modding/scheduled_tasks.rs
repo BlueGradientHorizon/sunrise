@@ -1,21 +1,23 @@
 //! The delayed tasks mods scheduled in the running world (`schedule_task`): a queue counted in
 //! server ticks, owned by the world's lifecycle and dropped with it.
 
+#[allow(unused_imports)]
 use mod_api::{
     __private::game::{CallbackOwner, allocate_task_id},
     MAX_PENDING_TASKS, ScheduleError, ServerHost, TaskId,
 };
+#[allow(unused_imports)]
 use std::{
     collections::{BTreeMap, HashMap},
     panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
 };
 
-pub(super) type ServerTask = Box<dyn FnOnce(&mut dyn ServerHost)>;
+pub(in crate::game) type ServerTask = Box<dyn FnOnce(&mut dyn ServerHost)>;
 /// The owning mod's `[mod] id` (when scheduled inside a mod call) and its callable, detached from
 /// the scheduler.
-pub(super) type PendingTask = (Option<&'static str>, ServerTask);
+pub(in crate::game) type PendingTask = (Option<&'static str>, ServerTask);
 
-pub(super) fn dispose_pending_task((owner, task): PendingTask) {
+pub(in crate::game) fn dispose_pending_task((owner, task): PendingTask) {
     match owner {
         Some(id) => CallbackOwner::dispose_scheduled_task(id, task),
         None => CallbackOwner::call_engine(|| drop(task)),
@@ -25,7 +27,7 @@ pub(super) fn dispose_pending_task((owner, task): PendingTask) {
 /// Runs every item `next` yields through `run`, even when one run panics: the other items still
 /// run, and the first panic comes back for the caller to put back in flight once it has restored
 /// its own state. `state` is passed to both so each may borrow the whole of it in turn.
-pub(super) fn run_all<S, T>(
+pub(in crate::game) fn run_all<S, T>(
     state: &mut S,
     mut next: impl FnMut(&mut S) -> Option<T>,
     mut run: impl FnMut(&mut S, T),
@@ -46,27 +48,27 @@ pub(super) fn run_all<S, T>(
 }
 
 // Keep formatting macros out of the function-replacement lifecycle source.
-pub(super) fn report_failure(mod_id: &str, panic: &str) {
+pub(in crate::game) fn report_failure(mod_id: &str, panic: &str) {
     log::error!(
         "mod `{mod_id}` panicked in a scheduled task; its tasks are disabled for this session: {panic}"
     );
 }
 
 #[derive(Default)]
-pub(super) struct ScheduledTasks {
+pub(in crate::game) struct ScheduledTasks {
     /// Ticks advanced since the world opened.
-    now: u64,
+    pub(in crate::game) now: u64,
     /// Waiting tasks by due tick, then id (the order they were scheduled).
-    queue: BTreeMap<(u64, TaskId), PendingTask>,
+    pub(in crate::game) queue: BTreeMap<(u64, TaskId), PendingTask>,
     /// Each waiting task's due tick, to find it again on cancel.
-    due: HashMap<TaskId, u64>,
+    pub(in crate::game) due: HashMap<TaskId, u64>,
     /// How many tasks each named mod has waiting.
-    pending: HashMap<&'static str, usize>,
+    pub(in crate::game) pending: HashMap<&'static str, usize>,
 }
 
 impl ScheduledTasks {
     /// A task for `owner` due `delay_ticks` ticks from now (`0` is due in the current tick).
-    pub(super) fn schedule(
+    pub(in crate::game) fn schedule(
         &mut self,
         owner: Option<&'static str>,
         delay_ticks: u32,
@@ -97,19 +99,13 @@ impl ScheduledTasks {
     /// Withdraw `id` if it is still waiting. `TaskId` is an opaque capability, so holding it
     /// suffices to cancel the task. The caller gets the detached owner and callable back only once
     /// all bookkeeping is updated, so captures can be disposed under the scheduling owner's policy.
-    pub(super) fn cancel(&mut self, id: TaskId) -> Option<PendingTask> {
+    pub(in crate::game) fn cancel(&mut self, id: TaskId) -> Option<PendingTask> {
         let &due = self.due.get(&id)?;
         self.remove(due, id)
     }
 
-    /// A server tick starts: "now" moves to it before any hook of the tick runs, so tasks
-    /// scheduled during this tick are measured from it (`delay_ticks == 0` is due in this tick).
-    pub(super) fn begin_tick(&mut self) {
-        self.now += 1;
-    }
-
     /// The next task due by now, taken off the queue before any of its mod code runs.
-    pub(super) fn pop_due(&mut self) -> Option<PendingTask> {
+    pub(in crate::game) fn pop_due(&mut self) -> Option<PendingTask> {
         let (&(due, id), _) = self.queue.first_key_value()?;
         if due > self.now {
             return None;
@@ -119,7 +115,7 @@ impl ScheduledTasks {
 
     /// The world closed or opened: detach the old queue before running any capture destructors.
     /// Globally unique task ids are never reset, so retained ids cannot alias tasks in a new world.
-    pub(super) fn clear(&mut self) {
+    pub(in crate::game) fn clear(&mut self) {
         let mut retired = std::mem::take(self).queue.into_values();
         let panic = run_all(&mut retired, Iterator::next, |_, task| {
             dispose_pending_task(task)
@@ -129,7 +125,7 @@ impl ScheduledTasks {
         }
     }
 
-    fn remove(&mut self, due: u64, id: TaskId) -> Option<PendingTask> {
+    pub(in crate::game) fn remove(&mut self, due: u64, id: TaskId) -> Option<PendingTask> {
         let task = self.queue.remove(&(due, id))?;
         self.due.remove(&id);
         if let Some(mod_id) = task.0
@@ -142,7 +138,7 @@ impl ScheduledTasks {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
     use mod_api::testing::FakeHost;
     use std::{cell::RefCell, rc::Rc};

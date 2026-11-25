@@ -1208,7 +1208,7 @@ impl Game<'_> {
         ));
         Ok(())
     }
-    pub(in crate::game) fn start_lan_hub(
+    pub(in crate::game::server_side) fn start_lan_hub(
         &mut self,
         settings: LanSettings,
         net: NetConfig,
@@ -1848,16 +1848,6 @@ impl Game<'_> {
         }
         self.set_force_game_mode(force);
         self.resend_commands_filtered();
-    }
-
-    pub(in crate::game) fn lan_port(&self) -> Option<u16> {
-        if let Some(server) = &self.integrated {
-            return server.published();
-        }
-        if self.serving() {
-            return self.published_port();
-        }
-        self.lan.as_ref().map(|h| h.settings.port)
     }
 
     /// The entities guests track: mobs, items and the rest (game/network/lan_entities.rs).

@@ -624,7 +624,7 @@ impl Game<'_> {
 
     /// `Entity.getClientPosition` of the vehicle this client moves: for a boat a
     /// teleport is easing, where it is going.
-    pub(in crate::game) fn driven_client_position(&self) -> Option<Vec3> {
+    pub(in crate::game::client_side) fn driven_client_position(&self) -> Option<Vec3> {
         if let Some(m) = self.driven_mount() {
             let [x, y, z] = self.driven_mount_heading(m).position;
             return Some(Vec3::new(x, y, z));
@@ -702,7 +702,7 @@ impl Game<'_> {
     /// `ClientPacketListener.handleMoveVehicle`: the server put the boat or
     /// the mount the player drives back (`absSnapTo`: position and rotation, the
     /// old ones too; its deltaMovement stays).
-    pub(in crate::game) fn remote_move_vehicle(
+    pub(in crate::game::client_side) fn remote_move_vehicle(
         &mut self,
         position: [f64; 3],
         (yaw, pitch): (f32, f32),

@@ -23,7 +23,7 @@ impl Game<'_> {
     /// What `CanContinueSleepingEvent.getProblem` holds for a sleeper: its bed gone
     /// (`checkBedExists`), or for a player (`Player.tick`) a bed rule that no longer lets
     /// them sleep.
-    pub(in crate::game) fn sleep_problem(
+    pub(in crate::game::server_side) fn sleep_problem(
         &self,
         bed_exists: bool,
         player: bool,
@@ -122,7 +122,7 @@ impl Game<'_> {
     /// leaves (`ServerPlayer.disconnect` stops its sleep), so no bed is
     /// saved occupied by a player who is not in it when the world opens
     /// again. Each bed is freed in its own level.
-    pub(in crate::game) fn free_player_beds(&mut self) -> Result<()> {
+    pub(in crate::game::server_side) fn free_player_beds(&mut self) -> Result<()> {
         if self.server.player_beds.is_empty() {
             return Ok(());
         }

@@ -19,7 +19,7 @@ impl Game<'_> {
     /// empty, as vanilla's `lastEquipmentItems` does. Only while a mod
     /// listens (`native_living_equipment_listened`): a mob's first tick after
     /// that counts from empty too.
-    pub(super) fn native_mobs_equipment(&mut self) {
+    pub(in crate::game::server_side) fn native_mobs_equipment(&mut self) {
         if !self.is_logical_server() {
             return;
         }
@@ -59,7 +59,7 @@ impl Game<'_> {
     /// too): each slot whose stack differs from what the mods last heard is told, the previous
     /// stack with it, so a hotbar selection that moves the main hand counts. A player new to the
     /// level counts from empty, as for mobs, and only while a mod listens.
-    pub(super) fn native_players_equipment(&mut self) {
+    pub(in crate::game) fn native_players_equipment(&mut self) {
         let mut listened = false;
         self.native_living_equipment_listened(&mut listened);
         if !listened {
@@ -142,7 +142,7 @@ fn finite(v: [f64; 3]) -> bool {
 }
 
 /// `/summon`'s world bounds (`Level.isInSpawnableBounds`).
-pub(super) fn spawnable(pos: [f64; 3]) -> bool {
+pub(in crate::game) fn spawnable(pos: [f64; 3]) -> bool {
     finite(pos)
         && (-30_000_000.0..30_000_000.0).contains(&pos[0])
         && (-30_000_000.0..30_000_000.0).contains(&pos[2])
@@ -163,7 +163,7 @@ impl Game<'_> {
     /// dimension, a position outside `/summon`'s bounds or in a chunk that isn't
     /// loaded (it would never tick or be saved), or a monster on peaceful (it
     /// would despawn at once).
-    pub(super) fn native_spawn_mob(
+    pub(in crate::game) fn native_spawn_mob(
         &mut self,
         dimension: &str,
         kind: &str,
@@ -220,7 +220,11 @@ impl Game<'_> {
     }
     /// The living mob `id` in the level in place, `dimension`; none on a
     /// client's copy.
-    pub(super) fn native_mob(&self, dimension: &str, id: u32) -> Option<NativeMob> {
+    pub(in crate::game::server_side) fn native_mob(
+        &self,
+        dimension: &str,
+        id: u32,
+    ) -> Option<NativeMob> {
         if !self.native_mob_level(dimension) {
             return None;
         }
@@ -229,7 +233,7 @@ impl Game<'_> {
     }
     /// The living mobs in the level in place, `dimension`; none on a client's
     /// copy.
-    pub(super) fn native_mobs(&self, dimension: &str) -> Vec<NativeMob> {
+    pub(in crate::game) fn native_mobs(&self, dimension: &str) -> Vec<NativeMob> {
         if !self.native_mob_level(dimension) {
             return Vec::new();
         }
@@ -241,7 +245,7 @@ impl Game<'_> {
     }
     /// Kills mob `id` as `/kill` does: it falls and drops its loot. False for
     /// no such living mob or another dimension.
-    pub(super) fn kill_mob(&mut self, dimension: &str, id: u32) -> bool {
+    pub(in crate::game) fn kill_mob(&mut self, dimension: &str, id: u32) -> bool {
         if self.native_mob(dimension, id).is_none() {
             return false;
         }

@@ -1,5 +1,7 @@
 //! Shared raycast pick core and role-dispatched crosshair targeting wrappers.
+#[allow(unused_imports)]
 use super::{Game, Hit};
+#[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Vec3};
 
 #[derive(Clone, Copy, Debug)]
@@ -24,7 +26,7 @@ pub(in crate::game) fn pick_ray_segment(eye: [f64; 3], dir: [f64; 3], reach: f64
 pub(in crate::game) struct PickAccumulator {
     pub hovered: Option<PickCandidate>,
     pub(in crate::game) nearest_sq: f64,
-    candidates: Option<Vec<PickCandidate>>,
+    pub(in crate::game) candidates: Option<Vec<PickCandidate>>,
 }
 
 impl PickAccumulator {
@@ -34,25 +36,6 @@ impl PickAccumulator {
             nearest_sq: max_distance_sq,
             candidates: None,
         }
-    }
-
-    pub(in crate::game) fn recording_with(
-        max_distance_sq: f64,
-        mut candidates: Vec<PickCandidate>,
-    ) -> Self {
-        candidates.clear();
-        Self {
-            candidates: Some(candidates),
-            ..Self::new(max_distance_sq)
-        }
-    }
-
-    pub(in crate::game) fn take_candidates(&mut self) -> Vec<PickCandidate> {
-        self.candidates.take().unwrap_or_default()
-    }
-
-    pub(in crate::game) fn nearest_sq(&self) -> f64 {
-        self.nearest_sq
     }
 
     pub(in crate::game) fn consider_candidate(

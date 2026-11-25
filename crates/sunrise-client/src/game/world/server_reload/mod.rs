@@ -54,7 +54,7 @@ impl PackStack {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn prepare_server_reload(
+    pub(in crate::game::server_side) fn prepare_server_reload(
         &self,
         stack: &PackStack,
     ) -> Result<PreparedServerReload, ReloadStageError> {

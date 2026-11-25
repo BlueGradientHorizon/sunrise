@@ -43,10 +43,37 @@ pub(in crate::game::client_side) use sunrise_core::{
     random::RandomSource,
 };
 
+impl ArmorStandAssets {
+    /// Trim data of reloaded resources (the models stay).
+    pub fn apply_resources(&mut self, fresh: Self) {
+        self.equipment = fresh.equipment;
+        self.extensions = fresh.extensions;
+        self.trim_overrides = fresh.trim_overrides;
+        self.trims = fresh.trims;
+        self.root = fresh.root;
+    }
+    /// `TrimTextureKey`: the trim texture of `stack` on its humanoid
+    /// layer (`humanoid` or `humanoid_leggings`), if it has a trim.
+    pub(in crate::game::client_side) fn trim_texture(
+        &self,
+        asset: &str,
+        kind: &str,
+        stack: &ItemStack,
+    ) -> Option<TrimTexture> {
+        let (material, pattern) =
+            sunrise_client::item_data::trim::named(stack.extra.as_ref()?.trim.as_ref()?)?;
+        let overrides = self
+            .trim_overrides
+            .get(asset)
+            .map_or(&[][..], Vec::as_slice);
+        TrimTexture::resolve(&self.trims, overrides, material, pattern, kind)
+    }
+}
+
 impl Game<'_> {
     /// The layers of the armour items `worn` (with their stacks when known,
     /// for trims and CIT armour rules), head to feet.
-    pub(in crate::game) fn armor_layers(
+    pub(in crate::game::client_side) fn armor_layers(
         &self,
         worn: [Option<(&str, Option<&ItemStack>)>; 4],
     ) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
@@ -566,6 +593,18 @@ impl Game<'_> {
         }
         removed
     }
+    /// OptiFine CIT: the winning armour or elytra rule (`kind`) of the worn `stack`. No lookup
+    /// without CIT rules.
+    pub(in crate::game::client_side) fn cit_worn_rule(
+        &self,
+        kind: Kind,
+        stack: &ItemStack,
+    ) -> Option<&Rule> {
+        let rules = &self.pack.item_renderer.cit.as_ref()?.rules;
+        let item_max = self.items().get(&stack.item).map_or(0, |i| i.max_damage);
+        sunrise_client::item_render::cit::worn_rule(rules, kind, stack, item_max)
+            .and_then(|i| rules.rules.get(i))
+    }
     /// `SmithingScreen`'s armour stand: `updateArmorStandPreview` puts the
     /// result on a stand without its base plate and with its arms, turned to
     /// 210 degrees, and `extractEntityInInventory` draws it at scale 25 in
@@ -606,6 +645,13 @@ impl Game<'_> {
         let quads =
             super::perspective::player_preview_quads(verts, gui, None, &self.gui.atlas.sprites);
         super::perspective::emit_preview(batch, quads, glints, [x0, y0, x1, y1]);
+    }
+    /// `HumanoidArmorLayer` for the player: (model, texture rect, colour,
+    /// overlay) of each worn piece, head to feet.
+    pub(in crate::game::client_side) fn player_armor_layers(
+        &self,
+    ) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
+        self.stack_armor_layers(&self.armor)
     }
     /// `PalettedTextureManager.getOrPrepare` for the trims drawn this frame
     /// (the player's armour and the armour stands'): each generated texture
@@ -706,6 +752,29 @@ impl Game<'_> {
             0.05,
             10,
         );
+    }
+    /// `HumanoidArmorLayer` for worn stacks (head to feet), trims included.
+    pub(in crate::game::client_side) fn stack_armor_layers(
+        &self,
+        armor: &[Option<ItemStack>; 4],
+    ) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
+        self.armor_layers(
+            armor
+                .each_ref()
+                .map(|s| s.as_ref().map(|s| (&*s.item, Some(s)))),
+        )
+    }
+    /// `HumanoidArmorLayer` for another player's model: the armour it wears
+    /// (`extra.equipment`, head to feet).
+    pub(in crate::game::client_side) fn worn_armor_layers(
+        &self,
+        m: &Mob,
+    ) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
+        let e = &m.extra;
+        self.armor_layers(
+            sunrise_items::equipment::ARMOR
+                .map(|slot| e.slot_stack(slot).map(|stack| (&*stack.item, Some(stack)))),
+        )
     }
 }
 

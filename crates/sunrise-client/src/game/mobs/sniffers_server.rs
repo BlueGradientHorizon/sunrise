@@ -1,0 +1,67 @@
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use super::Game;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::sniffers::*;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use sunrise_client::{
+    items::ItemStack,
+    mobs::{Mob, Species, Who, sniffer},
+};
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use sunrise_core::{geometry::Vec3, random::RandomSource};
+
+impl Game<'_> {
+    /// The egg item at the parent (`Sniffer.spawnChildFromBreeding`; the
+    /// brain already played the plop and dropped the experience).
+    pub(in crate::game) fn lay_sniffer_egg(&mut self, parent: &Mob) {
+        let at = [parent.position.x, parent.position.y, parent.position.z];
+        // new ItemEntity(level, x, y, z, stack): the little push is the item's
+        // own random's, not the level's.
+        self.spawn_item_own(ItemStack::new("minecraft:sniffer_egg", 1), at, 10);
+    }
+    /// The sniffer's server-side digging effects: `Sniffer.onDiggingStart`
+    /// entity event 63 and periodic `minecraft:entity_action` vibrations.
+    pub(in crate::game) fn tick_sniffer_server(&mut self) {
+        assert!(
+            self.is_logical_server(),
+            "tick_sniffer_server called on Client role"
+        );
+        let players = self.level_players();
+        if players.is_empty() {
+            return;
+        }
+        for i in 0..self.mobs.len() {
+            let m = &self.mobs[i];
+            if m.species() != Species::Sniffer
+                || !m.alive()
+                || !players
+                    .iter()
+                    .any(|p| m.position.distance_squared(p.position) <= 32.0 * 32.0)
+            {
+                continue;
+            }
+            if !sniffer::digging(m) {
+                continue;
+            }
+            let id = m.id;
+            let at = [m.position.x, m.position.y, m.position.z];
+            let age = m.age;
+            if let Some(ms) = m.anim.states[3].millis(age as f32)
+                && ms == 0
+            {
+                // Sniffer.onDiggingStart: broadcast entity event 63.
+                self.lan_entity_event(id as i32, 63, at);
+            }
+            // GameEvent.ENTITY_ACTION for the whole dig, outside the dust window.
+            if age.is_multiple_of(10) {
+                let head = sniffer::head_block(&self.mobs[i]);
+                self.post_block_game_event(
+                    "minecraft:entity_action",
+                    head,
+                    Some(Who::Mob(id)),
+                    None,
+                );
+            }
+        }
+    }
+}

@@ -235,8 +235,14 @@ pub(in crate::game::client_side) use {
     },
 };
 
+#[path = "selector_metadata_client.rs"]
+pub(in crate::game) mod selector_metadata;
+
 #[path = "attack_target_client.rs"]
 pub(in crate::game) mod attack_target;
+
+#[path = "break_prediction_client.rs"]
+pub(in crate::game) mod break_prediction;
 
 #[path = "connection_client.rs"]
 pub(in crate::game) mod connection;
@@ -244,11 +250,17 @@ pub(in crate::game) mod connection;
 #[path = "fall_sound_client.rs"]
 pub(in crate::game) mod fall_sound;
 
+#[path = "general_client.rs"]
+pub(in crate::game) mod general;
+
 #[path = "interaction_actions_client.rs"]
 pub(in crate::game) mod interaction_actions;
 
 #[path = "interaction_prediction_client.rs"]
 pub(in crate::game) mod interaction_prediction;
+
+#[path = "level_format_client.rs"]
+pub(in crate::game) mod level_format;
 
 #[path = "raw_ingress_client.rs"]
 pub(in crate::game) mod raw_ingress;
@@ -256,11 +268,23 @@ pub(in crate::game) mod raw_ingress;
 #[path = "recipe_properties_client.rs"]
 pub(in crate::game) mod recipe_properties;
 
+#[path = "use_item_client.rs"]
+pub(in crate::game) mod use_item;
+
+#[path = "block_entity_data_client.rs"]
+pub(in crate::game) mod block_entity_data;
+
 #[path = "abilities_client.rs"]
 pub(in crate::game) mod abilities;
 
 #[path = "chat_client.rs"]
 pub(in crate::game) mod chat;
+
+#[path = "chat_received_client.rs"]
+pub(in crate::game) mod chat_received;
+
+#[path = "commands_client.rs"]
+pub(in crate::game) mod commands;
 
 #[path = "client_level_tick_client.rs"]
 pub(in crate::game) mod client_level_tick;
@@ -271,6 +295,9 @@ pub(in crate::game) mod effect;
 #[path = "entity_section_steps_client.rs"]
 pub(in crate::game) mod entity_section_steps;
 
+#[path = "inventory_client.rs"]
+pub(in crate::game) mod inventory;
+
 #[path = "item_use_client.rs"]
 pub(in crate::game) mod item_use;
 
@@ -279,6 +306,15 @@ pub(in crate::game) mod kept_columns;
 
 #[path = "menu_interactions_client.rs"]
 pub(in crate::game) mod menu_interactions;
+
+#[path = "minecarts_client.rs"]
+pub(in crate::game) mod minecarts;
+
+#[path = "motion_client.rs"]
+pub(in crate::game) mod motion;
+
+#[path = "movement_client.rs"]
+pub(in crate::game) mod movement;
 
 #[path = "packets_entity_client.rs"]
 pub(in crate::game) mod packets_entity;
@@ -292,6 +328,9 @@ pub(in crate::game) mod packets_player;
 #[path = "packets_world_client.rs"]
 pub(in crate::game) mod packets_world;
 
+#[path = "remote_state_client.rs"]
+pub(in crate::game) mod remote_state;
+
 #[path = "session_client.rs"]
 pub(in crate::game) mod session;
 
@@ -304,6 +343,9 @@ pub(in crate::game) mod status;
 #[path = "sync_client.rs"]
 pub(in crate::game) mod sync;
 
+#[path = "tables_client.rs"]
+pub(in crate::game) mod tables;
+
 #[path = "tick_client.rs"]
 pub(in crate::game) mod tick;
 
@@ -315,6 +357,12 @@ pub(in crate::game) mod ui;
 
 #[path = "use_client.rs"]
 pub(in crate::game) mod r#use;
+
+#[path = "chat_queue_client.rs"]
+pub(in crate::game) mod chat_queue;
+
+#[path = "dry_level_client.rs"]
+pub(in crate::game) mod dry_level;
 
 impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_, '_> {
     fn pick_hit_result(&mut self) {
@@ -721,6 +769,36 @@ impl Game<'_> {
         }
         Ok(())
     }
+    /// One vanilla active cache: `(2 * (max(2, client_view_distance) + 3) + 1)^2` columns
+    /// (`ClientChunkCache.calculateStorageRange`), times the active dimension's sections,
+    /// times 4,096 cells. Viewed levels share that footprint; a legitimate server need not
+    /// group more cells than one full active world.
+    /// The server's view-radius packet and per-view column caps cannot grow the ceiling.
+    pub(in crate::game) fn connection_group_limit(&self) -> usize {
+        self.remote.as_ref().map_or(0, |remote| {
+            let radius = remote.sent_info.view_distance.max(2) as usize + 3;
+            let width = 2 * radius + 1;
+            (width * width).saturating_mul(self.world.shape.section_count() * 4096)
+        })
+    }
+    pub(in crate::game) fn decode_remote_stack(&self, stack: &Stack) -> Option<ItemStack> {
+        let r = self.remote.as_ref()?;
+        if !sunrise_protocol::item::custom::permitted_with_names(
+            stack,
+            r.registries.custom_components,
+            &*r.registries,
+        )
+        .unwrap_or(false)
+        {
+            log::warn!("Dropping a stack with unnegotiated custom components");
+            return None;
+        }
+        Some(sunrise_client::item_sync::from_network(
+            stack,
+            &r.builtin,
+            &r.registries,
+        ))
+    }
     /// `ServerReconfigScreen` over the panorama; Disconnect wakes up after
     /// `DISCONNECT_TIME` (600 ticks).
     pub(in crate::game::client_side) fn draw_reconfiguring(
@@ -740,6 +818,133 @@ impl Game<'_> {
         let hover = sunrise_client::ui::hovered(self.client.cursor, bx, by, 150.0, 20.0);
         sunrise_client::ui::button(batch, atlas, bx, by, 150.0, 20.0, &label, active, hover);
     }
+    /// `HashedStack.create` with the connection's registries (the client's
+    /// `decoratedHashOpsGenerator`).
+    pub(in crate::game) fn hashed_stack(
+        &self,
+        s: &Option<ItemStack>,
+    ) -> sunrise_protocol::Result<Option<Hashed>> {
+        if s.is_none() {
+            return Ok(None);
+        }
+        let r = self
+            .remote
+            .as_ref()
+            .ok_or_else(|| sunrise_protocol::Error::new("no live menu connection"))?;
+        let names = SyncedNames {
+            builtin: &r.builtin,
+            dynamic: &r.registries,
+        };
+        let projected = std::cell::RefCell::new(Vec::new());
+        let stack = self
+            .to_network_projecting(s, &|effect| projected.borrow_mut().push(effect.clone()))
+            .ok_or_else(|| sunrise_protocol::Error::new("cannot encode a nonempty stack"))?;
+        let projected = projected.into_inner();
+        let hash = if let Some(data) = s.as_ref().and_then(ItemStack::data) {
+            Hashed::create_with_admitted(&stack, &names, &|name, bytes| {
+                let matches =
+                    |effect: &sunrise_world::component_value::consume_effects::Admitted| {
+                        &effect.name == name && effect.wire.as_ref() == bytes
+                    };
+                if stack.wire.0.is_some() {
+                    data.wire
+                        .admitted_effects()
+                        .iter()
+                        .find(|effect| matches(effect))
+                        .cloned()
+                } else {
+                    data.find_admitted_consume_effect(&matches)
+                        .or_else(|| projected.iter().find(|effect| matches(effect)).cloned())
+                }
+            })
+        } else {
+            Hashed::create(&stack, &names)
+        };
+        hash.map(Some)
+            .map_err(|e| sunrise_protocol::Error::new(e.to_string()))
+    }
+    pub(in crate::game) fn item_name(&self, id: i32) -> Arc<str> {
+        let r = self.remote.as_ref().expect("remote");
+        Arc::from(
+            r.builtin
+                .get("minecraft:item")
+                .and_then(|i| i.name(id))
+                .unwrap_or("minecraft:air"),
+        )
+    }
+    pub(in crate::game) fn next_sequence(&mut self) -> i32 {
+        let r = self.remote.as_mut().expect("remote");
+        r.sequence += 1;
+        r.sequence
+    }
+    /// The latency the server's player list gives this player
+    /// (`PlayerInfo.getLatency`), none before the server lists it. A new entry reads 0 until the
+    /// server's first latency update (every 600 ticks).
+    pub(in crate::game) fn own_latency(&self) -> Option<i32> {
+        let r = self.remote.as_ref()?;
+        r.tab_players.get(&r.profile).map(|me| me.latency)
+    }
+    /// Whether the server's patch gives `stack`, an item with no consumable
+    /// of its own, a `consumable` with a use time or `blocks_attacks` (a
+    /// sword made to block): `Item.use` starts a use of it
+    /// (`Consumable.startConsuming`, `startUsingItem`) that lasts until the
+    /// button lets go or the server stops it, as the client's
+    /// `LivingEntity.updateUsingItem` never completes one.
+    pub(in crate::game::client_side) fn patched_held_use(&self, stack: &ItemStack) -> bool {
+        let (ticks, blocks) = sunrise_client::item_sync::patched_use(stack);
+        ticks.map_or(blocks, |ticks| ticks > 0)
+            && self
+                .items()
+                .get(&stack.item)
+                .is_none_or(|i| i.consumable.is_none())
+    }
+    pub(in crate::game) fn play_predicted_sounds(&mut self, sounds: &[DrySound]) {
+        for (pos, sound, source, volume, pitch) in sounds {
+            let at = [
+                f64::from(pos.x) + 0.5,
+                f64::from(pos.y) + 0.5,
+                f64::from(pos.z) + 0.5,
+            ];
+            let name = if sound.contains(':') {
+                sound.to_string()
+            } else {
+                format!("minecraft:{sound}")
+            };
+            self.play_client_local_sound(
+                LevelSound::new(&name, at, *volume, *pitch).in_source(*source),
+            );
+        }
+    }
+    /// The player's position, for `retainKnownServerState`'s `player.position()`.
+    pub(in crate::game) fn player_position(&self) -> [f64; 3] {
+        let at = self
+            .player
+            .as_ref()
+            .map(|p| p.position)
+            .unwrap_or(Vec3::ZERO);
+        [at.x, at.y, at.z]
+    }
+    /// Process what the network thread received (once per frame, like the
+    /// client's packet processor), in order. Chunk packets get
+    /// `CHUNK_PACKETS_PER_FRAME`: once a frame has spent it, the events from
+    /// the next chunk packet on wait for the next frame, unless they have
+    /// already waited `BACKLOG_LIMIT`. A chunk packet still decoding holds
+    /// back what follows it.
+    pub(in crate::game) fn poll_remote(&mut self) -> Result<()> {
+        self.poll_remote_with(false)
+    }
+    /// `Minecraft.runTick` handles every packet that came (`runAllTasks`)
+    /// before the frame's ticks. What this frame's poll left for later (chunks
+    /// past its budget or still decoding, and everything after them) is taken
+    /// when a tick is about to run, so the tick moves through those chunks, as
+    /// vanilla's does. A batch's `ChunkBatchReceived` is not among them: the
+    /// network thread answers it (`net::receive_play`).
+    pub(in crate::game) fn poll_remote_before_tick(&mut self) -> Result<()> {
+        if self.remote.as_ref().is_none_or(|r| r.backlog.is_empty()) {
+            return Ok(());
+        }
+        self.poll_remote_with(true)
+    }
     pub(in crate::game) fn poll_remote_with(&mut self, before_tick: bool) -> Result<()> {
         let polled = self.poll_remote_events(before_tick);
         // The block events and block changes of a piston clock start and end
@@ -749,6 +954,210 @@ impl Game<'_> {
             self.sync_moving_pistons();
         }
         polled
+    }
+    /// `MapItem.useOn` on this client: a map used on a banner is SUCCESS
+    /// whatever its data says (the server toggles the marker, or fails
+    /// quietly), so this hand swings and the click ends. The caller applies
+    /// ItemStack.useOn's adventure predicate before selecting this phase.
+    pub(in crate::game::client_side) fn predict_map_on_banner(
+        &self,
+        stack: &ItemStack,
+        hit: &super::Hit,
+    ) -> bool {
+        super::maps::map_id(stack).is_some()
+            && self.named_block_in_tag("minecraft:banners", &self.block_name(hit.pos))
+    }
+    /// MultiPlayerGameMode.useItemOn inside startPrediction: the blocks the
+    /// use changed on this client's level at once, each kept as predicted
+    /// under the use's sequence until the server acknowledges it (a use the
+    /// server refused goes back). Only the blocks a hand opens or flips: a
+    /// wooden or copper door, trapdoor or fence gate, a lever or a button;
+    /// whatever else the use changes waits for the server.
+    pub(in crate::game) fn predict_use(&mut self, (changes, sounds): &DryUse, seq: i32) {
+        let behaviours = self.res.behaviours();
+        let predicted = |state: BlockStateId| hand_operated(behaviours, state);
+        if changes.is_empty()
+            || !changes
+                .iter()
+                .all(|(p, s)| predicted(*s) && predicted(self.world.block(p.x, p.y, p.z)))
+        {
+            return;
+        }
+        self.predict_blocks(changes, seq);
+        // `level.playSound(player, ...)`: the clicker hears it from its own use; the
+        // server sends it to the others only.
+        self.play_predicted_sounds(sounds);
+    }
+    /// `ServerReconfigScreen`: a vertical layout of cells padded by 10, the
+    /// title (9 high) over Disconnect (150 x 20), centred. The title's and the
+    /// button's top left corners.
+    pub(in crate::game) fn reconfigure_layout(
+        &self,
+        (w, h): (f32, f32),
+    ) -> ((f32, f32), (f32, f32)) {
+        let title = sunrise_client::text::Text::translate("connect.reconfiguring", &[]);
+        let title_w = self.gui.atlas.font.width_text(&title).ceil() as i32;
+        let width = (title_w + 20).max(170);
+        let left = ((w as i32 - width) as f32 * 0.5) as i32;
+        let top = ((h as i32 - 69) as f32 * 0.5) as i32;
+        let across = |child: i32| (10.0 + ((width - child - 10) as f32 - 10.0) * 0.5) as i32;
+        (
+            ((left + across(title_w)) as f32, (top + 10) as f32),
+            ((left + across(150)) as f32, (top + 39) as f32),
+        )
+    }
+    /// Live client `Abilities` (`LocalPlayer.abilities`) when connected to a server.
+    pub(in crate::game) fn remote_abilities(
+        &self,
+    ) -> Option<&sunrise_client::lan::abilities::PlayerAbilities> {
+        self.remote.as_ref().map(|r| &r.abilities)
+    }
+    /// The attack clicks queued for the next tick (`KeyMapping.click`, not yet handled).
+    pub(in crate::game) fn remote_attack_clicks_queued(&self) -> u32 {
+        self.pending_mapping_clicks("key.attack")
+    }
+    /// Received events left for the next frame (`poll_remote`): until they
+    /// are handled, the terrain the server sent is not all there.
+    pub(in crate::game) fn remote_backlog(&self) -> usize {
+        self.remote.as_ref().map_or(0, |r| r.backlog.len())
+    }
+    /// `BoneMealItem.useOn` with the acting hand's `stack` on this client's
+    /// level (a copy: nothing grows here): whether it succeeds.
+    pub(in crate::game::client_side) fn remote_bone_meal_succeeds(
+        &mut self,
+        hit: &super::Hit,
+        stack: &ItemStack,
+    ) -> bool {
+        let pos = sunrise_core::position::BlockPos::new(hit.pos[0], hit.pos[1], hit.pos[2]);
+        let face = sunrise_core::geometry::Direction::ALL[face_direction(hit.face) as usize];
+        let (ask, _) = self.held_bonemeal(pos, stack);
+        self.with_level(|b, level, _| {
+            b.bone_meal_succeeds_on_client(
+                &mut DryLevel::new(level),
+                pos,
+                face,
+                ask.crop,
+                ask.check,
+            )
+        })
+    }
+    /// The minecarts the server sent, for the control socket's `status`
+    /// (their velocity is not tracked here).
+    pub(in crate::game::client_side) fn remote_carts(&self) -> Option<Vec<serde_json::Value>> {
+        let r = self.remote.as_ref()?;
+        let mut carts: Vec<&Tracked> = r
+            .entities
+            .values()
+            .filter(|t| t.kind.ends_with("minecart"))
+            .collect();
+        carts.sort_by(|a, b| {
+            a.position
+                .partial_cmp(&b.position)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        Some(
+            carts
+                .into_iter()
+                .map(|t| serde_json::json!({"kind": t.kind, "position": t.position, "velocity": [0.0, 0.0, 0.0]}))
+                .collect(),
+        )
+    }
+    /// MultiPlayerGameMode.dropItem (key.drop): predict the removal, then send
+    /// the action; swing only if a nonempty stack was removed.
+    pub(in crate::game) fn remote_drop(&mut self, all: bool) {
+        // ensureHasSentCarriedItem: the server drops from the slot just chosen.
+        self.remote_send_carried();
+        // MultiPlayerGameMode.dropItem predicts the removal and sends only the drop: the
+        // server's stack agrees, so no creative slot edit follows at the end of the tick.
+        let before = self.creative_stacks();
+        let dropped =
+            sunrise_client::items::take_held_drop(&mut self.inventory[self.selected], all, false);
+        self.remote_synced_since(&before);
+        self.send_action(if all { 4 } else { 5 });
+        if dropped.is_some() {
+            self.swing_hand(Hand::Main, SwingAnimation::DEFAULT);
+        }
+    }
+    /// The hurt sound the hurt player's own client plays from
+    /// `ClientboundDamageEventPacket` (`LivingEntity.handleDamageEvent`):
+    /// `Player.getHurtSound` is the damage type's effects, with the codec's
+    /// `hurt` default when the type is unknown.
+    pub(in crate::game::client_side) fn remote_hurt_sound(&self, source_type: i32) -> &'static str {
+        match self.remote.as_ref() {
+            Some(r) => hurt_sound_for(&r.registries, &self.health_resources.damage, source_type),
+            None => sunrise_client::health::hurt_sound("hurt"),
+        }
+    }
+    // remote_tab_players: remote/sync.rs
+    // update_remote_skins: remote/status.rs
+    pub(in crate::game::client_side) fn remote_item_data(
+        &mut self,
+        id: i32,
+        stack: &Option<Stack>,
+    ) {
+        let Some(stack) = self.to_stack(stack) else {
+            return;
+        };
+        let pending = self
+            .remote
+            .as_mut()
+            .and_then(|r| r.pending_items.remove(&id));
+        if let Some(item) = self.dropped.iter_mut().find(|d| d.id == id as u32) {
+            item.stack = stack;
+            return;
+        }
+        let Some(PendingItem {
+            join,
+            position: [x, y, z],
+            velocity,
+            no_gravity,
+        }) = pending
+        else {
+            return;
+        };
+        let at = Vec3::new(x, y, z);
+        // ItemEntity's constructor draws bobOffs from the item's own random.
+        let mut random = sunrise_client::mobs::entity_random(id as u32, at);
+        let bob = super::item_entities::bob_offset(at, random.next_float(), self.clock.still());
+        // Metadata can arrive after newer entities (including other items). Insert at the
+        // reserved ClientLevel.addEntity slot, not the tail at metadata time.
+        let index = self.dropped.partition_point(|item| item.join < join);
+        self.dropped.insert(
+            index,
+            ItemEntity {
+                join,
+                random,
+                no_gravity,
+                ..ItemEntity::new(id as u32, stack, at, velocity, bob)
+            },
+        );
+    }
+    /// `AbstractMinecartRenderer.newExtractState`: sample the same weighted
+    /// steps at the frame's partial tick, including corners within one tick.
+    pub(in crate::game::client_side) fn remote_minecart_lerp(
+        &self,
+        id: u32,
+        partial: f32,
+    ) -> Option<([f64; 3], f32, f32)> {
+        let lerp = self.remote.as_ref()?.cart_lerps.get(&(id as i32))?;
+        if lerp.current.is_empty() {
+            return None;
+        }
+        let (p, _, yaw, pitch) = lerp.at(partial);
+        Some(([p.x, p.y, p.z], yaw, pitch))
+    }
+    /// Status for `sunrise-ctl status`.
+    /// The other players' entities in the level and their names (their
+    /// profiles', which outlive the player list's entries).
+    pub(in crate::game::client_side) fn remote_player_names(&self) -> Vec<(u32, String)> {
+        let Some(r) = self.remote.as_ref() else {
+            return Vec::new();
+        };
+        r.level_players
+            .iter()
+            .filter(|(_, uuid)| **uuid != r.profile)
+            .filter_map(|(id, uuid)| Some((*id as u32, r.level_player_name(*id, uuid)?.to_owned())))
+            .collect()
     }
     pub(in crate::game::client_side) fn remote_player_uuid(&self, id: u32) -> Option<u128> {
         let remote = self.remote.as_ref()?;
@@ -762,6 +1171,184 @@ impl Game<'_> {
         } else {
             remote.level_players.get(&(id as i32)).copied()
         }
+    }
+    pub(in crate::game::client_side) fn remote_respawn(&mut self) {
+        self.send(S::ClientCommand(play::ClientCommand { action: 0 }));
+    }
+    /// A connection's screen is over the world: connecting, reconfiguring, or
+    /// the level loading screen, a portal's included (`remote_overlay`).
+    pub(in crate::game::client_side) fn remote_screen_up(&self) -> bool {
+        !self.replay.playing()
+            && self
+                .remote
+                .as_ref()
+                .is_some_and(|r| self.player.is_none() || r.level_load.is_active())
+    }
+    /// The `SetPassengers` bookkeeping of the tracked entities.
+    pub(in crate::game::client_side) fn remote_seat_passengers(
+        &mut self,
+        vehicle: u32,
+        passengers: &[i32],
+    ) {
+        if let Some(r) = self.remote.as_mut() {
+            seat_passengers(&mut r.entities, vehicle, passengers);
+        }
+    }
+    /// Whether secondary use skips a block's default interaction on this client.
+    pub(in crate::game::client_side) fn remote_secondary_use_skips_block(&self) -> bool {
+        self.remote_shift_down()
+            && (self.stack_in(self.selected).is_some() || self.offhand.is_some())
+    }
+    /// `handleServerData`: the server list entry of the server joined keeps
+    /// the icon the server sends (`ServerList.saveSingleServer`). Single
+    /// player has no entry.
+    pub(in crate::game) fn remote_server_data(&mut self, icon: Option<&[u8]>) {
+        let (Some(r), Some(png)) = (self.remote.as_ref(), icon) else {
+            return;
+        };
+        if self.integrated.is_some() {
+            return;
+        }
+        if let Ok(dir) = std::env::current_dir() {
+            sunrise_client::multiplayer::save_server_icon(
+                &dir.join("saves"),
+                &r.session.address,
+                png,
+            );
+        }
+    }
+    /// `LocalPlayer.isShiftKeyDown` (and so `isSecondaryUseActive`): the input as of the player's
+    /// last tick (`input.keyPresses`, what the last ServerboundPlayerInputPacket said), not the key
+    /// now: a sneak pressed in the frame of a click acts from the next tick, as on the server.
+    pub(in crate::game) fn remote_shift_down(&self) -> bool {
+        self.remote
+            .as_ref()
+            .is_some_and(|r| r.last_input & SHIFT_INPUT != 0)
+    }
+    /// ServerboundPlayerCommandPacket STOP_SLEEPING.
+    pub(in crate::game) fn remote_stop_sleeping(&mut self) {
+        let id = self.remote.as_ref().map_or(0, |r| r.entity_id);
+        self.send(S::PlayerCommand(play::PlayerCommand {
+            id,
+            action: 0,
+            data: 0,
+        }));
+    }
+    // remote_player_eating: remote/use.rs
+    /// Inventory as the server last described it.
+    pub(in crate::game) fn remote_synced(&mut self) {
+        let stacks = self.creative_stacks();
+        if let Some(r) = self.remote.as_mut() {
+            r.synced = stacks;
+        }
+    }
+    /// The slots a server packet changed since `before` are as the server has them; the
+    /// others keep what was last sent, so a creative click made since still goes out.
+    pub(in crate::game) fn remote_synced_since(&mut self, before: &[Option<ItemStack>]) {
+        let now = self.creative_stacks();
+        if let Some(r) = self.remote.as_mut() {
+            mark_synced(&mut r.synced, before, now);
+        }
+    }
+    /// `Entity.isVehicle` on a client: the entities a tracked entity rides.
+    pub(in crate::game::client_side) fn remote_vehicle_ids(
+        &self,
+    ) -> impl Iterator<Item = u32> + '_ {
+        self.remote
+            .iter()
+            .flat_map(|r| r.entities.values().filter_map(|t| t.vehicle))
+    }
+    pub(in crate::game) fn send_action(&self, action: i32) {
+        self.send(S::PlayerAction(play::PlayerAction {
+            action,
+            pos: [0; 3],
+            direction: 0,
+            sequence: 0,
+        }));
+    }
+    /// ClientSuggestionProvider.customSuggestion: the chat's completion
+    /// request for an `ask_server` node goes to the server.
+    pub(in crate::game::client_side) fn send_suggestion_request(&mut self) {
+        if self.remote.is_none() {
+            return;
+        }
+        let Some((id, command)) = self
+            .ui
+            .chat_screen
+            .as_mut()
+            .and_then(|s| s.take_request())
+            .or_else(|| self.command_block_suggestion_request())
+        else {
+            return;
+        };
+        let mut w = ::sunrise_core::vanilla_bytes::Writer::new();
+        w.varint(id);
+        w.string(&command);
+        self.send(S::Unknown(
+            sunrise_protocol::ids::play::serverbound::COMMAND_SUGGESTION,
+            w.data,
+        ));
+    }
+    /// `Entity.absSnapTo`: the remembered point, clamped to the level's edge.
+    /// The velocity is left alone, and the player has no separate previous
+    /// position to reset (its box is drawn from `position`).
+    pub(in crate::game) fn snap_player_to(&mut self, at: [f64; 3]) {
+        let Some(player) = self.player.as_mut() else {
+            return;
+        };
+        let x = at[0].clamp(-3.0e7, 3.0e7);
+        let z = at[2].clamp(-3.0e7, 3.0e7);
+        player.position = Vec3::new(x, at[1], z);
+    }
+    /// A stack from the server, decoded as the saved and command item NBT
+    /// are, so tooltips and models see every field.
+    pub(in crate::game) fn to_stack(&self, s: &Option<Stack>) -> Option<ItemStack> {
+        self.decode_remote_stack(s.as_ref()?)
+    }
+}
+
+impl PlayerTextures {
+    pub(in crate::game) fn new(property: AccountProperty) -> Self {
+        Self {
+            property,
+            unpacked: std::sync::OnceLock::new(),
+        }
+    }
+}
+
+impl Remote {
+    /// Project the session address for display once, dropping the memory transport's marker.
+    pub(in crate::game) fn display_address_for(address: &str) -> Option<String> {
+        (address != "local").then(|| sunrise_client::net::shown_address(address))
+    }
+}
+
+impl ServicesKeys {
+    /// Minecraft.services() has the keys wherever the game is played, single player's own
+    /// server included: its guests' chat keys are checked against them.
+    pub(in crate::game::client_side) fn fetching() -> Arc<std::sync::Mutex<Self>> {
+        use sunrise_server_files::profiles;
+        Self::fetching_with(|| profiles::fetch_profile_key_keys(&profiles::discovery_url()))
+    }
+    /// The keys start `Pending` and arrive from `fetch` on a thread of their own, so a
+    /// listener never caches a verdict on keys it does not have yet. A thread that cannot
+    /// start leaves them pending.
+    pub(in crate::game) fn fetching_with<E: std::fmt::Display>(
+        fetch: impl FnOnce() -> std::result::Result<ServicesKeySet, E> + Send + 'static,
+    ) -> Arc<std::sync::Mutex<Self>> {
+        let keys = Arc::new(std::sync::Mutex::new(ServicesKeys::Pending));
+        let slot = keys.clone();
+        let _ = std::thread::Builder::new()
+            .name("Services keys".into())
+            .spawn(move || {
+                // The error is the line vanilla logs, after which it has no keys.
+                let keys = fetch().unwrap_or_else(|why| {
+                    log::error!("Sunrise: {why}");
+                    ServicesKeySet::default()
+                });
+                *slot.lock().unwrap_or_else(|e| e.into_inner()) = ServicesKeys::Ready(keys);
+            });
+        keys
     }
 }
 

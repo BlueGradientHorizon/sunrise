@@ -13,7 +13,7 @@ mod predicate;
 mod resolve;
 
 #[derive(Default)]
-pub(super) struct ModRecipeUi {
+pub(in crate::game) struct ModRecipeUi {
     binding: Option<(String, String)>,
     selected: Option<String>,
     page: usize,
@@ -57,7 +57,7 @@ impl ModRecipeUi {
         self.tab_page = page;
         true
     }
-    pub(super) fn turn_page(&mut self, next: bool) -> bool {
+    pub(in crate::game) fn turn_page(&mut self, next: bool) -> bool {
         let pages = self
             .presentation
             .as_ref()
@@ -169,15 +169,15 @@ impl Game<'_> {
             open,
         )
     }
-    pub(super) fn mod_book_shift(&self, width: f32) -> f32 {
+    pub(in crate::game) fn mod_book_shift(&self, width: f32) -> f32 {
         self.mod_book_layout(width, true)
             .map_or(0.0, |layout| layout.shift)
     }
-    pub(super) fn mod_book_overlay(&self, width: f32) -> bool {
+    pub(in crate::game) fn mod_book_overlay(&self, width: f32) -> bool {
         self.mod_book_layout(width, false)
             .is_some_and(|layout| layout.overlay)
     }
-    pub(super) fn mod_book_flags(&self) -> Option<(bool, bool)> {
+    pub(in crate::game) fn mod_book_flags(&self) -> Option<(bool, bool)> {
         self.mod_book_panel()?;
         let batch = self.batch_for_size()?;
         self.mod_book_layout(batch.width, false)?;
@@ -185,7 +185,7 @@ impl Game<'_> {
         let flags = self.custom_book_settings(self.native_screen_book()?)?;
         Some((flags.open, flags.filtering))
     }
-    pub(super) fn mod_book_open(&self) -> bool {
+    pub(in crate::game) fn mod_book_open(&self) -> bool {
         self.mod_book_flags().is_some_and(|flags| flags.0)
     }
     fn refresh_mod_book(&mut self) {
@@ -308,7 +308,10 @@ impl Game<'_> {
                 layout.shifted_toggle(self.screen_room_shift(batch))
             })
     }
-    pub(super) fn draw_mod_book(&mut self, batch: &mut HudBatch) -> Option<Vec<(Text, u32)>> {
+    pub(in crate::game) fn draw_mod_book(
+        &mut self,
+        batch: &mut HudBatch,
+    ) -> Option<Vec<(Text, u32)>> {
         self.refresh_mod_book();
         let (open, filtering) = self.mod_book_flags()?;
         let (bx, by) = self.mod_book_button(batch);
@@ -390,7 +393,7 @@ impl Game<'_> {
         }
         self.paint_book(batch, &calls)
     }
-    pub(super) fn mod_book_click(&mut self, right: bool) -> bool {
+    pub(in crate::game) fn mod_book_click(&mut self, right: bool) -> bool {
         self.native_net.placement.client.click();
         self.recipe_ui.0.ghost.clear();
         self.refresh_mod_book();
@@ -518,7 +521,7 @@ impl Game<'_> {
         }
         narrow
     }
-    pub(super) fn mod_book_area(&self, batch: &HudBatch) -> Option<(bool, bool)> {
+    pub(in crate::game) fn mod_book_area(&self, batch: &HudBatch) -> Option<(bool, bool)> {
         let (open, _) = self.mod_book_flags()?;
         let (xo, yo) = self.book_origin(batch);
         let ui = &self.recipe_ui.0.custom;
@@ -538,7 +541,7 @@ impl Game<'_> {
             .any(|(_, [x, y, w, h], _, _)| inside(self.client.cursor, x, y, w, h));
         Some((open, open && (hovered || arrow)))
     }
-    pub(super) fn mod_book_targets(&self) -> Vec<sunrise_client::widgets::Target> {
+    pub(in crate::game) fn mod_book_targets(&self) -> Vec<sunrise_client::widgets::Target> {
         use sunrise_client::widgets::{Kind, Target};
         let (Some((open, _)), Some(batch)) = (self.mod_book_flags(), self.batch_for_size()) else {
             return Vec::new();

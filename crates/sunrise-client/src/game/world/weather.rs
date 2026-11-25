@@ -1,11 +1,12 @@
 //! Weather and sky light for the player's level: whether it can have weather, the rain and thunder
 //! levels, where it rains or snows (`Level.isRainingAt`, the motion-blocking height), the weather's
 //! effects each tick and `Level.getSkyDarken` with `isDarkOutside`.
+#[allow(unused_imports)]
 use super::*;
 
 /// `ClientLevel.getPrecipitationAt`: a loaded column's biome and the level's sea level
 /// decide whether it snows, rains, or has no precipitation.
-pub(super) fn precipitation_at(
+pub(in crate::game) fn precipitation_at(
     world: &World,
     biomes: &Biomes,
     zoom: BiomeZoom,
@@ -27,7 +28,7 @@ pub(super) fn precipitation_at(
 /// What `Level.precipitationAt` reads of the level in place: it rains (the rain level above 0.2),
 /// the sky light is 15, the motion-blocking height, and the biome's precipitation there
 /// (`ClientLevel.getPrecipitationAt`'s zoomed biome; snow is `Some(true)` there).
-struct GamePrecipitation<'a, 'g>(&'a Game<'g>);
+pub(in crate::game) struct GamePrecipitation<'a, 'g>(pub(in crate::game) &'a Game<'g>);
 
 impl sunrise_world::level::weather::PrecipitationReads for GamePrecipitation<'_, '_> {
     fn is_raining(&self) -> bool {
@@ -58,18 +59,18 @@ impl sunrise_world::level::weather::PrecipitationReads for GamePrecipitation<'_,
 
 impl Game<'_> {
     /// The joined `ClientLevel`'s sea level, or the server level's generator setting.
-    pub(super) fn weather_sea_level(&self) -> i32 {
+    pub(in crate::game) fn weather_sea_level(&self) -> i32 {
         self.remote
             .as_ref()
             .map_or_else(|| self.dim.sea_level(), |remote| remote.sea_level)
     }
 
     /// `Level.isDarkOutside`.
-    pub(super) fn dark_outside(&self) -> bool {
+    pub(in crate::game) fn dark_outside(&self) -> bool {
         !self.dimension_type().has_fixed_time && self.sky_darken() >= 4
     }
 
-    pub(super) fn can_have_weather(&self) -> bool {
+    pub(in crate::game) fn can_have_weather(&self) -> bool {
         level_can_have_weather(
             self.world.shape.sky_light,
             self.world.shape.has_ceiling,
@@ -79,7 +80,7 @@ impl Game<'_> {
 
     /// The rain and thunder levels (`Level.getRainLevel`, `getThunderLevel`):
     /// the world's, where the level can have weather, else none.
-    pub(super) fn weather_levels(&self, partial: f32) -> (f32, f32) {
+    pub(in crate::game) fn weather_levels(&self, partial: f32) -> (f32, f32) {
         if self.can_have_weather() {
             self.world.weather.levels(partial)
         } else {
@@ -87,7 +88,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn sky_darken(&self) -> i32 {
+    pub(in crate::game) fn sky_darken(&self) -> i32 {
         if self.dim == Dim::Nether {
             return 11;
         }
@@ -119,21 +120,14 @@ impl Game<'_> {
 
     /// `Level.isRainingAt`: `Level.precipitationAt`
     /// (`sunrise_world::level::weather::precipitation_at`) is rain.
-    pub(super) fn raining_at(&self, p: BlockPos) -> bool {
+    pub(in crate::game) fn raining_at(&self, p: BlockPos) -> bool {
         sunrise_world::level::weather::precipitation_at(&GamePrecipitation(self), p)
             == sunrise_world::level::PrecipitationKind::Rain
     }
 
     /// `getHeight(Heightmap.Types.MOTION_BLOCKING, x, z)`: one above the
     /// highest block in `blocks_motion_in_heightmap` or holding a fluid.
-    pub(super) fn rain_height(&self, x: i32, z: i32) -> i32 {
+    pub(in crate::game) fn rain_height(&self, x: i32, z: i32) -> i32 {
         render_tick::motion_blocking_height(&self.world, &self.pack.assets.properties, x, z)
-    }
-
-    pub(super) fn tick_weather_effects(&mut self) {
-        if self.flash > 0 {
-            self.flash -= 1;
-        }
-        // The rain sounds come with the rain splashes (`tick_particles`).
     }
 }

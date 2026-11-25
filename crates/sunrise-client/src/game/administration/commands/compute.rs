@@ -88,7 +88,7 @@ impl<'v> ConditionContext<'v> for ComputeCondition<'_, '_> {
 
 impl Game<'_> {
     /// A provider argument: its registry id (None when inline) and value.
-    pub(in crate::game) fn provider_arg(
+    pub(in crate::game::server_side) fn provider_arg(
         &self,
         ctx: &Context,
         registry: &str,
@@ -114,7 +114,10 @@ impl Game<'_> {
         Ok((Some(id), value))
     }
     /// The compute context the command's source literal selects.
-    pub(in crate::game) fn compute_context(&mut self, ctx: &Context) -> R<ComputeContext> {
+    pub(in crate::game::server_side) fn compute_context(
+        &mut self,
+        ctx: &Context,
+    ) -> R<ComputeContext> {
         let mut c = ComputeContext::default();
         if ctx.literals.iter().any(|l| l == "block") && ctx.get("computePos").is_some() {
             c.block = Some(self.block_pos_arg(ctx, "computePos")?);
@@ -129,7 +132,7 @@ impl Game<'_> {
         Ok(c)
     }
     /// `ComputeCommand.computeAsInt` / `computeAsFloat`.
-    pub(in crate::game) fn cmd_compute(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_compute(&mut self, ctx: &Context) -> R<i32> {
         let integer = ctx.literals.iter().any(|l| l == "integer");
         let registry = if integer {
             "minecraft:context_int_provider"

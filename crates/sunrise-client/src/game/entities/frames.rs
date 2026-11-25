@@ -867,7 +867,11 @@ impl Game<'_> {
     }
     /// `ItemFrame.setItem(stack, true)`: keeps one item, plays the add sound
     /// for a non-empty stack and updates the comparators.
-    pub(in crate::game) fn set_frame_item(&mut self, i: usize, stack: Option<ItemStack>) {
+    pub(in crate::game::server_side) fn set_frame_item(
+        &mut self,
+        i: usize,
+        stack: Option<ItemStack>,
+    ) {
         let f = &mut self.item_frames[i];
         f.set_item(stack);
         let (pos, filled) = (f.pos, f.item.is_some());

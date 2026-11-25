@@ -15,7 +15,7 @@ fn registered() -> BTreeSet<String> {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn tick_book_snapshot_retry(&mut self) {
+    pub(in crate::game::client_side) fn tick_book_snapshot_retry(&mut self) {
         self.check_mod_book_placement_timeout();
         if self
             .native_net
@@ -49,7 +49,7 @@ impl Game<'_> {
     }
 
     /// Authoritative view for a custom menu panel; None until negotiation and snapshot finish.
-    pub fn custom_book_settings(
+    pub(in crate::game::client_side) fn custom_book_settings(
         &self,
         book: &mod_api::RecipeBookTypeKey,
     ) -> Option<mod_api::RecipeBookSettings> {
@@ -99,7 +99,7 @@ impl Game<'_> {
         true
     }
 
-    pub(in crate::game) fn begin_book_negotiation(&mut self) {
+    pub(in crate::game::client_side) fn begin_book_negotiation(&mut self) {
         self.reset_book_view();
         if self
             .remote

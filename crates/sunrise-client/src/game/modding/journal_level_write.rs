@@ -406,7 +406,7 @@ impl Game<'_> {
     /// For transactional sounds, `play_level_sound_at_*` hooks run synchronously here inside the
     /// open transaction so listeners can edit/cancel the sound and have their own writes journaled;
     /// only the resolved packet record is deferred to commit.
-    pub(in crate::game) fn emit_level_effect(&mut self, write: PendingWrite) {
+    pub(in crate::game::server_side) fn emit_level_effect(&mut self, write: PendingWrite) {
         if self.has_level_transaction() {
             let write = match write {
                 PendingWrite::Sound { sound, seed } => match self.resolve_native_sound(sound) {

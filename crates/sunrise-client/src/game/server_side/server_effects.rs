@@ -75,7 +75,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn server_play_sound_seeded(
+    pub(in crate::game::server_side) fn server_play_sound_seeded(
         &mut self,
         event: &str,
         at: [f64; 3],

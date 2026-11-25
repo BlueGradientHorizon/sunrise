@@ -107,7 +107,7 @@ fn unix_secs() -> i64 {
 
 impl Game<'_> {
     /// Whether this window is a client of a server it does not run itself.
-    pub(in crate::game) fn profiles_remote_server(&self) -> bool {
+    pub(in crate::game::client_side) fn profiles_remote_server(&self) -> bool {
         self.integrated.is_none() && self.remote.is_some()
     }
 
@@ -123,7 +123,7 @@ impl Game<'_> {
     }
 
     /// `profile server start` on a server: the answer comes back through `reply`.
-    pub(in crate::game) fn start_remote_only(
+    pub(in crate::game::client_side) fn start_remote_only(
         &mut self,
         options: &StartOptions,
         reply: &Sender<String>,
@@ -146,7 +146,7 @@ impl Game<'_> {
     }
 
     /// A window capture on a server also asks the server for its side; a refusal is a warning in the file.
-    pub(in crate::game) fn join_remote_server(&mut self, options: &StartOptions) {
+    pub(in crate::game::client_side) fn join_remote_server(&mut self, options: &StartOptions) {
         if !self.profiles_remote_server() {
             return;
         }
@@ -167,7 +167,10 @@ impl Game<'_> {
     }
 
     /// `profile server stop` on a server: the file's name comes back through `reply`.
-    pub(in crate::game) fn stop_remote_only(&mut self, reply: &Sender<String>) -> Result<()> {
+    pub(in crate::game::client_side) fn stop_remote_only(
+        &mut self,
+        reply: &Sender<String>,
+    ) -> Result<()> {
         self.profile
             .server_link
             .stop(Instant::now())
@@ -178,14 +181,14 @@ impl Game<'_> {
     }
 
     /// The window capture ends: so does the server's side that asked with it.
-    pub(in crate::game) fn stop_joined_server(&mut self) {
+    pub(in crate::game::client_side) fn stop_joined_server(&mut self) {
         if self.profile.server_joined && self.profile.server_link.stop(Instant::now()).is_ok() {
             self.send_perf(&Request::Stop);
         }
     }
 
     /// A `sunrise:perf` payload from the server.
-    pub(in crate::game) fn remote_perf_reply(&mut self, data: &[u8]) {
+    pub(in crate::game::client_side) fn remote_perf_reply(&mut self, data: &[u8]) {
         let Ok(reply) = Reply::decode(data) else {
             log::debug!("Sunrise: a bad server profile reply");
             return;
@@ -387,7 +390,7 @@ impl Game<'_> {
     }
 
     /// The server's part will not arrive whole: what did arrive stays in the window's capture, with the warning, or the file of its own is removed.
-    pub(in crate::game) fn abandon_part(&mut self) {
+    pub(in crate::game::client_side) fn abandon_part(&mut self) {
         let waiting = self.profile.server_reply.take();
         let sink = self.profile.server_sink.take();
         if let Some(Incoming {
@@ -422,7 +425,7 @@ impl Game<'_> {
     }
 
     /// Once per loop turn: a request the server never answered, or a connection that ended under one.
-    pub(in crate::game) fn poll_server_link(&mut self) {
+    pub(in crate::game::client_side) fn poll_server_link(&mut self) {
         if self.profile.incoming.is_some() && self.settle_part().is_err() {
             self.abandon_part();
         }

@@ -2814,7 +2814,7 @@ impl Game<'_> {
     }
     /// `LeverBlock.makeParticle` at full scale: a powered lever puffs one red
     /// dust on the clicking client (`LeverBlock.useWithoutItem`).
-    pub(in crate::game) fn lever_puff(&mut self, pos: [i32; 3]) {
+    pub(in crate::game::client_side) fn lever_puff(&mut self, pos: [i32; 3]) {
         assert!(
             !self.is_logical_server(),
             "lever_puff called on Server role"

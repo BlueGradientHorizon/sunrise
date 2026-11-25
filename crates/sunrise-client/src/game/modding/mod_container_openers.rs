@@ -35,7 +35,7 @@ impl Game<'_> {
         self.change_mod_container_openers(pos, open, Some(Who::Player), range, bound);
     }
 
-    pub(in crate::game) fn mod_container_opener(
+    pub(in crate::game::server_side) fn mod_container_opener(
         &mut self,
         pos: Pos,
         open: bool,

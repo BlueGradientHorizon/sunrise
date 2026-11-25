@@ -1,10 +1,13 @@
 //! The content index captured for each package at startup, shared by registration and loading.
+#[allow(unused_imports)]
 use super::ModsState;
+#[allow(unused_imports)]
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
     sync::Arc,
 };
+#[allow(unused_imports)]
 use sunrise_mod_package::{
     Content, Manifest,
     content::{AdmittedContentSource, ContentSource, ReadError},
@@ -13,25 +16,25 @@ use sunrise_mod_package::{
 };
 
 pub(in crate::game) struct PackageContent {
-    path: PathBuf,
-    opened: Result<AdmittedContentSource, OpenError>,
-    visibility: Visibility,
+    pub(in crate::game) path: PathBuf,
+    pub(in crate::game) opened: Result<AdmittedContentSource, OpenError>,
+    pub(in crate::game) visibility: Visibility,
 }
 
 #[derive(PartialEq, Eq)]
-enum Visibility {
+pub(in crate::game) enum Visibility {
     Visible,
     Disabled,
     RefusedContent,
 }
 
-enum OpenError {
+pub(in crate::game) enum OpenError {
     Read(String),
     Namespace(String),
 }
 
 impl OpenError {
-    fn detail(&self) -> &str {
+    pub(in crate::game) fn detail(&self) -> &str {
         match self {
             Self::Read(detail) | Self::Namespace(detail) => detail,
         }
@@ -39,7 +42,7 @@ impl OpenError {
 }
 
 impl PackageContent {
-    fn namespace_refusal(&self) -> Option<&str> {
+    pub(in crate::game) fn namespace_refusal(&self) -> Option<&str> {
         match &self.opened {
             Err(OpenError::Namespace(detail)) => Some(detail),
             _ => None,
@@ -84,10 +87,10 @@ impl mod_api::PackageFileSource for PackageContent {
 pub(in crate::game) struct StartupAdmission {
     /// The startup selection whose JAR requirements were checked; a later resource reload may
     /// have selected different packages.
-    selected: Arc<[SelectedPackage]>,
-    native: Arc<sunrise_mod_package::runtime::Runtime>,
+    pub(in crate::game) selected: Arc<[SelectedPackage]>,
+    pub(in crate::game) native: Arc<sunrise_mod_package::runtime::Runtime>,
     pub(in crate::game) refused: Vec<MissingJar>,
-    packages: BTreeMap<String, Arc<PackageContent>>,
+    pub(in crate::game) packages: BTreeMap<String, Arc<PackageContent>>,
 }
 
 impl StartupAdmission {
@@ -149,7 +152,7 @@ impl StartupAdmission {
         })
     }
 
-    fn registration_visible(&self, id: &str) -> bool {
+    pub(in crate::game) fn registration_visible(&self, id: &str) -> bool {
         self.packages
             .get(id)
             .is_some_and(|package| package.visibility == Visibility::Visible)
@@ -178,10 +181,6 @@ impl StartupAdmission {
             .filter(|p| self.registration_visible(&p.package.manifest.id))
     }
 
-    pub(in crate::game) fn matches_selection(&self, selected: &Arc<[SelectedPackage]>) -> bool {
-        Arc::ptr_eq(&self.selected, selected)
-    }
-
     pub(in crate::game) fn package(&self, id: &str, path: &Path) -> Option<&PackageContent> {
         self.packages
             .get(id)
@@ -206,7 +205,7 @@ pub(in crate::game) fn sources(
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
     use crate::game::{
         api_values::TryIntoApi,

@@ -7,7 +7,11 @@ pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
 
 impl Game<'_> {
     /// BlockPosArgument.getLoadedBlockPos.
-    pub(in crate::game) fn block_pos_arg(&self, ctx: &Context, name: &str) -> R<[i32; 3]> {
+    pub(in crate::game::server_side) fn block_pos_arg(
+        &self,
+        ctx: &Context,
+        name: &str,
+    ) -> R<[i32; 3]> {
         let c = self
             .coords(ctx, name)
             .ok_or_else(|| err("argument.pos.missing.int", &[]))?;

@@ -481,6 +481,15 @@ impl Game<'_> {
         }
         false
     }
+    /// `ShulkerBoxBlockEntity.moveCollidedEntities` for the bodies this game
+    /// moves itself: every entity the sweeping lid box meets moves out along
+    /// the box's facing by the box's own size plus 0.01, through [`Self::lid_push`].
+    pub(in crate::game) fn push_shulker_entities(&mut self, pushes: Vec<ShulkerPush>) {
+        for (_, facing, lid) in pushes {
+            let (movement, area) = shulker_lid(facing, lid);
+            self.lid_push(Lid::Box, area, movement);
+        }
+    }
     /// The ground recorded after placing the body during `Entity.move`.
     pub(in crate::game) fn set_pushed_on_ground(
         &mut self,

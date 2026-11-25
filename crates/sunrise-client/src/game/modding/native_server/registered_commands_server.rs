@@ -147,3 +147,13 @@ impl Game<'_> {
         self.resend_commands_filtered();
     }
 }
+
+impl NativeCommandState {
+    /// The traversal level of a mod's root (`line`, without its slash), when registered.
+    /// The parsed executable node enforces its own usage level separately.
+    pub(in crate::game) fn level(&self, line: &str) -> Option<u8> {
+        let name = line.split(' ').next().unwrap_or_default();
+        self.report["children"].get(name)?;
+        self.registered.as_ref()?.levels.get(name).copied()
+    }
+}

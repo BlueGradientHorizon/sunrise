@@ -659,6 +659,185 @@ impl Game<'_> {
     }
 }
 
+impl Game<'_> {
+    /// `Entity.interact`: retain the holder-detach success's item context.
+    pub(in crate::game) fn interact_leash_with_item_context(
+        &mut self,
+        index: usize,
+        item: &str,
+    ) -> Option<LeashInteraction> {
+        let sneaking = self.server_acting_sneak();
+        let id = self.mobs[index].id;
+        let at = self.mobs[index].center();
+        if !self.mobs[index].alive() {
+            return None;
+        }
+        // Sneaking with mobs in hand: tie them to this one.
+        if sneaking && leash::can_be_leashed(&self.mobs[index]) && !self.mobs[index].is_baby() {
+            let b = self.mobs[index].bounds();
+            let (lo, hi) = (b.min_position(), b.max_position());
+            let center = glam::DVec3::new(
+                (lo.x + hi.x) / 2.0,
+                (lo.y + hi.y) / 2.0,
+                (lo.z + hi.z) / 2.0,
+            );
+            if self.tie_player_leads(center, Holder::Mob(id), Some(index)) {
+                self.lead_game_event("minecraft:entity_action", at);
+                self.lead_sound("tied", at);
+                return Some(LeashInteraction::WithoutItem);
+            }
+        }
+        if item == "minecraft:shears" {
+            let mut dropped = false;
+            if self.mobs[index].extra.leash.is_some() {
+                self.break_leash_used(id, true);
+                dropped = true;
+            }
+            let others: Vec<u32> = self
+                .mobs
+                .iter()
+                .filter(|m| m.extra.leash == Some(Holder::Mob(id)))
+                .map(|m| m.id)
+                .collect();
+            for o in others {
+                self.break_leash_used(o, true);
+                dropped = true;
+            }
+            let boats = self.boats_on(Holder::Mob(id));
+            dropped |= !boats.is_empty();
+            self.drop_boat_leashes(&boats);
+            if dropped {
+                self.lead_game_event("minecraft:shear", at);
+                self.server_play_sound("minecraft:item.shears.snip", at, 1.0, 1.0);
+                self.damage_held_tool();
+                return Some(LeashInteraction::WithItem);
+            }
+        }
+        // Mob.checkAndHandleImportantInteractions: only the player the lead
+        // is tied to unties it (`getLeashHolder() == player`).
+        let acting = self.acting_player_uuid();
+        if held_by_acting_player(
+            self.mobs[index].extra.leash,
+            self.mobs[index].extra.leash_player,
+            acting,
+        ) {
+            let creative = self.creative;
+            self.break_leash_used(id, !creative);
+            self.lead_game_event("minecraft:entity_interact", at);
+            self.lead_sound("untied", at);
+            return Some(LeashInteraction::WithoutItem);
+        }
+        if item == "minecraft:lead" {
+            let center = self.player_center();
+            if self.can_attach_lead(index, center) {
+                if self.mobs[index].extra.leash.is_some() {
+                    self.break_leash_used(id, true);
+                }
+                let holder = self.acting_player_uuid();
+                // LeashData.setLeashHolder: a holder still waiting in the save
+                // is forgotten, so it can neither take over nor drop a lead.
+                let extra = &mut self.mobs[index].extra;
+                extra.leash = Some(Holder::Player);
+                extra.leash_pending = None;
+                extra.leash_player = Some(holder);
+                self.lead_sound("tied", at);
+                // `Player.interactOn` restores the count of a player with
+                // infinite materials (creative); others spend the lead.
+                self.consume_held();
+                return Some(LeashInteraction::WithItem);
+            }
+        }
+        None
+    }
+    /// A click at the fence at `knot_pos`: `knot_hit` for `LeashFenceKnotEntity.interact`,
+    /// otherwise `LeadItem.useOn`. Returns whether it was used.
+    pub(in crate::game) fn use_knot(&mut self, knot_pos: [i32; 3], knot_hit: bool) -> bool {
+        let knot = leash::knot_state(knot_pos).center;
+        let center = glam::DVec3::new(knot.x, knot.y, knot.z);
+        let at = [center.x, center.y, center.z];
+        let existing: Vec<usize> = (0..self.mobs.len())
+            .filter(|&i| self.mobs[i].extra.leash == Some(Holder::Knot(knot_pos)))
+            .collect();
+        let existing_boats = self.boats_on(Holder::Knot(knot_pos));
+        let held_item = self.held().map(|s| s.item.to_string());
+        let sneaking = self.server_acting_sneak();
+        // Shears snip every lead on the knot.
+        if knot_hit && held_item.as_deref() == Some("minecraft:shears") {
+            for i in existing {
+                let id = self.mobs[i].id;
+                self.break_leash_used(id, true);
+            }
+            self.drop_boat_leashes(&existing_boats);
+            self.server_play_sound("minecraft:item.shears.snip", at, 1.0, 1.0);
+            self.damage_held_tool();
+            return true;
+        }
+        let in_hand = self.player_leashed(center);
+        let boats_in_hand = self.player_led_boats(center);
+        // The knot is only made for the lead item, or when mobs already hang on it.
+        if held_item.as_deref() != Some("minecraft:lead")
+            && existing.is_empty()
+            && existing_boats.is_empty()
+            && in_hand.is_empty()
+            && boats_in_hand.is_empty()
+        {
+            return false;
+        }
+        // A knot is made when a lead is tied to a fence that has none.
+        if existing.is_empty()
+            && existing_boats.is_empty()
+            && (!in_hand.is_empty() || !boats_in_hand.is_empty())
+            && self.hanging_place_cancelled("minecraft:leash_knot", knot_pos)
+        {
+            return true;
+        }
+        self.forget_untied_knots();
+        let mut attached = self.tie_player_boats(center, Holder::Knot(knot_pos));
+        let mut attached_mobs = Vec::new();
+        for j in in_hand {
+            if self.can_attach_lead(j, center) {
+                self.mobs[j].extra.leash = Some(Holder::Knot(knot_pos));
+                attached_mobs.push(j);
+                attached = true;
+            }
+        }
+        if attached {
+            let knot_id = self.tie_knot(knot_pos);
+            for j in attached_mobs {
+                self.mobs[j].extra.leash_knot_id = Some(knot_id);
+            }
+            for i in self.boats_on(Holder::Knot(knot_pos)) {
+                if self.boats[i].leash_knot_id.is_none() {
+                    self.boats.update(i, |b| b.leash_knot_id = Some(knot_id));
+                }
+            }
+        }
+        if !attached && !sneaking && knot_hit {
+            let player = self.player_center();
+            let holder = self.acting_player_uuid();
+            for i in existing {
+                if self.can_attach_lead(i, player) {
+                    self.mobs[i].extra.leash = Some(Holder::Player);
+                    self.mobs[i].extra.leash_player = Some(holder);
+                    attached = true;
+                }
+            }
+            attached |= self.take_knot_boats(knot_pos);
+        }
+        if attached {
+            let event_at = if knot_hit {
+                [knot.x, knot.y - 0.25, knot.z]
+            } else {
+                knot_pos.map(|v| f64::from(v) + 0.5)
+            };
+            self.lead_game_event("minecraft:block_attach", event_at);
+            self.lead_sound("tied", at);
+            self.swing_arm();
+        }
+        attached
+    }
+}
+
 #[cfg(test)]
 pub(in crate::game) mod rope_hold_tests {
     use super::{

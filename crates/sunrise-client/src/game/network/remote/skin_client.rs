@@ -25,7 +25,7 @@ impl Game<'_> {
     /// this connection draws its skin as the player list does; any other UUID its profile, looked
     /// up by id as a head's is. Until uploaded, the UUID's default. It borrows the name: a
     /// looked-up skin's is copied into `name`, reused from face to face.
-    pub(in crate::game) fn player_face_skin<'a>(
+    pub(in crate::game::client_side) fn player_face_skin<'a>(
         &'a self,
         uuid: u128,
         name: &'a mut String,

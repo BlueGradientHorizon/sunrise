@@ -1,8 +1,8 @@
 //! Shared CPU submission limits. A quad uses four vertices and six u32 indices.
 //! This is the index-addressable maximum, not an arbitrary content limit.
-pub(super) const MAX_DRAW_VERTICES: usize = (u32::MAX as usize / 6) * 4;
+pub(in crate::game) const MAX_DRAW_VERTICES: usize = (u32::MAX as usize / 6) * 4;
 
-pub(super) fn quad_allowed(
+pub(in crate::game) fn quad_allowed(
     corners: [[f32; 3]; 4],
     uv: [[f32; 2]; 4],
     len: usize,
@@ -16,7 +16,7 @@ pub(super) fn quad_allowed(
         && len.checked_add(4).is_some_and(|end| end <= limit)
 }
 
-pub(super) fn truncate<T>(vertices: &mut Vec<T>, limit: usize) {
+pub(in crate::game) fn truncate<T>(vertices: &mut Vec<T>, limit: usize) {
     vertices.truncate(limit / 4 * 4);
 }
 

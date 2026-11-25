@@ -222,7 +222,7 @@ impl Game<'_> {
     /// Final scaled third-person camera distance, before visual-shape collision clipping.
     /// `entity` includes its living scale/distance and optional mount scale/distance.
     /// Only finite requests in 0..=1024 blocks replace the vanilla distance.
-    pub(in crate::game) fn native_camera_distance(
+    pub(in crate::game::client_side) fn native_camera_distance(
         &self,
         partial: f32,
         mirrored: bool,
@@ -247,7 +247,7 @@ impl Game<'_> {
     /// `native_client_level_unload` follows this, as `Minecraft.setLevel`
     /// tells it after the new level is made. Client-side, on the window; the
     /// server's levels have `native_level_load`.
-    pub(in crate::game) fn native_client_level_load(&mut self, dimension: &str) {
+    pub(in crate::game::client_side) fn native_client_level_load(&mut self, dimension: &str) {
         self.fire_client_level_load(dimension);
     }
     /// The client dropped its level for `dimension` (`LevelEvent.Unload`
@@ -255,7 +255,7 @@ impl Game<'_> {
     /// dimension's, or on leaving the server. Once for each
     /// `native_client_level_load`. Not told when the game itself quits.
     /// Client-side.
-    pub(in crate::game) fn native_client_level_unload(&mut self, dimension: &str) {
+    pub(in crate::game::client_side) fn native_client_level_unload(&mut self, dimension: &str) {
         self.fire_client_level_unload(dimension);
     }
     /// Render-thread notification after a resource-pack reload has applied successfully.
@@ -272,7 +272,7 @@ impl Game<'_> {
     }
     /// Computed world fog RGB, after ordinary effects and before upload. Title panoramas skip it.
     /// Only finite RGB components in 0..=1 are accepted; alpha and distances stay unchanged.
-    pub(in crate::game) fn native_compute_fog_color(
+    pub(in crate::game::client_side) fn native_compute_fog_color(
         &self,
         partial: f32,
         camera: [f64; 3],
@@ -284,7 +284,7 @@ impl Game<'_> {
     /// World field of view, after normal calculation and zoom and before projection/Nausea.
     /// Called for world rendering and near-plane overlays; hand/HUD FOV uses its own path.
     /// Only finite values in 1..=179 degrees replace the computed FOV.
-    pub(in crate::game) fn native_compute_fov(
+    pub(in crate::game::client_side) fn native_compute_fov(
         &self,
         partial: f32,
         camera: [f64; 3],
@@ -309,7 +309,7 @@ impl Game<'_> {
     /// window has focus, `minimized` whether it is minimised and `in_world` whether a world
     /// is open. A mod may lower `limit`, as Dynamic FPS does for a window in the background:
     /// Sunrise keeps the lower of its own limit and the mod's, and ignores values below 1.
-    pub(in crate::game) fn native_framerate_limit(
+    pub(in crate::game::client_side) fn native_framerate_limit(
         &self,
         focused: bool,
         minimized: bool,
@@ -321,7 +321,11 @@ impl Game<'_> {
     /// After the entire installed HUD slot body (`RenderGuiLayerEvent.Post`), once
     /// with the ID from `native_gui_layer_pre`. Does not fire when Pre canceled the slot.
     /// Paint into `draw` to put something above the layer.
-    pub(in crate::game) fn native_gui_layer_post(&self, layer: &str, draw: &mut HudBatch) {
+    pub(in crate::game::client_side) fn native_gui_layer_post(
+        &self,
+        layer: &str,
+        draw: &mut HudBatch,
+    ) {
         self.fire_gui_layer_post(layer, draw);
     }
     /// Before a vanilla or registered HUD slot runs (`RenderGuiLayerEvent.Pre`), even under F1.
@@ -329,7 +333,7 @@ impl Game<'_> {
     /// (including any side effects) and `native_gui_layer_post`. A replacement or wrapper
     /// keeps the slot's ID and order, but does not inherit its visibility rules; those stay
     /// in the original body. Focused chat paints separately in its screen without dispatching the HUD slot again.
-    pub(in crate::game) fn native_gui_layer_pre(
+    pub(in crate::game::client_side) fn native_gui_layer_pre(
         &self,
         layer: &str,
         draw: &mut HudBatch,
@@ -438,7 +442,7 @@ impl Game<'_> {
     /// not passed in. Asked every frame a map is drawn, so keep it cheap.
     /// The client half of `MapDecorationType` and `addDecoration`: a type
     /// registered on the server and saved in the map's data is not here.
-    pub(in crate::game) fn native_map_decorations(
+    pub(in crate::game::client_side) fn native_map_decorations(
         &self,
         map: &mod_api::MapInfo<'_>,
         decorations: &mut Vec<mod_api::MapDecoration>,
@@ -446,7 +450,7 @@ impl Game<'_> {
         self.fire_map_decorations(map, decorations);
     }
     /// An accepted raw button event finished dispatch, including a screen handler's early return.
-    pub(in crate::game) fn native_mouse_button_post(
+    pub(in crate::game::client_side) fn native_mouse_button_post(
         &mut self,
         button: i32,
         pressed: bool,
@@ -456,7 +460,7 @@ impl Game<'_> {
     }
     /// Raw mouse button input on any screen, before dispatch; cancel skips dispatch and Post.
     /// Button/modifiers use the same GLFW encoding as screen hooks. Synthetic clicks skip it.
-    pub(in crate::game) fn native_mouse_button_pre(
+    pub(in crate::game::client_side) fn native_mouse_button_pre(
         &mut self,
         button: i32,
         pressed: bool,
@@ -468,7 +472,7 @@ impl Game<'_> {
     /// Gameplay scrolling after accumulation, before hotbar/spectator handling.
     /// `scroll` is scaled x/y, `accumulated` whole x/y steps, `buttons` left/middle/right,
     /// and `cursor` the GUI position. Cancel skips gameplay scrolling.
-    pub(in crate::game) fn native_mouse_scrolling(
+    pub(in crate::game::client_side) fn native_mouse_scrolling(
         &mut self,
         scroll: [f64; 2],
         accumulated: [i32; 2],
@@ -487,7 +491,11 @@ impl Game<'_> {
     /// `Music::new("mymod:music.spring", 1200, 6000, false)` (the delays in
     /// ticks between songs, and whether it cuts off a different song playing),
     /// None to keep vanilla's quiet, or change `volume` (0 to 1) to fade it.
-    pub(in crate::game) fn native_music(&self, music: &mut Option<Music>, volume: &mut f32) {
+    pub(in crate::game::client_side) fn native_music(
+        &self,
+        music: &mut Option<Music>,
+        volume: &mut f32,
+    ) {
         self.fire_music(music, volume);
     }
     /// The tracks to play over (or instead of) the music on this client,
@@ -498,12 +506,16 @@ impl Game<'_> {
     /// piece from the start, the silent ones at volume 0, and raise them (a
     /// fuller arrangement as a village grows). Their sound events should be
     /// `stream: true` in `sounds.json`.
-    pub(in crate::game) fn native_music_layers(&self, layers: &mut Vec<MusicLayer>) {
+    pub(in crate::game::client_side) fn native_music_layers(&self, layers: &mut Vec<MusicLayer>) {
         self.fire_music_layers(layers);
     }
     /// The player did `event` on mod `mod_id`'s panel (`panel_items`):
     /// act on it when it is yours.
-    pub(in crate::game) fn native_panel_event(&mut self, mod_id: &str, event: &PanelEvent) {
+    pub(in crate::game::client_side) fn native_panel_event(
+        &mut self,
+        mod_id: &str,
+        event: &PanelEvent,
+    ) {
         self.fire_panel_event(mod_id, event);
     }
     /// A quad of corners `points` (in order round it) in GUI pixels, `argb`:
@@ -545,7 +557,7 @@ impl Game<'_> {
     /// Final world fog, after the computed color hook, ordinary calculations and Sunrise's fog
     /// option, before upload. Title panoramas skip it. Invalid color or distance values retain the
     /// original whole fog.
-    pub(in crate::game) fn native_render_fog(
+    pub(in crate::game::client_side) fn native_render_fog(
         &self,
         partial: f32,
         camera: [f64; 3],
@@ -854,7 +866,7 @@ impl Game<'_> {
     /// display or `ItemResource::tooltip`, except during reentrant line queries, when
     /// the stack hides its tooltip or for a crossbow's loaded projectile. `context` shares
     /// the player, flags and vanilla client-level tick rate with component tooltip appenders.
-    pub(in crate::game) fn native_tooltip(
+    pub(in crate::game::client_side) fn native_tooltip(
         &self,
         stack: &ItemStack,
         context: &mod_api::TooltipAppendContext,
@@ -876,7 +888,7 @@ impl Game<'_> {
     }
     /// The world frame's local visual sources. Push requests; Sunrise validates
     /// and limits them before rendering. Called only while a world is visible.
-    pub(in crate::game) fn native_visuals(
+    pub(in crate::game::client_side) fn native_visuals(
         &self,
         rims: &mut Vec<BlockRim>,
         lights: &mut Vec<ColoredLight>,

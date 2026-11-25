@@ -309,7 +309,7 @@ impl Game<'_> {
         Ok(())
     }
     /// `setState` (and `removeOminous`): the block's state and ominous flag.
-    pub(in crate::game) fn set_trial_spawner_state(
+    pub(in crate::game::server_side) fn set_trial_spawner_state(
         &mut self,
         key: Pos,
         state: TrialState,

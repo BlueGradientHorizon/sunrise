@@ -1,8 +1,10 @@
 //! The game's side of the `draw` area (`sunrise-mod-api/src/host/draw.rs`).
+#[allow(unused_imports)]
 use crate::game::{
     Game,
     api_values::{TryIntoApi, TryIntoEngine},
 };
+#[allow(unused_imports)]
 use mod_api::{prelude::*, *};
 
 /// Borrow `minecraft:default` directly or format another font identifier.
@@ -16,43 +18,9 @@ pub(in crate::game) fn font_id_str(id: &mod_api::Identifier) -> std::borrow::Cow
 
 /// Engine font view lent to [`ClientTooltipComponent`] and `render_tooltip_pre`.
 pub(in crate::game) struct EngineTooltipFont<'a> {
-    font: &'a sunrise_client::font::Font,
-    id: &'a Identifier,
-    name: std::borrow::Cow<'static, str>,
-}
-impl<'a> EngineTooltipFont<'a> {
-    pub(in crate::game) fn new(font: &'a sunrise_client::font::Font, id: &'a Identifier) -> Self {
-        Self {
-            font,
-            id,
-            name: font_id_str(id),
-        }
-    }
-
-    pub(in crate::game) fn name(&self) -> &str {
-        &self.name
-    }
-}
-
-impl TooltipFont for EngineTooltipFont<'_> {
-    fn id(&self) -> &Identifier {
-        self.id
-    }
-    fn line_height(&self) -> i32 {
-        9
-    }
-    fn width(&self, text: &Text) -> Result<i32, TextFormError> {
-        let text: crate::text::Text = text.try_into_engine(&())?;
-        Ok(self.font.width_text_with_font(&text, self.name()) as i32)
-    }
-    fn split(&self, text: &Text, max_width: i32) -> Result<Vec<Text>, TextFormError> {
-        let text: crate::text::Text = text.try_into_engine(&())?;
-        self.font
-            .split_formatted_with_font(&text, max_width as f32, self.name())
-            .into_iter()
-            .map(|line| line.try_into_api())
-            .collect()
-    }
+    pub(in crate::game) font: &'a sunrise_client::font::Font,
+    pub(in crate::game) id: &'a Identifier,
+    pub(in crate::game) name: std::borrow::Cow<'static, str>,
 }
 
 /// [`DrawContext`] on the game's `crate::hud::HudBatch`: one per hook call.
@@ -60,57 +28,8 @@ pub(crate) struct GameDrawContext<'a, 'g> {
     pub(crate) game: &'a Game<'g>,
     pub(crate) surface: &'a mut crate::hud::HudBatch,
     /// The call's open clips (`push_clip`), closed when the call returns.
-    clips: crate::game::gui_clips::GuiClips,
-    tooltip_font: Option<&'a EngineTooltipFont<'a>>,
-}
-impl<'a, 'g> GameDrawContext<'a, 'g> {
-    /// Lend a fresh clip stack and isolate the drawable tail of one listener.
-    pub(crate) fn stage(
-        game: &Game<'_>,
-        surface: &mut crate::hud::HudBatch,
-        listen: &mut dyn FnMut(&mut dyn DrawContext) -> bool,
-    ) {
-        let counts = (
-            surface.vertices.len(),
-            surface.pictures.len(),
-            surface.blends.len(),
-            surface.inline_profiles.len(),
-        );
-        let last_blend_end = surface.blends.last().map(|(range, _)| range.end);
-        let accepted = listen(&mut GameDrawContext::new(game, surface));
-        if !accepted {
-            surface.vertices.truncate(counts.0);
-            surface.pictures.truncate(counts.1);
-            surface.blends.truncate(counts.2);
-            surface.inline_profiles.truncate(counts.3);
-            if let Some((last, end)) = surface.blends.last_mut().zip(last_blend_end) {
-                last.0.end = end;
-            }
-            // Keep glyph uploads: font extraction already cached those atlas locations.
-            // They do not draw anything without an accepted vertex referencing them.
-        }
-    }
-
-    pub(crate) fn new(game: &'a Game<'g>, surface: &'a mut crate::hud::HudBatch) -> Self {
-        Self {
-            game,
-            surface,
-            clips: Default::default(),
-            tooltip_font: None,
-        }
-    }
-    pub(in crate::game) fn with_active_tooltip_font(
-        mut self,
-        font: &'a EngineTooltipFont<'a>,
-    ) -> Self {
-        self.tooltip_font = Some(font);
-        self
-    }
-}
-impl Drop for GameDrawContext<'_, '_> {
-    fn drop(&mut self) {
-        self.clips.close_all(self.surface);
-    }
+    pub(in crate::game) clips: crate::game::gui_clips::GuiClips,
+    pub(in crate::game) tooltip_font: Option<&'a EngineTooltipFont<'a>>,
 }
 impl DrawContext for GameDrawContext<'_, '_> {
     fn size(&self) -> [f32; 2] {
@@ -283,19 +202,19 @@ impl DrawContext for GameDrawContext<'_, '_> {
     }
 }
 /// `Font.lineHeight`: nine GUI pixels a line, before `scale`.
-const LINE_HEIGHT: f32 = 9.0;
+pub(in crate::game) const LINE_HEIGHT: f32 = 9.0;
 /// The most lines one layout may have; [`DrawContext::text_lines`] refuses more
 /// ([`TextLinesRefusal::TooManyLines`]) rather than answer a component of any size. The method's
 /// doc names the same number: keep them in step.
-const MAX_LINES: usize = 512;
+pub(in crate::game) const MAX_LINES: usize = 512;
 /// The most characters one layout's lines may hold together, before
 /// [`TextLinesRefusal::TooManyGlyphs`]. The method's doc names the same number: keep them in step.
-const MAX_GLYPHS: usize = 8192;
+pub(in crate::game) const MAX_GLYPHS: usize = 8192;
 /// Lays `text` out as a label's lines, as [`DrawContext::text_lines`] documents: the font's own
 /// split wraps it at `max_width / scale`, the font measures each line, `align` places them inside
 /// that wrapping width, and every dimension and position answered is scaled by `scale`.
 #[cfg(test)]
-fn label_layout(
+pub(in crate::game) fn label_layout(
     font: &crate::font::Font,
     text: &crate::text::Text,
     max_width: f32,
@@ -306,7 +225,7 @@ fn label_layout(
         Ok(piece.try_into_api()?)
     })
 }
-fn label_layout_with(
+pub(in crate::game) fn label_layout_with(
     font: &crate::font::Font,
     text: &crate::text::Text,
     max_width: f32,
@@ -366,232 +285,20 @@ pub(crate) struct GameBlockEntityDrawContext<'a, 'g> {
     pub(crate) game: &'a Game<'g>,
     pub(crate) surface: &'a mut crate::game::native_block_entity_draw::BlockEntityDraw,
 }
-impl<'a, 'g> GameBlockEntityDrawContext<'a, 'g> {
-    pub(crate) fn new(
-        game: &'a Game<'g>,
-        surface: &'a mut crate::game::native_block_entity_draw::BlockEntityDraw,
-    ) -> Self {
-        Self { game, surface }
-    }
-}
-impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
-    fn push(&mut self) {
-        self.game.native_draw_push(&mut *self.surface)
-    }
-    fn pop(&mut self) {
-        self.game.native_draw_pop(&mut *self.surface)
-    }
-    fn translate(&mut self, by: [f32; 3]) {
-        self.game.native_draw_translate(&mut *self.surface, by)
-    }
-    fn rotate_about(&mut self, axis: [f32; 3], degrees: f32, pivot: [f32; 3]) {
-        self.game
-            .native_draw_rotate_about(&mut *self.surface, axis, degrees, pivot)
-    }
-    fn scale(&mut self, by: [f32; 3]) {
-        self.game.native_draw_scale(&mut *self.surface, by)
-    }
-    fn keep(&mut self) {
-        self.game.native_draw_keep(&mut *self.surface)
-    }
-    fn partial(&self) -> f32 {
-        self.game.native_draw_partial(&*self.surface)
-    }
-    fn game_time(&self) -> i64 {
-        self.game.native_draw_game_time(&*self.surface)
-    }
-    fn animation_time(&self) -> f64 {
-        self.game.native_draw_animation_time(&*self.surface)
-    }
-    fn light(&self) -> u32 {
-        self.game.native_draw_light(&*self.surface)
-    }
-    fn set_light(&mut self, light: u32) {
-        self.game.native_draw_set_light(&mut *self.surface, light)
-    }
-    fn level_light(&mut self) {
-        self.game.native_draw_level_light(&mut *self.surface)
-    }
-    fn unlit(&mut self, on: bool) {
-        self.game.native_draw_unlit(&mut *self.surface, on)
-    }
-    fn quad(&mut self, sprite: &str, corners: [[f32; 3]; 4], uv: [f32; 4], tint: u32) -> bool {
-        self.game
-            .native_draw_quad(&mut *self.surface, sprite, corners, uv, tint)
-    }
-    fn cube(
-        &mut self,
-        from: [f32; 3],
-        to: [f32; 3],
-        faces: [Option<CubeFace<'_>>; 6],
-        tint: u32,
-    ) -> bool {
-        self.game
-            .native_draw_cube(&mut *self.surface, from, to, faces, tint)
-    }
-    fn block(&mut self, block: BlockKey, properties: &[(&str, &str)]) -> bool {
-        let Some(block) = mod_api::__private::block_key_id(block) else {
-            return false;
-        };
-        self.game
-            .native_draw_block(&mut *self.surface, block, properties)
-    }
-    fn item(
-        &mut self,
-        stack: &ItemStack,
-        display: ItemDisplayContext,
-        owner_yaw: Option<f32>,
-        seed: i32,
-    ) -> bool {
-        let Ok(stack) = crate::game::api_values::stack_value(stack) else {
-            return false;
-        };
-        let Ok(display) = display.try_into_engine(self.game.items()) else {
-            return false;
-        };
-        self.game
-            .native_draw_item(&mut *self.surface, &stack, display, owner_yaw, seed)
-    }
-    fn spin(&mut self, axis: [f32; 3], pivot: [f32; 3], degrees_per_tick: f32, phase: f32) {
-        self.game
-            .native_draw_spin(&mut *self.surface, axis, pivot, degrees_per_tick, phase)
-    }
-    fn still(&mut self) {
-        self.game.native_draw_still(&mut *self.surface)
-    }
-    fn model(&mut self, model: ModelRef, tint: u32) -> Result<(), ModelError> {
-        self.game.native_draw_model(&mut *self.surface, model, tint)
-    }
-    fn text(
-        &mut self,
-        text: &Text,
-        at: [f32; 2],
-        color: u32,
-        glowing: bool,
-        outline: Option<u32>,
-    ) -> Result<f32, mod_api::text::TextFormError> {
-        let text = sunrise_client_lib::api_text::to_engine(text)?;
-        Ok(self
-            .game
-            .native_draw_text(&mut *self.surface, &text, at, color, glowing, outline))
-    }
-    fn terrain_model(
-        &mut self,
-        model: ModelRef,
-        options: TerrainModelOptions<'_>,
-    ) -> Result<(), TerrainModelError> {
-        self.game
-            .native_draw_terrain_model(&mut *self.surface, model, options)
-    }
-    fn text_width(&self, text: &Text) -> f32 {
-        let text = sunrise_client_lib::api_text::to_engine_inprocess(text);
-        self.game.native_draw_text_width(&*self.surface, &text)
-    }
-    fn model_part(&mut self, part: &ModelPart, sprite: &str, tint: u32) -> bool {
-        self.game
-            .native_draw_model_part(&mut *self.surface, part, sprite, tint)
-    }
-    fn fluid_box(
-        &mut self,
-        stack: &FluidStack,
-        bounds: [f32; 6],
-        options: FluidBoxOptions,
-    ) -> Result<(), FluidBoxError> {
-        self.game
-            .native_draw_fluid_box(&mut *self.surface, stack, bounds, options)
-    }
-}
-impl HandDrawContext for GameBlockEntityDrawContext<'_, '_> {
-    fn render_arm(&mut self, arm: MainHand) {
-        if let Some(normals) = self.surface.normal_pose() {
-            self.game.submit_first_person_arm(
-                arm == MainHand::Left,
-                (self.surface.pose(), normals),
-                self.surface.light(),
-                self.surface.vertices_mut(),
-            );
-        }
-    }
-}
 
 /// [`CameraDrawContext`] on the game's `crate::screen_effects::CameraQuads`.
 pub(crate) struct GameCameraDrawContext<'a, 'g> {
     pub(crate) game: &'a Game<'g>,
     pub(crate) surface: &'a mut crate::screen_effects::CameraQuads,
 }
-impl<'a, 'g> GameCameraDrawContext<'a, 'g> {
-    pub(crate) fn new(
-        game: &'a Game<'g>,
-        surface: &'a mut crate::screen_effects::CameraQuads,
-    ) -> Self {
-        Self { game, surface }
-    }
-}
-impl CameraDrawContext for GameCameraDrawContext<'_, '_> {
-    fn quad(&mut self, corners: [[f32; 3]; 4], argb: u32) -> bool {
-        self.game
-            .native_camera_quad(&mut *self.surface, corners, argb)
-    }
-    fn sprite(&mut self, name: &str, corners: [[f32; 3]; 4], uv: [[f32; 2]; 4], argb: u32) -> bool {
-        self.game
-            .native_camera_sprite(&mut *self.surface, name, corners, uv, argb)
-    }
-}
 /// [`WorldDrawContext`] on the game's `crate::world_geometry::WorldGeometry`.
 pub(crate) struct GameWorldDrawContext<'a, 'g> {
     pub(crate) game: &'a Game<'g>,
     pub(crate) surface: &'a mut crate::world_geometry::WorldGeometry,
 }
-impl<'a, 'g> GameWorldDrawContext<'a, 'g> {
-    pub(crate) fn new(
-        game: &'a Game<'g>,
-        surface: &'a mut crate::world_geometry::WorldGeometry,
-    ) -> Self {
-        Self { game, surface }
-    }
-}
-impl WorldDrawContext for GameWorldDrawContext<'_, '_> {
-    fn draw_instance_group(&mut self, group: InstanceGroupRef) -> Result<(), GroupError> {
-        self.game.draw_instance_group(self.surface, group)
-    }
-    fn lines(&mut self, lines: &[WorldLine]) -> Result<(), DrawError> {
-        self.game.native_world_draw_lines(&mut *self.surface, lines)
-    }
-    fn quads(&mut self, quads: &[WorldQuad]) -> Result<(), DrawError> {
-        self.game.native_world_draw_quads(&mut *self.surface, quads)
-    }
-    fn pipeline_quads(
-        &mut self,
-        pipeline: RenderPipelineRef,
-        quads: &[PipelineQuad],
-    ) -> Result<(), PipelineDrawError> {
-        self.game
-            .native_world_draw_pipeline_quads(&mut *self.surface, pipeline, quads)
-    }
-    fn name_tag(
-        &mut self,
-        at: [f64; 3],
-        text: &Text,
-        options: NameTagOptions,
-    ) -> Result<(), DrawError> {
-        self.game
-            .native_world_name_tag(&mut *self.surface, at, text, options)
-    }
-    fn usage(&self) -> WorldDrawUsage {
-        self.game.native_world_draw_usage(&*self.surface)
-    }
-    fn draw_model_instances(
-        &mut self,
-        model: ModelRef,
-        instances: &[ModelInstance],
-    ) -> Result<(), InstanceError> {
-        self.game
-            .native_world_draw_model_instances(&mut *self.surface, model, instances)
-    }
-}
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
     use std::collections::BTreeMap;
 

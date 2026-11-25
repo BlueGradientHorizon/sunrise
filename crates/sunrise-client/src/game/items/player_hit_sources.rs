@@ -3,12 +3,17 @@ use super::Game;
 
 impl Game<'_> {
     /// Damage of a given type to the player from a point.
-    pub(super) fn mob_hits_player_kind(&mut self, amount: f32, from: [f64; 3], kind: &str) {
+    pub(in crate::game::server_side) fn mob_hits_player_kind(
+        &mut self,
+        amount: f32,
+        from: [f64; 3],
+        kind: &str,
+    ) {
         self.mob_hits_player(amount, from, kind);
     }
     /// Damage whose causing mob is known (`cause`, or none): not guessed
     /// from the mob nearest to `from`.
-    pub(super) fn mob_hits_player_caused(
+    pub(in crate::game) fn mob_hits_player_caused(
         &mut self,
         amount: f32,
         from: [f64; 3],
@@ -17,7 +22,7 @@ impl Game<'_> {
     ) {
         self.hurt_player_from(amount, Some(from), kind, Some(cause), false);
     }
-    pub(super) fn mob_hits_player(
+    pub(in crate::game) fn mob_hits_player(
         &mut self,
         amount: f32,
         from: [f64; 3],

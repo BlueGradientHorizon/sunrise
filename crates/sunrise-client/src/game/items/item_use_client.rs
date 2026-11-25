@@ -47,6 +47,60 @@ pub(in crate::game::client_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_core::use_animation::UseAnimation;
 
+impl Game<'_> {
+    /// What `Item.finishUsingItem` leaves in the hand on a server's client: a
+    /// stack that is not a consumable stays as it is (a spyglass); a
+    /// consumable loses one (`ItemStack.consume`), and once that empties the
+    /// hand, its `use_remainder` takes the hand
+    /// (`UseRemainder.convertIntoRemainder`). Neither in creative mode. A
+    /// remainder of a stack that is not emptied goes to the inventory on the
+    /// server and arrives with its inventory update.
+    pub(in crate::game::client_side) fn finish_result(
+        &self,
+        stack: &ItemStack,
+        info: &ItemInfo,
+    ) -> Option<ItemStack> {
+        if self.creative || self.consumable(stack).is_none() {
+            return Some(stack.clone());
+        }
+        let mut left = stack.clone();
+        left.count = left.count.saturating_sub(1);
+        if left.count > 0 {
+            return Some(left);
+        }
+        sunrise_client::item_sync::use_remainder(stack, Some(info))
+    }
+    /// `LivingEntityUseItemEvent.Finish` on a server's client, whose
+    /// `completeUsingItem` (`handleEntityEvent(9)`) ran for `stack` in `slot`.
+    /// `ItemStack.finishUsingItem` runs first, as on the client: the use
+    /// cooldown, then the hand holds `finish_result`. A mod's result is put in
+    /// the slot; the server's inventory update replaces either. Finishing a use
+    /// sends no creative packet in vanilla (its inventory-slot edits go out
+    /// through the open creative screen's `CreativeInventoryListener`), so the
+    /// slot counts as synced for this client's creative sync.
+    pub(in crate::game) fn remote_use_item_finished(
+        &mut self,
+        slot: usize,
+        stack: &ItemStack,
+        info: &ItemInfo,
+    ) {
+        self.apply_use_cooldown(stack);
+        let mut result = self.finish_result(stack, info);
+        let hand = hand_of(Some((slot, 0))).unwrap_or(self.hand);
+        self.native_living_entity_use_item_finish(stack, None, hand, 0, &mut result);
+        let before = self.creative_stacks();
+        if !self.creative && stack.count == 1 && self.consumable(stack).is_some() {
+            if self.stack_in(slot) != Some(stack) {
+                return;
+            }
+            *self.stack_in_mut(slot) = None;
+            self.player_item_destroyed(stack, Some(hand));
+        }
+        *self.stack_in_mut(slot) = result.filter(|s| s.count > 0);
+        self.remote_synced_since(&before);
+    }
+}
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     #[allow(unused_imports)]

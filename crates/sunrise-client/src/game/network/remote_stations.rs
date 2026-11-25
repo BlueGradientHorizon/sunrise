@@ -30,7 +30,7 @@ impl Game<'_> {
     }
 
     /// Window `container` is the server's workstation menu, open here.
-    pub(in crate::game) fn remote_station_open(&self, container: i32) -> bool {
+    pub(in crate::game::client_side) fn remote_station_open(&self, container: i32) -> bool {
         self.station.is_some()
             && self
                 .remote
@@ -44,7 +44,7 @@ impl Game<'_> {
     /// The server set station slot `internal`: the client menu's
     /// `Slot.set` runs its container's `setChanged`, so the loom lists the
     /// patterns its inputs allow and the stonecutter the recipes of its input.
-    pub(in crate::game) fn remote_station_slot_changed(&mut self, internal: usize) {
+    pub(in crate::game::client_side) fn remote_station_slot_changed(&mut self, internal: usize) {
         if !self.station.as_ref().is_some_and(|s| {
             matches!(
                 s.kind,
@@ -107,7 +107,7 @@ impl Game<'_> {
     }
 
     /// `AbstractContainerMenu.setData` from the server.
-    pub(in crate::game) fn remote_station_data(&mut self, id: usize, value: i16) {
+    pub(in crate::game::client_side) fn remote_station_data(&mut self, id: usize, value: i16) {
         let Some(s) = self.station.as_mut() else {
             return;
         };
@@ -172,7 +172,7 @@ impl Game<'_> {
     /// `AnvilScreen.onNameChanged` on a server: the rename box's text (blank
     /// when it is the input's own name) goes to the server when the menu's
     /// `setItemName` takes it.
-    pub(in crate::game) fn remote_anvil_rename(&mut self) {
+    pub(in crate::game::client_side) fn remote_anvil_rename(&mut self) {
         if self.remote.is_none() {
             return;
         }
@@ -195,7 +195,7 @@ impl Game<'_> {
 
     /// `MultiPlayerGameMode.handleInventoryButtonClick`: the screen already
     /// ran `clickMenuButton` on its own menu.
-    pub(in crate::game) fn remote_station_button(&self, button: i32) {
+    pub(in crate::game::client_side) fn remote_station_button(&self, button: i32) {
         if let Some((container, _)) = self.remote.as_ref().and_then(|r| r.menu.as_ref())
             && self.remote_station_open(*container)
         {

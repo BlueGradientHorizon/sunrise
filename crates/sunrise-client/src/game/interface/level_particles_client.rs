@@ -81,7 +81,7 @@ impl Game<'_> {
         self.spawn_particles(at, count, 0.5, height, true, ParticleType::HappyVillager);
     }
     /// `SpeleothemBlock.isStalactite`: a speleothem whose tip points down.
-    pub(in crate::game) fn is_stalactite(&self, state: BlockStateId) -> bool {
+    pub(in crate::game::client_side) fn is_stalactite(&self, state: BlockStateId) -> bool {
         self.res.facts().get(state).has_class("SpeleothemBlock")
             && self
                 .pack
@@ -388,7 +388,7 @@ impl Game<'_> {
     /// `ParticleUtils.spawnParticles`: `count` slow particles spread over
     /// `xz` blocks around `at` and `height` up, only above solid ground
     /// unless floating ones are allowed.
-    pub(in crate::game) fn spawn_particles(
+    pub(in crate::game::client_side) fn spawn_particles(
         &mut self,
         at: [i32; 3],
         count: i32,

@@ -1,6 +1,6 @@
 //! Validation of stack-valued particle sends after the API stack boundary.
 use sunrise_client::particles::{ParticleOptions, ParticleType};
-pub(super) fn supported(options: &ParticleOptions) -> bool {
+pub(in crate::game) fn supported(options: &ParticleOptions) -> bool {
     options.ty == ParticleType::Item
         && options
             .item_stack

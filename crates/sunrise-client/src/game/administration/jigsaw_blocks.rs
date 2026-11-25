@@ -1,18 +1,22 @@
 //! Jigsaw blocks on the server: `handleSetJigsawBlock` and
 //! `handleJigsawGenerate` (`JigsawBlockEntity.generate`), and the joint a
 //! placed jigsaw starts with.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use sunrise_client::{
     containers::BlockEntity,
     jigsaw_block::{self, JigsawBlock, JointType},
 };
+#[allow(unused_imports)]
 use sunrise_protocol::packets::play;
+#[allow(unused_imports)]
 use {sunrise_core::nbt::Tag, sunrise_world::worldgen::generator::JigsawQuery};
 
-type Pos = (i32, i32, i32);
+pub(in crate::game) type Pos = (i32, i32, i32);
 
 impl Game<'_> {
-    fn jigsaw_block_mut(&mut self, pos: Pos) -> Option<&mut JigsawBlock> {
+    pub(in crate::game) fn jigsaw_block_mut(&mut self, pos: Pos) -> Option<&mut JigsawBlock> {
         match self.world.block_entities.get_mut(&pos)? {
             BlockEntity::JigsawBlock(b) => Some(b),
             _ => None,
@@ -20,7 +24,7 @@ impl Game<'_> {
     }
 
     /// The block's front facing, from its `orientation` (`JigsawBlock.getFrontFacing`).
-    pub(super) fn jigsaw_front(&self, pos: Pos) -> Option<String> {
+    pub(in crate::game) fn jigsaw_front(&self, pos: Pos) -> Option<String> {
         let state = self.world.block(pos.0, pos.1, pos.2);
         let orientation = self
             .pack
@@ -36,7 +40,11 @@ impl Game<'_> {
     /// (`/setblock`, `/data`): a jigsaw without `joint` takes the default its
     /// facing gives (`JigsawBlockEntity.loadAdditional`), which the decode
     /// alone cannot know.
-    pub(super) fn decode_block_entity_at(&self, pos: Pos, tag: &Tag) -> Option<(Pos, BlockEntity)> {
+    pub(in crate::game) fn decode_block_entity_at(
+        &self,
+        pos: Pos,
+        tag: &Tag,
+    ) -> Option<(Pos, BlockEntity)> {
         let (key, mut entity) = sunrise_client::save::decode_block_entity_replacing(
             tag,
             &self.data_block_name([pos.0, pos.1, pos.2]),
@@ -51,21 +59,7 @@ impl Game<'_> {
         Some((key, entity))
     }
 
-    /// `handleSetJigsawBlock` for a guest: only a creative player with game
-    /// master commands edits the block.
-    pub(super) fn lan_set_jigsaw_block(&mut self, conn: u32, p: play::SetJigsawBlock) {
-        let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
-            return;
-        };
-        let allowed = g.creative() && g.permission >= 2;
-        self.as_guest(conn, |game| {
-            if allowed {
-                game.apply_set_jigsaw_block(&p);
-            }
-        });
-    }
-
-    pub(super) fn apply_set_jigsaw_block(&mut self, p: &play::SetJigsawBlock) {
+    pub(in crate::game) fn apply_set_jigsaw_block(&mut self, p: &play::SetJigsawBlock) {
         let pos = (p.pos[0], p.pos[1], p.pos[2]);
         let Some(b) = self.jigsaw_block_mut(pos) else {
             return;
@@ -82,7 +76,7 @@ impl Game<'_> {
     }
 
     /// `handleJigsawGenerate` for a guest.
-    pub(super) fn lan_jigsaw_generate(&mut self, conn: u32, p: play::JigsawGenerate) {
+    pub(in crate::game) fn lan_jigsaw_generate(&mut self, conn: u32, p: play::JigsawGenerate) {
         let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
             return;
         };
@@ -96,7 +90,7 @@ impl Game<'_> {
 
     /// `JigsawBlockEntity.generate`: the pool is built from the block's
     /// front neighbour, `levels` deep.
-    fn generate_jigsaw_block(&mut self, p: &play::JigsawGenerate) {
+    pub(in crate::game) fn generate_jigsaw_block(&mut self, p: &play::JigsawGenerate) {
         let pos = (p.pos[0], p.pos[1], p.pos[2]);
         let Some(BlockEntity::JigsawBlock(b)) = self.world.block_entities.get(&pos) else {
             return;

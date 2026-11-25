@@ -29,7 +29,7 @@ fn refusal(reason: PlacementRefusal) -> sync::Refusal {
     }
 }
 impl Game<'_> {
-    pub(in crate::game) fn server_mod_book_place(
+    pub(in crate::game::server_side) fn server_mod_book_place(
         &mut self,
         conn: u32,
         selection: &sync::Selection,

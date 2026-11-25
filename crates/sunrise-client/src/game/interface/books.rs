@@ -231,7 +231,10 @@ impl Game<'_> {
     }
     /// The screen a book in hand opens: `BookEditScreen` for a book and
     /// quill, `BookViewScreen` for a written book.
-    pub(in crate::game) fn book_screen(&self, stack: &ItemStack) -> Option<BookScreen> {
+    pub(in crate::game::client_side) fn book_screen(
+        &self,
+        stack: &ItemStack,
+    ) -> Option<BookScreen> {
         Some(match &*stack.item {
             "minecraft:writable_book" => {
                 let mut pages = stack
@@ -841,7 +844,7 @@ impl Game<'_> {
     /// LecternScreen's Take Book: the menu's button 3. The book leaves the
     /// lectern, so the screen closes (the server closes the menu once the
     /// book is gone; a server's client closes at once rather than wait).
-    pub(in crate::game) fn take_lectern_book(&mut self, key: (i32, i32, i32)) {
+    pub(in crate::game::client_side) fn take_lectern_book(&mut self, key: (i32, i32, i32)) {
         if self.remote.is_none() {
             return;
         }
@@ -860,7 +863,7 @@ impl Game<'_> {
         }
     }
     #[inline(always)]
-    pub(in crate::game) fn lectern_book_open(&self) -> bool {
+    pub(in crate::game::client_side) fn lectern_book_open(&self) -> bool {
         matches!(
             self.client.book,
             Some(BookScreen::View {
@@ -932,7 +935,7 @@ impl Game<'_> {
         });
     }
     /// `LecternScreen.bookChanged`: the menu's book slot.
-    pub(in crate::game) fn remote_lectern_book(&mut self, book: Option<ItemStack>) {
+    pub(in crate::game::client_side) fn remote_lectern_book(&mut self, book: Option<ItemStack>) {
         if let Some(BookScreen::View {
             lectern: Some(_),
             pages,

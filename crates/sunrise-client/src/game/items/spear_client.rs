@@ -1,11 +1,11 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::{Game, view_vector};
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::spear::OWN;
+pub(in crate::game::client_side) use crate::game::spear::OWN;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::spear::Target;
+pub(in crate::game::client_side) use crate::game::spear::Target;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::spear::*;
+pub(in crate::game::client_side) use crate::game::spear::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::spear::hits_in_reach;
 #[allow(unused_imports)]

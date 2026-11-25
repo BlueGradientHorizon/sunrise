@@ -1163,7 +1163,7 @@ impl Game<'_> {
         }
     }
     /// Apply the environment before impact callbacks can change the world.
-    pub(in crate::game) fn trident_block_effects(
+    pub(in crate::game::server_side) fn trident_block_effects(
         &mut self,
         t: &mut ThrownTrident,
         from: Vec3,
@@ -1192,7 +1192,11 @@ impl Game<'_> {
     /// returning: the player takes the item (a creative thrower's trident is
     /// only removed) and the rest that does not fit drops at their feet.
     /// False when it could not be given.
-    pub(in crate::game) fn trident_taken(&mut self, t: &ThrownTrident, by: &Catcher) -> bool {
+    pub(in crate::game::server_side) fn trident_taken(
+        &mut self,
+        t: &ThrownTrident,
+        by: &Catcher,
+    ) -> bool {
         let creative_pickup = t.pickup == Pickup::CreativeOnly && by.creative;
         let returning_to_owner = t.no_physics && t.owner_uuid.is_some() && t.owner_uuid == by.uuid;
         if !creative_pickup {

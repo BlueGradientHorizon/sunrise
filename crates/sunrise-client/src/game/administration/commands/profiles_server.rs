@@ -92,7 +92,7 @@ impl Game<'_> {
     }
     /// Commands.CommandSelection.DEDICATED: on an integrated server these do
     /// not exist.
-    pub(in crate::game) fn dedicated_lists(
+    pub(in crate::game::server_side) fn dedicated_lists(
         &self,
     ) -> R<std::sync::Arc<std::sync::Mutex<super::super::dedicated::Lists>>> {
         match (&self.server_lists.0, self.is_dedicated_server()) {
@@ -101,7 +101,7 @@ impl Game<'_> {
         }
     }
     /// `CommandSourceStack.getTextName`.
-    pub(in crate::game) fn source_text_name(&self) -> String {
+    pub(in crate::game::server_side) fn source_text_name(&self) -> String {
         if self.server.console_broadcast.is_some() {
             "Server".to_owned()
         } else {
@@ -109,7 +109,7 @@ impl Game<'_> {
         }
     }
     /// `NameAndId` of a player target.
-    pub(in crate::game) fn target_profile(&self, t: Target) -> Option<NameAndId> {
+    pub(in crate::game::server_side) fn target_profile(&self, t: Target) -> Option<NameAndId> {
         match t {
             Target::Player => Some(NameAndId {
                 id: self.server.lan_acting_uuid?,

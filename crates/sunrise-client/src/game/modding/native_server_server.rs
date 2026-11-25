@@ -295,6 +295,23 @@ impl Game<'_> {
             None => false,
         }
     }
+    /// Runs `f` in the turn of the player a handle names, against the level in place. False
+    /// when it didn't run: stale or dead.
+    pub(in crate::game) fn native_as_player_handle(
+        &mut self,
+        player: PlayerRef,
+        f: impl FnOnce(&mut Self),
+    ) -> bool {
+        match self.player_handle_read(player) {
+            None => false,
+            Some(PlayerRead::Acting { .. }) => self.native_as_acting(f),
+            Some(PlayerRead::Guest(g)) if !g.dead => {
+                let conn = g.conn;
+                self.as_guest(conn, f).is_some()
+            }
+            Some(PlayerRead::Guest(_)) => false,
+        }
+    }
     /// Resolve the source once at the command boundary, retaining its output origin.
     pub(in crate::game) fn native_command_origin(
         &mut self,
@@ -458,6 +475,27 @@ impl Game<'_> {
             host.hub.send_to(g.conn, packet);
         }
         true
+    }
+    /// The real players on this server, in join order, including an integrated
+    /// server's own player even when the world is not open to LAN. Empty on a client.
+    pub(in crate::game) fn native_server_players(&self) -> Vec<PlayerRef> {
+        let Some(epoch) = self.native_lifecycle.epoch() else {
+            return Vec::new();
+        };
+        let Some(host) = &self.lan else {
+            return Vec::new();
+        };
+        // Construct from the online records, not the live-body resolver: outer
+        // players remain connected while their bodies are displaced by a turn.
+        host.hub
+            .online_players()
+            .map(|g| {
+                mod_api::__private::game::player_ref(
+                    mod_api::EntityRef::new(epoch, g.entity_id as u32),
+                    g.uuid,
+                )
+            })
+            .collect()
     }
     pub(in crate::game) fn perform_fake_action(
         &mut self,
@@ -939,6 +977,23 @@ impl Game<'_> {
         }
         true
     }
+    /// Drop the fake players belonging to a level as it closes.
+    pub(in crate::game::server_side) fn remove_level_fake_players(&mut self, dimension: &str) {
+        let Some(mut host) = self.lan.take() else {
+            return;
+        };
+        let mut i = 0;
+        while i < host.hub.guests.len() {
+            let g = &host.hub.guests[i];
+            if g.is_fake() && g.dimension == dimension {
+                let guest = host.hub.guests.remove(i);
+                self.cleanup_fake_player(&mut host, &guest);
+            } else {
+                i += 1;
+            }
+        }
+        self.lan = Some(host);
+    }
     /// The level changes the level in place's tickets made since the last
     /// call (`ChunkTickets::take_changes`), told to the mods in order as
     /// `chunk_ticket_level_updated`, with no player's state swapped in. The
@@ -959,6 +1014,48 @@ impl Game<'_> {
         for change in changes {
             let chunk = mod_api::ChunkRef::new(level, [change.chunk.0, change.chunk.1]);
             self.native_chunk_ticket_level_updated(chunk, told(change.old), told(change.new));
+        }
+    }
+    /// The chunks players started and stopped watching that the hub
+    /// recorded (`lan::chunk_watch`), told to the mods in the hub's order,
+    /// with no player's state swapped in, and a sent chunk's passages sent
+    /// after it. The player handle is built from the record, so an unwatch
+    /// after a disconnect still names them. Nothing while the log is empty.
+    pub(in crate::game) fn run_chunk_watches(&mut self) {
+        use sunrise_client::lan::chunk_watch::ChunkWatchKind;
+        let Some(host) = self.lan.as_mut() else {
+            return;
+        };
+        if host.hub.chunk_watches.is_empty() {
+            return;
+        }
+        let runs = host.hub.chunk_watches.take();
+        let Some(epoch) = self.native_lifecycle.epoch() else {
+            return;
+        };
+        for run in runs {
+            // A level the server no longer holds: nothing to name.
+            let Some(level) = self.level(&run.dimension) else {
+                continue;
+            };
+            for watch in run.watches {
+                let Ok(id) = u32::try_from(watch.entity_id) else {
+                    continue;
+                };
+                let player = mod_api::__private::game::player_ref(
+                    mod_api::EntityRef::new(epoch, id),
+                    watch.uuid,
+                );
+                let chunk = mod_api::ChunkRef::new(level, watch.chunk);
+                match watch.kind {
+                    ChunkWatchKind::Watch => self.native_chunk_watch(player, chunk),
+                    ChunkWatchKind::Sent => {
+                        self.native_chunk_sent(player, chunk);
+                        self.send_chunk_passages(level, watch.uuid, watch.chunk);
+                    }
+                    ChunkWatchKind::Unwatch => self.native_chunk_unwatch(player, chunk),
+                }
+            }
         }
     }
     /// The one path `native_run_command` and `native_run_command_with_output` run a line

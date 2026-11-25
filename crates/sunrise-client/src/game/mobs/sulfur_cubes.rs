@@ -367,6 +367,13 @@ impl Game<'_> {
     }
 }
 
+impl Game<'_> {
+    pub(in crate::game::server_side) fn sulfur_sound(&mut self, index: usize, sound: &str) {
+        let at = self.mobs[index].center();
+        self.server_play_sound(&format!("minecraft:{sound}"), at, 1.0, 1.0);
+    }
+}
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;

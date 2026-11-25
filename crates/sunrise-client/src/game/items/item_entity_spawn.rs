@@ -1,63 +1,31 @@
 //! `new ItemEntity(..)` and `ServerLevel.addFreshEntity` of a dropped item, kept
 //! apart so `item_toss` can hear the item between the two.
+#[allow(unused_imports)]
 use super::{Game, spill};
+#[allow(unused_imports)]
 use sunrise_client::{entities::ItemEntity, items::ItemStack};
+#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
 
 impl Game<'_> {
-    /// `new ItemEntity(..)`: the item at the end of `dropped`, not yet joined
-    /// (`join_item_entity`). Returns its motion.
-    pub(in crate::game::server_side) fn push_item_entity(
-        &mut self,
-        stack: ItemStack,
-        position: [f64; 3],
-        velocity: Option<[f64; 3]>,
-        pickup_delay: u32,
-        random: Option<spill::ItemRandom>,
-    ) -> [f64; 3] {
-        let random = random.unwrap_or_else(|| spill::prepare_item_random(velocity));
-        self.server.next_entity += 1;
-        let p = Vec3::new(position[0], position[1], position[2]);
-        self.persist
-            .uuids
-            .insert(self.server.next_entity, random.uuid);
-        let (bob, yaw) = (random.bob, random.yaw);
-        let velocity = velocity.unwrap_or(random.velocity);
-        self.dropped.push(random.state.apply(ItemEntity {
-            attachment_lifetime: Default::default(),
-            fall_distance: 0.0,
-            rotation: [yaw, 0.0],
-            pickup_delay: i64::from(pickup_delay),
-            random: random.own.into(),
-            ..ItemEntity::new(
-                self.server.next_entity,
-                stack,
-                p,
-                Vec3::new(velocity[0], velocity[1], velocity[2]),
-                bob,
-            )
-        }));
-        self.wake_hoppers_near_dropped_item(self.server.next_entity);
-        velocity
-    }
-
     /// `ServerLevel.addFreshEntity` of the item `id` that `push_item_entity`
     /// made, with the stack it holds now.
     /// Whether the item entity is in the level after its join: false when a join listener kept
     /// it out (or no such item entity was made).
-    pub(in crate::game::server_side) fn join_item_entity(
-        &mut self,
-        id: u32,
-        position: [f64; 3],
-    ) -> bool {
+    pub(in crate::game) fn join_item_entity(&mut self, id: u32, position: [f64; 3]) -> bool {
         self.announce_item_entity(id, position, false)
     }
 
-    pub(in crate::game::server_side) fn join_removal_item(&mut self, id: u32, position: [f64; 3]) {
+    pub(in crate::game) fn join_removal_item(&mut self, id: u32, position: [f64; 3]) {
         self.announce_item_entity(id, position, true);
     }
 
-    fn announce_item_entity(&mut self, id: u32, position: [f64; 3], in_removal: bool) -> bool {
+    pub(in crate::game) fn announce_item_entity(
+        &mut self,
+        id: u32,
+        position: [f64; 3],
+        in_removal: bool,
+    ) -> bool {
         let Some((item, count)) = self
             .dropped
             .iter()

@@ -64,7 +64,7 @@ impl Game<'_> {
         self.native_player_recipe_book_settings_change(uuid, name, book, open, filtering);
     }
 
-    pub(in crate::game) fn sync_server_book_write(
+    pub(in crate::game::server_side) fn sync_server_book_write(
         &mut self,
         player: mod_api::PlayerRef,
         book: &mod_api::RecipeBookTypeKey,

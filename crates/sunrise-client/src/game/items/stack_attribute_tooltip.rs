@@ -14,7 +14,7 @@ impl Game<'_> {
     /// The attribute modifier lines of `stack`'s tooltip and the lines mods add after them.
     /// `shown` is whether the stack's `minecraft:tooltip_display` shows the modifiers; a
     /// `nested` stack (a bundle's, a crossbow's projectile) has no player.
-    pub(super) fn stack_attribute_tooltip(
+    pub(in crate::game::client_side) fn stack_attribute_tooltip(
         &self,
         stack: &ItemStack,
         shown: bool,
@@ -65,7 +65,11 @@ impl Game<'_> {
     /// none for vanilla's look, so the vanilla attributes clone and look up nothing. `player`
     /// adds the local player's base value for a declared base modifier's total line; the
     /// recipe search has no player.
-    pub(super) fn attribute_style(&self, attribute: &str, player: bool) -> Option<AttributeStyle> {
+    pub(in crate::game) fn attribute_style(
+        &self,
+        attribute: &str,
+        player: bool,
+    ) -> Option<AttributeStyle> {
         let catalog = &self.motion.attributes;
         let registered = catalog.attribute(catalog.id(attribute)?);
         if registered.tooltip == Tooltip::default() {

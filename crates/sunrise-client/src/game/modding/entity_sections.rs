@@ -31,83 +31,93 @@
 //! without a per-frame scan.
 
 #[path = "entity_sections/observer_cache.rs"]
-pub(super) mod observer_cache;
+pub(in crate::game) mod observer_cache;
 #[path = "entity_sections/player.rs"]
-mod player;
-pub(super) use player::PlayerSectionObserver;
+pub(in crate::game) mod player;
+#[allow(unused_imports)]
+pub(in crate::game) use player::PlayerSectionObserver;
 
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use crate::mobs::living::section_writes::PositionWrite;
+#[allow(unused_imports)]
 use mod_api::__private::game::BackendRefOf;
+#[allow(unused_imports)]
 use mod_api::{DimensionKey, EntityRef, WorldEpoch};
+#[allow(unused_imports)]
 use std::collections::HashMap;
+#[allow(unused_imports)]
 use std::collections::hash_map::Entry;
 
 #[cfg(test)]
 #[path = "entity_sections/tests.rs"]
-mod tests;
+pub(in crate::game) mod tests;
 
 /// `SectionPos.blockToSectionCoord(Mth.floor(v))`.
-fn section_coord(v: f64) -> i32 {
+pub(in crate::game) fn section_coord(v: f64) -> i32 {
     sunrise_core::mth::floor(v) >> 4
 }
 
-fn section_of([x, y, z]: [f64; 3]) -> [i32; 3] {
+pub(in crate::game) fn section_of([x, y, z]: [f64; 3]) -> [i32; 3] {
     [section_coord(x), section_coord(y), section_coord(z)]
 }
 
 /// Whether a write from `from` to `to` leaves the section it was in: six integer shifts and a
 /// compare, no allocation and no lookup.
-pub(super) fn crossed(from: [f64; 3], to: [f64; 3]) -> bool {
+pub(in crate::game) fn crossed(from: [f64; 3], to: [f64; 3]) -> bool {
     section_of(from) != section_of(to)
 }
 
 /// A section change a boundary found: the entity, its old and its new section.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct Crossing {
-    pub(super) id: u32,
-    pub(super) old: [i32; 3],
-    pub(super) new: [i32; 3],
+pub(in crate::game) struct Crossing {
+    pub(in crate::game) id: u32,
+    pub(in crate::game) old: [i32; 3],
+    pub(in crate::game) new: [i32; 3],
 }
 
 /// Where a boundary is: the world open and the level the entity is in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct Scope {
-    epoch: WorldEpoch,
-    level: DimensionKey,
+pub(in crate::game) struct Scope {
+    pub(in crate::game) epoch: WorldEpoch,
+    pub(in crate::game) level: DimensionKey,
 }
 
 /// The section each entity is filed under, and the crossings not told yet.
 #[derive(Default)]
-pub(super) struct EntitySections {
+pub(in crate::game) struct EntitySections {
     /// The world open the table was filled in: another one starts it over.
-    epoch: Option<WorldEpoch>,
+    pub(in crate::game) epoch: Option<WorldEpoch>,
     /// Each entity's level and section.
-    filed: HashMap<u32, (DimensionKey, [i32; 3])>,
+    pub(in crate::game) filed: HashMap<u32, (DimensionKey, [i32; 3])>,
     /// Crossings raised while a listener is already running. Ordinary writes are told
     /// immediately; a nested write waits until the current callback returns.
-    queue: Vec<Crossing>,
+    pub(in crate::game) queue: Vec<Crossing>,
     /// The batch being told; kept for its capacity.
-    telling: Vec<Crossing>,
+    pub(in crate::game) telling: Vec<Crossing>,
     /// A telling is under way: a listener's moves wait for the next one.
-    busy: bool,
+    pub(in crate::game) busy: bool,
     /// The mobs' position updates during their family's tick; kept for its capacity.
-    pub(super) ticked: Vec<PositionWrite>,
+    pub(in crate::game) ticked: Vec<PositionWrite>,
     /// Mobs that crossed into another section during their family's tick, in the order of the
     /// writes; told to the residency table once the pass has its rows back. Kept for its capacity.
-    pub(super) entered: Vec<(u32, [f64; 3])>,
+    pub(in crate::game) entered: Vec<(u32, [f64; 3])>,
     /// A projectile row is lent during its individual tick. Position reads during its write
     /// boundary use this value until the row is restored.
-    pub(super) write_position: Option<(u32, [f64; 3])>,
+    pub(in crate::game) write_position: Option<(u32, [f64; 3])>,
     /// Projectile ids seen by the current pass; kept to forget rows removed during settlement.
-    pub(super) projectile_ids: Vec<u32>,
+    pub(in crate::game) projectile_ids: Vec<u32>,
     /// Projectile ids resident after settlement; kept to avoid a fresh set per pass.
-    pub(super) projectile_live: sunrise_client::fast_hash::FxHashSet<u32>,
+    pub(in crate::game) projectile_live: sunrise_client::fast_hash::FxHashSet<u32>,
 }
 
 impl EntitySections {
     /// The table for `scope`'s world: another world's entries are dropped.
-    fn table(&mut self, scope: Scope) -> &mut HashMap<u32, (DimensionKey, [i32; 3])> {
+    pub(in crate::game) fn table(
+        &mut self,
+        scope: Scope,
+    ) -> &mut HashMap<u32, (DimensionKey, [i32; 3])> {
         if self.epoch != Some(scope.epoch) {
             self.epoch = Some(scope.epoch);
             self.filed.clear();
@@ -118,7 +128,7 @@ impl EntitySections {
 
     /// `addEntity`: entity `id` is filed at `at`, untold. A new entity under an id seen before
     /// (a client's `AddEntity` replacing one) starts over too.
-    pub(super) fn placed(&mut self, scope: Scope, id: u32, at: [f64; 3]) {
+    pub(in crate::game) fn placed(&mut self, scope: Scope, id: u32, at: [f64; 3]) {
         self.table(scope).insert(id, (scope.level, section_of(at)));
     }
 
@@ -126,7 +136,13 @@ impl EntitySections {
     /// that is a crossing. One not filed in this level yet (it changed level, or its join is
     /// still to be told) is filed where it was, `from` when the boundary knows it, so a move
     /// before its join is told is a crossing too; otherwise it is filed untold.
-    pub(super) fn moved(&mut self, scope: Scope, id: u32, from: Option<[f64; 3]>, to: [f64; 3]) {
+    pub(in crate::game) fn moved(
+        &mut self,
+        scope: Scope,
+        id: u32,
+        from: Option<[f64; 3]>,
+        to: [f64; 3],
+    ) {
         let new = section_of(to);
         let old = match self.table(scope).entry(id) {
             Entry::Occupied(mut entry) => {
@@ -153,7 +169,7 @@ impl EntitySections {
 
     /// `id` is gone (removed, or respawned as a new entity under the same id): it is filed
     /// again where it next appears, untold.
-    pub(super) fn forget(&mut self, id: u32) {
+    pub(in crate::game) fn forget(&mut self, id: u32) {
         self.filed.remove(&id);
         // A nested listener may have queued a crossing immediately before it
         // removed this entity.  Do not deliver that stale write on the next
@@ -162,7 +178,7 @@ impl EntitySections {
     }
 
     /// The crossings to tell now, or none while a telling is under way.
-    fn begin_telling(&mut self) -> Option<Vec<Crossing>> {
+    pub(in crate::game) fn begin_telling(&mut self) -> Option<Vec<Crossing>> {
         if self.busy || self.queue.is_empty() {
             return None;
         }
@@ -173,7 +189,7 @@ impl EntitySections {
     }
 
     /// The telling is over; `batch` goes back for its capacity.
-    fn end_telling(&mut self, mut batch: Vec<Crossing>) {
+    pub(in crate::game) fn end_telling(&mut self, mut batch: Vec<Crossing>) {
         batch.clear();
         self.telling = batch;
         self.busy = false;
@@ -181,22 +197,22 @@ impl EntitySections {
 }
 
 #[derive(Clone, Copy)]
-struct SectionWriter {
-    entity: EntityRef,
-    position: [f64; 3],
-    player: Option<PlayerMoveState>,
+pub(in crate::game) struct SectionWriter {
+    pub(in crate::game) entity: EntityRef,
+    pub(in crate::game) position: [f64; 3],
+    pub(in crate::game) player: Option<PlayerMoveState>,
 }
 
 #[derive(Clone, Copy)]
-struct PlayerMoveState {
-    local_player: Option<mod_api::PlayerRef>,
-    on_ground: bool,
-    velocity: [f64; 3],
+pub(in crate::game) struct PlayerMoveState {
+    pub(in crate::game) local_player: Option<mod_api::PlayerRef>,
+    pub(in crate::game) on_ground: bool,
+    pub(in crate::game) velocity: [f64; 3],
 }
 
 /// The Host used while the entity's world view is borrowed. It answers only
 /// reads from the current write; other operations retain their typed refusal.
-struct LiveSectionHost(Option<SectionWriter>);
+pub(in crate::game) struct LiveSectionHost(pub(in crate::game) Option<SectionWriter>);
 
 mod_api::impl_host_areas!(LiveSectionHost, except(datafix));
 mod_api::impl_server_host_areas!(LiveSectionHost);
@@ -242,17 +258,17 @@ impl mod_api::prelude::ServicesClientHost for LiveSectionHost {
 // The generated read backend forwards these snapshots and answers the
 // standard no-backend result for reads that would need the borrowed world.
 impl LiveSectionHost {
-    fn entity_position(&self, entity: EntityRef) -> Option<[f64; 3]> {
+    pub(in crate::game) fn entity_position(&self, entity: EntityRef) -> Option<[f64; 3]> {
         let writer = self.0.filter(|writer| writer.entity == entity)?;
         Some(writer.position)
     }
 
-    fn entity_on_ground(&self, entity: EntityRef) -> Option<bool> {
+    pub(in crate::game) fn entity_on_ground(&self, entity: EntityRef) -> Option<bool> {
         let player = self.0.filter(|writer| writer.entity == entity)?.player?;
         Some(player.on_ground)
     }
 
-    fn entity_velocity(&self, entity: EntityRef) -> Option<[f64; 3]> {
+    pub(in crate::game) fn entity_velocity(&self, entity: EntityRef) -> Option<[f64; 3]> {
         let player = self.0.filter(|writer| writer.entity == entity)?.player?;
         Some(player.velocity)
     }
@@ -269,7 +285,11 @@ impl mod_api::Host for LiveSectionHost {
 impl mod_api::ServerHost for LiveSectionHost {}
 impl mod_api::ClientHost for LiveSectionHost {}
 
-fn tell_live(sections: &std::cell::RefCell<EntitySections>, writer: SectionWriter, server: bool) {
+pub(in crate::game) fn tell_live(
+    sections: &std::cell::RefCell<EntitySections>,
+    writer: SectionWriter,
+    server: bool,
+) {
     let Some(batch) = sections.borrow_mut().begin_telling() else {
         return;
     };
@@ -296,17 +316,8 @@ fn tell_live(sections: &std::cell::RefCell<EntitySections>, writer: SectionWrite
 /// owns only the section table, so it can run while the mob's borrowed world
 /// view is still live.
 pub(crate) struct LiveSectionObserver {
-    sections: std::rc::Rc<std::cell::RefCell<EntitySections>>,
-    scope: Scope,
-}
-
-impl LiveSectionObserver {
-    pub(crate) fn new(
-        sections: std::rc::Rc<std::cell::RefCell<EntitySections>>,
-        scope: Scope,
-    ) -> Self {
-        Self { sections, scope }
-    }
+    pub(in crate::game) sections: std::rc::Rc<std::cell::RefCell<EntitySections>>,
+    pub(in crate::game) scope: Scope,
 }
 
 impl crate::mobs::living::section_writes::WriteObserver for LiveSectionObserver {
@@ -333,7 +344,7 @@ impl crate::mobs::living::section_writes::WriteObserver for LiveSectionObserver 
 
 impl Game<'_> {
     /// Where boundaries are now: None with no listener (nothing is filed) or no world open.
-    pub(super) fn entity_section_scope(&self) -> Option<Scope> {
+    pub(in crate::game) fn entity_section_scope(&self) -> Option<Scope> {
         if !mod_api::__private::listened(mod_api::HookId::EntityEnteringSection) {
             return None;
         }
@@ -347,7 +358,12 @@ impl Game<'_> {
     /// that leaves its section puts it at the end of the section it enters, whether or not a
     /// hook listens. Cost: the integer compare of [`crossed`]; the table is touched only on a
     /// crossing.
-    pub(super) fn entity_section_entered(&mut self, id: u32, from: [f64; 3], to: [f64; 3]) {
+    pub(in crate::game) fn entity_section_entered(
+        &mut self,
+        id: u32,
+        from: [f64; 3],
+        to: [f64; 3],
+    ) {
         if crossed(from, to) && self.is_logical_server() {
             self.resident_entities
                 .table
@@ -357,7 +373,12 @@ impl Game<'_> {
     }
 
     /// Entity `id` was put from `from` (when known) at `to`; tell it immediately after filing.
-    pub(super) fn entity_section_moved(&mut self, id: u32, from: Option<[f64; 3]>, to: [f64; 3]) {
+    pub(in crate::game) fn entity_section_moved(
+        &mut self,
+        id: u32,
+        from: Option<[f64; 3]>,
+        to: [f64; 3],
+    ) {
         self.pick_section_move(id, to);
         if let Some(from) = from {
             self.entity_section_entered(id, from, to);
@@ -371,7 +392,7 @@ impl Game<'_> {
     }
 
     /// Entity `id`'s position was written: it is wherever it is now (any kind, either side).
-    pub(super) fn entity_section_moved_id(&mut self, id: u32) {
+    pub(in crate::game) fn entity_section_moved_id(&mut self, id: u32) {
         self.pick_section_sync_moved_id(id);
         let Some(scope) = self.entity_section_scope() else {
             return;
@@ -385,7 +406,7 @@ impl Game<'_> {
     }
 
     /// Entity `id` is gone, or replaced under the same id: it starts over untold.
-    pub(super) fn entity_section_forget(&mut self, id: u32) {
+    pub(in crate::game) fn entity_section_forget(&mut self, id: u32) {
         self.pick_section_remove(id);
         self.native_lifecycle.entity_sections.forget(id);
         self.native_lifecycle
@@ -401,7 +422,7 @@ impl Game<'_> {
     /// temporarily moved to each recorded write while its crossing is told;
     /// this gives listeners the same position they would see at the write and
     /// preserves a listener's own position change.
-    pub(super) fn entity_sections_ticked_live(
+    pub(in crate::game) fn entity_sections_ticked_live(
         &mut self,
         sections: &mut EntitySections,
         moves: &mut Vec<PositionWrite>,
@@ -453,7 +474,7 @@ impl Game<'_> {
 
     /// Entity `id`'s position was written from `from` to `to` (`setPosRaw`) inside a family tick
     /// or while a rider is carried by a vehicle teleport. File and tell it at this write.
-    pub(super) fn entity_section_step(&mut self, id: u32, from: [f64; 3], to: [f64; 3]) {
+    pub(in crate::game) fn entity_section_step(&mut self, id: u32, from: [f64; 3], to: [f64; 3]) {
         if crossed(from, to) {
             self.pick_section_move(id, to);
         }
@@ -470,7 +491,7 @@ impl Game<'_> {
 
     /// Tell a write whose row is temporarily lent to a family pass. The callback sees the
     /// committed position without removing and reinserting the surrounding list tail.
-    pub(super) fn entity_section_step_visible(
+    pub(in crate::game) fn entity_section_step_visible(
         &mut self,
         id: u32,
         from: [f64; 3],
@@ -496,7 +517,7 @@ impl Game<'_> {
     /// `Entity.teleport` placed as `/tp` places it ([`Game::place_teleport_in_level`]), then filed
     /// and told as one position update (`/tp`, a mob's ender pearl). Its old position, as the
     /// placement returns it.
-    pub(super) fn place_teleport_filed(
+    pub(in crate::game) fn place_teleport_filed(
         &mut self,
         t: super::commands::Target,
         pos: [f64; 3],
@@ -513,7 +534,7 @@ impl Game<'_> {
 
     /// An entity joined (`addEntity`): filed untold where it is now, which a join listener may
     /// have changed from `at`, where it joined.
-    pub(super) fn entity_section_joined(&mut self, id: u32, at: [f64; 3]) {
+    pub(in crate::game) fn entity_section_joined(&mut self, id: u32, at: [f64; 3]) {
         let Some(scope) = self.entity_section_scope() else {
             return;
         };
@@ -523,66 +544,9 @@ impl Game<'_> {
             .placed(scope, id, now.unwrap_or(at));
     }
 
-    /// The projectiles tick ([`Game::tick_projectiles_now`]), and each one's move is filed.
-    pub(super) fn tick_projectiles(&mut self) -> super::Result<()> {
-        self.tick_projectiles_now()
-    }
-
-    /// A client's entities after its tick: each one where its interpolation or its own move
-    /// put it (its live position, not the packet's), and this window's player.
-    pub(super) fn client_entity_sections_stepped(&mut self) {
-        let Some(scope) = self.entity_section_scope() else {
-            return;
-        };
-        let own = self.own_entity_id();
-        let mut sections = std::mem::take(&mut self.native_lifecycle.entity_sections);
-        if let Some(r) = self.remote.as_ref() {
-            for &id in r.entities.keys().filter(|&&id| id != own && id > 0) {
-                if let Some(at) = self.entity_position(EntityRef::new(scope.epoch, id as u32)) {
-                    sections.moved(scope, id as u32, None, at);
-                }
-            }
-        }
-        if let Some(player) = self.player.as_ref()
-            && own > 0
-        {
-            let at = player.position;
-            sections.moved(scope, own as u32, None, [at.x, at.y, at.z]);
-        }
-        self.native_lifecycle.entity_sections = sections;
-        self.tell_entity_sections();
-    }
-
-    /// A client handles one packet from its server ([`Game::apply_packet`]). A packet that adds,
-    /// moves or removes an entity is a position-update boundary. The add handler files an
-    /// admitted entity untold; a move (`handleMoveEntity`, `handleEntityPositionSync`,
-    /// `handleTeleportEntity`, `handleMovePlayer`'s `PlayerPosition`, a vehicle's) is told when
-    /// it put the entity in another section, and `handleRespawn`'s new player starts over.
-    /// An entity a move only starts interpolating moves at the client's entity tick.
-    pub(in crate::game) fn handle_packet(
-        &mut self,
-        packet: sunrise_protocol::packets::play::Clientbound,
-    ) -> super::Result<()> {
-        use sunrise_protocol::packets::play::Clientbound as C;
-        if self.entity_section_scope().is_none() {
-            return self.apply_packet(packet);
-        }
-        if let C::RemoveEntities(p) = &packet {
-            for &id in &p.ids {
-                self.entity_section_forget(id as u32);
-            }
-        }
-        let respawned = matches!(packet, C::Respawn(_));
-        let result = self.apply_packet(packet);
-        if respawned {
-            self.entity_section_forget(self.own_entity_id() as u32);
-        }
-        result
-    }
-
     /// Tells `entity_entering_section` each crossing queued by a nested write, in order. Called
     /// from inside a listener it does nothing: the outer write is still in progress.
-    pub(super) fn tell_entity_sections(&mut self) {
+    pub(in crate::game) fn tell_entity_sections(&mut self) {
         let Some(batch) = self.native_lifecycle.entity_sections.begin_telling() else {
             return;
         };
@@ -600,7 +564,7 @@ impl Game<'_> {
         self.native_lifecycle.entity_sections.end_telling(batch);
     }
 
-    fn tell_entity_sections_in(&mut self, sections: &mut EntitySections) {
+    pub(in crate::game) fn tell_entity_sections_in(&mut self, sections: &mut EntitySections) {
         let Some(batch) = sections.begin_telling() else {
             return;
         };

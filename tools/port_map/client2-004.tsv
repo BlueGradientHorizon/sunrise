@@ -19,8 +19,8 @@ LeashFeatureRenderer.prepare	port	crates/sunrise-client/src/game/entities/leads_
 LeashFeatureRenderer.addVertexPair	inline	crates/sunrise-client/src/game/entities/leads_client.rs::Game::leash_geometry	vertex pair with block and sky light lerp folded into leash_geometry
 ModelFeatureRenderer.buildGroup	port	crates/sunrise-client/src/mobs.rs::render_model	loop over model submits
 ModelFeatureRenderer.prepareModel	port	crates/sunrise-client/src/mobs.rs::render_model	gap: minor: setupAnim is done by the mob code, and the sheeted decal and uv wrap are not checked
-MovingBlockFeatureRenderer.buildGroup	port	crates/sunrise-client/src/game/blocks/moving_pistons.rs::Game::moving_piston_geometry	moving piston block and base geometry
-MovingBlockFeatureRenderer.putBakedQuad	port	crates/sunrise-client/src/game/blocks/moving_pistons.rs::Game::moving_block_vertices	quad placed at the moving offset
+MovingBlockFeatureRenderer.buildGroup	port	crates/sunrise-client/src/game/blocks/moving_pistons_client.rs::Game::moving_piston_geometry	moving piston block and base geometry
+MovingBlockFeatureRenderer.putBakedQuad	port	crates/sunrise-client/src/game/blocks/moving_pistons_client.rs::Game::moving_block_vertices	quad placed at the moving offset
 QuadParticleFeatureRenderer	skip:other		GPU batching and draw plumbing of particle quads; Sunrise's particle pass lives in particles.rs and gfx/pack_entities.rs
 RenderTypeFeatureRenderer	skip:other		GPU render-type batching; Sunrise batches its own draws in gfx/entity_batch.rs
 RenderTypeFeatureRenderer.Group	skip:other		GPU render-type batching, as above

@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::{Game, Hit};
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::campfire_douse::*;
+pub(in crate::game::client_side) use crate::game::campfire_douse::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::{
     Result, animate_tick::make_campfire_smoke, items::ItemStack,
@@ -17,7 +17,7 @@ impl Game<'_> {
     /// `CampfireBlock.douse` and the campfire gone out, kept as predicted
     /// under `seq`. The level event's sound comes from the server. True when
     /// it doused (SUCCESS), which ends the click for both hands.
-    pub(in crate::game) fn predict_campfire_douse(
+    pub(in crate::game::client_side) fn predict_campfire_douse(
         &mut self,
         hit: &Hit,
         held: Option<&ItemStack>,

@@ -1,0 +1,24 @@
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use super::{Game, maps::MapBanner};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::banners::layer_textures;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::banners::map_banner;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::banners::*;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use sunrise_client::{
+    banner::{self, BannerLayer},
+    containers::BlockEntity,
+};
+
+impl Game<'_> {
+    /// The pattern textures and tints of the banner at `pos`, bottom first.
+    pub(in crate::game) fn banner_layers_at(&self, pos: [i32; 3]) -> Vec<(String, u32)> {
+        let Some(BlockEntity::Banner(b)) = self.world.block_entities.get(&(pos[0], pos[1], pos[2]))
+        else {
+            return Vec::new();
+        };
+        layer_textures(&self.stations().banners, &b.layers)
+    }
+}

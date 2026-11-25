@@ -1,5 +1,7 @@
 //! Common player identity and local-body residency wrappers dispatching via `side_ops::player`.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use mod_api::PlayerRef;
 
 impl Game<'_> {
@@ -26,11 +28,6 @@ impl Game<'_> {
     /// Logged-in window player handle (`None` on server roles).
     pub(in crate::game) fn local_player(&self) -> Option<PlayerRef> {
         self.side_local_player()
-    }
-
-    /// Retires the local player body and associated residency/client state.
-    pub(in crate::game) fn remove_local_player_body(&mut self) {
-        self.side_remove_local_player_body();
     }
 
     /// Binds local player residency (and client pick-section / payload transport when on client).

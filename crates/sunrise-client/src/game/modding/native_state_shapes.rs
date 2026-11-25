@@ -1,10 +1,15 @@
 //! Shape queries for a supplied state without replacing the block in the world.
+#[allow(unused_imports)]
 use super::{Game, perspective};
+#[allow(unused_imports)]
 use mod_api::BlockShapeKind;
+#[allow(unused_imports)]
 use sunrise_client::{
     block_entity_anim::BlockEntityAnims, collisions::SceneCollisions, world::World,
 };
+#[allow(unused_imports)]
 use sunrise_core::{geometry::VoxelShape, position::BlockPos};
+#[allow(unused_imports)]
 use sunrise_world::{
     block_collision::BlockCollisionRegistry,
     collision::ShapeChannel,
@@ -15,7 +20,7 @@ use sunrise_world::{
 /// A state's empty-context collision boxes at `pos`, block-local: a block entity's published
 /// shape where its block publishes one, else the declared or vanilla shape. Collision errors
 /// return no boxes. The one read behind `LevelRef::block_shape` and `LevelHost::collision_shape`.
-pub(super) fn collision_boxes(
+pub(in crate::game) fn collision_boxes(
     collision: &BlockCollisionRegistry<'_>,
     world: &World,
     state: BlockStateId,
@@ -49,7 +54,7 @@ pub(super) fn collision_boxes(
 
 /// The geometry chosen by selection, before its column offset is applied.
 #[derive(Clone, Copy)]
-pub(super) enum Outline<'a> {
+pub(in crate::game) enum Outline<'a> {
     Published(&'a VoxelShape),
     Declared(&'a VoxelShape, EntityContextKind),
     Dynamic([f64; 6]),
@@ -57,7 +62,7 @@ pub(super) enum Outline<'a> {
 }
 
 impl Game<'_> {
-    pub(super) fn selected_outline<'a>(
+    pub(in crate::game) fn selected_outline<'a>(
         &'a self,
         world: &'a World,
         state: BlockStateId,
@@ -100,42 +105,8 @@ impl Game<'_> {
         (Outline::Default(facts), default_offset())
     }
 
-    pub(super) fn outline_edges_iter(
-        &self,
-        state: BlockStateId,
-        pos: [i32; 3],
-    ) -> impl Iterator<Item = [f64; 6]> + '_ {
-        let (outline, offset) =
-            self.selected_outline(&self.world, state, &self.be_anims, pos, true);
-        let (owned, cached) = match outline {
-            Outline::Published(shape) => (shape.edges(), &[][..]),
-            Outline::Declared(_, kind) => (
-                Vec::new(),
-                self.collision
-                    .cached_shapes()
-                    .context_outline_edges(state, kind)
-                    .unwrap_or_default(),
-            ),
-            Outline::Dynamic(_) => (sunrise_client::blocks::cube_edges(), &[][..]),
-            Outline::Default(facts) => (Vec::new(), facts.outline_edges.as_ref()),
-        };
-        owned
-            .into_iter()
-            .chain(cached.iter().copied())
-            .map(move |edge| {
-                std::array::from_fn(|i| {
-                    let axis = i % 3;
-                    let local = match outline {
-                        Outline::Dynamic(b) => b[axis] + edge[i] * (b[axis + 3] - b[axis]),
-                        _ => edge[i],
-                    };
-                    f64::from(pos[axis]) + offset[axis] + local
-                })
-            })
-    }
-
     /// The same outline traversal without allocating a box list.
-    pub(super) fn outline_boxes_iter<'a>(
+    pub(in crate::game) fn outline_boxes_iter<'a>(
         &'a self,
         world: &'a World,
         state: BlockStateId,
@@ -148,7 +119,7 @@ impl Game<'_> {
         outline_boxes(outline, base)
     }
 
-    pub(super) fn state_shape_boxes(
+    pub(in crate::game) fn state_shape_boxes(
         &self,
         world: &World,
         anims: &BlockEntityAnims,
@@ -169,7 +140,10 @@ impl Game<'_> {
     }
 }
 
-fn outline_boxes(outline: Outline<'_>, base: [f64; 3]) -> impl Iterator<Item = [f64; 6]> + '_ {
+pub(in crate::game) fn outline_boxes(
+    outline: Outline<'_>,
+    base: [f64; 3],
+) -> impl Iterator<Item = [f64; 6]> + '_ {
     let (voxel, dynamic, defaults) = match outline {
         Outline::Published(shape) | Outline::Declared(shape, _) => (shape.boxes(), None, &[][..]),
         Outline::Dynamic(bounds) => (&[][..], Some(bounds), &[][..]),
@@ -188,7 +162,7 @@ fn outline_boxes(outline: Outline<'_>, base: [f64; 3]) -> impl Iterator<Item = [
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
     use crate::game::api_values::TryIntoApi;
 

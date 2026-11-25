@@ -183,7 +183,7 @@ impl Game<'_> {
     /// Route the scoped variant of a completed vanilla-first group bundle.
     /// Its first run holds one vanilla companion; the remaining runs only
     /// hold group data for that same slot and epoch.
-    pub(in crate::game) fn route_viewed_bundle(
+    pub(in crate::game::client_side) fn route_viewed_bundle(
         &mut self,
         runs: &[(&C, &[u8])],
         negotiated: bool,

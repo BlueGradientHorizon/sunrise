@@ -77,7 +77,7 @@ impl Game<'_> {
     /// mod's own): the mods' `native_menu_quick_move` first, as the clicking player.
     /// A mod menu type supplies the live menu after `Slot.mayPickup`. `None` lets ordinary
     /// routing continue; `Some(false)` is a refusal, not a second route.
-    pub(in crate::game) fn lan_mod_quick_move(
+    pub(in crate::game::server_side) fn lan_mod_quick_move(
         &mut self,
         conn: u32,
         p: &play::ContainerClick,

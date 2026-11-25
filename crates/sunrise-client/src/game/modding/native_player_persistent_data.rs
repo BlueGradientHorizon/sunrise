@@ -60,7 +60,7 @@ fn check_saved_value(tag: &Tag, depth: usize) -> Result<(), PlayerPersistentData
 }
 
 /// Borrow the `NeoForgeData` persistent-data compound from a saved player root tag, if present.
-pub(super) fn persistent_data_compound(saved: Option<&Tag>) -> Option<&Compound> {
+pub(in crate::game) fn persistent_data_compound(saved: Option<&Tag>) -> Option<&Compound> {
     match saved?.get(PERSISTENT_DATA)? {
         Tag::Compound(data) => Some(data),
         _ => None,
@@ -70,7 +70,7 @@ pub(super) fn persistent_data_compound(saved: Option<&Tag>) -> Option<&Compound>
 impl Game<'_> {
     /// The mods' compound on a player: the acting player's saved data is the level's for their
     /// turn, another's is their record's.
-    pub(super) fn player_persistent_data(&self, player: PlayerRef) -> Option<&Compound> {
+    pub(in crate::game) fn player_persistent_data(&self, player: PlayerRef) -> Option<&Compound> {
         if !self.is_logical_server() {
             return None;
         }
@@ -84,7 +84,7 @@ impl Game<'_> {
     /// Edits one checked key directly on the acting player's or guest's saved compound, so
     /// living and dead online players both accept edits (NeoForge's `Entity.getPersistentData`).
     /// Only the submitted value needs to be copied.
-    pub(super) fn player_set_persistent_data_key(
+    pub(in crate::game) fn player_set_persistent_data_key(
         &mut self,
         player: PlayerRef,
         key: &JavaString,
@@ -178,7 +178,7 @@ impl Game<'_> {
     /// `PlayerList.respawn` after a death and after a first exit from the End: of the saved
     /// compound only `PlayerPersisted` goes to the new player (NeoForge's
     /// `PlayerEvent.Clone` keeps that sub-compound). Called before the respawn's clone event.
-    pub(in crate::game) fn keep_only_player_persisted(&mut self, conn: u32) {
+    pub(in crate::game::server_side) fn keep_only_player_persisted(&mut self, conn: u32) {
         if let Some(host) = self.lan.as_mut() {
             host.hub
                 .guests

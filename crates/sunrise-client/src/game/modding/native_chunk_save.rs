@@ -29,7 +29,10 @@ impl Game<'_> {
     }
 
     /// Observe the exact full-chunk save copies on the server thread.
-    pub(in crate::game) fn native_full_chunk_snapshots(&mut self, chunks: &[Arc<Chunk>]) {
+    pub(in crate::game::server_side) fn native_full_chunk_snapshots(
+        &mut self,
+        chunks: &[Arc<Chunk>],
+    ) {
         if !self.is_logical_server() || mod_api::__private::mods().is_empty() {
             return;
         }

@@ -2,7 +2,9 @@
 //! engine-owned buttons, local `EditBox` text fields, and custom [`ScreenWidget`]
 //! instances with synchronous callback execution via temporary ownership extraction.
 
+#[allow(unused_imports)]
 use crate::game::{Game, api_values::TryIntoEngine, host::draw::GameDrawContext};
+#[allow(unused_imports)]
 use mod_api::{
     __private::game::CallbackOwner,
     ScreenView, ScreenWidget, ScreenWidgetId, ScreenWidgets,
@@ -11,8 +13,11 @@ use mod_api::{
         is_allowed_chat_character,
     },
 };
+#[allow(unused_imports)]
 use std::cell::{Cell, RefCell};
+#[allow(unused_imports)]
 use std::time::Instant;
+#[allow(unused_imports)]
 use sunrise_client::{
     clipboard::EditShortcut,
     hud::HudBatch,
@@ -22,41 +27,21 @@ use sunrise_client::{
     ui::{self, EditBox},
     widgets::{self, Kind, Narratable, Target},
 };
+#[allow(unused_imports)]
 use winit::keyboard::KeyCode;
 
-struct MountedWidgetsInner {
-    entries: Vec<Option<MountedWidgetEntry>>,
-    removed_pause_actions: Vec<u8>,
-    focused: Option<usize>,
-    dragging: Option<(usize, i32)>,
+pub(in crate::game) struct MountedWidgetsInner {
+    pub(in crate::game) entries: Vec<Option<MountedWidgetEntry>>,
+    pub(in crate::game) removed_pause_actions: Vec<u8>,
+    pub(in crate::game) focused: Option<usize>,
+    pub(in crate::game) dragging: Option<(usize, i32)>,
 }
 
 /// Mounted widgets attached to the currently open screen during `Hooks::screen_init_post`.
 pub(in crate::game) struct MountedScreenWidgets {
-    generation: Cell<u64>,
-    next_id: Cell<u64>,
-    inner: RefCell<MountedWidgetsInner>,
-}
-
-impl Default for MountedScreenWidgets {
-    fn default() -> Self {
-        Self {
-            generation: Cell::new(0),
-            next_id: Cell::new(1),
-            inner: RefCell::new(MountedWidgetsInner {
-                entries: Vec::new(),
-                removed_pause_actions: Vec::new(),
-                focused: None,
-                dragging: None,
-            }),
-        }
-    }
-}
-
-impl Drop for MountedScreenWidgets {
-    fn drop(&mut self) {
-        self.clear();
-    }
+    pub(in crate::game) generation: Cell<u64>,
+    pub(in crate::game) next_id: Cell<u64>,
+    pub(in crate::game) inner: RefCell<MountedWidgetsInner>,
 }
 
 impl MountedScreenWidgets {
@@ -96,7 +81,7 @@ impl MountedScreenWidgets {
             .is_some_and(|e| e.disabled)
     }
 
-    fn index_of(&self, id: ScreenWidgetId) -> Option<usize> {
+    pub(in crate::game) fn index_of(&self, id: ScreenWidgetId) -> Option<usize> {
         self.inner
             .borrow()
             .entries
@@ -127,7 +112,7 @@ impl MountedScreenWidgets {
         }
     }
 
-    fn clear_links_for(&self, idx: usize) {
+    pub(in crate::game) fn clear_links_for(&self, idx: usize) {
         let mut inner = self.inner.borrow_mut();
         if inner.focused == Some(idx) {
             inner.focused = None;
@@ -164,12 +149,12 @@ pub(in crate::game) enum MountedWidgetKind {
 }
 
 impl MountedWidgetEntry {
-    fn dispose(self) {
+    pub(in crate::game) fn dispose(self) {
         let Self { owner, kind, .. } = self;
         owner.dispose("screen widget", "screen_widget_drop", kind);
     }
 
-    fn press_button(&mut self, game: &mut Game<'_>) -> bool {
+    pub(in crate::game) fn press_button(&mut self, game: &mut Game<'_>) -> bool {
         let MountedWidgetKind::Button { state, on_press } = &mut self.kind else {
             return false;
         };
@@ -186,7 +171,7 @@ impl MountedWidgetEntry {
         answer.is_some()
     }
 
-    fn can_focus(&mut self) -> bool {
+    pub(in crate::game) fn can_focus(&mut self) -> bool {
         if self.disabled || !self.owner.is_enabled() {
             self.disabled = true;
             return false;
@@ -206,7 +191,7 @@ impl MountedWidgetEntry {
         }
     }
 
-    fn apply_focus(&mut self, focused: bool) -> bool {
+    pub(in crate::game) fn apply_focus(&mut self, focused: bool) -> bool {
         if self.disabled || !self.owner.is_enabled() {
             self.disabled = true;
             return false;
@@ -232,12 +217,12 @@ impl MountedWidgetEntry {
 }
 
 /// Registrar passed to `Hooks::screen_init_post` (`ScreenEvent.Init.Post`).
-struct ScreenWidgetMount {
-    next_id: u64,
-    entries: Vec<MountedWidgetEntry>,
-    children: Vec<ScreenChild>,
-    removed: Vec<ScreenWidgetId>,
-    initial_focus: Option<ScreenWidgetId>,
+pub(in crate::game) struct ScreenWidgetMount {
+    pub(in crate::game) next_id: u64,
+    pub(in crate::game) entries: Vec<MountedWidgetEntry>,
+    pub(in crate::game) children: Vec<ScreenChild>,
+    pub(in crate::game) removed: Vec<ScreenWidgetId>,
+    pub(in crate::game) initial_focus: Option<ScreenWidgetId>,
 }
 
 impl Drop for ScreenWidgetMount {
@@ -249,13 +234,13 @@ impl Drop for ScreenWidgetMount {
 }
 
 impl ScreenWidgetMount {
-    fn alloc_id(&mut self) -> ScreenWidgetId {
+    pub(in crate::game) fn alloc_id(&mut self) -> ScreenWidgetId {
         let raw = self.next_id;
         self.next_id = self.next_id.saturating_add(1).max(1);
         ScreenWidgetId::from_raw(raw)
     }
 
-    fn stage(&mut self, kind: MountedWidgetKind) -> ScreenWidgetId {
+    pub(in crate::game) fn stage(&mut self, kind: MountedWidgetKind) -> ScreenWidgetId {
         let id = self.alloc_id();
         let mut entry = MountedWidgetEntry {
             id,
@@ -361,11 +346,11 @@ impl ScreenWidgets for ScreenWidgetMount {
     }
 }
 
-fn widget_callback_owner() -> CallbackOwner {
+pub(in crate::game) fn widget_callback_owner() -> CallbackOwner {
     CallbackOwner::for_mod(mod_api::content::crash::current_native_mod().unwrap_or("sunrise"))
 }
 
-fn call_owner<R>(
+pub(in crate::game) fn call_owner<R>(
     owner: &CallbackOwner,
     disabled: &mut bool,
     operation: &'static str,
@@ -386,18 +371,18 @@ fn call_owner<R>(
     }
 }
 
-fn valid_widget_rect([x, y, w, h]: [f32; 4]) -> bool {
+pub(in crate::game) fn valid_widget_rect([x, y, w, h]: [f32; 4]) -> bool {
     [x, y, w, h, x + w, y + h].into_iter().all(f32::is_finite)
 }
 
-fn point_in_rect(mouse: [f32; 2], rect: [f32; 4]) -> bool {
+pub(in crate::game) fn point_in_rect(mouse: [f32; 2], rect: [f32; 4]) -> bool {
     let [mx, my] = mouse;
     let [x, y, w, h] = rect;
     w > 0.0 && h > 0.0 && mx >= x && my >= y && mx < x + w && my < y + h
 }
 
 impl MountedWidgetEntry {
-    fn target(&mut self) -> Option<Target> {
+    pub(in crate::game) fn target(&mut self) -> Option<Target> {
         if self.disabled || !self.owner.is_enabled() {
             self.disabled = true;
             return None;
@@ -547,7 +532,7 @@ impl Game<'_> {
         self.set_mounted_widget_focus(None);
     }
 
-    fn set_mounted_widget_focus(&mut self, target: Option<usize>) {
+    pub(in crate::game) fn set_mounted_widget_focus(&mut self, target: Option<usize>) {
         let previous = self.screen_state.0.widgets.focused_index();
         if previous == target {
             return;
@@ -867,7 +852,7 @@ impl Game<'_> {
         handled
     }
 
-    fn mounted_widget_click(
+    pub(in crate::game) fn mounted_widget_click(
         &mut self,
         id: Option<ScreenWidgetId>,
         mouse: [f32; 2],

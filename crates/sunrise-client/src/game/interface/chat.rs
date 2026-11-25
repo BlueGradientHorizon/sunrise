@@ -828,7 +828,7 @@ impl Game<'_> {
     }
     /// The server's completions for an `ask_server` request
     /// (ClientPacketListener.handleCommandSuggestions).
-    pub(in crate::game) fn chat_server_suggestions(
+    pub(in crate::game::client_side) fn chat_server_suggestions(
         &mut self,
         id: i32,
         range: (usize, usize),

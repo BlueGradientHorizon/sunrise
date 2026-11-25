@@ -199,7 +199,7 @@ impl Game<'_> {
     /// sheep's shears (the server alone checks `readyForShearing`) answer
     /// CONSUME on a client, and a horse's or panda's food SUCCESS_SERVER
     /// (#9437). A tame wolf, cat or parrot sitting down is SUCCESS.
-    pub(in crate::game) fn remote_mob_swings(&self, i: usize, hand: Hand) -> bool {
+    pub(in crate::game::client_side) fn remote_mob_swings(&self, i: usize, hand: Hand) -> bool {
         let Some(m) = self.mobs.get(i).filter(|m| m.alive()) else {
             return false;
         };
@@ -227,7 +227,7 @@ impl Game<'_> {
     /// client's copy: a baby fed something that ages it draws one happy
     /// villager particle. The server draws it on its own level only, so no
     /// packet brings it.
-    pub(in crate::game) fn remote_feed_particles(&mut self, i: usize, hand: Hand) {
+    pub(in crate::game::client_side) fn remote_feed_particles(&mut self, i: usize, hand: Hand) {
         let Some(m) = self.mobs.get(i).filter(|m| m.alive()) else {
             return;
         };

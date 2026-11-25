@@ -714,7 +714,7 @@ mod tests {
 
 /// Check cached decode results for present own overrides, not removals or defaults.
 /// The source must return the stack even when its override failed to decode.
-pub(super) fn validate_decoded_components<'a>(
+pub(in crate::game) fn validate_decoded_components<'a>(
     stack_for: impl Fn(&str) -> Option<&'a EngineStack>,
 ) -> Result<(), mod_api::StackWriteError> {
     if sunrise_client::item_data::StackData::CONSUME_EFFECT_COMPONENTS

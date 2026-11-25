@@ -429,17 +429,6 @@ impl Game<'_> {
         self.lan_crafting_closed(conn, Some(0));
     }
 
-    /// `Player.remove(CHANGED_DIMENSION)` removes both menus without dropping
-    /// a cursor that still fits. Overflow belongs in the level the guest left.
-    /// Return the retired nonzero window in case the trip fails before sending a respawn.
-    pub(in crate::game) fn guest_close_menus_for_travel(&mut self, conn: u32) -> Option<i32> {
-        self.guest_remove_menus(conn, MenuRemoval::ChangedDimension)
-    }
-
-    pub(in crate::game) fn guest_disconnected(&mut self, conn: u32) {
-        self.guest_remove_menus(conn, MenuRemoval::Disconnected);
-    }
-
     pub(in crate::game) fn guest_remove_menus(
         &mut self,
         conn: u32,
@@ -574,98 +563,6 @@ impl Game<'_> {
         }
     }
 
-    /// `ServerPlayer.tick`'s `stillValid`: a guest's block container closes
-    /// once its block is removed or out of reach. Death removes every kind
-    /// of open menu through the same cleanup and synchronous close boundary.
-    pub(in crate::game) fn lan_containers_tick(&mut self) {
-        let Some(host) = self.lan.as_ref() else {
-            return;
-        };
-        let far: Vec<_> = host
-            .hub
-            .guests
-            .iter()
-            .filter(|g| host.hub.here(g) && !self.player_tick_canceled(g.conn))
-            .filter(|g| {
-                (g.dead && super::super::native_menus::open_menu_of(host, g.conn).is_some())
-                    || !self.container_menu_valid(g)
-            })
-            .map(|g| (g.conn, g.dead))
-            .collect();
-        for (conn, dead) in far {
-            self.guest_close_menus(
-                conn,
-                if dead {
-                    MenuRemoval::Killed
-                } else {
-                    MenuRemoval::Live
-                },
-            );
-        }
-    }
-
-    /// `stillValid` of the guest's open container: its blocks are still there
-    /// and in reach, or its vehicle exists and is in reach. True with none open.
-    pub(in crate::game) fn container_menu_valid(
-        &self,
-        g: &sunrise_client::lan::guest::Guest,
-    ) -> bool {
-        let Some(host) = self.lan.as_ref() else {
-            return true;
-        };
-        g.menu.as_ref().is_none_or(|m| {
-            m.slots.valid(&self.world)
-                && m.still_valid(&host.hub.loop_context, &self.world, g)
-                && !matches!(m.slots, Slots::Block((_, y, id))
-                    if y == crate::game::minecarts::CART_KEY_Y
-                        && !self.chest_vehicle_still_valid(id, g))
-        })
-    }
-
-    /// `AbstractContainerMenu.stillValid` of whatever menu the guest has open
-    /// (a container or vehicle, a trade, the crafting table, a station, a
-    /// lectern, a mount's inventory). True when none is open.
-    pub(in crate::game) fn guest_menu_still_valid(&self, conn: u32) -> bool {
-        let Some(host) = self.lan.as_ref() else {
-            return true;
-        };
-        let Some(g) = host.hub.guest(conn) else {
-            return true;
-        };
-        if !self.container_menu_valid(g) {
-            return false;
-        }
-        let p = host.play.get(&conn);
-        let menus = host.menus.get(&conn);
-        menus
-            .and_then(|m| m.crafting.table.as_ref())
-            .is_none_or(|t| self.lan_table_valid(g, t.3))
-            && menus
-                .and_then(|m| m.station.as_ref())
-                .is_none_or(|s| self.lan_station_valid(g, s))
-            && p.and_then(|p| p.lectern.as_ref())
-                .is_none_or(|l| self.lan_lectern_valid(g, l.key))
-            && menus
-                .and_then(|m| m.merchant.as_ref())
-                .and_then(|m| m.merchant.mob)
-                .is_none_or(|id| self.lan_merchant_valid(g, id))
-            && p.and_then(|p| p.mount_window.as_ref())
-                .is_none_or(|m| self.lan_mount_valid(g, m.mob))
-    }
-
-    /// The check before a menu click: a menu that is no longer valid closes
-    /// (returning what it held, as `ContainerClose` does) and the client's
-    /// window with it, so the click lands on nothing
-    /// (`ServerGamePacketListenerImpl.handleContainerClick` and the others
-    /// ask `stillValid` first).
-    pub(in crate::game) fn guest_validate_menu(&mut self, conn: u32) -> bool {
-        if self.guest_menu_still_valid(conn) {
-            return true;
-        }
-        self.guest_close_menus_and_tell(conn);
-        false
-    }
-
     /// `ServerPlayer.closeContainer`: the client is told to close each window first, and
     /// then every menu the guest has open closes through `guest_close_all` (the lid,
     /// stand-ins, the cursor stack back to the inventory, `PlayerContainerEvent.Close`), once.
@@ -700,27 +597,5 @@ impl Game<'_> {
             }
         }
         self.guest_remove_menus(conn, removal);
-    }
-
-    /// `ContainerEntity.isChestVehicleStillValid`: the chest minecart or chest
-    /// boat is still there and within the guest's entity interaction range
-    /// plus 4 of its box.
-    pub(in crate::game) fn chest_vehicle_still_valid(
-        &self,
-        id: i32,
-        g: &sunrise_client::lan::guest::Guest,
-    ) -> bool {
-        let bounds = self
-            .carts
-            .iter()
-            .find(|c| c.id as i32 == id)
-            .map(|c| c.bounds())
-            .or_else(|| {
-                self.boats
-                    .iter()
-                    .find(|b| b.id as i32 == id)
-                    .map(|b| b.bounds())
-            });
-        bounds.is_some_and(|b| guest_within_entity_range(g, &b, 4.0))
     }
 }

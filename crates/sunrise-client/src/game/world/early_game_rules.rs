@@ -3,7 +3,7 @@ use super::{Game, world_loading::PreparedWorld};
 use sunrise_client::gamerules::{GameRules, Value};
 
 impl Game<'_> {
-    pub(super) fn prepare_world_and_rules(
+    pub(in crate::game) fn prepare_world_and_rules(
         &mut self,
         request: super::world_loading::WorldRequest,
     ) -> crate::Result<PreparedWorld> {
@@ -20,7 +20,7 @@ impl Game<'_> {
         Ok(prepared)
     }
 
-    pub(super) fn prepare_early_game_rules(
+    pub(in crate::game) fn prepare_early_game_rules(
         &mut self,
         loader: super::world_loading::WorldLoader,
     ) -> crate::Result<PreparedWorld> {
@@ -29,7 +29,10 @@ impl Game<'_> {
         Ok(prepared)
     }
 
-    pub(super) fn load_opening_game_rules(&mut self, prepared: &PreparedWorld) {
+    pub(in crate::game::server_side) fn load_opening_game_rules(
+        &mut self,
+        prepared: &PreparedWorld,
+    ) {
         let level = &prepared.level;
         let mut rules = GameRules::load_with_registry(
             &prepared.save_root,

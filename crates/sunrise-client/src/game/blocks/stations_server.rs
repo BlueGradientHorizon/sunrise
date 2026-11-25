@@ -99,6 +99,13 @@ impl Game<'_> {
             self.give_or_drop(stack);
         }
     }
+    /// `Player.onEnchantmentPerformed`: the cost leaves the level directly, not
+    /// through `giveExperienceLevels`, and the mods hear of the level change.
+    pub(in crate::game) fn enchantment_performed(&mut self, cost: i32) {
+        let old_level = self.experience.level;
+        self.experience.add_levels(-cost);
+        self.native_player_level_changed(old_level);
+    }
     /// Opens a workstation menu for the block; false when it is not one.
     pub(in crate::game) fn open_station(&mut self, pos: [i32; 3], name: &str) -> bool {
         let Some(kind) = Kind::from_block(name) else {
@@ -130,6 +137,20 @@ impl Game<'_> {
             self.award_custom_stat(stat, 1);
         }
         true
+    }
+    pub(in crate::game::server_side) fn play_at(
+        &mut self,
+        sound: &str,
+        pos: [i32; 3],
+        volume: f32,
+        pitch: f32,
+    ) {
+        let at = [
+            f64::from(pos[0]) + 0.5,
+            f64::from(pos[1]) + 0.5,
+            f64::from(pos[2]) + 0.5,
+        ];
+        self.server_play_sound(sound, at, volume, pitch);
     }
     /// `Player.giveExperienceLevels`: all players near its feet hear the sound.
     pub(in crate::game::server_side) fn play_level_up(&mut self, amount: i32, level: i32) {

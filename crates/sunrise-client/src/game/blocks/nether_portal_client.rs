@@ -51,6 +51,9 @@ pub(in crate::game::client_side) use {
     },
 };
 
+#[path = "nether_portal/respawn_attributes_client.rs"]
+pub(in crate::game) mod respawn_attributes;
+
 impl Game<'_> {
     /// `LocalPlayer.handlePortalTransitionEffect`: whether the confusion
     /// effect grows this tick. Entering a portal closes the screen only when

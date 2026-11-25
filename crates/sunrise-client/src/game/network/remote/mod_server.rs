@@ -241,8 +241,14 @@ pub(in crate::game) mod general;
 #[path = "recipe_properties_server.rs"]
 pub(in crate::game) mod recipe_properties;
 
+#[path = "inventory_server.rs"]
+pub(in crate::game) mod inventory;
+
 #[path = "session_server.rs"]
 pub(in crate::game) mod session;
+
+#[path = "sync_server.rs"]
+pub(in crate::game) mod sync;
 
 #[cfg(test)]
 #[path = "interaction_event_tests_server.rs"]

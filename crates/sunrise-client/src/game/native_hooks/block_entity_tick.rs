@@ -28,49 +28,6 @@ use sunrise_items::items::Items;
 #[path = "block_entity_tick/tests.rs"]
 pub(in crate::game) mod tests;
 
-impl Game<'_> {
-    /// `LevelChunk.BoundTickingBlockEntity.tick` for a resident mod block entity.
-    /// Returns whether the ticker was dispatched, so skipped rows have no after-slot.
-    pub(in crate::game) fn tick_mod_block_entity_loaded(&mut self, pos: Pos) -> bool {
-        let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get(&pos) else {
-            return false;
-        };
-        let Some(kind) = entity.tick_kind() else {
-            return false;
-        };
-        let Some(generation) = self.world.block_entities.generation(&pos) else {
-            return false;
-        };
-        let live_state = self.world.block(pos.0, pos.1, pos.2);
-        let block = &self.res.facts().get(live_state).name;
-        if !valid_tick_subject(block, entity) {
-            if let Some(id) = self
-                .world
-                .block_entities
-                .record_invalid_mod_tick(pos, generation)
-            {
-                log::warn!("Block entity {id} at {pos:?} cannot tick on {block}");
-            }
-            return false;
-        }
-        let Some(level) = self.level(self.dim.id()) else {
-            return false;
-        };
-        let subject =
-            mod_api::__private::game::block_entity_ref(level, [pos.0, pos.1, pos.2], generation);
-        let mut access =
-            ResidentBlockEntityAccess::new(self, Some(subject), Loan::Tick(Some(live_state)));
-        crate::game::native_hooks::native_block_entity_tick(
-            kind,
-            BlockEntityScope::new(&mut access),
-        );
-        self.world
-            .block_entities
-            .clear_ticker_warning(pos, generation);
-        true
-    }
-}
-
 /// Dispatch the one resident server ticker; the scope owns access to the Host.
 pub(in crate::game) fn native_block_entity_tick(
     kind: mod_api::BlockEntityTypeKey,
@@ -112,40 +69,8 @@ impl<'g, 'w> ResidentBlockEntityAccess<'g, 'w> {
         }
     }
 
-    pub(in crate::game) fn for_handle(
-        game: &'g mut Game<'w>,
-        subject: BlockEntityRef,
-        state: BlockStateId,
-    ) -> Self {
-        Self::new(game, Some(subject), Loan::Menu(state))
-    }
-
-    pub(in crate::game) fn blockless(game: &'g mut Game<'w>) -> Self {
-        Self::new(game, None, Loan::OnLoad)
-    }
-
     pub(in crate::game) fn on_load(game: &'g mut Game<'w>, subject: BlockEntityRef) -> Self {
         Self::new(game, Some(subject), Loan::OnLoad)
-    }
-
-    pub(in crate::game) fn items_changed(&self) -> bool {
-        self.items_changed
-    }
-}
-
-impl Game<'_> {
-    /// The resident mod block entity and admitted block state behind a menu callback.
-    pub(in crate::game) fn resident_block_entity_target(
-        &self,
-        pos: Pos,
-    ) -> Option<(BlockEntityRef, BlockStateId)> {
-        let level = self.level(self.dim.id())?;
-        let handle = self.block_entity(level, [pos.0, pos.1, pos.2])?;
-        matches!(
-            self.world.block_entities.get(&pos),
-            Some(BlockEntity::Mod(_))
-        )
-        .then(|| (handle, self.world.block(pos.0, pos.1, pos.2)))
     }
 }
 

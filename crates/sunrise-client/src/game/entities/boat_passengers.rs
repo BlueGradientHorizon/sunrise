@@ -117,7 +117,7 @@ impl Game<'_> {
     }
     /// A vehicle picked a mob up: a shulker turns its lid up (`Shulker.startRiding`), which
     /// changes its box, so the next query works the [`BoxReach`] out again.
-    pub(in crate::game) fn vehicle_picked_up(&self) {
+    pub(in crate::game::server_side) fn vehicle_picked_up(&self) {
         if let Some((_, reach)) = self.server.vehicle_mobs.reach.get() {
             self.server
                 .vehicle_mobs
@@ -242,7 +242,7 @@ impl Game<'_> {
     }
     /// Whether mob `m`, whose box `reach` bounds, may touch a cart: the carts' grid (`cells`)
     /// names the carts near it, or every cart when the grid cannot (a superset either way).
-    pub(in crate::game) fn mob_may_meet_cart(
+    pub(in crate::game::server_side) fn mob_may_meet_cart(
         &self,
         reach: BoxReach,
         m: &Mob,

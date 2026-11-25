@@ -16,7 +16,7 @@ impl Minecart {
 
 impl Game<'_> {
     /// `MinecartCommandBase.onUpdated`: copy command and last output into synched data.
-    pub(in crate::game) fn cart_command_updated(&mut self, id: u32) {
+    pub(in crate::game::server_side) fn cart_command_updated(&mut self, id: u32) {
         self.edit_command_cart(id, |c| {
             c.synced_command.clone_from(&c.command.command);
             c.sync_command_output();
@@ -85,7 +85,7 @@ impl Game<'_> {
     }
 
     /// `CloseableCommandBlockSource.sendSystemMessage` for the cart.
-    pub(in crate::game) fn cart_command_output(
+    pub(in crate::game::server_side) fn cart_command_output(
         &mut self,
         id: u32,
         format: impl FnOnce(Text) -> Text,
@@ -104,7 +104,7 @@ impl Game<'_> {
     }
 
     /// `CommandSourceStack.sendSuccess` for a command minecart.
-    pub(in crate::game) fn cart_command_success(&mut self, id: u32, message: Text) {
+    pub(in crate::game::server_side) fn cart_command_success(&mut self, id: u32, message: Text) {
         if self
             .ui
             .rules
@@ -115,7 +115,7 @@ impl Game<'_> {
     }
 
     /// `ServerGamePacketListenerImpl.handleSetCommandMinecart` for a guest.
-    pub(in crate::game) fn lan_set_command_minecart(
+    pub(in crate::game::server_side) fn lan_set_command_minecart(
         &mut self,
         conn: u32,
         p: play::SetCommandMinecart,
@@ -134,7 +134,7 @@ impl Game<'_> {
     }
 
     /// What `handleSetCommandMinecart` does once the player may edit the cart.
-    pub(in crate::game) fn apply_cart_command(
+    pub(in crate::game::server_side) fn apply_cart_command(
         &mut self,
         id: u32,
         command: String,

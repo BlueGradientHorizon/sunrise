@@ -3,13 +3,18 @@
 //! (`Registrar::fluid_interaction`) and the files of content mods
 //! (`data/<id>/sunrise/fluid_interaction/`), resolved against the open world's tags and
 //! installed on its behaviours for `LiquidBlock.shouldSpreadLiquid`.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use std::sync::Arc;
+#[allow(unused_imports)]
 use sunrise_items::items::Items;
+#[allow(unused_imports)]
 use sunrise_mod_package::content::{
     FluidInteraction,
     fluid_interaction::{BlockMatch, Neighbour},
 };
+#[allow(unused_imports)]
 use sunrise_world::{
     fluid::FluidKind,
     level::{
@@ -22,7 +27,7 @@ use sunrise_world::{
 };
 
 /// The fluids of a fluid tag; an unknown tag has none.
-fn fluid_tag(items: &Items, tag: &str) -> Vec<FluidKind> {
+pub(in crate::game) fn fluid_tag(items: &Items, tag: &str) -> Vec<FluidKind> {
     items
         .fluid_tags
         .get(tag)
@@ -33,7 +38,9 @@ fn fluid_tag(items: &Items, tag: &str) -> Vec<FluidKind> {
 }
 
 /// What a native mod declared, as the files say it: the names behind its keys.
-fn declared(interaction: &mod_api::FluidInteraction) -> Result<FluidInteraction, String> {
+pub(in crate::game) fn declared(
+    interaction: &mod_api::FluidInteraction,
+) -> Result<FluidInteraction, String> {
     let fluid = |key| {
         mod_api::__private::fluid_id(key)
             .map(str::to_owned)
@@ -87,20 +94,6 @@ fn declared(interaction: &mod_api::FluidInteraction) -> Result<FluidInteraction,
 }
 
 impl Game<'_> {
-    /// Install the open world's fluid interactions, replacing the last load's: vanilla's two
-    /// lava rules for each fluid of the world's `minecraft:lava` tag (water read from its
-    /// `minecraft:water` tag; a data pack may edit both), then native mods' declarations, then
-    /// content mods' files in load order and file name. Tags are read again on each call. An
-    /// id that names no fluid or block refuses the world by name.
-    pub(in crate::game) fn install_fluid_interactions(&self) -> Result<(), String> {
-        let items = self
-            .world_tables
-            .0
-            .as_ref()
-            .map_or_else(|| self.items(), |t| &t.items);
-        self.install_fluid_interactions_from(items)
-    }
-
     /// [`Self::install_fluid_interactions`] against `items`' tags.
     pub(in crate::game) fn install_fluid_interactions_from(
         &self,
@@ -124,7 +117,7 @@ impl Game<'_> {
         Ok(())
     }
 
-    fn resolve_fluid_interaction(
+    pub(in crate::game) fn resolve_fluid_interaction(
         &self,
         behaviours: &Behaviours,
         items: &Items,

@@ -84,19 +84,19 @@ const ITEM_FRAME: &str = "minecraft:item_frame";
 const GLOW_ITEM_FRAME: &str = "minecraft:glow_item_frame";
 
 /// Keeps the mods' registrations, once per process (false when they already were).
-pub(super) fn register(renderers: BTreeMap<String, Arc<dyn EntityRenderer>>) -> bool {
+pub(in crate::game) fn register(renderers: BTreeMap<String, Arc<dyn EntityRenderer>>) -> bool {
     REGISTERED.set(renderers).is_ok()
 }
 
 /// A mod's renderer or layer as a load resolved it, and whether it has failed (then it is asked no
 /// more until the next resource load resolves it again).
 pub(in crate::game) struct Resolved<T: ?Sized> {
-    pub(super) inner: Arc<T>,
-    pub(super) failed: AtomicBool,
+    pub(in crate::game) inner: Arc<T>,
+    pub(in crate::game) failed: AtomicBool,
 }
 
 impl<T: ?Sized> Resolved<T> {
-    pub(super) fn new(inner: Arc<T>) -> Self {
+    pub(in crate::game) fn new(inner: Arc<T>) -> Self {
         Self {
             inner,
             failed: AtomicBool::new(false),
@@ -105,7 +105,7 @@ impl<T: ?Sized> Resolved<T> {
 }
 
 /// The registered renderers, by the slot each draw route reads: rebuilt on every resource load.
-pub(super) struct EntityRendererTable {
+pub(in crate::game) struct EntityRendererTable {
     /// By [`ThrownType::slot`].
     thrown: Vec<Option<Arc<Resolved<dyn EntityRenderer>>>>,
     /// By the address of the mob type the game shares with every mob of the type.
@@ -130,7 +130,7 @@ impl EntityRendererTable {
     /// whether an id is any other entity type; and the ids of the registrations for no entity
     /// type, which it leaves out. A registration for a known type no route reads yet is kept
     /// silently: the type keeps its own drawing.
-    pub(super) fn resolve(
+    pub(in crate::game) fn resolve(
         registered: &BTreeMap<String, Arc<dyn EntityRenderer>>,
         thrown: &[ThrownType],
         mobs: &HashMap<String, Arc<MobType>>,
@@ -174,37 +174,46 @@ impl EntityRendererTable {
     }
 
     /// The renderer of the thrown type `t`, when a mod registered one.
-    pub(super) fn thrown(&self, t: &ThrownType) -> Option<&Arc<Resolved<dyn EntityRenderer>>> {
+    pub(in crate::game) fn thrown(
+        &self,
+        t: &ThrownType,
+    ) -> Option<&Arc<Resolved<dyn EntityRenderer>>> {
         self.thrown.get(t.slot)?.as_ref()
     }
 
     /// The renderer of `mob`'s type, when a mod registered one for it.
-    pub(super) fn living(&self, mob: &Mob) -> Option<&Arc<Resolved<dyn EntityRenderer>>> {
+    pub(in crate::game) fn living(&self, mob: &Mob) -> Option<&Arc<Resolved<dyn EntityRenderer>>> {
         self.living.get(&(Arc::as_ptr(&mob.kind) as usize))
     }
 
     /// The renderer of primed TNT, when a mod registered one for `minecraft:tnt`.
-    pub(super) fn tnt(&self) -> Option<&Arc<Resolved<dyn EntityRenderer>>> {
+    pub(in crate::game) fn tnt(&self) -> Option<&Arc<Resolved<dyn EntityRenderer>>> {
         self.tnt.as_ref()
     }
 
     /// The renderer of an experience orb, when a mod registered one for `minecraft:experience_orb`.
-    pub(super) fn experience_orb(&self) -> Option<&Arc<Resolved<dyn EntityRenderer>>> {
+    pub(in crate::game) fn experience_orb(&self) -> Option<&Arc<Resolved<dyn EntityRenderer>>> {
         self.experience_orb.as_ref()
     }
 
     /// The renderer of a painting, when a mod registered one for `minecraft:painting`.
-    pub(super) fn painting(&self) -> Option<&Arc<Resolved<dyn EntityRenderer>>> {
+    pub(in crate::game) fn painting(&self) -> Option<&Arc<Resolved<dyn EntityRenderer>>> {
         self.painting.as_ref()
     }
 
     /// The renderer of the general type in catalog slot `slot`, when a mod registered one.
-    pub(super) fn general(&self, slot: usize) -> Option<&Arc<Resolved<dyn EntityRenderer>>> {
+    pub(in crate::game) fn general(
+        &self,
+        slot: usize,
+    ) -> Option<&Arc<Resolved<dyn EntityRenderer>>> {
         self.general.get(slot)?.as_ref()
     }
 
     /// The general types of `catalog` no mod registered a renderer for: their rows draw nothing.
-    pub(super) fn unrendered_general<'c>(&self, catalog: &'c GeneralTypeCatalog) -> Vec<&'c str> {
+    pub(in crate::game) fn unrendered_general<'c>(
+        &self,
+        catalog: &'c GeneralTypeCatalog,
+    ) -> Vec<&'c str> {
         (0..catalog.len())
             .filter(|&slot| self.general(slot).is_none())
             .map(|slot| catalog.key(slot))
@@ -212,7 +221,10 @@ impl EntityRendererTable {
     }
 
     /// The renderer of an item frame or glow item frame, when a mod registered one for that type.
-    pub(super) fn item_frame(&self, glow: bool) -> Option<&Arc<Resolved<dyn EntityRenderer>>> {
+    pub(in crate::game) fn item_frame(
+        &self,
+        glow: bool,
+    ) -> Option<&Arc<Resolved<dyn EntityRenderer>>> {
         if glow {
             self.glow_item_frame.as_ref()
         } else {
@@ -366,7 +378,7 @@ impl Game<'_> {
     /// starting pose. Adds to `out` and returns true when it drew. An error or panic discards this
     /// frame's drawing, logs once and disables the renderer until the next resource load.
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::game) fn guarded_entity_draw(
+    pub(in crate::game::client_side) fn guarded_entity_draw(
         &self,
         failed: &AtomicBool,
         partial: f32,
@@ -431,7 +443,7 @@ mod tests {
     #[ignore = "daily"]
     fn entity_renderer_samples_the_elements_world_cell_but_a_preview_stays_fixed() {
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::native_entity_renderers::tests::entity_renderer_samples_the_elements_world_cell_but_a_preview_stays_fixed",
+            "game::client_side::native_entity_renderers::tests::entity_renderer_samples_the_elements_world_cell_but_a_preview_stays_fixed",
             "SUNRISE_ENTITY_LEVEL_LIGHT_CHILD",
             &["world-and-preview"],
         ) {

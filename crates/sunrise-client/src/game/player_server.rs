@@ -159,7 +159,7 @@ impl Game<'_> {
     }
 
     /// Server handler for `Serverbound::ChangeGameMode` (called by `lan_actions/packets_server.rs`).
-    pub(in crate::game) fn server_change_game_mode(&mut self, mode: GameMode) {
+    pub(in crate::game::server_side) fn server_change_game_mode(&mut self, mode: GameMode) {
         if self.set_game_mode(mode) {
             let name = Text::translate(&format!("gameMode.{}", mode.name()), &[]);
             self.feedback(Text::translate("commands.gamemode.success.self", &[name]));

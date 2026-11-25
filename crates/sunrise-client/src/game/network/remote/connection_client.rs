@@ -10,6 +10,16 @@ pub(in crate::game::client_side) use sunrise_client::{multiplayer, title::Mode};
 pub(in crate::game::client_side) use sunrise_hooks::connection::{By, Ended, Left, Retry, Server};
 
 impl Game<'_> {
+    /// `ConnectScreen`'s Cancel: a server's (single player's server isn't
+    /// joined through `ConnectScreen`), until the login is done.
+    pub(in crate::game::client_side) fn connect_cancel(
+        &self,
+        (w, h): (f32, f32),
+    ) -> Option<(f32, f32)> {
+        let r = self.remote.as_ref()?;
+        (self.player.is_none() && !r.joined && self.integrated.is_none())
+            .then(|| sunrise_client::level_loading::connect_cancel(w, h))
+    }
     /// A click on `ConnectScreen`: Cancel aborts the connection
     /// (`connect.aborted`) and goes back. Escape does nothing there
     /// (`shouldCloseOnEsc` is false).
@@ -36,8 +46,12 @@ impl Game<'_> {
         }
         Ok(false)
     }
+    /// Leave the title for a server (ConnectScreen): an empty world fed by the connection.
+    pub(in crate::game) fn connect_server(&mut self, address: &str, name: &str) -> Result<()> {
+        self.connect_server_with_options(address, name, None, false, false, None)
+    }
     /// `ConnectScreen.startConnecting`: keep LAN discovery's server kind through loading.
-    pub(in crate::game) fn connect_server_with_options(
+    pub(in crate::game::client_side) fn connect_server_with_options(
         &mut self,
         address: &str,
         name: &str,
@@ -84,7 +98,12 @@ impl Game<'_> {
     /// the Disconnected screen shows; nothing when none is open. The crates are asked once
     /// whether to connect again (`Hooks::retry`), and that screen acts on the answer
     /// (`offer_retry`); the last server is forgotten unless something will connect there again.
-    pub(in crate::game) fn connection_ended(&mut self, reason: &str, key: Option<&str>, by: By) {
+    pub(in crate::game::client_side) fn connection_ended(
+        &mut self,
+        reason: &str,
+        key: Option<&str>,
+        by: By,
+    ) {
         if !std::mem::take(&mut self.client.connection_open) {
             return;
         }
@@ -161,6 +180,13 @@ impl Game<'_> {
             realm,
             None,
         )
+    }
+    // handle_command_suggestions: remote/commands.rs
+    /// Another player of this level, whose copy passes every click (`Player.interactOn`).
+    pub(in crate::game::client_side) fn is_level_player(&self, id: i32) -> bool {
+        self.remote
+            .as_ref()
+            .is_some_and(|r| r.level_players.contains_key(&id))
     }
     /// The Disconnected screen just shown offers to connect again when the answer to the
     /// connection's end asked to: its line, or the connection on the next frame (`follow_retry`)

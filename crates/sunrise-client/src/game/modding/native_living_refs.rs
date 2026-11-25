@@ -1342,7 +1342,7 @@ impl Game<'_> {
 
     /// The slot and sound `stack`'s `equippable` component names
     /// (`Equippable.slot`, `equipSound`).
-    pub(in crate::game) fn equippable_slot_sound(
+    pub(in crate::game::server_side) fn equippable_slot_sound(
         &self,
         stack: &ItemStack,
     ) -> Option<(super::dispenser::Slot, String)> {

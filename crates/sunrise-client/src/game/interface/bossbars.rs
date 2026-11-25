@@ -145,7 +145,12 @@ impl Game<'_> {
     /// `CustomBossEvent.setValue` / `setMax`, as `execute store ... bossbar
     /// <id> value|max` calls them: the integer is stored as given and only
     /// the progress is clamped.
-    pub(in crate::game) fn set_bossbar_value(&mut self, id: &str, value: bool, v: i32) {
+    pub(in crate::game::server_side) fn set_bossbar_value(
+        &mut self,
+        id: &str,
+        value: bool,
+        v: i32,
+    ) {
         if let Some(b) = self.server.bosses.bars.get_mut(id) {
             // CustomBossEvent.setValue/setMax store the number verbatim and
             // clamp only the progress derived from it.

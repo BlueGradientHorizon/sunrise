@@ -251,7 +251,11 @@ impl Game<'_> {
     }
     /// `ItemCommands.getSlotsFromProvider`: evaluate inline sources against
     /// the accessor's live owner. Named ranges retain their existing adapter.
-    pub(in crate::game) fn command_slots(&mut self, owner: &Owner, raw: &str) -> R<Vec<Slot>> {
+    pub(in crate::game::server_side) fn command_slots(
+        &mut self,
+        owner: &Owner,
+        raw: &str,
+    ) -> R<Vec<Slot>> {
         if let Owner::Block(p) = owner
             && self.block_container_size(*p).is_none()
         {
@@ -267,7 +271,7 @@ impl Game<'_> {
     }
     /// `SlotCollection.itemCopies` / `size`: transforms apply to the
     /// collection, before a command's item predicate or item modifier.
-    pub(in crate::game) fn inline_slots(
+    pub(in crate::game::server_side) fn inline_slots(
         &mut self,
         owner: &Owner,
         source: &serde_json::Value,
@@ -320,7 +324,11 @@ impl Game<'_> {
             _ => Vec::new(),
         }
     }
-    pub(in crate::game) fn slot_filter(&mut self, slot: &Slot, filter: &serde_json::Value) -> bool {
+    pub(in crate::game::server_side) fn slot_filter(
+        &mut self,
+        slot: &Slot,
+        filter: &serde_json::Value,
+    ) -> bool {
         let stack = self
             .slot_get(slot)
             .unwrap_or_else(|| ItemStack::new("minecraft:air", 0));
@@ -330,7 +338,7 @@ impl Game<'_> {
     /// live stack when visited. Limits share the command's TrackingSelector
     /// count across owners and group terms, and count selected empty slots
     /// only for replacement (not modification).
-    pub(in crate::game) fn command_slot_candidates(
+    pub(in crate::game::server_side) fn command_slot_candidates(
         &mut self,
         owner: &Owner,
         raw: &str,
@@ -361,7 +369,7 @@ impl Game<'_> {
     }
     /// `CompositeSlotSource.provide` and `TransformedSlotSource.provide`:
     /// carry each leaf's filters and selection bound into live writes.
-    pub(in crate::game) fn slot_candidates(
+    pub(in crate::game::server_side) fn slot_candidates(
         &mut self,
         owner: &Owner,
         source: &serde_json::Value,
@@ -445,7 +453,11 @@ impl Game<'_> {
         *selected += 1;
         true
     }
-    pub(in crate::game) fn slot_accepts(&self, s: &Slot, stack: Option<&ItemStack>) -> bool {
+    pub(in crate::game::server_side) fn slot_accepts(
+        &self,
+        s: &Slot,
+        stack: Option<&ItemStack>,
+    ) -> bool {
         let Slot::Block(p, i) = s else {
             return true;
         };
@@ -457,7 +469,7 @@ impl Game<'_> {
         };
         self.block_can_place(*p, *i, stack.unwrap_or(&air))
     }
-    pub(in crate::game) fn block_container_size(&self, p: [i32; 3]) -> Option<usize> {
+    pub(in crate::game::server_side) fn block_container_size(&self, p: [i32; 3]) -> Option<usize> {
         let size = match self.world.block_entities.get(&(p[0], p[1], p[2]))? {
             BlockEntity::Mod(_) => self
                 .world
@@ -473,7 +485,7 @@ impl Game<'_> {
     /// one whose `getEquipmentSlotForItem` is this very slot. A stand's
     /// `canUseSlot` refuses body, saddle and the slots its `DisabledSlots`
     /// lock, so such an item is MAINHAND's. Every other slot takes anything.
-    pub(in crate::game) fn equipment_slot_accepts(
+    pub(in crate::game::server_side) fn equipment_slot_accepts(
         &self,
         slot: &Slot,
         stack: &Option<ItemStack>,
@@ -518,7 +530,7 @@ impl Game<'_> {
     /// `SlotAccess.set` of a command: `slot_set` when the slot's predicate
     /// takes the stack. A mod's `set_equipment` calls `slot_set` itself and is
     /// not asked.
-    pub(in crate::game) fn slot_set_by_command(
+    pub(in crate::game::server_side) fn slot_set_by_command(
         &mut self,
         slot: &Slot,
         stack: Option<ItemStack>,
@@ -530,7 +542,7 @@ impl Game<'_> {
         self.slot_set_with_effects(s, stack, true)
     }
 
-    pub(in crate::game) fn owner_holder(&self, o: &Owner) -> Holder {
+    pub(in crate::game::server_side) fn owner_holder(&self, o: &Owner) -> Holder {
         match o {
             Owner::Entity(t) => Holder {
                 name: String::new(),
@@ -544,10 +556,13 @@ impl Game<'_> {
             },
         }
     }
-    pub(in crate::game) fn stack_name(&self, s: &ItemStack) -> Text {
+    pub(in crate::game::server_side) fn stack_name(&self, s: &ItemStack) -> Text {
         self.stack_display_name(s)
     }
-    pub(in crate::game) fn item_from_input(&self, ctx: &Context) -> R<Option<ItemStack>> {
+    pub(in crate::game::server_side) fn item_from_input(
+        &self,
+        ctx: &Context,
+    ) -> R<Option<ItemStack>> {
         let Some(Arg::Item(input)) = ctx.get("item") else {
             return Ok(None);
         };
@@ -662,7 +677,7 @@ impl Game<'_> {
         Ok(value)
     }
     /// `if items` and `if slots`: how many items match / how many slots.
-    pub(in crate::game) fn condition_items(&mut self, c: &Context) -> R<(bool, i32)> {
+    pub(in crate::game::server_side) fn condition_items(&mut self, c: &Context) -> R<(bool, i32)> {
         let owners = self.owner_of(c, "source", true)?;
         let Some(Arg::Str(slot_name)) = c.get("slots").cloned() else {
             return Ok((false, 0));

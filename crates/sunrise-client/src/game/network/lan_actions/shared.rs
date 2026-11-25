@@ -152,15 +152,6 @@ pub(in crate::game) enum TurnRefused {
 }
 
 impl GuestPlay {
-    /// The guest can make a recipe check if it has room in its burst budget.
-    pub(in crate::game) fn recipe_check_available(&self) -> bool {
-        self.recipe_checks < RECIPE_CHECK_LIMIT
-    }
-
-    pub(in crate::game) fn decay_recipe_checks(&mut self) {
-        self.recipe_checks = self.recipe_checks.saturating_sub(1);
-    }
-
     #[cfg(test)]
     pub(in crate::game) fn arm_mining_for_test(
         &mut self,
@@ -205,20 +196,6 @@ impl GuestPlay {
     pub(in crate::game) fn set_use_remaining(&mut self, remaining: i32) -> bool {
         super::item_use::set_remaining(self.using, &mut self.use_duration, remaining)
     }
-    /// The `ServerPlayerGameMode.destroyProgressStart` a STOP on `pos` is measured from: the clock
-    /// belongs to the block the START named (`destroyPos`), and only a START writes either, so a
-    /// dig resumed after a fall still runs on the first START's ticks (#4124).
-    pub(in crate::game) fn dig_start_for(&self, pos: [i32; 3]) -> Option<u64> {
-        (self.destroy_pos == Some(pos)).then_some(self.dig_start)
-    }
-    /// A dig that ends without a break, an abort or a STOP from out of reach: the guest holds
-    /// attack no more (`digging` is `as_guest`'s left button and `tick_mining`'s `forced_hit`),
-    /// while the clock `destroy_pos` names stays for the STOP that comes when the guest is back
-    /// in reach (#4124).
-    pub(in crate::game) fn dig_ended(&mut self) {
-        self.digging = None;
-        self.mining = None;
-    }
 }
 
 pub(in crate::game) struct ItemRules<'a>(
@@ -228,35 +205,6 @@ pub(in crate::game) struct ItemRules<'a>(
     pub(in crate::game) Option<&'a sunrise_client::menu::StackedOutcome>,
     pub(in crate::game) Vec<sunrise_client::containers::ModContainerInsertRule>,
 );
-impl Rules for ItemRules<'_> {
-    fn items(&self) -> &sunrise_client::items::Items {
-        self.0
-    }
-    fn enchantments(&self) -> &sunrise_client::enchant::Enchantments {
-        self.1
-    }
-    fn max_stack(&self, item: &str) -> u32 {
-        self.0.get(item).map_or(64, |i| i.max_stack)
-    }
-    fn slot_rules(&self) -> Option<&dyn sunrise_client::menu::SlotRules> {
-        self.2
-    }
-    fn stacked(&self) -> Option<&sunrise_client::menu::StackedOutcome> {
-        self.3
-    }
-    fn mod_container_insert_rule(
-        &self,
-        slot: usize,
-        current: Option<&sunrise_client::items::ItemStack>,
-        offered: &sunrise_client::items::ItemStack,
-    ) -> bool {
-        sunrise_client::containers::mod_container_insert_allowed(
-            self.4.get(slot).copied().unwrap_or_default(),
-            current,
-            offered,
-        )
-    }
-}
 
 /// `Player.isWithinEntityInteractionRange(entity, buffer)` for a guest: the
 /// eyes closer than the entity interaction range (3, 5 in creative) plus

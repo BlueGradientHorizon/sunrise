@@ -43,7 +43,7 @@ fn blast_particle(id: &str) -> Result<ServerParticle, ExplodeError> {
 impl Game<'_> {
     /// What `entity` names as a blast's source: None for a stale or foreign
     /// handle, or a player in another level than the one in place.
-    pub(in crate::game) fn native_explosion_source(
+    pub(in crate::game::server_side) fn native_explosion_source(
         &self,
         entity: EntityRef,
     ) -> Option<(u32, Target)> {
@@ -218,7 +218,7 @@ impl Game<'_> {
 
     /// `ServerLevel.explode`'s `ExplosionInteraction` to the blast's, for a
     /// blast whose source is `id`.
-    pub(in crate::game) fn native_blast_interaction(
+    pub(in crate::game::server_side) fn native_blast_interaction(
         &self,
         interaction: ExplosionInteraction,
         id: Option<u32>,
@@ -243,7 +243,7 @@ impl Game<'_> {
     /// living (one in the projectile list, a thrown trident, a firework
     /// rocket, a fishing bobber); anything else causes none. The damage
     /// source and kill credit follow the cause.
-    pub(in crate::game) fn attribute_native_blast(&mut self, id: u32, target: Target) {
+    pub(in crate::game::server_side) fn attribute_native_blast(&mut self, id: u32, target: Target) {
         self.combat.0.explosion_source = Some(id);
         // `getEntities(this.source, ...)`: the source is no victim of its own blast.
         self.combat.0.explosion_source_named = true;
@@ -297,7 +297,11 @@ impl Game<'_> {
     /// sources bring the default calculator. The rays and the entity walk
     /// take it from the blast state (`blast_calculator_step`,
     /// `blast_damages_entities`, `blast_knockback`).
-    pub(in crate::game) fn native_blast_calculator(&mut self, id: u32, target: Target) {
+    pub(in crate::game::server_side) fn native_blast_calculator(
+        &mut self,
+        id: u32,
+        target: Target,
+    ) {
         match target {
             Target::Projectile(_)
                 if self.creatures.projectiles.iter().any(|p| {
@@ -347,7 +351,7 @@ impl Game<'_> {
     }
 
     /// The blast going off now, cleared to a sourceless one.
-    pub(in crate::game) fn take_blast_state(&mut self) -> BlastState {
+    pub(in crate::game::server_side) fn take_blast_state(&mut self) -> BlastState {
         let c = &mut self.combat.0;
         BlastState {
             explicit_cause: c.explicit_explosion_cause.take(),
@@ -369,7 +373,7 @@ impl Game<'_> {
     }
 
     /// Puts back what `take_blast_state` cleared.
-    pub(in crate::game) fn restore_blast_state(&mut self, s: BlastState) {
+    pub(in crate::game::server_side) fn restore_blast_state(&mut self, s: BlastState) {
         let c = &mut self.combat.0;
         c.explicit_explosion_cause = s.explicit_cause;
         c.blast_owner = s.blast_owner;

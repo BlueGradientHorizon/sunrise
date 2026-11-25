@@ -870,7 +870,7 @@ impl Game<'_> {
         }
         .stored_container_signal(pos)
     }
-    pub(in crate::game) fn block_can_place(
+    pub(in crate::game::server_side) fn block_can_place(
         &self,
         pos: [i32; 3],
         slot: usize,

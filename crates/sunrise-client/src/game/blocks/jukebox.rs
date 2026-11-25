@@ -482,7 +482,7 @@ impl Game<'_> {
         }
     }
     /// Let go of songs that ended or whose jukebox stopped.
-    pub(in crate::game) fn update_song_volumes(&mut self) {
+    pub(in crate::game::client_side) fn update_song_volumes(&mut self) {
         assert!(
             !self.is_logical_server(),
             "update_song_volumes called on server role"

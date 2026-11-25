@@ -157,7 +157,7 @@ impl Game<'_> {
     /// The logical play packet already passed the client send hook. A cauldron
     /// continuation travels with its envelope; only a published packet expects a reply.
     /// Returns true only when the packet was accepted by the active writer or hold queue.
-    pub(in crate::game) fn send_or_hold_play(
+    pub(in crate::game::client_side) fn send_or_hold_play(
         &self,
         packet: S,
         cauldron: Option<(i64, PendingCauldron)>,
@@ -192,7 +192,7 @@ impl Game<'_> {
             }
         }
     }
-    pub(in crate::game) fn publish_mod_held(
+    pub(in crate::game::client_side) fn publish_mod_held(
         &self,
         prepared: sunrise_client::net::PreparedPacket,
         packet: ServerboundPlayPacket,

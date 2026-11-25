@@ -20,7 +20,7 @@ impl Game<'_> {
     /// first. With no listener, no click or a click that is not a pickup this is `guest_menu_op`.
     /// A pickup the mods listen to is frozen, decided and then run inside the decision's
     /// savepoint; a refused one changes nothing and gives `None`, as does a guest who is gone.
-    pub(super) fn guest_menu_op_decided<R>(
+    pub(in crate::game) fn guest_menu_op_decided<R>(
         &mut self,
         gi: usize,
         menu: &mut Menu,
@@ -35,7 +35,7 @@ impl Game<'_> {
     /// (a machine's block entity, linked containers): `write_back` gets the game, the menu and
     /// what `op` returned, and runs right after `op`, inside the decision's savepoint when there
     /// is one, so an outer abort restores the storage together with the cursor and the slots.
-    pub(super) fn guest_menu_op_settled<R>(
+    pub(in crate::game::server_side) fn guest_menu_op_settled<R>(
         &mut self,
         gi: usize,
         menu: &mut Menu,
@@ -53,7 +53,7 @@ impl Game<'_> {
 
     /// Run an authoritative menu action, deciding a pickup click first when a mod listens.
     /// The action can release the menu's `Env` between takes and continue inside the savepoint.
-    pub(super) fn guest_menu_action<R>(
+    pub(in crate::game) fn guest_menu_action<R>(
         &mut self,
         gi: usize,
         menu: &mut Menu,
@@ -128,7 +128,7 @@ impl Game<'_> {
     /// Click `p` on the guest `gi`'s `menu`, after `prepare` has set the menu up as the click finds
     /// it, and say which menu slots the click changed (`None` when the guest is gone or the click
     /// was refused).
-    pub(super) fn guest_menu_click(
+    pub(in crate::game::server_side) fn guest_menu_click(
         &mut self,
         gi: usize,
         menu: &mut Menu,

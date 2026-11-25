@@ -32,7 +32,7 @@ priority = 10
 # A HEAD mixin on the loop's entry composes around the loop's copy.
 [[native.mixin]]
 id = "entry"
-target = "sunrise_client::game::block_entity_ticks::Game<'_>::tick_block_entities"
+target = "sunrise_client::game::server_side::block_entity_ticks_server::Game<'_>::tick_block_entities"
 kind = "HEAD"
 helper = "src/mixins/entry.rs"
 bindings = [{ name = "game", ty = "&mut Game<'_>", value = "&mut *self" }]

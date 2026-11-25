@@ -172,7 +172,7 @@ impl Game<'_> {
     /// Move the task's band past the rows that are lit and hand it to the
     /// level's streaming, and report the progress now and then. Runs before
     /// each streaming update of the level in place.
-    pub(in crate::game) fn tick_pregen(&mut self) {
+    pub(in crate::game::server_side) fn tick_pregen(&mut self) {
         let Some(task) = self.cmds.0.pregen.as_mut() else {
             return;
         };

@@ -56,7 +56,7 @@ impl Game<'_> {
     /// metadata, for the hook that hears its block's removal: the entity is gone from
     /// the world by then, so it is read first. None for a block without one, or while
     /// no mod listens.
-    pub(in crate::game) fn removed_block_entity_data(
+    pub(in crate::game::server_side) fn removed_block_entity_data(
         &self,
         pos: [i32; 3],
         state: BlockStateId,

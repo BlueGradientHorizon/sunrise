@@ -54,7 +54,7 @@ impl Game<'_> {
     /// (`SoundSource.RECORDS`, volume `range / 16`), `INSTRUMENT_PLAY` is
     /// posted, the used statistic counts and the horn is on cooldown as long.
     /// A horn whose instrument is unknown fails, which still ends the click.
-    pub(in crate::game) fn use_instrument(&mut self, stack: &ItemStack) {
+    pub(in crate::game::server_side) fn use_instrument(&mut self, stack: &ItemStack) {
         let Some(instrument) = self.res.items().instrument(stack) else {
             return;
         };
@@ -250,7 +250,7 @@ impl Game<'_> {
     /// when its hand changed), a spyglass stops scoping, and a mod's own
     /// release follows. A mod's `Stop` may skip the release. `stopUsingItem`
     /// ends the use after it.
-    pub(in crate::game) fn release_used_item(
+    pub(in crate::game::server_side) fn release_used_item(
         &mut self,
         stack: &ItemStack,
         ticks: u32,
@@ -290,7 +290,11 @@ impl Game<'_> {
     /// same item, `useItem` keeps the old stack, so the use stops with its
     /// vibration, even for air: an emptied hand alone reads as used up.
     /// The stop is for the stack the use began with, whatever the slot holds now.
-    pub(in crate::game) fn stop_use_replaced(&mut self, slot: usize, stack: Option<&ItemStack>) {
+    pub(in crate::game::server_side) fn stop_use_replaced(
+        &mut self,
+        slot: usize,
+        stack: Option<&ItemStack>,
+    ) {
         if !self.using.is_some_and(|(used, _)| used == slot) {
             return;
         }
@@ -331,7 +335,7 @@ impl Game<'_> {
 
 impl Game<'_> {
     /// Whether the use effects of `stack` ask for interaction vibrations.
-    pub(in crate::game) fn use_vibrates(&self, stack: &ItemStack) -> bool {
+    pub(in crate::game::server_side) fn use_vibrates(&self, stack: &ItemStack) -> bool {
         item_use::interact_vibrations(
             stack,
             self.items().get(&stack.item).map(|i| i.interact_vibrations),

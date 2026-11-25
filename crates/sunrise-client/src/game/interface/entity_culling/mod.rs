@@ -252,7 +252,7 @@ impl Game<'_> {
     /// EntityRenderer.shouldRender: the entity within `range` blocks of the
     /// camera, measured from its current `position`, and its culling box
     /// (`lo`..`hi`, interpolated, in world space) grown by 0.5 in the view.
-    pub(in crate::game) fn entity_in_view(
+    pub(in crate::game::client_side) fn entity_in_view(
         &self,
         camera: glam::DVec3,
         position: glam::DVec3,

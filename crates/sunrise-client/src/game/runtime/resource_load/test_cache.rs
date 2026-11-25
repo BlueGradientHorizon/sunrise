@@ -511,7 +511,7 @@ fn hydrate_hit(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn load(
+pub(in crate::game) fn load(
     roots: packs::PackRoots,
     additional_data: Vec<Arc<sunrise_client::datapack::DataPack>>,
     launch_world: Option<&str>,

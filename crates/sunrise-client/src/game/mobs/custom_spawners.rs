@@ -19,7 +19,7 @@ impl Game<'_> {
     }
 
     /// Whether vanilla's `kind` is still in this level's list.
-    pub(super) fn has_custom_spawner(&mut self, kind: SpawnerKind) -> bool {
+    pub(in crate::game) fn has_custom_spawner(&mut self, kind: SpawnerKind) -> bool {
         self.level_spawners().contains(&SpawnerEntry::Builtin(kind))
     }
 
@@ -27,7 +27,7 @@ impl Game<'_> {
     /// spawner keeps the place the game ticks it today (the phantom spawner runs with
     /// the stats, after the mobs: `spawn_phantoms`); a mod's spawner is the
     /// `custom_spawner_tick` hook for its key.
-    pub(super) fn tick_custom_spawners(&mut self) {
+    pub(in crate::game) fn tick_custom_spawners(&mut self) {
         self.level_spawners();
         let dim = self.dim;
         let spawn_enemies = self

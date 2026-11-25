@@ -18,7 +18,7 @@ pub(in crate::game::client_side) use std::borrow::Cow;
 impl Game<'_> {
     /// `ClientLevel.playSeededSound`: ask this client's mods before playback.
     /// A packet reaches this independently of the server's level event.
-    pub(in crate::game) fn play_client_level_sound(
+    pub(in crate::game::client_side) fn play_client_level_sound(
         &mut self,
         mut sound: LevelSound<'_>,
         seed: i64,
@@ -85,5 +85,23 @@ impl Game<'_> {
                 seed,
             );
         }
+    }
+    /// `LocalPlayer.playSound`, including inherited step, fall and consume sounds.
+    pub(in crate::game) fn play_client_player_sound(
+        &mut self,
+        name: &str,
+        volume: f32,
+        pitch: f32,
+    ) {
+        let Some(player) = self.player.as_ref() else {
+            return;
+        };
+        let at = [player.position.x, player.position.y, player.position.z];
+        let Some(remote) = self.remote.as_ref() else {
+            return;
+        };
+        let mut sound = LevelSound::new(name, at, volume, pitch).in_source(SoundSource::Players);
+        sound.emitter = Some(remote.entity_id as u32);
+        self.play_client_local_sound(sound);
     }
 }

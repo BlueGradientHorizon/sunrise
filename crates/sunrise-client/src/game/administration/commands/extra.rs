@@ -198,7 +198,7 @@ impl Game<'_> {
     // ---- /waypoint ------------------------------------------------------
 
     /// `LivingEntity.onAttributeUpdated`: change the manager's tracked set.
-    pub(in crate::game) fn update_waypoint_transmitter(&mut self, target: Target) {
+    pub(in crate::game::server_side) fn update_waypoint_transmitter(&mut self, target: Target) {
         let on = self.transmit_range(target) > 0.0;
         self.set_waypoint_transmitter(target, on);
     }
@@ -214,7 +214,7 @@ impl Game<'_> {
     pub(in crate::game) fn is_living(&self, t: Target) -> bool {
         matches!(t, Target::Player | Target::Mob(_) | Target::Stand(_))
     }
-    pub(in crate::game) fn cmd_waypoint(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_waypoint(&mut self, id: &str, ctx: &Context) -> R<i32> {
         if id == "waypoint.list" {
             let dimension = self.dim.id();
             let waypoints = self.waypoint_transmitters();
@@ -319,7 +319,7 @@ impl Game<'_> {
 
     // ---- /dialog --------------------------------------------------------
 
-    pub(in crate::game) fn cmd_dialog(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_dialog(&mut self, id: &str, ctx: &Context) -> R<i32> {
         let targets = self.entities(ctx, "targets", true)?;
         let n = targets.len() as i32;
         if id == "dialog.show" {
@@ -352,7 +352,11 @@ impl Game<'_> {
 
     // ---- /posteffect ----------------------------------------------------
 
-    pub(in crate::game) fn cmd_posteffect(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_posteffect(
+        &mut self,
+        id: &str,
+        ctx: &Context,
+    ) -> R<i32> {
         if id == "posteffect.list" {
             let t = self.one_entity(ctx, "target", true)?;
             let name = self.target_name(t);
@@ -430,7 +434,7 @@ impl Game<'_> {
 
     /// `TestCommand`: running, resetting and clearing tests is
     /// `test_runs`; `locate`, `pos` and `create` are `test_locate`.
-    pub(in crate::game) fn cmd_test(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_test(&mut self, id: &str, ctx: &Context) -> R<i32> {
         match id {
             "test.run" | "test.run.found" | "test.clear" | "test.stop" => {
                 self.cmd_test_runs(id, ctx)
@@ -443,7 +447,7 @@ impl Game<'_> {
     }
     /// `Entity.pick(10, 1, false)`: the first non-air block on the view ray,
     /// else the block at the ray's end.
-    pub(in crate::game) fn test_pick_block(&self) -> [i32; 3] {
+    pub(in crate::game::server_side) fn test_pick_block(&self) -> [i32; 3] {
         use sunrise_core::{
             geometry::{Vec3, traverse_blocks},
             position::BlockPos,
@@ -485,7 +489,7 @@ impl Game<'_> {
 
     /// `KickCommand.kickPlayers`: only guests of a published world can be
     /// kicked; the owner never.
-    pub(in crate::game) fn cmd_kick(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_kick(&mut self, ctx: &Context) -> R<i32> {
         let selector = match ctx.get("targets") {
             Some(Arg::Entity(s)) => Some(s.clone()),
             _ => None,
@@ -553,7 +557,7 @@ impl Game<'_> {
     /// `ResolvableProfile.CODEC` encodes it (`id`, `name`, and `properties`
     /// only when there are some), four clickable actions and the head object,
     /// sent with `sendSuccess(..., false)`.
-    pub(in crate::game) fn report_resolved_profile(
+    pub(in crate::game::server_side) fn report_resolved_profile(
         &mut self,
         message_id: &str,
         argument: Text,
@@ -617,7 +621,7 @@ impl Game<'_> {
     // ---- /publish, /unpublish -------------------------------------------
 
     /// `PublishCommand.publish` with `IntegratedServer.publishServer`.
-    pub(in crate::game) fn cmd_publish(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_publish(&mut self, ctx: &Context) -> R<i32> {
         let allow = matches!(ctx.get("allowCommands"), Some(Arg::Bool(true)));
         let port = match ctx.get("port") {
             Some(Arg::Int(p)) => *p,
@@ -663,7 +667,7 @@ impl Game<'_> {
         ));
         Ok(port)
     }
-    pub(in crate::game) fn cmd_unpublish(&mut self) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_unpublish(&mut self) -> R<i32> {
         if !self.unpublish() {
             return Err(err("commands.unpublish.notPublished", &[]));
         }
@@ -674,7 +678,7 @@ impl Game<'_> {
     // ---- /debug, /jfr, /version -----------------------------------------
 
     /// The tracer's `[F]`/`[C]` lines for one function, running its commands.
-    pub(in crate::game) fn trace_function(
+    pub(in crate::game::server_side) fn trace_function(
         &mut self,
         id: &str,
         lines: &[String],
@@ -713,7 +717,10 @@ impl Game<'_> {
     /// `ServerPlayer.openDialog` for the dialog of a `show_dialog` click
     /// event (a sign's): a registry id or the dialog itself, opened for the
     /// player the game acts for.
-    pub(in crate::game) fn show_click_dialog(&mut self, dialog: &sunrise_core::nbt::Tag) {
+    pub(in crate::game::server_side) fn show_click_dialog(
+        &mut self,
+        dialog: &sunrise_core::nbt::Tag,
+    ) {
         let holder = match dialog {
             sunrise_core::nbt::Tag::String(id) => self.dialog_holder(&id.to_string_lossy()),
             direct => Some(DialogHolder::Direct(direct.clone())),

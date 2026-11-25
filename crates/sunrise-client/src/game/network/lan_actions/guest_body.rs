@@ -65,19 +65,6 @@ pub(in crate::game) fn initialize(resources: &MotionResources, guest: &mut Guest
     true
 }
 
-impl Game<'_> {
-    pub(in crate::game) fn record_guest_motion_combat(&mut self, events: &[MotionEvent]) {
-        // Player.causeFallDamage: a fall of 2 blocks or more counts.
-        for event in events {
-            if let MotionEvent::Fall(sunrise_client::landing::FallEvent::Statistic(cm)) = event {
-                self.award_custom_stat("fall_one_cm", *cm);
-            }
-        }
-        self.record_combat(events);
-        self.wear_armor(events);
-    }
-}
-
 #[cfg(test)]
 #[path = "guest_body/tests.rs"]
 pub(in crate::game) mod tests;

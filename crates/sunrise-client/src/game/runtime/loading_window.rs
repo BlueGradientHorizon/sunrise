@@ -491,7 +491,7 @@ pub(in crate::game) fn start_client_game<'a>(
 
 impl Game<'_> {
     /// Pump the client connection without movement prediction until the harness server stops.
-    pub(in crate::game) fn wait_command_harness(&mut self) -> Result<()> {
+    pub(in crate::game::client_side) fn wait_command_harness(&mut self) -> Result<()> {
         let server = self.integrated.take().ok_or("command harness: no server")?;
         let client_config = std::env::var_os("SUNRISE_HARNESS_CLIENT_CONFIG");
         let mut wrote_config = false;

@@ -44,8 +44,8 @@ GuiGraphicsExtractor.blitNineSliceInnerSegment	port	crates/sunrise-client-render
 GuiGraphicsExtractor.blitTiledSprite	port	crates/sunrise-client-render/src/ui.rs::tiled
 GuiGraphicsExtractor.innerBlit	port	crates/sunrise-client-render/src/screen_draw.rs::blit	texture rectangle by UV; the atlas lookup is in HudBatch::rect_uv
 GuiGraphicsExtractor.innerTiledBlit	port	crates/sunrise-client-render/src/ui.rs::tile	one tiled quad
-GuiGraphicsExtractor.item	port	crates/sunrise-client/src/game/interface/inventory_slots.rs::Game::draw_item	gap: minor: no seed or owner is passed to the item model
-GuiGraphicsExtractor.fakeItem	inline	crates/sunrise-client/src/game/interface/inventory_slots.rs::Game::draw_item	same as item with no owner
+GuiGraphicsExtractor.item	port	crates/sunrise-client/src/game/interface/inventory_slots_client.rs::Game::draw_item	gap: minor: no seed or owner is passed to the item model
+GuiGraphicsExtractor.fakeItem	inline	crates/sunrise-client/src/game/interface/inventory_slots_client.rs::Game::draw_item	same as item with no owner
 GuiGraphicsExtractor.itemBar	inline	crates/sunrise-client-render/src/hud_overlays.rs::item_decorations	damage bar drawn in item_decorations
 GuiGraphicsExtractor.itemCount	inline	crates/sunrise-client-render/src/hud_overlays.rs::item_decorations	stack count drawn in item_decorations
 GuiGraphicsExtractor.map	port	crates/sunrise-client/src/game/blocks/cartography.rs::Game::draw_cartography
@@ -85,7 +85,7 @@ Hud.getAirBubbleYLine	inline	crates/sunrise-client-render/src/hud_layout.rs::Hea
 Hud.getCurrentAirSupplyBubble	inline	crates/sunrise-client-render/src/hud_layout.rs::HealthHud::air_level	air bubble count
 Hud.extractFood	port	crates/sunrise-client-render/src/hud_layout.rs::HealthHud::food_level	food row in the vanilla food layer
 Hud.extractTextureOverlay	port	crates/sunrise-client-render/src/hud_overlays.rs::camera_overlays	gap: player: the powder-snow freeze outline is not drawn; only the equippable camera overlay (pumpkin) is
-Hud.extractSlot	port	crates/sunrise-client/src/game/interface/inventory_slots.rs::Game::draw_slot_item
+Hud.extractSlot	port	crates/sunrise-client/src/game/interface/inventory_slots_client.rs::Game::draw_slot_item
 Hud.setNowPlaying	port	crates/sunrise-client-render/src/hud_overlays.rs::Titles::set_overlay	the animate flag gives the rainbow colour
 Hud.onDisconnected	port	crates/sunrise-client/src/game/network/remote/interaction_actions_client.rs::Game::hud_disconnected	the tab list, boss bars, toasts, debug charts and titles reset; chat is left alone (ChatComponent.storeState)
 Hud.willPrioritizeJumpInfo	port	crates/sunrise-client/src/locator_bar.rs::ContextualBar::next	the jumping input comes from Game::mount_jumping

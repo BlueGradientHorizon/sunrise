@@ -1,7 +1,9 @@
 //! `VehicleEntity.hurtServer`'s `DamageSource` as far as a minecart reads it,
 //! and the tail of an accepted hit: the `ENTITY_DAMAGE` game event, the drop's
 //! `CustomName` (`destroy`) and `chestVehicleDestroyed`'s angry piglins.
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use crate::game::commands::Target;
 
 /// The `DamageSource` a cart took. `VehicleEntity.hurtServer` attributes its
@@ -14,28 +16,6 @@ pub(in crate::game) struct CartHit {
 }
 
 impl CartHit {
-    /// A projectile's hit: `getEntity()` is its owner, `getDirectEntity()` the
-    /// projectile itself, so it angers no piglin.
-    pub(in crate::game) fn projectile(owner: Option<Who>, guest: Option<u32>) -> Self {
-        let by = match owner {
-            Some(Who::Player) => Some(guest.map_or(Target::Player, Target::Guest)),
-            Some(Who::Mob(id)) => Some(Target::Mob(id)),
-            None => None,
-        };
-        Self {
-            by,
-            by_player: false,
-        }
-    }
-    /// The acting player's own hit (`Player.attack`'s `playerAttack`): its
-    /// direct entity is the player in place (the host, or the guest whose turn
-    /// it is), whose state `anger_piglins` reads.
-    pub(in crate::game) fn player() -> Self {
-        Self {
-            by: Some(Target::Player),
-            by_player: true,
-        }
-    }
     /// `/damage`'s `DamageSource`: `by` is its direct entity, `causing` the
     /// causing entity `getEntity()` names.
     pub(in crate::game) fn command(by: Option<Target>, causing: Option<Target>) -> Self {
@@ -92,4 +72,4 @@ impl Game<'_> {
 
 #[cfg(test)]
 #[path = "minecart_hit_tests.rs"]
-mod hit_tests;
+pub(in crate::game) mod hit_tests;

@@ -36,7 +36,7 @@ pub(in crate::game) struct PregenTask {
 }
 
 impl PregenTask {
-    pub(in crate::game) fn running_for(&self) -> Duration {
+    pub(in crate::game::server_side) fn running_for(&self) -> Duration {
         if self.paused {
             self.ran
         } else {
@@ -84,7 +84,11 @@ pub(in crate::game) fn duration(seconds: f64) -> String {
 
 impl Game<'_> {
     /// The console and the player who started the task get the progress.
-    pub(in crate::game) fn pregen_report(&mut self, owner: Option<u32>, message: Text) {
+    pub(in crate::game::server_side) fn pregen_report(
+        &mut self,
+        owner: Option<u32>,
+        message: Text,
+    ) {
         if self.is_dedicated_server() {
             super::super::dedicated::log("INFO", &message.plain());
         } else {

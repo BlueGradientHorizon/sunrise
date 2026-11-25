@@ -29,7 +29,7 @@ fn inventory_slot(slot: u32) -> Option<Slot> {
 }
 
 /// The authority refusals shared by writes to a server player's own state.
-pub(super) enum PlayerWriteRefusal {
+pub(in crate::game) enum PlayerWriteRefusal {
     Stale,
     Client,
     Dead,
@@ -46,7 +46,7 @@ impl From<PlayerWriteRefusal> for PlayerDataRefusal {
 }
 
 /// Lend `Inventory.getItem` over a player's 43 vanilla inventory slots.
-pub(super) fn lend_inventory_view(
+pub(in crate::game) fn lend_inventory_view(
     inventory: &[Option<ItemStack>],
     armor: &[Option<ItemStack>; 4],
     offhand: &Option<ItemStack>,
@@ -69,7 +69,7 @@ pub(super) fn lend_inventory_view(
 
 impl Game<'_> {
     /// Lend `Inventory.getItem` over the resident slots.
-    pub(super) fn player_inventory_slots(
+    pub(in crate::game) fn player_inventory_slots(
         &self,
         player: PlayerRef,
         read: &mut dyn for<'a> FnMut(InventoryView<'a>),
@@ -86,7 +86,10 @@ impl Game<'_> {
 
     /// Why a write to this player's inventory, ender chest or hands is refused
     /// before it starts: a client, a handle with no online player, a dead player.
-    pub(super) fn player_write_gate(&self, player: PlayerRef) -> Result<(), PlayerWriteRefusal> {
+    pub(in crate::game) fn player_write_gate(
+        &self,
+        player: PlayerRef,
+    ) -> Result<(), PlayerWriteRefusal> {
         if !self.is_logical_server() {
             return Err(PlayerWriteRefusal::Client);
         }
@@ -98,7 +101,7 @@ impl Game<'_> {
     }
 
     /// `Inventory.setItem`, in the player's turn: the tick's inventory sync tells the client.
-    pub(super) fn player_set_inventory_slot(
+    pub(in crate::game) fn player_set_inventory_slot(
         &mut self,
         player: PlayerRef,
         slot: u32,

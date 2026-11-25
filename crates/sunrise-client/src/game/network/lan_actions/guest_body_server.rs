@@ -194,7 +194,7 @@ impl Game<'_> {
             });
         }
     }
-    pub(in crate::game) fn guest_motion_events(
+    pub(in crate::game::server_side) fn guest_motion_events(
         &mut self,
         conn: u32,
         at: [f64; 3],
@@ -679,6 +679,19 @@ impl Game<'_> {
                 }));
             }
         }
+    }
+    pub(in crate::game::server_side) fn record_guest_motion_combat(
+        &mut self,
+        events: &[MotionEvent],
+    ) {
+        // Player.causeFallDamage: a fall of 2 blocks or more counts.
+        for event in events {
+            if let MotionEvent::Fall(sunrise_client::landing::FallEvent::Statistic(cm)) = event {
+                self.award_custom_stat("fall_one_cm", *cm);
+            }
+        }
+        self.record_combat(events);
+        self.wear_armor(events);
     }
 }
 

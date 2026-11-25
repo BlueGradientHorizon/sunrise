@@ -120,7 +120,7 @@ impl Game<'_> {
     /// THIS_ENTITY is `CommandSourceStack.getEntity`: the player who typed the command, the
     /// entity `execute as` names, nobody for the console or a function.
     /// Other valid context targets are absent in COMMAND_SLOT_SOURCE, never Player fallbacks.
-    pub(in crate::game) fn slot_source_owner(
+    pub(in crate::game::server_side) fn slot_source_owner(
         &self,
         container: &Owner,
         source: &Value,

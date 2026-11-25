@@ -2,11 +2,17 @@
 //! player's level takes on entering it (`enter_remote_dimension`), and a viewed level's world on
 //! its `open` (`viewed_worlds`). Only the player's level also takes the type's environment
 //! attributes (`build_level_environments`).
+#[allow(unused_imports)]
 use super::Remote;
+#[allow(unused_imports)]
 use crate::game::{Dim, remote_chunks::ChunkFormat};
+#[allow(unused_imports)]
 use std::sync::{Arc, Weak};
+#[allow(unused_imports)]
 use sunrise_client::{chunk::LevelShape, environment::Environment};
+#[allow(unused_imports)]
 use sunrise_protocol::{packets::play, registry::DimensionType};
+#[allow(unused_imports)]
 use sunrise_world::dimension_type::DimensionFacts;
 
 /// What a level of the server is, from its synced dimension type.
@@ -26,33 +32,6 @@ pub(in crate::game) struct LevelFormat {
 }
 
 impl crate::game::Game<'_> {
-    /// The client's table of the server's levels on entering `entered`: a level past vanilla's
-    /// three that the process does not know yet is added, so that [`Dim::from_id`] finds it, and
-    /// the level left is dropped when the server opened it after Login (a runtime level), so that a
-    /// long session through many of them keeps none. A viewed world of such a level needs no
-    /// entry: it keeps its own name. Only a level this connection added leaves the table: in single
-    /// player the integrated server shares the table, and a runtime level it opened is its own
-    /// until it closes it (`runtime_levels.rs`).
-    pub(in crate::game) fn track_remote_levels(&mut self, entered: &str) {
-        if let Some(r) = self.remote.as_mut()
-            && r.level != entered
-            && !Dim::is_vanilla(&r.level)
-            && !r.levels.contains(&r.level)
-        {
-            if r.added_levels.remove(&r.level) {
-                Dim::remove_extra(&r.level);
-            }
-            r.facts_cache.remove(&r.level);
-        }
-        if !Dim::is_vanilla(entered)
-            && !Dim::exists(entered)
-            && let Some(r) = self.remote.as_mut()
-        {
-            Dim::add_extra(entered);
-            r.added_levels.insert(entered.to_owned());
-        }
-    }
-
     /// The environment attributes of the level the player is in, from its synchronized dimension
     /// type, as `EnvironmentAttributeSystem.addDimensionLayer` takes `level.dimensionType()`'s
     /// attributes (and `addDynamicLayers` its timelines): the type's attributes and timelines over
@@ -110,19 +89,19 @@ impl crate::game::Game<'_> {
 /// and what they were built from.
 pub(in crate::game) struct LevelEnvironments {
     /// The type's JSON both were built from.
-    json: serde_json::Value,
+    pub(in crate::game) json: serde_json::Value,
     /// Over the client's own environment of the type: gameplay's.
-    own: Option<Arc<Environment>>,
+    pub(in crate::game) own: Option<Arc<Environment>>,
     /// The packs' stacks `pack` was built over (`None` without pack modifiers). A weak handle:
     /// a reload makes new stacks, and the old ones' address is not reused while it lives.
-    stacks: Option<Weak<[Environment; 3]>>,
+    pub(in crate::game) stacks: Option<Weak<[Environment; 3]>>,
     /// Over the packs' stack of the type: the frame's.
-    pack: Option<Arc<Environment>>,
+    pub(in crate::game) pack: Option<Arc<Environment>>,
 }
 
 /// The frame's environment of the synchronized type `name` with `json`: the type over the packs'
 /// stack of that type, or `None` without pack modifiers or for a type with no pack stack.
-fn pack_environment(
+pub(in crate::game) fn pack_environment(
     name: &str,
     json: &serde_json::Value,
     stacks: Option<&Arc<[Environment; 3]>>,
@@ -137,7 +116,7 @@ fn pack_environment(
 }
 
 /// Whether `built` are the packs' current stacks `now`.
-fn same_stacks(
+pub(in crate::game) fn same_stacks(
     built: Option<&Weak<[Environment; 3]>>,
     now: Option<&Arc<[Environment; 3]>>,
 ) -> bool {
@@ -225,14 +204,14 @@ impl Remote {
 /// Whether a synchronized dimension type's values are inside the codec's ranges
 /// (`DimensionType.java`: a coordinate scale of `1.0E-5F` to `3.0E7`, a monster spawn block light
 /// limit of 0 to 15; the ambient light has no range), so a portal's ratio of two scales is finite.
-fn sane_facts(facts: &DimensionFacts) -> bool {
+pub(in crate::game) fn sane_facts(facts: &DimensionFacts) -> bool {
     (f64::from(1.0e-5_f32)..=3.0e7).contains(&facts.coordinate_scale)
         && (0..=15).contains(&facts.monster_spawn_block_light_limit)
         && facts.ambient_light.is_finite()
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::sane_facts;
     use sunrise_world::dimension_type::DimensionFacts;
 

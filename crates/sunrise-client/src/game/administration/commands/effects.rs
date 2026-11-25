@@ -30,7 +30,9 @@ pub(in crate::game) fn effect_name(id: &str) -> Text {
     Text::translate(&brewing::description_id(id), &[])
 }
 impl Game<'_> {
-    pub(in crate::game) fn effect_arg(ctx: &Context) -> R<&'static brewing::EffectDef> {
+    pub(in crate::game::server_side) fn effect_arg(
+        ctx: &Context,
+    ) -> R<&'static brewing::EffectDef> {
         let Some(Arg::Resource(id)) = ctx.get("effect") else {
             return Err(err("argument.resource.invalid_type", &[]));
         };
@@ -42,7 +44,7 @@ impl Game<'_> {
         })
     }
     /// The executing entity for argument-less forms (the player).
-    pub(in crate::game) fn living_targets(&mut self, ctx: &Context) -> R<Vec<Target>> {
+    pub(in crate::game::server_side) fn living_targets(&mut self, ctx: &Context) -> R<Vec<Target>> {
         if ctx.get("targets").is_some() {
             self.entities(ctx, "targets", false)
         } else {
@@ -50,7 +52,7 @@ impl Game<'_> {
         }
     }
     /// `EffectCommands.clearEffects` / `clearEffect`.
-    pub(in crate::game) fn cmd_effect_clear(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_effect_clear(&mut self, ctx: &Context) -> R<i32> {
         let effect = if ctx.get("effect").is_some() {
             Some(Self::effect_arg(ctx)?)
         } else {
@@ -97,7 +99,7 @@ impl Game<'_> {
         Ok(tracker.total)
     }
     /// `EnchantCommand.enchant`: enchant each living target's main-hand stack.
-    pub(in crate::game) fn cmd_enchant(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_enchant(&mut self, ctx: &Context) -> R<i32> {
         let Some(Arg::Resource(id)) = ctx.get("enchantment") else {
             return Ok(0);
         };
@@ -162,7 +164,7 @@ impl Game<'_> {
 
     /// Change components in the hand itself, without an equip event. The next
     /// inventory and equipment syncs publish the updated stack as usual.
-    pub(in crate::game) fn enchant_main_hand(
+    pub(in crate::game::server_side) fn enchant_main_hand(
         &mut self,
         t: Target,
         id: &str,
@@ -233,7 +235,7 @@ impl Game<'_> {
     }
 
     /// `EffectCommands.giveEffect`.
-    pub(in crate::game) fn cmd_effect_give(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_effect_give(&mut self, ctx: &Context) -> R<i32> {
         let effect = Self::effect_arg(ctx)?;
         let seconds = if ctx.has("infinite") {
             Some(-1)

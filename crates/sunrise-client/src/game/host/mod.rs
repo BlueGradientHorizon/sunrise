@@ -4,13 +4,17 @@
 //! a mod reaches every area through them and the handles.
 // The generated impls convert error types that are already equal; TODO(#2273): make the generator skip it.
 #![allow(clippy::useless_conversion, clippy::unit_arg)]
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use super::api_values::{ItemBoundary, TryIntoApi, TryIntoEnginePreservingCount};
+#[allow(unused_imports)]
 use mod_api::__private::game::*;
+#[allow(unused_imports)]
 use mod_api::*;
 
 pub(crate) mod draw;
-mod phase_contexts;
+pub(in crate::game) mod phase_contexts;
 pub(crate) mod services;
 include!(concat!(env!("OUT_DIR"), "/game_host_generated.rs"));
 

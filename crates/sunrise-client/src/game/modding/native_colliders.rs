@@ -5,22 +5,29 @@
 //! The server keeps a [`ColliderEntry`] by entity id beside the entity's attachments, and a
 //! client keeps what its tracking server sent in `Remote::colliders`. A level with no colliders
 //! holds empty maps, so nothing else in the game pays for them.
+#[allow(unused_imports)]
 use super::{
     Dim, Game,
     commands::Target,
     remote_vehicles::{PassengerSeat, passenger_root},
 };
+#[allow(unused_imports)]
 use mod_api::{Collider, ColliderError, EntityRef};
+#[allow(unused_imports)]
 use std::collections::{HashMap, HashSet};
+#[allow(unused_imports)]
 use sunrise_client::{
     colliders::{ColliderState, valid_rotation},
     fast_hash::FxHashMap,
 };
+#[allow(unused_imports)]
 use sunrise_core::{
     geometry::Vec3,
     nbt::{Compound, Tag},
 };
+#[allow(unused_imports)]
 use sunrise_mod_runtime::attachments::{Attachments, Holder};
+#[allow(unused_imports)]
 use sunrise_protocol::collider_sync::{self, Message};
 
 /// The save key of an entity's collider, beside its attachments.
@@ -29,7 +36,7 @@ pub(in crate::game) const SAVE_KEY: &str = "SunriseCollider";
 /// A server entity's collider, with the form the save writes.
 pub(in crate::game) struct ColliderEntry {
     pub state: ColliderState,
-    saved: Compound,
+    pub(in crate::game) saved: Compound,
 }
 
 /// The per-entity maps the game keeps by entity id: attachments, and colliders. It reads as
@@ -37,10 +44,10 @@ pub(in crate::game) struct ColliderEntry {
 /// that what saves, loads and forgets an entity's attachments handles its collider too.
 #[derive(Default)]
 pub(in crate::game) struct EntityMaps {
-    attachments: FxHashMap<u32, Attachments>,
-    colliders: FxHashMap<u32, ColliderEntry>,
+    pub(in crate::game) attachments: FxHashMap<u32, Attachments>,
+    pub(in crate::game) colliders: FxHashMap<u32, ColliderEntry>,
     /// The ids of the colliders each level holds, so a level's tick places only its own.
-    by_level: HashMap<Dim, HashSet<u32>>,
+    pub(in crate::game) by_level: HashMap<Dim, HashSet<u32>>,
 }
 
 impl std::ops::Deref for EntityMaps {
@@ -98,7 +105,7 @@ impl EntityMaps {
         }
     }
 
-    fn unindex(&mut self, id: u32) {
+    pub(in crate::game::server_side) fn unindex(&mut self, id: u32) {
         self.by_level.retain(|_, ids| {
             ids.remove(&id);
             !ids.is_empty()
@@ -128,18 +135,18 @@ impl EntityMaps {
 
 /// What a placed collider was made from: when all of these are as they were, so is it.
 #[derive(PartialEq)]
-struct PlacementKey {
-    id: u32,
-    serial: u64,
-    origin: [u64; 3],
+pub(in crate::game) struct PlacementKey {
+    pub(in crate::game) id: u32,
+    pub(in crate::game) serial: u64,
+    pub(in crate::game) origin: [u64; 3],
     /// The entities of its vehicle stack.
-    stack: Vec<u32>,
+    pub(in crate::game) stack: Vec<u32>,
 }
 
 /// The vehicle stack of `id` in a riding graph (passenger to vehicle): the root and everything
 /// whose way up reaches it, `id` included. The walks are bounded by the graph's size, so a
 /// cycle in what a server sent ends them.
-fn stack_in_graph(vehicles: &HashMap<u32, PassengerSeat>, id: u32) -> Vec<u32> {
+pub(in crate::game) fn stack_in_graph(vehicles: &HashMap<u32, PassengerSeat>, id: u32) -> Vec<u32> {
     let root_of = |at| passenger_root(vehicles, at).unwrap_or_else(|last| last);
     let root = root_of(id);
     let mut stack = vec![root];
@@ -155,36 +162,42 @@ fn stack_in_graph(vehicles: &HashMap<u32, PassengerSeat>, id: u32) -> Vec<u32> {
     stack
 }
 
-fn origin_bits(origin: Vec3) -> [u64; 3] {
+pub(in crate::game) fn origin_bits(origin: Vec3) -> [u64; 3] {
     [origin.x.to_bits(), origin.y.to_bits(), origin.z.to_bits()]
 }
 
-struct Placement {
-    keys: Vec<PlacementKey>,
-    prepared: sunrise_client_render::moving_colliders::Prepared,
+pub(in crate::game) struct Placement {
+    pub(in crate::game) keys: Vec<PlacementKey>,
+    pub(in crate::game) prepared: sunrise_client_render::moving_colliders::Prepared,
 }
 
 /// The recent frames of each level's colliders, on a server, for the move check of a player a
 /// collider carries.
 #[derive(Default)]
 pub(in crate::game) struct Histories(
-    HashMap<Dim, std::rc::Rc<std::cell::RefCell<sunrise_client_render::moving_colliders::History>>>,
+    pub(in crate::game)  HashMap<
+        Dim,
+        std::rc::Rc<std::cell::RefCell<sunrise_client_render::moving_colliders::History>>,
+    >,
 );
 
 /// The placements of each level's colliders, kept from tick to tick.
 #[derive(Default)]
-pub(in crate::game) struct Placements(HashMap<Dim, Placement>);
+pub(in crate::game) struct Placements(pub(in crate::game) HashMap<Dim, Placement>);
 
 /// What the server sends about one entity's collider this tick.
 pub(in crate::game) struct ColliderChange {
-    entity: u32,
-    messages: Vec<Message>,
+    pub(in crate::game) entity: u32,
+    pub(in crate::game) messages: Vec<Message>,
 }
 
 impl Game<'_> {
     /// The entity id a handle names when it may carry a collider: a server entity that is
     /// not a player.
-    fn collider_holder(&self, entity: EntityRef) -> Result<u32, ColliderError> {
+    pub(in crate::game::server_side) fn collider_holder(
+        &self,
+        entity: EntityRef,
+    ) -> Result<u32, ColliderError> {
         if !self.is_logical_server() {
             return Err(ColliderError::StaleEntity);
         }
@@ -347,7 +360,10 @@ impl Game<'_> {
     /// Calls `f` with each collider of the level in place, in an order that is the same from
     /// one call to the next while none is added or removed; stops and answers false when `f`
     /// does.
-    fn each_collider(&self, mut f: impl FnMut(u32, &ColliderState) -> bool) -> bool {
+    pub(in crate::game::server_side) fn each_collider(
+        &self,
+        mut f: impl FnMut(u32, &ColliderState) -> bool,
+    ) -> bool {
         if self.is_logical_server() {
             for id in self.entity_attachments.colliders_in(self.dim) {
                 if let Some(entry) = self.entity_attachments.collider(id)
@@ -368,7 +384,7 @@ impl Game<'_> {
 
     /// Whether the entity `id` is in no vehicle stack but its own: it rides nothing and
     /// nothing rides it. Asked without building the stack.
-    fn is_alone(&self, id: u32) -> bool {
+    pub(in crate::game::server_side) fn is_alone(&self, id: u32) -> bool {
         if self.is_logical_server() {
             let Some(epoch) = self.native_lifecycle.epoch() else {
                 return true;
@@ -384,7 +400,7 @@ impl Game<'_> {
     }
 
     /// Whether `kept` is still the vehicle stack of the entity `id`.
-    fn stack_is(&self, id: u32, kept: &[u32]) -> bool {
+    pub(in crate::game::server_side) fn stack_is(&self, id: u32, kept: &[u32]) -> bool {
         if kept == [id] {
             self.is_alone(id)
         } else {
@@ -570,7 +586,7 @@ impl Game<'_> {
         }
     }
 
-    fn send_collider_sync(
+    pub(in crate::game) fn send_collider_sync(
         &mut self,
         senders: &[sunrise_client::lan::conn::PlayerSender],
         message: &Message,
@@ -601,35 +617,6 @@ impl Game<'_> {
         }
     }
 
-    /// A `sunrise:collider_sync` payload the server sent the window.
-    pub(in crate::game) fn remote_collider_sync(&mut self, data: &[u8]) {
-        let message = match collider_sync::decode(data) {
-            Ok(message) => message,
-            Err(e) => return log::debug!("Sunrise: a bad collider sync: {e}"),
-        };
-        let Some(remote) = self.remote.as_mut() else {
-            return;
-        };
-        let entity = match message {
-            Message::Boxes { entity, .. }
-            | Message::Patch { entity, .. }
-            | Message::Rotation { entity, .. }
-            | Message::Clear { entity } => entity,
-        };
-        let mut held = remote.colliders.remove(&entity);
-        ColliderState::apply(&mut held, &message);
-        if let Some(state) = held {
-            remote.colliders.insert(entity, state);
-        }
-    }
-
-    /// A client forgets the collider of an entity the server stopped showing it.
-    pub(in crate::game) fn forget_client_collider(&mut self, id: i32) {
-        if let Some(remote) = self.remote.as_mut() {
-            remote.colliders.remove(&(id as u32));
-        }
-    }
-
     /// The holders a flush sends whole collider snapshots for: the entities players started
     /// to track. Marks the pairs so the change flush skips them.
     pub(in crate::game) fn fresh_collider_pairs(
@@ -646,7 +633,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
 
     /// What a client works out from the riding its server told: the root, every rider at any

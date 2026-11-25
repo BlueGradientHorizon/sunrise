@@ -338,7 +338,7 @@ impl Game<'_> {
     /// to the stack's own maximum, then `MultiPlayerGameMode.handleCreativeModeItemAdd` for
     /// every slot it changed, sent now: the end of the tick's sync skips creative slots while
     /// a server menu is open. What did not fit comes back and is not dropped.
-    pub(in crate::game) fn creative_give_stack(
+    pub(in crate::game::client_side) fn creative_give_stack(
         &mut self,
         stack: &mod_api::ItemStack,
     ) -> Result<Option<mod_api::ItemStack>, CreativeGiveError> {

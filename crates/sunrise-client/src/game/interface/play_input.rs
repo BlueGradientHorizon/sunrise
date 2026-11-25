@@ -663,7 +663,7 @@ impl Game<'_> {
     }
 
     /// A new player entity took over (spawn, respawn, a server joined, a dimension change).
-    pub(in crate::game) fn input_player_replaced(&mut self) {
+    pub(in crate::game::client_side) fn input_player_replaced(&mut self) {
         self.pad_player_replaced();
     }
 
@@ -679,7 +679,7 @@ impl Game<'_> {
     }
 
     /// Something happened to the player that a device may let them feel.
-    pub(in crate::game) fn input_feedback(
+    pub(in crate::game::client_side) fn input_feedback(
         &mut self,
         event: sunrise_client::input_source::Feedback,
     ) {

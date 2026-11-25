@@ -249,33 +249,6 @@ impl Game<'_> {
         }
     }
 
-    /// Armor stands riding the local player, on the top of its box. Vanilla
-    /// ticks the player (`tickNonPassenger`) before its passengers
-    /// (`tickPassenger` -> `positionRider`), so a rider's `xo` and `x` are the
-    /// seats before and after the same move: call this after the player's.
-    pub(in crate::game) fn seat_own_stands(&mut self) {
-        let (Some(me), Some(p)) = (
-            self.remote.as_ref().map(|r| r.entity_id as u32),
-            self.player.as_ref(),
-        ) else {
-            return;
-        };
-        let up = Vec3::new(0.0, f64::from(p.dimensions.height), 0.0);
-        let (at, before) = (
-            p.position.add_vector(up),
-            self.previous_position.add_vector(up),
-        );
-        for stand in self
-            .armor_stands
-            .iter_mut()
-            .filter(|a| a.vehicle == Some(me))
-        {
-            stand.position = at;
-            stand.previous = before;
-            stand.velocity = Vec3::ZERO;
-        }
-    }
-
     /// A vehicle whose `seat_*_mobs` pass places its mob riders itself.
     pub(in crate::game) fn seats_own_riders(&self, vehicle: u32) -> bool {
         self.boats.iter().any(|b| b.id == vehicle)

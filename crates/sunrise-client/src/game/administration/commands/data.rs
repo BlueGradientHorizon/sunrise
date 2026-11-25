@@ -147,7 +147,7 @@ impl Game<'_> {
     /// (`arrow_from_nbt`), over the entity it already is. Its type, id, join,
     /// random, UUID and tick count stay; so does what no save holds (its pierced
     /// entities, `inGroundTime`, fluid state). None when the data has no position.
-    pub(in crate::game) fn load_resident_arrow(
+    pub(in crate::game::server_side) fn load_resident_arrow(
         &mut self,
         index: usize,
         spectral: bool,
@@ -205,7 +205,7 @@ impl Game<'_> {
         });
         Some(())
     }
-    pub(in crate::game) fn raw_mut(&mut self, t: Target) -> Option<&mut Tag> {
+    pub(in crate::game::server_side) fn raw_mut(&mut self, t: Target) -> Option<&mut Tag> {
         match t {
             Target::Player => Some(self.level.player_extra.get_or_insert_with(empty)),
             Target::Guest(conn) => self
@@ -312,7 +312,7 @@ impl Game<'_> {
     /// for a comparator at `p`: None for any other block; else whether the
     /// loaded output differs from the one it had (None inside when the tag
     /// does not decode). The block's own metadata comes from `comparator_data`.
-    pub(in crate::game) fn load_comparator_output(
+    pub(in crate::game::server_side) fn load_comparator_output(
         &mut self,
         p: [i32; 3],
         tag: &Tag,
@@ -337,7 +337,7 @@ impl Game<'_> {
 
     /// `ComparatorBlockEntity.saveAdditional`: expose the circuit's live output,
     /// rather than keeping a second copy in the ordinary block entity map.
-    pub(in crate::game) fn comparator_data(&self, p: [i32; 3]) -> Option<Tag> {
+    pub(in crate::game::server_side) fn comparator_data(&self, p: [i32; 3]) -> Option<Tag> {
         if self.data_block_name(p) != "minecraft:comparator" {
             return None;
         }
@@ -380,12 +380,16 @@ impl Game<'_> {
     // ---- accessors -----------------------------------------------------
 
     /// The `role`th provider of the command (`entity`, `block` or `storage`).
-    pub(in crate::game) fn data_ref(&mut self, ctx: &Context, role: usize) -> R<DataRef> {
+    pub(in crate::game::server_side) fn data_ref(
+        &mut self,
+        ctx: &Context,
+        role: usize,
+    ) -> R<DataRef> {
         let prefix = if role == 0 { "target" } else { "source" };
         self.data_ref_named(ctx, role, prefix)
     }
     /// `PistonMovingBlockEntity.saveAdditional`, with full command metadata.
-    pub(in crate::game) fn moving_piston_data(&self, p: [i32; 3]) -> Option<Tag> {
+    pub(in crate::game::server_side) fn moving_piston_data(&self, p: [i32; 3]) -> Option<Tag> {
         let pos = sunrise_core::position::BlockPos::new(p[0], p[1], p[2]);
         let (_, piston) = self
             .block_ticks
@@ -464,7 +468,7 @@ impl Game<'_> {
     /// entry gets what the model keeps outside it: the hopper's
     /// `TransferCooldown` (`HopperBlockEntity.saveAdditional`), the custom
     /// name and the pending loot table.
-    pub(in crate::game) fn full_block_entity_data(&self, p: [i32; 3]) -> Option<Tag> {
+    pub(in crate::game::server_side) fn full_block_entity_data(&self, p: [i32; 3]) -> Option<Tag> {
         if let Some(tag) = self.comparator_data(p).or_else(|| self.pot_data(p)) {
             return Some(tag);
         }
@@ -494,7 +498,7 @@ impl Game<'_> {
     }
     /// `BlockEntity.loadWithComponents` for the block entity at `key` from its full saved
     /// `tag` (id and position included): false when the tag doesn't decode.
-    pub(in crate::game) fn load_block_entity_data(
+    pub(in crate::game::server_side) fn load_block_entity_data(
         &mut self,
         key: (i32, i32, i32),
         tag: &Tag,
@@ -514,20 +518,20 @@ impl Game<'_> {
     }
     /// What `BlockDataAccessor.setData` tells the world after a load: `setChanged` and
     /// `sendBlockUpdated(3)`, even when the block state stays the same.
-    pub(in crate::game) fn block_entity_updated(&mut self, key: (i32, i32, i32)) {
+    pub(in crate::game::server_side) fn block_entity_updated(&mut self, key: (i32, i32, i32)) {
         self.mark_block_entity_updated(key);
         let state = self.world.block(key.0, key.1, key.2);
         // Redraw what shows the block entity (signs, banners).
         let _ = self.world.set(key.0, key.1, key.2, state);
     }
-    pub(in crate::game) fn data_name(&self, r: &DataRef) -> Text {
+    pub(in crate::game::server_side) fn data_name(&self, r: &DataRef) -> Text {
         match r {
             DataRef::Entity(t) => self.target_name(*t),
             DataRef::Block(p) => Text::literal(format!("{}, {}, {}", p[0], p[1], p[2])),
             DataRef::Storage(id) => Text::literal(id.clone()),
         }
     }
-    pub(in crate::game) fn modified_text(&self, r: &DataRef) -> Text {
+    pub(in crate::game::server_side) fn modified_text(&self, r: &DataRef) -> Text {
         match r {
             DataRef::Entity(_) => {
                 Text::translate("commands.data.entity.modified", &[self.data_name(r)])
@@ -546,7 +550,7 @@ impl Game<'_> {
             ),
         }
     }
-    pub(in crate::game) fn query_text(&self, r: &DataRef, data: &Tag) -> Text {
+    pub(in crate::game::server_side) fn query_text(&self, r: &DataRef, data: &Tag) -> Text {
         let pretty = snbt::pretty(data);
         match r {
             DataRef::Entity(_) => {
@@ -567,7 +571,7 @@ impl Game<'_> {
             ),
         }
     }
-    pub(in crate::game) fn get_text(
+    pub(in crate::game::server_side) fn get_text(
         &self,
         r: &DataRef,
         path: &NbtPath,
@@ -603,13 +607,13 @@ impl Game<'_> {
 
     // ---- /data -----------------------------------------------------------
 
-    pub(in crate::game) fn path_arg(&self, ctx: &Context, name: &str) -> R<NbtPath> {
+    pub(in crate::game::server_side) fn path_arg(&self, ctx: &Context, name: &str) -> R<NbtPath> {
         let Some(Arg::Str(text)) = ctx.get(name) else {
             return Err(err("command.failed", &[]));
         };
         NbtPath::parse(text).map_err(path_error)
     }
-    pub(in crate::game) fn cmd_data(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_data(&mut self, id: &str, ctx: &Context) -> R<i32> {
         let target = self.data_ref(ctx, 0)?;
         // An entity in another level is read and written in the level that
         // holds it.
@@ -687,12 +691,16 @@ impl Game<'_> {
         }
     }
     /// A message sent without the feedback gamerule check (`sendSuccess(.., false)`).
-    pub(in crate::game) fn system_feedback(&mut self, message: Text) {
+    pub(in crate::game::server_side) fn system_feedback(&mut self, message: Text) {
         self.feedback(message);
     }
     /// `DataCommands.manipulateData`: literal sources use the same SNBT
     /// decode contract as command admission; stored sources are unchanged.
-    pub(in crate::game) fn cmd_data_modify(&mut self, ctx: &Context, target: DataRef) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_data_modify(
+        &mut self,
+        ctx: &Context,
+        target: DataRef,
+    ) -> R<i32> {
         let target_path = self.path_arg(ctx, "targetPath")?;
         let after_modify: Vec<&String> = ctx
             .literals
@@ -793,7 +801,7 @@ impl Game<'_> {
 
     // ---- /tag ------------------------------------------------------------
 
-    pub(in crate::game) fn cmd_tag(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_tag(&mut self, id: &str, ctx: &Context) -> R<i32> {
         let targets = self.entities(ctx, "targets", false)?;
         let name = match ctx.get("name") {
             Some(Arg::Str(n)) => n.clone(),
@@ -996,7 +1004,7 @@ impl Game<'_> {
     /// Checked `EntityType.loadEntityRecursive` drops an ineligible passenger
     /// and its entire subtree before UUID admission. Filter only the summon
     /// input; the shared loader must still restore those entities from saves.
-    pub(in crate::game) fn prune_peaceful_summon_passengers(&self, tag: &mut Tag) {
+    pub(in crate::game::server_side) fn prune_peaceful_summon_passengers(&self, tag: &mut Tag) {
         let Tag::Compound(compound) = tag else { return };
         if let Some(Tag::List(riders)) = compound.get_mut(&"Passengers".into()) {
             riders.retain_mut(|rider| {

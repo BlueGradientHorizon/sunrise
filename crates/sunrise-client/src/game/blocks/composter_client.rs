@@ -17,7 +17,11 @@ fn composter_level(game: &Game<'_>, pos: [i32; 3]) -> Option<i32> {
 
 impl Game<'_> {
     /// `ComposterBlock.useItemOn` on a client level: compostable item and level below 8.
-    pub(in crate::game) fn composter_takes(&self, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
+    pub(in crate::game::client_side) fn composter_takes(
+        &self,
+        pos: [i32; 3],
+        held: Option<&ItemStack>,
+    ) -> bool {
         composter_level(self, pos).is_some_and(|level| level < 8)
             && held.is_some_and(|stack| {
                 self.res

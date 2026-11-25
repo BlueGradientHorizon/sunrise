@@ -1,93 +1,90 @@
 //! The command line the game starts with (`Options`): what it asks for, read once at start,
 //! then the game folder and the account it names.
+#[allow(unused_imports)]
 use super::*;
 
 #[derive(Clone)]
 pub(crate) struct Options {
-    pub(super) resources: PathBuf,
-    pub(super) distance: i32,
-    pub(super) distance_override: Option<i32>,
-    pub(super) seed: i64,
-    pub(super) developer_single_player: bool,
-    pub(super) creative: bool,
-    pub(super) test_terrain: bool,
+    pub(in crate::game) resources: PathBuf,
+    pub(in crate::game) distance: i32,
+    pub(in crate::game) distance_override: Option<i32>,
+    pub(in crate::game) seed: i64,
+    pub(in crate::game) developer_single_player: bool,
+    pub(in crate::game) creative: bool,
+    pub(in crate::game) test_terrain: bool,
     /// `--pregen`: enable the command even when the saved Extras switch is off.
-    pub(super) pregen: bool,
-    pub(super) frames: Option<u64>,
+    pub(in crate::game) pregen: bool,
+    pub(in crate::game) frames: Option<u64>,
     /// `--world-frames N`: exit after N frames drawn in the world (smoke runs; the world may load slowly).
-    pub(super) world_frames: Option<u64>,
-    pub(super) screenshot_after: Option<u64>,
-    pub(super) timeout: Option<Duration>,
-    pub(super) report: Option<PathBuf>,
-    pub(super) world: Option<String>,
-    pub(super) look: Option<(f32, f32)>,
-    pub(super) time: Option<i64>,
-    pub(super) weather: Option<String>,
-    pub(super) dimension: Option<String>,
+    pub(in crate::game) world_frames: Option<u64>,
+    pub(in crate::game) screenshot_after: Option<u64>,
+    pub(in crate::game) timeout: Option<Duration>,
+    pub(in crate::game) report: Option<PathBuf>,
+    pub(in crate::game) world: Option<String>,
+    pub(in crate::game) look: Option<(f32, f32)>,
+    pub(in crate::game) time: Option<i64>,
+    pub(in crate::game) weather: Option<String>,
+    pub(in crate::game) dimension: Option<String>,
     /// Options.pauseOnLostFocus off (F3+P), for scripted testing.
-    pub(super) no_pause: bool,
+    pub(in crate::game) no_pause: bool,
     /// Control socket path (`--control`), for `sunrise-ctl`.
-    pub(super) control: Option<PathBuf>,
+    pub(in crate::game) control: Option<PathBuf>,
     /// `SUNRISE_SPIKES=MS`: the slow ring's threshold, with spans on every thread; nothing is logged.
-    pub(super) spikes: Option<f32>,
+    pub(in crate::game) spikes: Option<f32>,
     /// Render into a texture instead of the window (`--offscreen`), so a
     /// GPU the display cannot present from can still be benchmarked. The
     /// window stays hidden and never grabs the system pointer.
-    pub(super) offscreen: bool,
+    pub(in crate::game) offscreen: bool,
     /// `--headless` (#4951): no display, no window and no renderer. The game runs its own
     /// loop (`game/runtime/headless.rs`) instead of winit's, so it starts where no display server
     /// is (an SSH session, a server). It counts as `offscreen` for everything else (an
     /// automated run that never shows a window or grabs the pointer).
-    pub(super) headless: bool,
+    pub(in crate::game) headless: bool,
     /// `--width` and `--height` (vanilla's own arguments): the window's
     /// starting size, 1280x720 by default.
-    pub(super) window_size: [u32; 2],
+    pub(in crate::game) window_size: [u32; 2],
     /// Multiplayer: `--server HOST[:PORT]` joins at start; `--name` is the offline player name.
-    pub(super) server: Option<String>,
+    pub(in crate::game) server: Option<String>,
     /// `--name`, `SUNRISE_PLAYER_NAME` or the signed-in account's name; else
     /// [`Options::player_name`] uses the kept offline name.
-    pub(super) player_name: Option<String>,
+    pub(in crate::game) player_name: Option<String>,
     /// `--dedicated`: run as a dedicated server; vanilla's server arguments
     /// (`--nogui`, `--port`, `--world`, `--universe`, `--initSettings`) follow.
-    pub(super) dedicated: Option<Vec<String>>,
+    pub(in crate::game) dedicated: Option<Vec<String>>,
     /// `--transfers SETTINGS`: a dedicated server takes a proxy's hand-over requests
     /// (`server.toml`'s `[transfer]`, which sunrise-server passes; lan/arrivals.rs).
-    pub(super) transfers: Option<sunrise_client::lan::arrivals::Settings>,
+    pub(in crate::game) transfers: Option<sunrise_client::lan::arrivals::Settings>,
     /// `--benchmark SCENARIO`: run the benchmark, write its report and quit.
-    pub(super) benchmark: Option<String>,
+    pub(in crate::game) benchmark: Option<String>,
     /// `--benchmark-set SWITCH=VALUE`: a graphics choice for the travel benchmark.
-    pub(super) benchmark_set: Option<(String, String)>,
+    pub(in crate::game) benchmark_set: Option<(String, String)>,
     /// `--profile`: capture the benchmark run in a .hzperf file.
-    pub(super) benchmark_profile: bool,
+    pub(in crate::game) benchmark_profile: bool,
     /// Content selection and the compiled native runtime shared with resource loaders.
-    pub(super) mods: mods::ModsState,
+    pub(in crate::game) mods: mods::ModsState,
     /// What this Game executes; independent of its current server connection.
-    pub(super) execution_role: execution_role::ExecutionRole,
+    pub(in crate::game) execution_role: execution_role::ExecutionRole,
     /// The server's report source survives returned errors until the launch reports them.
     pub(crate) save_failure_diagnostics: sunrise_client::chunk_io::SaveFailureDiagnostics,
     /// `--fullscreen` (vanilla's): the window opens fullscreen whatever options.txt says,
     /// as vanilla's DisplayData does, without saving it there.
-    pub(super) fullscreen: bool,
+    pub(in crate::game) fullscreen: bool,
     /// `--game-dir DIR`: the folder `read` makes the working directory (saves, options.txt...).
-    pub(super) game_dir: Option<PathBuf>,
+    pub(in crate::game) game_dir: Option<PathBuf>,
     /// `--quickPlaySingleplayer`, checked once the game folder is known.
-    pub(super) quick_play: Option<String>,
-    pub(super) session_file: Option<String>,
+    pub(in crate::game) quick_play: Option<String>,
+    pub(in crate::game) session_file: Option<String>,
     /// `--session-stdin`: the session file's JSON comes on standard input instead.
-    pub(super) session_stdin: bool,
+    pub(in crate::game) session_stdin: bool,
     /// Why this game plays without an account: the launcher's `SUNRISE_OFFLINE_REASON`, or a
     /// session it could not read. The title screen shows it once.
-    pub(super) offline_reason: Option<String>,
+    pub(in crate::game) offline_reason: Option<String>,
 }
 
 impl Options {
-    /// Whether this `Game` is the process's client.
-    pub(super) fn is_client_start(&self) -> bool {
-        self.execution_role.is_client()
-    }
     /// The name to join servers with: the one given, else the offline name kept
     /// next to options.txt (created on first use).
-    pub(super) fn player_name(&self) -> String {
+    pub(in crate::game) fn player_name(&self) -> String {
         self.player_name.clone().unwrap_or_else(|| {
             std::env::current_dir().map_or_else(
                 |_| sunrise_client::offline_name::generate(0),
@@ -101,7 +98,7 @@ impl Options {
     }
     /// The command line, then what it asks of the process: the game folder, the account.
     /// A bad command line is a [`launch_api::UsageError`] (exit code 2, no crash report).
-    pub(super) fn read(mut o: Self) -> Result<Self> {
+    pub(in crate::game) fn read(mut o: Self) -> Result<Self> {
         if o.pregen {
             sunrise_client::command::vanilla::set_sunrise_commands(true);
         }
@@ -160,15 +157,10 @@ impl Options {
         }
         Ok(o)
     }
-    /// Explicit timeouts apply to every run; only frame-limited runs get a default.
-    pub(super) fn time_limit(&self) -> Option<Duration> {
-        self.timeout
-            .or(self.frames.map(|_| Duration::from_secs(120)))
-    }
     /// The command line alone: no file is read and nothing changes. `None` for `--help` and
     /// `--launch-api`, which print and end the run.
     #[cfg(test)]
-    pub(super) fn parse(args: impl Iterator<Item = String>) -> Result<Option<Self>> {
+    pub(in crate::game) fn parse(args: impl Iterator<Item = String>) -> Result<Option<Self>> {
         Self::from_launch(LaunchArguments::parse(
             args,
             &std::env::current_dir()?,
@@ -176,7 +168,7 @@ impl Options {
             std::env::var_os("SUNRISE_HOME").as_deref(),
         )?)
     }
-    pub(super) fn from_launch(launch: LaunchArguments) -> Result<Option<Self>> {
+    pub(in crate::game) fn from_launch(launch: LaunchArguments) -> Result<Option<Self>> {
         let installation_side = launch.installation_side();
         let LaunchArguments { context, rest, .. } = launch;
         let sibling = std::env::current_exe()?
@@ -384,7 +376,7 @@ impl Options {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
 
     fn limit(args: &[&str]) -> Option<Duration> {

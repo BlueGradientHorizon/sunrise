@@ -1,10 +1,13 @@
 //! Common command types and data-only helpers shared by server and client modules.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use sunrise_client::{
     command::CommandError,
     items::ItemStack,
     text::{self, Style, Text},
 };
+#[allow(unused_imports)]
 use sunrise_core::{
     geometry::Vec3,
     nbt::Tag,
@@ -248,7 +251,7 @@ pub(in crate::game) fn format_syntax_failure_context(
     Some(context.with_color(text::GRAY).with_style(&suggest))
 }
 
-fn num(n: impl std::fmt::Display) -> Text {
+pub(in crate::game) fn num(n: impl std::fmt::Display) -> Text {
     Text::literal(n.to_string())
 }
 
@@ -283,20 +286,6 @@ impl Game<'_> {
         wrapped
             .with_color(self.stack_rarity_color(s))
             .with_component_fields(vec![("hover_event".into(), shown)])
-    }
-
-    /// `BlockEntity.saveWithoutMetadata` of the block entity at `pos`, without id or position.
-    pub(in crate::game) fn block_entity_tag(&self, pos: [i32; 3]) -> Option<Tag> {
-        let e = self.world.block_entities.get(&(pos[0], pos[1], pos[2]))?;
-        let name = self.data_block_name(pos);
-        let mut tag =
-            self.encode_live_block_entity((pos[0], pos[1], pos[2]), e, &name, self.res.items());
-        if let Tag::Compound(c) = &mut tag {
-            for key in ["id", "x", "y", "z", "keepPacked"] {
-                c.remove(&key.into());
-            }
-        }
-        Some(tag)
     }
 
     /// `EntityType.getDimensions().eyeHeight()` from `entity-types.json`, cached once.

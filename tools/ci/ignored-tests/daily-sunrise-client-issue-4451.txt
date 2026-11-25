@@ -465,7 +465,7 @@ sunrise-client game::client_side::crossbow_client::tests::bow_and_crossbow_shots
 sunrise-client game::server_side::cushions::cushion_drop_tests::a_creative_blast_leaves_no_cushion_item lib daily resources
 sunrise-client game::server_side::cushions::cushion_drop_tests::a_cushion_that_loses_its_support_is_discarded_silently lib daily resources
 sunrise-client game::server_side::cushions::cushion_drop_tests::a_placed_cushion_keeps_its_stacks_custom_name lib daily resources
-sunrise-client game::custom_spawners::tests::custom_spawners_tick_in_list_order_and_a_removed_one_never_ticks lib daily resources
+sunrise-client game::server_side::custom_spawners::tests::custom_spawners_tick_in_list_order_and_a_removed_one_never_ticks lib daily resources
 sunrise-client game::server_side::damage_item_tests::a_mob_armour_wear_names_the_mob lib daily resources
 sunrise-client game::server_side::damage_item_tests::a_part_breaks_a_mobs_glider_now lib daily resources
 sunrise-client game::server_side::damage_item_tests::a_part_breaks_its_tool_now lib daily resources
@@ -1559,7 +1559,7 @@ sunrise-client game::native_item_bundle_tests::mod_registered_bundle_items_uses_
 sunrise-client game::native_item_bundle_tests::nested_bundle_weight_limits_arrow_capacity_and_insertion lib daily resources
 sunrise-client game::native_item_bundle_tests::stacked_bundle_insertion_splits_one_and_restores_inventory_on_abort lib daily resources
 sunrise-client game::native_item_entity_refs::tests::item_handles_preserve_stacks_and_distinguish_target_from_thrower lib daily resources
-sunrise-client game::native_item_particles::tests::host_resolves_stack_particle_sprites lib daily resources
+sunrise-client game::client_side::native_item_particles::tests::host_resolves_stack_particle_sprites lib daily resources
 sunrise-client game::server_side::native_item_places::tests::a_bucket_fills_and_empties_whole_through_its_place_and_splits_off_its_stack lib daily resources
 sunrise-client game::server_side::native_item_places::tests::a_chest_menus_slots_write_the_chest_and_the_inventory_and_an_abort_puts_them_back lib daily resources
 sunrise-client game::server_side::native_item_places::tests::a_chest_minecarts_items_are_its_slots lib daily resources
@@ -1670,10 +1670,10 @@ sunrise-client game::server_side::native_level_spawning::tests::a_level_spawns_a
 sunrise-client game::server_side::native_level_spawning::tests::a_levels_spawn_policy_changes_what_its_next_pass_spawns lib daily resources
 sunrise-client game::server_side::native_level_ticking::tests::ticking_reads_follow_live_tickets_bounds_and_residency lib daily resources
 sunrise-client game::server_side::native_level_ticking::tests::ticking_reads_refuse_each_unavailable_handle_independently lib daily resources
-sunrise-client game::server_side::native_level_weather::tests::a_listener_calling_its_own_setter_is_refused lib daily resources
-sunrise-client game::server_side::native_level_weather::tests::local_difficulty_and_tick_rate_reach_the_game lib daily resources
-sunrise-client game::server_side::native_level_weather::tests::local_difficulty_matches_vanilla_values_for_an_unloaded_chunk lib daily resources
-sunrise-client game::server_side::native_level_weather::tests::weather_writes_set_the_level_in_place_and_refuse_others lib daily resources
+sunrise-client game::native_level_weather::tests::a_listener_calling_its_own_setter_is_refused lib daily resources
+sunrise-client game::native_level_weather::tests::local_difficulty_and_tick_rate_reach_the_game lib daily resources
+sunrise-client game::native_level_weather::tests::local_difficulty_matches_vanilla_values_for_an_unloaded_chunk lib daily resources
+sunrise-client game::native_level_weather::tests::weather_writes_set_the_level_in_place_and_refuse_others lib daily resources
 sunrise-client game::server_side::native_level_world::tests::a_game_rule_listener_reads_the_whole_rule_set lib daily resources
 sunrise-client game::server_side::native_level_world::tests::a_mod_sets_game_rules_and_the_clock lib daily resources
 sunrise-client game::server_side::native_level_world::tests::dimension_shape_reads_current_parked_and_stale_levels lib daily resources
@@ -1782,8 +1782,8 @@ sunrise-client game::server_side::native_mob_goals::tests::goals_read_add_remove
 sunrise-client game::server_side::native_mob_goals::tests::removing_hold_ground_notifies_nearby_raiders lib daily resources
 sunrise-client game::server_side::native_mob_goals::tests::removing_running_goal_supplies_snapshot_and_persists_level_random lib daily resources
 sunrise-client game::server_side::native_mob_goals::tests::removing_school_goal_updates_the_leader lib daily resources
-sunrise-client game::server_side::native_mob_navigation::tests::navigation_speed_is_the_paths_speed_modifier lib daily resources
-sunrise-client game::server_side::native_mob_navigation::tests::navigation_starts_a_real_path_and_refuses_stale_handles lib daily resources
+sunrise-client game::native_mob_navigation::tests::navigation_speed_is_the_paths_speed_modifier lib daily resources
+sunrise-client game::native_mob_navigation::tests::navigation_starts_a_real_path_and_refuses_stale_handles lib daily resources
 sunrise-client game::server_side::native_mob_refs::tests::a_restriction_round_trips_through_the_handle_and_saves lib daily resources
 sunrise-client game::server_side::native_mob_refs::tests::an_extreme_restriction_answers_as_vanilla lib daily resources
 sunrise-client game::server_side::native_mob_refs::tests::brain_species_take_a_written_attack_target_memory lib daily resources
@@ -2620,9 +2620,9 @@ sunrise-client game::server_side::world_loading::unused_feature_preservation_tes
 sunrise-client game::server_side::world_loading::unused_feature_startup_tests::actual_world_prepare_rejects_unused_invalid_feature lib daily resources
 sunrise-client game::server_side::world_test_def_tests::a_test_instance_from_an_enabled_world_pack_is_found_and_runs lib daily resources
 sunrise-client game::server_side::world_test_def_tests::a_world_keeps_the_test_instances_it_opened_with lib daily resources
-sunrise-client game::xp_orb_targeting::tests::a_mod_chooses_whom_each_orb_follows lib daily resources
+sunrise-client game::server_side::xp_orb_targeting::tests::a_mod_chooses_whom_each_orb_follows lib daily resources
 sunrise-client game::server_side::xp_repair_ratio_tests::a_data_packs_mending_arrives_as_the_ratio lib daily resources
 sunrise-client game::server_side::xp_repair_ratio_tests::bad_ratios_never_break_the_repair lib daily resources
 sunrise-client game::server_side::xp_repair_ratio_tests::give_experience_points_repairs_through_the_part lib daily resources
 sunrise-client game::server_side::xp_repair_ratio_tests::the_ratio_a_part_answers_scales_the_repair lib daily resources
-sunrise-client game::client_side::zombie_villagers::tests::conversions_preserve_body_equipment lib daily resources
+sunrise-client game::server_side::zombie_villagers::tests::conversions_preserve_body_equipment lib daily resources

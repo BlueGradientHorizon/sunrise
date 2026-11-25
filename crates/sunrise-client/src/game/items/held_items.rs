@@ -1,6 +1,7 @@
 //! The player's hands and what it wears: the stack in the acting hand (`getItemInHand`), the hand of
 //! the item in use and running code with the other hand acting, `Inventory.add`, and the worn glider
 //! and freeze-immune gear.
+#[allow(unused_imports)]
 use super::*;
 
 /// `Inventory.SLOT_OFFHAND`: the `using` slot of an off-hand item.
@@ -83,15 +84,6 @@ impl Game<'_> {
         )
         .next()
         .is_some()
-    }
-
-    /// `LivingEntity.updateFallFlying`: the glide's wear. `Util.getRandom`
-    /// picks one of the gliders that will not break (from the entity's own
-    /// random), and
-    /// `ItemStack.hurtAndBreak` takes `points` of its durability (Unbreaking
-    /// may save it). Callers skip creative.
-    pub(in crate::game) fn wear_glider(&mut self, points: u32) {
-        self.side_wear_glider(points);
     }
 
     /// `LivingEntity.canFreeze`'s armor half: any worn piece in
@@ -215,14 +207,6 @@ impl Game<'_> {
         })
     }
 
-    /// `Minecraft.startAttack` on an entity: main-hand `attack_range` gate.
-    pub(in crate::game) fn held_range_allows(&self, distance: f64) -> bool {
-        let range = self
-            .held()
-            .and_then(|stack| self.attack_range_component(stack));
-        range.is_none_or(|r| attack_range_contains(&r, distance, self.own_player_is_creative()))
-    }
-
     /// `LocalPlayer.raycastHitResult`'s active item `attack_range` component.
     pub(in crate::game) fn active_attack_range(&self) -> Option<serde_json::Value> {
         let active = self
@@ -238,14 +222,6 @@ impl Game<'_> {
             .attributes
             .definition("minecraft:attack_speed")
             .map_or(value, |definition| definition.sanitize(value))
-    }
-
-    /// `Player.attack`: the attack damage attribute with held and effect modifiers.
-    pub(in crate::game) fn attack_damage(&mut self) -> f32 {
-        self.player
-            .as_mut()
-            .and_then(|p| p.attribute("minecraft:attack_damage").ok())
-            .unwrap_or(1.0) as f32
     }
 
     /// `Entity.getKnownSpeed` of the mob at `index`, per second: its root vehicle's.
@@ -349,7 +325,7 @@ pub(in crate::game) fn held_attack_item(
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
 
     fn stack(item: &str) -> ItemStack {

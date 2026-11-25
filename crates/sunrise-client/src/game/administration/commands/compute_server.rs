@@ -29,7 +29,11 @@ pub(in crate::game::server_side) use sunrise_core::java_number::float_to_string;
 
 impl Game<'_> {
     /// Leaf predicates that read the command's world or entity context.
-    pub(in crate::game) fn compute_leaf(&mut self, cond: &Value, c: &ComputeContext) -> bool {
+    pub(in crate::game::server_side) fn compute_leaf(
+        &mut self,
+        cond: &Value,
+        c: &ComputeContext,
+    ) -> bool {
         let Some(o) = cond.as_object() else {
             return false;
         };
@@ -107,7 +111,11 @@ impl Game<'_> {
         }
     }
     /// A registered provider's definition.
-    pub(in crate::game) fn provider_file(&self, registry: &str, id: &str) -> Option<Value> {
+    pub(in crate::game::server_side) fn provider_file(
+        &self,
+        registry: &str,
+        id: &str,
+    ) -> Option<Value> {
         let id = sunrise_client::command::args::normalized(id);
         match registry {
             "minecraft:predicate" => self.fns.0.store.predicates.get(id.as_ref()),

@@ -50,7 +50,7 @@ impl Game<'_> {
             .collect()
     }
     /// `TestCommand.run`.
-    pub(in crate::game) fn run_tests(
+    pub(in crate::game::server_side) fn run_tests(
         &mut self,
         finder: &Finder,
         retry: Retry,
@@ -79,14 +79,18 @@ impl Game<'_> {
         Ok(1)
     }
     /// `CommandSourceStack.sendFailure`.
-    pub(in crate::game) fn test_failure(&mut self, message: Text) {
+    pub(in crate::game::server_side) fn test_failure(&mut self, message: Text) {
         if self.server.command_source.is_some_and(|s| s.silent) {
             return;
         }
         self.server_system_message(message.with_color(text::RED));
     }
     /// `createGameTestInfo`: the test of a test instance block.
-    pub(in crate::game) fn test_info_at(&mut self, pos: Pos, retry: Retry) -> Option<Info> {
+    pub(in crate::game::server_side) fn test_info_at(
+        &mut self,
+        pos: Pos,
+        retry: Retry,
+    ) -> Option<Info> {
         let key = self.test_instance_at(pos).and_then(|b| b.data.test.clone());
         if self.test_instance_at(pos).is_none() {
             self.test_failure(Text::translate(

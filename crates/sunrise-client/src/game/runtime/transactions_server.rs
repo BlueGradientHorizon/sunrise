@@ -69,7 +69,7 @@ impl Game<'_> {
         }
     }
     /// Closes the innermost transaction with its owning level already in place.
-    pub(in crate::game) fn close_storage_transaction_in_place(
+    pub(in crate::game::server_side) fn close_storage_transaction_in_place(
         &mut self,
         commit: bool,
     ) -> Option<StorageSettlement> {
@@ -120,7 +120,7 @@ impl Game<'_> {
     /// Defensive fallback if a frame's recorded dimension is no longer parked: pop the frame so
     /// abandon loops always terminate and discard its level-local snapshots rather than restoring
     /// them into the wrong active level.
-    pub(in crate::game) fn drop_unreachable_transaction_frame(&mut self) {
+    pub(in crate::game::server_side) fn drop_unreachable_transaction_frame(&mut self) {
         let Some(mut level) = self.transactions.pop() else {
             return;
         };
@@ -503,7 +503,7 @@ impl Game<'_> {
     }
 
     /// The same journal for a player resolved to their own parked record at `index`.
-    pub(in crate::game) fn journal_parked_player(&mut self, index: usize) {
+    pub(in crate::game::server_side) fn journal_parked_player(&mut self, index: usize) {
         let Some(level) = self.transactions.player_write() else {
             return;
         };
@@ -524,7 +524,7 @@ impl Game<'_> {
 
     /// Save the guest's inventory and current cursor wherever their turn lent
     /// them. A suspended guest cannot be re-entered to take this snapshot.
-    pub(in crate::game) fn journal_guest_inventory(&mut self, conn: u32) {
+    pub(in crate::game::server_side) fn journal_guest_inventory(&mut self, conn: u32) {
         let owner = JournaledPlayer::Guest(conn);
         if self
             .transactions
@@ -595,7 +595,7 @@ impl Game<'_> {
     }
     /// Keeps the saved player extra NBT (`level.player_extra`) of `uuid`, whose state is
     /// acting in `Game` now, on its first write in the open frame.
-    pub(in crate::game) fn journal_player_extra(&mut self, uuid: u128) {
+    pub(in crate::game::server_side) fn journal_player_extra(&mut self, uuid: u128) {
         let Some(level) = self.transactions.player_write() else {
             return;
         };
@@ -609,7 +609,7 @@ impl Game<'_> {
             .or_insert_with(|| self.level.player_extra.clone());
     }
     /// The same journal for a player resolved to their own parked record at `index`.
-    pub(in crate::game) fn journal_parked_player_extra(&mut self, index: usize) {
+    pub(in crate::game::server_side) fn journal_parked_player_extra(&mut self, index: usize) {
         let Some(level) = self.transactions.player_write() else {
             return;
         };
@@ -661,7 +661,7 @@ impl Game<'_> {
     }
     /// Writes one mob effect, or any active effect when `effect` is `None`. In a transaction,
     /// keep the effect lists and use the same health journal as `set_health` and `set_absorption`.
-    pub(in crate::game) fn mutate_mob_effects<R>(
+    pub(in crate::game::server_side) fn mutate_mob_effects<R>(
         &mut self,
         id: u32,
         effect: Option<&'static str>,
@@ -800,7 +800,10 @@ impl Game<'_> {
 
     /// Release accepted writes after source settlement, in their original levels and only to
     /// the same storage rows. Don't enqueue the notices in an enclosing quick move again.
-    pub(in crate::game) fn publish_quick_move_notices(&mut self, notices: Vec<QuickMoveNotice>) {
+    pub(in crate::game::server_side) fn publish_quick_move_notices(
+        &mut self,
+        notices: Vec<QuickMoveNotice>,
+    ) {
         for QuickMoveNotice { dim, holder } in notices {
             let back = self.enter_command_level(dim);
             if self.dim == dim {

@@ -1,11 +1,11 @@
 //! `CatSpawner`: every 1200 ticks a cat may appear near a random player, in a village with enough occupied beds or inside a swamp hut.
 use super::{Dim, Game};
 
-pub(super) use sunrise_gameplay::cat_spawner::CatSpawner;
+pub(in crate::game) use sunrise_gameplay::cat_spawner::CatSpawner;
 
 impl Game<'_> {
     /// `CatSpawner.tick` (the overworld's custom spawner).
-    pub(super) fn tick_cat_spawner(&mut self) {
+    pub(in crate::game::server_side) fn tick_cat_spawner(&mut self) {
         if self.dim != Dim::Overworld || !self.creatures.cat.due() {
             return;
         }

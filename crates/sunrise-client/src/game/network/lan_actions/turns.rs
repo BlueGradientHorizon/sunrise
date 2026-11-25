@@ -137,3 +137,20 @@ impl Game<'_> {
         self.creative = self.mode == GameMode::Creative;
     }
 }
+
+impl Game<'_> {
+    /// `LivingEntity.playHurtSound` for a guest: the server's `Entity.playSound`
+    /// reaches every player around but the hurt one, whose own client plays it
+    /// from `handleDamageEvent` (#4149).
+    pub(in crate::game) fn guest_hurt_sound(&mut self, conn: u32, sound: &str) {
+        let Some(at) = self
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+            .map(|g| g.position)
+        else {
+            return;
+        };
+        self.send_level_sound(LevelSound::new(sound, at, 1.0, 1.0), Some(conn));
+    }
+}

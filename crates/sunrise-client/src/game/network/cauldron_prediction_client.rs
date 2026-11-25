@@ -34,7 +34,7 @@ impl cauldron::Player for DryHand<'_> {
 
 impl Game<'_> {
     /// Predict vanilla cauldron clicks without invoking server-registered handlers.
-    pub(in crate::game) fn client_cauldron_prediction(
+    pub(in crate::game::client_side) fn client_cauldron_prediction(
         &self,
         pos: [i32; 3],
         held: Option<&ItemStack>,
@@ -77,7 +77,7 @@ impl Game<'_> {
     }
 
     /// Visual cauldron prediction matching the item-use consumption guard.
-    pub(in crate::game) fn remote_cauldron_reacts(
+    pub(in crate::game::client_side) fn remote_cauldron_reacts(
         &self,
         hit: &Hit,
         held: Option<&ItemStack>,

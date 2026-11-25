@@ -393,16 +393,6 @@ impl Game<'_> {
         }
     }
 
-    /// `ShulkerBoxBlockEntity.moveCollidedEntities` for the bodies this game
-    /// moves itself: every entity the sweeping lid box meets moves out along
-    /// the box's facing by the box's own size plus 0.01, through [`Self::lid_push`].
-    pub(in crate::game) fn push_shulker_entities(&mut self, pushes: Vec<ShulkerPush>) {
-        for (_, facing, lid) in pushes {
-            let (movement, area) = shulker_lid(facing, lid);
-            self.lid_push(Lid::Box, area, movement);
-        }
-    }
-
     /// An opening lid's push, the one path the shulker box and the shulker
     /// share for every kind of entity: `Entity.move(mover, movement)` on each
     /// body the swept `area` meets (`getEntities`, which leaves out the
@@ -455,49 +445,6 @@ impl Game<'_> {
             );
         });
         self.lid_breaks_attached(area, root);
-    }
-
-    /// A lid's mover is simulated on both sides: the client displaces its
-    /// player and all boats the lid meets, not only the boat it drives.
-    /// Restitution still belongs to the side simulating each boat.
-    pub(in crate::game) fn lid_push_local(&mut self, lid: Lid, area: Aabb, movement: Vec3) {
-        let root = self.lid_root(lid);
-        let boats: Vec<_> = self
-            .boats
-            .iter()
-            .enumerate()
-            .filter(|(_, boat)| boat.bounds().intersects(area))
-            .filter_map(|(i, _)| self.stable_push_target(MoveWho::Entity(EntityHandle::Boat(i))))
-            .collect();
-        if self
-            .player
-            .as_ref()
-            .is_some_and(|p| !p.spectator && p.bounds().intersects(area))
-            && !self.lid_spares(lid, root, MoveWho::Player, false)
-        {
-            let _ = self.move_local_player(lid.mover(), movement, false);
-        }
-        for boat in boats {
-            let Some(target @ MoveWho::Entity(handle)) = self.resolve_push_target(boat) else {
-                continue;
-            };
-            let body = self.listed_body(handle, None);
-            if lid == Lid::Box && body.piston_reaction == PushReaction::IgnoreEntity {
-                continue;
-            }
-            let no_physics = self.pushed_no_physics(target);
-            if !self.lid_spares(lid, root, target, no_physics) {
-                self.move_pushed_body(lid.mover(), target, body, movement, no_physics, &mut None);
-            }
-        }
-    }
-
-    /// [`Self::lid_push_local`] for this tick's shulker box lids.
-    pub(in crate::game) fn push_shulker_local(&mut self, pushes: Vec<ShulkerPush>) {
-        for (_, facing, lid) in pushes {
-            let (movement, area) = shulker_lid(facing, lid);
-            self.lid_push_local(Lid::Box, area, movement);
-        }
     }
 
     /// The root vehicle of a shulker whose lid pushes, which the bodies

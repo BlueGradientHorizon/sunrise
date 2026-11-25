@@ -9,7 +9,7 @@ impl Game<'_> {
 
     /// `ClientboundRemoveEntitiesPacket`: a packet's ids go together, the big
     /// entity lists filtered once (#13007), each id's own cleanup in order.
-    pub(in crate::game) fn remove_entities(&mut self, ids: &[i32]) {
+    pub(in crate::game::client_side) fn remove_entities(&mut self, ids: &[i32]) {
         let removed: sunrise_client::fast_hash::FxHashSet<u32> =
             ids.iter().map(|&id| id as u32).collect();
         let mut vehicles = sunrise_client::fast_hash::FxHashSet::default();

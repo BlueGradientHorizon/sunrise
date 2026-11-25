@@ -249,7 +249,11 @@ impl Game<'_> {
     /// death and a natural heart drops experience. `onExplosionHit` does the
     /// same for the creaking, and awards the experience only when its
     /// blast's indirect source is a player (`creaking_heart_broken_by`).
-    pub(in crate::game) fn creaking_heart_broken(&mut self, pos: [i32; 3], by_player: bool) {
+    pub(in crate::game::server_side) fn creaking_heart_broken(
+        &mut self,
+        pos: [i32; 3],
+        by_player: bool,
+    ) {
         let award = by_player && !self.creative && !self.spectator();
         self.creaking_heart_broken_by(pos, award);
     }

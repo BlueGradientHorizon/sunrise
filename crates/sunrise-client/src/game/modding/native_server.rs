@@ -627,24 +627,6 @@ impl Game<'_> {
         self.perform_fake_action(gi, conn, action)
     }
 
-    /// Drop the fake players belonging to a level as it closes.
-    pub(in crate::game) fn remove_level_fake_players(&mut self, dimension: &str) {
-        let Some(mut host) = self.lan.take() else {
-            return;
-        };
-        let mut i = 0;
-        while i < host.hub.guests.len() {
-            let g = &host.hub.guests[i];
-            if g.is_fake() && g.dimension == dimension {
-                let guest = host.hub.guests.remove(i);
-                self.cleanup_fake_player(&mut host, &guest);
-            } else {
-                i += 1;
-            }
-        }
-        self.lan = Some(host);
-    }
-
     /// Resolve a real online player by UUID, never a fake. A fake is reached
     /// through the handle returned by its factory. During a nested player swap,
     /// outer players whose records are displaced return None.
@@ -665,49 +647,6 @@ impl Game<'_> {
             mod_api::EntityRef::new(epoch, id),
             uuid,
         ))
-    }
-
-    /// The chunks players started and stopped watching that the hub
-    /// recorded (`lan::chunk_watch`), told to the mods in the hub's order,
-    /// with no player's state swapped in, and a sent chunk's passages sent
-    /// after it. The player handle is built from the record, so an unwatch
-    /// after a disconnect still names them. Nothing while the log is empty.
-    pub(in crate::game) fn run_chunk_watches(&mut self) {
-        use sunrise_client::lan::chunk_watch::ChunkWatchKind;
-        let Some(host) = self.lan.as_mut() else {
-            return;
-        };
-        if host.hub.chunk_watches.is_empty() {
-            return;
-        }
-        let runs = host.hub.chunk_watches.take();
-        let Some(epoch) = self.native_lifecycle.epoch() else {
-            return;
-        };
-        for run in runs {
-            // A level the server no longer holds: nothing to name.
-            let Some(level) = self.level(&run.dimension) else {
-                continue;
-            };
-            for watch in run.watches {
-                let Ok(id) = u32::try_from(watch.entity_id) else {
-                    continue;
-                };
-                let player = mod_api::__private::game::player_ref(
-                    mod_api::EntityRef::new(epoch, id),
-                    watch.uuid,
-                );
-                let chunk = mod_api::ChunkRef::new(level, watch.chunk);
-                match watch.kind {
-                    ChunkWatchKind::Watch => self.native_chunk_watch(player, chunk),
-                    ChunkWatchKind::Sent => {
-                        self.native_chunk_sent(player, chunk);
-                        self.send_chunk_passages(level, watch.uuid, watch.chunk);
-                    }
-                    ChunkWatchKind::Unwatch => self.native_chunk_unwatch(player, chunk),
-                }
-            }
-        }
     }
 
     /// The dimension id and block of the player's last death, through the
@@ -772,16 +711,6 @@ impl Game<'_> {
             );
             Some(mod_api::BlockPos::new(x, y, z))
         }))
-    }
-
-    /// Reads live `Remote::abilities` with predicted `flying` and `flying_speed` from the body.
-    pub(in crate::game) fn client_abilities(&self) -> Option<PlayerAbilities> {
-        let mut a = *self.remote_abilities()?;
-        if let Some(body) = self.player.as_ref() {
-            a.flying = body.flying;
-            a.flying_speed = body.flying_speed;
-        }
-        Some(a)
     }
 
     /// `ServerPlayerGameMode.getGameModeForPlayer` on a server; `AbstractClientPlayer.gameMode`
@@ -873,28 +802,6 @@ impl Game<'_> {
     /// guest's body exists, as well as for stale or unavailable players.
     pub(in crate::game) fn player_food(&self, player: PlayerRef) -> Option<PlayerFood> {
         self.player_read_both(player)?.food()
-    }
-
-    /// The real players on this server, in join order, including an integrated
-    /// server's own player even when the world is not open to LAN. Empty on a client.
-    pub(in crate::game) fn native_server_players(&self) -> Vec<PlayerRef> {
-        let Some(epoch) = self.native_lifecycle.epoch() else {
-            return Vec::new();
-        };
-        let Some(host) = &self.lan else {
-            return Vec::new();
-        };
-        // Construct from the online records, not the live-body resolver: outer
-        // players remain connected while their bodies are displaced by a turn.
-        host.hub
-            .online_players()
-            .map(|g| {
-                mod_api::__private::game::player_ref(
-                    mod_api::EntityRef::new(epoch, g.entity_id as u32),
-                    g.uuid,
-                )
-            })
-            .collect()
     }
 
     /// Find a connected player by their account name, case-insensitively,
@@ -1469,23 +1376,6 @@ impl Game<'_> {
         orb.count = count.unwrap_or(orb.count);
         orb.age = age.unwrap_or(orb.age);
         true
-    }
-    /// Runs `f` in the turn of the player a handle names, against the level in place. False
-    /// when it didn't run: stale or dead.
-    pub(in crate::game) fn native_as_player_handle(
-        &mut self,
-        player: PlayerRef,
-        f: impl FnOnce(&mut Self),
-    ) -> bool {
-        match self.player_handle_read(player) {
-            None => false,
-            Some(PlayerRead::Acting { .. }) => self.native_as_acting(f),
-            Some(PlayerRead::Guest(g)) if !g.dead => {
-                let conn = g.conn;
-                self.as_guest(conn, f).is_some()
-            }
-            Some(PlayerRead::Guest(_)) => false,
-        }
     }
 
     pub(in crate::game) fn native_player_holder(&self, uuid: u128) -> Option<&Guest> {

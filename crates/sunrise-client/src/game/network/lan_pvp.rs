@@ -149,14 +149,14 @@ pub(in crate::game) struct Sweep {
 impl Strike {
     /// Whether it has extra knockback, which stops the attacker's sprint
     /// once it lands (Player.causeExtraKnockback).
-    pub(in crate::game) fn stops_sprint(&self) -> bool {
+    pub(in crate::game::server_side) fn stops_sprint(&self) -> bool {
         self.knockback.0 > 0.0
     }
 }
 
 impl Game<'_> {
     /// Whether the player a hit landed on stands on the ground.
-    pub(in crate::game) fn pvp_victim_on_ground(&self, victim: Victim) -> bool {
+    pub(in crate::game::server_side) fn pvp_victim_on_ground(&self, victim: Victim) -> bool {
         let Some(host) = self.lan.as_ref() else {
             return false;
         };
@@ -170,7 +170,7 @@ impl Game<'_> {
     }
 
     /// The player `id` that guest `conn` attacks, if it is one.
-    pub(in crate::game) fn pvp_victim(&self, conn: u32, id: i32) -> Option<Victim> {
+    pub(in crate::game::server_side) fn pvp_victim(&self, conn: u32, id: i32) -> Option<Victim> {
         let host = self.lan.as_ref()?;
         host.hub
             .guests
@@ -191,7 +191,7 @@ impl Game<'_> {
 
     /// The attacker's side of `Player.attack` (the host, or a guest swapped
     /// in): the damage, the charge reset and the swing.
-    pub(in crate::game) fn pvp_strike(&mut self, victim: u32) -> Option<Strike> {
+    pub(in crate::game::server_side) fn pvp_strike(&mut self, victim: u32) -> Option<Strike> {
         let p = self.player.as_ref()?;
         let from = [p.position.x, p.position.y, p.position.z];
         let (amount, scale, crit, magic) =

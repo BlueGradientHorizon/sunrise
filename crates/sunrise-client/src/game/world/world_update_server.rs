@@ -5,7 +5,7 @@ pub(in crate::game::server_side) use crate::game::client_side::world_update::*;
 
 impl Game<'_> {
     #[inline(always)]
-    pub(in crate::game) fn update_world_save_server(
+    pub(in crate::game::server_side) fn update_world_save_server(
         &mut self,
         modified: &[std::sync::Arc<sunrise_client::chunk::Chunk>],
     ) -> Result<usize> {
@@ -83,7 +83,7 @@ impl Game<'_> {
         sunrise_client::spans::time("sync_tick_chunks", || self.sync_tick_chunks());
     }
     #[inline(always)]
-    pub(in crate::game) fn update_world_server(&mut self, dim: Dim) {
+    pub(in crate::game::server_side) fn update_world_server(&mut self, dim: Dim) {
         // The configuration connection is not a guest and owns no player area.
         // `extra` finishes chunks through radius + 1, even with no players.
         self.streaming.extra.extend(

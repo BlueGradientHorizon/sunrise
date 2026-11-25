@@ -7,23 +7,26 @@
 //! The first attachment access of an entity not yet told tells it first, so no mod reads an
 //! attachment before the listeners have set it.
 
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use mod_api::Holder;
+#[allow(unused_imports)]
 use std::collections::{HashMap, HashSet};
 
 #[cfg(test)]
 #[path = "entity_initialization/tests.rs"]
-mod tests;
+pub(in crate::game) mod tests;
 
 #[derive(Default)]
 pub(in crate::game) struct EntityInitialization {
     /// The object holders already told (entity IDs and separate player UUIDs). An entity is forgotten when it leaves the world (`forget_entity`:
     /// death, a chunk unloading), so the next one made from its data is
     /// told again, as vanilla constructs a new entity for each of those.
-    initialized: HashSet<Holder>,
+    pub(in crate::game) initialized: HashSet<Holder>,
     /// Each LAN guest's connection when its player was last told: a new connection is a new
     /// `ServerPlayer`.
-    players: HashMap<u128, u32>,
+    pub(in crate::game) players: HashMap<u128, u32>,
     /// The holder being told now: its attachments are reachable before it is in the level.
     pub(in crate::game) active: Option<Holder>,
 }
@@ -121,7 +124,11 @@ impl Game<'_> {
 
     /// `PlayerList.respawn`: the guest gets a new `ServerPlayer`, told again, and the data it
     /// keeps (`copy_on_death`, already in place) is restored over it.
-    pub(in crate::game) fn reinitialize_server_player(&mut self, uuid: u128, conn: u32) {
+    pub(in crate::game::server_side) fn reinitialize_server_player(
+        &mut self,
+        uuid: u128,
+        conn: u32,
+    ) {
         self.forget_entity_initialization(Holder::Player(uuid));
         self.initialize_guest_player_under_data(uuid, conn);
     }
@@ -129,7 +136,7 @@ impl Game<'_> {
     /// Tell a guest's player whose attachments already hold its data, then read that data
     /// back over what the listeners set: the end state of vanilla's order, where the player is
     /// constructed before its data is read (`Entity.load`, `restoreFrom`).
-    fn initialize_guest_player_under_data(&mut self, uuid: u128, conn: u32) {
+    pub(in crate::game) fn initialize_guest_player_under_data(&mut self, uuid: u128, conn: u32) {
         if !mod_api::__private::listened(mod_api::HookId::EntityConstructing) {
             return;
         }
@@ -154,18 +161,18 @@ impl Game<'_> {
 /// Not Clone: a transfer cannot install the same runtime state twice.
 #[derive(Debug)]
 pub(in crate::game) struct TransferredEntityState {
-    attachments: Option<sunrise_mod_runtime::attachments::Attachments>,
-    initialized: bool,
-    accepted_hit: Option<std::sync::Arc<sunrise_client::health::AcceptedHit>>,
-    died: bool,
+    pub(in crate::game) attachments: Option<sunrise_mod_runtime::attachments::Attachments>,
+    pub(in crate::game) initialized: bool,
+    pub(in crate::game) accepted_hit: Option<std::sync::Arc<sunrise_client::health::AcceptedHit>>,
+    pub(in crate::game) died: bool,
     pub(in crate::game) transient: bool,
     /// The source id whose attachment map a transaction open at the take kept: the
     /// arrival moves that keeping to the new id.
-    journaled: Option<u32>,
+    pub(in crate::game) journaled: Option<u32>,
     /// Filled by an abort that comes before the arrival: the contents the arrival puts back.
-    rollback: Option<super::transactions::ArrivalRollback>,
+    pub(in crate::game) rollback: Option<super::transactions::ArrivalRollback>,
     /// The id the entity had before it travelled, which a kill credit may still name.
-    source: u32,
+    pub(in crate::game) source: u32,
 }
 
 impl TransferredEntityState {
@@ -260,20 +267,6 @@ impl Game<'_> {
                 .entity_initialization
                 .initialized
                 .insert(Holder::Entity(id));
-        }
-    }
-}
-
-impl Game<'_> {
-    pub(in crate::game) fn forget_remote_entity_construction(&mut self, id: i32) {
-        self.forget_entity_initialization(Holder::Entity(id as u32));
-        if let Some(uuid) = self
-            .remote
-            .as_ref()
-            .and_then(|r| r.level_players.get(&id))
-            .copied()
-        {
-            self.forget_entity_initialization(Holder::Player(uuid));
         }
     }
 }

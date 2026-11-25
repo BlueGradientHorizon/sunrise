@@ -535,7 +535,7 @@ impl Game<'_> {
     }
 
     /// Snapshot of a detached watched player's HUD state, if the detached camera was a player.
-    pub(in crate::game) fn detached_camera_hud(&self) -> Option<&DetachedPlayerHud> {
+    pub(in crate::game::client_side) fn detached_camera_hud(&self) -> Option<&DetachedPlayerHud> {
         self.remote
             .as_ref()?
             .detached_camera

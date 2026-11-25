@@ -28,7 +28,7 @@ pub(in crate::game::client_side) use sunrise_core::random::RandomSource;
 impl Game<'_> {
     /// `LivingEntity.makeDrownParticles`: `count` bubbles around the entity
     /// (vanilla's eight), moving with it.
-    pub(in crate::game) fn drown_particles(
+    pub(in crate::game::client_side) fn drown_particles(
         &mut self,
         at: [f64; 3],
         velocity: [f64; 3],
@@ -50,7 +50,7 @@ impl Game<'_> {
     }
     /// Entity event 67 from a server, for this client's own player or an
     /// entity it draws.
-    pub(in crate::game) fn remote_drown(&mut self, id: i32) {
+    pub(in crate::game::client_side) fn remote_drown(&mut self, id: i32) {
         assert!(
             !self.is_logical_server(),
             "remote_drown called on Server role"

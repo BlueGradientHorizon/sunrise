@@ -15,7 +15,7 @@ pub(in crate::game) const ARMOR: [&str; 4] = ["head", "chest", "legs", "feet"];
 pub(in crate::game) const OFFHAND: &str = "offhand";
 
 /// `ItemStack.isSameItemSameComponents` over optional stacks.
-pub(in crate::game::server_side) fn same(a: Option<&ItemStack>, b: Option<&ItemStack>) -> bool {
+pub(in crate::game) fn same(a: Option<&ItemStack>, b: Option<&ItemStack>) -> bool {
     match (a, b) {
         (None, None) => true,
         (Some(a), Some(b)) => a.same_item_same_components(b),
@@ -59,19 +59,6 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
-    pub(in crate::game::server_side) fn put_equipment_modifiers(&mut self) {
-        let mut applied = std::mem::take(&mut self.server.applied_modifiers);
-        let ran = self.apply_equipment_modifiers_with(&mut applied);
-        self.server.applied_modifiers = applied;
-        if !ran {
-            return;
-        }
-        if let Some(player) = self.player.as_mut() {
-            let _ = player.clamp_health_to_max();
-        }
-        self.apply_enchantment_attributes();
-    }
-
     /// The body of `onEquipItem` once the item changed: the item's
     /// `Equippable.equipSound` when it is equipped in its own slot, and the
     /// `equip` / `unequip` game event for armour. Nothing on a client (the

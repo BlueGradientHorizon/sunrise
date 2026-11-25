@@ -201,7 +201,7 @@ impl<'g> Game<'g> {
             ),
         );
     }
-    pub(in crate::game) fn run_gui_layer(
+    pub(in crate::game::client_side) fn run_gui_layer(
         &mut self,
         id: &str,
         batch: &mut HudBatch,

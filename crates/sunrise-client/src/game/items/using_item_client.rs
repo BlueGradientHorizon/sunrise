@@ -2,7 +2,7 @@ use super::{Game, item_use};
 
 impl Game<'_> {
     /// Client-side `Consumable.startConsuming`: instant consumables await server sync.
-    pub(in crate::game) fn client_start_eating(
+    pub(in crate::game::client_side) fn client_start_eating(
         &mut self,
         info: &sunrise_client::items::ItemInfo,
     ) -> bool {

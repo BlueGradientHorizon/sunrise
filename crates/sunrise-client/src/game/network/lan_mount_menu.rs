@@ -6,6 +6,7 @@
 //! (`Kind::Mount`) with the mount's saddle, body item and chest copied in and
 //! written back, and the slots go to the client after each change, as
 //! `broadcastChanges` does.
+#[allow(unused_imports)]
 use super::{
     Dim, Game,
     lan::LanHost,
@@ -14,36 +15,38 @@ use super::{
     mount_menu::{mount_columns, shows_body},
     transactions::After,
 };
+#[allow(unused_imports)]
 use sunrise_client::{
     items::ItemStack,
     menu::{Kind, Menu, QuickCraftDrag},
 };
+#[allow(unused_imports)]
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// A guest's open mount menu.
-pub(super) struct GuestMount {
-    pub(super) window: i32,
-    pub(super) mob: u32,
-    columns: usize,
-    state: i32,
+pub(in crate::game) struct GuestMount {
+    pub(in crate::game) window: i32,
+    pub(in crate::game) mob: u32,
+    pub(in crate::game) columns: usize,
+    pub(in crate::game) state: i32,
     /// Persistent quick-craft (drag) state across rebuilt mount menus.
-    drag: QuickCraftDrag,
+    pub(in crate::game) drag: QuickCraftDrag,
     /// The menu's slots the client was last sent.
-    sent: Option<Vec<Option<ItemStack>>>,
+    pub(in crate::game) sent: Option<Vec<Option<ItemStack>>>,
 }
 
 /// Identity of a mount window across a tentative click and its settlement.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub(super) struct MountClickWindow {
-    dim: Dim,
-    conn: u32,
-    generation: u64,
-    window: i32,
-    mob: u32,
+pub(in crate::game) struct MountClickWindow {
+    pub(in crate::game) dim: Dim,
+    pub(in crate::game) conn: u32,
+    pub(in crate::game) generation: u64,
+    pub(in crate::game) window: i32,
+    pub(in crate::game) mob: u32,
 }
 
 impl MountClickWindow {
-    fn live_guest(self, host: &LanHost) -> Option<usize> {
+    pub(in crate::game) fn live_guest(self, host: &LanHost) -> Option<usize> {
         let gi = host.hub.guests.connection_index(self.conn)?;
         let guest = &host.hub.guests[gi];
         let open = host.play.get(&self.conn)?.mount_window.as_ref()?;
@@ -58,7 +61,7 @@ impl MountClickWindow {
 impl Game<'_> {
     /// `ServerPlayer.openHorseInventory` for mount `mob`: the open menu
     /// closes, the client gets the mount screen and the menu's slots.
-    pub(super) fn lan_open_mount(&mut self, conn: u32, mob: u32) {
+    pub(in crate::game) fn lan_open_mount(&mut self, conn: u32, mob: u32) {
         let Some(index) = self.mobs.iter().position(|m| m.id == mob) else {
             return;
         };
@@ -88,7 +91,7 @@ impl Game<'_> {
 
     /// `HorseInventoryMenu` over mount `index`, with the player's inventory
     /// loaded by the caller.
-    fn mount_engine_menu(&self, index: usize, columns: usize) -> Menu {
+    pub(in crate::game) fn mount_engine_menu(&self, index: usize, columns: usize) -> Menu {
         let env = self.menu_env();
         let mut menu = Menu::new(Kind::Mount(columns));
         menu.set_registry_id(Some("sunrise:mount_inventory"));
@@ -104,7 +107,7 @@ impl Game<'_> {
 
     /// The whole menu when its slots changed or a click requires a full correction.
     /// Cursor-only changes use the hub's carried-item broadcast.
-    fn lan_send_mount(&mut self, conn: u32, force: bool) {
+    pub(in crate::game) fn lan_send_mount(&mut self, conn: u32, force: bool) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -145,7 +148,7 @@ impl Game<'_> {
     }
 
     /// A click on the guest's mount window; false for other windows.
-    pub(super) fn lan_mount_click(&mut self, conn: u32, p: &play::ContainerClick) -> bool {
+    pub(in crate::game) fn lan_mount_click(&mut self, conn: u32, p: &play::ContainerClick) -> bool {
         let Some(host) = self.lan.as_ref() else {
             return false;
         };
@@ -235,7 +238,7 @@ impl Game<'_> {
     }
 
     /// The engine menu's mount slots back on mount `index`.
-    fn lan_mount_store(&mut self, index: usize, columns: usize, menu: &Menu) {
+    pub(in crate::game) fn lan_mount_store(&mut self, index: usize, columns: usize, menu: &Menu) {
         let body = shows_body(self.mobs[index].species()).then(|| menu.slot(1).cloned());
         let items = (0..columns * 3)
             .map(|k| menu.slot(2 + k).cloned())
@@ -243,7 +246,11 @@ impl Game<'_> {
         self.mount_store(index, menu.slot(0).cloned(), body, items);
     }
 
-    pub(super) fn restore_mount_drag(&mut self, window: MountClickWindow, drag: QuickCraftDrag) {
+    pub(in crate::game) fn restore_mount_drag(
+        &mut self,
+        window: MountClickWindow,
+        drag: QuickCraftDrag,
+    ) {
         if let Some(host) = self.lan.as_mut()
             && window.live_guest(host).is_some()
         {
@@ -258,7 +265,7 @@ impl Game<'_> {
     }
 
     /// Resolve the same live window and read its final owner and player slots and cursor.
-    pub(super) fn send_settled_mount_reply(&mut self, window: MountClickWindow) {
+    pub(in crate::game) fn send_settled_mount_reply(&mut self, window: MountClickWindow) {
         let _ = self.with_effect_level(window.dim, |game| {
             if game
                 .lan
@@ -274,7 +281,7 @@ impl Game<'_> {
     /// `AbstractContainerMenu.removed` of the guest's mount menu (`window`;
     /// None closes it whichever it is): the carried stack goes back to the
     /// inventory. False when no such window is open.
-    pub(super) fn lan_mount_closed(&mut self, conn: u32, window: Option<i32>) -> bool {
+    pub(in crate::game) fn lan_mount_closed(&mut self, conn: u32, window: Option<i32>) -> bool {
         let Some(host) = self.lan.as_mut() else {
             return false;
         };
@@ -295,23 +302,13 @@ impl Game<'_> {
         true
     }
 
-    /// `AbstractMountInventoryMenu.stillValid`: the mount is alive and the
-    /// guest's eyes are within the entity interaction range (3, 5 in creative)
-    /// plus 4 of its box (`Player.isWithinEntityInteractionRange(mount, 4.0)`).
-    pub(super) fn lan_mount_valid(&self, g: &sunrise_client::lan::guest::Guest, mob: u32) -> bool {
-        self.mobs
-            .iter()
-            .find(|m| m.id == mob)
-            .is_some_and(|m| m.alive() && guest_within_entity_range(g, &m.bounds(), 4.0))
-    }
-
     /// Each tick: a mount menu whose mount died or is out of reach closes
     /// (`AbstractMountInventoryMenu.stillValid`: alive, within the entity
     /// interaction range plus 4 of the eyes), and the others follow the
     /// mount's and the inventory's slots. Only the level the player is in
     /// checks its menu (`ServerPlayer.tick`): another level ticking has
     /// none of its mobs (#5331).
-    pub(super) fn tick_lan_mount_menus(&mut self) {
+    pub(in crate::game) fn tick_lan_mount_menus(&mut self) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -346,7 +343,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn horse_inventory_click_keeps_complete_body_stack() {

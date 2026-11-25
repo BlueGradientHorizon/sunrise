@@ -164,7 +164,7 @@ impl Game<'_> {
 
     /// `InputContainer.setChanged` through an ITEMS port. Slot acceptance and the one-item
     /// limit are the shared container rules; only the state write and feedback are deferred.
-    pub(in crate::game) fn composter_capability_insert(
+    pub(in crate::game::server_side) fn composter_capability_insert(
         &mut self,
         pos: [i32; 3],
         stack: &ItemStack,
@@ -193,7 +193,7 @@ impl Game<'_> {
     }
 
     /// `OutputContainer.setChanged` through an ITEMS port: no item entity or hand sound.
-    pub(in crate::game) fn composter_capability_extract(
+    pub(in crate::game::server_side) fn composter_capability_extract(
         &mut self,
         pos: [i32; 3],
         max: u32,
@@ -239,7 +239,11 @@ impl Game<'_> {
     /// composter is emptied, then up to 20 wheat or beetroot seeds go in
     /// (keeping 10 of each kind) until the composter reaches level 7. Level
     /// event 1500 plays once, at the end.
-    pub(in crate::game) fn villager_compost_items(&mut self, mob: usize, pos: [i32; 3]) {
+    pub(in crate::game::server_side) fn villager_compost_items(
+        &mut self,
+        mob: usize,
+        pos: [i32; 3],
+    ) {
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
         let Some(mut before) = self.composter_level(pos) else {
             return;

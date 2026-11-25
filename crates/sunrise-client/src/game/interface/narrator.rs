@@ -165,13 +165,13 @@ impl Game<'_> {
         }
     }
     /// `GameNarrator.saySystemChatQueued(message)`.
-    pub(in crate::game) fn say_system_chat_queued(&self, message: &Text) {
+    pub(in crate::game::client_side) fn say_system_chat_queued(&self, message: &Text) {
         if self.narrates() {
             sunrise_narrator::say_system_chat_queued(&message.plain());
         }
     }
     /// `GameNarrator.sayChatQueued(message)`, its text already made.
-    pub(in crate::game) fn say_chat_queued(&self, message: &str) {
+    pub(in crate::game::client_side) fn say_chat_queued(&self, message: &str) {
         if self.narrates() {
             sunrise_narrator::say_chat_queued(message);
         }

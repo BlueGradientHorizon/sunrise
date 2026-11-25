@@ -28,7 +28,7 @@ impl Game<'_> {
     /// (the mob as `this`, its random sequence) is rolled and each stack goes
     /// in the slot `EquipmentUser.resolveSlot` picks, with the table's drop
     /// chance for that slot.
-    pub(in crate::game) fn equip_from_table(&mut self, id: u32, table: &Tag) {
+    pub(in crate::game::server_side) fn equip_from_table(&mut self, id: u32, table: &Tag) {
         let Some((name, chances)) = equipment_table(table) else {
             return;
         };

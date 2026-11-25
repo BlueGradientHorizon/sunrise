@@ -102,4 +102,13 @@ impl Game<'_> {
     pub(in crate::game) fn cleanup_fake_player_client(&mut self, entity_id: i32) {
         self.client.destroying.remove(&entity_id);
     }
+    /// Reads live `Remote::abilities` with predicted `flying` and `flying_speed` from the body.
+    pub(in crate::game) fn client_abilities(&self) -> Option<PlayerAbilities> {
+        let mut a = *self.remote_abilities()?;
+        if let Some(body) = self.player.as_ref() {
+            a.flying = body.flying;
+            a.flying_speed = body.flying_speed;
+        }
+        Some(a)
+    }
 }

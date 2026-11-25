@@ -652,7 +652,7 @@ impl Game<'_> {
             .map_or_else(|| uuid_text(uuid), str::to_owned)
     }
     /// `Entity.getTeam`: the team holding this entity's scoreboard name (its UUID).
-    pub(in crate::game) fn entity_team(&self, id: u32) -> Option<&sb::Team> {
+    pub(in crate::game::server_side) fn entity_team(&self, id: u32) -> Option<&sb::Team> {
         if self.score.board.teams.is_empty() {
             return None;
         }
@@ -738,7 +738,7 @@ impl Game<'_> {
         pet_team(&self.score.board, &own, Some(&owner_name))
     }
     /// A mob's own team, else its tamed owner's (`owner` is asked only then).
-    pub(in crate::game) fn team_with_owner(
+    pub(in crate::game::server_side) fn team_with_owner(
         &self,
         id: u32,
         owner: impl FnOnce() -> Option<[i32; 4]>,
@@ -818,7 +818,7 @@ impl Game<'_> {
     /// `EntitySelector.pushableBy(cart)`: a moving rideable cart keeps only
     /// what its own team's and the target's collision rules allow; a still or
     /// unrideable cart pushes every minecart in its box (no team filter).
-    pub(in crate::game) fn cart_push_allowed(
+    pub(in crate::game::server_side) fn cart_push_allowed(
         &self,
         carts: &[super::minecarts::Minecart],
         i: usize,
@@ -872,7 +872,7 @@ impl Game<'_> {
     // ---- commands ------------------------------------------------------------
 
     /// The scoreboard names a score holder argument resolves to.
-    pub(in crate::game) fn score_holder_names(
+    pub(in crate::game::server_side) fn score_holder_names(
         &mut self,
         ctx: &Context,
         name: &str,
@@ -941,7 +941,7 @@ impl Game<'_> {
             other => other,
         }
     }
-    pub(in crate::game) fn resolve_selector_text(&mut self, raw: &str) -> String {
+    pub(in crate::game::server_side) fn resolve_selector_text(&mut self, raw: &str) -> String {
         let mut reader = sunrise_client::command::Reader::new(raw);
         let ty = sunrise_client::command::args::ArgType::Entity {
             single: false,
@@ -961,56 +961,6 @@ impl Game<'_> {
     }
 
     // ---- the sidebar -----------------------------------------------------------
-
-    /// The objective in the player's team's sidebar slot, else the sidebar's.
-    pub(in crate::game::server_side) fn sidebar_objective(&self) -> Option<&sb::Objective> {
-        let board = &self.score.board;
-        if board.display.is_empty() {
-            return None;
-        }
-        // A server's client is in its team by its profile name.
-        let name = self
-            .remote
-            .as_ref()
-            .map_or(PLAYER_NAME, |r| r.profile_name.as_str());
-        let team_slot = board
-            .players_team(name)
-            .and_then(|t| t.color.as_ref())
-            .map(|c| format!("sidebar.team.{c}"))
-            .and_then(|slot| board.display_objective(&slot));
-        team_slot.or_else(|| board.display_objective(sb::SLOT_SIDEBAR))
-    }
-    /// The sidebar the HUD shows: its objective and its lines, for `status`.
-    pub(in crate::game) fn sidebar_status(&self) -> serde_json::Value {
-        let board = &self.score.board;
-        let Some(objective) = self.sidebar_objective() else {
-            return serde_json::Value::Null;
-        };
-        let scores: serde_json::Map<String, serde_json::Value> = board
-            .scores
-            .iter()
-            .filter_map(|(holder, s)| Some((holder.clone(), s.get(&objective.name)?.value.into())))
-            .collect();
-        serde_json::json!({ "objective": objective.name, "title": objective.display_text().plain(), "scores": scores })
-    }
-
-    /// `Hud.extractScoreboardSidebar` / `displayScoreboardSidebar`.
-    pub(in crate::game) fn draw_scoreboard(&self, batch: &mut HudBatch) {
-        let board = &self.score.board;
-        let Some(objective) = self.sidebar_objective() else {
-            return;
-        };
-        let draws = hud_overlays::sidebar(
-            batch.width as i32,
-            batch.height as i32,
-            board,
-            objective,
-            &self.gui.atlas.font,
-            self.settings.text_background(0.3),
-            self.settings.text_background(0.4),
-        );
-        hud_layout::paint(batch, &self.gui.atlas, &draws);
-    }
 }
 
 pub(in crate::game) fn tab_players_needed(shown: bool, changed: bool) -> bool {

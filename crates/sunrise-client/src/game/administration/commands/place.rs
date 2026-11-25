@@ -63,14 +63,18 @@ impl Game<'_> {
             .as_ref()
     }
     /// `BlockPosArgument.getLoadedBlockPos(pos)`, or the source's block.
-    pub(in crate::game) fn place_pos(&self, ctx: &Context, name: &str) -> R<[i32; 3]> {
+    pub(in crate::game::server_side) fn place_pos(&self, ctx: &Context, name: &str) -> R<[i32; 3]> {
         if ctx.get(name).is_some() {
             return self.block_pos_arg(ctx, name);
         }
         Ok(self.source_position().map(|v| v.floor() as i32))
     }
     /// `PlaceCommand.placeFeature`, `placeJigsaw` and `placeStructure`.
-    pub(in crate::game) fn cmd_place_generated(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_place_generated(
+        &mut self,
+        id: &str,
+        ctx: &Context,
+    ) -> R<i32> {
         match id {
             "place.feature" => {
                 let raw = match ctx.get("feature") {
@@ -219,7 +223,7 @@ impl Game<'_> {
             }
         }
     }
-    pub(in crate::game) fn cmd_place(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_place(&mut self, ctx: &Context) -> R<i32> {
         let Some(Arg::Resource(id)) = ctx.get("template").cloned() else {
             return Ok(0);
         };

@@ -9,7 +9,10 @@ pub(in crate::game) struct CloneBlockPayload {
     pending: Option<PendingContainerLoot>,
 }
 impl Game<'_> {
-    pub(in crate::game) fn clone_block_payload(&self, key: (i32, i32, i32)) -> CloneBlockPayload {
+    pub(in crate::game::server_side) fn clone_block_payload(
+        &self,
+        key: (i32, i32, i32),
+    ) -> CloneBlockPayload {
         CloneBlockPayload {
             entity: self.world.block_entities.get(&key).cloned(),
             name: self.world.block_names.get(&key).cloned(),
@@ -17,10 +20,10 @@ impl Game<'_> {
         }
     }
     /// Replacements discard the previous marker before removal can access it.
-    pub(in crate::game) fn discard_clone_loot(&mut self, pos: [i32; 3]) {
+    pub(in crate::game::server_side) fn discard_clone_loot(&mut self, pos: [i32; 3]) {
         crate::game::container_loot::take_block_pending(&mut self.world, (pos[0], pos[1], pos[2]));
     }
-    pub(in crate::game) fn apply_clone_payload(
+    pub(in crate::game::server_side) fn apply_clone_payload(
         &mut self,
         pos: [i32; 3],
         payload: CloneBlockPayload,

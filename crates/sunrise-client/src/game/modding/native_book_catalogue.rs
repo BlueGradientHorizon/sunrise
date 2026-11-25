@@ -81,7 +81,7 @@ impl Game<'_> {
         }
         Ok(())
     }
-    pub(super) fn server_mod_book_catalogue(
+    pub(in crate::game::server_side) fn server_mod_book_catalogue(
         &mut self,
         conn: u32,
         frame: sync::Frame,

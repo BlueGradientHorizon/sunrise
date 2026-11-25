@@ -1,11 +1,15 @@
 //! Common command registries, resource-id caches, permissions, and shared helpers.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
+#[allow(unused_imports)]
 use sunrise_client::command::Registries;
+#[allow(unused_imports)]
 use sunrise_world::{
     heightmap::{HeightmapState, HeightmapType},
     registry::{BlockRegistry, BlockStateId},
@@ -312,12 +316,6 @@ impl Game<'_> {
         self.level.allow_commands == Some(true)
     }
 
-    /// `IntegratedServer.setWorldAllowCommands`, then `updatePermissions`.
-    pub(in crate::game) fn set_allow_commands(&mut self, allow: bool) {
-        self.level.allow_commands = Some(allow);
-        self.ui.registries.permission = owner_permission(allow);
-    }
-
     /// Registry contents for argument parsing (built when a world opens).
     pub(in crate::game) fn build_registries(&mut self) {
         let permission = owner_permission(self.allow_commands());
@@ -495,11 +493,6 @@ impl Game<'_> {
         // After the export, which keys the registry with vanilla's tags.
         self.sync_stat_registries();
         self.side_sync_pack_tag_ids();
-    }
-
-    /// `Component.translatable`: the selected language, falling back to `fallback`.
-    pub(in crate::game) fn translate_with_fallback(&self, key: &str, fallback: &str) -> String {
-        sunrise_client::lang::get_or(key, fallback)
     }
 
     /// The canonical loaded inventory, with code targets resolved from the native runtime.

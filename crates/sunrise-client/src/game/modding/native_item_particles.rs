@@ -3,7 +3,10 @@ use super::Game;
 use sunrise_client::{items::ItemStack, particles::ParticleOptions};
 
 impl Game<'_> {
-    pub(super) fn item_particle_options(&self, stack: &ItemStack) -> Option<ParticleOptions> {
+    pub(in crate::game) fn item_particle_options(
+        &self,
+        stack: &ItemStack,
+    ) -> Option<ParticleOptions> {
         Some(self.item_particle(stack))
     }
 }

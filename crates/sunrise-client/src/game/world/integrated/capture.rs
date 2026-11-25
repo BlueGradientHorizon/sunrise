@@ -316,7 +316,7 @@ impl Game<'_> {
     }
 
     /// Whether a server capture runs or is being saved on this thread.
-    pub(in crate::game) fn server_capture_busy(&self) -> bool {
+    pub(in crate::game::server_side) fn server_capture_busy(&self) -> bool {
         self.profile
             .server
             .as_ref()

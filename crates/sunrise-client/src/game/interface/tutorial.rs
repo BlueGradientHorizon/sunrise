@@ -21,7 +21,7 @@ impl super::Game<'_> {
 }
 
 impl super::Game<'_> {
-    pub(in crate::game) fn reset_tutorial(&mut self) {
+    pub(in crate::game::client_side) fn reset_tutorial(&mut self) {
         self.client.tutorial =
             Tutorial::new(Step::from_option(self.settings.file.int("tutorialStep")));
         self.client
@@ -44,7 +44,7 @@ impl super::Game<'_> {
         tags.get(tag).is_some_and(|members| members.contains(id))
     }
 
-    pub(in crate::game) fn tutorial_get_item(
+    pub(in crate::game::client_side) fn tutorial_get_item(
         &mut self,
         stack: Option<&sunrise_client::items::ItemStack>,
     ) {

@@ -60,7 +60,7 @@ impl Game<'_> {
             .is_some_and(|rest| rest.spawner_types.contains_key(id))
     }
     /// Whether `entity_type_exists` has a registry to answer from.
-    pub(in crate::game) fn entity_types_loaded(&self) -> bool {
+    pub(in crate::game::server_side) fn entity_types_loaded(&self) -> bool {
         self.res.rest.get().is_some()
     }
     /// The server tick of the spawner at `key`. Its client tick comes after
@@ -80,7 +80,7 @@ impl Game<'_> {
             .put(lease, BlockEntity::Spawner(spawner));
         result
     }
-    pub(in crate::game) fn server_tick_spawner(
+    pub(in crate::game::server_side) fn server_tick_spawner(
         &mut self,
         key: Pos,
         spawner: &mut Spawner,
@@ -289,7 +289,7 @@ impl Game<'_> {
         Some(SpawnerAdded { id: key, mob: true })
     }
     /// What a spawner's tick or a spawn egg did, shown and sent.
-    pub(in crate::game) fn apply_spawner_events(
+    pub(in crate::game::server_side) fn apply_spawner_events(
         &mut self,
         key: Pos,
         events: Vec<SpawnerEvent>,
@@ -330,7 +330,7 @@ impl Game<'_> {
     }
     /// `sendBlockUpdated`: the clients load the new update tag (the client
     /// copy's delay follows it, its display mob is made again).
-    pub(in crate::game) fn spawner_block_updated(&mut self, key: Pos) {
+    pub(in crate::game::server_side) fn spawner_block_updated(&mut self, key: Pos) {
         self.world
             .path_type_block_updated(sunrise_core::position::BlockPos::new(key.0, key.1, key.2));
         if let Some(BlockEntity::Spawner(s)) = self.world.block_entities.get_mut(&key) {

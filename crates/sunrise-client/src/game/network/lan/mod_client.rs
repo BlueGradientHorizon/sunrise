@@ -116,6 +116,15 @@ impl Game<'_> {
             _ => Err("lan open|close|status|op".into()),
         }
     }
+    pub(in crate::game) fn lan_port(&self) -> Option<u16> {
+        if let Some(server) = &self.integrated {
+            return server.published();
+        }
+        if self.serving() {
+            return self.published_port();
+        }
+        self.lan.as_ref().map(|h| h.settings.port)
+    }
 }
 
 #[cfg(test)]

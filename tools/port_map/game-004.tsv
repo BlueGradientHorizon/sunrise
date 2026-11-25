@@ -18,7 +18,7 @@ MobEffectInstance.withScaledDuration	inline	crates/sunrise-client/src/game/items
 MobEffectInstance.mapDuration	inline	crates/sunrise-client/src/game/items/potions_server.rs::Game::splash	the (int)(scale * duration + 0.5) of a splash potion on mobs (splash_on_player for the player); potions are never infinite
 MobEffectInstance.tickDownDuration	port	crates/sunrise-client-render/src/effects.rs::EffectInstance::tick_down	hidden effect ticks down too; infinite stays
 MobEffectInstance.downgradeToHiddenEffect	port	crates/sunrise-client-render/src/effects.rs::EffectInstance::downgrade	gap: minor: mobs keep no hidden effects (Mob::add_effect drops a weaker one)
-MobEffectInstance.onMobRemoved	inline	crates/sunrise-client/src/game/items/potions.rs::Game::effects_on_death	oozing, weaving and wind charged run when their bearer dies (player or mob)
+MobEffectInstance.onMobRemoved	inline	crates/sunrise-client/src/game/items/potions_server.rs::Game::effects_on_death	oozing, weaving and wind charged run when their bearer dies (player or mob)
 MobEffectInstance.onMobHurt	inline	crates/sunrise-client/src/game/items/potions.rs::Game::infested_hurt	only infested reacts to being hurt; called for the player from combat.rs and for mobs from creatures.rs
 MobEffectInstance.toString	skip:debug		debug string
 MobEffectInstance.equals	skip:java		value equality
@@ -29,14 +29,14 @@ MobEffectInstance.Details.create	skip:java		record constructor for the codec
 MobEffectUtil.hasDigSpeed	inline	crates/sunrise-client-render/src/effects.rs::PlayerEffects::mining_speed_factor	haste or conduit power, also read for the arm swing duration in first_person.rs
 MobEffectUtil.hasWaterBreathing	inline	crates/sunrise-client-render/src/effects.rs::PlayerEffects::status	water_breathing flag is water breathing or conduit power; breath of the nautilus is its own flag read with it
 MobEffectUtil.shouldEffectsRefillAirsupply	inline	crates/sunrise-client/src/motion/environment.rs::MotionWorld::tick_environment_damage	air refills unless only breath of the nautilus is active
-OozingMobEffect.onMobRemoved	inline	crates/sunrise-client/src/game/items/potions.rs::Game::effects_on_death	oozing branch: two slimes, fewer when slimes within 2 blocks fill max_entity_cramming
-OozingMobEffect.spawnSlimeOffspring	inline	crates/sunrise-client/src/game/items/potions.rs::Game::effects_on_death	size 2 slime half a block up
+OozingMobEffect.onMobRemoved	inline	crates/sunrise-client/src/game/items/potions_server.rs::Game::effects_on_death	oozing branch: two slimes, fewer when slimes within 2 blocks fill max_entity_cramming
+OozingMobEffect.spawnSlimeOffspring	inline	crates/sunrise-client/src/game/items/potions_server.rs::Game::effects_on_death	size 2 slime half a block up
 PoisonMobEffect.applyEffectTick	port	crates/sunrise-client-render/src/effects.rs::periodic	one magic damage while above 1 health; mobs in mobs/ai.rs::tick_effects
 PoisonMobEffect.shouldApplyEffectTickThisTick	port	crates/sunrise-client-render/src/effects.rs::periodic	25 >> level interval
 RegenerationMobEffect.applyEffectTick	port	crates/sunrise-client-render/src/effects.rs::periodic	heal 1; mobs in mobs/ai.rs::tick_effects
 RegenerationMobEffect.shouldApplyEffectTickThisTick	port	crates/sunrise-client-render/src/effects.rs::periodic	50 >> level interval
 SaturationMobEffect.applyEffectTick	port	crates/sunrise-client-render/src/effects.rs::periodic	Eat(level + 1, 1.0) applied to the food data; player only
-WeavingMobEffect.onMobRemoved	inline	crates/sunrise-client/src/game/items/potions.rs::Game::effects_on_death	weaving branch (killed, player or mob_griefing) calls spawn_cobwebs_around: 2 or 3 cobwebs among 15 random blocks
+WeavingMobEffect.onMobRemoved	inline	crates/sunrise-client/src/game/items/potions_server.rs::Game::effects_on_death	weaving branch (killed, player or mob_griefing) calls spawn_cobwebs_around: 2 or 3 cobwebs among 15 random blocks
 WitherMobEffect.shouldApplyEffectTickThisTick	port	crates/sunrise-client-render/src/effects.rs::periodic	40 >> level interval; mobs in mobs/ai.rs::tick_effects take magic damage, not wither damage
 AbstractInterpolationHandler.adjustInterpolationPosition	skip:other		Sunrise moves a remote entity only through SteppedInterpolation, so there is no client-side move to add to the target
 AbstractInterpolationHandler.adjustInterpolationTargetFromDeltas	skip:other		same: the entity never drifts from where the interpolation put it (see SteppedInterpolation::interpolate)
@@ -50,8 +50,8 @@ AgeableMob.isBaby	port	crates/sunrise-client/src/mobs/living.rs::Mob::is_baby	ca
 AgeableMob.canAgeUp	port	crates/sunrise-client/src/mobs/ai.rs::can_age_up	isBaby && !isAgeLocked: the growing branch of Animal.mobInteract and of the feeding paths, and the age step
 AnimationState.getTimeInMillis	port	crates/sunrise-client/src/mobs/keyframes.rs::AnimationState::millis
 AreaEffectCloud.defineSynchedData	port	crates/sunrise-client/src/game/network/lan_entities.rs::Game::lan_projectile_states	radius, waiting and particle for dragon breath and lingering clouds; read back in remote_arrows.rs::remote_projectile_data
-AreaEffectCloud.setRadius	inline	crates/sunrise-client/src/game/items/potions.rs::Game::tick_potion_cloud	loaded radius and nonzero per-tick/per-use changes clamp to 0..32
-AreaEffectCloud.refreshDimensions	inline	crates/sunrise-client/src/game/items/potions.rs::Game::tick_potion_cloud	the affected box is rebuilt from the radius every check
+AreaEffectCloud.setRadius	inline	crates/sunrise-client/src/game/items/potions_server.rs::Game::tick_potion_cloud	loaded radius and nonzero per-tick/per-use changes clamp to 0..32
+AreaEffectCloud.refreshDimensions	inline	crates/sunrise-client/src/game/items/potions_server.rs::Game::tick_potion_cloud	the affected box is rebuilt from the radius every check
 AreaEffectCloud.readAdditionalSaveData	port	crates/sunrise-client/src/game/items/potions.rs::Game::load_potion_cloud	loaded potion effects, age, radius, duration, wait, reapplication, per-use/per-tick changes and duration scale join the live cloud model; owner resolution and custom particles remain unmodeled; save/reopen remains separate
 AreaEffectCloud.addAdditionalSaveData	port	crates/sunrise-client/src/game/items/potions.rs::potion_cloud_to_nbt	the lifetime, radius, the four use settings, RadiusPerTick, potion_duration_scale and the effects as `custom_effects` with the colour; a dragon's own breath carries no potion and is not written
 AreaEffectCloud.get	skip:other		entity data component accessor for predicates and /data; Sunrise keeps the cloud's potion in PotionCloud

@@ -83,7 +83,7 @@ impl Game<'_> {
         self.paint_screen(batch, ox, oy, rest, true);
     }
     /// `gui.togglable_slot` over an empty, enabled grid slot.
-    pub(in crate::game) fn crafter_tooltip(&self, slot: usize) -> Option<String> {
+    pub(in crate::game::client_side) fn crafter_tooltip(&self, slot: usize) -> Option<String> {
         let c = self.container.and_then(|k| self.crafter_at(k))?;
         let i = slot.checked_sub(300).filter(|i| *i < 9)?;
         (self.carried.is_none() && c.items[i].is_none() && !c.disabled[i] && !self.spectator())

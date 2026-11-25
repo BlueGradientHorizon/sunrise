@@ -4,6 +4,22 @@ pub(in crate::game::server_side) use super::*;
 pub(in crate::game::server_side) use crate::game::native_hooks::item_fallthrough::*;
 
 impl Game<'_> {
+    pub(in crate::game::server_side) fn use_item_fallthrough(
+        &mut self,
+        stack: &ItemStack,
+        on_block: bool,
+    ) -> Option<bool> {
+        if on_block {
+            return None;
+        }
+        if let Some(answer) = self.right_click_item(self.hand, stack) {
+            if answer == mod_api::InteractionResult::SuccessServer {
+                self.swing_arm();
+            }
+            return Some(answer.consumes_action());
+        }
+        self.use_item_in_hand(stack)
+    }
     /// Finish all useOn handlers, including placement, before entering Item.use.
     pub(in crate::game::server_side) fn use_target_then_item(
         &mut self,

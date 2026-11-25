@@ -40,9 +40,9 @@ ClientCommonPacketListenerImpl.handleCustomReportDetails	skip:debug		extra lines
 ClientCommonPacketListenerImpl.showDialog	port	crates/sunrise-client/src/game/interface/dialogs.rs::Game::show_play_dialog	shows a direct or registry dialog
 ClientCommonPacketListenerImpl.clearDialog	port	crates/sunrise-client/src/game/interface/dialogs.rs::Game::clear_dialog	closes the dialog screen
 ClientCommonPacketListenerImpl.sendDeferredPackets	missing		minor: no deferred-packet queue; keep-alive and other packets are sent at once
-ClientCommonPacketListenerImpl.onDisconnect	port	crates/sunrise-client/src/game/network/remote/session.rs::Game::leave_server	shows the disconnect reason on the multiplayer screen; no telemetry
+ClientCommonPacketListenerImpl.onDisconnect	port	crates/sunrise-client/src/game/network/remote/session_client.rs::Game::leave_server	shows the disconnect reason on the multiplayer screen; no telemetry
 ClientCommonPacketListenerImpl.fillListenerSpecificCrashDetails	skip:debug		crash report details only
-ClientCommonPacketListenerImpl.createDisconnectScreen	port	crates/sunrise-client/src/game/network/remote/session.rs::Game::leave_server	disconnected view with the reason (Screen::Disconnected)
+ClientCommonPacketListenerImpl.createDisconnectScreen	port	crates/sunrise-client/src/game/network/remote/session_client.rs::Game::leave_server	disconnected view with the reason (Screen::Disconnected)
 ClientCommonPacketListenerImpl.sendWhen	missing		minor: no deferred sends; packets go out at once (see handleKeepAlive)
 ClientCommonPacketListenerImpl.addOrUpdatePackPrompt	port	crates/sunrise-client/src/game/world/server_packs.rs::Game::handle_pack_push	one prompt holds every pack pushed before it is answered
 ClientCommonPacketListenerImpl.PackConfirmScreen.<init>	port	crates/sunrise-client/src/game/world/server_packs.rs::Game::handle_pack_push	creates the prompt with its pending requests
@@ -95,11 +95,11 @@ ClientLevel.shouldTickDeath	missing		minor: death animations tick for every remo
 ClientLevel.tickNonPassenger	port	crates/sunrise-client/src/game/network/remote/tick_client.rs::Game::tick_remote_entities	ticks each remote entity
 ClientLevel.tickPassenger	port	crates/sunrise-client/src/game/entities/passengers_client.rs::Game::position_riders	gap: minor: passengers are placed on their vehicle; no per-passenger tick
 ClientLevel.update	skip:other		runs the light queue each tick; Sunrise relights when changes arrive
-ClientLevel.unload	inline	crates/sunrise-client/src/game/network/remote/packets_world.rs::Game::apply_forget_level_chunk_packet	minor: the ForgetLevelChunk arm clears block entities and renderer columns; light and entity ticking are not toggled
+ClientLevel.unload	inline	crates/sunrise-client/src/game/network/remote/packets_world_client.rs::Game::apply_forget_level_chunk_packet	minor: the ForgetLevelChunk arm clears block entities and renderer columns; light and entity ticking are not toggled
 ClientLevel.onChunkLoaded	inline	crates/sunrise-client/src/game/network/remote_chunks.rs::Game::remote_chunk	minor: chunks are meshed on arrival; no tint cache to clear and no entity-ticking gate
 ClientLevel.removeEntity	port	crates/sunrise-client/src/game/network/remote_removal.rs::Game::remove_entity	removes the entity and its passengers
 ClientLevel.getPushableEntities	missing		minor: the client does not push the local player with nearby mobs or boats; the server's position correction moves it
-ClientLevel.disconnect	port	crates/sunrise-client/src/game/network/remote/session.rs::Game::leave_server	gap: minor: no presence update
+ClientLevel.disconnect	port	crates/sunrise-client/src/game/network/remote/session_client.rs::Game::leave_server	gap: minor: no presence update
 ClientLevel.spawnParticle	port	crates/sunrise-client/src/animate_tick.rs::try_spawn_drip	drip particle from a block shape (doAnimateTick)
 ClientLevel.spawnFluidParticle	port	crates/sunrise-client/src/animate_tick.rs::try_spawn_drip	drip particle over a solid top (doAnimateTick)
 ClientLevel.fillReportDetails	skip:debug		crash report details only
@@ -113,5 +113,5 @@ ClientLevel.getSkyFlashTime	inline	crates/sunrise-client/src/game/game_client.rs
 ClientLevel.calculateBlockTint	port	crates/sunrise-client-render/src/mesher.rs::MeshTables::terrain_particle_tint	gap: minor: returns none for grass-block tints
 ClientLevel.playBreakingSound	port	crates/sunrise-client/src/game/interface/level_particles_client.rs::Game::breaking_block_effects	the block's hit sound while digging
 ClientLevel.getClientLeafTintColor	port	crates/sunrise-client/src/animate_tick.rs::AnimateContext::foliage	leaf tint for tinted leaves particles; the caller is TintedParticleLeavesBlock
-ClientLevel.EntityCallbacks.onTrackingStart	inline	crates/sunrise-client/src/game/network/remote/tracking.rs::Game::spawn_entity	minor: ender dragon parts are placed by the dragon module, with no tracked parts list
+ClientLevel.EntityCallbacks.onTrackingStart	inline	crates/sunrise-client/src/game/network/remote/tracking_client.rs::Game::spawn_entity	minor: ender dragon parts are placed by the dragon module, with no tracked parts list
 ClientLevel.EntityCallbacks.onTrackingEnd	port	crates/sunrise-client/src/game/network/remote_removal.rs::Game::remove_entity	minor: detaches passengers and removes the dragon's parts; the leave-level event is not posted

@@ -40,7 +40,7 @@ impl Game<'_> {
     /// decided with the game whole (`stacked_pickup`: they are fired with `HostSide`, the LAN host
     /// still in place); and the click itself runs with the host lifted out of the game. Returns
     /// the stacks the click threw out, or `None` for a refused click.
-    pub(in crate::game) fn lan_hub_click(
+    pub(in crate::game::server_side) fn lan_hub_click(
         &mut self,
         conn: u32,
         p: &play::ContainerClick,
@@ -130,5 +130,23 @@ impl Game<'_> {
         let (drops, changed) = outcome.into_inner()?;
         self.reply_predicted_menu_click(conn, p, changed);
         Some(drops)
+    }
+    /// Run `f` with the LAN host taken out of `self.lan`, then put it back. `f` is given the whole
+    /// game (`self.lan` is `None` while it runs) and the host. The host is restored on every
+    /// path, including a panic in `f`, which is then propagated: no borrow of the host outlives
+    /// the call and the game is not left without it. `None` when there is no host to lift,
+    /// which includes a call made while the host is already lifted.
+    pub(in crate::game) fn with_lan_lifted<R>(
+        &mut self,
+        f: impl FnOnce(&mut Self, &mut LanHost) -> R,
+    ) -> Option<R> {
+        let mut host = self.lan.take()?;
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(self, &mut host)));
+        debug_assert!(self.lan.is_none(), "a lifted LAN host was replaced");
+        self.lan = Some(host);
+        match result {
+            Ok(result) => Some(result),
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
     }
 }

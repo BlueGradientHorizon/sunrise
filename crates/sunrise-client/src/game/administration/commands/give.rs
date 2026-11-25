@@ -36,7 +36,7 @@ impl Game<'_> {
         );
     }
     /// The receiving player's eyes, where what did not fit is thrown from.
-    pub(in crate::game) fn give_eye(&self) -> [f64; 3] {
+    pub(in crate::game::server_side) fn give_eye(&self) -> [f64; 3] {
         let p = self
             .target_position(Target::Player)
             .unwrap_or(self.source_position());

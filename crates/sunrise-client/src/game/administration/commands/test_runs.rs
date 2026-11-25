@@ -47,7 +47,11 @@ pub(in crate::game) fn rotation_for_steps(steps: i32) -> Option<Rotation> {
 impl Game<'_> {
     /// `StructureUtils.findTestBlocks`: the test instance blocks within
     /// `radius` of `center` (the POI search is a sphere).
-    pub(in crate::game) fn find_test_instance_blocks(&self, center: Pos, radius: i32) -> Vec<Pos> {
+    pub(in crate::game::server_side) fn find_test_instance_blocks(
+        &self,
+        center: Pos,
+        radius: i32,
+    ) -> Vec<Pos> {
         let limit = i64::from(radius) * i64::from(radius);
         let mut found: Vec<Pos> = self
             .world
@@ -70,7 +74,7 @@ impl Game<'_> {
     }
 
     /// The block of the source's position (`BlockPos.containing`).
-    pub(in crate::game) fn test_source_block(&self) -> Pos {
+    pub(in crate::game::server_side) fn test_source_block(&self) -> Pos {
         let p = self.source_position();
         (
             p[0].floor() as i32,
@@ -81,7 +85,7 @@ impl Game<'_> {
 
     /// `StructureUtils.lookedAtTestPos`: the test whose box the player's
     /// view ray (250 blocks) meets, the nearest to the source.
-    pub(in crate::game) fn looked_at_test(&self, center: Pos) -> Option<Pos> {
+    pub(in crate::game::server_side) fn looked_at_test(&self, center: Pos) -> Option<Pos> {
         let player = self.player.as_ref()?;
         let eye = [
             player.position.x,
@@ -114,7 +118,7 @@ impl Game<'_> {
     }
 
     /// The test instance blocks a finder gives (`findTestPos`).
-    pub(in crate::game) fn finder_positions(&self, finder: &Finder) -> Vec<Pos> {
+    pub(in crate::game::server_side) fn finder_positions(&self, finder: &Finder) -> Vec<Pos> {
         let center = self.test_source_block();
         match finder {
             Finder::Radius(radius) => self.find_test_instance_blocks(center, *radius),
@@ -133,7 +137,7 @@ impl Game<'_> {
     }
 
     /// `verifyStructureExists`.
-    pub(in crate::game) fn verify_test_structure(&mut self, structure: &str) -> bool {
+    pub(in crate::game::server_side) fn verify_test_structure(&mut self, structure: &str) -> bool {
         if self.template_entry(structure).is_some() {
             return true;
         }
@@ -145,7 +149,7 @@ impl Game<'_> {
     }
 
     /// The column `createTestPositionAround` starts from: the source's.
-    pub(in crate::game) fn test_around(&self) -> (i32, i32) {
+    pub(in crate::game::server_side) fn test_around(&self) -> (i32, i32) {
         let p = self.source_position();
         (p[0].floor() as i32, p[2].floor() as i32)
     }
@@ -161,13 +165,13 @@ impl Game<'_> {
     }
 
     /// `createTestPositionAround` in the level in place.
-    pub(in crate::game) fn test_position_around(&mut self) -> Pos {
+    pub(in crate::game::server_side) fn test_position_around(&mut self) -> Pos {
         let around = self.test_around();
         self.test_position_in_level(around)
     }
 
     /// `TestCommand.reset`.
-    pub(in crate::game) fn reset_tests(&mut self, finder: &Finder) -> R<i32> {
+    pub(in crate::game::server_side) fn reset_tests(&mut self, finder: &Finder) -> R<i32> {
         self.clear_game_tests();
         let mut count = 0;
         for pos in self.finder_positions(finder) {
@@ -188,7 +192,7 @@ impl Game<'_> {
     }
 
     /// `TestCommand.clear`.
-    pub(in crate::game) fn clear_tests(&mut self, finder: &Finder) -> R<i32> {
+    pub(in crate::game::server_side) fn clear_tests(&mut self, finder: &Finder) -> R<i32> {
         self.clear_game_tests();
         let tests = self.finder_positions(finder);
         for &pos in &tests {

@@ -99,7 +99,7 @@ fn light_packet_padding_rebuilds_only_adjacent_mesh_rows() {
 #[ignore = "daily"]
 fn standalone_light_survives_missing_columns_and_rebuilds_on_equal_resends() {
     in_own_process(
-        "game::remote_chunks::light_tests::standalone_light_survives_missing_columns_and_rebuilds_on_equal_resends",
+        "game::client_side::remote_chunks::light_tests::standalone_light_survives_missing_columns_and_rebuilds_on_equal_resends",
         || {
             with_client_game(|game| {
                 let (client, _server) = Pipe::pair();

@@ -567,7 +567,7 @@ impl Game<'_> {
         }
         Ok(())
     }
-    pub(in crate::game) fn entity_tag_in_level(
+    pub(in crate::game::server_side) fn entity_tag_in_level(
         &mut self,
         t: Target,
         include_id: bool,
@@ -1008,7 +1008,7 @@ impl Game<'_> {
     }
     /// The acting player's own UUID: a guest's turn (the window's player on
     /// the server thread) keeps the world owner's in `level`.
-    pub(in crate::game) fn saved_player_uuid(&self) -> Option<[i32; 4]> {
+    pub(in crate::game::server_side) fn saved_player_uuid(&self) -> Option<[i32; 4]> {
         self.server
             .lan_acting_uuid
             .map(sunrise_client::lan::playerdata::uuid_ints)

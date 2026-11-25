@@ -9,7 +9,7 @@ use sunrise_core::geometry::{Aabb, Vec3};
 static EMPTY_LID_OPENERS: OnceLock<HashMap<(i32, i32, i32), i32>> = OnceLock::new();
 
 impl Game<'_> {
-    pub(in crate::game) fn client_player_view(&self) -> Option<PlayerView> {
+    pub(in crate::game::client_side) fn client_player_view(&self) -> Option<PlayerView> {
         let p = self.player.as_ref()?;
         let w = f64::from(p.dimensions.width) / 2.0;
         let bounds = Aabb::new(

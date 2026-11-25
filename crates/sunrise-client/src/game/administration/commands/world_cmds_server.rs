@@ -791,7 +791,7 @@ impl Game<'_> {
         }
         self.cmds.0.attributes.get_mut(&t)
     }
-    pub(in crate::game) fn hurt_target_from_source(
+    pub(in crate::game::server_side) fn hurt_target_from_source(
         &mut self,
         target: Target,
         amount: f32,
@@ -907,7 +907,7 @@ impl Game<'_> {
         }
     }
     /// Entity.getVehicle: the player's mount, or a mob's.
-    pub(in crate::game) fn ride_vehicle(&self, t: Target) -> Option<Target> {
+    pub(in crate::game::server_side) fn ride_vehicle(&self, t: Target) -> Option<Target> {
         let id = match t {
             Target::Player => self.riding?,
             Target::Guest(conn) => self.command_guest(conn)?.vehicle?,
@@ -927,7 +927,7 @@ impl Game<'_> {
             Target::Mob(id)
         })
     }
-    pub(in crate::game) fn send_player_sound(
+    pub(in crate::game::server_side) fn send_player_sound(
         &mut self,
         t: Target,
         sound: &str,
@@ -960,7 +960,7 @@ impl Game<'_> {
             }
         }
     }
-    pub(in crate::game) fn send_player_stop_sound(
+    pub(in crate::game::server_side) fn send_player_stop_sound(
         &mut self,
         targets: &[Target],
         sound: Option<&str>,

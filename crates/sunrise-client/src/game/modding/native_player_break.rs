@@ -112,7 +112,7 @@ impl Game<'_> {
     /// return and the drops. It is told the block the removal took out, read here, after
     /// `playerWillDestroy` and the mods' `break_block` had their say, together with that block's
     /// block entity data. True when the block was removed.
-    pub(in crate::game) fn remove_block_as_player(
+    pub(in crate::game::server_side) fn remove_block_as_player(
         &mut self,
         pos: [i32; 3],
         creative: bool,

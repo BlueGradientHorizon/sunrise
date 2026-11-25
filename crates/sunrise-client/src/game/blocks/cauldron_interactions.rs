@@ -284,7 +284,7 @@ impl mod_api::CauldronInteractions for Registrar<'_> {
 }
 impl Game<'_> {
     /// Invoke a mod's authoritative cauldron interaction on the server.
-    pub(in crate::game) fn use_mod_cauldron(
+    pub(in crate::game::server_side) fn use_mod_cauldron(
         &mut self,
         pos: [i32; 3],
         under_water: bool,

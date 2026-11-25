@@ -46,7 +46,7 @@ impl Game<'_> {
 
     /// The player whose nickname is `name` (any case, a leading `~` either
     /// side ignored).
-    pub(in crate::game) fn player_nicknamed(&self, name: &str) -> Option<Target> {
+    pub(in crate::game::server_side) fn player_nicknamed(&self, name: &str) -> Option<Target> {
         let bare = |s: &str| s.strip_prefix('~').unwrap_or(s).to_ascii_lowercase();
         let wanted = bare(name);
         let hub = &self.lan.as_ref()?.hub;

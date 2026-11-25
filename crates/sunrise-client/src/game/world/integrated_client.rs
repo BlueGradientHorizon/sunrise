@@ -77,7 +77,7 @@ pub(in crate::game::client_side) use sunrise_protocol::{crypto::offline_uuid, te
 
 impl Game<'_> {
     /// Only the owner window changes its integrated server's command tree.
-    pub(in crate::game) fn sync_pregen_option(&self) {
+    pub(in crate::game::client_side) fn sync_pregen_option(&self) {
         let Some(server) = &self.integrated else {
             return;
         };

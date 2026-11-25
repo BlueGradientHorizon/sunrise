@@ -9,7 +9,7 @@ use sunrise_client::{hud::HudBatch, hud_layout, hud_overlays::HeldName, text::Te
 
 impl Game<'_> {
     #[inline(always)]
-    pub(in crate::game) fn set_hud_overlay(&mut self, message: Text) {
+    pub(in crate::game::client_side) fn set_hud_overlay(&mut self, message: Text) {
         self.client.titles.set_overlay(message, false);
     }
     /// `Hud.setOverlayMessage(line, animate_color)` on this window's HUD, outside a borrowed

@@ -52,7 +52,7 @@ impl Game<'_> {
     }
 
     #[inline(always)]
-    pub(in crate::game) fn server_acting_use(&self) -> bool {
+    pub(in crate::game::server_side) fn server_acting_use(&self) -> bool {
         assert!(
             self.is_logical_server(),
             "server_acting_use called on Client role"
@@ -61,7 +61,7 @@ impl Game<'_> {
     }
 
     #[inline(always)]
-    pub(in crate::game) fn server_acting_sprint(&self) -> bool {
+    pub(in crate::game::server_side) fn server_acting_sprint(&self) -> bool {
         assert!(
             self.is_logical_server(),
             "server_acting_sprint called on Client role"
@@ -70,7 +70,10 @@ impl Game<'_> {
     }
 
     #[inline(always)]
-    pub(in crate::game) fn server_set_acting_input(&mut self, input: ServerActingInput) {
+    pub(in crate::game::server_side) fn server_set_acting_input(
+        &mut self,
+        input: ServerActingInput,
+    ) {
         assert!(
             self.is_logical_server(),
             "server_set_acting_input called on Client role"
@@ -79,7 +82,7 @@ impl Game<'_> {
     }
 
     #[inline(always)]
-    pub(in crate::game) fn server_set_acting_sneak(&mut self, held: bool) {
+    pub(in crate::game::server_side) fn server_set_acting_sneak(&mut self, held: bool) {
         assert!(
             self.is_logical_server(),
             "server_set_acting_sneak called on Client role"
@@ -116,7 +119,7 @@ impl Game<'_> {
     }
 
     #[inline(always)]
-    pub(in crate::game) fn server_clear_acting_input(&mut self) {
+    pub(in crate::game::server_side) fn server_clear_acting_input(&mut self) {
         assert!(
             self.is_logical_server(),
             "server_clear_acting_input called on Client role"
@@ -125,7 +128,7 @@ impl Game<'_> {
     }
 
     #[inline(always)]
-    pub(in crate::game) fn server_replace_acting_input(
+    pub(in crate::game::server_side) fn server_replace_acting_input(
         &mut self,
         next: ServerActingInput,
     ) -> ServerActingInput {
@@ -147,7 +150,7 @@ impl Game<'_> {
     }
 
     #[inline(always)]
-    pub(in crate::game) fn server_replace_pending_guest_ui(
+    pub(in crate::game::server_side) fn server_replace_pending_guest_ui(
         &mut self,
         next: ServerPendingGuestUi,
     ) -> ServerPendingGuestUi {
@@ -220,7 +223,7 @@ impl Game<'_> {
     }
 
     /// `AbstractHorse.openCustomInventoryScreen` on a server-role game.
-    pub(in crate::game) fn server_request_mount_menu(&mut self, index: usize) {
+    pub(in crate::game::server_side) fn server_request_mount_menu(&mut self, index: usize) {
         assert!(
             self.is_logical_server(),
             "server_request_mount_menu called on Client role"
@@ -242,7 +245,7 @@ impl Game<'_> {
     /// `ServerboundPlayerCommandPacket::OPEN_INVENTORY` while riding a mount.
     /// Uses `m.extra.tame && m.alive()` so an invalid mount returns `false` and
     /// preserves the chest-boat fallback in `packets_server.rs:606-607`.
-    pub(in crate::game) fn server_open_ridden_mount_menu(&mut self) -> bool {
+    pub(in crate::game::server_side) fn server_open_ridden_mount_menu(&mut self) -> bool {
         assert!(
             self.is_logical_server(),
             "server_open_ridden_mount_menu called on Client role"

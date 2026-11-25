@@ -1,6 +1,8 @@
 //! `ChatListener`'s delayed queue: Chat Delay's held-back messages, their
 //! tick, the flush when the delay turns off, and the queue row's click.
+#[allow(unused_imports)]
 use super::{Game, QueuedChat, QueuedChatKind, Remote, Signature};
+#[allow(unused_imports)]
 use std::time::{Duration, Instant};
 
 impl Game<'_> {
@@ -19,7 +21,7 @@ impl Game<'_> {
     /// `ChatListener.Message.accept`: acknowledge a player message after
     /// deciding if it was shown. A validation error always acknowledges its
     /// invalid signature as not shown, even if its error line is visible.
-    fn accept_chat(&mut self, chat: QueuedChat) -> bool {
+    pub(in crate::game) fn accept_chat(&mut self, chat: QueuedChat) -> bool {
         let signature = chat.signature;
         let error = matches!(chat.kind, QueuedChatKind::Error { .. });
         if error && let Some(signature) = &signature {
@@ -33,18 +35,6 @@ impl Game<'_> {
             self.mark_message_processed(signature, shown);
         }
         shown
-    }
-
-    /// `ChatListener.messageDelay`: Chat Delay in milliseconds, as Java
-    /// truncates it.
-    pub(in crate::game) fn chat_delay_ms(&self) -> i64 {
-        (self.settings.chat_delay * 1000.0) as i64
-    }
-
-    /// `ChatListener.queueSize`: the messages Chat Delay holds, for the chat's
-    /// `chat.queue` row.
-    pub(in crate::game) fn chat_queue_len(&self) -> usize {
-        self.remote.as_ref().map_or(0, |r| r.chat_queue.len())
     }
 
     /// `ChatListener.tick`: while paused the wait does not run down; with no
@@ -110,20 +100,5 @@ impl Game<'_> {
         if let Some(chat) = self.remote.as_mut().and_then(|r| r.chat_queue.pop_front()) {
             self.accept_chat(chat);
         }
-    }
-}
-
-impl Remote {
-    /// `removeFromDelayedMessageQueue`: suppress presentation and the pending
-    /// acknowledgement. Invalid signatures are not queue deletion keys.
-    pub(in crate::game) fn remove_queued_chat(&mut self, signature: &Signature) -> bool {
-        let queued = self.chat_queue.len();
-        self.chat_queue.retain(|chat| {
-            !matches!(
-                chat.kind,
-                QueuedChatKind::Player { .. } | QueuedChatKind::Filtered
-            ) || chat.signature.as_ref() != Some(signature)
-        });
-        self.chat_queue.len() != queued
     }
 }

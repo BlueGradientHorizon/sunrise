@@ -6,7 +6,7 @@ use super::Screen;
 /// (`AbstractCommandBlockEditScreen`, structure block, jigsaw, test block) —
 /// plus the two Sunrise draws over `Screen::Playing`: a book (`BookViewScreen`)
 /// and a sign editor (`AbstractSignEditScreen`).
-pub(super) fn in_game_ui(screen: Screen, book_or_sign: bool) -> bool {
+pub(in crate::game) fn in_game_ui(screen: Screen, book_or_sign: bool) -> bool {
     book_or_sign
         || matches!(
             screen,

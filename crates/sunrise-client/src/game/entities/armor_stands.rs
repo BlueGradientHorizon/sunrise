@@ -299,68 +299,8 @@ impl ArmorStandAssets {
             root: root.to_owned(),
         }
     }
-    /// Trim data of reloaded resources (the models stay).
-    pub fn apply_resources(&mut self, fresh: Self) {
-        self.equipment = fresh.equipment;
-        self.extensions = fresh.extensions;
-        self.trim_overrides = fresh.trim_overrides;
-        self.trims = fresh.trims;
-        self.root = fresh.root;
-    }
-    /// `TrimTextureKey`: the trim texture of `stack` on its humanoid
-    /// layer (`humanoid` or `humanoid_leggings`), if it has a trim.
-    pub(in crate::game) fn trim_texture(
-        &self,
-        asset: &str,
-        kind: &str,
-        stack: &ItemStack,
-    ) -> Option<TrimTexture> {
-        let (material, pattern) =
-            sunrise_client::item_data::trim::named(stack.extra.as_ref()?.trim.as_ref()?)?;
-        let overrides = self
-            .trim_overrides
-            .get(asset)
-            .map_or(&[][..], Vec::as_slice);
-        TrimTexture::resolve(&self.trims, overrides, material, pattern, kind)
-    }
 }
 impl Game<'_> {
-    /// OptiFine CIT: the winning armour or elytra rule (`kind`) of the worn `stack`. No lookup
-    /// without CIT rules.
-    pub(in crate::game) fn cit_worn_rule(&self, kind: Kind, stack: &ItemStack) -> Option<&Rule> {
-        let rules = &self.pack.item_renderer.cit.as_ref()?.rules;
-        let item_max = self.items().get(&stack.item).map_or(0, |i| i.max_damage);
-        sunrise_client::item_render::cit::worn_rule(rules, kind, stack, item_max)
-            .and_then(|i| rules.rules.get(i))
-    }
-    /// `HumanoidArmorLayer` for the player: (model, texture rect, colour,
-    /// overlay) of each worn piece, head to feet.
-    pub(in crate::game) fn player_armor_layers(&self) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
-        self.stack_armor_layers(&self.armor)
-    }
-    /// `HumanoidArmorLayer` for worn stacks (head to feet), trims included.
-    pub(in crate::game::server_side) fn stack_armor_layers(
-        &self,
-        armor: &[Option<ItemStack>; 4],
-    ) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
-        self.armor_layers(
-            armor
-                .each_ref()
-                .map(|s| s.as_ref().map(|s| (&*s.item, Some(s)))),
-        )
-    }
-    /// `HumanoidArmorLayer` for another player's model: the armour it wears
-    /// (`extra.equipment`, head to feet).
-    pub(in crate::game) fn worn_armor_layers(
-        &self,
-        m: &Mob,
-    ) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
-        let e = &m.extra;
-        self.armor_layers(
-            sunrise_items::equipment::ARMOR
-                .map(|slot| e.slot_stack(slot).map(|stack| (&*stack.item, Some(stack)))),
-        )
-    }
     /// `ArmorStandItem.useOn`.
     /// `ArmorStandItem.useOn` up to its `FAIL`s, which a client checks too:
     /// not on a bottom face, and nothing in the new stand's box. The block it

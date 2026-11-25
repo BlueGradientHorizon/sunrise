@@ -29,7 +29,7 @@ impl Game<'_> {
         self.finish_local_mode_update(mode);
     }
     /// `MultiPlayerGameMode.setLocalMode(GameType, @Nullable GameType)` for `Login` and `Respawn`.
-    pub(in crate::game) fn set_local_mode_with_previous(
+    pub(in crate::game::client_side) fn set_local_mode_with_previous(
         &mut self,
         mode: GameMode,
         previous: Option<GameMode>,
@@ -38,7 +38,7 @@ impl Game<'_> {
         self.previous_mode = previous;
         self.finish_local_mode_update(mode);
     }
-    pub(in crate::game) fn finish_local_mode_update(&mut self, mode: GameMode) {
+    pub(in crate::game::client_side) fn finish_local_mode_update(&mut self, mode: GameMode) {
         let r = self
             .remote
             .as_mut()

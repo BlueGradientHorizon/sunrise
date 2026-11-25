@@ -974,7 +974,7 @@ impl Game<'_> {
         }
     }
     /// A dropped item as the predicates see it.
-    pub(in crate::game) fn item_entity_view(
+    pub(in crate::game::server_side) fn item_entity_view(
         &self,
         e: &sunrise_client::entities::ItemEntity,
     ) -> EntityView {
@@ -1996,7 +1996,7 @@ impl Game<'_> {
         });
     }
     /// `ServerPlayer.updateUsingItem`: USING_ITEM for the item in use.
-    pub(in crate::game) fn trigger_using_item(&mut self, stack: &ItemStack) {
+    pub(in crate::game::server_side) fn trigger_using_item(&mut self, stack: &ItemStack) {
         if self.remote.is_some() || self.no_player_here() {
             return;
         }
@@ -2016,7 +2016,7 @@ impl Game<'_> {
     }
     /// `UsedEnderEyeTrigger.trigger`: the player threw an eye of ender toward
     /// a structure `sqr_distance` (squared, horizontal) away.
-    pub(in crate::game) fn trigger_used_ender_eye(&mut self, sqr_distance: f64) {
+    pub(in crate::game::server_side) fn trigger_used_ender_eye(&mut self, sqr_distance: f64) {
         if self.remote.is_some() || self.no_player_here() {
             return;
         }
@@ -2325,7 +2325,7 @@ impl Game<'_> {
         });
     }
     /// `EnterBlockTrigger`: the block, its state properties and the player.
-    pub(in crate::game) fn trigger_enter_block(
+    pub(in crate::game::server_side) fn trigger_enter_block(
         &mut self,
         state: sunrise_world::registry::BlockStateId,
     ) {
@@ -2352,7 +2352,7 @@ impl Game<'_> {
         });
     }
     /// `SlideDownBlockTrigger`: match the actual block and its state.
-    pub(in crate::game) fn trigger_honey_slide(&mut self, pos: [i32; 3]) {
+    pub(in crate::game::server_side) fn trigger_honey_slide(&mut self, pos: [i32; 3]) {
         let me = self.player_entity_for("minecraft:slide_down_block");
         self.trigger("minecraft:slide_down_block", move |c, w| {
             let ctx = adv::Entities {
@@ -2413,7 +2413,7 @@ impl Game<'_> {
     }
     /// `DefaultBlockInteractionTrigger` (default_block_use): the player, and
     /// the block's `BLOCK_USE` context at its centre, with no tool.
-    pub(in crate::game) fn trigger_default_block_use(&mut self, pos: [i32; 3]) {
+    pub(in crate::game::server_side) fn trigger_default_block_use(&mut self, pos: [i32; 3]) {
         self.trigger_block_use("minecraft:default_block_use", pos, None);
     }
     /// `AnyBlockInteractionTrigger` (any_block_use): the player, and the
@@ -2458,7 +2458,7 @@ impl Game<'_> {
     }
     /// `LightningStrikeTrigger`: the bolt, and the mobs around it that it did
     /// not hit (`bystander`), each tested from this player's position.
-    pub(in crate::game) fn trigger_lightning_strike(
+    pub(in crate::game::server_side) fn trigger_lightning_strike(
         &mut self,
         bolt: &EntityView,
         viewers: &[EntityView],
@@ -2495,7 +2495,10 @@ impl Game<'_> {
     }
     /// `ChanneledLightningTrigger`: each victim condition matched by some
     /// mob the bolt hit, from the player who channelled it.
-    pub(in crate::game) fn trigger_channeled_lightning(&mut self, victims: &[EntityView]) {
+    pub(in crate::game::server_side) fn trigger_channeled_lightning(
+        &mut self,
+        victims: &[EntityView],
+    ) {
         let me = self.player_entity_for("minecraft:channeled_lightning");
         let victims = victims.to_vec();
         self.trigger("minecraft:channeled_lightning", move |c, w| {

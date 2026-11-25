@@ -22,7 +22,10 @@ fn accepts(limit: Option<u32>, stack: Option<&sunrise_client::items::ItemStack>)
 
 impl Game<'_> {
     /// Slot and facing for a click on a shelf's front face.
-    pub(in crate::game) fn shelf_hit(&self, hit: &Hit) -> Option<(usize, Direction, bool)> {
+    pub(in crate::game::client_side) fn shelf_hit(
+        &self,
+        hit: &Hit,
+    ) -> Option<(usize, Direction, bool)> {
         let p = hit.pos;
         if !matches!(
             self.world.block_entities.get(&(p[0], p[1], p[2])),

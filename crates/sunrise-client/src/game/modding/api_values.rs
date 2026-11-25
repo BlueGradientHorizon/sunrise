@@ -1,15 +1,23 @@
 //! The game-owned conversion boundary between API records and engine values.
 //! Rust's orphan rule prevents foreign From/TryFrom implementations here.
 #[path = "api_values/ingredient.rs"]
-mod ingredient_values;
+pub(in crate::game) mod ingredient_values;
+#[allow(unused_imports)]
 use mod_api::item::item_stack::{ItemStack as ApiStack, StackWriteError};
+#[allow(unused_imports)]
 use std::num::NonZeroU32;
+#[allow(unused_imports)]
 use std::sync::Arc;
+#[allow(unused_imports)]
 #[cfg(test)]
 use sunrise_client::parallel::ListenSnapshot;
+#[allow(unused_imports)]
 use sunrise_client::parallel::TickThread;
+#[allow(unused_imports)]
 use sunrise_core::nbt::{Compound, JavaString, Tag};
+#[allow(unused_imports)]
 use sunrise_core::random::{LegacyRandom, RandomSource as EngineRandom};
+#[allow(unused_imports)]
 use sunrise_items::items::{ItemStack as EngineStack, Items};
 #[path = "api_values/aggregates.rs"]
 pub(in crate::game) mod aggregates;
@@ -18,7 +26,7 @@ pub(in crate::game) mod block_edit;
 #[path = "api_values/block_state.rs"]
 pub(in crate::game) mod block_state;
 
-struct LiveLevelRandom<'a>(&'a mut LegacyRandom);
+pub(in crate::game) struct LiveLevelRandom<'a>(pub(in crate::game) &'a mut LegacyRandom);
 
 impl mod_api::RandomSource for LiveLevelRandom<'_> {
     fn next_int(&mut self) -> i32 {
@@ -124,7 +132,9 @@ pub(crate) fn behavior_block(
 ) -> Option<sunrise_world::level::states::BlockId> {
     Some(behaviours.block(default_state(block)?))
 }
+#[allow(unused_imports)]
 pub(crate) use super::native_ground::alter_ground;
+#[allow(unused_imports)]
 pub(in crate::game) use super::native_worldgen::prepare as prepare_block_states;
 
 /// Publish the block state index prepared for this game. Between a tick's phases only: the
@@ -151,9 +161,9 @@ pub(in crate::game::server_side) fn listen_snapshot(tick: &TickThread) -> Option
     ))
 }
 #[path = "api_values/inside_write.rs"]
-mod inside_write;
+pub(in crate::game) mod inside_write;
 #[path = "api_values/landing_write.rs"]
-mod landing_write;
+pub(in crate::game) mod landing_write;
 #[path = "api_values/recipe_inputs.rs"]
 pub(in crate::game) mod recipe_inputs;
 
@@ -232,7 +242,7 @@ pub(in crate::game) fn resolve_cached_block_definitions(
     Ok(forked)
 }
 
-fn resolve_block_keys_from_registry(
+pub(in crate::game) fn resolve_block_keys_from_registry(
     registry: &sunrise_world::registry::BlockRegistry,
 ) -> Result<(), String> {
     #[cfg(test)]
@@ -290,7 +300,7 @@ fn resolve_block_keys_from_registry(
     }
 }
 
-fn group_block_states(
+pub(in crate::game) fn group_block_states(
     registry: &sunrise_world::registry::BlockRegistry,
 ) -> (
     Vec<String>,
@@ -336,7 +346,9 @@ fn group_block_states(
     (ordered, grouped)
 }
 
-fn bind_worker_blocks(registry: &sunrise_world::registry::BlockRegistry) -> Result<(), String> {
+pub(in crate::game) fn bind_worker_blocks(
+    registry: &sunrise_world::registry::BlockRegistry,
+) -> Result<(), String> {
     block_state::bind(registry)?;
     let index = block_state::current().map_err(|error| format!("worker index: {error:?}"))?;
     let retained =
@@ -404,25 +416,9 @@ fn block_definition_import_preserves_defaults_and_is_immutable_after_load() {
     );
 }
 
-impl TryIntoApi for sunrise_client::boss_overlay::ModBar {
-    type Api = mod_api::ClientBossBar;
-    type Error = mod_api::text::TextFormError;
-
-    fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        Ok(mod_api::ClientBossBar {
-            uuid: self.uuid,
-            name: self.name.try_into_api()?,
-            progress: self.progress,
-            color: self.color,
-            overlay: self.overlay,
-            darken_screen: self.darken_screen,
-            play_boss_music: self.play_boss_music,
-            create_world_fog: self.create_world_fog,
-        })
-    }
-}
-
+#[allow(unused_imports)]
 pub(in crate::game) use crate::game::item_snapshot::ItemBoundary;
+#[allow(unused_imports)]
 #[cfg(test)]
 pub(in crate::game) use crate::game::item_snapshot::ItemSnapshot;
 
@@ -527,6 +523,8 @@ macro_rules! write_answers {
         }
     )* };
 }
+#[allow(unused_imports)]
+pub(in crate::game) use write_answers;
 write_answers!(bool, u32, ());
 
 /// Convert an engine value into an owned API value after resolving registry identities.
@@ -549,13 +547,15 @@ where
 
 /// Validate a mod value against the game's registry before admitting it to engine state.
 #[path = "api_values/content_declarations.rs"]
-mod content_declarations;
+pub(in crate::game) mod content_declarations;
+#[allow(unused_imports)]
 pub(in crate::game) use content_declarations::{api_push_reaction, push_reaction};
 
 #[path = "api_values/component_edit.rs"]
 pub(in crate::game) mod component_edit;
 #[path = "api_values/stack_count.rs"]
-mod stack_count;
+pub(in crate::game) mod stack_count;
+#[allow(unused_imports)]
 pub(crate) use stack_count::TryIntoEnginePreservingCount;
 
 pub(crate) trait TryIntoEngine<Context: ?Sized = Items> {
@@ -629,6 +629,8 @@ macro_rules! scalar_values {
         }
     )* };
 }
+#[allow(unused_imports)]
+pub(in crate::game) use scalar_values;
 scalar_values!(u32, i32, bool, ());
 
 impl TryIntoApi for String {
@@ -668,16 +670,6 @@ impl<C: ?Sized, T: TryIntoEngine<C>> TryIntoEngine<C> for Option<T> {
         self.as_ref()
             .map(|value| value.try_into_engine(context))
             .transpose()
-    }
-}
-impl<T: TryIntoApi, E: Clone> TryIntoApi for Result<T, E> {
-    type Api = Result<T::Api, E>;
-    type Error = T::Error;
-    fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        match self {
-            Ok(value) => value.try_into_api().map(Ok),
-            Err(error) => Ok(Err(error.clone())),
-        }
     }
 }
 
@@ -740,13 +732,6 @@ impl<C: ?Sized, T: TryIntoEngine<C>> TryIntoEngine<C> for [T] {
             .collect()
     }
 }
-impl TryIntoApi for (sunrise_client::text::Text, u32) {
-    type Api = (mod_api::Text, u32);
-    type Error = mod_api::text::TextFormError;
-    fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        Ok((self.0.try_into_api()?, self.1))
-    }
-}
 impl<C: ?Sized> TryIntoEngine<C> for (mod_api::Text, u32) {
     type Engine = (sunrise_client::text::Text, u32);
     type Error = mod_api::text::TextFormError;
@@ -794,13 +779,6 @@ impl TryIntoEngine for mod_api::ItemDrop {
     }
 }
 
-impl TryIntoEngine for mod_api::ItemDisplayContext {
-    type Engine = sunrise_assets::item_model::DisplayContext;
-    type Error = ();
-    fn try_into_engine(&self, _: &Items) -> Result<Self::Engine, Self::Error> {
-        engine_display_context(*self).ok_or(())
-    }
-}
 /// The engine's display context for the API's, `None` for one this game doesn't have.
 pub(in crate::game) fn engine_display_context(
     context: mod_api::ItemDisplayContext,
@@ -947,7 +925,7 @@ pub(in crate::game) fn project_stack(
 }
 
 /// Build either a full or filtered projection with the same checked damage normalization.
-fn projected_stack(
+pub(in crate::game) fn projected_stack(
     (key, count, damage): StackReadMetadata,
     patch: Option<Tag>,
 ) -> Result<ApiStack, StackReadError> {
@@ -1030,7 +1008,7 @@ pub(in crate::game) fn encode_stack(
 }
 
 /// Decode the record's component overrides without changing their saved keys.
-fn decode_stack_record(value: &ApiStack, item: Arc<str>) -> EngineStack {
+pub(in crate::game) fn decode_stack_record(value: &ApiStack, item: Arc<str>) -> EngineStack {
     let mut patch = value.components().map(|patch| patch.as_nbt().clone());
     // Let the existing component codec preserve explicit zero versus prototype inheritance.
     if value.damage_component() == Some(0) {
@@ -1503,7 +1481,7 @@ impl super::Game<'_> {
 }
 
 #[cfg(test)]
-mod attribute_boundary_tests {
+pub(in crate::game) mod attribute_boundary_tests {
     use super::EngineStack as ItemStack;
     use crate::item_attributes::attribute_modifiers_or;
     use mod_api::{
@@ -1701,7 +1679,7 @@ mod attribute_boundary_tests {
 }
 
 #[cfg(test)]
-mod enchantment_boundary_tests {
+pub(in crate::game) mod enchantment_boundary_tests {
     use super::EngineStack as ItemStack;
     use crate::enchantment_levels::get_enchantment_level;
     use mod_api::{GetEnchantmentLevelEvent, Hooks, Identifier, ModEntry};
@@ -1758,14 +1736,14 @@ mod enchantment_boundary_tests {
 }
 
 #[cfg(test)]
-fn prepare_stack_boundary_tests() {
+pub(in crate::game) fn prepare_stack_boundary_tests() {
     install_stack_hooks();
     install_parts(&[]).unwrap();
     resolve_stack_boundary_test_items();
 }
 
 #[cfg(test)]
-fn resolve_stack_boundary_test_items() {
+pub(in crate::game) fn resolve_stack_boundary_test_items() {
     mod_api::__private::resolve_items([
         "minecraft:iron_sword",
         "minecraft:stick",
@@ -1778,7 +1756,7 @@ fn resolve_stack_boundary_test_items() {
 }
 
 #[cfg(test)]
-mod recipe_listing_tests {
+pub(in crate::game) mod recipe_listing_tests {
     use super::*;
     #[test]
     fn a_bad_recipe_does_not_hide_the_good_recipe_of_its_type() {
@@ -1811,7 +1789,7 @@ mod recipe_listing_tests {
 }
 
 #[cfg(test)]
-mod brewed_boundary_tests {
+pub(in crate::game) mod brewed_boundary_tests {
     use super::*;
     struct NoHost;
     impl mod_api::Host for NoHost {}
@@ -1910,21 +1888,6 @@ impl super::Game<'_> {
             crate::game::native_hooks::native_block_entity_update_tag(pos, &api, tag);
         }
     }
-    pub(in crate::game) fn api_block_entity_submit(
-        &self,
-        pos: [i32; 3],
-        block: &str,
-        state: sunrise_world::registry::BlockStateId,
-        entity: &crate::containers::ModBlockEntity,
-        draw: &mut super::native_block_entity_draw::BlockEntityDraw,
-    ) {
-        if !mod_api::__private::has_part_hook(mod_api::HookId::BlockEntitySubmit) {
-            return;
-        }
-        if let Ok(api) = entity.try_into_api() {
-            self.native_block_entity_submit(pos, block, state, &api, draw);
-        }
-    }
     /// Shared click metadata borrows the already-converted API snapshot for this call.
     pub(in crate::game) fn block_click<'a>(
         &mut self,
@@ -1992,7 +1955,7 @@ impl super::GameLevel<'_> {
 }
 
 #[cfg(test)]
-mod mutable_output_tests {
+pub(in crate::game) mod mutable_output_tests {
     use super::*;
 
     #[test]
@@ -2047,13 +2010,13 @@ mod mutable_output_tests {
 
 #[cfg(test)]
 #[path = "api_values/read_stack_tests.rs"]
-mod read_stack_tests;
+pub(in crate::game) mod read_stack_tests;
 
 #[cfg(test)]
-mod stack_limit_tests {
+pub(in crate::game) mod stack_limit_tests {
     use super::*;
 
-    pub(super) fn catalog() -> Items {
+    pub(in crate::game) fn catalog() -> Items {
         prepare_stack_boundary_tests();
         fixture_catalog()
     }
@@ -2511,7 +2474,7 @@ mod stack_limit_tests {
 }
 
 #[cfg(test)]
-mod item_model_snapshot_tests {
+pub(in crate::game) mod item_model_snapshot_tests {
     use super::*;
     use sunrise_assets::item_model::StackView;
 
@@ -2590,7 +2553,7 @@ impl TryIntoEngine for mod_api::Suggestion {
     }
 }
 #[cfg(test)]
-mod completion_snapshot_tests {
+pub(in crate::game) mod completion_snapshot_tests {
     use super::*;
     #[test]
     fn completion_round_trip_keeps_range_tooltip_and_numeric_order() {
@@ -2633,7 +2596,7 @@ pub(in crate::game) fn block_entity_declarations()
 }
 
 #[cfg(test)]
-mod declaration_snapshot_tests {
+pub(in crate::game) mod declaration_snapshot_tests {
     use super::*;
     #[test]
     fn declarations_keep_supported_blocks_and_rule_positions() {
@@ -2671,11 +2634,11 @@ mod declaration_snapshot_tests {
 }
 
 #[path = "api_values/gui_draw.rs"]
-mod gui_draw;
+pub(in crate::game) mod gui_draw;
 #[path = "api_values/text_boundary.rs"]
-mod text_boundary;
+pub(in crate::game) mod text_boundary;
 #[cfg(test)]
-mod gui_draw_boundary_tests {
+pub(in crate::game) mod gui_draw_boundary_tests {
     use super::{TryIntoApi, TryIntoEngine};
     use serde_json::json;
     use sunrise_client::{
@@ -2871,7 +2834,7 @@ impl TryIntoApi for sunrise_world::level::PlacementContext {
 }
 
 #[cfg(test)]
-mod placement_snapshot_tests {
+pub(in crate::game) mod placement_snapshot_tests {
     use super::*;
     #[test]
     fn placement_keeps_click_source_flags_and_empty_hand_without_fallback() {
@@ -3017,7 +2980,9 @@ fn game_rule_int_snapshot_preserves_full_range() {
     }
 }
 
-fn with_rule_schema<T>(f: impl FnOnce(&mod_api::__private::RuleSchema<'_>) -> T) -> T {
+pub(in crate::game) fn with_rule_schema<T>(
+    f: impl FnOnce(&mod_api::__private::RuleSchema<'_>) -> T,
+) -> T {
     let registry = sunrise_client_core::gamerules::rule_registry();
     f(&mod_api::__private::RuleSchema {
         category: &|id| registry.categories().iter().any(|category| category == id),
@@ -3115,20 +3080,21 @@ pub(in crate::game) fn game_rule_registry() -> sunrise_client_core::gamerules::R
 }
 
 #[path = "api_values/game_rule_values.rs"]
-mod game_rule_values;
+pub(in crate::game) mod game_rule_values;
 #[path = "api_values/item_properties.rs"]
-mod item_properties;
+pub(in crate::game) mod item_properties;
 #[path = "api_values/loot_values.rs"]
 pub(crate) mod loot_values;
 #[path = "api_values/package_snapshot.rs"]
-mod package_snapshot;
+pub(in crate::game) mod package_snapshot;
 #[path = "api_values/particle_values.rs"]
-mod particle_values;
+pub(in crate::game) mod particle_values;
+#[allow(unused_imports)]
 pub(in crate::game) use package_snapshot::install_packages;
 #[path = "api_values/phase_values.rs"]
-mod phase_values;
+pub(in crate::game) mod phase_values;
 #[path = "api_values/small_values.rs"]
-mod small_values;
+pub(in crate::game) mod small_values;
 
 impl TryIntoApi for (EngineStack, [f64; 3]) {
     type Api = (ApiStack, [f64; 3]);

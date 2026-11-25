@@ -78,7 +78,7 @@ impl Game<'_> {
     /// The connection a level sound leaves out for `except` (`Level.playSound(except, ...)`):
     /// `Some(None)` for no one, and for a fake player, who has no client to leave out; `None`
     /// refuses the sound for a stale or client-side player.
-    pub(in crate::game) fn native_sound_except(
+    pub(in crate::game::server_side) fn native_sound_except(
         &self,
         except: Option<PlayerRef>,
     ) -> Option<Option<u32>> {

@@ -1308,7 +1308,7 @@ impl Game<'_> {
     /// riders its loader takes, read as the loaders read them (a malformed
     /// UUID is none). Passengers the loaders keep unloaded or that cannot
     /// attach to a non-serializable vehicle have none here.
-    pub(in crate::game) fn summon_tree_uuids(&self, tag: &Tag) -> Vec<[i32; 4]> {
+    pub(in crate::game::server_side) fn summon_tree_uuids(&self, tag: &Tag) -> Vec<[i32; 4]> {
         let mut uuids: Vec<[i32; 4]> = entity_nbt::entity_uuid(tag).into_iter().collect();
         let kind = entity_nbt::kind(tag).unwrap_or_default();
         let takes_riders = ((!UNLISTED_KINDS.contains(&kind.as_str())
@@ -2438,7 +2438,10 @@ impl Game<'_> {
     }
 
     /// A loaded projectile's `Owner`: living hit credit and vehicle collision identity.
-    pub(in crate::game) fn claim_owner(&self, p: &mut sunrise_client::projectiles::Projectile) {
+    pub(in crate::game::server_side) fn claim_owner(
+        &self,
+        p: &mut sunrise_client::projectiles::Projectile,
+    ) {
         let Some(uuid) = p.owner_uuid else {
             return;
         };

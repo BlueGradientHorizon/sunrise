@@ -119,7 +119,7 @@ pub(in crate::game) struct BurstCause {
 }
 
 impl Source {
-    pub(in crate::game) fn with_cause(self, cause: BurstCause) -> Self {
+    pub(in crate::game::server_side) fn with_cause(self, cause: BurstCause) -> Self {
         Self { cause, ..self }
     }
     /// `WindCharge.explode` and `BreezeWindCharge.explode`: the charge itself
@@ -144,7 +144,7 @@ impl Source {
     /// `WindChargedMobEffect.onMobRemoved`: the dying mob is the source, so it
     /// makes the breeze's sound while its blocks react whatever mob griefing
     /// says and vehicles stay put when it is off; a `Silent` mob's is mute.
-    pub(in crate::game) fn wind_charged(player: bool, silent: bool) -> Self {
+    pub(in crate::game::server_side) fn wind_charged(player: bool, silent: bool) -> Self {
         Self {
             sound: BREEZE_BURST,
             breeze: false,

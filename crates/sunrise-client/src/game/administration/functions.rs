@@ -820,7 +820,7 @@ impl Game<'_> {
         }
     }
     /// `if function`: what each function returns (None if it did not).
-    pub(in crate::game) fn call_function_ref(
+    pub(in crate::game::server_side) fn call_function_ref(
         &mut self,
         name: &str,
         args: Option<&Tag>,

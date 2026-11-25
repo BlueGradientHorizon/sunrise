@@ -1,18 +1,29 @@
 //! Shared memory census report types, formatting, and common `Game` entry points.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use serde::Serialize;
+#[allow(unused_imports)]
 use serde_json::Value;
+#[allow(unused_imports)]
 use std::collections::BTreeMap;
+#[allow(unused_imports)]
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
     mpsc::{Receiver, Sender, channel, sync_channel},
 };
+#[allow(unused_imports)]
 use std::task::Poll;
+#[allow(unused_imports)]
 use std::thread::{Builder, JoinHandle};
+#[allow(unused_imports)]
 use sunrise_client::chunk::{Chunk, ColumnCensus, Section};
+#[allow(unused_imports)]
 use sunrise_client::fast_hash::FxHashSet;
+#[allow(unused_imports)]
 use sunrise_client::server_perf::MemoryCost;
+#[allow(unused_imports)]
 use sunrise_client_render::gfx::RendererMemorySnapshot;
 
 pub(in crate::game) const MB: f64 = 1048576.0;
@@ -122,35 +133,6 @@ pub(in crate::game) struct Generation {
     pub(in crate::game) stages: Vec<(&'static str, usize)>,
     #[serde(skip)]
     pub(in crate::game) bytes: usize,
-}
-
-impl Generation {
-    pub(in crate::game) fn of(streaming: &sunrise_client::streaming::Streaming) -> Self {
-        let c = streaming.proto_census();
-        let [blocks, lists, heightmaps, other, biomes, records] = c.bytes;
-        let protos: usize = c.bytes.iter().sum();
-        let cached: usize = c.caches.iter().filter_map(|(_, _, bytes)| *bytes).sum();
-        Self {
-            protos: c.protos,
-            protos_mb: mb(protos),
-            proto_blocks_mb: mb(blocks),
-            proto_section_lists_mb: mb(lists),
-            proto_heightmaps_mb: mb(heightmaps),
-            proto_other_terrain_mb: mb(other),
-            proto_biomes_mb: mb(biomes),
-            proto_records_mb: mb(records),
-            proto_sections_by_bits: c.sections_by_bits,
-            light_views: c.light_views,
-            light_views_mb: mb(c.light_view_bytes),
-            caches: c
-                .caches
-                .iter()
-                .map(|(name, n, bytes)| (*name, *n, bytes.map(mb)))
-                .collect(),
-            stages: streaming.stages().to_vec(),
-            bytes: protos + c.light_view_bytes + cached,
-        }
-    }
 }
 
 /// Entities of every level by registry id: how many, and the bytes of their records.
@@ -475,39 +457,9 @@ pub(in crate::game) struct ServerMemoryRequest {
     pub(in crate::game) cost: MemoryCost,
 }
 
-impl ServerMemoryRequest {
-    pub(in crate::game) fn collect(mut self, collect: impl FnOnce() -> ServerSide) {
-        if self.cancelled.load(Ordering::Acquire) {
-            return;
-        }
-        let snapshot = self.cost.measure(collect);
-        if !self.cancelled.load(Ordering::Acquire) {
-            let _ = self.reply.take().unwrap().send(Some(snapshot));
-        }
-    }
-}
-
-impl Drop for ServerMemoryRequest {
-    fn drop(&mut self) {
-        // The server may discard the request on shutdown without handling it.
-        if let Some(reply) = self.reply.take() {
-            let _ = reply.send(None);
-        }
-    }
-}
-
 pub(in crate::game) struct MemoryCancellation {
     pub(in crate::game) cancelled: Arc<AtomicBool>,
     pub(in crate::game) wake_worker: Option<Sender<Option<ServerSide>>>,
-}
-
-impl MemoryCancellation {
-    pub(in crate::game) fn cancel(&mut self) {
-        self.cancelled.store(true, Ordering::Release);
-        if let Some(wake) = self.wake_worker.take() {
-            let _ = wake.send(None);
-        }
-    }
 }
 
 impl Drop for MemoryCancellation {
@@ -521,71 +473,6 @@ pub(in crate::game) struct PendingMemory {
     pub(in crate::game) cancel: MemoryCancellation,
     pub(in crate::game) worker: JoinHandle<()>,
     pub(in crate::game) rows: Receiver<MemoryRows>,
-}
-
-impl PendingMemory {
-    pub(in crate::game) fn cancel(&mut self) {
-        self.cancel.cancel();
-    }
-
-    pub(in crate::game) fn poll(&self) -> Poll<Option<MemoryRows>> {
-        // Keep the slot reserved while either the worker or queued request still holds the flag.
-        if !self.worker.is_finished() || Arc::strong_count(&self.cancel.cancelled) != 1 {
-            return Poll::Pending;
-        }
-        if self.cancel.cancelled.load(Ordering::Acquire) {
-            return Poll::Ready(None);
-        }
-        Poll::Ready(self.rows.try_recv().ok())
-    }
-
-    pub(in crate::game) fn spawn(
-        cost: MemoryCost,
-        from_server: bool,
-        report: impl FnOnce(Option<ServerSide>, &AtomicBool) -> Option<MemoryRows> + Send + 'static,
-    ) -> std::io::Result<(Self, Option<ServerMemoryRequest>)> {
-        let cancelled = Arc::new(AtomicBool::new(false));
-        let (reply, snapshot) = channel();
-        let request = from_server.then(|| ServerMemoryRequest {
-            reply: Some(reply.clone()),
-            cancelled: cancelled.clone(),
-            cost: cost.clone(),
-        });
-        let (publish, rows) = sync_channel(1);
-        let worker = Builder::new().name("perf-memory".into()).spawn({
-            let cancelled = cancelled.clone();
-            move || {
-                let server = if from_server {
-                    let Ok(Some(snapshot)) = snapshot.recv() else {
-                        return;
-                    };
-                    Some(snapshot)
-                } else {
-                    None
-                };
-                if cancelled.load(Ordering::Acquire) {
-                    return;
-                }
-                sunrise_client::server_perf::profiler_thread();
-                let completed = cost.measure(|| report(server, &cancelled));
-                if let Some(rows) = completed.filter(|_| !cancelled.load(Ordering::Acquire)) {
-                    let _ = publish.send(rows);
-                }
-            }
-        })?;
-        let cancel = MemoryCancellation {
-            cancelled,
-            wake_worker: from_server.then_some(reply),
-        };
-        Ok((
-            Self {
-                cancel,
-                worker,
-                rows,
-            },
-            request,
-        ))
-    }
 }
 
 impl Game<'_> {

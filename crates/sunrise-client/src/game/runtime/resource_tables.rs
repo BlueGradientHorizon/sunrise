@@ -1,9 +1,11 @@
 //! The game's shared read-only tables: `Resources` (blocks, items, recipes, mob types, biomes),
 //! `UiResources` and `PackResources`.
+#[allow(unused_imports)]
 use super::{api_values::TryIntoApi, *};
+#[allow(unused_imports)]
 use std::path::Path;
 
-pub(super) fn load_animate_tables(
+pub(in crate::game) fn load_animate_tables(
     root: &Path,
     registry: &sunrise_world::registry::BlockRegistry,
     draws: bool,
@@ -22,88 +24,75 @@ pub(super) fn load_animate_tables(
 }
 
 impl Resources {
-    pub(super) fn rest(&self) -> &WorldRest {
+    pub(in crate::game) fn rest(&self) -> &WorldRest {
         self.rest
             .get()
             .expect("world resources joined before entry")
     }
-    pub(super) fn facts(&self) -> &BlockFacts {
+    pub(in crate::game) fn facts(&self) -> &BlockFacts {
         &self.core.facts
     }
-    pub(super) fn item_defaults(&self) -> &sunrise_world::item_defaults::ItemDefaults {
+    pub(in crate::game) fn item_defaults(&self) -> &sunrise_world::item_defaults::ItemDefaults {
         self.core.item_data.defaults()
     }
-    pub(super) fn items(&self) -> &Items {
+    pub(in crate::game) fn items(&self) -> &Items {
         &self.rest().items
     }
-    pub(super) fn shared_items(&self) -> Arc<Items> {
+    pub(in crate::game) fn shared_items(&self) -> Arc<Items> {
         self.rest().items.clone()
     }
-    pub(super) fn recipes(&self) -> &Recipes {
+    pub(in crate::game) fn recipes(&self) -> &Recipes {
         &self.rest().recipes
     }
-    pub(super) fn transformers(&self) -> &sunrise_client::block_transform::Transformers {
+    pub(in crate::game) fn transformers(&self) -> &sunrise_client::block_transform::Transformers {
         &self.rest().transformers
     }
-    pub(super) fn biomes(&self) -> &Arc<Biomes> {
+    pub(in crate::game) fn biomes(&self) -> &Arc<Biomes> {
         &self.core.biomes
     }
-    pub(super) fn environment(&self) -> &Environment {
+    pub(in crate::game) fn environment(&self) -> &Environment {
         &self.core.environment
     }
     /// The environment of a dimension type id; a type with no table of its own gets the overworld's.
-    pub(super) fn environment_of(&self, dimension_type: &str) -> &Environment {
+    pub(in crate::game) fn environment_of(&self, dimension_type: &str) -> &Environment {
         match dimension_type {
             "minecraft:the_nether" => self.nether_environment(),
             "minecraft:the_end" => self.end_environment(),
             _ => self.environment(),
         }
     }
-    pub(super) fn mob_types(&self) -> &HashMap<String, Arc<MobType>> {
+    pub(in crate::game) fn mob_types(&self) -> &HashMap<String, Arc<MobType>> {
         &self.rest().mob_types
     }
     /// The player's, the armor stand's and the dragon's registry keys, resolved with these
     /// resources.
-    pub(super) fn living_type_keys(&self) -> sunrise_client::health::LivingTypeKeys {
+    pub(in crate::game) fn living_type_keys(&self) -> sunrise_client::health::LivingTypeKeys {
         self.rest().living_type_keys
     }
-    pub(super) fn mob_data(&self) -> &sunrise_client::mobs::MobData {
+    pub(in crate::game) fn mob_data(&self) -> &sunrise_client::mobs::MobData {
         &self.rest().mob_data
     }
-    pub(super) fn providers(&self) -> &Providers {
+    pub(in crate::game) fn providers(&self) -> &Providers {
         &self.rest().providers
     }
-    pub(super) fn block_entity_render(&self) -> &BlockEntityRenderer {
-        &self.rest().block_entity_render
-    }
-    pub(super) fn animate(&self) -> &sunrise_client::animate_tick::AnimateTables {
-        &self.rest().animate
-    }
-    pub(super) fn fog(&self) -> &sunrise_client::fog::FogTables {
-        &self.rest().fog
-    }
-    pub(super) fn music(&self) -> &sunrise_client::music::MusicTables {
-        &self.rest().music
-    }
-    pub(super) fn ambient(&self) -> &sunrise_client::ambience::AmbientTables {
-        &self.rest().ambient
-    }
-    pub(super) fn nether_environment(&self) -> &Environment {
+    pub(in crate::game) fn nether_environment(&self) -> &Environment {
         &self.rest().nether_environment
     }
-    pub(super) fn end_environment(&self) -> &Environment {
+    pub(in crate::game) fn end_environment(&self) -> &Environment {
         &self.rest().end_environment
     }
-    pub(super) fn behaviours(&self) -> &Behaviours {
+    pub(in crate::game) fn behaviours(&self) -> &Behaviours {
         &self.rest().behaviours
     }
-    pub(super) fn collision(&self) -> &BlockCollisionRegistry<'static> {
+    pub(in crate::game) fn collision(&self) -> &BlockCollisionRegistry<'static> {
         &self.core.collision
     }
-    pub(super) fn suffocation(&self) -> &sunrise_world::suffocation::SuffocationRegistry<'static> {
+    pub(in crate::game) fn suffocation(
+        &self,
+    ) -> &sunrise_world::suffocation::SuffocationRegistry<'static> {
         &self.core.suffocation
     }
-    pub(super) fn motion(&self) -> &MotionResources {
+    pub(in crate::game) fn motion(&self) -> &MotionResources {
         &self.core.motion
     }
     /// The variant registries finalizeSpawn selects from
@@ -111,24 +100,13 @@ impl Resources {
     pub fn spawn_registries(&self) -> &sunrise_client::mobs::finalize::SpawnRegistries {
         &self.core.spawn_registries
     }
-    pub(super) fn threads(&self) -> usize {
+    pub(in crate::game) fn threads(&self) -> usize {
         self.core.threads
     }
-    pub(super) fn player_arm(&self, slim: bool, left: bool) -> &Option<sunrise_client::mobs::Part> {
-        let arms = if slim {
-            &self.rest().player_arm_slim
-        } else {
-            &self.rest().player_arm
-        };
-        &arms[usize::from(left)]
-    }
-    pub(super) fn player_type(&self) -> &Option<Arc<sunrise_client::mobs::MobType>> {
+    pub(in crate::game) fn player_type(&self) -> &Option<Arc<sunrise_client::mobs::MobType>> {
         &self.rest().player_type
     }
-    pub(super) fn spin_attack(&self) -> &Option<sunrise_client::mobs::Part> {
-        &self.rest().spin_attack
-    }
-    pub(super) fn stations(&self) -> &sunrise_client::stations::StationData {
+    pub(in crate::game) fn stations(&self) -> &sunrise_client::stations::StationData {
         &self.rest().stations
     }
 }
@@ -151,44 +129,27 @@ pub struct UiResources {
 /// the same string again builds no new `Text`. It holds at most [`PlainTexts::MAX`] strings and
 /// starts over past that, so text that changes every frame can't grow it.
 #[derive(Default)]
+#[rustfmt::skip]
 pub struct PlainTexts(
-    std::cell::RefCell<std::collections::HashMap<Box<str>, sunrise_client::text::Text>>,
+    pub(in crate::game)
+        std::cell::RefCell<std::collections::HashMap<Box<str>, sunrise_client::text::Text>>,
 );
 
 impl PlainTexts {
-    const MAX: usize = 256;
-    /// `draw` with the `Text` of `text`, made the first time it is asked for.
-    pub(in crate::game) fn with<R>(
-        &self,
-        text: &str,
-        draw: impl FnOnce(&sunrise_client::text::Text) -> R,
-    ) -> R {
-        let mut texts = self.0.borrow_mut();
-        if !texts.contains_key(text) {
-            if texts.len() >= Self::MAX {
-                texts.clear();
-            }
-            texts.insert(text.into(), sunrise_client::text::Text::literal(text));
-        }
-        draw(&texts[text])
-    }
-}
-
-impl Game<'_> {
-    /// A title screen over the current resources and their splash pool.
-    pub(crate) fn new_title(&self, saves: PathBuf) -> Title {
-        Title::new(saves, &self.options.resources, &self.gui.splashes)
-    }
+    pub(in crate::game) const MAX: usize = 256;
 }
 
 #[cfg(test)]
 thread_local! {
-    static DYNAMIC_TEXTURE_POOL_OVERRIDE: std::cell::Cell<Option<bool>> =
+    pub(in crate::game) static DYNAMIC_TEXTURE_POOL_OVERRIDE: std::cell::Cell<Option<bool>> =
         const { std::cell::Cell::new(None) };
 }
 
 #[cfg(test)]
-pub(super) fn with_dynamic_texture_pool_override<R>(pool: bool, f: impl FnOnce() -> R) -> R {
+pub(in crate::game) fn with_dynamic_texture_pool_override<R>(
+    pool: bool,
+    f: impl FnOnce() -> R,
+) -> R {
     struct Restore(Option<bool>);
     impl Drop for Restore {
         fn drop(&mut self) {
@@ -224,47 +185,6 @@ impl UiResources {
 }
 
 impl UiResources {
-    /// The resolved resource generation, including the base layer and pack filters, over the
-    /// game's own resources at `vanilla` (which tell the packs' core shaders from the game's).
-    /// Its splash pool is empty until `with_splashes`.
-    pub fn load(
-        root: &sunrise_assets::resource_source::ResourceSource,
-        vanilla: &Path,
-    ) -> Result<Self> {
-        // The title screen waits for both: the panorama's six faces decode
-        // beside the atlas.
-        std::thread::scope(|scope| {
-            let panorama = named_scope(scope, "panorama", || {
-                startup::time("ui.panorama", || {
-                    sunrise_client::gfx::panorama::Faces::load(root, root)
-                })
-            });
-            let pool = dynamic_texture_pool();
-            let game = sunrise_assets::resource_source::ResourceSource::directory(vanilla.into());
-            let atlas = startup::time("ui.atlas", || {
-                HudAtlas::build_over_with_dynamic_textures(root, root, &game, pool)
-            });
-            let panorama = panorama
-                .join()
-                .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
-            Ok(Self {
-                atlas: atlas?,
-                panorama: Arc::new(panorama),
-                splashes: Arc::from(""),
-                plain_texts: PlainTexts::default(),
-            })
-        })
-    }
-    /// The title's splash pool from `stack` (`sunrise_client::splashes::pool`).
-    pub fn with_splashes(
-        mut self,
-        stack: &sunrise_assets::resource_source::ResourceSource,
-        vanilla: &std::path::Path,
-        skip_if_modified: bool,
-    ) -> Self {
-        self.splashes = sunrise_client::splashes::pool(stack, vanilla, skip_if_modified).into();
-        self
-    }
     /// What a server's game holds, since it draws nothing: the font, which books
     /// and chat measure with, and a one-pixel panorama.
     pub fn server(root: &sunrise_assets::resource_source::ResourceSource) -> Result<Self> {
@@ -277,62 +197,19 @@ impl UiResources {
     }
 }
 
-pub(super) struct PackParts {
-    pub(super) assets: Arc<Assets>,
-    pub(super) render: Arc<RenderAssets>,
-    pub(super) tables: Arc<MeshTables>,
-    pub(super) item_renderer: sunrise_client::item_render::ItemRenderer,
-    pub(super) biomes: Arc<Biomes>,
-    pub(super) light: Arc<LightTables>,
+pub(in crate::game) struct PackParts {
+    pub(in crate::game) assets: Arc<Assets>,
+    pub(in crate::game) render: Arc<RenderAssets>,
+    pub(in crate::game) tables: Arc<MeshTables>,
+    pub(in crate::game) item_renderer: sunrise_client::item_render::ItemRenderer,
+    pub(in crate::game) biomes: Arc<Biomes>,
+    pub(in crate::game) light: Arc<LightTables>,
 }
 
 impl PackResources {
-    /// Everything a pack overlay at `root` provides, over `assets` and `render`
-    /// loaded from it.
-    pub(super) fn load(
-        root: &sunrise_assets::resource_source::ResourceRoot,
-        assets: Arc<Assets>,
-        render: Arc<RenderAssets>,
-        facts: &BlockFacts,
-        biomes: Arc<Biomes>,
-        light: Arc<LightTables>,
-        item_data: &sunrise_world::item_defaults::ItemData,
-    ) -> Result<Self> {
-        let visibility = models::load_visibility(root.prepared(), assets.registry)?;
-        api_values::resolve_block_definitions(assets.registry)?;
-        mods::extend_poi_types(assets.registry);
-        mods::register_cauldron_fluid_contents(assets.registry);
-        let tables = Arc::new(
-            MeshTables::new(
-                &assets,
-                &render,
-                facts,
-                visibility,
-                api_values::mod_tint_values(assets.registry)?,
-            )?
-            .with_polytone_colormaps(root.source(), assets.registry),
-        );
-        let item_renderer = sunrise_client::item_render::ItemRenderer::load_with_library(
-            root,
-            render.model_library.clone(),
-            item_data,
-        )?;
-        Self::assemble(
-            root,
-            PackParts {
-                assets,
-                render,
-                tables,
-                item_renderer,
-                biomes,
-                light,
-            },
-            true,
-        )
-    }
     /// The workers' context over `biomes`: this pack's own when `biomes` is
     /// the table it was built with, else the same parts with that table.
-    pub(super) fn context_with(&self, biomes: Arc<Biomes>) -> Arc<WorkerContext> {
+    pub(in crate::game) fn context_with(&self, biomes: Arc<Biomes>) -> Arc<WorkerContext> {
         let old = &self.context;
         if Arc::ptr_eq(&old.biomes, &biomes) {
             return old.clone();
@@ -350,7 +227,7 @@ impl PackResources {
     /// The pack tables over their parts, which `load_resources` builds on
     /// separate workers. A cloud texture vanilla refuses fails it, as it fails vanilla's reload
     /// (`sunrise_client::clouds::load`).
-    pub(super) fn assemble(
+    pub(in crate::game) fn assemble(
         root: &sunrise_assets::resource_source::ResourceRoot,
         parts: PackParts,
         draws: bool,
@@ -469,7 +346,7 @@ impl PackResources {
 /// The overworld's, Nether's and End's attribute stacks with the Polytone biome and dimension
 /// modifiers of the packs merged at `root` (#11486); `None` when no pack has any. The overlay
 /// root links the vanilla data the stacks start from.
-fn pack_environments(
+pub(in crate::game) fn pack_environments(
     root: &sunrise_assets::resource_source::ResourceRoot,
 ) -> Option<Arc<[Environment; 3]>> {
     let modifiers = sunrise_client::environment::PackModifiers::read(root.source());
@@ -493,7 +370,7 @@ fn pack_environments(
 
 /// The custom particles and block emitters of the packs merged at `root` (#11486); `None` when
 /// no pack has any.
-fn pack_particles(
+pub(in crate::game) fn pack_particles(
     root: &sunrise_assets::resource_source::ResourceRoot,
     blocks: &'static sunrise_world::registry::BlockRegistry,
 ) -> Option<Arc<sunrise_client::particles::polytone::Registry>> {
@@ -506,7 +383,7 @@ fn pack_particles(
 }
 
 /// The packs' custom colours; their dye and sheep colours go to the draw paths' table.
-fn read_colors(
+pub(in crate::game) fn read_colors(
     root: &sunrise_assets::resource_source::ResourceRoot,
 ) -> sunrise_client::pack_palette::PackColors {
     let colors = sunrise_client::pack_palette::read(root.source());
@@ -516,7 +393,7 @@ fn read_colors(
 }
 
 #[cfg(test)]
-mod plain_text_tests {
+pub(in crate::game) mod plain_text_tests {
     use super::PlainTexts;
 
     #[test]

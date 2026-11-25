@@ -897,7 +897,10 @@ impl Game<'_> {
 
     /// `Game::break_block` behind the carrier fence: a cell held
     /// between prepared and committed refuses before the break runs.
-    pub(in crate::game) fn carrier_break_block(&mut self, pos: [i32; 3]) -> crate::Result<()> {
+    pub(in crate::game::server_side) fn carrier_break_block(
+        &mut self,
+        pos: [i32; 3],
+    ) -> crate::Result<()> {
         if self.world.carrier_fences.locks_cell(&pos) {
             return Err("a carrier transfer holds this cell".into());
         }

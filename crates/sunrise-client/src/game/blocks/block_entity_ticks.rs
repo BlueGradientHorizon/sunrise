@@ -4,8 +4,11 @@
 //! ticker, in vanilla's list order (`sunrise_client::block_entities`), in
 //! chunks that tick blocks. Sculk, brewing stands and pistons tick in their
 //! own passes.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use crate::game::published_loops::{Attributed, LoopFlow, LoopMod};
+#[allow(unused_imports)]
 use sunrise_client::{
     Result,
     block_entities::{Pos, Ticking},
@@ -13,8 +16,11 @@ use sunrise_client::{
     containers::{BlockEntity, FurnaceKind, HOPPER_SLOTS},
     furnace::FurnaceCooking,
 };
+#[allow(unused_imports)]
 use sunrise_core::position::BlockPos;
+#[allow(unused_imports)]
 use sunrise_gameplay::block_entity_ticks::{block_ticking_at, ticker_name};
+#[allow(unused_imports)]
 use sunrise_world::registry::BlockStateId;
 
 /// What `block_entities.tick` is visiting: the kinds its dispatch ticks, read once per entry.
@@ -57,7 +63,7 @@ pub(crate) enum TickedKind {
 impl TickedKind {
     /// What `block_entities.tick` ticks `entity` as; `None` for a block entity it does not tick.
     #[inline(always)]
-    fn of(entity: &BlockEntity) -> Option<Self> {
+    pub(in crate::game) fn of(entity: &BlockEntity) -> Option<Self> {
         Some(match entity {
             BlockEntity::Chest(items) if items.len() == HOPPER_SLOTS => Self::Hopper,
             BlockEntity::Crafter(_) => Self::Crafter,
@@ -81,7 +87,7 @@ impl TickedKind {
     /// [`Self::of`], with a mod's block entity's type: its numeric wire ID, kept on the entity
     /// since it was made (`ModBlockEntity::numeric_id`).
     #[inline(always)]
-    fn with_type(entity: &BlockEntity) -> Option<(Self, Option<u32>)> {
+    pub(in crate::game) fn with_type(entity: &BlockEntity) -> Option<(Self, Option<u32>)> {
         let kind = Self::of(entity)?;
         let mod_type = match entity {
             BlockEntity::Mod(entity) => entity.numeric_id(),
@@ -105,7 +111,7 @@ pub(crate) struct BlockEntityTick<'g, 'a> {
     /// What it is, from the block entity the dispatch is about to tick.
     pub(crate) kind: TickedKind,
     /// A mod's block entity's type, as a numeric wire ID; read through [`OwnBlockEntities`].
-    mod_type: Option<u32>,
+    pub(in crate::game) mod_type: Option<u32>,
 }
 
 #[allow(
@@ -135,10 +141,10 @@ impl BlockEntityTick<'_, '_> {
 )]
 pub(crate) struct OwnBlockEntities {
     /// The types' ids, as the mod registered them (`mymod:machine`).
-    ids: &'static [&'static str],
+    pub(in crate::game) ids: &'static [&'static str],
     /// By numeric wire ID, whether the type is one of `ids`; `None` until a visit finds the game's
     /// type table.
-    by_numeric_id: Option<Box<[bool]>>,
+    pub(in crate::game) by_numeric_id: Option<Box<[bool]>>,
 }
 
 #[allow(
@@ -174,7 +180,7 @@ impl OwnBlockEntities {
     /// For each numeric wire ID, whether it names one of `ids`; `None` while the game has no type
     /// table, or an empty one.
     #[cold]
-    fn resolve(ids: &[&str]) -> Option<Box<[bool]>> {
+    pub(in crate::game) fn resolve(ids: &[&str]) -> Option<Box<[bool]>> {
         let types = sunrise_client::block_entity_types::current()?;
         if types.numeric_id_bound() == 0 {
             return None;
@@ -260,7 +266,7 @@ impl<N: LoopMod, T: BlockEntityTickSlot> BlockEntityTickSlot for Attributed<N, T
 }
 
 /// A pass's working state: the item and mob caches and the spawners ticked so far.
-type PassScratch = (
+pub(in crate::game) type PassScratch = (
     Option<crate::game::machines::ItemColumns>,
     Option<crate::game::potent_sulfur::PassMobs>,
     Vec<Pos>,
@@ -268,36 +274,12 @@ type PassScratch = (
 );
 /// Puts the enclosing pass's scratch back when the pass inside it ends, however it ends:
 /// a slot may catch a nested pass's panic and let the enclosing pass go on.
-struct Enclosing<'g, 'a> {
-    game: &'g mut Game<'a>,
-    scratch: Option<PassScratch>,
-}
-impl Drop for Enclosing<'_, '_> {
-    fn drop(&mut self) {
-        // A pass that ended early left its own; a pass in progress is known by them.
-        self.game.server.item_columns = None;
-        self.game.server.pass_mobs = None;
-        if let Some(scratch) = self.scratch.take() {
-            (
-                self.game.server.item_columns,
-                self.game.server.pass_mobs,
-                self.game.spawner_tick_positions,
-                self.game.trial_spawner_tick_positions,
-            ) = scratch;
-        }
-    }
+pub(in crate::game) struct Enclosing<'g, 'a> {
+    pub(in crate::game) game: &'g mut Game<'a>,
+    pub(in crate::game) scratch: Option<PassScratch>,
 }
 
 impl Game<'_> {
-    /// The published loop `block_entities.tick` (`published_loops.rs`): with no
-    /// `[[native.loop]]` mod its slot is `()`, and a mod build installs its own copy of this
-    /// function, with the mods' slots, through its replacement cell. A sleeping hopper is
-    /// still visited for its transfer state (cooldown and `tickedGameTime`) but is not handed
-    /// to the slot: mod loop listeners see it again once something wakes it.
-    #[sunrise_mod_api_macros::sunrise_loop(name = "block_entities.tick", side = "server")]
-    pub(super) fn tick_block_entities(&mut self) -> Result<()> {
-        self.tick_block_entities_with(&mut ())
-    }
     /// `tick_block_entities` with `slot` asked before and after each block entity's tick. Generic
     /// over the slot only, so it has no replacement cell of its own: a mod build compiles it.
     ///
@@ -480,7 +462,7 @@ impl Game<'_> {
     /// The boxes are those the level animates: a box opens (`start_open` and
     /// block event 1) before it has one, exactly as vanilla's block entity is
     /// there from the start.
-    fn tick_shulkers(&mut self) -> Vec<super::piston_push::ShulkerPush> {
+    pub(in crate::game) fn tick_shulkers(&mut self) -> Vec<super::piston_push::ShulkerPush> {
         let ticking = self.block_ticking_area();
         let mut pushes = Vec::new();
         let mut gone = Vec::new();
@@ -524,74 +506,18 @@ impl Game<'_> {
     /// Copies the shulker box lids into the world, where the collision queries
     /// read them (`SceneCollisions::shulker_collision_state`), as
     /// `sync_moving_pistons` does for pistons.
-    pub(super) fn sync_shulkers(&mut self) {
+    pub(in crate::game) fn sync_shulkers(&mut self) {
         self.world.shulkers.clear();
         self.world
             .shulkers
             .extend(self.be_anims.shulkers.iter().map(|(p, s)| (*p, s.clone())));
     }
-    /// `BlockState.getTicker` of every state, for the block entities ticked
-    /// here. A creaking heart keeps its slot while uprooted (see
-    /// `tick_creaking_heart`).
-    pub(in crate::game) fn ticking_states(&self) -> Vec<Ticking> {
-        let registry = self.pack.assets.registry;
-        (0..registry.len())
-            .map(|i| {
-                let state = BlockStateId(i as u32);
-                let name: &str = &self.res.facts().get(state).name;
-                let factory = sunrise_client::block_entity_types::factory_block(name);
-                match factory {
-                    "minecraft:hopper"
-                    | "minecraft:crafter"
-                    | "minecraft:beacon"
-                    | "minecraft:creaking_heart"
-                    | "minecraft:spawner"
-                    | "minecraft:trial_spawner"
-                    | "minecraft:vault"
-                    | "minecraft:beehive"
-                    | "minecraft:bee_nest"
-                    | "minecraft:brewing_stand"
-                    | "minecraft:daylight_detector"
-                    | "minecraft:end_gateway"
-                    // Lit, cookTick; unlit, cooldownTick.
-                    | "minecraft:campfire"
-                    | "minecraft:soul_campfire" => Ticking::Yes,
-                    // Every state but dry has a ticker.
-                    "minecraft:potent_sulfur" => {
-                        let dry = registry
-                            .state(state)
-                            .and_then(|s| s.properties.get("potent_sulfur_state"))
-                            .is_some_and(|v| v == "dry");
-                        if dry { Ticking::Idle } else { Ticking::Yes }
-                    }
-                    "minecraft:jukebox" => {
-                        let record = registry
-                            .state(state)
-                            .and_then(|s| s.properties.get("has_record"))
-                            .is_some_and(|v| v == "true");
-                        if record { Ticking::Yes } else { Ticking::Idle }
-                    }
-                    n if FurnaceKind::from_block(n).is_some() => Ticking::Yes,
-                    _ if !name.starts_with("minecraft:") && self.native_ticks(name) => Ticking::Yes,
-                    _ => Ticking::No,
-                }
-            })
-            .collect()
-    }
-    /// `LevelChunk.isTicking` (block coordinates): a block-ticking chunk from
-    /// every player's tickets (`update_chunk_tickets`), its entities loaded
-    /// (`ServerLevel.areEntitiesLoaded`).
-    pub(super) fn block_ticking_area(&self) -> impl Fn(i32, i32) -> bool + use<> {
-        let levels = self.tickets.0.levels();
-        let pending = self.world.entities_pending.clone();
-        move |x, z| block_ticking_at(&levels, &pending, x, z)
-    }
     /// Single-position read without copying the pending-entity set.
-    pub(super) fn block_ticking_at(&self, x: i32, z: i32) -> bool {
+    pub(in crate::game) fn block_ticking_at(&self, x: i32, z: i32) -> bool {
         block_ticking_at(&self.tickets.0.levels(), &self.world.entities_pending, x, z)
     }
     /// `DaylightDetectorBlock.tickEntity` of the detector at `pos`.
-    fn tick_daylight_detector(&mut self, pos: Pos) {
+    pub(in crate::game) fn tick_daylight_detector(&mut self, pos: Pos) {
         // It updates every 20 game ticks (the behaviour checks this too).
         if self.world.game_time % 20 != 0 {
             return;
@@ -600,126 +526,10 @@ impl Game<'_> {
         self.with_level(|b, level, ticks| b.tick_daylight_detector(level, ticks, at));
         let _ = self.server_process_level_events();
     }
-    /// `AbstractFurnaceBlockEntity.serverTick` of the furnace at `pos`, and
-    /// its block's `lit` following it.
-    pub(super) fn tick_furnace(&mut self, pos: Pos) -> Result<()> {
-        // What the hooks need from before the tick, without cloning stacks: the
-        // fuel's id if the furnace can be out after this tick's countdown, the
-        // input's id (a last item is gone after it smelts) and the result count.
-        let before = match self.world.block_entities.get(&pos) {
-            Some(BlockEntity::Furnace(f)) => (
-                f.cooking_timer,
-                (f.lit_remaining <= 1)
-                    .then(|| f.items[1].as_ref().map(|s| s.item.clone()))
-                    .flatten(),
-                f.items[0].as_ref().map(|s| s.item.clone()),
-                f.items[2].as_ref().map_or(0, |s| s.count),
-            ),
-            _ => return Ok(()),
-        };
-        let mut drops = Vec::new();
-        let (lit, burning, smelted, smelting, fueled) = {
-            let needs_part = mod_api::__private::has_part_hook(mod_api::HookId::CraftingRemainder)
-                && matches!(self.world.block_entities.get(&pos), Some(BlockEntity::Furnace(f))
-                    if f.lit_remaining <= 1 && f.items[1].as_ref().is_some_and(|s|
-                        mod_api::__private::item_listens(mod_api::HookId::CraftingRemainder, &s.item)));
-            let Some(BlockEntity::Furnace(furnace)) = self.world.block_entities.get_mut(&pos)
-            else {
-                return Ok(());
-            };
-            let was_lit = furnace.count_down_burn();
-            let Some(BlockEntity::Furnace(furnace)) = self.world.block_entities.get(&pos) else {
-                return Ok(());
-            };
-            let items = world_items!(self);
-            let mut random = self.world.random.clone();
-            let plan = furnace.prepare_tick(
-                &self.loop_context,
-                world_recipes!(self),
-                items,
-                was_lit,
-                |fuel| {
-                    sunrise_client::providers::Evaluation::new(self.active_providers(), &mut random)
-                        .cooking_fuel(
-                            fuel,
-                            &mut sunrise_client::furnace::FurnaceConditions {
-                                world: &super::advancements::View(self),
-                                pos: [pos.0, pos.1, pos.2],
-                            },
-                        )
-                },
-            );
-            self.world.random = random;
-            let step = if needs_part {
-                let mut furnace = furnace.clone();
-                let step = plan.apply(&mut furnace, &mut drops, |s| self.crafting_remainder(s));
-                self.world
-                    .block_entities
-                    .insert(pos, BlockEntity::Furnace(furnace));
-                step
-            } else {
-                let Some(BlockEntity::Furnace(furnace)) = self.world.block_entities.get_mut(&pos)
-                else {
-                    return Ok(());
-                };
-                plan.apply(furnace, &mut drops, |s| {
-                    crate::crafting::CraftingRemainder::crafting_remainder(items, s)
-                })
-            };
-            let Some(BlockEntity::Furnace(f)) = self.world.block_entities.get(&pos) else {
-                return Ok(());
-            };
-            let burning = before.1.filter(|_| step.consumed_fuel);
-            let smelted = f.items[2]
-                .as_ref()
-                .filter(|after| after.count > before.3)
-                .map(|after| (before.2.clone(), after.item.clone()));
-            let started = before.0 == 0 && f.cooking_timer > 0;
-            let smelting = started
-                .then(|| f.items[0].as_ref().map(|item| item.item.clone()))
-                .flatten();
-            (step.lit, burning, smelted, smelting, step.consumed_fuel)
-        };
-        // `AbstractFurnaceBlockEntity.serverTick`: `burn` and consuming fuel
-        // set the changed flag, so a completed smelt or a refuel marks the
-        // chunk and tells comparators even though the block state stays LIT.
-        if smelted.is_some() || fueled {
-            self.container_changed(pos);
-        }
-        if let Some(item) = smelting {
-            self.native_furnace_start_smelt([pos.0, pos.1, pos.2], &item);
-        }
-        if let Some(fuel) = burning {
-            self.native_furnace_burn([pos.0, pos.1, pos.2], &fuel);
-        }
-        if let Some((Some(item), result)) = smelted {
-            self.native_furnace_smelt([pos.0, pos.1, pos.2], &item, &result);
-        }
-        for stack in drops {
-            self.campfire_drop(pos, stack);
-        }
-        let Some(lit) = lit else {
-            if matches!(self.world.block_entities.get(&pos), Some(BlockEntity::Furnace(f)) if f.idle())
-            {
-                self.world.block_entities.sleep(pos);
-            }
-            return Ok(());
-        };
-        let state = self.world.block(pos.0, pos.1, pos.2);
-        if let Some(mut s) = self.pack.assets.registry.state(state).cloned()
-            && s.properties.contains_key("lit")
-        {
-            s.properties.insert("lit".into(), lit.to_string());
-            if let Ok(id) = self.pack.assets.registry.resolve(&s) {
-                self.level_set([pos.0, pos.1, pos.2], id)?;
-            }
-        }
-        Ok(())
-    }
 }
 
 #[cfg(test)]
-mod jukebox_stop_tests {
+pub(in crate::game) mod jukebox_stop_tests {
     use super::Game;
     use sunrise_client::items::ItemStack;
 
@@ -887,7 +697,7 @@ mod jukebox_stop_tests {
 }
 
 #[cfg(test)]
-mod add_blocks_tests {
+pub(in crate::game) mod add_blocks_tests {
     use super::*;
     use mod_api::*;
     use std::sync::{Arc, OnceLock};
@@ -1113,7 +923,7 @@ mod add_blocks_tests {
 }
 
 #[cfg(test)]
-mod furnace_changed_tests {
+pub(in crate::game) mod furnace_changed_tests {
     use crate::game::{game_tests::tests::server_game, native_entity_refs::tests::run_fresh_cases};
     use std::{
         collections::HashMap,
@@ -1469,7 +1279,7 @@ mod furnace_changed_tests {
 }
 
 #[cfg(test)]
-mod slot_guard_tests {
+pub(in crate::game) mod slot_guard_tests {
     use super::{BlockEntityTick, BlockEntityTickSlot, TickedKind};
     use crate::game::game_tests::tests::server_game;
     use crate::game::published_loops::{Attributed, LoopFlow, LoopMod, LoopSlots};
@@ -1526,7 +1336,7 @@ mod slot_guard_tests {
 
 /// What a slot that changes the block entities does to the pass (`BlockEntityTickSlot`'s docs).
 #[cfg(test)]
-mod slot_mutation_tests {
+pub(in crate::game) mod slot_mutation_tests {
     use super::{BlockEntityTick, BlockEntityTickSlot};
     use crate::game::Game;
     use crate::game::game_tests::tests::server_game;
@@ -1772,7 +1582,7 @@ mod slot_mutation_tests {
 
 /// Slots that pick out their own mod's block entities (`OwnBlockEntities`).
 #[cfg(test)]
-mod own_block_entity_tests {
+pub(in crate::game) mod own_block_entity_tests {
     use super::{BlockEntityTick, BlockEntityTickSlot, OwnBlockEntities, TickedKind};
     use crate::game::Game;
     use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};

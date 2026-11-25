@@ -64,7 +64,7 @@ impl Game<'_> {
     // ---- /recipe -----------------------------------------------------------
 
     /// Learnable recipes and registered hidden crafting kinds for `/recipe` resolution.
-    pub(in crate::game) fn learnable_recipes(&self) -> Vec<String> {
+    pub(in crate::game::server_side) fn learnable_recipes(&self) -> Vec<String> {
         let index = &self.stations().recipe_index;
         index
             .ids()
@@ -78,7 +78,7 @@ impl Game<'_> {
             .cloned()
             .collect()
     }
-    pub(in crate::game) fn cmd_recipe(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_recipe(&mut self, id: &str, ctx: &Context) -> R<i32> {
         let targets = self.entities(ctx, "targets", true)?;
         let give = id == "recipe.give";
         let recipes: Vec<String> = match ctx.get("recipe") {
@@ -145,7 +145,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn builtin_damage_kind(ty: &str) -> Option<DamageKind> {
+    pub(in crate::game::server_side) fn builtin_damage_kind(ty: &str) -> Option<DamageKind> {
         Some(match ty.strip_prefix("minecraft:").unwrap_or(ty) {
             "player_attack" => DamageKind::PlayerAttack,
             "mace_smash" => DamageKind::MaceSmash,
@@ -191,7 +191,7 @@ impl Game<'_> {
         })
     }
     /// `DamageCommand.damage`: apply its source and report an accepted hit.
-    pub(in crate::game) fn cmd_damage(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_damage(&mut self, ctx: &Context) -> R<i32> {
         let targets = self.entities(ctx, "target", false)?;
         let Some(target) = targets.first().copied() else {
             return Ok(0);
@@ -262,7 +262,7 @@ impl Game<'_> {
     }
 
     /// `DamageCommand.damage`: an explicit direct entity keeps its actual class and weapon.
-    pub(in crate::game) fn command_attack(
+    pub(in crate::game::server_side) fn command_attack(
         &self,
         attacker: i32,
         direct: Option<Target>,
@@ -327,7 +327,7 @@ impl Game<'_> {
 
     // ---- sounds -----------------------------------------------------------------------
 
-    pub(in crate::game) fn cmd_playsound(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_playsound(&mut self, ctx: &Context) -> R<i32> {
         let Some(Arg::Resource(sound)) = ctx.get("sound").cloned() else {
             return Ok(0);
         };
@@ -400,7 +400,7 @@ impl Game<'_> {
     /// `ClientboundSoundPacket` to one player: a guest's connection is sent
     /// it; the window's own player plays it. `/playsound` and a native mod's
     /// `PlayerRef::play_sound` both send through here.
-    pub(in crate::game) fn play_sound_to(
+    pub(in crate::game::server_side) fn play_sound_to(
         &mut self,
         t: Target,
         sound: &str,
@@ -414,7 +414,7 @@ impl Game<'_> {
     }
     /// Direct packet delivery for a committed `PlayerRef::play_sound`, bypassing `guest_packets`
     /// during a guest turn so packet order matches commit order across all effect kinds.
-    pub(in crate::game) fn deliver_player_sound(
+    pub(in crate::game::server_side) fn deliver_player_sound(
         &mut self,
         t: Target,
         sound: &str,
@@ -429,7 +429,7 @@ impl Game<'_> {
     /// `StopSoundCommand`: each target's connection gets the packet; the
     /// window's own player stops its sounds. `/stopsound` and a native mod's
     /// `PlayerRef::stop_sound` both send through here.
-    pub(in crate::game) fn stop_sound_for(
+    pub(in crate::game::server_side) fn stop_sound_for(
         &mut self,
         targets: &[Target],
         sound: Option<&str>,
@@ -439,7 +439,7 @@ impl Game<'_> {
     }
     /// Direct packet delivery for a committed `PlayerRef::stop_sound`, bypassing `guest_packets`
     /// during a guest turn so packet order matches commit order across all effect kinds.
-    pub(in crate::game) fn deliver_player_stop_sound(
+    pub(in crate::game::server_side) fn deliver_player_stop_sound(
         &mut self,
         t: Target,
         sound: Option<&str>,
@@ -447,7 +447,7 @@ impl Game<'_> {
     ) {
         self.send_player_stop_sound(&[t], sound, source, true);
     }
-    pub(in crate::game) fn cmd_stopsound(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_stopsound(&mut self, ctx: &Context) -> R<i32> {
         let targets = self.entities(ctx, "targets", true)?;
         let source = ctx
             .literals
@@ -480,7 +480,7 @@ impl Game<'_> {
     // ---- /attribute ---------------------------------------------------------------------
 
     /// The attribute id without `minecraft:`, as the attribute map names it.
-    pub(in crate::game) fn attribute_description(attribute: &str) -> Text {
+    pub(in crate::game::server_side) fn attribute_description(attribute: &str) -> Text {
         let short = attribute.trim_start_matches("minecraft:");
         Text::translate(&format!("attribute.name.{short}"), &[])
     }
@@ -489,7 +489,11 @@ impl Game<'_> {
     /// transient modifiers; base reads still use the unmodified base.
     /// `AttributeCommand` writes the instance without delivering its dirty
     /// callbacks; the living entity refreshes them at its own lifecycle boundary.
-    pub(in crate::game) fn cmd_attribute(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_attribute(
+        &mut self,
+        id: &str,
+        ctx: &Context,
+    ) -> R<i32> {
         let targets = self.entities(ctx, "target", false)?;
         let Some(target) = targets.first().copied() else {
             return Ok(0);
@@ -519,7 +523,7 @@ impl Game<'_> {
         Ok(value)
     }
     /// `/attribute` on a target, with the target's own level in place.
-    pub(in crate::game) fn attribute_in_level(
+    pub(in crate::game::server_side) fn attribute_in_level(
         &mut self,
         id: &str,
         ctx: &Context,
@@ -872,7 +876,11 @@ impl Game<'_> {
 
     /// A sulfur cube's body archetype attributes live on its own map, beside
     /// the archetype's transient modifiers.
-    pub(in crate::game) fn sulfur_archetype_attribute(&self, t: Target, attribute: &str) -> bool {
+    pub(in crate::game::server_side) fn sulfur_archetype_attribute(
+        &self,
+        t: Target,
+        attribute: &str,
+    ) -> bool {
         let Target::Mob(id) = t else {
             return false;
         };
@@ -883,7 +891,7 @@ impl Game<'_> {
                 .any(|m| m.id == id && m.species() == sunrise_client::mobs::Species::SulfurCube)
     }
     /// AttributeCommand on a living entity through its generic attribute map.
-    pub(in crate::game) fn generic_attribute(
+    pub(in crate::game::server_side) fn generic_attribute(
         &mut self,
         target: Target,
         id: &str,
@@ -1022,7 +1030,7 @@ impl Game<'_> {
 
     // ---- /ride ----------------------------------------------------------------------------
 
-    pub(in crate::game) fn cmd_ride(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_ride(&mut self, id: &str, ctx: &Context) -> R<i32> {
         let targets = self.entities(ctx, "target", false)?;
         let Some(target) = targets.first().copied() else {
             return Ok(0);
@@ -1070,7 +1078,7 @@ impl Game<'_> {
 
     /// `cmd_ride` for a server player not in place (`Target::Guest`): `RideCommand.dismount` and
     /// `RideCommand.mount` run as that player, through `for_player`.
-    pub(in crate::game) fn ride_guest(
+    pub(in crate::game::server_side) fn ride_guest(
         &mut self,
         id: &str,
         ctx: &Context,
@@ -1154,7 +1162,7 @@ impl Game<'_> {
         self.dismount_mob_with_cart(rider, None, None, false);
     }
 
-    pub(in crate::game) fn dismount_mob_from_cart(
+    pub(in crate::game::server_side) fn dismount_mob_from_cart(
         &mut self,
         rider: u32,
         cart: &super::super::minecarts::Minecart,
@@ -1162,15 +1170,19 @@ impl Game<'_> {
         self.dismount_mob_with_cart(rider, Some(cart), None, false);
     }
 
-    pub(in crate::game) fn dismount_mob_reentrant(&mut self, rider: u32) {
+    pub(in crate::game::server_side) fn dismount_mob_reentrant(&mut self, rider: u32) {
         self.dismount_mob_with_cart(rider, None, None, true);
     }
 
-    pub(in crate::game) fn dismount_mob_from_removed_vehicle(&mut self, rider: u32, y: f64) {
+    pub(in crate::game::server_side) fn dismount_mob_from_removed_vehicle(
+        &mut self,
+        rider: u32,
+        y: f64,
+    ) {
         self.dismount_mob_with_cart(rider, None, Some(y), false);
     }
 
-    pub(in crate::game) fn dismount_mob_with_cart(
+    pub(in crate::game::server_side) fn dismount_mob_with_cart(
         &mut self,
         rider: u32,
         cart: Option<&super::super::minecarts::Minecart>,
@@ -1245,7 +1257,7 @@ impl Game<'_> {
     }
     /// Where `dismount_mob` sets object `rider` down off the vehicle `v`: None when
     /// `v` is no boat, cart or mob.
-    pub(in crate::game) fn mob_dismount_point(
+    pub(in crate::game::server_side) fn mob_dismount_point(
         &self,
         v: u32,
         rider: u32,
@@ -1303,7 +1315,7 @@ impl Game<'_> {
     // ---- /spreadplayers -----------------------------------------------------------------------
 
     /// `SpreadPlayersCommand.Position.getSpawnY`.
-    pub(in crate::game) fn spread_spawn_y(&self, p: [f64; 2], max_y: i32) -> i32 {
+    pub(in crate::game::server_side) fn spread_spawn_y(&self, p: [f64; 2], max_y: i32) -> i32 {
         let (x, z) = (p[0].floor() as i32, p[1].floor() as i32);
         let air = |y: i32| {
             let name: &str = &self.res.facts().get(self.world.block(x, y, z)).name;
@@ -1328,7 +1340,7 @@ impl Game<'_> {
         max_y + 1
     }
     /// `SpreadPlayersCommand.Position.isSafe`.
-    pub(in crate::game) fn spread_safe(&self, p: [f64; 2], max_y: i32) -> bool {
+    pub(in crate::game::server_side) fn spread_safe(&self, p: [f64; 2], max_y: i32) -> bool {
         let y = self.spread_spawn_y(p, max_y) - 1;
         let (x, z) = (p[0].floor() as i32, p[1].floor() as i32);
         let name = self.res.facts().get(self.world.block(x, y, z)).name.clone();

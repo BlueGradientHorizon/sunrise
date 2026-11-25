@@ -5,7 +5,7 @@ pub(in crate::game::client_side) use super::{
     view_vector,
 };
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::brush::*;
+pub(in crate::game::client_side) use crate::game::brush::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::{
     block_entity_render::vertex_light,
@@ -42,7 +42,7 @@ impl Game<'_> {
         self.destroy_particles(pos, state);
     }
     /// `BrushItem.spawnDustParticles`.
-    pub(in crate::game) fn brush_dust(&mut self, hit: &Hit, off_hand: bool) {
+    pub(in crate::game::client_side) fn brush_dust(&mut self, hit: &Hit, off_hand: bool) {
         let state = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
         let Some((sprite, tint)) = self.particle_sprite(state, hit.pos) else {
             return;
@@ -79,6 +79,85 @@ impl Game<'_> {
                 dz * flip * 3.0 * random.next_double(),
             ];
             self.particles.0.add(&options, [x, hit.point[1], z], v);
+        }
+    }
+    /// `BrushableBlockRenderer`: reveal the item from the first brushed face.
+    pub(in crate::game) fn brushable_geometry(&self, camera: glam::DVec3, out: &mut Vec<Vertex>) {
+        self.brushable_items(camera, |d| {
+            self.submit_item_world(d.state, d.pose, d.light, out);
+        });
+    }
+    /// The items [`Self::brushable_geometry`] draws.
+    pub(in crate::game) fn brushable_items(
+        &self,
+        camera: glam::DVec3,
+        mut draw: impl FnMut(BlockItemDraw),
+    ) {
+        use sunrise_assets::item_model::DisplayContext;
+        let _items = sunrise_client::spans::raw_flight_guard("block_entity_items");
+        let reach = Reach::Default;
+        sunrise_client::spans::note_block_entity_item_visits(|| {
+            self.world.block_entities.len() as u64
+        });
+        for (key, entity) in &self.world.block_entities {
+            let BlockEntity::Brushable(b) = entity else {
+                continue;
+            };
+            let (Some(stack), Some(face)) = (&b.item, b.hit_direction) else {
+                continue;
+            };
+            if !reach.should_render([key.0, key.1, key.2], camera, 0) {
+                continue;
+            }
+            let state = self.world.block(key.0, key.1, key.2);
+            let progress = self
+                .pack
+                .assets
+                .registry
+                .state(state)
+                .and_then(|s| s.properties.get("dusted"))
+                .and_then(|s| s.parse::<u8>().ok())
+                .unwrap_or(0);
+            if progress == 0 {
+                continue;
+            }
+            // `BrushableBlockRenderer.translations`.
+            let offset = f32::from(progress) / 10.0 * 0.75;
+            let (translation, adjacent, east_west) = match face {
+                0 => ([0.5, -0.23 - offset, 0.5], [0, -1, 0], false),
+                1 => ([0.5, 0.25 + offset, 0.5], [0, 1, 0], false),
+                2 => ([0.5, 0.0, 0.25 - offset], [0, 0, -1], false),
+                3 => ([0.5, 0.0, 0.73 + offset], [0, 0, 1], false),
+                4 => ([0.25 - offset, 0.0, 0.5], [-1, 0, 0], true),
+                5 => ([0.73 + offset, 0.0, 0.5], [1, 0, 0], true),
+                _ => continue,
+            };
+            let item = self.resolve_item(stack, DisplayContext::Fixed, None, 0);
+            if item.is_empty() {
+                continue;
+            }
+            let mut pose = block_entity_pose(*key, camera);
+            pose.translate(0.0, 0.5, 0.0);
+            pose.translate(translation[0], translation[1], translation[2]);
+            rotate_degrees(&mut pose, 1, 75.0);
+            rotate_degrees(&mut pose, 1, if east_west { 101.0 } else { 11.0 });
+            pose.scale(0.5, 0.5, 0.5);
+            let light = self.world.light(
+                key.0 + adjacent[0],
+                key.1 + adjacent[1],
+                key.2 + adjacent[2],
+            );
+            draw(BlockItemDraw {
+                #[cfg(test)]
+                stack,
+                #[cfg(test)]
+                display: DisplayContext::Fixed,
+                #[cfg(test)]
+                seed: 0,
+                state: &item,
+                pose: pose.to_glam(),
+                light: vertex_light(light),
+            });
         }
     }
 }

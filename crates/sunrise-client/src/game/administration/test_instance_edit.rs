@@ -347,7 +347,7 @@ impl Game<'_> {
         Rotation::None
     }
     /// `LocalPlayer.openTestInstanceBlock`.
-    pub(in crate::game) fn open_test_instance_block(&mut self, pos: Pos) {
+    pub(in crate::game::client_side) fn open_test_instance_block(&mut self, pos: Pos) {
         let Some(BlockEntity::TestInstanceBlock(b)) = self.world.block_entities.get(&pos) else {
             return;
         };

@@ -5,7 +5,7 @@ use sunrise_client::{first_person::Hand, items::ItemStack, mobs::allay};
 impl Game<'_> {
     /// The client's `Allay.mobInteract` runs before the server's response.
     /// Whether `predict_allay_interaction` would act, on a copy of the allay.
-    pub(in crate::game) fn allay_would_take(
+    pub(in crate::game::client_side) fn allay_would_take(
         &self,
         index: usize,
         hand: Hand,
@@ -27,7 +27,7 @@ impl Game<'_> {
         .is_some()
     }
 
-    pub(in crate::game) fn predict_allay_interaction(
+    pub(in crate::game::client_side) fn predict_allay_interaction(
         &mut self,
         index: usize,
         hand: Hand,

@@ -22,7 +22,7 @@ struct Missing {
 }
 
 /// Shows the screen until the player closes it.
-pub(super) fn show(looked_in: &std::path::Path, settings: &Settings) -> Result<()> {
+pub(in crate::game) fn show(looked_in: &std::path::Path, settings: &Settings) -> Result<()> {
     // The player's language, from the strings compiled in: there are no prepared ones.
     sunrise_client::lang::set(sunrise_client::lang::Language::load(
         &[],

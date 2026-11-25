@@ -8,7 +8,7 @@ impl Game<'_> {
     /// the box only has to overlap the build height (`LevelReader.hasChunksAt`,
     /// over `Level.getMinY()`/`getMaxY()`, not the chunks' wider column). The
     /// corners are walked in the order given, as vanilla's loop is.
-    pub(in crate::game) fn clone_boxes_loaded(
+    pub(in crate::game::server_side) fn clone_boxes_loaded(
         &mut self,
         boxes: [(Dim, [i32; 3], [i32; 3]); 2],
     ) -> R<()> {
@@ -29,7 +29,7 @@ impl Game<'_> {
     /// `Level.setBlock`'s gate (`isInValidBounds`, the build height and not the
     /// chunks' wider column, and the chunk is resident): a write it refuses
     /// changes nothing, so `CloneCommands.clone` does not count it.
-    pub(in crate::game) fn clone_writable(&self, pos: [i32; 3]) -> bool {
+    pub(in crate::game::server_side) fn clone_writable(&self, pos: [i32; 3]) -> bool {
         pos[1] >= self.world.shape.min_y
             && pos[1] < self.world.shape.max_y()
             && self.world.chunks.contains_key(&(pos[0] >> 4, pos[2] >> 4))

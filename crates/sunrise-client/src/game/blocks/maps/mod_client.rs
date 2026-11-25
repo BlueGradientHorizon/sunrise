@@ -57,6 +57,51 @@ pub(in crate::game::client_side) use sunrise_client::{
 pub(in crate::game::client_side) use sunrise_core::nbt::{JavaString, Tag};
 
 impl Game<'_> {
+    /// `renderMap`: map `id` at pose `m`, its background (with a 7-pixel
+    /// border) then the map.
+    pub(in crate::game::client_side) fn held_map(
+        &mut self,
+        m: glam::Mat4,
+        id: i32,
+        light: u32,
+        out: &mut Vec<Vertex>,
+    ) {
+        let deg = |d: f32| d.to_radians();
+        let m = m
+            * glam::Mat4::from_rotation_y(deg(180.0))
+            * glam::Mat4::from_rotation_z(deg(180.0))
+            * glam::Mat4::from_scale(glam::Vec3::splat(0.38))
+            * glam::Mat4::from_translation(glam::Vec3::new(-0.5, -0.5, 0.0))
+            * glam::Mat4::from_scale(glam::Vec3::splat(0.0078125));
+        let has_data = self.map(id).is_some();
+        let background = if has_data {
+            "map/map_background_checkerboard"
+        } else {
+            "map/map_background"
+        };
+        if let Some(r) = self.gui.atlas.sprites.get(background).copied() {
+            for (c, uv) in [
+                ([-7.0, 135.0, 0.0], [r.u0, r.v1]),
+                ([135.0, 135.0, 0.0], [r.u1, r.v1]),
+                ([135.0, -7.0, 0.0], [r.u1, r.v0]),
+                ([-7.0, -7.0, 0.0], [r.u0, r.v0]),
+            ] {
+                out.push(Vertex {
+                    normal: [0; 4],
+                    pos: m.transform_point3(glam::Vec3::from_array(c)).to_array(),
+                    uv,
+                    layer: 0,
+                    color: 0xFFFF_FFFF,
+                    light,
+
+                    glint_uv: [0.0, 0.0],
+                });
+            }
+        }
+        if has_data {
+            self.map_vertices(id, false, m, light, out);
+        }
+    }
     /// The atlas slot showing map `id`, its texture uploaded when it changed.
     pub(in crate::game) fn map_texture(&mut self, id: i32) -> Option<Rect> {
         self.map(id)?;
@@ -95,7 +140,7 @@ impl Game<'_> {
     /// (map pixels 0..128, y down), drawn at depth offsets toward the viewer.
     /// `show_only_frame` (a map in an item frame) leaves out the decorations that
     /// do not show on frames.
-    pub(in crate::game) fn map_vertices(
+    pub(in crate::game::client_side) fn map_vertices(
         &mut self,
         id: i32,
         show_only_frame: bool,
@@ -226,59 +271,73 @@ impl Game<'_> {
             count += 1;
         }
     }
-    /// `CompassItem.useOn`: a compass used on a lodestone locks onto it (a
-    /// single one in survival changes in place, else one is split off).
-    pub(in crate::game) fn use_lodestone_compass(
+    /// The maps the player carries, for `status`: how many of their pixels
+    /// are drawn, and their decorations.
+    pub(in crate::game::client_side) fn maps_status(&self) -> Vec<serde_json::Value> {
+        self.inventory
+            .iter()
+            .chain(std::iter::once(&self.offhand))
+            .flatten()
+            .filter_map(map_id)
+            .filter_map(|id| {
+                let m = self.maps.data.get(&id)?;
+                Some(serde_json::json!({
+                    "id": id,
+                    "pixels": m.colors.iter().filter(|&&c| c != 0).count(),
+                    "decorations": m.decorations.iter().map(|d| d.sprite).collect::<Vec<_>>(),
+                }))
+            })
+            .collect()
+    }
+    /// The icons `native_map_decorations` adds to map `id`, as it is drawn
+    /// (`frame`: in an item frame or on a screen, which show only what
+    /// `shown_on_frame` allows).
+    pub(in crate::game) fn mod_map_decorations(
+        &self,
+        id: i32,
+        frame: bool,
+    ) -> Vec<mod_api::MapDecoration> {
+        let Some(map) = self.maps.data.get(&id) else {
+            return Vec::new();
+        };
+        let info = mod_api::MapInfo {
+            id,
+            center: map.center,
+            scale: map.scale,
+            dimension: &map.dimension,
+            locked: map.locked,
+            in_frame: frame,
+        };
+        let mut decorations = Vec::new();
+        self.native_map_decorations(&info, &mut decorations);
+        decorations
+            .into_iter()
+            .filter(|d| !frame || d.shown_on_frame)
+            .map(|d| mod_api::MapDecoration {
+                rot: d.rot & 15,
+                ..d
+            })
+            .collect()
+    }
+    /// `renderTwoHandedMap`: map `id` held in both hands, in view space (the
+    /// arms under it: `first_person::map_arm_poses`).
+    pub(in crate::game::client_side) fn two_handed_map_geometry(
         &mut self,
-        hit: &super::Hit,
-        stack: &ItemStack,
-        before: &ItemStack,
-    ) -> bool {
-        if &*stack.item != "minecraft:compass" {
-            return false;
-        }
-        let [x, y, z] = hit.pos;
-        if self
-            .res
-            .facts()
-            .get(self.world.block(x, y, z))
-            .name
-            .as_ref()
-            != "minecraft:lodestone"
-        {
-            return false;
-        }
-        let at = [x, y, z].map(|v| f64::from(v) + 0.5);
-        self.trigger_block("minecraft:item_used_on_block", hit.pos, before);
-        self.server_play_sound("minecraft:item.lodestone_compass.lock", at, 1.0, 1.0);
-        let target = Tag::compound([
-            (
-                "target",
-                Tag::compound([
-                    ("dimension", Tag::String(self.dimension_id().into())),
-                    ("pos", Tag::IntArray(vec![x, y, z])),
-                ]),
-            ),
-            ("tracked", Tag::Byte(1)),
-        ]);
-        if !self.creative && stack.count == 1 {
-            self.edit_block_use_stack(|cell| {
-                if let Some(held) = cell {
-                    held.data_mut()
-                        .set_other("minecraft:lodestone_tracker", Some(target.clone()));
-                }
-            });
-        } else {
-            let mut locked = stack.clone();
-            locked.count = 1;
-            locked
-                .data_mut()
-                .set_other("minecraft:lodestone_tracker", Some(target));
-            self.consume_held();
-            self.give_or_drop_stack(locked);
-        }
-        self.award_stat("used", &stack.item, 1);
-        self.swing_arm();
-        true
+        to_world: glam::Mat4,
+        attack: f32,
+        inverse_height: f32,
+        id: i32,
+        light: u32,
+        out: &mut Vec<Vertex>,
+    ) {
+        use sunrise_core::geometry::trig::Mth;
+        let deg = |d: f32| d.to_radians();
+        let base = to_world
+            * sunrise_client::first_person::two_handed_map_base(self.pitch, inverse_height, attack);
+        let swing = (attack.sqrt() * std::f32::consts::PI).msin();
+        let m = base
+            * glam::Mat4::from_rotation_x(deg(swing * 20.0))
+            * glam::Mat4::from_scale(glam::Vec3::splat(2.0));
+        self.held_map(m, id, light, out);
     }
 }

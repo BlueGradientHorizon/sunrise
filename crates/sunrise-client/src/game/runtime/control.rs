@@ -1,30 +1,40 @@
 //! Commands from the control socket (`sunrise-ctl`), run on the game thread.
+#[allow(unused_imports)]
 use super::event_loop::EventLoopCtl;
+#[allow(unused_imports)]
 use super::owner_link::{ControlRequest, OwnerRequest};
+#[allow(unused_imports)]
 use super::{Game, Screen};
+#[allow(unused_imports)]
 use serde_json::{Value, json};
+#[allow(unused_imports)]
 use std::{
     sync::mpsc::Sender,
     time::{Duration, Instant},
 };
+#[allow(unused_imports)]
 use sunrise_client::gfx::pack_timing;
+#[allow(unused_imports)]
 use sunrise_client::held::Source;
+#[allow(unused_imports)]
 use sunrise_client::{Result, items::ItemStack};
+#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
+#[allow(unused_imports)]
 use winit::{event::MouseButton, keyboard::KeyCode};
 
 /// The control protocol's version (`docs/api/stability.md`): before 1.0 an
 /// addition makes the next patch and a breaking change the next line.
-const PROTOCOL: &str = "0.1.0";
+pub(in crate::game) const PROTOCOL: &str = "0.1.0";
 
 /// The command groups the game serves, as `help` chains them: what `hello` reports as its features.
-const FEATURES: &[&str] = &[
+pub(in crate::game) const FEATURES: &[&str] = &[
     "game", "station", "blocks", "lan", "friends", "render", "sculk", "agent", "ui", "options",
     "events", "saves", "pad", "studio",
 ];
 
 /// `hello`: the protocol the socket speaks, the game's release and the command groups it serves.
-fn hello() -> Value {
+pub(in crate::game) fn hello() -> Value {
     json!({
         "protocol": PROTOCOL,
         "release": sunrise_core::release::VERSION,
@@ -32,7 +42,7 @@ fn hello() -> Value {
     })
 }
 
-const HELP: &[&str] = &[
+pub(in crate::game) const HELP: &[&str] = &[
     "hello                          the control protocol's version, the game's release and the command groups it serves",
     "status                         game, player, streaming and renderer state",
     "simulation                     authoritative projectiles in the owner's level",
@@ -79,19 +89,19 @@ const HELP: &[&str] = &[
 /// A straight camera path at constant speed, for repeatable benchmarks: the
 /// player is placed on it every frame, facing along it.
 pub struct Flight {
-    from: Vec3,
-    to: Vec3,
-    pitch: f32,
-    started: Instant,
-    seconds: f64,
+    pub(in crate::game) from: Vec3,
+    pub(in crate::game) to: Vec3,
+    pub(in crate::game) pitch: f32,
+    pub(in crate::game) started: Instant,
+    pub(in crate::game) seconds: f64,
     /// Reply with every frame time too (`fly ... PITCH raw`).
     pub(in crate::game) raw: bool,
-    upload_queue_work: [usize; 2],
-    mesh_uploads: [u64; 2],
-    reply: Sender<String>,
+    pub(in crate::game) upload_queue_work: [usize; 2],
+    pub(in crate::game) mesh_uploads: [u64; 2],
+    pub(in crate::game) reply: Sender<String>,
     /// The world's smoothed tick time each frame (the F3 server line): the
     /// server thread's when single player runs on one.
-    tick_ms: Vec<f32>,
+    pub(in crate::game) tick_ms: Vec<f32>,
 }
 
 impl Flight {
@@ -175,7 +185,9 @@ impl Game<'_> {
         }
     }
     /// The game's settings a render capture records beside the renderer's own state.
-    fn render_capture_settings(&self) -> sunrise_client::gfx::capture::Settings {
+    pub(in crate::game::client_side) fn render_capture_settings(
+        &self,
+    ) -> sunrise_client::gfx::capture::Settings {
         let s = &self.settings;
         sunrise_client::gfx::capture::Settings {
             graphics_api: format!("{:?}", s.sunrise.api),
@@ -194,7 +206,7 @@ impl Game<'_> {
         }
     }
     /// The frame summary, with Sunrise's own passes' median GPU times while they are timed.
-    fn summary_with_passes(&self) -> Value {
+    pub(in crate::game::client_side) fn summary_with_passes(&self) -> Value {
         let mut summary = self.client.frame_stats.summary();
         let passes = self
             .renderer
@@ -222,7 +234,7 @@ impl Game<'_> {
         summary
     }
 
-    fn add_async_occlusion_stats(&self, summary: &mut Value) {
+    pub(in crate::game::client_side) fn add_async_occlusion_stats(&self, summary: &mut Value) {
         if let Some(culler) = &self.occlusion.0.async_culler {
             summary["async_occlusion_culling"] = culler.stats_value();
         }
@@ -241,14 +253,14 @@ impl Game<'_> {
         }
     }
     /// Every frame's times, and its allocations in builds that count (`raw`).
-    fn add_raw_series(&self, summary: &mut Value) {
+    pub(in crate::game::client_side) fn add_raw_series(&self, summary: &mut Value) {
         self.client.frame_stats.add_series(summary);
         if sunrise_threads::alloc_count::ON {
             summary["alloc_count"] = self.client.frame_stats.alloc_counts().into();
             summary["alloc_bytes"] = self.client.frame_stats.alloc_bytes().into();
         }
     }
-    fn reset_frame_stats(&mut self) {
+    pub(in crate::game::client_side) fn reset_frame_stats(&mut self) {
         self.client.frame_stats.reset();
         if let Some(culler) = &self.occlusion.0.async_culler {
             culler.reset_stats();
@@ -298,7 +310,11 @@ impl Game<'_> {
         }
     }
 
-    fn answer(&mut self, request: sunrise_client::control::Request, event_loop: &dyn EventLoopCtl) {
+    pub(in crate::game) fn answer(
+        &mut self,
+        request: sunrise_client::control::Request,
+        event_loop: &dyn EventLoopCtl,
+    ) {
         let reply = match self.control_command(&request.line, &request.reply, event_loop) {
             Ok(Some(value)) => value,
             // Deferred: the command keeps its own reply channel.
@@ -478,7 +494,7 @@ impl Game<'_> {
         }
     }
 
-    fn control_command_inner(
+    pub(in crate::game::client_side) fn control_command_inner(
         &mut self,
         line: &str,
         reply: &Sender<String>,
@@ -1429,16 +1445,7 @@ impl Game<'_> {
         }
     }
 
-    /// `sunrise-ctl save` and `save-all`.
-    pub(in crate::game) fn control_save(&mut self, all: bool) -> Result<()> {
-        if all {
-            let keys: Vec<_> = self.world.chunks.keys().copied().collect();
-            self.world.modified.extend(keys);
-        }
-        self.save_game()
-    }
-
-    fn require_world(&self) -> Result<()> {
+    pub(in crate::game::client_side) fn require_world(&self) -> Result<()> {
         if self.title.0.is_some() {
             return Err("no world open; use: open WORLD [SEED] [creative]".into());
         }
@@ -1446,7 +1453,10 @@ impl Game<'_> {
     }
 
     /// Release any untagged keyboard-standin holds on non-toggle keys bound to `physical`.
-    fn release_control_keyboard_standin(&mut self, physical: KeyCode) {
+    pub(in crate::game::client_side) fn release_control_keyboard_standin(
+        &mut self,
+        physical: KeyCode,
+    ) {
         for key in self
             .settings
             .keys
@@ -1463,7 +1473,7 @@ impl Game<'_> {
         }
     }
 
-    fn screen_name(&self) -> &'static str {
+    pub(in crate::game::client_side) fn screen_name(&self) -> &'static str {
         if self.client.screen == Screen::Win {
             return "win";
         }
@@ -1751,7 +1761,7 @@ impl Game<'_> {
 }
 
 /// PCI vendor IDs of the GPU makers players have (Apple's is wgpu's Metal value).
-fn vendor_name(id: u32) -> String {
+pub(in crate::game) fn vendor_name(id: u32) -> String {
     match id {
         0x10de => "nvidia".into(),
         0x1002 | 0x1022 => "amd".into(),
@@ -1767,7 +1777,7 @@ fn vendor_name(id: u32) -> String {
 
 /// The key a `key <name> tap|up` command releases, whatever its handler does.
 /// A `key KEY down|up|tap|repeat` line's key and action.
-fn socket_key(line: &str) -> Option<(KeyCode, &str)> {
+pub(in crate::game) fn socket_key(line: &str) -> Option<(KeyCode, &str)> {
     let mut words = line.split_whitespace();
     match (words.next(), words.next(), words.next()) {
         (Some("key"), Some(key), Some(action @ ("down" | "up" | "tap" | "repeat"))) => {
@@ -1777,7 +1787,7 @@ fn socket_key(line: &str) -> Option<(KeyCode, &str)> {
     }
 }
 
-fn released_modifier(line: &str) -> Option<KeyCode> {
+pub(in crate::game) fn released_modifier(line: &str) -> Option<KeyCode> {
     let mut words = line.split_whitespace();
     match (words.next(), words.next(), words.next()) {
         (Some("key"), Some(key), Some("tap" | "up")) => key_code(key),
@@ -1785,7 +1795,7 @@ fn released_modifier(line: &str) -> Option<KeyCode> {
     }
 }
 
-fn key_code(name: &str) -> Option<KeyCode> {
+pub(in crate::game) fn key_code(name: &str) -> Option<KeyCode> {
     let name = name.to_ascii_lowercase();
     // The game's own names (`key.keyboard.w`), which a recording writes.
     if let Some(code) = sunrise_client::keybinds::key_code(&name) {
@@ -1867,7 +1877,10 @@ fn key_code(name: &str) -> Option<KeyCode> {
 }
 
 /// The (times, detail) switches `gpu-passes [on|off|detail]` leaves, given the current ones.
-fn gpu_pass_switches(word: Option<&str>, now: (bool, bool)) -> Result<(bool, bool)> {
+pub(in crate::game) fn gpu_pass_switches(
+    word: Option<&str>,
+    now: (bool, bool),
+) -> Result<(bool, bool)> {
     match word {
         None => Ok(now),
         Some("on") => Ok((true, false)),
@@ -1878,7 +1891,7 @@ fn gpu_pass_switches(word: Option<&str>, now: (bool, bool)) -> Result<(bool, boo
 }
 
 /// The `gpu-passes` reply: the switches and what detail can show on this device.
-fn gpu_passes_reply(
+pub(in crate::game) fn gpu_passes_reply(
     passes: bool,
     detail: bool,
     support: Option<pack_timing::DetailSupport>,
@@ -1902,7 +1915,7 @@ pub(in crate::game::client_side) fn title_owns_text(screen: &Screen, title_up: b
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
 
     #[test]

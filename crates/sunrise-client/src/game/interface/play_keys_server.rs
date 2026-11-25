@@ -9,6 +9,42 @@ pub(in crate::game::server_side) use crate::game::client_side::play_keys::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_client::keybinds::VanillaMappingSlot;
 
+impl Game<'_> {
+    /// handlePlayerAction SWAP_ITEM_WITH_OFFHAND for the window's own player
+    /// with no server: the mods hear it as a server's players
+    /// (`player_swap_hands`), and may stop it or change what each hand gets.
+    /// Then setItemInHand for the off hand, then the main hand. The stacks are
+    /// copied only for a listener: `heard` holds the old main and off hands.
+    pub(in crate::game) fn own_swap_hands(&mut self) {
+        if self.spectator() {
+            return;
+        }
+        let heard = mod_api::__private::listened(mod_api::HookId::PlayerSwapHands)
+            .then(|| (self.inventory[self.selected].clone(), self.offhand.clone()));
+        if let Some((old_main, old_off)) = &heard {
+            let (mut to_main, mut to_off, mut cancel) = (old_off.clone(), old_main.clone(), false);
+            let (uuid, name) = (self.own_uuid(), self.own_profile_name());
+            self.native_player_swap_hands(uuid, &name, &mut to_main, &mut to_off, &mut cancel);
+            if cancel {
+                return;
+            }
+            (self.inventory[self.selected], self.offhand) = (to_main, to_off);
+        } else {
+            std::mem::swap(&mut self.offhand, &mut self.inventory[self.selected]);
+        }
+        self.hand_stack_replaced(self.selected);
+        self.hand_stack_replaced(shield::OFFHAND_SLOT);
+        let (offhand, main) = (self.offhand.clone(), self.inventory[self.selected].clone());
+        let (old_main, old_off) = match &heard {
+            Some((old_main, old_off)) => (old_main.as_ref(), old_off.as_ref()),
+            None => (offhand.as_ref(), main.as_ref()),
+        };
+        self.player_on_equip("offhand", old_off, offhand.as_ref());
+        self.player_on_equip("mainhand", old_main, main.as_ref());
+        self.using = None;
+    }
+}
+
 #[cfg(test)]
 pub(in crate::game) mod swap_hands_tests {
     #[allow(unused_imports)]

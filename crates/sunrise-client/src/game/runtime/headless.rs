@@ -48,7 +48,7 @@ impl HeadlessLoop {
 impl Game<'_> {
     /// Runs the game until it asks to stop (`sunrise-ctl quit`, a signal, an error), then
     /// saves as a window's game does when its loop ends.
-    pub(super) fn run_headless(&mut self) {
+    pub(in crate::game::client_side) fn run_headless(&mut self) {
         let ctl = HeadlessLoop {
             exit: Cell::new(false),
             flow: Cell::new(ControlFlow::Poll),

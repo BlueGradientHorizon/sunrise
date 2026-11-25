@@ -38,7 +38,10 @@ impl Game<'_> {
     /// `DebugStickItem.useOn`: a right click cycles the value of the property
     /// in `debug_stick_state` (the first property when none is selected yet).
     /// `Some` is the vanilla result (`SUCCESS`/`FAIL`), `None` another item.
-    pub(super) fn debug_stick_use_on(&mut self, pos: [i32; 3]) -> Result<Option<bool>> {
+    pub(in crate::game::server_side) fn debug_stick_use_on(
+        &mut self,
+        pos: [i32; 3],
+    ) -> Result<Option<bool>> {
         if !self.held().is_some_and(is_debug_stick) {
             return Ok(None);
         }
@@ -47,7 +50,7 @@ impl Game<'_> {
 
     /// `DebugStickItem.canDestroyBlock`: a left click selects the next
     /// property and never destroys the block.
-    pub(super) fn debug_stick_can_destroy(&mut self, pos: [i32; 3]) -> Result<bool> {
+    pub(in crate::game) fn debug_stick_can_destroy(&mut self, pos: [i32; 3]) -> Result<bool> {
         if !self.held().is_some_and(is_debug_stick) {
             return Ok(true);
         }

@@ -493,7 +493,11 @@ use super::villager_client::villager_data;
 
 impl Game<'_> {
     /// SetEntityData for a mob of the server's.
-    pub(in crate::game) fn remote_mob_data(&mut self, id: i32, values: &[(u8, i32, Value)]) {
+    pub(in crate::game::client_side) fn remote_mob_data(
+        &mut self,
+        id: i32,
+        values: &[(u8, i32, Value)],
+    ) {
         let Some(r) = &self.remote else {
             return;
         };

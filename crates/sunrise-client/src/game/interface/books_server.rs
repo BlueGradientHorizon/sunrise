@@ -237,7 +237,7 @@ impl Game<'_> {
     }
 
     /// `ServerPlayer.openItemGui` -> `WrittenBookContent.resolveForItem`: resolve selectors/scores.
-    pub(in crate::game) fn resolve_held_book(&mut self) -> bool {
+    pub(in crate::game::server_side) fn resolve_held_book(&mut self) -> bool {
         let Some(mut book) = self
             .held()
             .and_then(|s| s.data())
@@ -279,7 +279,11 @@ impl Game<'_> {
         changed
     }
 
-    pub(in crate::game) fn set_lectern_powered(&mut self, key: (i32, i32, i32), powered: bool) {
+    pub(in crate::game::server_side) fn set_lectern_powered(
+        &mut self,
+        key: (i32, i32, i32),
+        powered: bool,
+    ) {
         self.set_lectern_property(key, "powered", powered);
         let p = BlockPos::new(key.0, key.1, key.2);
         let state = self.world.block(key.0, key.1, key.2);

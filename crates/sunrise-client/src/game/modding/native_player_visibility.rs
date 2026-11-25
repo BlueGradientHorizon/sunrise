@@ -30,7 +30,10 @@ impl Game<'_> {
         }
     }
     /// The connection of a player a client stands behind, in their turn or out of it.
-    pub(in crate::game) fn player_connection(&self, player: PlayerRef) -> Result<u32, Refusal> {
+    pub(in crate::game::server_side) fn player_connection(
+        &self,
+        player: PlayerRef,
+    ) -> Result<u32, Refusal> {
         if !self.is_logical_server() {
             return Err(Refusal::Client);
         }

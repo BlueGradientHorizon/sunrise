@@ -453,7 +453,7 @@ impl Station {
         Self::new(kind, pos)
     }
     /// `StonecutterScreen.containerChanged`: a changed input puts the list back at the top.
-    pub(in crate::game) fn stonecutter_changed(&mut self) {
+    pub(in crate::game::client_side) fn stonecutter_changed(&mut self) {
         self.start = 0;
         self.scroll = 0.0;
     }
@@ -1058,14 +1058,6 @@ impl Game<'_> {
         }
         self.after_commit(super::transactions::After::GrindstoneEvent(pos));
     }
-    pub(in crate::game) fn play_at(&mut self, sound: &str, pos: [i32; 3], volume: f32, pitch: f32) {
-        let at = [
-            f64::from(pos[0]) + 0.5,
-            f64::from(pos[1]) + 0.5,
-            f64::from(pos[2]) + 0.5,
-        ];
-        self.server_play_sound(sound, at, volume, pitch);
-    }
     pub(in crate::game) fn give_or_drop(&mut self, stack: ItemStack) {
         if let Some(rest) = self.add_stack_to_inventory(stack)
             && let Some(eye) = self.eye_position()
@@ -1078,13 +1070,6 @@ impl Game<'_> {
     pub(in crate::game) fn give_levels(&mut self, levels: i32) {
         let old_level = self.experience.level;
         self.add_experience_levels(levels);
-        self.native_player_level_changed(old_level);
-    }
-    /// `Player.onEnchantmentPerformed`: the cost leaves the level directly, not
-    /// through `giveExperienceLevels`, and the mods hear of the level change.
-    pub(in crate::game::client_side) fn enchantment_performed(&mut self, cost: i32) {
-        let old_level = self.experience.level;
-        self.experience.add_levels(-cost);
         self.native_player_level_changed(old_level);
     }
     /// Whether the result slot may be taken (`mayPickup`).
@@ -1157,7 +1142,7 @@ impl Game<'_> {
             _ => Vec::new(),
         }
     }
-    pub(in crate::game) fn station_click(&mut self, right: bool) -> bool {
+    pub(in crate::game::client_side) fn station_click(&mut self, right: bool) -> bool {
         // A server's brewing stand: its slots are the server's.
         if self.station.is_none() && (!self.brewing_open() || self.remote.is_some()) {
             return false;

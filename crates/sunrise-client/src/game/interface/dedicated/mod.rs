@@ -2259,7 +2259,7 @@ impl Game<'_> {
     }
 
     /// `DedicatedServer.setPlayerIdleTimeout`: update the live idle sweep and persist its minutes.
-    pub(in crate::game) fn set_player_idle_timeout(
+    pub(in crate::game::server_side) fn set_player_idle_timeout(
         &mut self,
         lists: &Arc<Mutex<Lists>>,
         minutes: i32,

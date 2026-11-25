@@ -106,7 +106,7 @@ impl Game<'_> {
     /// the component is removed), heard by this client only
     /// (`playLocalSound`) at the entity's feet, at 0.8 volume and a pitch of
     /// 0.8 to 1.2.
-    pub(in crate::game) fn break_sound_at(&mut self, stack: &ItemStack, at: [f64; 3]) {
+    pub(in crate::game::client_side) fn break_sound_at(&mut self, stack: &ItemStack, at: [f64; 3]) {
         let models = &self.pack.item_renderer.models;
         let sound = match models
             .components(&stack_view(stack))
@@ -124,7 +124,7 @@ impl Game<'_> {
     }
     /// The slime ball, snowball and cobweb models behind `item_slime`,
     /// `item_snowball` and `item_cobweb`, resolved on first use.
-    pub(in crate::game) fn ensure_item_particle_sprites(&mut self) {
+    pub(in crate::game::client_side) fn ensure_item_particle_sprites(&mut self) {
         if !self.particles.0.item_sprites.is_empty() {
             return;
         }

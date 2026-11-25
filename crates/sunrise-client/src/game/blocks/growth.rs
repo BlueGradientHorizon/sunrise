@@ -1,22 +1,18 @@
 //! Client glue for sapling growth and bone meal: installs the live feature
 //! registry, routes `BoneMealItem.useOn` through the behaviour library, and
 //! crops a growing plant's head with shears (`ShearsItem.useOn`).
+#[allow(unused_imports)]
 use super::{Game, native_hooks::BonemealAsk};
+#[allow(unused_imports)]
 use std::sync::Arc;
+#[allow(unused_imports)]
 use sunrise_client::{Result, items::ItemStack, vanillagen};
+#[allow(unused_imports)]
 use sunrise_core::{geometry::Direction, position::BlockPos};
+#[allow(unused_imports)]
 use sunrise_world::{level::classes::Class, worldgen::live::LiveFeatures};
 
 impl Game<'_> {
-    /// Load the configured/placed feature registry used by saplings, fungi
-    /// and bone meal (for fixtures: the plain bundle, unless one is installed; worlds install
-    /// their own in `prepare_world`).
-    pub(in crate::game) fn install_live_features(&self) {
-        if self.res.behaviours().live_features().is_some() {
-            return;
-        }
-        install_live_features(&self.res, &self.pack, &self.options, &Default::default());
-    }
     /// `BonemealEvent` for the acting hand's bone meal `stack` on `pos`:
     /// the event's answer, and the stack as the mods left it, which goes
     /// back in the hand (`useItemOn` puts a creative player's count back).
@@ -35,104 +31,12 @@ impl Game<'_> {
         }
         (ask, held)
     }
-    /// `BoneMealItem.useOn` for the targeted block.
-    pub(in crate::game) fn use_bone_meal(&mut self, stack: &ItemStack) -> Result<bool> {
-        if &*stack.item != "minecraft:bone_meal" {
-            return Ok(false);
-        }
-        let Some(hit) = self.pick() else {
-            return Ok(false);
-        };
-        let face = match hit.face {
-            [0, 1, 0] => Direction::Up,
-            [0, -1, 0] => Direction::Down,
-            [0, 0, -1] => Direction::North,
-            [0, 0, 1] => Direction::South,
-            [-1, 0, 0] => Direction::West,
-            _ => Direction::East,
-        };
-        let pos = BlockPos::new(hit.pos[0], hit.pos[1], hit.pos[2]);
-        let (ask, held) = self.held_bonemeal(pos, stack);
-        let used = self.with_level(|b, level, ticks| {
-            b.use_bone_meal(level, ticks, pos, face, ask.crop, ask.check)
-        });
-        // A canceled `BonemealEvent` that succeeded uses none of the meal.
-        let consumed = used && ask.crop != Some(true);
-        // ItemStack.causeUseVibration at the player, after the meal is used
-        // up (shrunk even in creative): an emptied stack has no use effects.
-        if used
-            && held.count > u32::from(consumed)
-            && let Some(p) = self.player.as_ref().map(|p| p.position)
-        {
-            let ctx = self.player_context(None);
-            self.post_game_event("minecraft:item_interact_finish", [p.x, p.y, p.z], ctx);
-        }
-        self.server_process_level_events()?;
-        if used {
-            self.swing_arm();
-            // ItemStack.useOn: an item interaction counts as a use.
-            self.award_stat("used", &stack.item, 1);
-            if consumed {
-                self.consume_held();
-            }
-        }
-        Ok(used)
-    }
-    /// `ShearsItem.useOn` on a growing plant's head below its top age (kelp,
-    /// weeping and twisting vines, cave vines): the head goes to
-    /// `GrowingPlantHeadBlock.getMaxAgeState` (age 25) with
-    /// `block.growing_plant.crop`, the level hears a `block_change`, and the
-    /// shears wear by one. True when it cropped (SUCCESS).
-    pub(in crate::game) fn shears_crop(
-        &mut self,
-        pos: [i32; 3],
-        stack: &ItemStack,
-    ) -> Result<bool> {
-        if &*stack.item != "minecraft:shears" {
-            return Ok(false);
-        }
-        let state = self.world.block(pos[0], pos[1], pos[2]);
-        let b = self.res.behaviours();
-        // A head grows and carries `AGE_25`; the plant's body below it does not.
-        if !b.data(state).is(Class::GrowingPlantHead) {
-            return Ok(false);
-        }
-        // `GrowingPlantHeadBlock.isMaxAge`: the property's top value.
-        if b.table.int(state, b.props.age) == 25 {
-            return Ok(false);
-        }
-        // `GrowingPlantHeadBlock.getMaxAgeState`.
-        let max_age = b.table.set_int(state, b.props.age, 25);
-        self.server_play_sound(
-            "minecraft:block.growing_plant.crop",
-            [
-                f64::from(pos[0]) + 0.5,
-                f64::from(pos[1]) + 0.5,
-                f64::from(pos[2]) + 0.5,
-            ],
-            1.0,
-            1.0,
-        );
-        self.level_set(pos, max_age)?;
-        self.post_block_game_event(
-            "minecraft:block_change",
-            pos,
-            self.sculk_actor(),
-            Some(max_age),
-        );
-        self.trigger_block("minecraft:item_used_on_block", pos, stack);
-        self.damage_held(1);
-        // ItemStack.useOn: an item interaction counts as a use.
-        self.award_stat("used", &stack.item, 1);
-        self.swing_arm();
-        Ok(true)
-    }
 }
 
 /// The feature registry over `overrides`: the world's data packs' and the
 /// mods' worldgen entries, which a sapling's or a mod's feature may be one of.
 /// `Ok(None)` when the bundle has no features.
-fn build_live_features(
+pub(in crate::game) fn build_live_features(
     resources: &std::path::Path,
     registry: &'static sunrise_world::registry::BlockRegistry,
     source: &sunrise_assets::resource_source::ResourceSource,
@@ -147,16 +51,17 @@ fn build_live_features(
 /// The last bundle built, so a world opened with the same data packs (the
 /// usual re-open) reuses it: the resources folder, the overrides it was built
 /// from, and the features.
-type Built = (
+pub(in crate::game) type Built = (
     std::path::PathBuf,
     sunrise_world::worldgen::overrides::WorldgenOverrides,
     Arc<LiveFeatures>,
 );
-static LAST_BUILT: std::sync::Mutex<Option<Built>> = std::sync::Mutex::new(None);
+pub(in crate::game) static LAST_BUILT: std::sync::Mutex<Option<Built>> =
+    std::sync::Mutex::new(None);
 
 /// The feature registry for a world with `overrides`: the cached one when the
 /// last build had the same ones, else a fresh build (which is then cached).
-fn live_features_for(
+pub(in crate::game) fn live_features_for(
     options: &super::Options,
     pack: &super::PackResources,
     overrides: &sunrise_world::worldgen::overrides::WorldgenOverrides,
@@ -215,7 +120,7 @@ pub(in crate::game) fn install_live_features(
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::{Arc, Game, build_live_features, install_live_features};
     use mod_api::{self, BonemealEvent, BonemealSource, Flow, Hooks, HostSide};
     use std::sync::{Mutex, MutexGuard, PoisonError};

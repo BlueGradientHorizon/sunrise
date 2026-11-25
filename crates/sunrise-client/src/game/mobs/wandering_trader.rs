@@ -39,7 +39,7 @@ impl Game<'_> {
         }
     }
     /// `WanderingTraderSpawner.tick`.
-    pub(in crate::game) fn tick_wandering_trader(&mut self) {
+    pub(in crate::game::server_side) fn tick_wandering_trader(&mut self) {
         if self.dim != Dim::Overworld
             || !self
                 .ui

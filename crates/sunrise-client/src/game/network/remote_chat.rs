@@ -223,7 +223,7 @@ impl Game<'_> {
 
     /// ClientPacketListener.sendChat: the last-seen update goes with every
     /// message; the signature only with a chat session.
-    pub(in crate::game) fn send_signed_chat(&mut self, content: &str) {
+    pub(in crate::game::client_side) fn send_signed_chat(&mut self, content: &str) {
         let content = truncate_utf16(content, 256);
         let (timestamp, salt) = (now_millis(), salt());
         let Some(r) = self.remote.as_mut() else {

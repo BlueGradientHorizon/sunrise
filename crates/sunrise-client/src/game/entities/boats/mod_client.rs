@@ -63,7 +63,7 @@ pub(in crate::game::client_side) use sunrise_world::collision_context::Collision
 
 impl Game<'_> {
     /// `AbstractBoat.tick` advances the oars even when this client does not move the hull.
-    pub(in crate::game) fn tick_boat_paddles(b: &mut Boat, audio: &mut super::Audio) {
+    pub(in crate::game::client_side) fn tick_boat_paddles(b: &mut Boat, audio: &mut super::Audio) {
         // Paddle sounds at the top of each stroke.
         for i in 0..2 {
             if b.paddle_state(i) {
@@ -96,7 +96,7 @@ impl Game<'_> {
     }
     /// `AbstractBoat.onAboveBubbleColumn`: the client's half after the roll,
     /// the splash sound and particle at the boat.
-    pub(in crate::game) fn boat_bubble_splash(&mut self, i: usize) {
+    pub(in crate::game::client_side) fn boat_bubble_splash(&mut self, i: usize) {
         use sunrise_client::particles::{ParticleOptions, ParticleType};
         let p = self.boats[i].position;
         let pitch = 0.8 + 0.4 * self.world.random.next_float();

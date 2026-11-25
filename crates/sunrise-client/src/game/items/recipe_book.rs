@@ -5,14 +5,18 @@
 //! (`ServerPlaceRecipe`). Which recipes are known comes from the advancement
 //! rewards; the open and filter settings are saved with the player.
 #[path = "recipe_book/mod_screen.rs"]
-mod mod_screen;
+pub(in crate::game) mod mod_screen;
 
+#[allow(unused_imports)]
 use super::{Game, Screen};
+#[allow(unused_imports)]
 use mod_api::{RecipeTransferCheck, RecipeTransferResult};
+#[allow(unused_imports)]
 use std::{
     hash::{Hash, Hasher},
     time::{Duration, Instant},
 };
+#[allow(unused_imports)]
 use sunrise_client::{
     containers::{BlockEntity, FurnaceKind},
     hud::{HudBatch, Rect, rgba},
@@ -28,12 +32,12 @@ use sunrise_client::{
     ui::EditBox,
 };
 
-const WIDTH: f32 = 147.0;
-const HEIGHT: f32 = 166.0;
+pub(in crate::game) const WIDTH: f32 = 147.0;
+pub(in crate::game) const HEIGHT: f32 = 166.0;
 /// `RecipeBookComponent.TICKS_TO_SWAP_SLOT`.
-const SWAP_TICKS: f32 = 30.0;
+pub(in crate::game) const SWAP_TICKS: f32 = 30.0;
 /// Widest GUI at which the book sits next to the menu (`widthTooNarrow`).
-const NARROW: f32 = 379.0;
+pub(in crate::game) const NARROW: f32 = 379.0;
 
 /// `RecipeBookComponent.isOffsetNextToMainGUI`: false in a window narrower than
 /// `NARROW`, where the open book covers the menu. Escape closes only the book
@@ -43,34 +47,34 @@ pub(in crate::game::client_side) fn escape_closes_book(width: f32, open: bool) -
 }
 
 /// A ghost recipe slot: the items it cycles through.
-struct Ghost {
-    slot: usize,
-    items: Vec<ItemStack>,
-    result: bool,
+pub(in crate::game) struct Ghost {
+    pub(in crate::game) slot: usize,
+    pub(in crate::game) items: Vec<ItemStack>,
+    pub(in crate::game) result: bool,
 }
 /// The alternatives overlay of a recipe button (`OverlayRecipeComponent`).
-struct Overlay {
-    x: f32,
-    y: f32,
+pub(in crate::game) struct Overlay {
+    pub(in crate::game) x: f32,
+    pub(in crate::game) y: f32,
     /// (entry index, craftable)
-    entries: Vec<(usize, bool)>,
+    pub(in crate::game) entries: Vec<(usize, bool)>,
 }
 /// One recipe button: the collection's recipes shown in the current view.
 #[derive(Clone, Default)]
-struct Button {
+pub(in crate::game) struct Button {
     /// (entry index, craftable)
-    entries: Vec<(usize, bool)>,
+    pub(in crate::game) entries: Vec<(usize, bool)>,
 }
 impl Button {
-    fn craftable(&self) -> bool {
+    pub(in crate::game) fn craftable(&self) -> bool {
         self.entries.iter().any(|e| e.1)
     }
 }
 #[derive(Default)]
-struct View {
+pub(in crate::game) struct View {
     /// Visible tabs.
-    tabs: Vec<Tab>,
-    buttons: Vec<Button>,
+    pub(in crate::game) tabs: Vec<Tab>,
+    pub(in crate::game) buttons: Vec<Button>,
 }
 
 #[derive(Default)]
@@ -78,35 +82,35 @@ pub(in crate::game) struct RecipeUi {
     /// Explicit viewport for renderer-less resource-backed fixtures.
     #[cfg(test)]
     pub(in crate::game) test_viewport: Option<[u32; 2]>,
-    custom: mod_screen::ModRecipeUi,
-    book: Option<Book>,
-    tab: Option<Tab>,
+    pub(in crate::game) custom: mod_screen::ModRecipeUi,
+    pub(in crate::game) book: Option<Book>,
+    pub(in crate::game) tab: Option<Tab>,
     pub(in crate::game) search: Option<EditBox>,
-    page: usize,
+    pub(in crate::game) page: usize,
     /// Ticks, for the ghost and button cycling (`RecipeBookComponent.time`).
-    time: f32,
-    ghost: Vec<Ghost>,
-    last_placed: Option<String>,
-    overlay: Option<Overlay>,
+    pub(in crate::game) time: f32,
+    pub(in crate::game) ghost: Vec<Ghost>,
+    pub(in crate::game) last_placed: Option<String>,
+    pub(in crate::game) overlay: Option<Overlay>,
     /// A press landed in the search box, so a drag selects text in it.
-    search_drag: bool,
-    view: View,
-    view_key: u64,
+    pub(in crate::game) search_drag: bool,
+    pub(in crate::game) view: View,
+    pub(in crate::game) view_key: u64,
     /// Squeeze animations of new recipes: ticks left per button index and tab.
-    button_anim: Vec<(usize, f32)>,
-    tab_anim: Vec<(Tab, f32)>,
+    pub(in crate::game) button_anim: Vec<(usize, f32)>,
+    pub(in crate::game) tab_anim: Vec<(Tab, f32)>,
     /// The client's copy of the known recipes (`ClientRecipeBook`), its order deciding the buttons'.
-    client: ClientBook,
-    client_version: u64,
+    pub(in crate::game) client: ClientBook,
+    pub(in crate::game) client_version: u64,
     /// The entries a server's packets carried, by display id: the book is
     /// made with them over its own (`Book::use_server_entries`).
-    server_entries:
+    pub(in crate::game) server_entries:
         std::collections::BTreeMap<i32, sunrise_protocol::packets::recipes::RecipeBookEntry>,
     /// The display a click last placed (`lastRecipe`), which Enter and Space
     /// place again; slot clicks keep it.
-    last_clicked: Option<i32>,
+    pub(in crate::game) last_clicked: Option<i32>,
     /// The server's checks of viewer transfers (`transfer_recipe_check`).
-    checks: TransferChecks,
+    pub(in crate::game) checks: TransferChecks,
 }
 
 /// The recipe viewer channels the server said it answers: `sunrise:recipe_transfer`
@@ -121,16 +125,20 @@ pub(in crate::game) struct ViewerChannels {
 /// saw of the open menu: its window, its state id, and the inventory and
 /// grid. Any change there forgets them.
 #[derive(Default)]
-struct TransferChecks {
-    seen: Option<(i32, i32, Vec<Option<ItemStack>>)>,
-    answers: Vec<CheckAnswer>,
+pub(in crate::game) struct TransferChecks {
+    pub(in crate::game) seen: Option<(i32, i32, Vec<Option<ItemStack>>)>,
+    pub(in crate::game) answers: Vec<CheckAnswer>,
     /// The one request out: its tag, its recipe and when it went.
-    asked: Option<(i32, String, Instant)>,
+    pub(in crate::game) asked: Option<(i32, String, Instant)>,
 }
 
 impl TransferChecks {
     /// The last answer remains usable while a refresh is pending.
-    fn lookup(&self, recipe: &str, now: Instant) -> (Option<&RecipeTransferCheck>, bool) {
+    pub(in crate::game) fn lookup(
+        &self,
+        recipe: &str,
+        now: Instant,
+    ) -> (Option<&RecipeTransferCheck>, bool) {
         let answer = self.answers.iter().find(|a| a.recipe == recipe);
         let refresh_due = answer.is_none_or(|a| now >= a.refreshes);
         let waiting = self
@@ -140,7 +148,7 @@ impl TransferChecks {
         (answer.map(|a| &a.check), refresh_due && !waiting)
     }
 
-    fn ask(&mut self, recipe: &str, now: Instant) -> Option<i32> {
+    pub(in crate::game) fn ask(&mut self, recipe: &str, now: Instant) -> Option<i32> {
         static NEXT_TAG: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
         let tag = NEXT_TAG
             .try_update(
@@ -154,7 +162,7 @@ impl TransferChecks {
     }
 
     /// Make room for a new answer and return its refresh deadline.
-    fn prepare_answer(&mut self, recipe: &str, now: Instant) -> Instant {
+    pub(in crate::game) fn prepare_answer(&mut self, recipe: &str, now: Instant) -> Instant {
         self.answers.retain(|a| a.recipe != recipe);
         if self.answers.len() >= CHECK_KEPT {
             self.answers.remove(0);
@@ -164,23 +172,23 @@ impl TransferChecks {
 }
 
 /// One answer of `TransferChecks`.
-struct CheckAnswer {
-    recipe: String,
+pub(in crate::game) struct CheckAnswer {
+    pub(in crate::game) recipe: String,
     /// When this answer becomes eligible to refresh.
-    refreshes: Instant,
-    check: RecipeTransferCheck,
+    pub(in crate::game) refreshes: Instant,
+    pub(in crate::game) check: RecipeTransferCheck,
 }
 
 /// How long an answer stays fresh (chests beside a station change without
 /// the client seeing it).
-const CHECK_REFRESH: Duration = Duration::from_secs(1);
+pub(in crate::game) const CHECK_REFRESH: Duration = Duration::from_secs(1);
 /// A request with no answer this long is given up, and another may go.
-const CHECK_WAIT: Duration = Duration::from_millis(500);
+pub(in crate::game) const CHECK_WAIT: Duration = Duration::from_millis(500);
 /// The answers kept for one view of the menu.
-const CHECK_KEPT: usize = 64;
+pub(in crate::game) const CHECK_KEPT: usize = 64;
 
 #[cfg(test)]
-mod transfer_check_cache_tests {
+pub(in crate::game) mod transfer_check_cache_tests {
     use super::*;
 
     #[test]
@@ -234,10 +242,10 @@ impl RecipeUi {
     }
 }
 
-fn inside(p: (f32, f32), x: f32, y: f32, w: f32, h: f32) -> bool {
+pub(in crate::game) fn inside(p: (f32, f32), x: f32, y: f32, w: f32, h: f32) -> bool {
     p.0 >= x && p.1 >= y && p.0 < x + w && p.1 < y + h
 }
-fn sprite(name: &str) -> String {
+pub(in crate::game) fn sprite(name: &str) -> String {
     format!("recipe_book/{name}")
 }
 
@@ -274,10 +282,10 @@ impl Game<'_> {
             _ => None,
         }
     }
-    fn book_open(&self, book: BookType) -> bool {
+    pub(in crate::game) fn book_open(&self, book: BookType) -> bool {
         self.level.recipe_book.open[book.index()]
     }
-    fn book_filtering(&self, book: BookType) -> bool {
+    pub(in crate::game) fn book_filtering(&self, book: BookType) -> bool {
         self.level.recipe_book.filtering[book.index()]
     }
     /// How far the open book pushes the menu to the right
@@ -416,12 +424,12 @@ impl Game<'_> {
     // ---- recipes and what can be crafted ----
 
     /// The grid size of the open crafting menu.
-    fn book_grid(&self) -> (usize, usize) {
+    pub(in crate::game) fn book_grid(&self) -> (usize, usize) {
         (self.craft_size, self.craft_size)
     }
     /// The items the book counts (`RecipeBookComponent.updateStackedContents`):
     /// the inventory and the menu's crafting slots, as the menu engine counts them.
-    fn book_available(&mut self, _book: BookType) -> Stacked {
+    pub(in crate::game) fn book_available(&mut self, _book: BookType) -> Stacked {
         if self.remote.is_some() {
             // A server's menu: the slots it last sent, counted the same way.
             use sunrise_client::menu::{Env, Kind, Menu};
@@ -507,7 +515,7 @@ impl Game<'_> {
     /// Puts a server's entries over `book` (`Book::use_server_entries`). The
     /// names come from the connection's registries; a tag's items are the ones
     /// the client knows for it (the server's tags are not read).
-    fn server_entries_over<'a>(
+    pub(in crate::game) fn server_entries_over<'a>(
         &self,
         book: &mut Book,
         entries: impl IntoIterator<Item = &'a sunrise_protocol::packets::recipes::RecipeBookEntry>,
@@ -539,7 +547,7 @@ impl Game<'_> {
             },
         );
     }
-    fn ensure_book(&mut self) {
+    pub(in crate::game) fn ensure_book(&mut self) {
         if self.recipe_ui.0.book.is_none() {
             let mut book = Book::build(self.recipes(), self.items());
             book.set_display_ids(self.display_index());
@@ -560,7 +568,7 @@ impl Game<'_> {
         }
     }
     /// Rebuilds the tab and button lists when anything they depend on changed.
-    fn refresh_book_view(&mut self, book_type: BookType) {
+    pub(in crate::game) fn refresh_book_view(&mut self, book_type: BookType) {
         self.ensure_book();
         let mut h = std::collections::hash_map::DefaultHasher::new();
         for s in self.inventory.iter().flatten() {
@@ -606,7 +614,7 @@ impl Game<'_> {
     /// `RecipeBookTabButton.startAnimation` and `RecipeButton.init`: tabs
     /// holding a recipe still to be displayed squeeze, and the buttons of the
     /// shown page squeeze once and clear their recipes' highlight.
-    fn start_new_recipe_animations(&mut self, book_type: BookType) {
+    pub(in crate::game) fn start_new_recipe_animations(&mut self, book_type: BookType) {
         if self.level.recipe_book.to_be_displayed.is_empty() {
             return;
         }
@@ -670,7 +678,7 @@ impl Game<'_> {
         self.recipe_ui.0.button_anim = buttons;
         self.recipe_ui.0.book = Some(book);
     }
-    fn build_view(&mut self, ui: &RecipeUi, book_type: BookType) -> View {
+    pub(in crate::game) fn build_view(&mut self, ui: &RecipeUi, book_type: BookType) -> View {
         let Some(book) = ui.book.as_ref() else {
             return View::default();
         };
@@ -752,7 +760,7 @@ impl Game<'_> {
     /// `RecipeBookComponent.getXOrigin` / `getYOrigin` (`widthTooNarrow`
     /// centres the book over the menu), moved left with the window by the
     /// room the mods ask beside it (`screen_room`).
-    fn book_origin(&self, batch: &HudBatch) -> (f32, f32) {
+    pub(in crate::game) fn book_origin(&self, batch: &HudBatch) -> (f32, f32) {
         let (x, y) = self.book_origin_in_place(batch);
         (x - self.screen_room_shift(batch), y)
     }
@@ -766,7 +774,7 @@ impl Game<'_> {
         (!self.book_covers_menu(batch.width)).then(|| self.book_origin_in_place(batch).0 - 32.0)
     }
     /// `book_origin` before the mods' room moves it.
-    fn book_origin_in_place(&self, batch: &HudBatch) -> (f32, f32) {
+    pub(in crate::game) fn book_origin_in_place(&self, batch: &HudBatch) -> (f32, f32) {
         let narrow = if self.native_screen_book().is_some() {
             self.mod_book_overlay(batch.width)
         } else {
@@ -791,7 +799,12 @@ impl Game<'_> {
         Some([x, y, WIDTH, HEIGHT])
     }
     /// The green book button's top-left corner.
-    fn book_button_pos(&self, book: BookType, ox: f32, batch: &HudBatch) -> (f32, f32) {
+    pub(in crate::game) fn book_button_pos(
+        &self,
+        book: BookType,
+        ox: f32,
+        batch: &HudBatch,
+    ) -> (f32, f32) {
         let mid = (batch.height / 2.0).floor();
         match book {
             BookType::Crafting if self.craft_size == 2 => (ox + 104.0, mid - 22.0),
@@ -799,20 +812,20 @@ impl Game<'_> {
             _ => (ox + 20.0, mid - 49.0),
         }
     }
-    fn tab_pos(&self, xo: f32, yo: f32, index: usize) -> (f32, f32) {
+    pub(in crate::game) fn tab_pos(&self, xo: f32, yo: f32, index: usize) -> (f32, f32) {
         (xo - 30.0, yo + 3.0 + 27.0 * index as f32)
     }
-    fn button_pos(xo: f32, yo: f32, i: usize) -> (f32, f32) {
+    pub(in crate::game) fn button_pos(xo: f32, yo: f32, i: usize) -> (f32, f32) {
         (
             xo + 11.0 + 25.0 * (i % 5) as f32,
             yo + 31.0 + 25.0 * (i / 5) as f32,
         )
     }
     /// `RecipeBookComponent.slotSelectTime`.
-    fn swap_index(&self) -> usize {
+    pub(in crate::game) fn swap_index(&self) -> usize {
         (self.recipe_ui.0.time / SWAP_TICKS).floor() as usize
     }
-    fn batch_for_size(&self) -> Option<HudBatch> {
+    pub(in crate::game) fn batch_for_size(&self) -> Option<HudBatch> {
         #[cfg(test)]
         if let Some(size) = self.recipe_ui.0.test_viewport {
             return Some(HudBatch::new(size, self.settings.gui_scale_inputs()));
@@ -828,7 +841,7 @@ impl Game<'_> {
 
     /// A click while a screen with a recipe book is open; true when the book
     /// used it.
-    pub(in crate::game) fn recipe_book_click(&mut self, right: bool) -> bool {
+    pub(in crate::game::client_side) fn recipe_book_click(&mut self, right: bool) -> bool {
         if self.native_screen_shown() {
             return self.mod_book_click(right);
         }
@@ -985,7 +998,7 @@ impl Game<'_> {
     }
     /// `RecipeBookComponent.mouseClicked` after a placed recipe: it becomes
     /// `lastRecipe`.
-    fn remember_click(&mut self, entry: usize) {
+    pub(in crate::game) fn remember_click(&mut self, entry: usize) {
         self.recipe_ui.0.last_clicked = self
             .recipe_ui
             .0
@@ -1053,7 +1066,7 @@ impl Game<'_> {
         std::mem::take(&mut self.recipe_ui.0.search_drag)
     }
     /// `RecipeBookComponent.sendUpdateSettings`: the server owns the saved book.
-    fn send_book_settings(&self, book_type: BookType) {
+    pub(in crate::game) fn send_book_settings(&self, book_type: BookType) {
         self.send(
             sunrise_protocol::packets::play::Serverbound::RecipeBookChangeSettings(
                 sunrise_protocol::packets::recipes::RecipeBookChangeSettings {
@@ -1283,7 +1296,7 @@ impl Game<'_> {
         }
         out
     }
-    fn shift_down(&self) -> bool {
+    pub(in crate::game) fn shift_down(&self) -> bool {
         self.has_shift_down()
     }
     /// The open screen's book for `hasClickedOutside`: (visible, selected tab
@@ -1309,14 +1322,21 @@ impl Game<'_> {
         Some((true, hovered))
     }
     /// The grid, result and furnace slots clicks on which end a ghost recipe.
-    fn is_book_slot(&self, book: BookType, slot: usize) -> bool {
+    pub(in crate::game) fn is_book_slot(&self, book: BookType, slot: usize) -> bool {
         match book {
             BookType::Crafting => (100..109).contains(&slot) || slot == 200,
             _ => (300..303).contains(&slot),
         }
     }
     /// `OverlayRecipeComponent.init`.
-    fn open_overlay(&mut self, button: &Button, bx: f32, by: f32, xo: f32, yo: f32) {
+    pub(in crate::game) fn open_overlay(
+        &mut self,
+        button: &Button,
+        bx: f32,
+        by: f32,
+        xo: f32,
+        yo: f32,
+    ) {
         let mut entries: Vec<(usize, bool)> =
             button.entries.iter().copied().filter(|e| e.1).collect();
         entries.extend(button.entries.iter().copied().filter(|e| !e.1));
@@ -1331,7 +1351,7 @@ impl Game<'_> {
     /// What the book's click handler does once a recipe was placed: a book
     /// that is not offset next to the menu (`!isOffsetNextToMainGUI`, a window
     /// narrower than `NARROW`) closes with `setVisible(false)`.
-    fn close_narrow_book(&mut self, book_type: BookType, batch: &HudBatch) {
+    pub(in crate::game) fn close_narrow_book(&mut self, book_type: BookType, batch: &HudBatch) {
         if batch.width >= NARROW {
             return;
         }
@@ -1357,7 +1377,7 @@ impl Game<'_> {
         true
     }
     /// `RecipeBookComponent.tryPlaceRecipe`: false when the click is refused.
-    fn try_place(&mut self, entry_index: usize, use_max: bool) -> bool {
+    pub(in crate::game) fn try_place(&mut self, entry_index: usize, use_max: bool) -> bool {
         let Some(book_type) = self.active_book() else {
             return false;
         };
@@ -1385,7 +1405,7 @@ impl Game<'_> {
             && !self.spectator()
     }
     /// Whether the open menu is a mod menu type with a crafting grid.
-    fn mod_crafting_open(&self) -> bool {
+    pub(in crate::game) fn mod_crafting_open(&self) -> bool {
         self.remote
             .as_ref()
             .and_then(|r| r.menu.as_ref())
@@ -1413,58 +1433,10 @@ impl Game<'_> {
         self.place_book_recipe(BookType::Crafting, index, all);
     }
     /// Whether the open menu is a content mod's menu type.
-    fn mod_menu_open(&self) -> bool {
+    pub(in crate::game) fn mod_menu_open(&self) -> bool {
         self.remote_menu_type()
             .and_then(sunrise_client::containers::mod_menu_type)
             .is_some()
-    }
-    /// Asks `menu_transfer` of the part of mod menu type `menu` (the caller checked that one
-    /// listens): its answer, and with `dry_run` the cells it named, both lists kept to the
-    /// recipe's known layout (`clamp_cells` to `recipe_cells`: one input for stonecutting, the
-    /// placement's slots, or `MAX_CHECK_CELLS` for a recipe the game can't inspect). Cells a
-    /// part names outside a dry run are dropped. None when no part answers.
-    pub(in crate::game) fn menu_transfer_answer(
-        &mut self,
-        player: u128,
-        menu: &str,
-        pos: Option<[i32; 3]>,
-        recipe: &str,
-        max: bool,
-        dry_run: bool,
-    ) -> Option<RecipeTransferCheck> {
-        use sunrise_client::lan::recipes::{clamp_cells, recipe_cells};
-        let (mut result, mut missing, mut craftable) = (None, Vec::new(), Vec::new());
-        self.native_menu_transfer(mod_api::__private::MenuTransferCall {
-            player,
-            menu,
-            pos,
-            recipe,
-            max,
-            dry_run,
-            result: &mut result,
-            missing_cells: &mut missing,
-            craftable_cells: &mut craftable,
-        });
-        let result = result?;
-        let cells = if dry_run {
-            let recipes = self.recipes();
-            let id = if recipe.contains(':') {
-                std::borrow::Cow::Borrowed(recipe)
-            } else {
-                std::borrow::Cow::Owned(format!("minecraft:{recipe}"))
-            };
-            let kind = (recipes.by_type.iter())
-                .find(|(_, list)| list.iter().any(|r| r.id == *id))
-                .map(|(kind, _)| kind.as_str());
-            recipe_cells(kind, recipes.placement(recipe).map(|p| p.slots.len()))
-        } else {
-            0
-        };
-        Some(RecipeTransferCheck {
-            result,
-            missing_cells: clamp_cells(&missing, cells),
-            craftable_cells: clamp_cells(&craftable, cells),
-        })
     }
     /// A viewer's transfer of a recipe by id (`transfer_recipe_id`): sent to the server, whose
     /// `menu_transfer` parts on a mod menu answer first, then its grid transfer. Only a server
@@ -1514,7 +1486,7 @@ impl Game<'_> {
             .map_or_else(Default::default, |book| book.confirmed_ids(recipe_id))
     }
     /// A viewer's transfer of one set of ingredients.
-    pub(in crate::game) fn transfer_viewer_recipe(&mut self, display_id: i32) {
+    pub(in crate::game::client_side) fn transfer_viewer_recipe(&mut self, display_id: i32) {
         self.client.panel.transfer_warning = None;
         if !self.mod_recipe_screen()
             || (self.creative && self.craft_size != 3 && !self.mod_crafting_open())
@@ -1592,7 +1564,7 @@ impl Game<'_> {
         }
     }
 
-    fn remote_recipe_transfer(&mut self, data: &[u8]) {
+    pub(in crate::game) fn remote_recipe_transfer(&mut self, data: &[u8]) {
         if let Ok(Some((container, result))) =
             sunrise_client::lan::recipes::decode_transfer_reply(data)
             && container == self.remote_menu_id()
@@ -1606,7 +1578,7 @@ impl Game<'_> {
         }
     }
 
-    fn show_transfer_result(&mut self, result: RecipeTransferResult) {
+    pub(in crate::game) fn show_transfer_result(&mut self, result: RecipeTransferResult) {
         if result == RecipeTransferResult::Moves {
             self.close_transferred_recipe();
         }
@@ -1682,7 +1654,7 @@ impl Game<'_> {
 
     /// The server's answer to `sunrise:recipe_check`. Kept only as the answer
     /// to the request out, for the view of the menu it was asked for.
-    fn remote_recipe_check(&mut self, data: &[u8]) {
+    pub(in crate::game) fn remote_recipe_check(&mut self, data: &[u8]) {
         let Some((container, tag, check)) = sunrise_client::lan::recipes::decode_check_reply(data)
         else {
             return;
@@ -1705,7 +1677,12 @@ impl Game<'_> {
     /// `ServerboundPlaceRecipePacket`: the server places the recipe
     /// (`ServerPlaceRecipe` on the menu engine) and answers with a ghost
     /// recipe when the items are missing.
-    fn place_book_recipe(&mut self, _book_type: BookType, entry_index: usize, use_max: bool) {
+    pub(in crate::game) fn place_book_recipe(
+        &mut self,
+        _book_type: BookType,
+        entry_index: usize,
+        use_max: bool,
+    ) {
         let Some(entry) = self
             .recipe_ui
             .0
@@ -1827,7 +1804,7 @@ impl Game<'_> {
     // ---- ghost recipe ----
 
     /// `fillGhostRecipe`: the recipe's ingredients faded into the slots.
-    fn fill_ghost(&mut self, book_type: BookType, entry: &Entry) {
+    pub(in crate::game) fn fill_ghost(&mut self, book_type: BookType, entry: &Entry) {
         let grid = self.craft_size;
         let fuel_empty = self.slot_mut(301).is_none();
         let Some(book) = self.recipe_ui.0.book.as_ref() else {
@@ -1895,7 +1872,12 @@ impl Game<'_> {
     /// `AbstractRecipeBookScreen`'s narratables: the book button (an
     /// `ImageButton` without a message) and the `RecipeBookComponent`, which
     /// narrates its recipe buttons, search box, filter and tabs while open.
-    fn narrate_recipe_book(&self, batch: &HudBatch, book_type: BookType, button: [f32; 4]) {
+    pub(in crate::game) fn narrate_recipe_book(
+        &self,
+        batch: &HudBatch,
+        book_type: BookType,
+        button: [f32; 4],
+    ) {
         use sunrise_client::widgets::{self, Narratable, key_of};
         if !widgets::narrating() {
             return;
@@ -1986,11 +1968,11 @@ impl Game<'_> {
             });
         }
     }
-    fn shift_down_or_ctrl(&self) -> bool {
+    pub(in crate::game) fn shift_down_or_ctrl(&self) -> bool {
         self.has_control_down()
     }
     /// `GhostSlots.extractRenderState`, among the container's slots.
-    fn draw_ghost(&mut self, batch: &mut HudBatch, book_type: BookType) {
+    pub(in crate::game) fn draw_ghost(&mut self, batch: &mut HudBatch, book_type: BookType) {
         if self.recipe_ui.0.ghost.is_empty() {
             return;
         }
@@ -2036,7 +2018,7 @@ impl Game<'_> {
     }
     /// `RecipeBookComponent.extractRenderState` and `extractTooltip`, laid
     /// out by `sunrise_client::recipe_book_screen`.
-    fn draw_book_panel(
+    pub(in crate::game) fn draw_book_panel(
         &mut self,
         batch: &mut HudBatch,
         book_type: BookType,
@@ -2168,7 +2150,7 @@ impl Game<'_> {
     }
     /// Paints recipe book calls; returns the first tooltip set (vanilla keeps
     /// the first one a frame asks for).
-    fn paint_book(
+    pub(in crate::game) fn paint_book(
         &mut self,
         batch: &mut HudBatch,
         calls: &[Drawn],
@@ -2309,13 +2291,13 @@ impl Game<'_> {
 }
 
 /// An ARGB colour as a HUD vertex colour.
-fn argb(c: i32) -> u32 {
+pub(in crate::game) fn argb(c: i32) -> u32 {
     let c = c as u32;
     rgba((c >> 16) as u8, (c >> 8) as u8, c as u8, (c >> 24) as u8)
 }
 
 /// A sub-rectangle of a sprite given in texels.
-fn sub_rect(r: Rect, [x, y, w, h]: [f32; 4]) -> Rect {
+pub(in crate::game) fn sub_rect(r: Rect, [x, y, w, h]: [f32; 4]) -> Rect {
     let (du, dv) = ((r.u1 - r.u0) / r.w as f32, (r.v1 - r.v0) / r.h as f32);
     Rect {
         u0: r.u0 + x * du,
@@ -2328,7 +2310,7 @@ fn sub_rect(r: Rect, [x, y, w, h]: [f32; 4]) -> Rect {
 }
 
 #[cfg(test)]
-mod request_generation_tests {
+pub(in crate::game) mod request_generation_tests {
     use super::*;
     #[test]
     fn delayed_answers_cannot_match_inventory_changes_or_retries() {
@@ -2347,7 +2329,7 @@ mod request_generation_tests {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     /// `RecipeBookComponent.keyPressed`: Escape closes a narrow window's open
     /// book (`!isOffsetNextToMainGUI`), not the container; a wide window's
     /// book leaves Escape to the container.
@@ -2361,10 +2343,10 @@ mod tests {
 
 #[cfg(test)]
 #[path = "recipe_book/check_mod_menu_tests.rs"]
-mod check_mod_menu_tests;
+pub(in crate::game) mod check_mod_menu_tests;
 
 #[cfg(test)]
-mod screen_room_tests {
+pub(in crate::game) mod screen_room_tests {
     use super::*;
     #[test]
     #[ignore = "daily"]

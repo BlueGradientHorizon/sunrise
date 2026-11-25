@@ -2,18 +2,22 @@
 //! (`sunrise_client::block_entity_item`): the item Pick Block gives, with the
 //! block entity's data on Ctrl in creative, and the data and components a
 //! placed item gives its block entity.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use sunrise_client::{
     block_entity_item, block_entity_nbt, containers::BlockEntity, item_data, items::ItemStack, save,
 };
+#[allow(unused_imports)]
 use sunrise_core::nbt::{Compound, JavaString, Tag};
+#[allow(unused_imports)]
 use sunrise_world::{
     level::{Behaviours, classes::Class},
     registry::{BlockRegistry, BlockStateId},
 };
 
 /// The state to write and the state after the BlockItem's property tag, shared with prediction.
-pub(super) fn item_block_state(
+pub(in crate::game) fn item_block_state(
     registry: &BlockRegistry,
     mut state: BlockStateId,
     stack: &ItemStack,
@@ -56,7 +60,7 @@ pub(super) fn item_block_state(
 }
 
 /// The component patch of `stack`.
-fn components(stack: &ItemStack) -> Compound {
+pub(in crate::game) fn components(stack: &ItemStack) -> Compound {
     match item_data::component_snapshot(stack) {
         Some(Tag::Compound(c)) => c,
         _ => Compound::new(),
@@ -64,7 +68,7 @@ fn components(stack: &ItemStack) -> Compound {
 }
 
 /// `patch`'s components onto `stack`, over its own.
-fn apply_patch(stack: &mut ItemStack, patch: Compound) {
+pub(in crate::game) fn apply_patch(stack: &mut ItemStack, patch: Compound) {
     if patch.is_empty() {
         return;
     }
@@ -76,7 +80,7 @@ fn apply_patch(stack: &mut ItemStack, patch: Compound) {
 /// `BlockState.getCloneItemStack`'s item: the block's own item, unless the
 /// block overrides it. A block with no item of its own still has one to pick:
 /// a stem's seeds, a crop's seed item, a vine's harvest.
-fn clone_item<'a>(name: &str, block_item: &'a str) -> &'a str {
+pub(in crate::game) fn clone_item<'a>(name: &str, block_item: &'a str) -> &'a str {
     match name {
         // StemBlock and AttachedStemBlock: the seeds it grew from.
         "minecraft:pumpkin_stem" | "minecraft:attached_pumpkin_stem" => "minecraft:pumpkin_seeds",
@@ -106,7 +110,7 @@ fn clone_item<'a>(name: &str, block_item: &'a str) -> &'a str {
     }
 }
 
-fn picked_item<'a>(
+pub(in crate::game) fn picked_item<'a>(
     behaviours: &'a Behaviours,
     state: BlockStateId,
     item: &'a str,
@@ -124,7 +128,7 @@ fn picked_item<'a>(
 impl Game<'_> {
     /// Plain projection for the existing container-title consumers. The live
     /// `BaseContainerBlockEntity` name remains a Component, not rendered text.
-    pub(super) fn block_name_plain(&self, key: (i32, i32, i32)) -> Option<String> {
+    pub(in crate::game) fn block_name_plain(&self, key: (i32, i32, i32)) -> Option<String> {
         self.world.block_names.get(&key).map(|name| match name {
             Tag::String(text) => text.to_string_lossy(),
             component => sunrise_client::component::name_text(component).plain(),
@@ -132,7 +136,11 @@ impl Game<'_> {
     }
 
     /// The block entity at `key` as vanilla saves it, with its custom name.
-    fn saved_block_entity(&self, key: (i32, i32, i32), for_save: bool) -> Option<Tag> {
+    pub(in crate::game) fn saved_block_entity(
+        &self,
+        key: (i32, i32, i32),
+        for_save: bool,
+    ) -> Option<Tag> {
         let entity = self.world.block_entities.get(&key)?;
         let block = &self
             .res
@@ -160,7 +168,7 @@ impl Game<'_> {
     /// (`BaseContainerBlockEntity.loadAdditional`): kept beside the model in
     /// `block_names`, and dropped when the tag has none. Banners and signs
     /// keep their name themselves. True when the name changed.
-    pub(super) fn load_block_name(
+    pub(in crate::game) fn load_block_name(
         &mut self,
         key: (i32, i32, i32),
         entity: &BlockEntity,
@@ -186,7 +194,11 @@ impl Game<'_> {
 
     /// `BlockState.getCloneItemStack` of the block at `pos`, then, with
     /// `include_data`, `ServerGamePacketListenerImpl.addBlockDataToItem`.
-    pub(super) fn picked_stack(&self, pos: [i32; 3], include_data: bool) -> Option<ItemStack> {
+    pub(in crate::game) fn picked_stack(
+        &self,
+        pos: [i32; 3],
+        include_data: bool,
+    ) -> Option<ItemStack> {
         let mut stack = self.clone_stack(pos, include_data)?;
         if include_data {
             self.add_block_data(pos, &mut stack);
@@ -197,7 +209,7 @@ impl Game<'_> {
     /// `ServerGamePacketListenerImpl.addBlockDataToItem`: the block entity at
     /// `pos`, if any, onto `stack` (`BlockItem.setBlockEntityData`, then
     /// `ItemStack.applyComponents(collectComponents())`).
-    pub(super) fn add_block_data(&self, pos: [i32; 3], stack: &mut ItemStack) {
+    pub(in crate::game) fn add_block_data(&self, pos: [i32; 3], stack: &mut ItemStack) {
         if let Some(saved) = self.saved_block_entity((pos[0], pos[1], pos[2]), true) {
             apply_patch(stack, block_entity_item::pick(&saved));
         }
@@ -205,7 +217,11 @@ impl Game<'_> {
 
     /// `BlockState.getCloneItemStack` of the block at `pos`: the item alone,
     /// with what the block itself puts on it; `include_data` as vanilla passes it.
-    pub(super) fn clone_stack(&self, pos: [i32; 3], include_data: bool) -> Option<ItemStack> {
+    pub(in crate::game) fn clone_stack(
+        &self,
+        pos: [i32; 3],
+        include_data: bool,
+    ) -> Option<ItemStack> {
         let key = (pos[0], pos[1], pos[2]);
         let state = self.world.block(pos[0], pos[1], pos[2]);
         let facts = self.res.facts().get(state);
@@ -308,7 +324,7 @@ impl Game<'_> {
     /// `ShulkerBoxBlock.playerWillDestroy`: a Creative player's filled box is
     /// one item at the block center, with collectComponents and the default pickup delay.
     /// This direct spawn intentionally does not use the block_drops gamerule.
-    pub(super) fn drop_creative_shulker(&mut self, pos: [i32; 3]) {
+    pub(in crate::game) fn drop_creative_shulker(&mut self, pos: [i32; 3]) {
         let key = (pos[0], pos[1], pos[2]);
         let filled = matches!(self.world.block_entities.get(&key), Some(BlockEntity::Chest(items))
             if items.iter().flatten().any(|s| s.count > 0));
@@ -325,22 +341,8 @@ impl Game<'_> {
         self.spawn_item_own(stack, pos.map(|v| f64::from(v) + 0.5), 10);
     }
 
-    /// `BlockItem.updateBlockEntityComponents` on a client's level, for the
-    /// block it predicts at `pos`: the block entity takes the stack's
-    /// components but not its `block_entity_data` (`updateCustomBlockEntityTag`
-    /// returns on a client), so a copied sign's editor opens with its text (#8102).
-    pub(super) fn apply_predicted_item(&mut self, pos: [i32; 3], stack: &ItemStack) {
-        let mut stack = stack.clone();
-        if stack.data().is_some() {
-            stack
-                .data_mut()
-                .set_other(block_entity_item::BLOCK_ENTITY_DATA, None);
-        }
-        self.apply_placed_item(pos, &stack, false);
-    }
-
     /// Ensure the selected block's entity exists before applying the original stack's data.
-    pub(super) fn apply_block_item_data(
+    pub(in crate::game) fn apply_block_item_data(
         &mut self,
         pos: [i32; 3],
         state: BlockStateId,
@@ -361,7 +363,7 @@ impl Game<'_> {
     /// `BlockItem.updateCustomBlockEntityTag` and `updateBlockEntityComponents`
     /// for the block entity just placed at `pos` from `stack`; `game_master`:
     /// the placer can use game master blocks (a dispenser can't).
-    pub(super) fn apply_placed_item(
+    pub(in crate::game) fn apply_placed_item(
         &mut self,
         pos: [i32; 3],
         stack: &ItemStack,
@@ -403,7 +405,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::{clone_item, picked_item};
 
     #[test]
@@ -751,7 +753,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod plain_name_overlay_tests {
+pub(in crate::game) mod plain_name_overlay_tests {
     use super::*;
     use crate::game::native_entity_refs::tests::with_game;
     use sunrise_core::position::BlockPos;
@@ -880,7 +882,7 @@ mod plain_name_overlay_tests {
 }
 
 #[cfg(test)]
-mod styled_name_model_tests {
+pub(in crate::game) mod styled_name_model_tests {
     use super::*;
     use crate::game::native_entity_refs::tests::with_game;
     use sunrise_core::position::BlockPos;
@@ -1068,4 +1070,4 @@ mod styled_name_model_tests {
 
 #[cfg(test)]
 #[path = "tests/item_block_state_tests.rs"]
-mod item_block_state_tests;
+pub(in crate::game) mod item_block_state_tests;

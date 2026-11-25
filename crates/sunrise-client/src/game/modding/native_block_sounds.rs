@@ -83,17 +83,6 @@ impl Game<'_> {
             cause,
         )
     }
-    /// [`Game::block_sound_type`] for this window's own player, as its client asks for the
-    /// sounds it plays itself: its steps and the blocks it places.
-    pub(in crate::game) fn own_sound_type(
-        &self,
-        pos: [i32; 3],
-        state: BlockStateId,
-        cause: BlockSoundCause,
-    ) -> BlockSoundType {
-        let player = (self.own_entity_id() as u32, "minecraft:player");
-        self.block_sound_type(pos, state, Some(player), cause)
-    }
 }
 
 impl GameLevel<'_> {

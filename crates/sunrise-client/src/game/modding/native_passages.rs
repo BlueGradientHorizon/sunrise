@@ -2,28 +2,32 @@
 //! registry a mod fills through `LevelRef::register_passage`, its sync to the Sunrise
 //! clients that hold each passage's chunk (`sunrise:passage_sync`, sent with the chunk
 //! through the hub's chunk watches), and the copy a client keeps until it forgets the chunk.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use mod_api::{
     DimensionKey, LevelRef, Passage, PassageId, PassageRegistrationError as Refused, PassageTurn,
     Vec3,
 };
+#[allow(unused_imports)]
 use sunrise_client::fast_hash::FxHashMap;
+#[allow(unused_imports)]
 use sunrise_protocol::passage_sync::{Message, PassageForm};
 
 /// Passages a level holds at most. A client holds every passage of the chunks it has, so
 /// this bounds its copy and what the server sends it whatever the view distance.
-const MAX_PER_LEVEL: u32 = 256;
+pub(in crate::game) const MAX_PER_LEVEL: u32 = 256;
 /// Passages one chunk holds at most: what the server sends with the chunk, and the
 /// passages a client looks through around a moving player (#3775).
-const MAX_PER_CHUNK: u32 = 8;
+pub(in crate::game) const MAX_PER_CHUNK: u32 = 8;
 /// The longest side of an opening, in blocks: an opening stays within 23 blocks of its
 /// centre, so the chunk holding the centre finds it.
-const MAX_SIDE: u32 = 32;
+pub(in crate::game) const MAX_SIDE: u32 = 32;
 /// How far from 1 a unit axis's squared length, and from 0 the axes' dot product, may be.
-const AXIS_TOLERANCE: f64 = 1e-6;
+pub(in crate::game) const AXIS_TOLERANCE: f64 = 1e-6;
 /// `ServerGamePacketListenerImpl.clampHorizontal` and `clampVertical`.
-const HORIZONTAL_LIMIT: f64 = 3.0e7;
-const VERTICAL_LIMIT: f64 = 2.0e7;
+pub(in crate::game) const HORIZONTAL_LIMIT: f64 = 3.0e7;
+pub(in crate::game) const VERTICAL_LIMIT: f64 = 2.0e7;
 
 /// The passages of the server's levels and their changes still to tell, and on a client
 /// the passages its server told it of. Everything goes when a level or the world retires
@@ -32,15 +36,15 @@ const VERTICAL_LIMIT: f64 = 2.0e7;
 #[derive(Default)]
 pub(crate) struct Passages {
     /// The server's passages, by level, then by chunk ([`Passage::chunk`]).
-    levels: FxHashMap<DimensionKey, LevelPassages>,
+    pub(in crate::game) levels: FxHashMap<DimensionKey, LevelPassages>,
     /// Where each of the server's passages is.
-    index: FxHashMap<PassageId, (DimensionKey, [i32; 2])>,
+    pub(in crate::game) index: FxHashMap<PassageId, (DimensionKey, [i32; 2])>,
     /// The last number given; numbers start at 1 and are never reused.
-    last: u64,
+    pub(in crate::game) last: u64,
     /// The passages whose change the clients have not all been told, one entry each: a
     /// live passage not told to every client yet, or a removed one some were told of. So it
     /// holds at most the live passages and those told before their removal.
-    dirty: FxHashMap<PassageId, Dirty>,
+    pub(in crate::game) dirty: FxHashMap<PassageId, Dirty>,
     /// A client's copy: what its server told it of, kept with the chunk.
     pub(in crate::game) held: FxHashMap<PassageId, Passage>,
     /// A client's crossing that waits for the server's position packet
@@ -51,13 +55,13 @@ pub(crate) struct Passages {
 }
 
 #[derive(Default)]
-struct LevelPassages {
-    count: u32,
-    chunks: FxHashMap<[i32; 2], Vec<(PassageId, Passage)>>,
+pub(in crate::game) struct LevelPassages {
+    pub(in crate::game) count: u32,
+    pub(in crate::game) chunks: FxHashMap<[i32; 2], Vec<(PassageId, Passage)>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Dirty {
+pub(in crate::game) enum Dirty {
     /// Registered and not told to every client tracking its chunk; `told` once a chunk's
     /// sync gave it to one, so a removal must be told too.
     Added { told: bool },
@@ -305,7 +309,10 @@ impl Game<'_> {
         refused
     }
 
-    fn hold_passage(&mut self, f: &PassageForm) -> Result<(), HeldRefusal> {
+    pub(in crate::game::server_side) fn hold_passage(
+        &mut self,
+        f: &PassageForm,
+    ) -> Result<(), HeldRefusal> {
         let p = passage(f);
         check(&p).map_err(HeldRefusal::Bad)?;
         let [x, z] = p.chunk();
@@ -320,17 +327,10 @@ impl Game<'_> {
         held.insert(id, p);
         Ok(())
     }
-
-    /// The window forgot chunk `(x, z)`: the passages of that chunk go with it.
-    pub(in crate::game) fn forget_chunk_passages(&mut self, x: i32, z: i32) {
-        if !self.passages.held.is_empty() {
-            self.passages.held.retain(|_, p| p.chunk() != [x, z]);
-        }
-    }
 }
 
 /// The refusal for a passage that is not a rectangle the engine can carry a player through.
-fn check(p: &Passage) -> Result<(), Refused> {
+pub(in crate::game) fn check(p: &Passage) -> Result<(), Refused> {
     let parts = |v: Vec3| [v.x, v.y, v.z];
     let finite = [p.origin, p.axis_w, p.axis_h, p.destination]
         .into_iter()
@@ -372,7 +372,7 @@ fn check(p: &Passage) -> Result<(), Refused> {
     Ok(())
 }
 
-fn turn_index(turn: PassageTurn) -> u8 {
+pub(in crate::game) fn turn_index(turn: PassageTurn) -> u8 {
     match turn {
         PassageTurn::Clockwise90 => 1,
         PassageTurn::Clockwise180 => 2,
@@ -381,7 +381,7 @@ fn turn_index(turn: PassageTurn) -> u8 {
     }
 }
 
-fn form(id: PassageId, p: &Passage) -> PassageForm {
+pub(in crate::game) fn form(id: PassageId, p: &Passage) -> PassageForm {
     let v = |v: Vec3| [v.x, v.y, v.z];
     PassageForm {
         id: id.raw(),
@@ -395,7 +395,7 @@ fn form(id: PassageId, p: &Passage) -> PassageForm {
     }
 }
 
-fn passage(f: &PassageForm) -> Passage {
+pub(in crate::game) fn passage(f: &PassageForm) -> Passage {
     let v = |[x, y, z]: [f64; 3]| Vec3::new(x, y, z);
     Passage {
         origin: v(f.origin),

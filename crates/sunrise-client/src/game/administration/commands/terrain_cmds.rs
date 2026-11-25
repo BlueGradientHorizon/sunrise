@@ -90,7 +90,11 @@ pub(in crate::game) fn size_limit_text() -> String {
 impl Game<'_> {
     // ---- /forceload ----------------------------------------------------------
 
-    pub(in crate::game) fn column_arg(&self, ctx: &Context, name: &str) -> R<[i32; 2]> {
+    pub(in crate::game::server_side) fn column_arg(
+        &self,
+        ctx: &Context,
+        name: &str,
+    ) -> R<[i32; 2]> {
         let c = self
             .coords(ctx, name)
             .ok_or_else(|| err("argument.pos2d.incomplete", &[]))?;
@@ -98,7 +102,11 @@ impl Game<'_> {
         Ok([p[0].floor() as i32, p[2].floor() as i32])
     }
     /// `ForceLoadCommand.changeForceLoad`: update and load each newly forced column in order.
-    pub(in crate::game) fn cmd_forceload(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_forceload(
+        &mut self,
+        id: &str,
+        ctx: &Context,
+    ) -> R<i32> {
         let dim = Text::literal(self.dim.id());
         match id {
             "forceload.query" if ctx.get("pos").is_none() => {
@@ -205,7 +213,7 @@ impl Game<'_> {
 
     // ---- /fillbiome ----------------------------------------------------------------
 
-    pub(in crate::game) fn cmd_fillbiome(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_fillbiome(&mut self, ctx: &Context) -> R<i32> {
         let Some(Arg::Resource(biome)) = ctx.get("biome").cloned() else {
             return Ok(0);
         };
@@ -383,7 +391,7 @@ impl Game<'_> {
             }
         }
     }
-    pub(in crate::game) fn tick_worldborder(&mut self) {
+    pub(in crate::game::server_side) fn tick_worldborder(&mut self) {
         let remaining = self.border.remaining_ticks();
         self.border.tick();
         if remaining > 0
@@ -398,7 +406,7 @@ impl Game<'_> {
     /// `LivingEntity.baseTick`: a player outside the border, further than
     /// its safe zone, is hurt by the blocks beyond it. The game's player, or
     /// a guest's in their turn (`as_guest`).
-    pub(in crate::game) fn border_damage(&mut self) {
+    pub(in crate::game::server_side) fn border_damage(&mut self) {
         let Some((px, pz, half)) = self.player.as_ref().map(|p| {
             (
                 p.position.x,
@@ -419,7 +427,11 @@ impl Game<'_> {
             self.hurt_player_by("minecraft:outside_border", amount);
         }
     }
-    pub(in crate::game) fn cmd_worldborder(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_worldborder(
+        &mut self,
+        id: &str,
+        ctx: &Context,
+    ) -> R<i32> {
         let float2 = |v: f64| super::percent_f(v, 2);
         let double = match ctx.get("distance") {
             Some(Arg::Double(d)) => *d,

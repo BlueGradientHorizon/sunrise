@@ -16,6 +16,33 @@ pub(in crate::game::server_side) use sunrise_client::items::ItemStack;
 pub(in crate::game::server_side) use sunrise_core::nbt::Tag;
 
 impl Game<'_> {
+    /// Effective components, including defaults and removals, in the gameplay component view.
+    pub(in crate::game) fn item_combat_component(
+        &self,
+        stack: &ItemStack,
+        id: &str,
+    ) -> Option<serde_json::Value> {
+        self.pack
+            .item_renderer
+            .models
+            .components_view(&sunrise_client::item_render::stack_view(stack))
+            .get(id)
+            .cloned()
+    }
+    /// Materialize the effective enchantments for both attacks and detached previews.
+    pub(in crate::game) fn item_combat_stack(&self, stack: &ItemStack) -> ItemStack {
+        let mut effective = stack.clone();
+        let enchantments = self
+            .item_combat_component(stack, "minecraft:enchantments")
+            .unwrap_or_else(|| serde_json::json!({}));
+        let tag = sunrise_client::scoreboard::json_to_tag(
+            &serde_json::json!({"minecraft:enchantments": enchantments}),
+        );
+        let (_, extra) = sunrise_items::item_data::decode_components(Some(&tag));
+        effective.data_mut().enchantments =
+            extra.map_or_else(Vec::new, |data| data.enchantments.clone());
+        effective
+    }
     pub(in crate::game) fn item_resource_attack_damage_bonus(
         &self,
         stack: &ItemStack,

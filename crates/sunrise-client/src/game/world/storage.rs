@@ -96,7 +96,7 @@ impl Game<'_> {
         true
     }
     /// ShulkerBoxSlot.mayPlace: no shulker box inside a shulker box.
-    pub(in crate::game) fn refuses(&self, slot: usize, stack: &ItemStack) -> bool {
+    pub(in crate::game::client_side) fn refuses(&self, slot: usize, stack: &ItemStack) -> bool {
         (300..400).contains(&slot)
             && is_shulker_box(&stack.item)
             && self.container.is_some_and(|k| {

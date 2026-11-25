@@ -277,7 +277,12 @@ impl Game<'_> {
     }
     /// The server reports entity `id` hurt; `own` when it is this player,
     /// `by_me` whether this player was the damage's direct entity (if named).
-    pub(in crate::game) fn pvp_hurt(&mut self, id: i32, own: bool, by_me: Option<bool>) {
+    pub(in crate::game::client_side) fn pvp_hurt(
+        &mut self,
+        id: i32,
+        own: bool,
+        by_me: Option<bool>,
+    ) {
         if own {
             self.client.pvp.combo.broken();
         } else {

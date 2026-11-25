@@ -146,7 +146,7 @@ impl Game<'_> {
     }
     /// The text of a `score` component (ScoreContents.resolve): the named
     /// holder's score, `*` being the player the command runs for.
-    pub(in crate::game) fn resolve_score_component(
+    pub(in crate::game::server_side) fn resolve_score_component(
         &mut self,
         o: &serde_json::Map<String, serde_json::Value>,
     ) -> R<Text> {
@@ -193,7 +193,7 @@ impl Game<'_> {
         Ok(format.format(score.value))
     }
     /// The text of an `nbt` component.
-    pub(in crate::game) fn resolve_nbt_component(
+    pub(in crate::game::server_side) fn resolve_nbt_component(
         &mut self,
         o: &serde_json::Map<String, serde_json::Value>,
     ) -> Text {
@@ -259,14 +259,14 @@ impl Game<'_> {
         out
     }
     /// The players the command reaches: the window's own and the LAN guests.
-    pub(in crate::game) fn player_targets(&mut self, ctx: &Context) -> R<Vec<Target>> {
+    pub(in crate::game::server_side) fn player_targets(&mut self, ctx: &Context) -> R<Vec<Target>> {
         let targets = self.entities(ctx, "targets", true)?;
         Ok(targets
             .into_iter()
             .filter(|t| matches!(t, Target::Player | Target::Guest(_)))
             .collect())
     }
-    pub(in crate::game) fn cmd_tellraw(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_tellraw(&mut self, ctx: &Context) -> R<i32> {
         let players = self.player_targets(ctx)?;
         let message = self.component_arg(ctx, "message")?;
         // Each player's chat (a guest's through the connection).
@@ -275,7 +275,7 @@ impl Game<'_> {
         }
         Ok(players.len() as i32)
     }
-    pub(in crate::game) fn cmd_title(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_title(&mut self, ctx: &Context) -> R<i32> {
         let players = self.player_targets(ctx)?;
         let n = players.len();
         let name = players

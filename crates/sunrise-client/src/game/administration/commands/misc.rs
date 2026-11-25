@@ -19,7 +19,11 @@ pub(in crate::game) fn millis(nanos: u64) -> String {
 
 impl Game<'_> {
     /// `/stopwatch` (StopwatchCommand).
-    pub(in crate::game) fn cmd_stopwatch(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_stopwatch(
+        &mut self,
+        id: &str,
+        ctx: &Context,
+    ) -> R<i32> {
         let Some(Arg::Resource(name)) = ctx.get("id").cloned() else {
             return Ok(0);
         };
@@ -72,7 +76,7 @@ impl Game<'_> {
         }
     }
     /// `/tick` (TickCommand) over the game clock.
-    pub(in crate::game) fn cmd_tick(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_tick(&mut self, id: &str, ctx: &Context) -> R<i32> {
         let t = |key: &str, args: &[Text]| Text::translate(key, args);
         let lit = |s: String| Text::literal(s);
         let time = match ctx.get("time") {
@@ -195,7 +199,7 @@ impl Game<'_> {
     }
     /// The report `/tick sprint` prints when a sprint ends. Each caller then
     /// runs `on_tick_rate_changed`, as `ServerTickRateManager.finishTickSprint` does.
-    pub(in crate::game) fn sprint_report(&mut self, report: &SprintReport) {
+    pub(in crate::game::server_side) fn sprint_report(&mut self, report: &SprintReport) {
         self.feedback(Text::translate(
             "commands.tick.sprint.report",
             &[

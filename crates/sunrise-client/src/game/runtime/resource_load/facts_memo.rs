@@ -21,7 +21,7 @@ struct Memo(Mutex<Vec<(Key, Arc<Tables>)>>);
 const KEPT: usize = 8;
 static MEMO: OnceLock<Memo> = OnceLock::new();
 
-pub(super) fn load(
+pub(in crate::game) fn load(
     root: &std::path::Path,
     registry: &BlockRegistry,
     behaviours: &serde_json::Value,

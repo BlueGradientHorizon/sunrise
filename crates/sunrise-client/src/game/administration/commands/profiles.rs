@@ -19,7 +19,7 @@ use sunrise_protocol::text::translatable;
 
 impl Game<'_> {
     /// StopCommand: the server loop (game/interface/dedicated/mod.rs) ends after this tick.
-    pub(in crate::game) fn cmd_stop(&mut self) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_stop(&mut self) -> R<i32> {
         let lists = self.dedicated_lists()?;
         self.feedback(Text::translate("commands.stop.stopping", &[]));
         lists.lock().unwrap().stop = true;
@@ -38,7 +38,7 @@ impl Game<'_> {
     }
 
     /// SaveOffCommand and SaveOnCommand.
-    pub(in crate::game) fn cmd_auto_save(&mut self, enabled: bool) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_auto_save(&mut self, enabled: bool) -> R<i32> {
         let lists = self.dedicated_lists()?;
         if !super::super::dedicated::set_auto_save(&lists, enabled) {
             let already = if enabled {
@@ -60,7 +60,7 @@ impl Game<'_> {
     /// `GameProfileArgument.getGameProfiles`: a selector's players
     /// (`SelectorResult.getNames`, no players is an error), else the name in
     /// the user cache.
-    pub(in crate::game) fn game_profiles(
+    pub(in crate::game::server_side) fn game_profiles(
         &mut self,
         ctx: &Context,
         name: &str,
@@ -90,7 +90,7 @@ impl Game<'_> {
 
     /// `OpCommand.opPlayers`, `DeOpCommands.deopPlayers`,
     /// `BanPlayerCommands.banPlayers` and `PardonCommand.pardonPlayers`.
-    pub(in crate::game) fn cmd_profiles(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_profiles(&mut self, id: &str, ctx: &Context) -> R<i32> {
         let lists = self.dedicated_lists()?;
         let players = self.game_profiles(ctx, "targets")?;
         let lit = |s: &str| Text::literal(s.to_owned());
@@ -212,7 +212,7 @@ impl Game<'_> {
 
     /// `BanIpCommands.banIpOrName` and `PardonIpCommand.unban`: an address,
     /// or for `/ban-ip` an online player's.
-    pub(in crate::game) fn cmd_ip_bans(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_ip_bans(&mut self, id: &str, ctx: &Context) -> R<i32> {
         let lists = self.dedicated_lists()?;
         let lit = |s: &str| Text::literal(s.to_owned());
         let target = match ctx.get("target") {
@@ -301,7 +301,7 @@ impl Game<'_> {
     /// after which a player is kicked (`multiplayer.disconnect.idling`), 0 for
     /// never. The reply names the minutes, or says the timeout is off, and the
     /// command's result is the number of minutes.
-    pub(in crate::game) fn cmd_setidle_timeout(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_setidle_timeout(&mut self, ctx: &Context) -> R<i32> {
         let lists = self.dedicated_lists()?;
         let Some(Arg::Int(minutes)) = ctx.get("minutes") else {
             return Ok(0);
@@ -316,7 +316,7 @@ impl Game<'_> {
 
     /// `BanListCommands.showList`: the players' bans then the addresses'
     /// (`banlist`), or one of them; told to the source only.
-    pub(in crate::game) fn cmd_banlist(&mut self, id: &str) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_banlist(&mut self, id: &str) -> R<i32> {
         let lists = self.dedicated_lists()?;
         let lit = |s: &str| Text::literal(s.to_owned());
         let entries: Vec<(String, String, Option<String>)> = {
@@ -359,7 +359,7 @@ impl Game<'_> {
     }
 
     /// `BanListEntry.getReasonMessage`.
-    pub(in crate::game) fn reason_message(reason: Option<&str>) -> Text {
+    pub(in crate::game::server_side) fn reason_message(reason: Option<&str>) -> Text {
         reason.map_or_else(
             || Text::translate("multiplayer.disconnect.banned.reason.default", &[]),
             |r| Text::literal(r.to_owned()),
@@ -367,7 +367,11 @@ impl Game<'_> {
     }
 
     /// `WhitelistCommand`: `on`, `off`, `list`, `reload`, `add` and `remove`.
-    pub(in crate::game) fn cmd_whitelist(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_whitelist(
+        &mut self,
+        id: &str,
+        ctx: &Context,
+    ) -> R<i32> {
         let lists = self.dedicated_lists()?;
         let lit = |s: &str| Text::literal(s.to_owned());
         match id {

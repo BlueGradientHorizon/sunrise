@@ -16,7 +16,7 @@ pub(in crate::game::server_side) use sunrise_protocol::packets::play::{self, Cli
 impl Game<'_> {
     /// TitleCommand's `connection.send` for each player: a guest is sent the
     /// packet, the acting player queues it on `server.guest_packets`.
-    pub(in crate::game) fn titles_or_packet(&mut self, players: &[Target], packet: C) {
+    pub(in crate::game::server_side) fn titles_or_packet(&mut self, players: &[Target], packet: C) {
         assert!(
             self.is_logical_server(),
             "titles_or_packet called on Client role"

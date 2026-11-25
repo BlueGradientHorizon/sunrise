@@ -102,7 +102,7 @@ SubmitNodeCollection.submitFlame	port	crates/sunrise-client/src/fire_render.rs::
 SubmitNodeCollection.submitLeash	port	crates/sunrise-client/src/game/entities/leads_client.rs::Game::leash_geometry	lead rope from a leashed mob to its holder
 SubmitNodeCollection.submitModel	port	crates/sunrise-client/src/game/mobs/creatures/mod_client.rs::Game::mob_geometry	mob models
 SubmitNodeCollection.submitCrumblingOverlay	port	crates/sunrise-client/src/game.rs::Game::cracks	block break cracks (destroy_stage sprites) over a block
-SubmitNodeCollection.submitMovingBlock	port	crates/sunrise-client/src/game/blocks/moving_pistons.rs::Game::moving_piston_geometry	moving piston blocks
+SubmitNodeCollection.submitMovingBlock	port	crates/sunrise-client/src/game/blocks/moving_pistons_client.rs::Game::moving_piston_geometry	moving piston blocks
 SubmitNodeCollection.submitBlockModel	port	crates/sunrise-client-render/src/block_entity_render.rs::BlockEntityRenderer::render_block	gap: minor: block models driven by block entities only
 SubmitNodeCollection.getOutlineRenderType	inline	crates/sunrise-client-render/src/gfx.rs::Renderer::draw_outline	one outline pass; the render type choice is folded into it
 SubmitNodeCollection.submitBreakingBlockModel	port	crates/sunrise-client/src/game/frame_geometry.rs::Game::cracks	gap: minor: drawn as cracks; the block model itself is not redrawn

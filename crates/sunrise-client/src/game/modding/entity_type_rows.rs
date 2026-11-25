@@ -2,6 +2,7 @@
 //! mod type has its template's row). A living entity's row lists its default attributes, so a row
 //! with `attributes` is a living type (`LivingEntity`), and one without is not (a boat, an arrow, a
 //! display). Read once per root: the file doesn't change while the game runs.
+#[allow(unused_imports)]
 use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex, PoisonError},
@@ -13,9 +14,9 @@ pub(in crate::game) struct EntityTypeRows {
     /// Every entity type (`minecraft:boat`), namespaced as commands name it.
     pub(in crate::game) ids: Vec<String>,
     /// The living ones.
-    living: Vec<String>,
+    pub(in crate::game) living: Vec<String>,
     /// Each type's `EntityType.getDimensions()` (width, height, eye height), by id.
-    dimensions: Vec<(String, [f32; 3])>,
+    pub(in crate::game) dimensions: Vec<(String, [f32; 3])>,
 }
 
 impl EntityTypeRows {
@@ -43,29 +44,11 @@ impl EntityTypeRows {
         out.dimensions.sort_by(|a, b| a.0.cmp(&b.0));
         out
     }
-
-    /// Whether `id` is an entity type.
-    pub(in crate::game) fn contains(&self, id: &str) -> bool {
-        self.ids.binary_search_by(|t| t.as_str().cmp(id)).is_ok()
-    }
-
-    /// `EntityType.getDimensions()` of `id`: its width, height and eye height.
-    pub(in crate::game) fn dimensions(&self, id: &str) -> Option<[f32; 3]> {
-        let i = self
-            .dimensions
-            .binary_search_by(|(t, _)| t.as_str().cmp(id))
-            .ok()?;
-        Some(self.dimensions[i].1)
-    }
-
-    /// Whether `id` is a living entity type.
-    pub(in crate::game) fn is_living(&self, id: &str) -> bool {
-        self.living.binary_search_by(|t| t.as_str().cmp(id)).is_ok()
-    }
 }
 
 /// Each root's rows, read on first use.
-static ROWS: Mutex<Vec<(PathBuf, Arc<EntityTypeRows>)>> = Mutex::new(Vec::new());
+pub(in crate::game) static ROWS: Mutex<Vec<(PathBuf, Arc<EntityTypeRows>)>> =
+    Mutex::new(Vec::new());
 
 /// The entity types under `root` (none when its `entity-types.json` is missing or unreadable).
 pub(in crate::game) fn entity_type_rows(root: &Path) -> Arc<EntityTypeRows> {
@@ -80,7 +63,7 @@ pub(in crate::game) fn entity_type_rows(root: &Path) -> Arc<EntityTypeRows> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
 
     #[test]

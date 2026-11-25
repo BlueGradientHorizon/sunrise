@@ -404,7 +404,7 @@ impl Game<'_> {
     }
 
     /// Once per tick: the state keyframes. Stops a recording that outgrew its caps.
-    pub(in crate::game) fn repro_tick(&mut self) {
+    pub(in crate::game::client_side) fn repro_tick(&mut self) {
         let Some((start_tick, started, start_inputs, inputs)) =
             self.repro.0.recording.as_ref().map(|rec| {
                 (

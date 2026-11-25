@@ -358,7 +358,7 @@ impl Game<'_> {
 
     /// `handleSetEquipment` for an armor stand (`EquipmentSlot` ordinals,
     /// its storage order).
-    pub(in crate::game) fn remote_object_equipment(
+    pub(in crate::game::client_side) fn remote_object_equipment(
         &mut self,
         id: i32,
         slots: &[(u8, Option<sunrise_protocol::item::Stack>)],

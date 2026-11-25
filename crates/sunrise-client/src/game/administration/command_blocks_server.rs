@@ -26,7 +26,11 @@ pub(in crate::game::server_side) use {
 
 impl Game<'_> {
     /// `Commands.performPrefixedCommand` for a `BaseCommandBlock` at game master level.
-    pub(in crate::game) fn run_as_game_master(&mut self, command: &str, source: Source) -> i32 {
+    pub(in crate::game::server_side) fn run_as_game_master(
+        &mut self,
+        command: &str,
+        source: Source,
+    ) -> i32 {
         // performPrefixedCommand: a leading slash is allowed.
         let line = command.strip_prefix('/').unwrap_or(command).to_owned();
         let outer = self.cmds.0.results.replace(Vec::new());
@@ -37,18 +41,18 @@ impl Game<'_> {
         results.iter().filter(|(success, _)| *success).count() as i32
     }
 
-    pub(in crate::game) fn schedule_command_block(&mut self, pos: Pos) {
+    pub(in crate::game::server_side) fn schedule_command_block(&mut self, pos: Pos) {
         let at = BlockPos::new(pos.0, pos.1, pos.2);
         self.with_level(|b, level, ticks| b.schedule_tick(level, ticks, at, 1));
     }
 
     /// `isAutomatic` of the command block at `pos`, before new data loads.
-    pub(in crate::game) fn command_block_auto(&self, pos: Pos) -> bool {
+    pub(in crate::game::server_side) fn command_block_auto(&self, pos: Pos) -> bool {
         self.command_block(pos).is_some_and(|c| c.auto)
     }
 
     /// `CommandBlockEntity.loadAdditional`: schedule first tick when turning automatic.
-    pub(in crate::game) fn command_block_loaded(&mut self, pos: Pos, was_auto: bool) {
+    pub(in crate::game::server_side) fn command_block_loaded(&mut self, pos: Pos, was_auto: bool) {
         let Some(c) = self.command_block(pos) else {
             return;
         };
@@ -62,12 +66,12 @@ impl Game<'_> {
     }
 
     /// `CommandBlockEntity.scheduleTick`.
-    pub(in crate::game) fn schedule_command_block_tick(&mut self, pos: Pos) {
+    pub(in crate::game::server_side) fn schedule_command_block_tick(&mut self, pos: Pos) {
         mark_condition_met(&mut self.world, self.pack.assets.registry, pos);
         self.schedule_command_block(pos);
     }
 
-    pub(in crate::game) fn update_output_signal(&mut self, pos: Pos) {
+    pub(in crate::game::server_side) fn update_output_signal(&mut self, pos: Pos) {
         let at = BlockPos::new(pos.0, pos.1, pos.2);
         self.with_level(|b, level, ticks| b.update_neighbour_for_output_signal(level, ticks, at));
     }
@@ -143,7 +147,11 @@ impl Game<'_> {
     }
 
     /// `CommandBlock.execute`: run the block's command, then the chain in front.
-    pub(in crate::game) fn command_block_execute(&mut self, pos: Pos, state: &BlockState) {
+    pub(in crate::game::server_side) fn command_block_execute(
+        &mut self,
+        pos: Pos,
+        state: &BlockState,
+    ) {
         let has_command = self
             .command_block(pos)
             .is_some_and(|c| !c.command.is_empty());
@@ -156,7 +164,7 @@ impl Game<'_> {
     }
 
     /// `CommandBlock.executeChain`: run chain command blocks in front up to the sequence limit.
-    pub(in crate::game) fn execute_chain(&mut self, start: Pos, mut step: [i32; 3]) {
+    pub(in crate::game::server_side) fn execute_chain(&mut self, start: Pos, mut step: [i32; 3]) {
         let registry = self.pack.assets.registry;
         let limit = self
             .ui
@@ -199,7 +207,7 @@ impl Game<'_> {
     }
 
     /// `BaseCommandBlock.performCommand`: runs the block's command at game master level.
-    pub(in crate::game) fn perform_command_block(&mut self, pos: Pos) -> bool {
+    pub(in crate::game::server_side) fn perform_command_block(&mut self, pos: Pos) -> bool {
         let game_time = self.world.game_time;
         let Some(c) = command_block_mut(&mut self.world, pos) else {
             return false;
@@ -260,7 +268,7 @@ impl Game<'_> {
     }
 
     /// `CloseableCommandBlockSource.sendSystemMessage`: stamp and store the block's last output.
-    pub(in crate::game) fn command_block_output(
+    pub(in crate::game::server_side) fn command_block_output(
         &mut self,
         pos: Pos,
         format: impl FnOnce(Text) -> Text,
@@ -274,7 +282,7 @@ impl Game<'_> {
     }
 
     /// `CommandSourceStack.sendSuccess` for a command block.
-    pub(in crate::game) fn command_block_success(&mut self, pos: Pos, message: Text) {
+    pub(in crate::game::server_side) fn command_block_success(&mut self, pos: Pos, message: Text) {
         if self
             .ui
             .rules
@@ -285,7 +293,11 @@ impl Game<'_> {
     }
 
     /// `ServerGamePacketListenerImpl.handleSetCommandBlock` for a guest.
-    pub(in crate::game) fn lan_set_command_block(&mut self, conn: u32, p: play::SetCommandBlock) {
+    pub(in crate::game::server_side) fn lan_set_command_block(
+        &mut self,
+        conn: u32,
+        p: play::SetCommandBlock,
+    ) {
         let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
             return;
         };
@@ -309,7 +321,7 @@ impl Game<'_> {
     }
 
     /// `ServerPlayer.openCommandBlock`: send BlockEntityData and OPEN_COMMAND_BLOCK_CHANNEL.
-    pub(in crate::game) fn lan_open_command_block(&mut self, conn: u32, pos: Pos) {
+    pub(in crate::game::server_side) fn lan_open_command_block(&mut self, conn: u32, pos: Pos) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };

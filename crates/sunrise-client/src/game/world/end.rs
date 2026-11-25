@@ -432,7 +432,7 @@ pub(in crate::game) struct EyeOfEnder {
 }
 impl EyeOfEnder {
     /// EyeOfEnder.updateDeltaMovement.
-    pub(in crate::game) fn update_delta(
+    pub(in crate::game::server_side) fn update_delta(
         old: glam::DVec3,
         position: glam::DVec3,
         target: glam::DVec3,

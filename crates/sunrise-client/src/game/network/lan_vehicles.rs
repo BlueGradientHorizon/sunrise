@@ -276,7 +276,7 @@ impl Game<'_> {
     /// ServerGamePacketListenerImpl.tickPlayer records the vehicle's last good
     /// position after doTick, so movement by the server is not held against the
     /// rider's next packet.
-    pub(in crate::game) fn guest_vehicle_movement_baseline(&mut self, conn: u32) {
+    pub(in crate::game::server_side) fn guest_vehicle_movement_baseline(&mut self, conn: u32) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };

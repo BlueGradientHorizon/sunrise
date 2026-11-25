@@ -492,7 +492,7 @@ impl Game<'_> {
     /// `MaceItem.hurtEnemy` sends at once (`ClientboundSetEntityMotionPacket`),
     /// not at the end of the tick after gravity (#8246). The mark from before
     /// the hit stays.
-    pub(in crate::game) fn pvp_hit_after(
+    pub(in crate::game::server_side) fn pvp_hit_after(
         &mut self,
         victim_on_ground: bool,
         stops_sprint: bool,

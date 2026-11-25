@@ -706,7 +706,7 @@ impl Game<'_> {
 
     /// `WorldOptionsScreen.updatePersonalGameModeButton`: update both the displayed
     /// personal mode and its baseline without discarding unrelated edits.
-    pub(in crate::game) fn update_world_options_personal_mode(&mut self, mode: i32) {
+    pub(in crate::game::client_side) fn update_world_options_personal_mode(&mut self, mode: i32) {
         if self.client.screen == Screen::WorldOptions
             && let Some(o) = self.world_options.0.as_mut()
         {

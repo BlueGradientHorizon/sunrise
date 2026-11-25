@@ -416,7 +416,11 @@ impl Editor for StructureEditor {
 
 impl Game<'_> {
     /// `BlockEntityWithBoundingBoxRenderer`: structure and test-instance boxes within `Reach`.
-    pub(in crate::game) fn bounding_box_gizmos(&self, camera: [f64; 3], g: &mut Gizmos) {
+    pub(in crate::game::client_side) fn bounding_box_gizmos(
+        &self,
+        camera: [f64; 3],
+        g: &mut Gizmos,
+    ) {
         let game_master = self.can_use_game_master_blocks() || self.spectator();
         let facts = self.res.facts();
         let render_distance = self.effective_render_distance();
@@ -476,7 +480,7 @@ impl Game<'_> {
     }
 
     /// `LocalPlayer.openStructureBlock`.
-    pub(in crate::game) fn open_structure_block(&mut self, pos: Pos) {
+    pub(in crate::game::client_side) fn open_structure_block(&mut self, pos: Pos) {
         let Some(BlockEntity::StructureBlock(b)) = self.world.block_entities.get(&pos) else {
             return;
         };

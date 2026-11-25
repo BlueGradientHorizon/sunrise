@@ -37,32 +37,32 @@ AbstractMinecart.getDismountLocationForPassenger	port	crates/sunrise-client/src/
 AbstractMinecart.getBlockSpeedFactor	missing		minor: a cart that has left the rails takes no block speed factor (soul sand, honey); on rails the factor is 1.0 in vanilla and Sunrise has no such slowdown
 AbstractMinecart.animateHurt	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::hurt_cart	sets the hurt wobble and time; gap: minor: the damage is the server x10, with no separate client wobble value
 AbstractMinecart.getCurrentBlockPosOrRailBelow	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::rail_block	the rail one block below counts; the experimental y offset is not used
-AbstractMinecart.comeOffTrack	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::come_off_track	clamps speed, halves it on the ground, moves and drags in the air
+AbstractMinecart.comeOffTrack	port	crates/sunrise-client/src/game/entities/minecarts_server.rs::Game::come_off_track	clamps speed, halves it on the ground, moves and drags in the air
 AbstractMinecart.move	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::move_cart	collision movement only; gap: minor: no push or pickup during the move, which push_carts and the cart tick do instead
-AbstractMinecart.applyEffectsFromBlocks	inline	crates/sunrise-client/src/game/entities/minecarts.rs::Game::cart_lava_tick	lava is applied there; gap: minor: other block effects on a cart (cobweb, berry bush) are not applied; under minecart_improvements, NewMinecartBehavior.moveAlongTrack applies block effects twice per step, and Sunrise keeps the old order
-AbstractMinecart.getRedstoneDirection	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::redstone_direction	the push a powered rail gives a resting cart: away from the powered conductor. move_along_track_new calls it when the minecart_improvements feature is on; the old track behaviour is the other path
-AbstractMinecart.applyNaturalSlowdown	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::natural_slowdown	slowdown per ride state, the furnace push and water
+AbstractMinecart.applyEffectsFromBlocks	inline	crates/sunrise-client/src/game/entities/minecarts_server.rs::Game::cart_lava_tick	lava is applied there; gap: minor: other block effects on a cart (cobweb, berry bush) are not applied; under minecart_improvements, NewMinecartBehavior.moveAlongTrack applies block effects twice per step, and Sunrise keeps the old order
+AbstractMinecart.getRedstoneDirection	port	crates/sunrise-client/src/game/entities/minecarts_server.rs::Game::redstone_direction	the push a powered rail gives a resting cart: away from the powered conductor. move_along_track_new calls it when the minecart_improvements feature is on; the old track behaviour is the other path
+AbstractMinecart.applyNaturalSlowdown	port	crates/sunrise-client/src/game/entities/minecarts_server.rs::Game::natural_slowdown	slowdown per ride state, the furnace push and water
 AbstractMinecart.readAdditionalSaveData	port	crates/sunrise-client/src/game/entities/minecarts.rs::Minecart::from_nbt	flipped and HasTicked read back; gap: minor: a custom display block and offset are not kept
 AbstractMinecart.addAdditionalSaveData	port	crates/sunrise-client/src/game/entities/minecarts.rs::Minecart::to_nbt	flipped and HasTicked written; gap: minor: a custom display block and offset are not saved
-AbstractMinecart.pushOtherMinecart	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::push_from_cart	cart against cart push with the furnace case; the old-movement facing check is used
-Minecart.interact	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::interact_cart	a plain rideable cart is boarded unless sneaking or already ridden
-Minecart.activateMinecart	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::activate_cart	a powered activator rail ejects the rider and hurts a rideable cart
-Minecart.tick	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::tick_cart	the per-tick cart update; gap: minor: client rotation smoothing for experimental movement is not modelled
-Minecart.positionRider	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::tick_cart_riding	the rider sits at the cart seat; the rider's turn with the cart is experimental-only
+AbstractMinecart.pushOtherMinecart	port	crates/sunrise-client/src/game/entities/minecarts_server.rs::Game::push_from_cart	cart against cart push with the furnace case; the old-movement facing check is used
+Minecart.interact	port	crates/sunrise-client/src/game/entities/minecarts_server.rs::Game::interact_cart	a plain rideable cart is boarded unless sneaking or already ridden
+Minecart.activateMinecart	port	crates/sunrise-client/src/game/entities/minecarts_server.rs::Game::activate_cart	a powered activator rail ejects the rider and hurts a rideable cart
+Minecart.tick	port	crates/sunrise-client/src/game/entities/minecarts_server.rs::Game::tick_cart	the per-tick cart update; gap: minor: client rotation smoothing for experimental movement is not modelled
+Minecart.positionRider	port	crates/sunrise-client/src/game/entities/minecarts_server.rs::Game::tick_cart_riding	the rider sits at the cart seat; the rider's turn with the cart is experimental-only
 MinecartBehavior.setDeltaMovement	skip:other		behaviour forwarder; Sunrise's Minecart struct holds the velocity directly
 MinecartBehavior.setPos	skip:other		behaviour forwarder; Sunrise's Minecart struct holds the position directly
-MinecartHopper.activateMinecart	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::activate_cart	an unpowered activator rail enables the hopper cart
-MinecartHopper.tryConsumeItems	inline	crates/sunrise-client/src/game/entities/minecarts.rs::Game::tick_carts	an enabled hopper cart sucks in once a tick
+MinecartHopper.activateMinecart	port	crates/sunrise-client/src/game/entities/minecarts_server.rs::Game::activate_cart	an unpowered activator rail enables the hopper cart
+MinecartHopper.tryConsumeItems	inline	crates/sunrise-client/src/game/entities/minecarts_server.rs::Game::tick_carts	an enabled hopper cart sucks in once a tick
 MinecartHopper.suckInItems	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Game::hopper_cart_suck	container above first, then item entities at the hopper and the cart's box
 MinecartTNT.explode	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::explode_cart	power 4 plus speed, with the cart gone before the blast; gap: minor: the saved explosion power and speed factor are not applied
-MinecartTNT.handleEntityEvent	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::remote_tnt_cart_event	event 70 sets the client's fuse to 80
+MinecartTNT.handleEntityEvent	port	crates/sunrise-client/src/game/entities/minecarts_client.rs::Game::remote_tnt_cart_event	event 70 sets the client's fuse to 80
 MinecartTNT.primeFuse	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::prime_cart	fuse 80, entity event 70 and the primed sound; gap: minor: no ignition source is recorded for who caused the blast
 MinecartTNT.getBlockExplosionResistance	port	crates/sunrise-client/src/game/entities/explosion.rs::Game::exploded_positions	while the cart is primed (`combat.rail_proof_blast`, set from `fuse >= 0` in `minecarts.rs`) a rail, and a block with a rail above it, has no resistance to its blast
 MinecartTNT.shouldBlockExplode	inline	crates/sunrise-client/src/game/entities/explosion.rs::Game::exploded_positions	the same ray march leaves a spared rail out of the destroyed set, so the blast goes through it
 MinecartTNT.readAdditionalSaveData	port	crates/sunrise-client/src/game/entities/minecarts.rs::Minecart::from_nbt	fuse read back; gap: minor: explosion_power and explosion_speed_factor are not read
 MinecartTNT.addAdditionalSaveData	port	crates/sunrise-client/src/game/entities/minecarts.rs::Minecart::to_nbt	fuse written; gap: minor: explosion_power and explosion_speed_factor are not written
 MinecartTNT.damageSourceIgnitesTnt	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::hurt_cart	the fire flag from the caller primes the cart instead of breaking it
-OldMinecartBehavior.tick	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::tick_cart	gravity, track or off-track move, activator rail, yaw from motion and the flip
+OldMinecartBehavior.tick	port	crates/sunrise-client/src/game/entities/minecarts_server.rs::Game::tick_cart	gravity, track or off-track move, activator rail, yaw from motion and the flip
 OldMinecartBehavior.getMotionDirection	inline	crates/sunrise-client/src/game/entities/minecarts.rs::Game::dismount_cart	the dismount side is the cart's facing, taken from its yaw
 OldMinecartBehavior.getKnownMovement	skip:other		client-side clamp of the known movement for networking; Sunrise simulates carts itself
 FoodData.add	port	crates/sunrise-world/src/food.rs::FoodData::eat_properties	food points and saturation are added and clamped to 0..20 and to the food level
@@ -90,11 +90,11 @@ AbstractContainerMenu.triggerSlotListeners	skip:java		local listener dispatch fo
 AbstractContainerMenu.synchronizeSlotToRemote	port	crates/sunrise-client/src/lan/containers.rs::Hub::sync_containers	sends each changed slot with a new state id
 AbstractContainerMenu.synchronizeDataSlotToRemote	port	crates/sunrise-client/src/lan/containers.rs::Hub::sync_container_data	sends each changed furnace, brewing or crafter value
 AbstractContainerMenu.synchronizeCarriedToRemote	port	crates/sunrise-client/src/lan/containers.rs::Hub::sync_carried	sends a changed carried stack after a click or on the next broadcast
-AbstractContainerMenu.setRemoteSlotUnsafe	port	crates/sunrise-client/src/game/network/remote/inventory.rs::Game::set_menu_slot	the server's slot update is applied; gap: minor: no hashed copy of the remote slot is kept
+AbstractContainerMenu.setRemoteSlotUnsafe	port	crates/sunrise-client/src/game/network/remote/inventory_client.rs::Game::set_menu_slot	the server's slot update is applied; gap: minor: no hashed copy of the remote slot is kept
 AbstractContainerMenu.doClick	inline	crates/sunrise-client/src/menu.rs::Menu::click	the click dispatch for the player's own and a host's station menus; its QUICK_MOVE arm repeats quickMoveStack while the slot keeps the item, and the guest copy in lan/menu.rs::click does it in one pass whose move_to fills every empty slot
 AbstractContainerMenu.getClickAction	inline	crates/sunrise-client/src/menu.rs::Menu::click	button 0 is the primary action, 1 the secondary
 AbstractContainerMenu.tryItemClickBehaviourOverride	port	crates/sunrise-client/src/menu/bundle.rs::Menu::bundle_click	a bundle takes or puts items on a click on another stack; the NeoForge event is not modelled
-AbstractContainerMenu.initializeContents	port	crates/sunrise-client/src/game/network/remote/inventory.rs::Game::set_menu_slot	the server's full content is applied to the open menu
+AbstractContainerMenu.initializeContents	port	crates/sunrise-client/src/game/network/remote/inventory_client.rs::Game::set_menu_slot	the server's full content is applied to the open menu
 AbstractContainerMenu.isContainerClickButton	inline	crates/sunrise-client/src/lan/menu.rs::click	a pickup or a quick move on any button but 0 and 1 changes nothing; THROW takes one item for button 0 and the whole stack otherwise
 AbstractContainerMenu.isValidQuickcraftType	inline	crates/sunrise-client/src/menu.rs::Menu::click	drag types 0 and 1 always, type 2 only in creative
 AbstractContainerMenu.canItemQuickReplace	port	crates/sunrise-client/src/menu.rs::Menu::quick_replace	a slot takes the stack when empty or the same item with room

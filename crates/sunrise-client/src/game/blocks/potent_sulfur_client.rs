@@ -91,6 +91,40 @@ impl Game<'_> {
             }
         }
     }
+    /// `PotentSulfurBlockEntity.LAUNCH_ENTITY_TICKER` on the client: the local
+    /// player in the column, unless spectating, flying or riding.
+    pub(in crate::game::client_side) fn launch_local_player_ticker(&mut self, pos: Pos) {
+        let Some(source) = self.potent_sulfur_source(pos) else {
+            return;
+        };
+        let water_blocks = source[1] - pos.1 - 1;
+        let height = {
+            let level = ParticleLevel {
+                world: &self.world,
+                facts: self.res.facts(),
+                collision: self.collision,
+                player: None,
+                cached_chunk: std::cell::Cell::new(None),
+            };
+            unobstructed_block_count(&level, [pos.0, pos.1 + 1, pos.2], water_blocks)
+        };
+        let area = launch_area(pos, height);
+        let (spectator, riding) = (self.spectator(), self.riding.is_some());
+        let Some(p) = self.player.as_mut() else {
+            return;
+        };
+        if spectator || p.health.dead_or_dying() || !p.bounds().intersects(area) {
+            return;
+        }
+        // Entity.checkFallDistanceAccumulation.
+        if p.velocity.y > -0.5 && p.fall_distance > 1.0 {
+            p.fall_distance = 1.0;
+        }
+        if !p.flying && !riding && p.velocity.y < f64::from(0.3f32) + f64::from(water_blocks) * 0.1
+        {
+            p.velocity.y += f64::from(0.2f32);
+        }
+    }
     /// `PotentSulfurBlockEntity.spawnGeyserParticle`: the eruption particle at
     /// the bottom of the source block, as high as the water column is deep.
     pub(in crate::game::client_side) fn spawn_geyser_particle(

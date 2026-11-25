@@ -7,7 +7,7 @@ use sunrise_client::mesher::{SectionPlanBuilder, capture_input};
 
 impl Game<'_> {
     /// Ask mods about the admitted requests and submit their combined answers to the workers.
-    pub(in crate::game) fn prepare_section_visibility(&mut self) {
+    pub(in crate::game::client_side) fn prepare_section_visibility(&mut self) {
         let requests = self.streaming.take_visibility_requests();
         if requests.is_empty() {
             return;

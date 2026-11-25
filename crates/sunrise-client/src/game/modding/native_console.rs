@@ -7,7 +7,7 @@ use sunrise_client::logging;
 impl Game<'_> {
     /// `console_line` for each line logged since the last server tick, while
     /// an enabled mod listens; the lines its listeners log are not kept.
-    pub(in crate::game) fn native_console_lines(&mut self) {
+    pub(in crate::game::server_side) fn native_console_lines(&mut self) {
         let listened = mod_api::__private::enabled_listened(mod_api::HookId::ConsoleLine);
         self.dispatch_console_lines(logging::take_tapped(listened));
     }

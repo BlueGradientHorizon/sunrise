@@ -9,35 +9,41 @@
 //! each file's modification time and hands changed text over again
 //! (`native_config_reloading`). A server's configs are dropped when it stops
 //! (`native_config_unloading`).
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use mod_api::ConfigPath;
+#[allow(unused_imports)]
 pub use mod_api::game::ConfigFile;
+#[allow(unused_imports)]
 use std::fs;
+#[allow(unused_imports)]
 use std::path::{Path, PathBuf};
+#[allow(unused_imports)]
 use std::time::{Duration, Instant};
 
 /// How often the files' modification times are read.
-const CHECK_EVERY: Duration = Duration::from_secs(1);
+pub(in crate::game) const CHECK_EVERY: Duration = Duration::from_secs(1);
 
 /// A loaded config, where it was read and what its file looked like then.
-struct Tracked {
-    config: ConfigFile,
-    path: PathBuf,
+pub(in crate::game) struct Tracked {
+    pub(in crate::game) config: ConfigFile,
+    pub(in crate::game) path: PathBuf,
 }
 
 /// One game's configs: the window's, a server thread's or a dedicated
 /// server's.
 #[derive(Default)]
-pub(super) struct NativeConfigs {
-    started: bool,
-    files: Vec<Tracked>,
-    next_check: Option<Instant>,
+pub(in crate::game) struct NativeConfigs {
+    pub(in crate::game) started: bool,
+    pub(in crate::game) files: Vec<Tracked>,
+    pub(in crate::game) next_check: Option<Instant>,
 }
 
 /// The file `config` is read from: the world's `serverconfig/` copy of a
 /// server config when there is one, else `config_dir`'s, written from the
 /// default when missing.
-fn locate(
+pub(in crate::game) fn locate(
     config: &mod_api::Config,
     config_dir: &Path,
     world: Option<&Path>,
@@ -64,7 +70,7 @@ impl NativeConfigs {
     /// Reads `configs` of `kinds` (a duplicate path, or a file outside the
     /// mod's own in `config/` as `Host::config_files` reads them, is skipped)
     /// and answers each loaded file.
-    fn load(
+    pub(in crate::game) fn load(
         &mut self,
         configs: Vec<mod_api::Config>,
         kinds: &[mod_api::ConfigKind],
@@ -125,7 +131,7 @@ impl NativeConfigs {
     /// compared, not the file's modification time: a save inside the same
     /// timestamp tick as the load (a mod writing its config from
     /// `config_loading`) keeps the time and the length and still changed.
-    fn changed(&mut self) -> Vec<ConfigFile> {
+    pub(in crate::game) fn changed(&mut self) -> Vec<ConfigFile> {
         let mut changed = Vec::new();
         for tracked in &mut self.files {
             let Ok(text) = fs::read_to_string(&tracked.path) else {
@@ -140,7 +146,7 @@ impl NativeConfigs {
     }
 
     /// Whether a second passed since the last look at the files.
-    fn due(&mut self, now: Instant) -> bool {
+    pub(in crate::game) fn due(&mut self, now: Instant) -> bool {
         if self.files.is_empty() || self.next_check.is_some_and(|t| now < t) {
             return false;
         }
@@ -149,7 +155,7 @@ impl NativeConfigs {
     }
 
     /// Drops the server's configs and answers them.
-    fn drop_server(&mut self) -> Vec<ConfigFile> {
+    pub(in crate::game) fn drop_server(&mut self) -> Vec<ConfigFile> {
         let (server, rest) = std::mem::take(&mut self.files)
             .into_iter()
             .partition(|t| t.config.kind == mod_api::ConfigKind::Server);
@@ -160,7 +166,11 @@ impl NativeConfigs {
 
 impl Game<'_> {
     /// Asks the mods for their configs and loads those of `kinds`.
-    fn native_configs_load(&mut self, kinds: &[mod_api::ConfigKind], world: Option<&Path>) {
+    pub(in crate::game) fn native_configs_load(
+        &mut self,
+        kinds: &[mod_api::ConfigKind],
+        world: Option<&Path>,
+    ) {
         let config_dir = match crate::game::native_config_dir() {
             Ok(dir) => dir,
             Err(e) => {
@@ -181,21 +191,16 @@ impl Game<'_> {
 
     /// The window's `Client` and `Common` configs, once: after client setup
     /// and before its title, connection or ordinary runtime callbacks.
-    pub(super) fn native_configs_client_start(&mut self) {
+    pub(in crate::game) fn native_configs_client_start(&mut self) {
         if !self.native_configs.started {
             use mod_api::ConfigKind::{Client, Common};
             self.native_configs_load(&[Client, Common], None);
         }
     }
 
-    /// The window's frame step: changed config files reload once a second.
-    pub(super) fn native_configs_tick_client(&mut self) {
-        self.native_configs_poll();
-    }
-
     /// A server about to open `world`: a dedicated server loads its
     /// `Common` configs too, a single player's server thread only `Server`.
-    pub(super) fn native_configs_server_start(&mut self, world: &Path, dedicated: bool) {
+    pub(in crate::game) fn native_configs_server_start(&mut self, world: &Path, dedicated: bool) {
         use mod_api::ConfigKind::{Common, Server};
         let kinds: &[mod_api::ConfigKind] = if dedicated && !self.native_configs.started {
             &[Common, Server]
@@ -206,14 +211,14 @@ impl Game<'_> {
     }
 
     /// The server stops: its `Server` configs unload.
-    pub(super) fn native_configs_server_stop(&mut self) {
+    pub(in crate::game) fn native_configs_server_stop(&mut self) {
         for file in self.native_configs.drop_server() {
             self.native_config_unloading(&file);
         }
     }
 
     /// Hands changed files over again, at most once a second.
-    pub(super) fn native_configs_poll(&mut self) {
+    pub(in crate::game) fn native_configs_poll(&mut self) {
         if !self.native_configs.due(Instant::now()) {
             return;
         }
@@ -224,7 +229,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
     use mod_api::ConfigKind::{Client, Common, Server};
 

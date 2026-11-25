@@ -9,7 +9,7 @@ use sunrise_protocol::packets::play::{self, Serverbound as S};
 impl Game<'_> {
     /// `LocalPlayer.openMinecartCommandBlock`: the editor over the cart's
     /// command (`MinecartCommandBlockEditScreen`).
-    pub(in crate::game) fn open_cart_command_block(&mut self, id: u32) {
+    pub(in crate::game::client_side) fn open_cart_command_block(&mut self, id: u32) {
         let Some(block) = self
             .carts
             .iter()
@@ -21,7 +21,11 @@ impl Game<'_> {
         self.open_edit_screen((0, 0, 0), Some(id), block, Mode::Redstone, false);
     }
     /// Edit screen's Done for a cart: updates local track flag and sends `SetCommandMinecart`.
-    pub(in crate::game) fn set_command_minecart(&mut self, id: u32, s: &CommandBlockScreen) {
+    pub(in crate::game::client_side) fn set_command_minecart(
+        &mut self,
+        id: u32,
+        s: &CommandBlockScreen,
+    ) {
         debug_assert!(
             !self.is_logical_server(),
             "set_command_minecart called on Server role"

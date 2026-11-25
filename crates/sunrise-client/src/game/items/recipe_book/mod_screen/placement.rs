@@ -93,7 +93,7 @@ impl Game<'_> {
         let stocks = sunrise_client::menu::place::Stacked::default();
         resolve::Resolver::new(self, &stocks, &[]).resolve(slot)
     }
-    pub(in crate::game) fn install_mod_book_ghost(
+    pub(in crate::game::client_side) fn install_mod_book_ghost(
         &mut self,
         selection: &sunrise_client::recipe_book::placement_sync::Selection,
     ) {
@@ -161,7 +161,7 @@ impl Game<'_> {
         );
         self.recipe_ui.0.ghost = shown;
     }
-    pub(in crate::game) fn reset_mod_book_placement_ui(&mut self) {
+    pub(in crate::game::client_side) fn reset_mod_book_placement_ui(&mut self) {
         self.recipe_ui.0.ghost.clear();
         self.recipe_ui.0.custom.prepared = None;
         self.recipe_ui.0.custom.presentation = None;

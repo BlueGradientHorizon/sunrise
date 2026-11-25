@@ -2,23 +2,6 @@
 use super::*;
 
 impl Game<'_> {
-    pub(in crate::game) fn use_item_fallthrough(
-        &mut self,
-        stack: &ItemStack,
-        on_block: bool,
-    ) -> Option<bool> {
-        if on_block {
-            return None;
-        }
-        if let Some(answer) = self.right_click_item(self.hand, stack) {
-            if answer == mod_api::InteractionResult::SuccessServer {
-                self.swing_arm();
-            }
-            return Some(answer.consumes_action());
-        }
-        self.use_item_in_hand(stack)
-    }
-
     /// Item.use after the same hand's target passed, or for a server UseItem packet.
     pub(in crate::game) fn right_click_item(
         &mut self,

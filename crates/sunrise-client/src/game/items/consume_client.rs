@@ -201,4 +201,8 @@ impl Game<'_> {
             self.particles.0.add(&options, p, v);
         }
     }
+    /// `LivingEntity.handleEntityEvent(46)` for this client: 128 portal
+    /// particles from the old position to the new one. The local player's
+    /// random is the particle engine's.
+    pub(in crate::game) fn portal_particles(&mut self) {}
 }

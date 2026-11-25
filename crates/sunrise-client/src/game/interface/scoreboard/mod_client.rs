@@ -40,6 +40,23 @@ pub(in crate::game::client_side) use sunrise_core::nbt::Tag;
 pub(in crate::game::client_side) use sunrise_gameplay::stats::{StatScoreChange, StatScoreOp};
 
 impl Game<'_> {
+    /// `Hud.extractScoreboardSidebar` / `displayScoreboardSidebar`.
+    pub(in crate::game) fn draw_scoreboard(&self, batch: &mut HudBatch) {
+        let board = &self.score.board;
+        let Some(objective) = self.sidebar_objective() else {
+            return;
+        };
+        let draws = hud_overlays::sidebar(
+            batch.width as i32,
+            batch.height as i32,
+            board,
+            objective,
+            &self.gui.atlas.font,
+            self.settings.text_background(0.3),
+            self.settings.text_background(0.4),
+        );
+        hud_layout::paint(batch, &self.gui.atlas, &draws);
+    }
     /// `Hud.extractTabList`: the player list while the player-list key is
     /// held. A local world shows it with a joined LAN guest or a `list`
     /// objective.
@@ -119,5 +136,36 @@ impl Game<'_> {
         for (location, rgba) in ready {
             self.store_skin(location, rgba);
         }
+    }
+    /// The objective in the player's team's sidebar slot, else the sidebar's.
+    pub(in crate::game) fn sidebar_objective(&self) -> Option<&sb::Objective> {
+        let board = &self.score.board;
+        if board.display.is_empty() {
+            return None;
+        }
+        // A server's client is in its team by its profile name.
+        let name = self
+            .remote
+            .as_ref()
+            .map_or(PLAYER_NAME, |r| r.profile_name.as_str());
+        let team_slot = board
+            .players_team(name)
+            .and_then(|t| t.color.as_ref())
+            .map(|c| format!("sidebar.team.{c}"))
+            .and_then(|slot| board.display_objective(&slot));
+        team_slot.or_else(|| board.display_objective(sb::SLOT_SIDEBAR))
+    }
+    /// The sidebar the HUD shows: its objective and its lines, for `status`.
+    pub(in crate::game::client_side) fn sidebar_status(&self) -> serde_json::Value {
+        let board = &self.score.board;
+        let Some(objective) = self.sidebar_objective() else {
+            return serde_json::Value::Null;
+        };
+        let scores: serde_json::Map<String, serde_json::Value> = board
+            .scores
+            .iter()
+            .filter_map(|(holder, s)| Some((holder.clone(), s.get(&objective.name)?.value.into())))
+            .collect();
+        serde_json::json!({ "objective": objective.name, "title": objective.display_text().plain(), "scores": scores })
     }
 }

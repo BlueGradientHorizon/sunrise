@@ -211,7 +211,7 @@ impl Backings {
     }
     /// The source hook grants containers, not duplicate copies of a physical
     /// slot. Cleared slots already return their contents through the player.
-    pub fn add_sources(
+    pub(in crate::game::server_side) fn add_sources(
         &mut self,
         game: &Game<'_>,
         sources: &[(Pos, Vec<Option<ItemStack>>)],
@@ -244,7 +244,7 @@ impl Backings {
         }
         Ok(stock)
     }
-    pub fn unchanged_blocks(&self, game: &Game<'_>) -> bool {
+    pub(in crate::game::server_side) fn unchanged_blocks(&self, game: &Game<'_>) -> bool {
         game.dim.id() == self.dimension
             && self.blocks.iter().all(|(pos, before)| {
                 let Some(entity) = game.world.block_entities.get(pos) else {
@@ -271,7 +271,7 @@ impl Backings {
                 }
             })
     }
-    pub fn unchanged(&self, game: &mut Game<'_>) -> bool {
+    pub(in crate::game::server_side) fn unchanged(&self, game: &mut Game<'_>) -> bool {
         self.unchanged_blocks(game) && self.native_is_unchanged(game)
     }
     fn native_is_unchanged(&self, game: &mut Game<'_>) -> bool {
@@ -313,10 +313,10 @@ impl Backings {
             })
     }
     /// Whether `slot` is stored in a block, so a placement there can be published.
-    pub fn stores(&self, slot: usize) -> bool {
+    pub(in crate::game::server_side) fn stores(&self, slot: usize) -> bool {
         self.main_keys.get(slot).is_some_and(Option::is_some)
     }
-    pub fn limits(&self) -> Vec<Option<u32>> {
+    pub(in crate::game::server_side) fn limits(&self) -> Vec<Option<u32>> {
         self.main_keys
             .iter()
             .map(|key| match key {

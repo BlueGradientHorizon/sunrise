@@ -103,7 +103,7 @@ impl Game<'_> {
         });
         self.show_mount_menu();
     }
-    pub(in crate::game) fn show_mount_menu(&mut self) {
+    pub(in crate::game::client_side) fn show_mount_menu(&mut self) {
         if self.is_logical_server() {
             self.carried = None;
         }
@@ -369,7 +369,7 @@ impl Game<'_> {
         }
     }
     /// A click in the mount menu before the generic handling.
-    pub(in crate::game) fn mount_click(&mut self, right: bool) -> bool {
+    pub(in crate::game::client_side) fn mount_click(&mut self, right: bool) -> bool {
         // A server's menu: the click goes out like any container click.
         if !self.mount_active() || self.remote.is_some() {
             return false;

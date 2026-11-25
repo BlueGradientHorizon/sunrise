@@ -315,7 +315,7 @@ fn carry_over(from: &Mob, to: &mut Mob) {
 }
 /// A villager rises as a zombie villager (never as an adult-age baby: a baby
 /// stays a baby for good).
-pub(in crate::game::client_side) fn convert_to_zombie_villager(from: &Mob, to: &mut Mob) {
+pub(in crate::game::server_side) fn convert_to_zombie_villager(from: &Mob, to: &mut Mob) {
     carry_over(from, to);
     to.extra.age = if from.is_baby() { i32::MIN / 2 } else { 0 };
 }

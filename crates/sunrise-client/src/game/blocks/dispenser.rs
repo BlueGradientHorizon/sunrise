@@ -2588,7 +2588,7 @@ pub(in crate::game) mod decision_tests;
 
 impl Game<'_> {
     /// The brush behaviour: the first armadillo in front that `brushOffScute`s.
-    pub(in crate::game) fn dispense_brush(
+    pub(in crate::game::server_side) fn dispense_brush(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -2782,7 +2782,7 @@ impl Game<'_> {
         );
         true
     }
-    pub(in crate::game) fn dispense_glowstone(
+    pub(in crate::game::server_side) fn dispense_glowstone(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -2820,7 +2820,7 @@ impl Game<'_> {
         }
         Ok((self.default_execute(pos, facing, stack), CLICK))
     }
-    pub(in crate::game) fn dispense_honeycomb(
+    pub(in crate::game::server_side) fn dispense_honeycomb(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -2853,7 +2853,7 @@ impl Game<'_> {
         );
         Ok((shrink(stack), CLICK))
     }
-    pub(in crate::game) fn dispense_potion(
+    pub(in crate::game::server_side) fn dispense_potion(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -2892,7 +2892,7 @@ impl Game<'_> {
             CLICK,
         ))
     }
-    pub(in crate::game) fn dispense_tnt(
+    pub(in crate::game::server_side) fn dispense_tnt(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -2938,7 +2938,7 @@ impl Game<'_> {
         (shrink(stack), CLICK)
     }
 
-    pub(in crate::game) fn shear_beehive(&mut self, target: Pos) -> Result<bool> {
+    pub(in crate::game::server_side) fn shear_beehive(&mut self, target: Pos) -> Result<bool> {
         let state = self.block_at(target);
         let name = self.dispenser_block_name(target);
         let level = self

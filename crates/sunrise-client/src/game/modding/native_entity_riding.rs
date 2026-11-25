@@ -495,7 +495,7 @@ impl Game<'_> {
     /// `try_start_riding_target`, where `onto_player` admits a player vehicle for a mob rider:
     /// only `entity_ride_player` passes true, so every other call keeps refusing one, as
     /// vanilla's `startRiding` callers and `/ride` do.
-    pub(in crate::game) fn try_start_riding_with(
+    pub(in crate::game::server_side) fn try_start_riding_with(
         &mut self,
         rider: Target,
         vehicle: Target,

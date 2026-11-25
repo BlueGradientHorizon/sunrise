@@ -2,7 +2,11 @@
 use super::*;
 use sunrise_client::recipe_book::placement_sync as sync;
 impl Game<'_> {
-    pub(super) fn guest_mod_book_placement(&mut self, conn: u32, frame: sync::Frame) {
+    pub(in crate::game::server_side) fn guest_mod_book_placement(
+        &mut self,
+        conn: u32,
+        frame: sync::Frame,
+    ) {
         match frame {
             sync::Frame::Hello { epoch, schema } => {
                 let actual = self

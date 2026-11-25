@@ -217,7 +217,12 @@ impl Game<'_> {
 
     /// `EnchantmentEntityEffect.apply` on the new projectile `id`, at its
     /// position.
-    pub(in crate::game) fn apply_spawned_effect(&mut self, id: u32, effect: &Value, level: u32) {
+    pub(in crate::game::server_side) fn apply_spawned_effect(
+        &mut self,
+        id: u32,
+        effect: &Value,
+        level: u32,
+    ) {
         let Some(kind) = spawned_effect(effect) else {
             return;
         };

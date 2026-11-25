@@ -1202,36 +1202,6 @@ impl Game<'_> {
         self.with_level(|b, level, ticks| b.report_placement(level, ticks, &placed));
         Ok(Some(placed))
     }
-    /// `MobEvent::PlaceBlock`: a mob sets `state` at `pos` unless a mod
-    /// cancels `entity_place`. Enderman attempts use `enderman_place_block`.
-    pub(in crate::game) fn mob_place_block(
-        &mut self,
-        mob: u32,
-        pos: [i32; 3],
-        state: BlockStateId,
-    ) -> crate::Result<()> {
-        let at = BlockPos::new(pos[0], pos[1], pos[2]);
-        let against = self.world.block(pos[0], pos[1] - 1, pos[2]);
-        let kind = self
-            .mobs
-            .iter()
-            .find(|m| m.id == mob)
-            .map(|m| m.kind.id.clone());
-        if self.place_canceled(mob, at, state, against, None) {
-            return Ok(());
-        }
-        let facts = self.res.facts();
-        let from = facts
-            .get(self.world.block(pos[0], pos[1], pos[2]))
-            .name
-            .clone();
-        let to = facts.get(state).name.clone();
-        self.level_set(pos, state)?;
-        if let Some(kind) = kind {
-            self.native_entity_change_block(mob, &kind, pos, &from, &to);
-        }
-        Ok(())
-    }
     /// The chosen phase's broadcast event, before its scoped behaviour.
     pub(in crate::game) fn use_item_on_block(
         &mut self,
@@ -1274,34 +1244,6 @@ impl Game<'_> {
         if mod_api::__private::listened(mod_api::HookId::GameRuleChanged) {
             self.native_game_rule_changed(name, value, actor);
         }
-    }
-    /// `AnimalTameEvent` for the mob at `index`, whose taming roll by the
-    /// player `tamer` (`tamer_entity_id`) succeeded: true when a mod cancels
-    /// it, and the taming fails.
-    pub(in crate::game) fn animal_tame_cancelled(
-        &mut self,
-        index: usize,
-        tamer: u128,
-        tamer_entity_id: i32,
-    ) -> bool {
-        if !mod_api::__private::listened(mod_api::HookId::AnimalTame) {
-            return false;
-        }
-        let m = &self.mobs[index];
-        let (entity, kind) = (m.id, mob_kind(m));
-        let mut cancel = false;
-        self.native_animal_tame(tamer, tamer_entity_id, entity, &kind, &mut cancel);
-        cancel
-    }
-    /// `entity_tame` for the pet at `index`, just tamed by its owner.
-    pub(in crate::game) fn pet_tamed(&mut self, index: usize) {
-        let m = &self.mobs[index];
-        let (entity, kind) = (m.id, mob_kind(m));
-        let owner = m
-            .extra
-            .owner
-            .map(sunrise_client::lan::playerdata::ints_uuid);
-        self.native_entity_tame(entity, &kind, owner);
     }
 
     /// Tells the mods of the chunks that came into this level.
@@ -1355,54 +1297,6 @@ impl Game<'_> {
         let player = self.native_acting_id();
         self.native_mob_killed(player, entity, &kind);
     }
-    /// The acting player's hit landed on mob `index`, holding `stack`.
-    pub(in crate::game) fn native_hurt_enemy_event(&mut self, stack: &ItemStack, index: usize) {
-        let mob = &self.mobs[index];
-        let kind = ["minecraft:", mob.kind.id.trim_start_matches("minecraft:")].concat();
-        self.native_hurt_enemy(stack, mob.id, &kind);
-    }
-    /// `Inventory.tick` for the acting player: each carried stack goes through
-    /// `native_inventory_tick`.
-    pub(in crate::game) fn native_inventory_ticks(&mut self) {
-        if self.player.is_none() {
-            return;
-        }
-        for i in 0..self.inventory.len() {
-            self.native_slot_tick(i as i32, i == self.selected);
-        }
-        // Head first here; `Inventory` saves feet as 100 and head as 103.
-        for i in 0..self.armor.len() {
-            self.native_slot_tick(103 - i as i32, false);
-        }
-        self.native_slot_tick(-106, false);
-    }
-    pub(in crate::game) fn native_slot_tick(&mut self, slot: i32, selected: bool) {
-        if !mod_api::__private::has_part_hook(mod_api::HookId::InventoryTick) {
-            return;
-        }
-        let Some(stack) = self.native_carried_slot(slot).and_then(|s| s.clone()) else {
-            return;
-        };
-        self.native_inventory_tick(&stack, slot, selected);
-        if let Some(stack) = self.native_carried_slot(slot)
-            && stack.as_ref().is_some_and(|s| s.count == 0)
-        {
-            *stack = None;
-        }
-    }
-    /// The slot a player's carried stack is in, by `native_inventory_tick`'s
-    /// numbers: none for another number.
-    pub(in crate::game) fn native_carried_slot(
-        &mut self,
-        slot: i32,
-    ) -> Option<&mut Option<ItemStack>> {
-        match slot {
-            0.. if (slot as usize) < self.inventory.len() => self.inventory.get_mut(slot as usize),
-            100..=103 => self.armor.get_mut(103 - slot as usize),
-            -106 => Some(&mut self.offhand),
-            _ => None,
-        }
-    }
     /// `EntityBlock.newBlockEntity` of block `name`: Sunrise's own, else a
     /// native mod's, made as a write of the level creates it
     /// (`GameLevel::new_block_entity`). Only a declared mod type builds the
@@ -1449,110 +1343,6 @@ impl Game<'_> {
         state: BlockStateId,
     ) -> Option<BlockEntity> {
         self.with_level(|_, level, _| level.new_block_entity_for_state(state))
-    }
-    /// The containers of the mod blocks' block entities, by block state
-    /// (`native_block_entity_container`), checked.
-    pub(in crate::game) fn native_containers(&self) -> FxHashMap<u32, Arc<ModContainer>> {
-        let registry = self.pack.assets.registry;
-        let mut by_block: FxHashMap<String, Option<Arc<ModContainer>>> = FxHashMap::default();
-        let mut out = FxHashMap::default();
-        for i in 0..registry.len() as u32 {
-            let Some(state) = registry.state(sunrise_world::registry::BlockStateId(i)) else {
-                continue;
-            };
-            if state.name.starts_with("minecraft:") {
-                continue;
-            }
-            let container = by_block.entry(state.name.clone()).or_insert_with(|| {
-                let mut container = None;
-                self.native_block_entity_container(&state.name, &mut container);
-                container.map(|mut c| {
-                    let n = c.slots;
-                    for list in c.faces.iter_mut().chain([&mut c.inputs, &mut c.outputs]) {
-                        list.retain(|&s| s < n);
-                    }
-                    c.insert_rules.truncate(n);
-                    c.menu = c
-                        .menu
-                        .filter(|m| mod_menu(m).is_some_and(|(_, size)| size == n));
-                    Arc::new(c)
-                })
-            });
-            if let Some(c) = container {
-                out.insert(i, Arc::clone(c));
-            }
-        }
-        out
-    }
-    /// The fluid tanks of the mod blocks' block entities, by block state
-    /// (`native_block_entity_fluids`), checked as the containers are.
-    pub(in crate::game) fn native_fluid_tables(&self) -> FxHashMap<u32, Arc<ModFluidTanks>> {
-        let registry = self.pack.assets.registry;
-        let mut by_block: FxHashMap<String, Option<Arc<ModFluidTanks>>> = FxHashMap::default();
-        let mut out = FxHashMap::default();
-        for i in 0..registry.len() as u32 {
-            let Some(state) = registry.state(sunrise_world::registry::BlockStateId(i)) else {
-                continue;
-            };
-            if state.name.starts_with("minecraft:") {
-                continue;
-            }
-            let tanks = by_block.entry(state.name.clone()).or_insert_with(|| {
-                let mut fluids = None;
-                self.native_block_entity_fluids(&state.name, &mut fluids);
-                fluids.map(|mut f| {
-                    f.tanks.truncate(16);
-                    // Clamped, not dropped: the face and fill lists name
-                    // tanks by number, which must not shift.
-                    for c in &mut f.tanks {
-                        *c = (*c).clamp(1, 1_000_000);
-                    }
-                    let n = f.tanks.len();
-                    for list in f.faces.iter_mut().chain([&mut f.inputs, &mut f.outputs]) {
-                        list.retain(|&t| t < n);
-                    }
-                    Arc::new(f)
-                })
-            });
-            if let Some(t) = tanks {
-                out.insert(i, Arc::clone(t));
-            }
-        }
-        out
-    }
-    /// The energy buffers of the mod blocks' block entities, by block state
-    /// (`native_block_entity_energy`), checked as the containers are.
-    pub(in crate::game) fn native_energy_tables(&self) -> FxHashMap<u32, Arc<ModEnergyBuffer>> {
-        let registry = self.pack.assets.registry;
-        let mut by_block: FxHashMap<String, Option<Arc<ModEnergyBuffer>>> = FxHashMap::default();
-        let mut out = FxHashMap::default();
-        for i in 0..registry.len() as u32 {
-            let Some(state) = registry.state(sunrise_world::registry::BlockStateId(i)) else {
-                continue;
-            };
-            if state.name.starts_with("minecraft:") {
-                continue;
-            }
-            let buffer = by_block.entry(state.name.clone()).or_insert_with(|| {
-                let mut energy = None;
-                self.native_block_entity_energy(&state.name, &mut energy);
-                energy.filter(|e| e.capacity >= 1).map(|mut e| {
-                    e.max_insert = e.max_insert.clamp(0, e.capacity);
-                    e.max_extract = e.max_extract.clamp(0, e.capacity);
-                    Arc::new(e)
-                })
-            });
-            if let Some(b) = buffer {
-                out.insert(i, Arc::clone(b));
-            }
-        }
-        out
-    }
-    /// Whether a native mod's block `name` has a ticking block entity.
-    pub(in crate::game) fn native_ticks(&self, name: &str) -> bool {
-        let mut ticks = false;
-        self.native_block_entity_ticks(name, &mut ticks);
-        ticks
     }
     /// A mod block's container at `key` opens its menu: its slots grown to
     /// the menu's. False for any other block.

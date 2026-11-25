@@ -40,7 +40,10 @@ impl Game<'_> {
             // spawn_loaded_entities applies them before this chunk's entities run.
             && !self.world.loaded_entities.iter().any(|(key, _)| *key == (x, z))
     }
-    pub(in crate::game) fn condition_matches(&mut self, c: &Context) -> R<(bool, i32)> {
+    pub(in crate::game::server_side) fn condition_matches(
+        &mut self,
+        c: &Context,
+    ) -> R<(bool, i32)> {
         let flag = |b: bool| (b, i32::from(b));
         if c.has("data") {
             let r = self.data_ref_named(c, 0, "source")?;
@@ -171,7 +174,7 @@ impl Game<'_> {
             .collect()
     }
     /// `ExecuteCommand.createRelationOperations`: the entities `on <relation>` reaches.
-    pub(in crate::game) fn relation(&mut self, c: &Context, s: Source) -> Vec<Source> {
+    pub(in crate::game::server_side) fn relation(&mut self, c: &Context, s: Source) -> Vec<Source> {
         let Some(entity) = s.entity else {
             return Vec::new();
         };
@@ -641,7 +644,11 @@ impl Game<'_> {
         Ok(0)
     }
     /// A `store` modifier: a new callback in the source's chain.
-    pub(in crate::game) fn store_source(&mut self, c: &Context, s: Source) -> R<Source> {
+    pub(in crate::game::server_side) fn store_source(
+        &mut self,
+        c: &Context,
+        s: Source,
+    ) -> R<Source> {
         let result = c.has("result");
         let target = if c.has("score") {
             let holders = self.score_holder_names(c, "targets", true)?;

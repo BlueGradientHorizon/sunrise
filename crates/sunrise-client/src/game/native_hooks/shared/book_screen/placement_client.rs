@@ -2,7 +2,7 @@
 pub(in crate::game::client_side) use super::*;
 
 impl Game<'_> {
-    pub(in crate::game) fn native_book_placement_scope_matches(
+    pub(in crate::game::client_side) fn native_book_placement_scope_matches(
         &self,
         window: i32,
         nonce: u64,
@@ -42,7 +42,7 @@ impl Game<'_> {
             identity.book.as_str(),
         )
     }
-    pub(in crate::game) fn native_book_placement_window(
+    pub(in crate::game::client_side) fn native_book_placement_window(
         &self,
     ) -> Option<sunrise_client::recipe_book::placement_sync::Window> {
         let screen = self.shown_active_native_screen()?;

@@ -9,7 +9,7 @@ use sunrise_core::geometry::Vec3;
 /// Where a respawn ends, as the server found it: a level, a point and the
 /// player's facing.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct Respawn {
+pub(in crate::game) struct Respawn {
     pub dim: Dim,
     pub at: Vec3,
     pub yaw: f32,
@@ -18,7 +18,7 @@ pub(super) struct Respawn {
 
 /// What the mods decided about a respawn.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct RespawnDecision {
+pub(in crate::game) struct RespawnDecision {
     /// Where the player goes: the found point, or the mods' own.
     pub to: Respawn,
     /// Whether the fresh player keeps its respawn point
@@ -28,7 +28,7 @@ pub(super) struct RespawnDecision {
 
 impl Dim {
     /// The level the world has for `level`; None for a `Custom` level it lacks.
-    pub(super) fn from_level(level: LevelDimension) -> Option<Self> {
+    pub(in crate::game) fn from_level(level: LevelDimension) -> Option<Self> {
         Some(match level {
             LevelDimension::Overworld => Self::Overworld,
             LevelDimension::Nether => Self::Nether,
@@ -47,7 +47,7 @@ impl Game<'_> {
     /// Every place that finishes a respawn asks here; None when no mod
     /// listens. A moved destination is not block-checked and doesn't fire
     /// again.
-    pub(super) fn respawn_position(
+    pub(in crate::game::server_side) fn respawn_position(
         &mut self,
         conn: u32,
         found: Respawn,

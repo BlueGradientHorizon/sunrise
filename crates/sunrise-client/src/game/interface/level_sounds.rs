@@ -74,25 +74,6 @@ pub(in crate::game::server_side) fn listened() -> bool {
 }
 
 impl Game<'_> {
-    /// `LocalPlayer.playSound`, including inherited step, fall and consume sounds.
-    pub(in crate::game) fn play_client_player_sound(
-        &mut self,
-        name: &str,
-        volume: f32,
-        pitch: f32,
-    ) {
-        let Some(player) = self.player.as_ref() else {
-            return;
-        };
-        let at = [player.position.x, player.position.y, player.position.z];
-        let Some(remote) = self.remote.as_ref() else {
-            return;
-        };
-        let mut sound = LevelSound::new(name, at, volume, pitch).in_source(SoundSource::Players);
-        sound.emitter = Some(remote.entity_id as u32);
-        self.play_client_local_sound(sound);
-    }
-
     /// `ServerLevel.playSeededSound`'s entity overload, `playSound(except,
     /// emitter, ...)`: `sound` plays here and, while the level's sounds are
     /// captured for others, joins the tick's bound sounds. `lan_broadcast_effects` asks
@@ -121,7 +102,7 @@ impl Game<'_> {
     }
 
     /// The tick's bound sounds, in the order they played, for the players.
-    pub(in crate::game) fn send_bound_sounds(&mut self) {
+    pub(in crate::game::server_side) fn send_bound_sounds(&mut self) {
         for s in std::mem::take(&mut self.server.bound_sounds) {
             let sound = LevelSound {
                 name: &s.name,
@@ -157,7 +138,10 @@ impl Game<'_> {
     }
 
     /// A synchronous level sound, not captured again at the end of the tick.
-    pub(in crate::game) fn play_immediate_level_sound(&mut self, sound: LevelSound<'_>) {
+    pub(in crate::game::server_side) fn play_immediate_level_sound(
+        &mut self,
+        sound: LevelSound<'_>,
+    ) {
         self.send_level_sound(sound, None);
     }
 

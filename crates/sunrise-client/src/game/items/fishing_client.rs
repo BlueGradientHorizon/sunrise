@@ -221,7 +221,7 @@ impl Game<'_> {
     }
     /// `Entity.lerpMotion` for a hook a server tracks: the motion its own tick
     /// moves it on with between the tracker's updates.
-    pub(in crate::game) fn remote_hook_motion(&mut self, id: u32, v: Vec3) -> bool {
+    pub(in crate::game::client_side) fn remote_hook_motion(&mut self, id: u32, v: Vec3) -> bool {
         if self.remote.is_none() {
             return false;
         }
@@ -277,26 +277,6 @@ impl Game<'_> {
                 ),
             )
         }
-    }
-    /// `ServerLevel.sendParticles` of a simple particle.
-    pub(in crate::game) fn send_particles(
-        &mut self,
-        kind: ParticleType,
-        at: [f64; 3],
-        spread: [f64; 3],
-        speed: f64,
-        count: u32,
-    ) {
-        self.server_send_particles(crate::lan::server_effects::ServerQueuedParticle {
-            dimension: self.dim.id(),
-            particle: crate::lan::server_effects::ServerParticle::simple(kind),
-            at,
-            spread,
-            speed: [speed; 3],
-            count: count as i32,
-            randomization: 0,
-            except: None,
-        });
     }
     /// `handleAddEntity` for a fishing bobber: this player's own becomes its
     /// hook (`Player.fishing`), another player's is drawn on its line to them.

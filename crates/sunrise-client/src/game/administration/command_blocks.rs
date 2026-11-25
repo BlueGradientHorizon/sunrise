@@ -44,7 +44,7 @@ impl Game<'_> {
     /// screen itself (`Player.openCommandBlock`) while the server only
     /// answers the click: the block at `pos`, when it is a command block the
     /// player may edit.
-    pub(in crate::game) fn open_command_block_if_editable(&mut self, pos: Pos) {
+    pub(in crate::game::client_side) fn open_command_block_if_editable(&mut self, pos: Pos) {
         let is_command_block = self
             .block_state_at(pos)
             .is_some_and(|state| Mode::of_block(&state.name).is_some());
@@ -64,7 +64,7 @@ impl Game<'_> {
         }
     }
     #[inline(always)]
-    pub(in crate::game) fn command_block_open_at(&self, pos: Pos) -> bool {
+    pub(in crate::game::client_side) fn command_block_open_at(&self, pos: Pos) -> bool {
         self.command_block_screen
             .0
             .as_ref()
@@ -74,7 +74,7 @@ impl Game<'_> {
     /// `CommandBlockEditScreen.updateGui`: new data for the command block the
     /// edit screen shows refreshes its fields. The mode and conditional live in
     /// the block state here (vanilla's `CommandBlockEntity.Mode`).
-    pub(in crate::game) fn command_block_data_arrived(&mut self, pos: Pos) {
+    pub(in crate::game::client_side) fn command_block_data_arrived(&mut self, pos: Pos) {
         if self
             .command_block_screen
             .0
@@ -111,7 +111,7 @@ impl Game<'_> {
     }
 
     /// `LocalPlayer.openCommandBlock`.
-    pub(in crate::game) fn open_command_block(&mut self, pos: Pos) {
+    pub(in crate::game::client_side) fn open_command_block(&mut self, pos: Pos) {
         let Some(block) = self.command_block(pos).cloned() else {
             return;
         };
@@ -276,7 +276,7 @@ impl Game<'_> {
         self.command_block_screen.0.as_mut()?.command.take_request()
     }
     /// The server's completions for the command box's `ask_server` request.
-    pub(in crate::game) fn command_block_server_suggestions(
+    pub(in crate::game::client_side) fn command_block_server_suggestions(
         &mut self,
         id: i32,
         range: (usize, usize),

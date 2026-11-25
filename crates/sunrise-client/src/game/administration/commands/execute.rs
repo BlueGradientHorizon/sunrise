@@ -128,7 +128,7 @@ impl Game<'_> {
         }
     }
     /// EntityAnchorArgument.Anchor.apply.
-    pub(in crate::game) fn anchor_position(&self, s: &Source) -> [f64; 3] {
+    pub(in crate::game::server_side) fn anchor_position(&self, s: &Source) -> [f64; 3] {
         match s.entity {
             Some(t) if s.eyes => [s.pos[0], s.pos[1] + self.target_eye_height(t), s.pos[2]],
             _ => s.pos,
@@ -147,7 +147,7 @@ impl Game<'_> {
         let root = parse.context.clone();
         self.with_source(source, |g| g.run_chain(&root, &ctx))
     }
-    pub(in crate::game) fn store_value(&mut self, target: &StoreTarget, value: i32) {
+    pub(in crate::game::server_side) fn store_value(&mut self, target: &StoreTarget, value: i32) {
         match target {
             StoreTarget::Score(holders, objective) => {
                 for h in holders {
@@ -352,7 +352,7 @@ impl Game<'_> {
         })
     }
     /// The highest block of a heightmap type at a column (`Level.getHeight`).
-    pub(in crate::game) fn heightmap_at(&self, kind: &str, x: i32, z: i32) -> i32 {
+    pub(in crate::game::server_side) fn heightmap_at(&self, kind: &str, x: i32, z: i32) -> i32 {
         let top = self.world.top_y();
         let facts = self.res.facts();
         for y in (self.world.bottom_y()..top).rev() {
@@ -412,7 +412,7 @@ impl Game<'_> {
     /// `FallthroughTask.execute`: a fallthrough supplies failure/zero to the
     /// function-condition continuation. Preserve explicit-result decisions
     /// and direct function callbacks.
-    pub(in crate::game) fn condition_function(
+    pub(in crate::game::server_side) fn condition_function(
         &mut self,
         c: &Context,
         want: bool,
@@ -426,7 +426,7 @@ impl Game<'_> {
         Ok((keep || (!want && fallthrough), 0))
     }
 
-    pub(in crate::game) fn condition_stopwatch(&mut self, c: &Context) -> R<bool> {
+    pub(in crate::game::server_side) fn condition_stopwatch(&mut self, c: &Context) -> R<bool> {
         let Some(Arg::Resource(id)) = c.get("id").cloned() else {
             return Ok(false);
         };
@@ -438,7 +438,7 @@ impl Game<'_> {
         };
         Ok(lo.is_none_or(|l| t >= l) && hi.is_none_or(|h| t <= h))
     }
-    pub(in crate::game) fn condition_score(&mut self, c: &Context) -> R<bool> {
+    pub(in crate::game::server_side) fn condition_score(&mut self, c: &Context) -> R<bool> {
         let target = self.score_holder_names(c, "target", false)?;
         let Some(Arg::Str(to)) = c.get("targetObjective").cloned() else {
             return Ok(false);
@@ -491,7 +491,7 @@ impl Game<'_> {
         })
     }
     /// `if blocks`: the region at `start..end` equals the one at `destination`.
-    pub(in crate::game) fn condition_blocks(&mut self, c: &Context) -> R<(bool, i32)> {
+    pub(in crate::game::server_side) fn condition_blocks(&mut self, c: &Context) -> R<(bool, i32)> {
         let (a, b, d) = (
             self.block_pos_arg(c, "start")?,
             self.block_pos_arg(c, "end")?,
@@ -556,7 +556,7 @@ impl Game<'_> {
         Ok((true, count))
     }
     /// The biome name at a block position.
-    pub(in crate::game) fn biome_name_at_block(&self, p: [i32; 3]) -> Option<String> {
+    pub(in crate::game::server_side) fn biome_name_at_block(&self, p: [i32; 3]) -> Option<String> {
         let chunk = self.world.chunks.get(&(p[0] >> 4, p[2] >> 4))?;
         // The world's table (`world_biomes!`): a packed biome's id is past
         // the built-in list, and `Biomes::get` would clamp it to the last
@@ -578,7 +578,7 @@ impl Game<'_> {
     /// `#tag`: the biome tags the game's files and the world's packs define,
     /// nested tags expanded; an unknown tag falls back to the game's built-in
     /// table.
-    pub(in crate::game) fn biome_tag_has(&self, tag: &str, biome: &str) -> bool {
+    pub(in crate::game::server_side) fn biome_tag_has(&self, tag: &str, biome: &str) -> bool {
         let entries = self.tag_entries("worldgen/biome", tag);
         entries.iter().any(|id| id == biome)
             || (entries.is_empty() && self.res.mob_data().biome_has(tag, biome))

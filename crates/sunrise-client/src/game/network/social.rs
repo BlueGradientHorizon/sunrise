@@ -3,14 +3,18 @@
 //! scroll, and what hiding does to chat (`Minecraft.isBlocked`). The screen is
 //! `social_screen`. Blocking is Mojang's service (`UserApiService.isBlockedPlayer`), which
 //! Sunrise does not offer: nobody is blocked, as in vanilla's offline mode.
+#[allow(unused_imports)]
 use super::{Game, Screen};
+#[allow(unused_imports)]
 use std::collections::{HashMap, HashSet};
+#[allow(unused_imports)]
 use sunrise_client::{
     social_screen::{self, Action, Entry, Page, SocialView},
     tab_list::TabPlayer,
     text::Text,
     ui::EditBox,
 };
+#[allow(unused_imports)]
 use winit::keyboard::KeyCode;
 
 /// `PlayerSocialManager.hiddenPlayers` and the screen's state.
@@ -18,35 +22,19 @@ pub(in crate::game) struct Social {
     pub hidden: HashSet<u128>,
     /// `discoveredNamesToUUID`, the other way: the names of the players seen, so a hidden player
     /// who left is still listed by name.
-    names: HashMap<u128, String>,
-    page: Page,
+    pub(in crate::game) names: HashMap<u128, String>,
+    pub(in crate::game) page: Page,
     pub(in crate::game) search: EditBox,
     /// `PlayerEntry.TOOLTIP_DELAY`: the row buttons' tooltips wait 500 ms.
-    tooltip: social_screen::TooltipDelay,
+    pub(in crate::game) tooltip: social_screen::TooltipDelay,
     pub(in crate::game) scroll: f32,
     /// Opened from the pause menu: Done goes back there.
-    from_pause: bool,
-}
-
-impl Default for Social {
-    fn default() -> Self {
-        let mut search = EditBox::new(0.0, 0.0, 200.0, 15.0);
-        search.max_length = 16;
-        Self {
-            hidden: HashSet::new(),
-            names: HashMap::new(),
-            page: Page::All,
-            search,
-            tooltip: Default::default(),
-            scroll: 0.0,
-            from_pause: false,
-        }
-    }
+    pub(in crate::game) from_pause: bool,
 }
 
 impl Game<'_> {
     /// The players of the level, as the tab list shows them, and the local player's id.
-    fn social_players(&mut self) -> (Vec<TabPlayer>, u128) {
+    pub(in crate::game::client_side) fn social_players(&mut self) -> (Vec<TabPlayer>, u128) {
         match self.remote_tab_players() {
             Some((players, _, _)) => {
                 let me = self.remote.as_ref().map_or(0, |r| r.profile());
@@ -56,7 +44,7 @@ impl Game<'_> {
         }
     }
     /// `Minecraft.isBlocked`: whether a player's chat is hidden (never the player's own).
-    pub(in crate::game) fn social_hides(&self, id: u128) -> bool {
+    pub(in crate::game::client_side) fn social_hides(&self, id: u128) -> bool {
         if !self.client.social.hidden.contains(&id) {
             return false;
         }
@@ -82,7 +70,7 @@ impl Game<'_> {
         }
     }
     /// The page's rows, sorted and filtered as `SocialInteractionsPlayerList` does.
-    fn social_view(&mut self) -> SocialView {
+    pub(in crate::game::client_side) fn social_view(&mut self) -> SocialView {
         let (players, me) = self.social_players();
         for p in &players {
             self.client.social.names.insert(p.uuid, p.name.clone());
@@ -145,7 +133,7 @@ impl Game<'_> {
         }
     }
     /// The server's name: a local world's name, a server's entry in the list.
-    fn social_server_name(&self) -> String {
+    pub(in crate::game::client_side) fn social_server_name(&self) -> String {
         match (&self.integrated, self.server_address()) {
             (Some(server), _) => server.world_name.clone(),
             (None, Some(address)) if self.remote.is_some() => address.to_owned(),

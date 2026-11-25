@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::block_particles::*;
+pub(in crate::game::client_side) use crate::game::block_particles::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::{
     blocks::{MAP_COLORS, RenderShape},
@@ -58,7 +58,7 @@ impl Game<'_> {
         });
     }
     /// `HoneyBlock.showParticles`: the crumb count of entity event 53 or 54.
-    pub(in crate::game) fn honey_entity_particles(&mut self, at: [f64; 3], event: i8) {
+    pub(in crate::game::client_side) fn honey_entity_particles(&mut self, at: [f64; 3], event: i8) {
         let Some(count) = sunrise_client::landing::honey_particle_count(event) else {
             return;
         };

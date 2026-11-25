@@ -155,7 +155,7 @@ impl Game<'_> {
         FRAME.with_borrow(|frame| frame.listened)
     }
     /// Whether a Post listener can read the final model of this entity.
-    pub(in crate::game) fn mob_render_post_listened(&self, player: bool) -> bool {
+    pub(in crate::game::client_side) fn mob_render_post_listened(&self, player: bool) -> bool {
         FRAME.with_borrow(|frame| frame.living_post || (player && frame.player_post))
     }
     /// Whether a mod's pre hook canceled the drawing of entity `id` this frame: the later passes
@@ -176,7 +176,7 @@ impl Game<'_> {
     /// Player Post is called here without a model. `listened` is the frame's
     /// [`Game::mob_render_listened`].
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::game) fn mod_render_pre<'m>(
+    pub(in crate::game::client_side) fn mod_render_pre<'m>(
         &self,
         mob: &'m Mob,
         who: Option<PlayerRender<'_>>,
@@ -234,7 +234,7 @@ impl Game<'_> {
     /// of its model and its vanilla layers, from a draw at its feet, not turned: true when it
     /// drew. False when none is registered for the type, and when it fails this frame (then it is
     /// asked no more until resources reload): the type draws its own model.
-    pub(in crate::game) fn mod_living_renderer_geometry(
+    pub(in crate::game::client_side) fn mod_living_renderer_geometry(
         &self,
         mob: &Mob,
         partial: f32,
@@ -288,7 +288,7 @@ impl Game<'_> {
     /// spectating player draws none). `model` is the same borrowed model offered to the layers,
     /// absent if there was no vanilla body pose.
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::game) fn mod_render_post(
+    pub(in crate::game::client_side) fn mod_render_post(
         &self,
         mob: &Mob,
         who: Option<PlayerRender<'_>>,

@@ -696,7 +696,7 @@ impl Game<'_> {
     }
     /// `Merchant.stillValid` for a trader: it is alive and the guest is within
     /// the entity interaction range plus 4 of its box.
-    pub(in crate::game) fn lan_merchant_valid(
+    pub(in crate::game::server_side) fn lan_merchant_valid(
         &self,
         g: &sunrise_client::lan::guest::Guest,
         id: u32,

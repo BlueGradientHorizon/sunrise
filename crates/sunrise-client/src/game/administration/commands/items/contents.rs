@@ -106,7 +106,7 @@ impl Component {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn contents_slots(
+    pub(in crate::game::server_side) fn contents_slots(
         &mut self,
         parent: Slot,
         component: Component,
@@ -176,7 +176,7 @@ impl Game<'_> {
     }
     /// ComponentSlotCollection.modifySlots: visit occupied slots only, then
     /// commit the component through the same live parent slot.
-    pub(in crate::game) fn modify_contents(
+    pub(in crate::game::server_side) fn modify_contents(
         &mut self,
         parent: &Slot,
         component: Component,

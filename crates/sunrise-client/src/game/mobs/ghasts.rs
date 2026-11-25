@@ -1,81 +1,20 @@
 //! Happy ghasts on the game side: putting a harness on (and shearing it
 //! off), riding, getting off on top, and the ghastling a dried ghast block
 //! hatches.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use super::level_sounds::LevelSound;
+#[allow(unused_imports)]
 use mod_api::SoundSource;
+#[allow(unused_imports)]
 use sunrise_client::mobs::{MobEvent, happy_ghast};
+#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
+#[allow(unused_imports)]
 use sunrise_world::registry::BlockStateId;
 
 impl Game<'_> {
-    /// `HappyGhast.mobInteract`. Returns whether the click was used.
-    pub(in crate::game) fn interact_happy_ghast(&mut self, index: usize, item: &str) -> bool {
-        let m = &self.mobs[index];
-        if !m.alive() || Some(m.id) == self.riding {
-            return false;
-        }
-        if m.is_baby() {
-            // Animal.mobInteract: food grows it up.
-            return false;
-        }
-        let at = m.center();
-        let sneaking = self.server_acting_sneak();
-        let harnessed = m.extra.body_id().is_some();
-        // Equippable.equipOnInteract: a harness goes on a bare adult.
-        if item.ends_with("_harness") && item.starts_with("minecraft:") && !harnessed {
-            let held = self.inventory[self.selected].clone().map(|mut stack| {
-                stack.count = 1;
-                stack
-            });
-            self.mobs[index].extra.set_body_stack(held);
-            self.server_play_sound("minecraft:entity.happy_ghast.equip", at, 1.0, 1.0);
-            self.consume_held();
-            let id = self.mobs[index].id;
-            let pos = self.mobs[index].position;
-            self.mob_equip_event(id, [pos.x, pos.y, pos.z], true);
-            return true;
-        }
-        // Equippable.canBeSheared: shears take the harness off again.
-        if item == "minecraft:shears"
-            && harnessed
-            && !sneaking
-            && let Some(harness) = self.mobs[index].take_body_equipment()
-        {
-            self.server_play_sound("minecraft:entity.happy_ghast.unequip", at, 1.0, 1.0);
-            self.spawn_item(harness, at, [0.0, 0.2, 0.0], 10);
-            self.damage_held_tool();
-            let id = self.mobs[index].id;
-            let pos = self.mobs[index].position;
-            self.mob_equip_event(id, [pos.x, pos.y, pos.z], false);
-            return true;
-        }
-        if harnessed && !sneaking {
-            // doPlayerRide: `player.startRiding(this)`, which keeps the
-            // rider's view (`ServerPlayer.startRiding`'s `Relative.ROTATION`).
-            let id = self.mobs[index].id;
-            // `startRiding` without `force` asks `canAddPassenger`: a fifth rider is refused.
-            let aboard = self.seated_passengers(id).len();
-            if !sunrise_client::mobs::riders::can_add_passenger(&self.mobs[index], aboard)
-                || !self.native_may_board(id)
-            {
-                return true;
-            }
-            self.break_leash(id, true, false);
-            let was_empty = self.mobs[index].rider.is_none();
-            // addPassenger: the rider is not standing on top, so no still
-            // timeout.
-            self.mobs[index].extra.counter = 0;
-            self.mount.reset_jump();
-            if was_empty {
-                let down = happy_ghast::goggles(true, &self.mobs[index]);
-                let _ = self.handle_mob_events(vec![down]);
-            }
-            self.start_riding(id);
-            return true;
-        }
-        false
-    }
     /// Getting off lands on top of it.
     pub(in crate::game) fn dismount_happy_ghast(&mut self, id: u32) {
         // removePassenger: held still for half a second, and with no one
@@ -137,7 +76,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-fn with_headless_game(run: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_headless_game(run: impl FnOnce(&mut Game<'_>)) {
     use crate::game::{
         Audio, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
     };
@@ -178,7 +117,7 @@ fn with_headless_game(run: impl FnOnce(&mut Game<'_>)) {
 }
 
 #[cfg(test)]
-mod hatch_tests {
+pub(in crate::game) mod hatch_tests {
     use super::with_headless_game;
     use crate::game::LevelEvent;
     use sunrise_core::{nbt::Tag, position::BlockPos};
@@ -216,7 +155,7 @@ mod hatch_tests {
 }
 
 #[cfg(test)]
-mod item_collision_tests {
+pub(in crate::game) mod item_collision_tests {
     use super::with_headless_game;
     use std::sync::Arc;
     use sunrise_client::chunk::Chunk;

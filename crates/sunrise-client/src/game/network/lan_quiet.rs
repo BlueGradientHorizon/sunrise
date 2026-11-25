@@ -11,12 +11,12 @@ use std::collections::{HashMap, VecDeque};
 use sunrise_protocol::quiet;
 
 /// Lines a player may have waiting at most; a batch past it loses the rest.
-pub(super) const PENDING: usize = 4096;
+pub(in crate::game) const PENDING: usize = 4096;
 /// Lines run a player a tick at most.
-pub(super) const PER_TICK: usize = 64;
+pub(in crate::game) const PER_TICK: usize = 64;
 
 /// A batch waiting to run.
-pub(super) struct QuietBatch {
+pub(in crate::game) struct QuietBatch {
     conn: u32,
     mod_id: String,
     lines: VecDeque<String>,
@@ -29,7 +29,7 @@ pub(super) struct QuietBatch {
 impl Game<'_> {
     /// A `sunrise:quiet_commands` payload from `conn`: queued (or logged as
     /// refused when it breaks the payload's caps).
-    pub(super) fn guest_quiet_commands(&mut self, conn: u32, data: &[u8]) {
+    pub(in crate::game::server_side) fn guest_quiet_commands(&mut self, conn: u32, data: &[u8]) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -84,7 +84,7 @@ impl Game<'_> {
     }
 
     /// The waiting batches, [`PER_TICK`] lines a player this tick, in order.
-    pub(super) fn run_quiet_commands(&mut self) {
+    pub(in crate::game) fn run_quiet_commands(&mut self) {
         let mut left: HashMap<u32, usize> = HashMap::new();
         let mut i = 0;
         loop {

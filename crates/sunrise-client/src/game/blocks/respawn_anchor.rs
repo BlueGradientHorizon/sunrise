@@ -136,7 +136,7 @@ impl Game<'_> {
     pub(in crate::game::server_side) fn is_anchor(&self, state: BlockStateId) -> bool {
         &*self.res.facts().get(state).name == "minecraft:respawn_anchor"
     }
-    pub(in crate::game) fn anchor_charges(&self, state: BlockStateId) -> i32 {
+    pub(in crate::game::server_side) fn anchor_charges(&self, state: BlockStateId) -> i32 {
         self.pack
             .assets
             .registry
@@ -145,7 +145,7 @@ impl Game<'_> {
             .and_then(|c| c.parse().ok())
             .unwrap_or(0)
     }
-    pub(in crate::game) fn anchor_with_charges(
+    pub(in crate::game::server_side) fn anchor_with_charges(
         &self,
         state: BlockStateId,
         charges: i32,
@@ -660,7 +660,7 @@ pub(in crate::game::server_side) fn wrap_degrees(degrees: f64) -> f64 {
 
 impl Game<'_> {
     /// `RespawnAnchorBlock.charge`: one more charge, the block change and the sound.
-    pub(in crate::game) fn charge_anchor(
+    pub(in crate::game::server_side) fn charge_anchor(
         &mut self,
         pos: [i32; 3],
         state: BlockStateId,
@@ -680,7 +680,7 @@ impl Game<'_> {
         Ok(())
     }
     /// `StrawBedBlock.destroyBed`: the break sound, then the bed is air.
-    pub(in crate::game) fn destroy_straw_bed(&mut self, head: [i32; 3]) -> Result<()> {
+    pub(in crate::game::server_side) fn destroy_straw_bed(&mut self, head: [i32; 3]) -> Result<()> {
         let center = [
             f64::from(head[0]) + 0.5,
             f64::from(head[1]) + 0.5,

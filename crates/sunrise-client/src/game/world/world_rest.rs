@@ -1,7 +1,7 @@
 use super::*;
 use sunrise_client::mobs::spawner::SpawnerTypeFacts;
 
-pub(super) fn load_world_rest(
+pub(in crate::game) fn load_world_rest(
     resource_root: &sunrise_assets::resource_source::ResourceRoot,
     conditions: &sunrise_world::conditions::LoadConditions,
     resources: &Resources,

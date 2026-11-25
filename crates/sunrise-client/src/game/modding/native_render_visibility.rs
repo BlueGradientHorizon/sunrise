@@ -11,7 +11,7 @@ impl Game<'_> {
     /// those in use, remeshes every loaded section with them. While a mod listens to
     /// `section_visibility`, rebuilds the player's level's meshes and prepares their visibility
     /// again. Call it when a decision changes and when the player joins, not every frame.
-    pub(super) fn refresh_render_visibility(&mut self) {
+    pub(in crate::game) fn refresh_render_visibility(&mut self) {
         // With no section listener now or before, the section policy does not change.
         let listening = mod_api::__private::listened(mod_api::HookId::SectionVisibility);
         self.streaming

@@ -263,7 +263,7 @@ impl Game<'_> {
 
     /// Apply wear and its ordinary break effects, returning the pre-wear stack
     /// on a break. Mining reports that snapshot only after the block's drops.
-    pub(in crate::game) fn apply_held_damage(
+    pub(in crate::game::server_side) fn apply_held_damage(
         &mut self,
         amount: u32,
         break_slot: sunrise_core::equipment_slot::EquipmentSlot,

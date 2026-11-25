@@ -1,6 +1,9 @@
 //! Narrow, per-victim context prepared before the hit borrows its victim.
+#[allow(unused_imports)]
 use super::{Game, combat::PlayerCredit};
+#[allow(unused_imports)]
 use std::collections::HashMap;
+#[allow(unused_imports)]
 use sunrise_client::{
     health::{Attack, Hurting, KnockbackCredit},
     items::ItemStack,
@@ -9,41 +12,38 @@ use sunrise_client::{
 
 #[derive(Default)]
 pub(in crate::game) struct CreditEntity {
-    id: i32,
-    main: Option<ItemStack>,
+    pub(in crate::game) id: i32,
+    pub(in crate::game) main: Option<ItemStack>,
 }
 
 pub(in crate::game) struct CreditPlan {
-    victim: i32,
-    player: Option<(PlayerCredit, CreditEntity)>,
-    existing_player_live: bool,
+    pub(in crate::game) victim: i32,
+    pub(in crate::game) player: Option<(PlayerCredit, CreditEntity)>,
+    pub(in crate::game) existing_player_live: bool,
     /// The mob the victim's hurt memory names, by that recorded id, and the
     /// entity the credit resolves to now (`LivingRef::kill_credit`'s).
-    previous_mob: (u32, CreditEntity),
-    attacking_mob: CreditEntity,
-    responsibility: Option<Option<(PlayerCredit, CreditEntity)>>,
-    responsibility_live: bool,
-    fixed: CreditEntity,
+    pub(in crate::game) previous_mob: (u32, CreditEntity),
+    pub(in crate::game) attacking_mob: CreditEntity,
+    pub(in crate::game) responsibility: Option<Option<(PlayerCredit, CreditEntity)>>,
+    pub(in crate::game) responsibility_live: bool,
+    pub(in crate::game) fixed: CreditEntity,
     /// Canonical UUIDs of the causing entity for a villager's hurt gossip.
-    hurt_by: Option<HurtBy>,
+    pub(in crate::game) hurt_by: Option<HurtBy>,
 }
 
-struct HurtBy {
-    player: Option<[i32; 4]>,
-    attacker: Option<(u32, [i32; 4])>,
-    trade_feedback: bool,
+pub(in crate::game) struct HurtBy {
+    pub(in crate::game) player: Option<[i32; 4]>,
+    pub(in crate::game) attacker: Option<(u32, [i32; 4])>,
+    pub(in crate::game) trade_feedback: bool,
 }
 
 pub(in crate::game) struct CreditLoan<'a> {
-    plan: CreditPlan,
-    players: &'a mut HashMap<u32, PlayerCredit>,
+    pub(in crate::game) plan: CreditPlan,
+    pub(in crate::game) players: &'a mut HashMap<u32, PlayerCredit>,
 }
 
 impl CreditPlan {
-    pub(in crate::game::server_side) fn lend(
-        self,
-        players: &mut HashMap<u32, PlayerCredit>,
-    ) -> CreditLoan<'_> {
+    pub(in crate::game) fn lend(self, players: &mut HashMap<u32, PlayerCredit>) -> CreditLoan<'_> {
         CreditLoan {
             plan: self,
             players,
@@ -133,139 +133,8 @@ impl KnockbackCredit for CreditLoan<'_> {
 
 impl Game<'_> {
     /// The attacking entity's canonical UUID, already assigned on creation or admission.
-    pub(in crate::game::server_side) fn known_attacker_uuid(&self, id: u32) -> Option<[i32; 4]> {
+    pub(in crate::game) fn known_attacker_uuid(&self, id: u32) -> Option<[i32; 4]> {
         self.known_resident_entity_uuid_at(self.dim.key(), id)
             .or_else(|| self.persist.uuids.get(&id).copied())
-    }
-    /// The credited entity and its main hand: in the level in place, or a mob
-    /// a kill credit found in another loaded level.
-    fn knockback_credit_entity(&self, id: i32) -> CreditEntity {
-        if id == 0 {
-            return CreditEntity::default();
-        }
-        if self.entity(id as u32).is_some() {
-            let [main, _] = self.attack_of(id).held;
-            return CreditEntity { id, main };
-        }
-        match self.mob_in_other_level(id as u32) {
-            Some((_, mob)) => CreditEntity {
-                id,
-                main: mob.extra.main_hand_stack().cloned(),
-            },
-            None => CreditEntity::default(),
-        }
-    }
-
-    fn knockback_player_credit(&self, credit: PlayerCredit) -> (PlayerCredit, CreditEntity) {
-        let id = self
-            .resolve_player_credit(credit)
-            .and_then(|connection| self.player_entity_id_by_connection(connection))
-            .unwrap_or(0);
-        (credit, self.knockback_credit_entity(id))
-    }
-
-    /// Capture only this victim's possible credit holders, not a table of every entity.
-    /// UUID responsibility is committed by the loan at the accepted-hit memory point.
-    pub(in crate::game::server_side) fn prepare_knockback_credit(
-        &self,
-        victim: i32,
-        attacker: Option<Who>,
-        attack: &Attack,
-    ) -> CreditPlan {
-        let observed = mod_api::__private::listened(mod_api::HookId::LivingKnockback);
-        let mob = observed
-            .then(|| self.mobs.iter().find(|mob| mob.id as i32 == victim))
-            .flatten();
-        let existing_player = self
-            .server
-            .last_hurt_by_player
-            .get(&(victim as u32))
-            .copied();
-        let existing_player_live =
-            existing_player.is_some_and(|credit| self.resolve_player_credit(credit).is_some());
-        let player = mob.and(existing_player);
-        let responsibility = match attacker {
-            Some(Who::Player) => attack.player_uuid.map(|uuid| {
-                Some(PlayerCredit(sunrise_client::lan::playerdata::ints_uuid(
-                    uuid,
-                )))
-            }),
-            Some(Who::Mob(id)) => self
-                .mobs
-                .iter()
-                .find(|mob| mob.id == id && mob.species() == Species::Wolf && mob.extra.tame)
-                .map(|wolf| {
-                    wolf.extra
-                        .owner
-                        .map(|uuid| PlayerCredit(sunrise_client::lan::playerdata::ints_uuid(uuid)))
-                }),
-            None => None,
-        };
-        let responsibility_live = responsibility
-            .flatten()
-            .is_some_and(|credit| self.resolve_player_credit(credit).is_some());
-        let entity = |id| {
-            if observed {
-                self.knockback_credit_entity(id)
-            } else {
-                CreditEntity::default()
-            }
-        };
-        let credited_player = |credit| {
-            if observed {
-                self.knockback_player_credit(credit)
-            } else {
-                (credit, CreditEntity::default())
-            }
-        };
-        let previous_mob = mob
-            .and_then(|mob| mob.ai.last_hurt_by)
-            .and_then(|who| match who {
-                Who::Mob(id) => Some(id),
-                Who::Player => None,
-            })
-            .map(|id| {
-                let credited = self.credited_entity(id).map_or(0, |e| e.id() as i32);
-                (id, entity(credited))
-            });
-        let hurt_by = self
-            .mobs
-            .iter()
-            .any(|m| m.id as i32 == victim && m.species() == Species::Villager)
-            .then(|| HurtBy {
-                // The hit's own player (a guest's cloud's owner), not whoever acts now.
-                player: attack.player_uuid,
-                attacker: match attacker {
-                    Some(Who::Mob(id)) => self.known_attacker_uuid(id).map(|uuid| (id, uuid)),
-                    _ => None,
-                },
-                trade_feedback: attacker == Some(Who::Player)
-                    && attack
-                        .player_uuid
-                        .is_some_and(|uuid| self.villager_trade_will_notify(victim as u32, uuid)),
-            });
-        let fixed = if observed && mob.is_none() {
-            self.entity(victim as u32)
-                .and_then(|entity| self.living(entity))
-                .and_then(|living| self.living_kill_credit(living))
-                .map(|credit| entity(credit.id() as i32))
-                .unwrap_or_default()
-        } else {
-            CreditEntity::default()
-        };
-        CreditPlan {
-            victim,
-            player: player.map(credited_player),
-            existing_player_live,
-            previous_mob: previous_mob.unwrap_or_default(),
-            attacking_mob: match attacker {
-                Some(Who::Mob(id)) => entity(id as i32),
-                _ => CreditEntity::default(),
-            },
-            responsibility: responsibility.map(|credit| credit.map(credited_player)),
-            responsibility_live,
-            fixed,
-            hurt_by,
-        }
     }
 }

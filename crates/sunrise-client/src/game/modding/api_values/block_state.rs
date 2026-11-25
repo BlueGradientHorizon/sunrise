@@ -45,7 +45,7 @@ pub(in crate::game::server_side) fn explosion_resistance_pure(state: BlockStateI
     })
 }
 
-pub(super) fn clear() {
+pub(in crate::game) fn clear() {
     INDEX.with_borrow_mut(|index| *index = None);
 }
 impl AsRef<[BlockState]> for Index {
@@ -54,10 +54,10 @@ impl AsRef<[BlockState]> for Index {
         &self.forward
     }
 }
-pub(super) fn snapshot() -> Result<Box<[BlockState]>, BlockStateError> {
+pub(in crate::game) fn snapshot() -> Result<Box<[BlockState]>, BlockStateError> {
     Ok(current()?.forward.clone().into_boxed_slice())
 }
-pub(super) fn bind(registry: &BlockRegistry) -> Result<(), String> {
+pub(in crate::game) fn bind(registry: &BlockRegistry) -> Result<(), String> {
     clear();
     install(prepare(registry)?);
     Ok(())

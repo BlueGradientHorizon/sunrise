@@ -142,4 +142,32 @@ impl Game<'_> {
             Err(events)
         }
     }
+    /// What each armed mob's hands carry as `minecraft:death_protection`, for
+    /// `Mob::use_death_protection` (the mob has no item data of its own): any
+    /// item with the component counts, not only the totem.
+    pub(in crate::game::server_side) fn sync_mob_death_protection(&mut self) {
+        let items = self.res.items();
+        let of = |id: Option<&str>, stack: Option<&ItemStack>| {
+            let item = stack.map(|s| &*s.item).or(id)?;
+            match stack {
+                Some(stack) => stack.death_protection(items.get(item)).map(<[_]>::to_vec),
+                None => items
+                    .get(item)
+                    .and_then(|info| info.death_protection.clone()),
+            }
+        };
+        for m in self.mobs.iter_mut().filter(|m| !m.removed) {
+            if m.extra.main_hand_id().is_none() && m.extra.off_hand_id().is_none() {
+                m.extra.hand_protection = None;
+                continue;
+            }
+            m.extra.hand_protection = Some(sunrise_client::mobs::HandProtection {
+                main: of(m.extra.main_hand_id(), m.extra.main_hand_stack()),
+                off: of(
+                    m.extra.off_hand_id(),
+                    m.extra.slot_stack(sunrise_items::equipment::OFFHAND),
+                ),
+            });
+        }
+    }
 }

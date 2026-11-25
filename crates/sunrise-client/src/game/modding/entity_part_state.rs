@@ -9,7 +9,7 @@ impl Game<'_> {
     /// handle's, then the residency table (the same one `with_resident_slot` resolves through)
     /// finds the entity and its level. A removal, pending or done, an unload and a move under a
     /// new id all leave the id unresolved. On a client, in place for an entity the client has.
-    pub(super) fn entity_residency(&self, entity: EntityRef) -> EntityResidency {
+    pub(in crate::game) fn entity_residency(&self, entity: EntityRef) -> EntityResidency {
         if self.native_lifecycle.epoch() != Some(entity.epoch()) {
             return EntityResidency::Gone;
         }

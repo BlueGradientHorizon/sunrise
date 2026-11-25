@@ -62,7 +62,7 @@ pub(in crate::game) mod icons;
 
 impl Game<'_> {
     /// The `AdvancementToast` or `RecipeToast` in its slot at `y`.
-    pub(in crate::game) fn draw_advancement_toast(
+    pub(in crate::game::client_side) fn draw_advancement_toast(
         &self,
         batch: &mut HudBatch,
         t: &Toast,

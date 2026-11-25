@@ -157,4 +157,33 @@ impl Game<'_> {
             &options,
         );
     }
+    /// `PositionSource.getPosition`: a block's centre, or an entity's feet
+    /// raised by the option's offset. An entity this client does not have is
+    /// no destination at all: vanilla makes the particle and removes it on its
+    /// first tick, so nothing of it is ever drawn.
+    pub(in crate::game) fn vibration_destination(
+        &self,
+        source: &NetworkPositionSource,
+    ) -> Option<[f64; 3]> {
+        match source {
+            NetworkPositionSource::Block([x, y, z]) => Some([
+                f64::from(*x) + 0.5,
+                f64::from(*y) + 0.5,
+                f64::from(*z) + 0.5,
+            ]),
+            NetworkPositionSource::Entity { id, y_offset } => {
+                let id = u32::try_from(*id).ok()?;
+                self.mobs
+                    .iter()
+                    .find(|m| m.id == id && !m.removed)
+                    .map(|m| {
+                        [
+                            m.position.x,
+                            m.position.y + f64::from(*y_offset),
+                            m.position.z,
+                        ]
+                    })
+            }
+        }
+    }
 }

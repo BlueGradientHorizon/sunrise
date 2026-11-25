@@ -85,4 +85,74 @@ impl Game<'_> {
             self.finish_entity_occlusion(culling, c, out, entity_start);
         }
     }
+    /// `BlockBehaviour.Properties.isSuffocating` of a state: the block's
+    /// explicit predicate, else `causes_suffocation` with a full collision
+    /// shape.
+    pub(in crate::game) fn state_suffocating(
+        &self,
+        state: sunrise_world::registry::BlockStateId,
+    ) -> bool {
+        let facts = self.res.facts().get(state);
+        let name = facts.name.as_ref();
+        // Blocks' explicit predicates, then the default causes_suffocation/full-shape rule.
+        match name {
+            "minecraft:dirt_path"
+            | "minecraft:farmland"
+            | "minecraft:mud"
+            | "minecraft:soul_sand" => true,
+            "minecraft:piston" | "minecraft:sticky_piston" => self
+                .pack
+                .assets
+                .registry
+                .state(state)
+                .is_some_and(|s| s.properties.get("extended").is_some_and(|p| p == "false")),
+            "minecraft:mangrove_roots" | "minecraft:moving_piston" => false,
+            _ if name.ends_with("_leaves")
+                || name.ends_with("glass")
+                || name.ends_with("copper_grate") =>
+            {
+                false
+            }
+            // ShulkerBoxBlock: suffocating while closed; a box seen open
+            // here is rare enough to count as closed.
+            _ if name.ends_with("shulker_box") => true,
+            _ => {
+                facts.full_collision
+                    && self
+                        .res
+                        .items()
+                        .block_in_tag("minecraft:causes_suffocation", name)
+            }
+        }
+    }
+    /// `BlockState.isViewBlocking(level, pos, nearPlaneBox)`: stairs and
+    /// slabs (`NEAR_PLANE_INTERSECTS_OUTLINE`) block when the near plane
+    /// touches a box of their shape, snow only at eight layers, anything else
+    /// when it is suffocating.
+    pub(in crate::game::client_side) fn state_view_blocking(
+        &self,
+        state: sunrise_world::registry::BlockStateId,
+        pos: [i32; 3],
+        near_plane: Aabb,
+    ) -> bool {
+        let name = self.res.facts().get(state).name.as_ref();
+        if name == "minecraft:snow" {
+            return self
+                .pack
+                .assets
+                .registry
+                .state(state)
+                .and_then(|s| s.properties.get("layers"))
+                .is_some_and(|l| l.parse::<i32>().is_ok_and(|l| l >= 8));
+        }
+        if (name.ends_with("_stairs") || name.ends_with("_slab"))
+            && name != "minecraft:petrified_oak_slab"
+        {
+            return self
+                .outline_boxes(pos)
+                .iter()
+                .any(|b| aabb(([b[0], b[1], b[2]], [b[3], b[4], b[5]])).intersects(near_plane));
+        }
+        self.state_suffocating(state)
+    }
 }

@@ -217,7 +217,7 @@ impl Game<'_> {
     }
     /// Paints `screen_layout` calls at the menu origin (ox, oy): the container
     /// background and the dimmed world are drawn by the caller.
-    pub(in crate::game) fn paint_screen(
+    pub(in crate::game::client_side) fn paint_screen(
         &self,
         batch: &mut HudBatch,
         ox: f32,

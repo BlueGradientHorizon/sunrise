@@ -166,7 +166,7 @@ pub(in crate::game) struct FurnaceMenuEffects {
 }
 
 impl GuestMenuEffects {
-    pub(in crate::game) fn dropped(dropped: Vec<ItemStack>) -> Self {
+    pub(in crate::game::server_side) fn dropped(dropped: Vec<ItemStack>) -> Self {
         Self {
             dropped,
             ..Self::default()
@@ -433,7 +433,7 @@ impl Game<'_> {
 
     /// A click on the guest's inventory menu (window 0): `InventoryMenu`,
     /// crafting grid included. False for other windows.
-    pub(in crate::game) fn lan_inventory_click(
+    pub(in crate::game::server_side) fn lan_inventory_click(
         &mut self,
         conn: u32,
         p: &play::ContainerClick,
@@ -492,7 +492,7 @@ impl Game<'_> {
     /// reach it before the next step, and a `menu_slot_take` listener hears each take
     /// (`Slot.onTake`), in one transaction with the click (opened only then), so a failed listener
     /// undoes the click.
-    pub(in crate::game) fn lan_owned_menu_click(
+    pub(in crate::game::server_side) fn lan_owned_menu_click(
         &mut self,
         conn: u32,
         p: &play::ContainerClick,
@@ -687,7 +687,7 @@ impl Game<'_> {
     }
 
     /// A click in a machine or block-backed mod menu. `None` means a different kind of menu.
-    pub(in crate::game) fn lan_machine_click(
+    pub(in crate::game::server_side) fn lan_machine_click(
         &mut self,
         conn: u32,
         p: &play::ContainerClick,
@@ -1640,7 +1640,7 @@ impl Game<'_> {
     }
 
     /// A click on the guest's crafting table window; false for other windows.
-    pub(in crate::game) fn lan_crafting_click(
+    pub(in crate::game::server_side) fn lan_crafting_click(
         &mut self,
         conn: u32,
         p: &play::ContainerClick,
@@ -1745,7 +1745,7 @@ impl Game<'_> {
 
     /// `CraftingMenu.stillValid`: the block is still a crafting table and the
     /// guest is within reach of it.
-    pub(in crate::game) fn lan_table_valid(&self, g: &Guest, pos: [i32; 3]) -> bool {
+    pub(in crate::game::server_side) fn lan_table_valid(&self, g: &Guest, pos: [i32; 3]) -> bool {
         let name = &self
             .res
             .facts()
@@ -1993,7 +1993,12 @@ impl Game<'_> {
     }
 
     /// Publish the result and the grid it belongs to as one value, before the hub syncs it.
-    pub(in crate::game) fn lan_mod_craft_store(&mut self, gi: usize, window: i32, craft: ModCraft) {
+    pub(in crate::game::server_side) fn lan_mod_craft_store(
+        &mut self,
+        gi: usize,
+        window: i32,
+        craft: ModCraft,
+    ) {
         if let Some(host) = self.lan.as_ref() {
             self.journal_menu_click(host.hub.guests[gi].conn);
         }

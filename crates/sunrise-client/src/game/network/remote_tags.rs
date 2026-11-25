@@ -38,7 +38,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn refresh_creative_search_tags(&mut self) {
+    pub(in crate::game::client_side) fn refresh_creative_search_tags(&mut self) {
         let tags = self.remote.as_ref().and_then(|r| {
             let ids = r.builtin.get("minecraft:item")?;
             let tags = r.registries.tags.get("minecraft:item")?;

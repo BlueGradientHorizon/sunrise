@@ -56,7 +56,7 @@ impl Game<'_> {
         self.settings.file.double("screenEffectScale") as f32
     }
     /// `LocalPlayer.getEffectBlendFactor(NAUSEA, partial)`: 0 without the effect.
-    pub(in crate::game) fn nausea_blend(&self, partial: f32) -> f32 {
+    pub(in crate::game::client_side) fn nausea_blend(&self, partial: f32) -> f32 {
         if self.potions.effects.get("nausea").is_none() {
             return 0.0;
         }

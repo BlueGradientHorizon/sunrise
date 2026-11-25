@@ -47,16 +47,6 @@ pub(in crate::game) struct NativeCommandState {
     pub(in crate::game) display_revision: u64,
 }
 
-impl NativeCommandState {
-    /// The traversal level of a mod's root (`line`, without its slash), when registered.
-    /// The parsed executable node enforces its own usage level separately.
-    pub(in crate::game) fn level(&self, line: &str) -> Option<u8> {
-        let name = line.split(' ').next().unwrap_or_default();
-        self.report["children"].get(name)?;
-        self.registered.as_ref()?.levels.get(name).copied()
-    }
-}
-
 pub(in crate::game) fn without_reserved_roots(
     report: &Value,
     reserved: impl Fn(&str) -> bool,

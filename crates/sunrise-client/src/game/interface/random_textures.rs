@@ -8,7 +8,7 @@ use sunrise_core::geometry::Vec3;
 use sunrise_optifine::random::Weather;
 
 impl Game<'_> {
-    pub(in crate::game) fn tick_random_textures(&mut self) {
+    pub(in crate::game::client_side) fn tick_random_textures(&mut self) {
         let res = self.res.clone();
         let textures = res
             .mob_data()

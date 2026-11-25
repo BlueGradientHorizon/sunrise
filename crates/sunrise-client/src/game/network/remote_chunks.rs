@@ -21,7 +21,7 @@ type Column = (i32, i32);
 /// The level's light state is independent of its cache of block columns. An
 /// entry with no layers still enables lighting (`setLightEnabled(true)`).
 #[derive(Default)]
-pub(super) struct RemoteLight {
+pub(in crate::game) struct RemoteLight {
     columns: FxHashMap<Column, Option<Vec<SectionLight>>>,
     queue: VecDeque<(Column, LightTask)>,
     queued_counts: FxHashMap<Column, usize>,
@@ -55,7 +55,7 @@ impl RemoteLight {
 impl Game<'_> {
     /// A chunk packet's column was adopted, with its block entities in the
     /// level: the client chunk seam (milestone 8) tells `client_chunk_load`.
-    pub(in crate::game) fn client_chunk_load(&mut self, x: i32, z: i32) {
+    pub(in crate::game::client_side) fn client_chunk_load(&mut self, x: i32, z: i32) {
         if !mod_api::__private::listened(mod_api::HookId::ClientChunkLoad) {
             return;
         }
@@ -92,7 +92,7 @@ impl Game<'_> {
     /// `handleLevelChunkWithLight`: the column replaces any loaded one, and
     /// its block entities load their update tags. `decoded` is the column the
     /// decoder made with `format`; another format since means decode again.
-    pub(super) fn remote_chunk(
+    pub(in crate::game) fn remote_chunk(
         &mut self,
         p: &play::LevelChunkWithLight,
         decoded: Option<(&Arc<ChunkFormat>, Result<Chunk, String>)>,
@@ -222,7 +222,7 @@ impl Game<'_> {
 
     /// `LevelChunk.replaceWithPacketData`'s block entities of column `(x, z)`, as its chunk
     /// packet lists them: each made for its block, then loading its update tag.
-    pub(in crate::game) fn load_block_entities(
+    pub(in crate::game::client_side) fn load_block_entities(
         &mut self,
         (x, z): (i32, i32),
         infos: &[sunrise_protocol::chunk::BlockEntityInfo],
@@ -255,7 +255,7 @@ impl Game<'_> {
     /// its new biomes (`ClientChunkCache.replaceBiomes`), then every section
     /// of it and of its neighbours is drawn again, as their colours blend
     /// across columns (`LevelExtractor.setSectionDirty`).
-    pub(super) fn remote_chunks_biomes(&mut self, p: &play::ChunksBiomes) {
+    pub(in crate::game) fn remote_chunks_biomes(&mut self, p: &play::ChunksBiomes) {
         let Some(format) = self.remote.as_ref().map(|r| r.chunk_format.clone()) else {
             return;
         };
@@ -288,7 +288,7 @@ impl Game<'_> {
     }
 
     /// `handleLightUpdatePacket`: queue light independently of block admission.
-    pub(super) fn remote_light_update(&mut self, p: &play::LightUpdate) {
+    pub(in crate::game) fn remote_light_update(&mut self, p: &play::LightUpdate) {
         if let Some(r) = &mut self.remote {
             let layers = r.chunk_format.light(&p.light);
             r.chunk_light.enqueue(
@@ -301,7 +301,10 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn forget_remote_light(&mut self, positions: &FxHashSet<Column>) {
+    pub(in crate::game::client_side) fn forget_remote_light(
+        &mut self,
+        positions: &FxHashSet<Column>,
+    ) {
         if let Some(r) = &mut self.remote {
             for &key in positions {
                 r.chunk_light.enqueue(key, LightTask::Forget);
@@ -309,14 +312,14 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn clear_remote_light(&mut self) {
+    pub(in crate::game::client_side) fn clear_remote_light(&mut self) {
         if let Some(r) = &mut self.remote {
             r.chunk_light = RemoteLight::default();
         }
     }
 
     /// `ClientLevel.pollLightUpdates`, before streaming takes the light inputs for meshes.
-    pub(super) fn poll_remote_light(&mut self) {
+    pub(in crate::game) fn poll_remote_light(&mut self) {
         let Some(r) = &self.remote else { return };
         let size = r.chunk_light.queue.len();
         // `ClientLevel.pollLightUpdates`: under 1000 queued, the greater of 10 and a

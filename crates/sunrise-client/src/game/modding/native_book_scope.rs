@@ -164,7 +164,10 @@ impl Game<'_> {
             block,
         })
     }
-    pub(in crate::game) fn mod_book_menu_unchanged(&self, before: &MenuSnapshot) -> bool {
+    pub(in crate::game::server_side) fn mod_book_menu_unchanged(
+        &self,
+        before: &MenuSnapshot,
+    ) -> bool {
         let slots = {
             let Some(host) = &self.lan else {
                 return false;

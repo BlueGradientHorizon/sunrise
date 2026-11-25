@@ -68,7 +68,7 @@ HangingEntityItem.appendHoverText	port	crates/sunrise-client/src/game/blocks/sta
 Item.getDestroySpeed	port	crates/sunrise-items/src/items.rs::Items::mining_speed
 Item.finishUsingItem	port	crates/sunrise-client/src/game/items/using_item.rs::Game::consume_held	the consumable effects are applied by apply_consume_effect
 Item.getBarColor	port	crates/sunrise-client-render/src/hud_overlays.rs::damage_bar	width and hue from the damage fraction
-Item.mineBlock	port	crates/sunrise-client/src/game/blocks/block_breaking.rs::Game::mine_block_with_held
+Item.mineBlock	port	crates/sunrise-client/src/game/blocks/block_breaking_server.rs::Game::mine_block_with_held
 Item.isCorrectToolForDrops	port	crates/sunrise-items/src/items.rs::Items::correct_for_drops
 Item.getUseAnimation	port	crates/sunrise-items/src/use_animation.rs::consumable_animation	consumable animation; the block and spear poses are handled by the item pose code
 Item.getPlayerPOVHitResult	port	crates/sunrise-client/src/game/entities/pick_ray.rs::Game::pick	the view ray from the eyes; the fluid variant is Game::pick_fluid
@@ -104,7 +104,7 @@ ItemStack.processDurabilityChange	port	crates/sunrise-client/src/game/items/ench
 ItemStack.applyDamage	port	crates/sunrise-client/src/game.rs::Game::damage_held	gap: minor: no item durability advancement trigger fires
 ItemStack.hurtAndConvertOnBreak	port	crates/sunrise-client/src/game/mobs/mounts.rs::Game::use_steering_stick	steering-stick wear uses the shared durability path; a broken stick becomes a fishing rod retaining its components with damage reset
 ItemStack.hurtEnemy	port	crates/sunrise-client/src/game/items/mace.rs::Game::weapon_wear	the per-hit durability loss of a weapon
-ItemStack.interactLivingEntity	port	crates/sunrise-client/src/game/items/item_actions.rs::Game::interact_entity	equip-on-interact is in the mob paths (nautili.rs, ghasts.rs)
+ItemStack.interactLivingEntity	port	crates/sunrise-client/src/game/items/item_actions_server.rs::Game::interact_entity	equip-on-interact is in the mob paths (nautili.rs, ghasts.rs)
 ItemStack.copy	skip:java		value copy
 ItemStack.copyWithCount	skip:java		value copy with a count
 ItemStack.transmuteCopyIgnoreEmpty	port	crates/sunrise-items/src/item_data.rs::ItemStack::transmute	keeps the components, changes the item
@@ -146,7 +146,7 @@ MapItem.lockMap	port	crates/sunrise-client/src/menu.rs::Menu::map_crafted	the lo
 MapItem.useOn	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::use_map_on_banner	a map used on a block in the `minecraft:banners` tag toggles that banner's marker (`MapData::toggle_banner`); a failed toggle ends the use without a swing, and `game/network/remote/mod.rs` predicts the same for its own map
 MobBucketItem.emptyContents	port	crates/sunrise-world/src/level/buckets.rs::Sim::bucket_empty	the MobWater and Nothing contents
 PotionItem.getDefaultInstance	skip:data		default stack data
-PotionItem.useOn	port	crates/sunrise-client/src/game/items/potions.rs::Game::use_water_bottle_on_block	a water bottle poured on #convertible_to_mud makes mud and empties the bottle
+PotionItem.useOn	port	crates/sunrise-client/src/game/items/potions_server.rs::Game::use_water_bottle_on_block	a water bottle poured on #convertible_to_mud makes mud and empties the bottle
 PotionItem.getName	port	crates/sunrise-client/src/game/items/stack_names.rs::Game::stack_hover_name	potion name from the contents
 ProjectileItem.DispenseConfig.Builder.build	inline	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_projectile	per-item dispense config
 ProjectileWeaponItem.getHeldProjectile	port	crates/sunrise-client/src/game/items/crossbow.rs::Game::projectile_slot	offhand first, then the held slot

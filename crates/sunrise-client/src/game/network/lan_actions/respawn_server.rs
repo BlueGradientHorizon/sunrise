@@ -6,6 +6,28 @@ pub(in crate::game::server_side) use crate::game::lan_actions::respawn::*;
 pub(in crate::game::server_side) use crate::game::{commands::Target, server_travel::SpawnAction};
 
 impl Game<'_> {
+    /// `handleClientCommand(PERFORM_RESPAWN)` calls PlayerList, not ServerPlayer.teleport.
+    pub(in crate::game) fn commit_player_respawn(&mut self, conn: u32) {
+        let Some(host) = self.lan.as_mut() else {
+            return;
+        };
+        let Some((end_conquered, dead)) = host.hub.update_guest(conn, |guest| {
+            (
+                std::mem::take(&mut guest.won_game),
+                guest.dead && !guest.respawning,
+            )
+        }) else {
+            return;
+        };
+        if end_conquered || dead {
+            self.queue_spawn_trip(
+                conn,
+                SpawnAction::Replace {
+                    was_death: !end_conquered,
+                },
+            );
+        }
+    }
     /// `SculkCatalystBlockEntity.CatalystListener`'s trigger on a player's
     /// death: for the player the dying guest's combat record credits
     /// (`LivingEntity.getKillCredit`), with the death's `killing_blow`.
@@ -481,6 +503,9 @@ impl Game<'_> {
             .filter(|d| d.id == id)
             .map(|_| "minecraft:ender_dragon".into())
     }
+    pub(in crate::game) fn guest_respawn(&mut self, conn: u32) {
+        self.after_commit(crate::game::transactions::After::PlayerRespawn(conn));
+    }
     /// PlayerList.respawn, after its TeleportTransition and NeoForge's redirect are final.
     pub(in crate::game::server_side) fn place_cloned_player(
         &mut self,
@@ -709,6 +734,37 @@ impl Game<'_> {
                     .set_game_mode(conn, to.id(), &self.world, Some(self.collision));
             }
         }
+    }
+    /// Player.remove in the source level. The close hook still writes the old player's map.
+    pub(in crate::game) fn remove_old_player_for_clone(&mut self, conn: u32, was_death: bool) {
+        let Some(entity) = self
+            .lan
+            .as_ref()
+            .and_then(|h| h.hub.guest(conn))
+            .filter(|g| g.placed)
+            .map(|g| g.entity_id as u32)
+        else {
+            return;
+        };
+        self.eject_player_riders(Some(entity));
+        self.guest_close_menus(
+            conn,
+            if was_death {
+                MenuRemoval::Killed
+            } else {
+                MenuRemoval::ChangedDimension
+            },
+        );
+        if let Some(host) = self.lan.as_mut()
+            && let Some(i) = host.hub.guests.connection_index(conn)
+        {
+            host.hub.remove_player_for_respawn(i);
+            if let Some(map) = host.hub.guests.attachments_mut(conn) {
+                map.retire();
+                map.unbind_index();
+            }
+        }
+        self.entity_section_forget(entity);
     }
     /// Run part of `ServerPlayer.die` on the victim's body. A hit that already
     /// has the body installed must not try to enter the same guest again.

@@ -496,7 +496,7 @@ impl Game<'_> {
         self.raiding.0.raids(self.dim.id())
     }
     /// `ServerLevel.getRaidAt`.
-    pub(in crate::game) fn raiding_nearby(&self, at: [i32; 3]) -> Option<i32> {
+    pub(in crate::game::server_side) fn raiding_nearby(&self, at: [i32; 3]) -> Option<i32> {
         self.raiding.0.raids.nearby(at).map(|(id, _)| id)
     }
     /// `/raid start`: a raid in the local village at the given omen level.
@@ -518,10 +518,10 @@ impl Game<'_> {
             self.native_raid_state_change(mod_api::RaidRef::new(level, id), center, "stopped");
         }
     }
-    pub(in crate::game) fn raid_set_omen(&mut self, id: i32, level: i32) -> i32 {
+    pub(in crate::game::server_side) fn raid_set_omen(&mut self, id: i32, level: i32) -> i32 {
         self.raiding.0.raids.set_omen_level(id, level).unwrap_or(0)
     }
-    pub(in crate::game) fn raid_glow(&mut self, id: i32) {
+    pub(in crate::game::server_side) fn raid_glow(&mut self, id: i32) {
         for m in &mut self.mobs {
             if raider::state(m).is_some_and(|s| s.raid_id == Some(id)) {
                 m.add_effect("glowing", 1000, 1);
@@ -529,7 +529,7 @@ impl Game<'_> {
         }
     }
     /// The `/raid check` summary line.
-    pub(in crate::game) fn raid_status_text(&self, id: i32) -> String {
+    pub(in crate::game::server_side) fn raid_status_text(&self, id: i32) -> String {
         let Some(r) = self.raiding.0.raids.get(id) else {
             return String::new();
         };
@@ -867,7 +867,7 @@ impl Game<'_> {
     /// `EntityType.create` then `finalizeSpawn` for a patrol or a raid: the
     /// mob keeps the default rotation; a leader is set before finalizing so
     /// it wears the banner.
-    pub(in crate::game) fn spawn_event_mob(
+    pub(in crate::game::server_side) fn spawn_event_mob(
         &mut self,
         kind: &str,
         at: [f64; 3],
@@ -1274,7 +1274,7 @@ impl Game<'_> {
     }
     /// `OminousBottleAmplifier.onConsume`: Bad Omen for 100 minutes at the
     /// bottle's amplifier. The consumable list owns the dispose sound.
-    pub(in crate::game) fn drink_ominous_bottle(
+    pub(in crate::game::server_side) fn drink_ominous_bottle(
         &mut self,
         stack: &sunrise_client::items::ItemStack,
     ) {

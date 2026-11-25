@@ -55,7 +55,7 @@ impl TryIntoEngine for ApiStack {
 }
 
 /// Resolve an API item to the registry's shared identity and definition.
-pub(super) fn stack_item_definition(
+pub(in crate::game) fn stack_item_definition(
     item: mod_api::ItemKey,
     items: &Items,
 ) -> Result<(&Arc<str>, &ItemInfo), StackWriteError> {
@@ -69,7 +69,7 @@ pub(super) fn stack_item_definition(
 /// Check a decoded stack's effective limits and canonicalize a max-damage override.
 /// Pass explicit damage before signed narrowing; `None` reads effective damage from the stack
 /// and item definition.
-pub(super) fn admit_stack_limits(
+pub(in crate::game) fn admit_stack_limits(
     stack: &mut EngineStack,
     definition: &ItemInfo,
     damage: Option<u32>,

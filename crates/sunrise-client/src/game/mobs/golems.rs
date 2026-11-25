@@ -131,7 +131,7 @@ impl Game<'_> {
     /// `CarvedPumpkinBlock.onPlace`. When the head completes a golem, onPlace
     /// builds it inside setBlock and the spot is air again by the time
     /// setBlock would update neighbours, so it skips them.
-    pub(in crate::game) fn set_golem_head(
+    pub(in crate::game::server_side) fn set_golem_head(
         &mut self,
         head: [i32; 3],
         state: sunrise_world::registry::BlockStateId,

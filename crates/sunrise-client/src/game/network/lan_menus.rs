@@ -18,11 +18,11 @@ pub(in crate::game) struct GuestMenus {
     /// The workstation menu the guest has open (game/network/lan_stations.rs).
     pub(in crate::game) station: MenuOwner<Option<GuestStation>>,
     /// The transient menu engine, kept between clicks for drag state.
-    pub(super) owned_menu: Option<(u64, Box<sunrise_client::menu::Menu>)>,
+    pub(in crate::game) owned_menu: Option<(u64, Box<sunrise_client::menu::Menu>)>,
     /// The trading window is live even while the guest's player state is on loan.
-    pub(super) merchant: MenuOwner<Option<super::lan_trading::GuestMerchant>>,
+    pub(in crate::game) merchant: MenuOwner<Option<super::lan_trading::GuestMerchant>>,
     /// The outer `menu_clicked` decision. Nested default routing can decide a pickup on `hub`.
-    pub(super) click: MenuOwner<()>,
+    pub(in crate::game) click: MenuOwner<()>,
     /// Names the hub's container clicks of this guest, which have no menu value of their own: a
     /// click while another of the guest's is being decided is refused as busy.
     pub(in crate::game) hub: MenuOwner<()>,
@@ -34,13 +34,13 @@ pub(in crate::game) struct GuestMenus {
 }
 
 /// An authoritative click reply, published only once the click's transaction has committed.
-pub(super) struct MenuClickReply {
+pub(in crate::game) struct MenuClickReply {
     conn: u32,
     generation: u64,
     reply: ClickReply,
 }
 
-pub(super) enum ClickReply {
+pub(in crate::game) enum ClickReply {
     Predicted(sunrise_protocol::packets::play::ContainerClick, Vec<usize>),
     Resend(i32),
     Close(i32),
@@ -49,7 +49,7 @@ pub(super) enum ClickReply {
 }
 
 impl super::Game<'_> {
-    pub(super) fn reply_predicted_menu_click(
+    pub(in crate::game::server_side) fn reply_predicted_menu_click(
         &mut self,
         conn: u32,
         packet: &sunrise_protocol::packets::play::ContainerClick,
@@ -65,7 +65,7 @@ impl super::Game<'_> {
         }
     }
 
-    pub(super) fn reply_menu_click(&mut self, conn: u32, reply: ClickReply) {
+    pub(in crate::game) fn reply_menu_click(&mut self, conn: u32, reply: ClickReply) {
         if let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
             self.after_commit(super::transactions::After::MenuClick(Box::new(
                 MenuClickReply {
@@ -79,7 +79,7 @@ impl super::Game<'_> {
 
     /// Close the admitted window through the same generation-checked path whether it
     /// can close immediately or a click transaction must publish it at commit.
-    pub(super) fn request_menu_close(&mut self, conn: u32, window: i32, generation: u64) {
+    pub(in crate::game) fn request_menu_close(&mut self, conn: u32, window: i32, generation: u64) {
         let reply = MenuClickReply {
             conn,
             generation,
@@ -92,7 +92,7 @@ impl super::Game<'_> {
         }
     }
 
-    pub(super) fn publish_menu_click(&mut self, reply: MenuClickReply) {
+    pub(in crate::game) fn publish_menu_click(&mut self, reply: MenuClickReply) {
         use sunrise_protocol::packets::play::{Clientbound as C, SetPlayerInventory};
         let MenuClickReply {
             conn,

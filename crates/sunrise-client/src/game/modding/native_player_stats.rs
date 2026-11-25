@@ -14,12 +14,12 @@ use super::native_namespaced_id::namespaced;
 
 impl Game<'_> {
     /// Whether `player` still names the same player on this server.
-    pub(in crate::game) fn native_player_current(&self, player: PlayerRef) -> bool {
+    pub(in crate::game::server_side) fn native_player_current(&self, player: PlayerRef) -> bool {
         self.player_handle_read(player).is_some()
     }
     /// The guest record `player` reads from outside their turn, or None
     /// when their state is in the game (they act, or they are the host).
-    pub(in crate::game) fn native_player_resting(
+    pub(in crate::game::server_side) fn native_player_resting(
         &self,
         player: PlayerRef,
     ) -> Option<&sunrise_client::lan::guest::Guest> {

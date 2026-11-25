@@ -76,7 +76,11 @@ mod teleport_cross_tests;
 
 impl Game<'_> {
     /// `AbstractMinecart.getDismountLocationForPassenger` for a standing mob.
-    pub(in crate::game) fn cart_dismount_point(&self, vehicle: u32, rider: u32) -> Option<Vec3> {
+    pub(in crate::game::server_side) fn cart_dismount_point(
+        &self,
+        vehicle: u32,
+        rider: u32,
+    ) -> Option<Vec3> {
         self.cart_dismount_point_from(self.cart_object(vehicle)?, self.mob_object(rider)?)
     }
 
@@ -143,7 +147,11 @@ impl Game<'_> {
 
     /// `AbstractHorse.getDismountLocationForPassenger`: try either side
     /// through the mount's height, then fall back to its feet.
-    pub(in crate::game) fn horse_dismount_point(&self, vehicle: u32, rider: u32) -> Option<Vec3> {
+    pub(in crate::game::server_side) fn horse_dismount_point(
+        &self,
+        vehicle: u32,
+        rider: u32,
+    ) -> Option<Vec3> {
         self.horse_dismount_mobs(self.mob_object(vehicle)?, self.mob_object(rider)?)
     }
 

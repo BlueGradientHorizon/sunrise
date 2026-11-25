@@ -700,7 +700,7 @@ impl Game<'_> {
     /// overlay via `close_replaced_screen_for_mod` before applying the
     /// decision, so `ScreenOpening::ModScreen` and `ScreenOpening::Vanilla`
     /// answers remain eligible even when replacing an overlay.
-    pub(in crate::game) fn decide_screen_for_mod_open(
+    pub(in crate::game::client_side) fn decide_screen_for_mod_open(
         &self,
         current: &ScreenView<'_>,
         new: &ScreenView<'_>,
@@ -895,7 +895,7 @@ impl Game<'_> {
     }
     /// The internal container slot base of the open mod screen (`MOD_MENU_SLOT_BASE`
     /// for a `ModMenuType`, `300` for a stock menu).
-    pub(in crate::game) fn native_screen_container_slot_base(&self) -> usize {
+    pub(in crate::game::client_side) fn native_screen_container_slot_base(&self) -> usize {
         self.shown_native_screen()
             .map_or(300, OpenNativeScreen::container_slot_base)
     }
@@ -924,7 +924,7 @@ impl Game<'_> {
         self.shown_native_screen().map(|s| s.layout().inventory_y)
     }
     /// The menu type resolved for this client's opening, including in ScreenOpening.
-    pub(in crate::game) fn native_screen_menu_type(
+    pub(in crate::game::client_side) fn native_screen_menu_type(
         &self,
         window: i32,
         name: &str,
@@ -1041,7 +1041,7 @@ impl Game<'_> {
     }
     /// The pose of native mods' camera shake in this frame (`native_camera_shake`),
     /// none while not playing.
-    pub(in crate::game) fn native_shake_matrix(&self, partial: f32) -> glam::Mat4 {
+    pub(in crate::game::client_side) fn native_shake_matrix(&self, partial: f32) -> glam::Mat4 {
         if !self.playing() {
             return glam::Mat4::IDENTITY;
         }
@@ -1054,7 +1054,7 @@ impl Game<'_> {
     }
     /// The zoom in effect while playing (a native mod's); the spyglass's own
     /// view wins.
-    pub(in crate::game) fn native_zoom_now(&self) -> Option<mod_api::Zoom> {
+    pub(in crate::game::client_side) fn native_zoom_now(&self) -> Option<mod_api::Zoom> {
         if !self.playing() || self.scoping() {
             return None;
         }
@@ -2077,7 +2077,7 @@ impl Game<'_> {
         .any(mod_api::__private::listened)
     }
     /// Whether a mod listens to one of the four screen render hooks.
-    pub(in crate::game) fn screen_render_listened(&self) -> bool {
+    pub(in crate::game::client_side) fn screen_render_listened(&self) -> bool {
         use mod_api::HookId;
         [
             HookId::ScreenRenderPre,
@@ -2089,7 +2089,7 @@ impl Game<'_> {
         .any(mod_api::__private::listened)
     }
     /// `Render.Pre`: whether the screen draws.
-    pub(in crate::game) fn screen_render_begin(
+    pub(in crate::game::client_side) fn screen_render_begin(
         &self,
         draw: &mut HudBatch,
         screen: &ScreenView<'_>,
@@ -2099,7 +2099,11 @@ impl Game<'_> {
         !canceled
     }
     /// `Render.Post`, including when Pre cancelled the screen's drawing.
-    pub(in crate::game) fn screen_render_end(&self, draw: &mut HudBatch, screen: &ScreenView<'_>) {
+    pub(in crate::game::client_side) fn screen_render_end(
+        &self,
+        draw: &mut HudBatch,
+        screen: &ScreenView<'_>,
+    ) {
         self.native_screen_render_post(draw, screen);
     }
     /// Borrowed `ScreenView` of the open screen for this frame.
@@ -2297,7 +2301,7 @@ impl Game<'_> {
             .collect()
     }
     /// Persists a changed setting on native mod `i`'s page and fires `setting_changed`.
-    pub(in crate::game) fn native_setting_event(&mut self, i: usize, j: usize) {
+    pub(in crate::game::client_side) fn native_setting_event(&mut self, i: usize, j: usize) {
         let Some(row) = self.settings.mods.installed.get(i) else {
             return;
         };
@@ -2320,7 +2324,7 @@ impl Game<'_> {
         }
     }
     /// Native mod `i`'s page opened: its settings' kept values read again.
-    pub(in crate::game) fn native_settings_refresh(&mut self, i: usize) {
+    pub(in crate::game::client_side) fn native_settings_refresh(&mut self, i: usize) {
         let Some(id) = self.settings.mods.installed.get(i).map(|m| m.id.clone()) else {
             return;
         };

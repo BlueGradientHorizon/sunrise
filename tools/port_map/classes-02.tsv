@@ -1,7 +1,7 @@
 PlayerHeadItem.getName	port	crates/sunrise-client/src/item_tooltip.rs::player_head_name	name_line titles a head whose profile has a name through block.minecraft.player_head.named ("%s's Head")
 ShearsItem.createToolProperties	skip:data		tool rules (cobweb speed, shears breaking-speed tags) come from item data; items.rs reads minecraft:tool
-ShearsItem.mineBlock	port	crates/sunrise-client/src/game/blocks/block_breaking.rs::Game::mine_block_with_held	shears wear one damage_per_block on any block but fire
-ShearsItem.useOn	port	crates/sunrise-client/src/game/blocks/growth.rs::Game::shears_crop	shears crop a growing plant head to age 25 with block.growing_plant.crop, a block_change and one wear; pumpkin carving is PumpkinBlock's own path (game/blocks/pumpkin.rs)
+ShearsItem.mineBlock	port	crates/sunrise-client/src/game/blocks/block_breaking_server.rs::Game::mine_block_with_held	shears wear one damage_per_block on any block but fire
+ShearsItem.useOn	port	crates/sunrise-client/src/game/blocks/growth_server.rs::Game::shears_crop	shears crop a growing plant head to age 25 with block.growing_plant.crop, a block_change and one wear; pumpkin carving is PumpkinBlock's own path (game/blocks/pumpkin.rs)
 SnowballItem.asProjectile	port	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::shoot_projectile_item	a dispensed snowball or egg is shot with the dispenser's own config
 SnowballItem.use	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::throw_item	throw at 1.5 power, throw sound, use cooldown, one consumed
 SplashPotionItem.createPotion	port	crates/sunrise-client/src/game/items/potions.rs::Game::launch_thrown	the thrown splash potion entity is launched with the stack
@@ -113,16 +113,16 @@ ItemEnchantments.getTagOrEmpty	skip:java
 TargetedConditionalEffect.equipmentDropsCodec	skip:java
 TargetedConditionalEffect.matches	port	crates/sunrise-world/src/loot.rs::LootData::equipment_drops	equipment_drops (Looting) checks the requirements per enchanted slot
 AllOf.codec	skip:java
-AllOf.EntityEffects.apply	inline	crates/sunrise-client/src/game/items/enchant_effects_client.rs::Game::apply_piercing_effect	gap: minor: nested all_of is walked only for the post-piercing hook
+AllOf.EntityEffects.apply	inline	crates/sunrise-client/src/game/items/enchant_effects.rs::Game::apply_piercing_effect	gap: minor: nested all_of is walked only for the post-piercing hook
 AllOf.LocationBasedEffects.onChangedBlock	inline	crates/sunrise-client/src/game/items/enchant_effects.rs::Game::location_changed_effects	gap: minor: only the replace_disk effect is handled; the nested list is not walked
 AllOf.LocationBasedEffects.onDeactivated	inline	crates/sunrise-client/src/game/items/enchant_effects.rs::Game::location_changed_effects	gap: minor: only the replace_disk effect is handled; the nested list is not walked
 AllOf.ValueEffects.process	port	crates/sunrise-items/src/enchant.rs::Enchantments::modify_value_with	each value effect in turn
 ApplyEntityImpulse.apply	port	crates/sunrise-client/src/game/items/enchant_effects.rs::look_impulse	impulse along the look direction, for the post-piercing hook and a new projectile
-ApplyExhaustion.apply	port	crates/sunrise-client/src/game/items/enchant_effects_client.rs::Game::apply_piercing_effect	food exhaustion on the post-piercing hook
+ApplyExhaustion.apply	port	crates/sunrise-client/src/game/items/enchant_effects.rs::Game::apply_piercing_effect	food exhaustion on the post-piercing hook
 DamageEntity.apply	port	crates/sunrise-client/src/game/items/enchant_effects.rs::Game::thorns_damage	thorns damage, random between min and max
 ExplodeEffect.apply	port	crates/sunrise-client/src/game/items/enchant_effects.rs::Game::post_attack_bursts	wind burst at the player's feet
 ExplodeEffect.getDamageSource	inline	crates/sunrise-client/src/game/items/enchant_effects.rs::Game::post_attack_bursts	gap: minor: the burst builds no damage source; it knocks back and triggers blocks only
-PlaySoundEffect.apply	port	crates/sunrise-client/src/game/items/enchant_effects_client.rs::Game::apply_piercing_effect	sound by level, heard by all
+PlaySoundEffect.apply	port	crates/sunrise-client/src/game/items/enchant_effects.rs::Game::apply_piercing_effect	sound by level, heard by all
 RemoveBinomial.process	port	crates/sunrise-items/src/enchant.rs::apply_value_effect	the binomial drop count for unbreaking
 ReplaceBlock.apply	missing		minor: no enchantment in the pinned data uses replace_block
 RunFunction.apply	missing		minor: no enchantment in the pinned data uses run_function

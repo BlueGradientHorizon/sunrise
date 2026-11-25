@@ -1,0 +1,91 @@
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use super::Game;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::entity_sections::Crossing;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::entity_sections::EntitySections;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::entity_sections::LiveSectionHost;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::entity_sections::LiveSectionObserver;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::entity_sections::PlayerMoveState;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::entity_sections::Scope;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::entity_sections::SectionWriter;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::entity_sections::crossed;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::entity_sections::player::PlayerSectionObserver;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::entity_sections::section_coord;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::entity_sections::section_of;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::entity_sections::tell_live;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::entity_sections::*;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::mobs::living::section_writes::PositionWrite;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use mod_api::__private::game::BackendRefOf;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use mod_api::{DimensionKey, EntityRef, WorldEpoch};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use std::collections::HashMap;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use std::collections::hash_map::Entry;
+
+impl Game<'_> {
+    /// A client's entities after its tick: each one where its interpolation or its own move
+    /// put it (its live position, not the packet's), and this window's player.
+    pub(in crate::game) fn client_entity_sections_stepped(&mut self) {
+        let Some(scope) = self.entity_section_scope() else {
+            return;
+        };
+        let own = self.own_entity_id();
+        let mut sections = std::mem::take(&mut self.native_lifecycle.entity_sections);
+        if let Some(r) = self.remote.as_ref() {
+            for &id in r.entities.keys().filter(|&&id| id != own && id > 0) {
+                if let Some(at) = self.entity_position(EntityRef::new(scope.epoch, id as u32)) {
+                    sections.moved(scope, id as u32, None, at);
+                }
+            }
+        }
+        if let Some(player) = self.player.as_ref()
+            && own > 0
+        {
+            let at = player.position;
+            sections.moved(scope, own as u32, None, [at.x, at.y, at.z]);
+        }
+        self.native_lifecycle.entity_sections = sections;
+        self.tell_entity_sections();
+    }
+    /// A client handles one packet from its server ([`Game::apply_packet`]). A packet that adds,
+    /// moves or removes an entity is a position-update boundary. The add handler files an
+    /// admitted entity untold; a move (`handleMoveEntity`, `handleEntityPositionSync`,
+    /// `handleTeleportEntity`, `handleMovePlayer`'s `PlayerPosition`, a vehicle's) is told when
+    /// it put the entity in another section, and `handleRespawn`'s new player starts over.
+    /// An entity a move only starts interpolating moves at the client's entity tick.
+    pub(in crate::game) fn handle_packet(
+        &mut self,
+        packet: sunrise_protocol::packets::play::Clientbound,
+    ) -> super::Result<()> {
+        use sunrise_protocol::packets::play::Clientbound as C;
+        if self.entity_section_scope().is_none() {
+            return self.apply_packet(packet);
+        }
+        if let C::RemoveEntities(p) = &packet {
+            for &id in &p.ids {
+                self.entity_section_forget(id as u32);
+            }
+        }
+        let respawned = matches!(packet, C::Respawn(_));
+        let result = self.apply_packet(packet);
+        if respawned {
+            self.entity_section_forget(self.own_entity_id() as u32);
+        }
+        result
+    }
+}

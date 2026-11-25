@@ -15,7 +15,7 @@ mixins = "MIXINS"
 [[native.mixin]]
 id = "ported_block_entity_tick"
 kind = "HEAD"
-target = "sunrise_client::game::native_hooks::block_entity_tick::Game<'_>::tick_mod_block_entity_loaded"
+target = "sunrise_client::game::server_side::native_hooks_server::block_entity_tick::Game<'_>::tick_mod_block_entity_loaded"
 helper = "src/mixins/tick.rs"
 bindings = [
   { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
@@ -50,7 +50,7 @@ bindings = [
 [[native.mixin]]
 id = "native_server_started"
 kind = "HEAD"
-target = "sunrise_client::game::server_side::native_hooks_server::base::Game<'_>::native_server_started"
+target = "sunrise_client::game::native_hooks::base::Game<'_>::native_server_started"
 helper = "src/mixins/server_started.rs"
 bindings = [{ name = "dedicated", ty = "bool", value = "dedicated" }]
 

@@ -23,7 +23,7 @@ pub(in crate::game::server_side) use sunrise_core::nbt::Tag;
 
 impl Game<'_> {
     /// Literal ranges retain priority; all remaining consumers resolve the same holder snapshot.
-    pub(in crate::game) fn resolved_slot_source(&self, raw: &str) -> R<Option<Value>> {
+    pub(in crate::game::server_side) fn resolved_slot_source(&self, raw: &str) -> R<Option<Value>> {
         if sunrise_client::command::args::slot_ranges()
             .iter()
             .any(|(name, _)| name == raw)

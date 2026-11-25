@@ -219,7 +219,7 @@ impl Game<'_> {
         (open.window == backed.window && open.slots == Slots::Native).then_some(backed)
     }
 
-    pub(in crate::game) fn forget_menu_places(&mut self, conn: u32) {
+    pub(in crate::game::server_side) fn forget_menu_places(&mut self, conn: u32) {
         if let Some(menus) = self.lan.as_mut().and_then(|lan| lan.menus.get_mut(&conn)) {
             menus.slot_places = None;
         }

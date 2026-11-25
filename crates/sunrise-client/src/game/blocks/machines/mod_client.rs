@@ -76,7 +76,7 @@ impl Game<'_> {
     pub(in crate::game) fn machine_layout_selector(&self) -> Option<bool> {
         self.machine_screen().map(|s| s == Screen::Hopper)
     }
-    pub(in crate::game) fn machine_screen(&self) -> Option<Screen> {
+    pub(in crate::game::client_side) fn machine_screen(&self) -> Option<Screen> {
         let key = self.container?;
         // A mod's screen over a hopper or dispenser menu lays out its own slots.
         if self.native_screen_inventory_y().is_some() {

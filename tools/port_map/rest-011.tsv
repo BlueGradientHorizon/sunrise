@@ -49,7 +49,7 @@ HoverEvent.EntityTooltipInfo.getTooltipLines	port	crates/sunrise-client/src/game
 HoverEvent.EntityTooltipInfo.equals	skip:java		value equality
 HoverEvent.EntityTooltipInfo.hashCode	skip:java		hashing
 LastSeenMessages.updateSignature	inline	crates/sunrise-protocol/src/secure_chat.rs::signed_payload	the last-seen list written into the signed payload
-LastSeenMessages.Packed.unpack	inline	crates/sunrise-client/src/game/network/remote/packets_player.rs::Game::apply_player_chat_packet	PlayerChat arm
+LastSeenMessages.Packed.unpack	inline	crates/sunrise-client/src/game/network/remote/packets_player_client.rs::Game::apply_player_chat_packet	PlayerChat arm
 LastSeenMessages.Update.verifyChecksum	inline	crates/sunrise-protocol/src/secure_chat.rs::LastSeenValidator::apply_update	the checksum check; 0 means not checked
 LastSeenMessagesTracker.addPending	port	crates/sunrise-protocol/src/secure_chat.rs::LastSeenTracker::add_pending
 LastSeenMessagesTracker.addEntry	port	crates/sunrise-protocol/src/secure_chat.rs::LastSeenTracker::add_pending	inlined
@@ -78,7 +78,7 @@ RemoteChatSession.createMessageValidator	port	crates/sunrise-protocol/src/secure
 ResolutionContext.Builder.build	skip:java		builder
 SignableCommand.getArgument	port	crates/sunrise-client/src/lan/hub/chat.rs::Hub::signed_arguments	the command's message arguments, looked up by name
 SignedMessageBody.updateSignature	inline	crates/sunrise-protocol/src/secure_chat.rs::signed_payload	salt, time, content and last seen in the signed payload
-SignedMessageBody.Packed.unpack	inline	crates/sunrise-client/src/game/network/remote/packets_player.rs::Game::apply_player_chat_packet	PlayerChat arm: the last seen only, the body is not kept
+SignedMessageBody.Packed.unpack	inline	crates/sunrise-client/src/game/network/remote/packets_player_client.rs::Game::apply_player_chat_packet	PlayerChat arm: the last seen only, the body is not kept
 SignedMessageChain.encoder	port	crates/sunrise-protocol/src/secure_chat.rs::Encoder::sign
 SignedMessageChain.Decoder.unsigned	port	crates/sunrise-protocol/src/secure_chat.rs::Chain::unpack	no session: unsigned, or refused when the server enforces secure chat
 SignedMessageLink.updateSignature	inline	crates/sunrise-protocol/src/secure_chat.rs::signed_payload	sender, session and index in the signed payload

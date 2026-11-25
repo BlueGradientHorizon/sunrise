@@ -8,7 +8,10 @@ pub(in crate::game::client_side) use crate::game::remote::client_level_tick::*;
 /// Per-level client work bracketed by the shared LevelTickEvent hooks.
 /// No level means no event; failed ticks never emit the post event.
 impl Game<'_> {
-    pub(in crate::game) fn tick_remote_level_body(&mut self) -> Result<()> {
+    pub(in crate::game) fn tick_remote_level(&mut self) -> Result<()> {
+        self.tick_remote_level_with(Self::tick_remote_level_body)
+    }
+    pub(in crate::game::client_side) fn tick_remote_level_body(&mut self) -> Result<()> {
         // MultiPlayerGameMode.tick, first in Minecraft.tick, before the GUI and its screens tick:
         // the slot chosen since the last tick (the wheel, the last tick's number keys, the
         // server's SetHeldSlot), then its Connection.tick's ClientPacketListener.tick (the key
@@ -68,6 +71,28 @@ impl Game<'_> {
         // between CLIENT_TICK_END and a later pong.
         self.remote_handle_input();
         self.tick_remote_player(running, hold)
+    }
+    pub(in crate::game) fn tick_remote_level_with(
+        &mut self,
+        body: impl FnOnce(&mut Self) -> Result<()>,
+    ) -> Result<()> {
+        let level = (mod_api::__private::listened(mod_api::HookId::LevelTickPre)
+            || mod_api::__private::listened(mod_api::HookId::LevelTickPost))
+        .then(|| self.native_client_level())
+        .flatten();
+        if let Some(level) = level {
+            self.native_level_tick_pre(level);
+        }
+        let result = body(self);
+        // Each entity's own move this tick (`EntityEvent.EnteringSection`).
+        self.client_entity_sections_stepped();
+        // `ClientLevel.tick`'s RETURN, which a failed tick does not reach.
+        if result.is_ok()
+            && let Some(level) = level
+        {
+            self.native_level_tick_post(level);
+        }
+        result
     }
 }
 

@@ -270,7 +270,7 @@ impl Editor for JigsawEditor {
 
 impl Game<'_> {
     /// `LocalPlayer.openJigsawBlock`.
-    pub(in crate::game) fn open_jigsaw_block(&mut self, pos: Pos) {
+    pub(in crate::game::client_side) fn open_jigsaw_block(&mut self, pos: Pos) {
         let Some(BlockEntity::JigsawBlock(b)) = self.world.block_entities.get(&pos) else {
             return;
         };

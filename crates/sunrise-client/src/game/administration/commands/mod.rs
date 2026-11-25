@@ -71,7 +71,7 @@ macro_rules! target_entity_mut {
 pub(in crate::game) use target_entity_mut;
 
 impl Game<'_> {
-    pub(in crate::game) fn syntax_failure(&mut self, e: &CommandError, command: &str) {
+    pub(in crate::game::server_side) fn syntax_failure(&mut self, e: &CommandError, command: &str) {
         self.command_failure(e.message.clone());
         if let Some(context) =
             crate::game::commands_common::format_syntax_failure_context(e, command)
@@ -105,7 +105,11 @@ impl Game<'_> {
             _ => None,
         }
     }
-    pub(in crate::game) fn position_arg(&self, ctx: &Context, name: &str) -> Option<[f64; 3]> {
+    pub(in crate::game::server_side) fn position_arg(
+        &self,
+        ctx: &Context,
+        name: &str,
+    ) -> Option<[f64; 3]> {
         self.coords(ctx, name).map(|c| self.resolve_coords(&c))
     }
     pub(in crate::game) fn int(ctx: &Context, name: &str) -> Option<i32> {
@@ -363,7 +367,7 @@ impl Game<'_> {
     }
     // ---- dispatch -------------------------------------------------------
 
-    pub(in crate::game) fn cmd_help(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_help(&mut self, ctx: &Context) -> R<i32> {
         let d = self.ui.dispatcher.0.clone();
         let level = self.ui.registries.permission;
         match ctx.get("command") {
@@ -394,7 +398,7 @@ impl Game<'_> {
             _ => Ok(0),
         }
     }
-    pub(in crate::game) fn cmd_gamemode(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_gamemode(&mut self, ctx: &Context) -> R<i32> {
         let Some(Arg::GameMode(mode)) = ctx.get("gamemode").cloned() else {
             return Ok(0);
         };
@@ -812,7 +816,7 @@ impl Game<'_> {
     /// where `t` goes in `level`, or None when a mod canceled the teleport.
     /// A target that is not a number keeps the command's. Only a server's
     /// entities with a network id are asked.
-    pub(in crate::game) fn teleport_command_target(
+    pub(in crate::game::server_side) fn teleport_command_target(
         &mut self,
         t: Target,
         level: super::Dim,
@@ -839,7 +843,7 @@ impl Game<'_> {
     }
     /// `TimeCommand.getDefaultClock`: explicit registered clocks and dimension defaults are
     /// separate; built-in timelines and markers belong only to Overworld.
-    pub(in crate::game) fn cmd_time(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_time(&mut self, id: &str, ctx: &Context) -> R<i32> {
         if id == "time.query.gametime" {
             let t = self.world.game_time;
             self.feedback_unbroadcast(Text::tr("commands.time.query.gametime", &[&t]));
@@ -993,7 +997,7 @@ impl Game<'_> {
             _ => Ok(0),
         }
     }
-    pub(in crate::game) fn cmd_weather(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_weather(&mut self, ctx: &Context) -> R<i32> {
         let duration = Self::int(ctx, "duration");
         let sample = |min: i32, max: i32, r: &mut sunrise_core::random::LegacyRandom| {
             min + r.next_int_bound(max - min + 1).unwrap_or(0)
@@ -1031,7 +1035,7 @@ impl Game<'_> {
         // An entity in another level is killed in the level that holds it.
         let _ = self.in_target_level(t, |g| g.kill_target_in_level(t));
     }
-    pub(in crate::game) fn cmd_kill(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_kill(&mut self, ctx: &Context) -> R<i32> {
         let targets = if ctx.get("targets").is_some() {
             without_knots(self.entities(ctx, "targets", false)?)?
         } else {
@@ -1060,7 +1064,7 @@ impl Game<'_> {
     }
     /// `Level.isInSpawnableBounds(BlockPos.containing(pos))`: shared by
     /// `/summon` and `/execute summon` (`SummonCommand.createEntity`).
-    pub(in crate::game) fn check_summon_bounds(pos: [f64; 3]) -> R<()> {
+    pub(in crate::game::server_side) fn check_summon_bounds(pos: [f64; 3]) -> R<()> {
         if !(-30_000_000.0..30_000_000.0).contains(&pos[0])
             || !(-20_000_000.0..20_000_000.0).contains(&pos[1])
             || !(-30_000_000.0..30_000_000.0).contains(&pos[2])
@@ -1084,7 +1088,7 @@ impl Game<'_> {
     /// BlockPredicateArgument test of the block at `p`: its state, then any
     /// `{...}` against the block entity's `saveWithFullMetadata`
     /// (`NbtUtils.compareNbt(…, true)`); no block entity fails.
-    pub(in crate::game) fn block_matches(&self, b: &BlockInput, p: [i32; 3]) -> bool {
+    pub(in crate::game::server_side) fn block_matches(&self, b: &BlockInput, p: [i32; 3]) -> bool {
         let state = self.world.block(p[0], p[1], p[2]);
         if !self.command_block_state_matches(b, state) {
             return false;
@@ -1111,7 +1115,7 @@ impl Game<'_> {
     }
     /// `BlockInput.overwriteWithDefinedProperties`: restore explicit command
     /// properties after normalizing the state against neighbouring blocks.
-    pub(in crate::game) fn block_input_state(
+    pub(in crate::game::server_side) fn block_input_state(
         &mut self,
         pos: [i32; 3],
         input: &BlockInput,
@@ -1145,7 +1149,7 @@ impl Game<'_> {
     /// `UPDATE_CLIENTS | UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS`, so `Level.setBlock` notifies no neighbour,
     /// and send that notice themselves once the shape updates are done (`update_neighbours_on_block_set`):
     /// a block those shape updates pop off is gone before its neighbours are told of it.
-    pub(in crate::game) fn place_state(
+    pub(in crate::game::server_side) fn place_state(
         &mut self,
         pos: [i32; 3],
         state: BlockStateId,
@@ -1291,7 +1295,7 @@ impl Game<'_> {
         changed
     }
     /// Raw NBT inspection overlays metadata without unpacking the inventory.
-    pub(in crate::game) fn write_pending_loot(
+    pub(in crate::game::server_side) fn write_pending_loot(
         world: &sunrise_client::world::World,
         key: (i32, i32, i32),
         tag: &mut sunrise_core::nbt::Tag,
@@ -1330,7 +1334,7 @@ impl Game<'_> {
     /// before an unknown target. The blocks are read in the source level and
     /// placed in the target level. The command's own level is back in place,
     /// whatever happened, before the command reports.
-    pub(in crate::game) fn cmd_clone(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_clone(&mut self, ctx: &Context) -> R<i32> {
         let here = self.dim;
         let result = self.clone_levels(ctx);
         if self.dim != here {
@@ -1346,7 +1350,7 @@ impl Game<'_> {
     }
     /// `BlockPosArgument.getLoadedBlockPos` (`Level.isInWorldBounds`) in the
     /// level a dimension argument names, or, without one, the command's own.
-    pub(in crate::game) fn clone_loaded(
+    pub(in crate::game::server_side) fn clone_loaded(
         &mut self,
         dim: Option<Dim>,
         here: Dim,
@@ -1372,7 +1376,11 @@ impl Game<'_> {
     }
     /// `DimensionArgument.getDimension`: a built-in dimension, or
     /// `argument.dimension.invalid`; None when the argument is absent.
-    pub(in crate::game) fn clone_dimension(&self, ctx: &Context, name: &str) -> R<Option<Dim>> {
+    pub(in crate::game::server_side) fn clone_dimension(
+        &self,
+        ctx: &Context,
+        name: &str,
+    ) -> R<Option<Dim>> {
         let Some(Arg::Resource(id)) = ctx.get(name) else {
             return Ok(None);
         };
@@ -1395,7 +1403,7 @@ impl Game<'_> {
         Ok(())
     }
     /// AdvancementCommands.perform / performCriterion.
-    pub(in crate::game) fn cmd_advancement(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_advancement(&mut self, ctx: &Context) -> R<i32> {
         let targets = self.entities(ctx, "targets", true)?;
         self.load_advancements();
         let tree = self.adv.tree.clone();
@@ -1531,7 +1539,7 @@ impl Game<'_> {
             _ => (Text::literal(picked.len().to_string()), true),
         }
     }
-    pub(in crate::game) fn cmd_experience(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_experience(&mut self, ctx: &Context) -> R<i32> {
         let levels = ctx.has("levels");
         let unit = if levels { "levels" } else { "points" };
         if ctx.has("query") {
@@ -1639,7 +1647,7 @@ impl Game<'_> {
             );
         }
     }
-    pub(in crate::game) fn cmd_spawnpoint(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_spawnpoint(&mut self, ctx: &Context) -> R<i32> {
         let targets = if ctx.get("targets").is_some() {
             self.entities(ctx, "targets", true)?
         } else {
@@ -1692,7 +1700,7 @@ impl Game<'_> {
     }
     /// `LevelData.setRespawnData(RespawnData.of(..))`: the world's spawn (level.dat `spawn`)
     /// moves to `pos`, its yaw wrapped and its pitch clamped, and `spawn_change` fires.
-    pub(in crate::game) fn set_world_spawn(
+    pub(in crate::game::server_side) fn set_world_spawn(
         &mut self,
         dimension: Dim,
         pos: [i32; 3],
@@ -1875,7 +1883,7 @@ impl Game<'_> {
             .get(&stack.item)
             .is_some_and(|item| item.components.iter().any(|key| key == id))
     }
-    pub(in crate::game) fn cmd_clear(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_clear(&mut self, ctx: &Context) -> R<i32> {
         let targets = if ctx.get("targets").is_some() {
             self.entities(ctx, "targets", true)?
         } else {
@@ -1978,7 +1986,7 @@ impl Game<'_> {
     }
     /// `LocateCommand.locatePoi`: `PoiManager.findClosestWithType` within
     /// 256 blocks of the source, over the loaded chunks.
-    pub(in crate::game) fn cmd_locate_poi(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_locate_poi(&mut self, ctx: &Context) -> R<i32> {
         let Some(Arg::Resource(poi)) = ctx.get("poi").cloned() else {
             return Ok(0);
         };
@@ -2057,7 +2065,7 @@ impl Game<'_> {
         ));
         Ok(distance)
     }
-    pub(in crate::game) fn cmd_locate(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_locate(&mut self, id: &str, ctx: &Context) -> R<i32> {
         let origin = self.source_position();
         if id == "locate.biome" {
             let Some(Arg::Resource(biome)) = ctx.get("biome").cloned() else {
@@ -2151,7 +2159,7 @@ impl Game<'_> {
     }
     /// ListPlayersCommand: every online player in join order (a single-player
     /// owner is one of them), with the count and the max.
-    pub(in crate::game) fn cmd_list(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_list(&mut self, ctx: &Context) -> R<i32> {
         let players: Vec<(u128, String)> = self
             .lan
             .iter()

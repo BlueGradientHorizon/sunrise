@@ -462,7 +462,7 @@ impl<'g> GameLevel<'g, '_> {
     }
     /// Vanilla adds the mob before checking another position, even when our
     /// pass defers insertion. Keep its current box and collision predicate.
-    pub(in crate::game) fn record_pending(&self, mob: &Mob) {
+    pub(in crate::game::server_side) fn record_pending(&self, mob: &Mob) {
         if !mob.removed {
             self.pending.borrow_mut().push(PendingMob {
                 kind: mob.kind.clone(),
@@ -471,7 +471,10 @@ impl<'g> GameLevel<'g, '_> {
             });
         }
     }
-    pub(in crate::game) fn admit_pending_tree(&self, tree: &mut super::persist::SpawnTree) -> bool {
+    pub(in crate::game::server_side) fn admit_pending_tree(
+        &self,
+        tree: &mut super::persist::SpawnTree,
+    ) -> bool {
         if !tree.admit(&mut self.pending_uuids.borrow_mut(), |uuid| {
             use sunrise_client::join_seq::residency::table::EntityLookup;
             let game = self.game;
@@ -524,7 +527,7 @@ impl<'g> GameLevel<'g, '_> {
     }
     /// A provisional id, distinct within the pass and mapped to a real one
     /// by [`Game::add_spawned`].
-    pub(in crate::game) fn provisional_id(&self) -> u32 {
+    pub(in crate::game::server_side) fn provisional_id(&self) -> u32 {
         let n = self.provisional.get();
         self.provisional.set(n + 1);
         u32::MAX - n
@@ -537,7 +540,7 @@ impl<'g> GameLevel<'g, '_> {
     /// The mob the position check of this spawn created, when one did and it
     /// is the one asked for (`entity` at `position`, facing `yaw`): the spawn
     /// goes on with it rather than creating it again.
-    pub(in crate::game) fn take_checked(
+    pub(in crate::game::server_side) fn take_checked(
         &self,
         entity: &str,
         position: [f64; 3],
@@ -1138,7 +1141,7 @@ impl<'a> Game<'a> {
     /// and rider links that reference them, and seats chicken jockeys on the
     /// chickens already in the level. The old→new map comes back for the
     /// pass's events.
-    pub(in crate::game) fn resolve_spawn_ids(
+    pub(in crate::game::server_side) fn resolve_spawn_ids(
         &mut self,
         mut groups: [&mut [Mob]; 2],
         rides: &[(u32, u32)],
@@ -1207,7 +1210,9 @@ impl<'a> Game<'a> {
         self.level_players_iter().collect()
     }
     /// `level_players` one at a time, without collecting them.
-    pub(in crate::game) fn level_players_iter(&self) -> impl Iterator<Item = LevelPlayer> + '_ {
+    pub(in crate::game::server_side) fn level_players_iter(
+        &self,
+    ) -> impl Iterator<Item = LevelPlayer> + '_ {
         self.local_level_player()
             .into_iter()
             .chain(self.level_guests().map(|g| LevelPlayer {

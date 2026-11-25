@@ -182,7 +182,7 @@ impl Game<'_> {
 
     /// The non-player `rider` is about to board (`mounting`) or leave `vehicle`: false when a mod
     /// canceled it.
-    pub(in crate::game) fn native_mob_may_ride(
+    pub(in crate::game::server_side) fn native_mob_may_ride(
         &mut self,
         rider: u32,
         vehicle: u32,

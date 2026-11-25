@@ -120,7 +120,7 @@ impl Game<'_> {
     /// Dispatch a hit for a projectile ticked outside the shared projectile list.
     /// The caller checks the server opt-in gate and exposes the live projectile
     /// before calling; misses never dispatch.
-    pub(in crate::game) fn native_separate_projectile_impact(
+    pub(in crate::game::server_side) fn native_separate_projectile_impact(
         &mut self,
         projectile: u32,
         kind: &str,

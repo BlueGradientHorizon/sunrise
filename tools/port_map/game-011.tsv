@@ -58,7 +58,7 @@ Llama.registerGoals	port	crates/sunrise-client/src/mobs/llama.rs::register	goals
 Llama.defineSynchedData	port	crates/sunrise-client/src/game/network/lan/mod.rs::mob_meta	strength and variant entries
 Llama.get	port	crates/sunrise-client/src/mobs/finalize.rs::species_variant_component	llama/variant component, a trader llama too
 Llama.applyImplicitComponent	port	crates/sunrise-client/src/entity_nbt.rs::apply_item_components	the `minecraft:llama/variant` name sets the variant; a trader llama inherits the llama's arm
-Llama.playChestEquipsSound	inline	crates/sunrise-client/src/game/mobs/llamas_client.rs::Game::interact_llama	entity.llama.chest when a chest is added
+Llama.playChestEquipsSound	inline	crates/sunrise-client/src/game/mobs/llamas.rs::Game::interact_llama	entity.llama.chest when a chest is added
 Llama.canMate	inline	crates/sunrise-client/src/mobs/goals.rs::Breed::can_use	any llama or trader llama, both tame, adult, not ridden and at full health
 Llama.causeFallDamage	inline	crates/sunrise-client/src/mobs/living.rs::Mob::cause_fall_damage_at	no thud for a llama (equine::is_equine without llama::is_llama), the fall passed on like a horse's; gap: minor: the llama's own damage uses its safe distance of 6
 Llama.leaveCaravan	inline	crates/sunrise-client/src/mobs/caravan.rs::FollowCaravan::stop	clears the caravan head

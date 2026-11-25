@@ -19,7 +19,7 @@ use sunrise_protocol::packets::play;
 impl Game<'_> {
     /// The server player whose entity id is `id`, in the level in place: the
     /// player in place or a guest here. None on a client, or for any other id.
-    pub(in crate::game) fn player_vehicle(&self, id: u32) -> Option<Target> {
+    pub(in crate::game::server_side) fn player_vehicle(&self, id: u32) -> Option<Target> {
         let entity = EntityRef::new(self.native_lifecycle.epoch()?, id);
         match self.native_entity_target(entity)? {
             Target::Player => self.player.as_ref().map(|_| Target::Player),
@@ -32,7 +32,7 @@ impl Game<'_> {
     }
 
     /// The entity id a player target has: the vehicle id its passengers keep.
-    pub(in crate::game) fn player_vehicle_id(&self, player: Target) -> Option<u32> {
+    pub(in crate::game::server_side) fn player_vehicle_id(&self, player: Target) -> Option<u32> {
         match player {
             Target::Player => self
                 .player

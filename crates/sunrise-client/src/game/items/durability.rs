@@ -1,8 +1,13 @@
 //! Shared equipment durability mutation.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use std::convert::Infallible;
+#[allow(unused_imports)]
 use sunrise_client::items::ItemStack;
+#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
+#[allow(unused_imports)]
 use sunrise_world::item_durability::{self, DurabilityStack, DurabilityWorld};
 
 /// Who wears or uses a stack as it takes wear: `ItemStack.hurtAndBreak`'s entity.
@@ -16,11 +21,11 @@ pub(in crate::game) enum Wearer {
     Nobody,
 }
 
-struct World<'a, 'g> {
-    game: &'a mut Game<'g>,
-    original: &'a ItemStack,
-    wearer: Wearer,
-    broken: Option<ItemStack>,
+pub(in crate::game) struct World<'a, 'g> {
+    pub(in crate::game) game: &'a mut Game<'g>,
+    pub(in crate::game) original: &'a ItemStack,
+    pub(in crate::game) wearer: Wearer,
+    pub(in crate::game) broken: Option<ItemStack>,
 }
 
 impl DurabilityWorld for World<'_, '_> {
@@ -62,7 +67,7 @@ impl DurabilityWorld for World<'_, '_> {
 impl Game<'_> {
     /// Compute the server durability update without firing equip effects:
     /// the acting player's stack when `player`, else one nobody holds.
-    pub(super) fn damage_stack(
+    pub(in crate::game) fn damage_stack(
         &mut self,
         stack: &ItemStack,
         amount: i32,
@@ -74,16 +79,6 @@ impl Game<'_> {
             Wearer::Nobody
         };
         self.damage_stack_worn(stack, amount, wearer)
-    }
-    /// `damage_stack` for the stack the living entity `id` wears.
-    pub(in crate::game) fn damage_living_stack(
-        &mut self,
-        stack: &ItemStack,
-        amount: u32,
-        id: u32,
-    ) -> (Option<ItemStack>, Option<ItemStack>) {
-        let amount = amount.min(i32::MAX as u32) as i32;
-        self.damage_stack_worn(stack, amount, Wearer::Living(id))
     }
     /// `damage_stack` for the stack `wearer` wears or uses.
     pub(in crate::game) fn damage_stack_worn(

@@ -15,7 +15,7 @@ impl Game<'_> {
     }
     /// Close the transport before finishing any pack feedback, but keep the pack manager's
     /// prompt state until that feedback has been processed.
-    pub(in crate::game) fn close_server_session(
+    pub(in crate::game::client_side) fn close_server_session(
         &mut self,
         reason: Option<Text>,
         before_pack_cleanup: impl FnOnce(&mut crate::game::server_packs::ServerPackState),
@@ -159,6 +159,20 @@ impl Game<'_> {
         self.offer_retry();
         self.capture(false);
         Ok(())
+    }
+    pub(in crate::game) fn connect_remote_session(
+        &mut self,
+        address: &str,
+        name: &str,
+        local: Option<sunrise_protocol::connection::Pipe>,
+        cookies: Option<sunrise_client::net::Cookies>,
+        lan: bool,
+        realm: bool,
+        list_name: Option<&str>,
+    ) -> Result<()> {
+        let opening =
+            self.open_remote_session(address, name, local, cookies, lan, true, list_name)?;
+        self.install_remote_session(opening, lan, realm)
     }
     /// Switch to a (possibly new) dimension: a fresh client level.
     pub(in crate::game) fn enter_remote_dimension(
@@ -675,7 +689,7 @@ impl Game<'_> {
         self.stats = Default::default();
         Ok(())
     }
-    pub(in crate::game) fn install_remote_session(
+    pub(in crate::game::client_side) fn install_remote_session(
         &mut self,
         opening: RemoteOpening,
         lan: bool,
@@ -962,7 +976,23 @@ impl Game<'_> {
         self.stats = Default::default();
         Ok(())
     }
-    pub(in crate::game) fn open_remote_session(
+    pub(in crate::game::client_side) fn install_remote_transfer(
+        &mut self,
+        opening: RemoteOpening,
+    ) -> Result<()> {
+        self.connection_left(sunrise_hooks::connection::Left::Transferred);
+        self.leave_server(None)?;
+        self.connection_starts(&opening.session.address, &opening.session.name, false);
+        self.install_remote_session(opening, false, false)
+    }
+    /// Disconnect and return to the multiplayer screen (DisconnectedScreen).
+    pub(in crate::game) fn leave_server(&mut self, reason: Option<Text>) -> Result<()> {
+        if reason.is_none() && self.integrated.as_ref().is_some_and(|s| !s.stopped()) {
+            return self.begin_closing_save(false);
+        }
+        self.close_server_session(reason, |_| {})
+    }
+    pub(in crate::game::client_side) fn open_remote_session(
         &mut self,
         address: &str,
         name: &str,
@@ -1037,5 +1067,67 @@ impl Game<'_> {
             local: is_local,
             list_name: list_name.map(str::to_owned),
         })
+    }
+    /// Refuse a bad Play payload with the normal connection-error screen.
+    pub(in crate::game) fn refuse_play_payload(
+        &mut self,
+        error: impl std::fmt::Display,
+    ) -> Result<()> {
+        log::warn!("Sunrise: {error}");
+        self.leave_server(Some(Text::translate(
+            "disconnect.genericReason",
+            &[Text::literal(error.to_string())],
+        )))
+    }
+    /// `ClientPacketListener.handleLogin` when `Minecraft.player != null`: retain the live player, run `resetPos`, rebind residency, and reset input.
+    pub(in crate::game::client_side) fn retain_remote_player_on_login(&mut self) {
+        self.side_reset_client_item_use();
+        self.hook.discard();
+        if let Some(r) = self.remote.as_mut() {
+            r.respawn_velocity = None;
+        }
+        let retained_max_health = self.player.as_mut().map(|player| {
+            let _ = player.set_pose(sunrise_client::pose::Pose::Standing);
+            player.velocity = Vec3::ZERO;
+            player.pitch = 0.0;
+            let max_health = player
+                .attribute("minecraft:max_health")
+                .ok()
+                .map(|v| v as f32);
+            if let Some(max) = max_health {
+                let _ = player.set_health(max, false);
+            }
+            max_health
+        });
+        if let Some(max_health) = retained_max_health {
+            self.pitch = 0.0;
+            if let Some(max) = max_health
+                && let Some(r) = self.remote.as_mut()
+            {
+                r.health.0 = max;
+            }
+            self.ui.death_time = 0;
+            self.input_player_replaced();
+        }
+        self.bind_local_player_residency();
+    }
+    /// `handleTransfer`: close the old connection and start the new one now.
+    /// Keep the old listener installed for the remaining handlers of this bundle.
+    pub(in crate::game::client_side) fn start_remote_transfer(
+        &mut self,
+        transfer: Transfer,
+    ) -> Result<Option<RemoteOpening>> {
+        let Some(remote) = self.remote.as_ref() else {
+            return Ok(None);
+        };
+        remote.session.close_after_pending();
+        if remote.session.address == "local" {
+            return Ok(None);
+        }
+        let address = format!("{}:{}", transfer.host, transfer.port);
+        let name = remote.session.name.clone();
+        let cookies = remote.session.cookies.clone();
+        self.open_remote_session(&address, &name, None, Some(cookies), false, false, None)
+            .map(Some)
     }
 }

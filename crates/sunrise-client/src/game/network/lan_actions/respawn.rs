@@ -4,65 +4,6 @@ use super::*;
 use crate::game::{commands::Target, server_travel::SpawnAction};
 
 impl Game<'_> {
-    pub(in crate::game) fn guest_respawn(&mut self, conn: u32) {
-        self.after_commit(crate::game::transactions::After::PlayerRespawn(conn));
-    }
-
-    /// `handleClientCommand(PERFORM_RESPAWN)` calls PlayerList, not ServerPlayer.teleport.
-    pub(in crate::game) fn commit_player_respawn(&mut self, conn: u32) {
-        let Some(host) = self.lan.as_mut() else {
-            return;
-        };
-        let Some((end_conquered, dead)) = host.hub.update_guest(conn, |guest| {
-            (
-                std::mem::take(&mut guest.won_game),
-                guest.dead && !guest.respawning,
-            )
-        }) else {
-            return;
-        };
-        if end_conquered || dead {
-            self.queue_spawn_trip(
-                conn,
-                SpawnAction::Replace {
-                    was_death: !end_conquered,
-                },
-            );
-        }
-    }
-
-    /// Player.remove in the source level. The close hook still writes the old player's map.
-    pub(in crate::game) fn remove_old_player_for_clone(&mut self, conn: u32, was_death: bool) {
-        let Some(entity) = self
-            .lan
-            .as_ref()
-            .and_then(|h| h.hub.guest(conn))
-            .filter(|g| g.placed)
-            .map(|g| g.entity_id as u32)
-        else {
-            return;
-        };
-        self.eject_player_riders(Some(entity));
-        self.guest_close_menus(
-            conn,
-            if was_death {
-                MenuRemoval::Killed
-            } else {
-                MenuRemoval::ChangedDimension
-            },
-        );
-        if let Some(host) = self.lan.as_mut()
-            && let Some(i) = host.hub.guests.connection_index(conn)
-        {
-            host.hub.remove_player_for_respawn(i);
-            if let Some(map) = host.hub.guests.attachments_mut(conn) {
-                map.retire();
-                map.unbind_index();
-            }
-        }
-        self.entity_section_forget(entity);
-    }
-
     /// `ServerPlayer.die` → `Entity.awardKillScore` on the entity the dying
     /// guest's combat record credits (`LivingEntity.getKillCredit`): the
     /// guest's `entity_killed_player`, with that entity and the death's

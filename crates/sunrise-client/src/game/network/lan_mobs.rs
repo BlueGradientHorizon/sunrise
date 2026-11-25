@@ -237,7 +237,11 @@ impl Game<'_> {
     }
 
     /// ClientboundSetEntityMotionPacket to a guest about themselves.
-    pub(in crate::game) fn send_guest_motion(&self, conn: u32, velocity: Option<Vec3>) {
+    pub(in crate::game::server_side) fn send_guest_motion(
+        &self,
+        conn: u32,
+        velocity: Option<Vec3>,
+    ) {
         if let (Some(v), Some(g)) = (
             velocity,
             self.lan.as_ref().and_then(|host| host.hub.guest(conn)),

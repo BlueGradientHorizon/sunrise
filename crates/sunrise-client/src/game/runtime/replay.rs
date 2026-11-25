@@ -66,7 +66,7 @@ impl Game<'_> {
 
     /// In-game chat command handler: `/studio <record|replay> ...`.
     /// Returns true if the command was recognized and handled.
-    pub(in crate::game) fn studio_command(&mut self, command: &str) -> bool {
+    pub(in crate::game::client_side) fn studio_command(&mut self, command: &str) -> bool {
         let Some(rest) = command.strip_prefix("studio") else {
             return false;
         };

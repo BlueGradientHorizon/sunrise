@@ -17,7 +17,7 @@ use sunrise_core::{
 impl Game<'_> {
     /// `Fox.handleEntityEvent(45)`: eight crumbs of the item in its mouth,
     /// thrown from in front of it along `Entity.getLookAngle`.
-    pub(in crate::game) fn fox_eat_particles(&mut self, id: u32) {
+    pub(in crate::game::client_side) fn fox_eat_particles(&mut self, id: u32) {
         let Some(m) = self
             .mobs
             .iter_mut()

@@ -443,7 +443,7 @@ impl Game<'_> {
         }
     }
     /// CommandSourceStack.getPlayerOrException.
-    pub(in crate::game) fn source_player(&self) -> R<Target> {
+    pub(in crate::game::server_side) fn source_player(&self) -> R<Target> {
         match self.server.command_source.map(|s| s.entity) {
             None | Some(Some(Target::Player)) => Ok(Target::Player),
             _ => Err(err("permissions.requires.player", &[])),

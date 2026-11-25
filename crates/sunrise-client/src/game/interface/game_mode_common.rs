@@ -1,6 +1,9 @@
 //! Common game-mode queries, adventure predicates, chat abilities, and player abilities.
+#[allow(unused_imports)]
 use super::{Game, Screen};
+#[allow(unused_imports)]
 use mod_api::{PlayerAbilities, PlayerRef};
+#[allow(unused_imports)]
 use sunrise_client::{
     chat::{ChatAbilities, ChatVisibility},
     command::args::GameMode,
@@ -42,10 +45,6 @@ impl Game<'_> {
     /// `MultiPlayerGameMode.isSpectator()` on a client; `ServerPlayer.isSpectator()` on a server.
     pub(in crate::game) fn spectator(&self) -> bool {
         self.mode == GameMode::Spectator
-    }
-    /// `MultiPlayerGameMode.canHurtPlayer()` and `hasExperience()` (`localPlayerMode.isSurvival()`).
-    pub(in crate::game) fn can_hurt_player(&self) -> bool {
-        matches!(self.mode, GameMode::Survival | GameMode::Adventure)
     }
     /// `MultiPlayerGameMode.hasMissTime()` (`!localPlayerMode.isCreative()`).
     pub(in crate::game) fn has_miss_time(&self) -> bool {
@@ -219,17 +218,5 @@ impl Game<'_> {
                 "minecraft:can_place_on",
                 relative(pos, face.opposite()),
             )
-    }
-    /// `ItemStack.canPlaceOnBlockInAdventureMode` of the stack a use names.
-    pub(in crate::game) fn stack_can_place_on_in_adventure(
-        &self,
-        stack: &ItemStack,
-        clicked: [i32; 3],
-    ) -> bool {
-        self.stack_adventure_predicate(stack, "minecraft:can_place_on", clicked)
-    }
-    /// `ItemStack.useOn`'s adventure gate for the held item.
-    pub(in crate::game) fn may_use_on(&self, clicked: [i32; 3]) -> bool {
-        self.may_build() || self.can_place_on_in_adventure(clicked)
     }
 }

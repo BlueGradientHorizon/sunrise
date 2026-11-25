@@ -1,10 +1,13 @@
 //! Villager registry indices shared by matching mod loads; no additional packet format.
+#[allow(unused_imports)]
 use sunrise_client::mobs::render::VILLAGER_TYPES;
+#[allow(unused_imports)]
 use sunrise_client::mobs::{Mob, Species, villager::ResolvedProfessions};
+#[allow(unused_imports)]
 use sunrise_protocol::{entity_data::Value, registry::Builtin};
 /// VillagerData as the network sends it: the type and the profession by
 /// their built-in registry ids, then the level.
-pub(super) fn villager_data(m: &mut Mob, data: &[i32], builtin: &Builtin) {
+pub(in crate::game) fn villager_data(m: &mut Mob, data: &[i32], builtin: &Builtin) {
     let &[kind, profession, level] = data else {
         return;
     };
@@ -30,7 +33,7 @@ pub(super) fn villager_data(m: &mut Mob, data: &[i32], builtin: &Builtin) {
 }
 
 /// Apply the ordinary metadata, then resolve profession slots in the owning load.
-pub(super) fn receive(
+pub(in crate::game) fn receive(
     m: &mut Mob,
     values: &[(u8, i32, Value)],
     builtin: &Builtin,
@@ -57,7 +60,7 @@ pub(super) fn receive(
     sound
 }
 
-pub(super) fn server_meta(
+pub(in crate::game) fn server_meta(
     m: &Mob,
     hub: &sunrise_client::lan::hub::Hub,
     player: Option<i32>,
@@ -86,7 +89,7 @@ pub(super) fn server_meta(
     }
 }
 
-pub(super) fn unhappy_counter(
+pub(in crate::game) fn unhappy_counter(
     m: &Mob,
     meta: &mut Vec<(u8, i32, Value)>,
     defaults: &mut Vec<(u8, i32, Value)>,
@@ -109,16 +112,18 @@ pub(super) fn unhappy_counter(
 #[path = "villager_client/tests.rs"]
 pub(in crate::game) mod tests;
 
+#[allow(unused_imports)]
 use std::sync::Arc;
-type BuiltinCache = Vec<(std::path::PathBuf, Arc<Builtin>)>;
-static BUILTIN: std::sync::Mutex<BuiltinCache> = std::sync::Mutex::new(Vec::new());
+pub(in crate::game) type BuiltinCache = Vec<(std::path::PathBuf, Arc<Builtin>)>;
+pub(in crate::game) static BUILTIN: std::sync::Mutex<BuiltinCache> =
+    std::sync::Mutex::new(Vec::new());
 
 /// The prepared resources' `registries.json`, parsed once per root: the
 /// file never changes while the game runs, and parsing it took about 3 ms
 /// of the frame that joins a server (or opens a single-player world).
 /// `None` when it is missing or invalid (not cached: a fixed install can
 /// join again).
-pub(super) fn builtin_registries(root: &std::path::Path) -> Option<Arc<Builtin>> {
+pub(in crate::game) fn builtin_registries(root: &std::path::Path) -> Option<Arc<Builtin>> {
     let mut cache = BUILTIN.lock().unwrap_or_else(|e| e.into_inner());
     if let Some((_, builtin)) = cache.iter().find(|(cached, _)| cached == root) {
         return Some(builtin.clone());
@@ -128,41 +133,4 @@ pub(super) fn builtin_registries(root: &std::path::Path) -> Option<Arc<Builtin>>
     ));
     cache.push((root.to_owned(), builtin.clone()));
     Some(builtin)
-}
-
-impl super::Game<'_> {
-    pub(super) fn client_professions(&self) -> super::Result<Arc<ResolvedProfessions>> {
-        let table = self.prepare_client_professions()?;
-        self.install_client_professions(&table);
-        Ok(table)
-    }
-
-    pub(super) fn prepare_client_professions(&self) -> super::Result<Arc<ResolvedProfessions>> {
-        use mod_api::__private::game::RegistrationContextNew;
-        let declarations = self.mods.profession_declarations.get_or_init(|| {
-            let mut registrar = mod_api::ProfessionDeclarations::default();
-            crate::game::native_hooks::native_register_villager_professions(
-                &mod_api::RegistrationContext::new(),
-                &mut registrar,
-            );
-            registrar.into_entries()
-        });
-        // The client consumes only identity slots. World-dependent POI/trade references
-        // are validated by the authoritative server's complete world preparation.
-        ResolvedProfessions::prepare(declarations.clone(), |_, _| true)
-            .map(Arc::new)
-            .map_err(|errors| format!("client villager professions refused: {errors:?}").into())
-    }
-
-    pub(super) fn install_client_professions(&self, table: &ResolvedProfessions) {
-        sunrise_client::mobs::render::villager_client::install(
-            table,
-            &self
-                .res
-                .mob_data()
-                .villager_hats
-                .read()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-        );
-    }
 }

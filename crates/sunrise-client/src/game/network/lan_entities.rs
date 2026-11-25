@@ -188,7 +188,7 @@ impl Game<'_> {
 
     /// The stops whose removal waited for a captured sound, told once `finish_captured_sounds`
     /// has sent that removal.
-    pub(in crate::game) fn run_tracking_after_sounds(&mut self) {
+    pub(in crate::game::server_side) fn run_tracking_after_sounds(&mut self) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };

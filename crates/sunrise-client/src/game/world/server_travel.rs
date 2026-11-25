@@ -1016,7 +1016,11 @@ impl Game<'_> {
 
     /// Both PlayerList.respawn and an ordinary End exit use the same spawn search. Its
     /// chunks must load before either the replacement or the teleport moves the player.
-    pub(in crate::game) fn queue_spawn_trip(&mut self, conn: u32, action: SpawnAction) {
+    pub(in crate::game::server_side) fn queue_spawn_trip(
+        &mut self,
+        conn: u32,
+        action: SpawnAction,
+    ) {
         if self.server.server_trips.iter().any(|t| {
             t.is(conn)
                 && t.spawn_search
@@ -1519,7 +1523,10 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn apply_direct_level_teleport(&mut self, teleport: LevelTeleport) {
+    pub(in crate::game::server_side) fn apply_direct_level_teleport(
+        &mut self,
+        teleport: LevelTeleport,
+    ) {
         self.apply_level_teleport(teleport, LevelTeleportKind::Direct);
     }
 

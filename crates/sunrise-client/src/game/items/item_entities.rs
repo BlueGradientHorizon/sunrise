@@ -36,7 +36,7 @@ impl Game<'_> {
     }
     /// An item that joined during this tick's entity pass: it first ticks on
     /// the next one.
-    pub(in crate::game) fn joined_during_entity_pass(&self, id: u32) -> bool {
+    pub(in crate::game::server_side) fn joined_during_entity_pass(&self, id: u32) -> bool {
         id > self.server.ticked_entities_through || self.server.contact_drops.contains(&id)
     }
     pub(in crate::game) fn tick_dropped_items(&mut self, round: &mut native_ticks::TickRound) {
@@ -1062,7 +1062,11 @@ impl Game<'_> {
     /// `FurnaceResultSlot.checkTakeAchievements`: the player took from the output of the
     /// furnace at `pos`, which pops the experience of what it made at them
     /// (`awardUsedRecipesAndPopExperience`) and forgets it.
-    pub(in crate::game) fn award_furnace_recipes(&mut self, pos: (i32, i32, i32), at: [f64; 3]) {
+    pub(in crate::game::server_side) fn award_furnace_recipes(
+        &mut self,
+        pos: (i32, i32, i32),
+        at: [f64; 3],
+    ) {
         let used = match self.world.block_entities.get_mut(&pos) {
             Some(BlockEntity::Furnace(f)) => {
                 let used = f.recipe_experience(world_recipes!(self));

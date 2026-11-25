@@ -1,8 +1,13 @@
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use sunrise_core::{connection_kind::ConnectionKind, geometry::Direction, position::BlockPos};
+#[allow(unused_imports)]
 use sunrise_world::level::{BlockId, LevelAccess, PlacementContext, Ticks};
 
+#[allow(unused_imports)]
 use crate::game::mod_api_host::{FireOddsLevel, PredictedLevel};
+#[allow(unused_imports)]
 use std::{cell::RefCell, collections::HashSet};
 
 /// The live level behind a prediction, providing mod dispatch when it has a game host.
@@ -15,27 +20,15 @@ pub(in crate::game) trait PredictionBase: LevelAccess {
     }
 }
 
-impl PredictionBase for crate::game::GameLevel<'_> {
-    fn fire_odds_level<'a>(
-        &'a self,
-        prediction: &'a dyn PredictedLevel,
-    ) -> Option<FireOddsLevel<'a>> {
-        Some(FireOddsLevel {
-            base: self,
-            prediction: Some(prediction),
-        })
-    }
-}
-
 /// Scratch state for client prediction or a server placement preview: reads
 /// go to the world, writes stay here and are dropped.
 pub(in crate::game) struct DryLevel<'w> {
-    base: &'w dyn PredictionBase,
+    pub(in crate::game) base: &'w dyn PredictionBase,
     pub(in crate::game) changed: sunrise_world::level::PreviewBlocks,
-    removed_entities: HashSet<BlockPos>,
+    pub(in crate::game) removed_entities: HashSet<BlockPos>,
     /// For a predicted break, the order in which the simulation reaches the after-shape notices.
     pub(in crate::game) notice_order: Option<RefCell<Vec<BlockPos>>>,
-    random: sunrise_core::random::LegacyRandom,
+    pub(in crate::game) random: sunrise_core::random::LegacyRandom,
     /// The sounds the use plays (a door's creak).
     pub(in crate::game) sounds: Vec<DrySound>,
     /// The server owns liquid-container writes, including a part's replacement.
@@ -46,22 +39,6 @@ pub(in crate::game) struct DryLevel<'w> {
     /// Whether the guess asks mods' placement and survival hooks: a click does, a look at what
     /// a click would do (the controller guide) leaves them to the templates' rules.
     pub(in crate::game) asks_mods: bool,
-}
-
-impl<'w> DryLevel<'w> {
-    pub(in crate::game) fn new(base: &'w dyn PredictionBase) -> Self {
-        Self {
-            base,
-            changed: HashMap::new(),
-            removed_entities: HashSet::new(),
-            notice_order: None,
-            random: sunrise_core::random::LegacyRandom::new(0),
-            sounds: Vec::new(),
-            filled_container: false,
-            reads: None,
-            asks_mods: true,
-        }
-    }
 }
 
 impl crate::game::Game<'_> {

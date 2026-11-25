@@ -54,7 +54,7 @@ impl Game<'_> {
         None
     }
     /// `GiveCommand.giveItem` configures the drop before `addFreshEntity`, without `Player.drop`.
-    pub(in crate::game) fn join_give_item(
+    pub(in crate::game::server_side) fn join_give_item(
         &mut self,
         stack: ItemStack,
         eye: [f64; 3],

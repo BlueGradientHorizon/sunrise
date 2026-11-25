@@ -45,31 +45,6 @@ pub(in crate::game) struct RemoteGeneral {
 }
 
 impl RemoteGeneral {
-    pub(in crate::game) fn new(
-        type_slot: usize,
-        uuid: u128,
-        position: [f64; 3],
-        rotation: [f32; 2],
-        render_attachments: mod_api::EntityRenderAttachments,
-    ) -> Self {
-        Self {
-            join: JoinSeq::next(),
-            type_slot,
-            uuid,
-            position,
-            previous: position,
-            rotation,
-            previous_rotation: rotation,
-            age: 0,
-            render_attachments,
-        }
-    }
-
-    pub(in crate::game) fn publish_attachments(&mut self, attachments: &Attachments) {
-        self.render_attachments =
-            mod_api::__private::game::capture_entity_render_attachments(attachments);
-    }
-
     pub(in crate::game) fn bounds(&self) -> Aabb {
         let [x, y, z] = self.position;
         general_type_catalog().bounds(self.type_slot, Vec3::new(x, y, z))
@@ -91,20 +66,6 @@ pub(in crate::game) struct RemoteGenerals {
     pub(in crate::game) duplicate: bool,
     // Reuse the parent-before-child placement order while the window ticks.
     pub(in crate::game) riders: Vec<(usize, i32, u32, usize)>,
-}
-
-impl RemoteGenerals {
-    /// Forget every row: a world change or a respawn into another dimension.
-    pub fn clear(&mut self) {
-        self.rows.clear();
-    }
-
-    /// Publish after the complete message has been applied.
-    pub fn attachments_arrived(&mut self, id: i32, attachments: &Attachments) {
-        if let Some(row) = self.rows.get_mut(&id) {
-            row.publish_attachments(attachments);
-        }
-    }
 }
 
 impl Remote {
@@ -130,69 +91,6 @@ impl Game<'_> {
             }
         };
         Some(crate::game::general::general_type_catalog().key(slot))
-    }
-
-    /// A `sunrise:general_entity` payload the server sent the window.
-    pub(in crate::game) fn remote_general_entity(&mut self, data: &[u8]) {
-        let message = match general_entity::decode(data) {
-            Ok(message) => message,
-            Err(e) => return log::debug!("Sunrise: a bad general entity spawn: {e}"),
-        };
-        let Message::Spawn {
-            id,
-            uuid,
-            type_key,
-            position,
-            rotation,
-            velocity: _,
-        } = message;
-        // Both sides froze the same declarations (general types come from both-side
-        // packages): a key this client lacks comes from a server that does not match it.
-        let Some(type_slot) = general_type_catalog().slot(&type_key) else {
-            if let Some(r) = self.remote.as_mut()
-                && r.general.unknown.insert(type_key.clone())
-            {
-                log::warn!(
-                    "Sunrise: the server sent general entity type {type_key}, not installed here"
-                );
-            }
-            return;
-        };
-        let Some(r) = self.remote.as_mut() else {
-            return;
-        };
-        if r.general.rows.contains_key(&id) {
-            if !std::mem::replace(&mut r.general.duplicate, true) {
-                log::warn!("Sunrise: the server sent general entity {id} twice; the first stays");
-            }
-            return;
-        }
-        let render_attachments = match u32::try_from(id)
-            .ok()
-            .and_then(|id| r.attachments.get(&Holder::Entity(id)))
-        {
-            Some(existing) => mod_api::__private::game::capture_entity_render_attachments(existing),
-            None => {
-                mod_api::__private::game::capture_entity_render_attachments(&Attachments::default())
-            }
-        };
-        let row = RemoteGeneral::new(type_slot, uuid, position, rotation, render_attachments);
-        self.persist
-            .uuids
-            .insert(id as u32, sunrise_client::lan::playerdata::uuid_ints(uuid));
-        // Tracked: the id-keyed move, position sync, teleport and removal handlers apply.
-        // Snapshot any old emitter body before publishing this new row.
-        self.spawn_entity(
-            id,
-            &type_key,
-            position,
-            [rotation[0], rotation[1], rotation[0]],
-        );
-        if let Some(r) = self.remote.as_mut() {
-            r.general.rows.insert(id, row);
-            r.lerps.remove(&id);
-        }
-        self.pick_section_sync_id(id as u32);
     }
 
     /// `ClientLevel.tickPassenger` for the general rows in an applied passenger
@@ -228,11 +126,6 @@ impl Game<'_> {
         if let Some(remote) = self.remote.as_mut() {
             remote.general.riders = riders;
         }
-    }
-
-    /// The server removed general row `id` from the window.
-    pub(in crate::game) fn forget_remote_general(r: &mut Remote, id: i32) {
-        r.general.rows.shift_remove(&id);
     }
 }
 

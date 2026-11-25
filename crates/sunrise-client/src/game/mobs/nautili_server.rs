@@ -150,4 +150,40 @@ impl Game<'_> {
         }
         false
     }
+    pub(in crate::game::server_side) fn item_tagged(&self, tag: &str, item: &str) -> bool {
+        self.res
+            .items()
+            .item_tags
+            .get(tag)
+            .is_some_and(|t| t.contains(item))
+    }
+    /// `AbstractNautilus.interact` (`super.interact` is `Mob.interact`): any
+    /// click on a nautilus, used or not, makes it persistent before its own
+    /// handling runs.
+    pub(in crate::game::server_side) fn nautilus_clicked(&mut self, id: Option<i32>) {
+        let Some(index) = id.and_then(|id| Self::named_entity(&self.mobs, id, |m| m.id)) else {
+            return;
+        };
+        if nautilus::is_nautilus(self.mobs[index].species()) {
+            self.mobs[index].persistent = true;
+        }
+    }
+    pub(in crate::game::server_side) fn nautilus_sound(&mut self, index: usize, sound: &str) {
+        let at = self.mobs[index].center();
+        self.server_play_sound(&format!("minecraft:{sound}"), at, 1.0, 1.0);
+    }
+    /// `AbstractNautilus.usePlayerItem`: bucketed fish leave a water bucket.
+    pub(in crate::game::server_side) fn use_nautilus_food(&mut self, item: &str) {
+        let bucket = self.item_tagged("minecraft:nautilus_bucket_food", item);
+        self.consume_held();
+        if bucket && !self.creative {
+            let water = ItemStack::new("minecraft:water_bucket", 1);
+            if self.inventory[self.selected].is_none() {
+                self.inventory[self.selected] = Some(water);
+            } else if let Some(rest) = self.add_stack_to_inventory(water) {
+                let at = self.eye_position().unwrap_or([0.0; 3]);
+                self.spawn_item(rest, at, [0.0; 3], 40);
+            }
+        }
+    }
 }

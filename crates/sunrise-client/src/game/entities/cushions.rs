@@ -79,80 +79,6 @@ impl sunrise_client::cushion::World for PlacementWorld<'_, '_> {
 }
 
 impl Game<'_> {
-    /// `BlockBehaviour.Properties.isSuffocating` of a state: the block's
-    /// explicit predicate, else `causes_suffocation` with a full collision
-    /// shape.
-    pub(in crate::game::server_side) fn state_suffocating(
-        &self,
-        state: sunrise_world::registry::BlockStateId,
-    ) -> bool {
-        let facts = self.res.facts().get(state);
-        let name = facts.name.as_ref();
-        // Blocks' explicit predicates, then the default causes_suffocation/full-shape rule.
-        match name {
-            "minecraft:dirt_path"
-            | "minecraft:farmland"
-            | "minecraft:mud"
-            | "minecraft:soul_sand" => true,
-            "minecraft:piston" | "minecraft:sticky_piston" => self
-                .pack
-                .assets
-                .registry
-                .state(state)
-                .is_some_and(|s| s.properties.get("extended").is_some_and(|p| p == "false")),
-            "minecraft:mangrove_roots" | "minecraft:moving_piston" => false,
-            _ if name.ends_with("_leaves")
-                || name.ends_with("glass")
-                || name.ends_with("copper_grate") =>
-            {
-                false
-            }
-            // ShulkerBoxBlock: suffocating while closed; a box seen open
-            // here is rare enough to count as closed.
-            _ if name.ends_with("shulker_box") => true,
-            _ => {
-                facts.full_collision
-                    && self
-                        .res
-                        .items()
-                        .block_in_tag("minecraft:causes_suffocation", name)
-            }
-        }
-    }
-
-    /// `BlockState.isViewBlocking(level, pos, nearPlaneBox)`: stairs and
-    /// slabs (`NEAR_PLANE_INTERSECTS_OUTLINE`) block when the near plane
-    /// touches a box of their shape, snow only at eight layers, anything else
-    /// when it is suffocating.
-    pub(in crate::game) fn state_view_blocking(
-        &self,
-        state: sunrise_world::registry::BlockStateId,
-        pos: [i32; 3],
-        near_plane: Aabb,
-    ) -> bool {
-        let name = self.res.facts().get(state).name.as_ref();
-        if name == "minecraft:snow" {
-            return self
-                .pack
-                .assets
-                .registry
-                .state(state)
-                .and_then(|s| s.properties.get("layers"))
-                .is_some_and(|l| l.parse::<i32>().is_ok_and(|l| l >= 8));
-        }
-        if (name.ends_with("_stairs") || name.ends_with("_slab"))
-            && name != "minecraft:petrified_oak_slab"
-        {
-            return self
-                .outline_boxes(pos)
-                .iter()
-                .any(|b| aabb(([b[0], b[1], b[2]], [b[3], b[4], b[5]])).intersects(near_plane));
-        }
-        self.state_suffocating(state)
-    }
-}
-
-impl Game<'_> {
     /// The cushion under the crosshair, its distance and the hit point.
     pub(in crate::game::server_side) fn cushion_hit(&self) -> Option<(usize, f64, [f64; 3])> {
         let (eye, dir) = self.aim()?;
@@ -359,7 +285,7 @@ impl Game<'_> {
     }
     /// `Player.hasInfiniteMaterials` of a hurt's cause: the mode of the body in
     /// place, or of the guest the blast names.
-    pub(in crate::game) fn infinite_materials(
+    pub(in crate::game::server_side) fn infinite_materials(
         &self,
         source: Option<&super::commands::Target>,
     ) -> bool {
@@ -375,7 +301,10 @@ impl Game<'_> {
     }
 
     /// `Entity.kill` of a cushion (`/kill`): gone with no drop, its rider let go.
-    pub(in crate::game) fn take_removed_cushion(&mut self, id: u32) -> Option<Cushion> {
+    pub(in crate::game::server_side) fn take_removed_cushion(
+        &mut self,
+        id: u32,
+    ) -> Option<Cushion> {
         self.with_destroying_vehicle(super::commands::Target::Cushion(id), |game| {
             let i = game.cushions.iter().position(|c| c.id == id)?;
             let c = game.cushions.remove(i);
@@ -385,7 +314,7 @@ impl Game<'_> {
     }
 
     #[inline(always)]
-    pub(in crate::game) fn cushion_break_particles_server(
+    pub(in crate::game::server_side) fn cushion_break_particles_server(
         &mut self,
         state: sunrise_world::registry::BlockStateId,
         particle_at: [f64; 3],
@@ -394,7 +323,7 @@ impl Game<'_> {
     }
 
     /// `Cushion.showBreakingParticles`: ten of the matching wool block.
-    pub(in crate::game) fn cushion_break_particles(&mut self, c: &Cushion) {
+    pub(in crate::game::server_side) fn cushion_break_particles(&mut self, c: &Cushion) {
         let name = format!("minecraft:{}_wool", c.color_name());
         let Some(state) = self.pack.assets.registry.default_state(&name) else {
             return;
@@ -412,7 +341,7 @@ impl Game<'_> {
     /// `LivingEntity.stopRiding` off a cushion: `dismountVehicle` beside it,
     /// and `Cushion.removePassenger`'s get-up sound for a rider that left
     /// rather than one whose cushion was killed.
-    pub(in crate::game) fn get_up_from_cushion(&mut self, c: &Cushion) {
+    pub(in crate::game::server_side) fn get_up_from_cushion(&mut self, c: &Cushion) {
         if self.riding == Some(c.id) && !self.native_may_leave(c.id) {
             return;
         }
@@ -489,7 +418,7 @@ impl Game<'_> {
 
     /// The removal both paths share; `killed` posts `BlockAttachedEntity.kill`'s
     /// `entity_die` event before `dropItem`'s sound and drop.
-    pub(in crate::game) fn remove_cushion(
+    pub(in crate::game::server_side) fn remove_cushion(
         &mut self,
         index: usize,
         source: Option<super::commands::Target>,
@@ -612,7 +541,7 @@ impl Game<'_> {
     }
 
     /// Free-position branch shared by removed vehicles and portal dismounts.
-    pub(in crate::game) fn removed_vehicle_dismount_point(
+    pub(in crate::game::server_side) fn removed_vehicle_dismount_point(
         &self,
         position: Vec3,
         w: f64,

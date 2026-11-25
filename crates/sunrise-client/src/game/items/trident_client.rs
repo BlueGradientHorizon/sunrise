@@ -72,7 +72,7 @@ impl Game<'_> {
             });
         self.draw_tridents(camera, live, out);
     }
-    pub(in crate::game) fn draw_tridents<'a>(
+    pub(in crate::game::client_side) fn draw_tridents<'a>(
         &self,
         camera: glam::DVec3,
         tridents: impl Iterator<Item = (&'a ThrownTrident, [f64; 3])>,

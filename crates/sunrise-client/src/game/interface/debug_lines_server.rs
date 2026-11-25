@@ -1,13 +1,13 @@
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::Game;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::debug_lines::LOOKING_AT_RANGE;
+pub(in crate::game::server_side) use crate::game::debug_lines::LOOKING_AT_RANGE;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::debug_lines::SERVER_ENTRIES;
+pub(in crate::game::server_side) use crate::game::debug_lines::SERVER_ENTRIES;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::debug_lines::ServerDebug;
+pub(in crate::game::server_side) use crate::game::debug_lines::ServerDebug;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::debug_lines::*;
+pub(in crate::game::server_side) use crate::game::debug_lines::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use std::collections::HashSet;
 #[allow(unused_imports)]
@@ -28,7 +28,7 @@ impl Game<'_> {
     /// The server thread's half of the debug entries, in the level of
     /// `dim` while it is in place: the server chunk's heightmaps, the local
     /// difficulty, the last spawn state and the chunk source's counts.
-    pub(in crate::game::server_side) fn server_debug_lines(&self, feet: [i32; 3]) -> ServerDebug {
+    pub(in crate::game) fn server_debug_lines(&self, feet: [i32; 3]) -> ServerDebug {
         let [x, y, z] = feet;
         let key = (x >> 4, z >> 4);
         let loaded = self.world.chunks.contains_key(&key);

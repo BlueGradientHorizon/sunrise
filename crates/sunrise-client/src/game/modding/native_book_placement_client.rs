@@ -7,7 +7,7 @@ use sunrise_client::recipe_book::{
 use sunrise_protocol::packets::{configuration::CustomPayload, play::Serverbound as S};
 
 impl Game<'_> {
-    pub(in crate::game) fn send_mod_book_placement(&mut self, frame: sync::Frame) {
+    pub(in crate::game::client_side) fn send_mod_book_placement(&mut self, frame: sync::Frame) {
         if let Some(data) = settings_codec::encode(&Message::Placement(frame)) {
             self.native_net.placement.deadline =
                 Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
@@ -18,7 +18,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn begin_mod_book_placement(&mut self) {
+    pub(in crate::game::client_side) fn begin_mod_book_placement(&mut self) {
         let Some(epoch) = self.native_net.book_view.epoch else {
             return;
         };
@@ -62,7 +62,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn clear_mod_book_placement_screen(&mut self) {
+    pub(in crate::game::client_side) fn clear_mod_book_placement_screen(&mut self) {
         if self.native_net.placement.client.window().is_some() {
             self.native_net.placement.deadline = None;
         }

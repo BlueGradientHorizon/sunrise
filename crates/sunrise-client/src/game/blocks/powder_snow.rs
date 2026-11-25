@@ -2,8 +2,11 @@
 //! bucket that picks it up (`BucketItem.use` on a `BucketPickup` block). The
 //! sinking, slowing, climbing and freezing are `PlayerMotion`'s
 //! (`crate::motion`); placing it is the powder snow bucket's `BlockItem.place`.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use sunrise_client::{Result, cauldron, items::ItemStack, mobs::Who};
+#[allow(unused_imports)]
 use sunrise_core::{position::BlockPos, random::RandomSource};
 
 /// The two ordered float draws of `Entity.playEntityOnFireExtinguishedSound`.
@@ -16,22 +19,6 @@ impl Game<'_> {
     pub(in crate::game) fn extinguish_sound(&mut self, at: [f64; 3]) {
         let pitch = extinguish_pitch(&mut self.server.effect_rng);
         self.server_play_sound("minecraft:entity.generic.extinguish_fire", at, 0.7, pitch);
-    }
-    /// `Entity.applyEffectsFromBlocks`: a burning player in the rain
-    /// (`isInRain`) has the fire put out (`clearFire`), with the extinguish
-    /// sound that everyone near hears.
-    pub(in crate::game) fn rain_extinguish_player(&mut self) {
-        let Some(player) = self.player.as_ref() else {
-            return;
-        };
-        let (at, top) = (player.position, player.bounds().max_position().y);
-        if player.fire_ticks <= 0 || !self.in_rain(at, top) {
-            return;
-        }
-        if let Some(player) = self.player.as_mut() {
-            player.fire_ticks = 0;
-        }
-        self.extinguish_sound([at.x, at.y, at.z]);
     }
     /// `PowderSnowBlock.entityInside` (runBefore EXTINGUISH) for a burning
     /// player: `Level.destroyBlock(pos, false)`, which needs `mayInteract`.
@@ -54,34 +41,6 @@ impl Game<'_> {
             .name
             == "minecraft:powder_snow"
     }
-    /// `BucketItem.use` with an empty bucket on powder snow:
-    /// `PowderSnowBlock.pickupBlock` (air, level event 2001), the used
-    /// statistic, the fill sound, FLUID_PICKUP, `ItemUtils.createFilledResult`
-    /// and the filled_bucket trigger.
-    pub(in crate::game) fn pick_up_powder_snow(&mut self, pos: [i32; 3]) -> Result<()> {
-        let at = BlockPos::new(pos[0], pos[1], pos[2]);
-        let creative = self.creative;
-        let picked = self.with_level(|b, level, ticks| b.bucket_pickup(level, ticks, at, creative));
-        self.server_process_level_events()?;
-        let Some(filled) = picked else {
-            return Ok(());
-        };
-        self.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
-        self.award_stat("used", "minecraft:bucket", 1);
-        if let Some(eye) = self
-            .player
-            .as_ref()
-            .map(|p| [p.position.x, p.position.y, p.position.z])
-        {
-            self.server_play_sound("minecraft:item.bucket.fill_powder_snow", eye, 1.0, 1.0);
-        }
-        self.post_block_game_event("minecraft:fluid_pickup", pos, Some(Who::Player), None);
-        let filled = ItemStack::new(filled, 1);
-        self.filled_result(filled.clone());
-        self.trigger_item("minecraft:filled_bucket", &filled);
-        self.swing_arm();
-        Ok(())
-    }
     /// `ItemUtils.createFilledResult(held, player, filled)` for the held stack.
     pub(in crate::game) fn filled_result(&mut self, filled: ItemStack) {
         let slot = self.held_slot();
@@ -98,7 +57,11 @@ impl Game<'_> {
 /// `stack`: true when all of it went in. Otherwise the last pass added nothing, so it is false
 /// with the rest left in `stack` for the caller to drop, except in creative, where the rest is
 /// cleared and it is true.
-fn added(stack: &mut ItemStack, rest: Option<ItemStack>, creative: bool) -> bool {
+pub(in crate::game) fn added(
+    stack: &mut ItemStack,
+    rest: Option<ItemStack>,
+    creative: bool,
+) -> bool {
     stack.count = rest.map_or(0, |rest| rest.count);
     if stack.count > 0 && creative {
         stack.count = 0;
@@ -147,7 +110,7 @@ impl cauldron::Player for HeldSlot<'_, '_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use sunrise_client::items::ItemStack;
 
     /// An inventory with room for 3 more arrows: one stack of 61 and stone everywhere else.

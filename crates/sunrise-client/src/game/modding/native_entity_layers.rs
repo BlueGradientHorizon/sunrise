@@ -55,7 +55,7 @@ pub(in crate::game) struct LayerRegistration<'a> {
 }
 
 impl<'a> LayerRegistration<'a> {
-    pub(super) fn new(
+    pub(in crate::game) fn new(
         rows: &'a EntityTypeRows,
         mod_renderers: &'a BTreeMap<String, Arc<dyn EntityRenderer>>,
         routed: &'a dyn Fn(&str) -> bool,
@@ -160,7 +160,7 @@ impl EntityLayers for LayerRegistration<'_> {
 
 /// The layers by the slot each draw reads: rebuilt on every resource load.
 #[derive(Default)]
-pub(super) struct LayerTable {
+pub(in crate::game) struct LayerTable {
     /// By the address of the mob type the game shares with every mob of the type.
     mobs: FxHashMap<usize, Layers>,
     wide: Option<Layers>,
@@ -170,7 +170,7 @@ pub(super) struct LayerTable {
 impl LayerTable {
     /// The table for what `registration` collected, with `mob_types` the types the game draws as
     /// mobs (the only living types `add` accepts).
-    pub(super) fn resolve(
+    pub(in crate::game) fn resolve(
         registration: LayerRegistration<'_>,
         mob_types: &HashMap<String, Arc<MobType>>,
     ) -> Self {
@@ -197,7 +197,7 @@ impl LayerTable {
     }
 
     /// The layers of `mob`: its player model's for a player, else its type's.
-    pub(super) fn of(&self, mob: &Mob) -> Option<&Layers> {
+    pub(in crate::game) fn of(&self, mob: &Mob) -> Option<&Layers> {
         match (&*mob.kind.id == PLAYER, mob.slim) {
             (true, true) => self.slim.as_ref(),
             (true, false) => self.wide.as_ref(),
@@ -221,7 +221,7 @@ impl Game<'_> {
 
     /// Asks the mods for their layers on the renderers this load built (`rows` its entity types,
     /// `mod_renderers` the registered renderers) and resolves them.
-    pub(super) fn resolve_entity_layers(
+    pub(in crate::game::client_side) fn resolve_entity_layers(
         &self,
         rows: &EntityTypeRows,
         mod_renderers: &BTreeMap<String, Arc<dyn EntityRenderer>>,
@@ -243,7 +243,7 @@ impl Game<'_> {
     /// turned with the body), in the order they were added. Each layer borrows the same final
     /// `model`, if this draw produced a body pose.
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::game) fn registered_layer_geometry(
+    pub(in crate::game::client_side) fn registered_layer_geometry(
         &self,
         mob: &Mob,
         id: u32,

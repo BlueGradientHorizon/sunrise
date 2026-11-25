@@ -20,7 +20,7 @@ use sunrise_protocol::packets::play::{AttributeModifier, AttributeSnapshot};
 /// instance (`synced_attribute`) and the type's default base, both looked up
 /// by name. The pointers are only compared while the snapshot holds the types.
 #[derive(Default)]
-pub(super) struct SpeedByType(
+pub(in crate::game) struct SpeedByType(
     sunrise_client::fast_hash::FxHashMap<
         *const sunrise_client::mobs::MobType,
         (Option<i32>, Option<f64>),
@@ -74,7 +74,7 @@ impl Game<'_> {
     /// mob's attribute at each push. A worn or held stack is read again only when it changed
     /// (`ItemStack.matches`, as `collectEquipmentChanges` asks), so a tick
     /// with the same gear reads no item data and allocates nothing.
-    pub(super) fn refresh_gear_knockback_resistance(&mut self) {
+    pub(in crate::game) fn refresh_gear_knockback_resistance(&mut self) {
         let items = self.res.items();
         for m in &mut self.mobs {
             let worn = GEAR.map(|(slot, _)| m.extra.slot_stack(slot));
@@ -124,7 +124,7 @@ impl Game<'_> {
     /// of the other effects, Haste's and Luck's) — plus movement speed (its
     /// first `aiStep` reads it, `LivingEntity.removeFrost`, and no stack
     /// granted one) and the baby speed modifier, which no map holds.
-    pub(super) fn mob_attributes(
+    pub(in crate::game) fn mob_attributes(
         &self,
         m: &Mob,
         speeds: &mut SpeedByType,
@@ -232,7 +232,7 @@ impl Game<'_> {
     /// `aiStep`), and the live map's — its equipment's per-stack modifiers
     /// and what `/attribute` changed — built by the read if this is its
     /// first use.
-    pub(super) fn stand_attributes(
+    pub(in crate::game) fn stand_attributes(
         &self,
         live: &sunrise_client::living_attributes::LivingAttributes,
         out: &mut Vec<AttributeSnapshot>,

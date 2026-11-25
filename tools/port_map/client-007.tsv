@@ -96,12 +96,12 @@ BlockModelLighter.getDirectionalBrightness	port	crates/sunrise-client-render/src
 BlockModelLighter.Cache.getLightCoords	port	crates/sunrise-client-render/src/mesher/lighting.rs::coords	packed light for a position
 BlockModelLighter.Cache.getShadeBrightness	port	crates/sunrise-client-render/src/mesher.rs::MeshTables::new	shade per block state (Info.shade), not cached per position
 BlockModelRenderState.clear	skip:java		reuse of a pooled render state object
-BlockModelRenderState.tintLayers	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::block_model_vertices	gap: minor: the caller tints every face with one sprite tint, not per tint index
-BlockModelRenderState.setupModel	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::block_model_vertices	model parts with the transform matrix
-BlockModelRenderState.submit	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::block_model_vertices	faces written to the vertex list
-BlockModelRenderState.submitModel	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::block_model_vertices	faces written to the vertex list
-BlockModelRenderState.scratchRandomSource	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::block_model_vertices	seeded variant choice through collect_seeded
-BlockModelResolver.update	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::block_model_vertices	resolves the seeded model for a block state; light is passed in by the caller
+BlockModelRenderState.tintLayers	port	crates/sunrise-client/src/game/entities/minecarts_client.rs::Game::block_model_vertices	gap: minor: the caller tints every face with one sprite tint, not per tint index
+BlockModelRenderState.setupModel	port	crates/sunrise-client/src/game/entities/minecarts_client.rs::Game::block_model_vertices	model parts with the transform matrix
+BlockModelRenderState.submit	port	crates/sunrise-client/src/game/entities/minecarts_client.rs::Game::block_model_vertices	faces written to the vertex list
+BlockModelRenderState.submitModel	port	crates/sunrise-client/src/game/entities/minecarts_client.rs::Game::block_model_vertices	faces written to the vertex list
+BlockModelRenderState.scratchRandomSource	port	crates/sunrise-client/src/game/entities/minecarts_client.rs::Game::block_model_vertices	seeded variant choice through collect_seeded
+BlockModelResolver.update	port	crates/sunrise-client/src/game/entities/minecarts_client.rs::Game::block_model_vertices	resolves the seeded model for a block state; light is passed in by the caller
 BlockModelSet.createFallbackModel	port	crates/sunrise-client-render/src/mesher.rs::MeshTables::new	per-state tint sources (Info.tints) and the plain model
 BuiltInBlockModels.special	port	crates/sunrise-client-render/src/block_entity_render.rs::classify	special model name to Kind
 BuiltInBlockModels.createMobHead	port	crates/sunrise-client-render/src/block_entity_render.rs::classify	Skull kind for mob heads
@@ -139,8 +139,8 @@ ModelBlockRenderer.shouldRenderFace	port	crates/sunrise-world/src/block_render.r
 ModelBlockRenderer.putQuadWithTint	port	crates/sunrise-client-render/src/mesher.rs::Mesher::face	tinted vertex write
 ModelBlockRenderer.getTintColor	port	crates/sunrise-client-render/src/mesher.rs::Mesher::tint	tint source index to colour
 ModelBlockRenderer.computeTintColor	port	crates/sunrise-client-render/src/mesher.rs::Tints::get	biome colour average over the blend radius
-MovingBlockRenderState.getBlockTint	port	crates/sunrise-client/src/game/blocks/moving_pistons.rs::Game::moving_block_vertices	gap: minor: tint is the particle colour at the source position, not the biome tint at the moved spot
-MovingBlockRenderState.getBlockState	port	crates/sunrise-client/src/game/blocks/moving_pistons.rs::Game::moving_piston_blocks	moved block and piston base
+MovingBlockRenderState.getBlockTint	port	crates/sunrise-client/src/game/blocks/moving_pistons_client.rs::Game::moving_block_vertices	gap: minor: tint is the particle colour at the source position, not the biome tint at the moved spot
+MovingBlockRenderState.getBlockState	port	crates/sunrise-client/src/game/blocks/moving_pistons_client.rs::Game::moving_piston_blocks	moved block and piston base
 SelectBlockModel.update	missing		minor: display-context switch (copper golem hand, flower bed) is not applied; block items use the normal transform
 SelectBlockModel.Unbaked.bake	missing		minor: same display-context switch, not baked
 SelectBlockModel.UnbakedSwitch.bake	missing		minor: same display-context switch, not baked

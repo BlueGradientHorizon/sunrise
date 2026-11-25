@@ -3713,7 +3713,7 @@ impl Game<'_> {
     /// `FireworkRocketEntity.dealExplosionDamage` on the dragon: a living
     /// entity in the rocket's `inflate(5)` box and within 5 blocks, seen at its
     /// feet or middle, takes `EnderDragon.hurtServer` (`hurt(body, ...)`).
-    pub(in crate::game) fn rocket_blast_dragon(
+    pub(in crate::game::server_side) fn rocket_blast_dragon(
         &mut self,
         from: Vec3,
         damage: f32,
@@ -6266,7 +6266,7 @@ pub(in crate::game) mod tests {
 
 impl Game<'_> {
     /// `Mob.playAmbientSound` when EntityType.spawn places a dragon.
-    pub(in crate::game) fn dragon_spawn_ambient(&mut self, id: u32) -> bool {
+    pub(in crate::game::server_side) fn dragon_spawn_ambient(&mut self, id: u32) -> bool {
         let Some(d) = self.dragon.as_mut().filter(|d| d.id == id) else {
             return false;
         };

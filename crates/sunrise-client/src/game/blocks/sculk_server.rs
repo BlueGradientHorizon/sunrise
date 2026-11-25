@@ -127,7 +127,7 @@ pub(in crate::game) struct MobSlots {
 }
 
 impl SculkState {
-    pub(in crate::game) fn swap_player(&mut self, other: &mut PlayerEvents) {
+    pub(in crate::game::server_side) fn swap_player(&mut self, other: &mut PlayerEvents) {
         std::mem::swap(&mut self.steps, &mut other.steps);
         let mount = self.mounts.remove(&Who::Player);
         if let Some(guest) = other.mount.take() {
@@ -139,7 +139,7 @@ impl SculkState {
 
     /// Exchange the level-held parts (its sculk block entities and the
     /// chunks scanned for them) with another level's (game/world/levels.rs).
-    pub(in crate::game) fn swap_level(&mut self, other: &mut Self) {
+    pub(in crate::game::server_side) fn swap_level(&mut self, other: &mut Self) {
         std::mem::swap(&mut self.index, &mut other.index);
         std::mem::swap(&mut self.known, &mut other.known);
     }
@@ -873,7 +873,7 @@ impl Game<'_> {
     }
     /// `WardenSpawnTrackerCommand`: clear the player's tracker or set its
     /// warning level.
-    pub(in crate::game) fn cmd_warden_spawn_tracker(&mut self, level: Option<i32>) {
+    pub(in crate::game::server_side) fn cmd_warden_spawn_tracker(&mut self, level: Option<i32>) {
         use sunrise_client::text::Text;
         let key = match level {
             Some(level) => {
@@ -936,7 +936,7 @@ impl Game<'_> {
     /// Write the tracker into the player data being saved. With a LAN owner,
     /// `store_owner` rewrites that from the owner's guest, so it puts the
     /// tracker there as well (`playerdata::with_warden`).
-    pub(in crate::game) fn save_warden_tracker(&mut self) {
+    pub(in crate::game::server_side) fn save_warden_tracker(&mut self) {
         let Some(tag) = self.warden_tracker_tag() else {
             return;
         };
@@ -2182,7 +2182,7 @@ impl Game<'_> {
         self.world.block(p.x, p.y, p.z)
     }
     /// The player shot or threw something.
-    pub(in crate::game) fn player_projectile_shot(&mut self) {
+    pub(in crate::game::server_side) fn player_projectile_shot(&mut self) {
         if let Some(p) = self.player.as_ref() {
             let at = [
                 p.position.x,
@@ -2195,7 +2195,7 @@ impl Game<'_> {
 
     /// `Entity.checkFallDamage` for item movement: retain a fall across an
     /// exact-height contact, without changing the saved fall-distance getter.
-    pub(in crate::game) fn item_landing_event(
+    pub(in crate::game::server_side) fn item_landing_event(
         &mut self,
         id: u32,
         previous: Vec3,
@@ -2263,7 +2263,7 @@ impl Game<'_> {
     /// `RedStoneOreBlock.useItemOn`: a right-click lights the ore whatever the
     /// hand holds. PASS when the hand holds a block item, which goes on
     /// to be placed; SUCCESS otherwise.
-    pub(in crate::game) fn use_redstone_ore(
+    pub(in crate::game::server_side) fn use_redstone_ore(
         &mut self,
         pos: [i32; 3],
         held: Option<&sunrise_client::items::ItemStack>,

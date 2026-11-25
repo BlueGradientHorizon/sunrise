@@ -379,6 +379,16 @@ impl Game<'_> {
         self.try_move_items(index);
         true
     }
+    /// The offer buttons a controller can focus (GUI origin relative).
+    pub(in crate::game::client_side) fn merchant_targets(&self) -> Vec<[f32; 4]> {
+        let Some(m) = self.station.as_ref().and_then(|s| s.merchant.as_ref()) else {
+            return Vec::new();
+        };
+        (0..7)
+            .filter(|i| i + m.scroll < m.session.offers.len())
+            .map(|i| [5.0 + SHIFT, 18.0 + 20.0 * i as f32, 88.0, 20.0])
+            .collect()
+    }
     pub(in crate::game::client_side) fn open_merchant_state_client(
         &mut self,
         state: MerchantState,
@@ -395,7 +405,7 @@ impl Game<'_> {
         self.set_mapping_held("key.use", false);
     }
     /// Opens a client-only merchant preview without a mob (`sunrise-ctl trade`).
-    pub(in crate::game) fn open_preview_merchant(
+    pub(in crate::game::client_side) fn open_preview_merchant(
         &mut self,
         profession: &str,
         variant: &str,
@@ -479,6 +489,13 @@ impl Game<'_> {
                 sunrise_protocol::packets::play::SelectTrade { item: index as i32 },
             ));
         }
+    }
+}
+
+impl MerchantState {
+    /// `Merchant.showProgressBar`: villagers only.
+    pub(in crate::game) fn progress(&self) -> bool {
+        self.session.show_progress()
     }
 }
 

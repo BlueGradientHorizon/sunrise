@@ -3,22 +3,27 @@
 //! `carry_block_entity` and `land_block_entity`, the carried block entity in
 //! its moving piston's saved tag, and a client's copy. `BlockEntities` holds
 //! what is carried (`carry`, `land`).
+#[allow(unused_imports)]
 use super::{Game, GameLevel};
+#[allow(unused_imports)]
 use sunrise_client::{block_entities::Carried, save::ChunkExtras};
+#[allow(unused_imports)]
 use sunrise_core::{geometry::Direction, nbt::Tag, position::BlockPos};
+#[allow(unused_imports)]
 use sunrise_mod_runtime::attachments::{ATTACHMENTS_KEY, Attachments, attachment_compound};
+#[allow(unused_imports)]
 use sunrise_world::{level::MovingPiston, registry::BlockStateId};
 
 /// The moving piston's saved key for the block entity it carries, with its
 /// attachments. Sunrise's own, written only while it carries one, so a
 /// vanilla moving piston's tag is unchanged; vanilla reads only its own keys.
-const CARRIED_KEY: &str = "sunrise:carried_block_entity";
+pub(in crate::game) const CARRIED_KEY: &str = "sunrise:carried_block_entity";
 
 impl GameLevel<'_> {
     /// Whether the piston at `piston` may push `push` one step `direction` and
     /// destroy `destroy`: on an authoritative server, what `piston_pre`'s
     /// listeners leave of it.
-    pub(super) fn piston_move_allowed(
+    pub(in crate::game) fn piston_move_allowed(
         &self,
         piston: BlockPos,
         direction: Direction,
@@ -43,7 +48,7 @@ impl GameLevel<'_> {
     }
     /// The piston at `piston` pushed `push` one step `direction` and destroyed
     /// `destroy`: on an authoritative server, `piston_post`'s listeners hear it.
-    pub(super) fn piston_moved(
+    pub(in crate::game) fn piston_moved(
         &self,
         piston: BlockPos,
         direction: Direction,
@@ -58,7 +63,7 @@ impl GameLevel<'_> {
     }
     /// `piston_carries_block_entity` for the block `state` at `pos`: what
     /// its part answers, or None.
-    pub(super) fn piston_carries_block_entity(
+    pub(in crate::game) fn piston_carries_block_entity(
         &self,
         pos: BlockPos,
         state: BlockStateId,
@@ -84,7 +89,7 @@ impl GameLevel<'_> {
     /// Takes the block entity at `from` out of the world for the moving piston
     /// at `to`, with what removing it would take from its position (its custom
     /// name, its loaded tag) but none of its side effects.
-    pub(super) fn carry_mod_block_entity(&mut self, from: BlockPos, to: BlockPos) {
+    pub(in crate::game) fn carry_mod_block_entity(&mut self, from: BlockPos, to: BlockPos) {
         let (from, to) = ((from.x, from.y, from.z), (to.x, to.y, to.z));
         let partner = self
             .registry
@@ -128,7 +133,7 @@ impl GameLevel<'_> {
     /// Installs the block entity the moving piston at `pos` carried there; its
     /// custom name is the block's again, as for one loaded there, and on a
     /// server its synced attachments go whole to the players who see it.
-    pub(super) fn land_carried_block_entity(&mut self, pos: BlockPos) -> bool {
+    pub(in crate::game) fn land_carried_block_entity(&mut self, pos: BlockPos) -> bool {
         let key = (pos.x, pos.y, pos.z);
         let data = self
             .world
@@ -165,7 +170,7 @@ impl GameLevel<'_> {
 impl Game<'_> {
     /// `PistonMovingBlockEntity.saveAdditional` for a chunk save, with the
     /// block entity the piston carries under [`CARRIED_KEY`].
-    pub(super) fn saved_moving_piston(&self, pos: BlockPos, piston: &MovingPiston) -> Tag {
+    pub(in crate::game) fn saved_moving_piston(&self, pos: BlockPos, piston: &MovingPiston) -> Tag {
         let mut tag = self.moving_piston_to_nbt(pos, piston);
         if let Some(Carried {
             entity,
@@ -203,7 +208,7 @@ impl Game<'_> {
     /// as a new ticker, holding again the block entity its saved tag in
     /// `saved` carries. One that can't be read is logged and left out: the
     /// block lands without it.
-    pub(super) fn restore_moving_piston(
+    pub(in crate::game) fn restore_moving_piston(
         &mut self,
         pos: BlockPos,
         piston: MovingPiston,
@@ -254,19 +259,10 @@ impl Game<'_> {
             ),
         }
     }
-    /// A client's moving piston at `at` once the server's block took its
-    /// place (`LevelChunk.setBlockState`), with the block entity its copy
-    /// carried: the server sends its own (`BlockEntityData`).
-    pub(super) fn forget_moving_piston(&mut self, at: BlockPos) {
-        self.block_ticks.moving_pistons.retain(|(p, _)| *p != at);
-        self.world
-            .block_entities
-            .discard_carried(&(at.x, at.y, at.z));
-    }
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
     use std::sync::Arc;
     use sunrise_client::{chunk::Chunk, containers::BlockEntity, items::ItemStack};

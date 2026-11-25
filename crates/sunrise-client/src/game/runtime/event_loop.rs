@@ -11,7 +11,11 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow};
 /// A successful frame only permits polling until the next idle iteration. If
 /// the compositor stops delivering redraws, the old result must not keep the
 /// loop spinning indefinitely. Offscreen frames are driven by the loop itself.
-pub(super) fn redraw_flow(frame_drawn: &mut bool, offscreen: bool, now: Instant) -> ControlFlow {
+pub(in crate::game) fn redraw_flow(
+    frame_drawn: &mut bool,
+    offscreen: bool,
+    now: Instant,
+) -> ControlFlow {
     let drew_frame = std::mem::take(frame_drawn);
     if offscreen || drew_frame {
         ControlFlow::Poll
@@ -20,7 +24,7 @@ pub(super) fn redraw_flow(frame_drawn: &mut bool, offscreen: bool, now: Instant)
     }
 }
 
-pub(super) trait EventLoopCtl {
+pub(in crate::game) trait EventLoopCtl {
     /// Ends the loop after the current iteration (`ActiveEventLoop::exit`).
     fn exit(&self);
     /// When the loop wakes next (`ActiveEventLoop::set_control_flow`).

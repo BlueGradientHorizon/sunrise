@@ -36,7 +36,7 @@ impl Game<'_> {
     }
 
     /// Size a client's copy `id` takes from its `entity_size` answer while its vanilla size holds.
-    pub(in crate::game) fn client_copy_answer(&self, id: u32) -> Option<[f32; 3]> {
+    pub(in crate::game::client_side) fn client_copy_answer(&self, id: u32) -> Option<[f32; 3]> {
         let remote = self.remote.as_ref()?;
         let answer = remote.entities.get(&(id as i32))?.size_answer?;
         let size = answer.size?;

@@ -162,7 +162,7 @@ impl Game<'_> {
         !cancel
     }
     /// Remove a live bolt and release its UUID and scoreboard membership.
-    pub(in crate::game) fn remove_bolt(&mut self, id: u32) {
+    pub(in crate::game::server_side) fn remove_bolt(&mut self, id: u32) {
         let uuid = self.persist.uuid_of(id);
         let before = self.bolts.len();
         self.bolts.retain(|b| b.id != id);
@@ -176,7 +176,7 @@ impl Game<'_> {
         }
     }
     /// `Entity.saveWithoutId` for a live bolt (`/data get` and `NbtPredicate`, never chunk saves).
-    pub(in crate::game) fn bolt_tag(
+    pub(in crate::game::server_side) fn bolt_tag(
         &self,
         b: &Bolt,
         uuid: [i32; 4],

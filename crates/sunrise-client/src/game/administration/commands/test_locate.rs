@@ -63,7 +63,10 @@ pub(in crate::game) fn path_of(dimension: &str) -> &str {
 
 impl Game<'_> {
     /// `outputPlayerCoordinates`.
-    pub(in crate::game) fn output_player_coordinates(&mut self, test_dimensions: &[String]) {
+    pub(in crate::game::server_side) fn output_player_coordinates(
+        &mut self,
+        test_dimensions: &[String],
+    ) {
         let Some(player) = self.player.as_ref() else {
             return;
         };
@@ -153,7 +156,12 @@ impl Game<'_> {
 
 impl Game<'_> {
     /// `StructureUtils.createNewEmptyTest`.
-    pub(in crate::game) fn create_empty_test(&mut self, key: &str, at: Pos, size: [i32; 3]) {
+    pub(in crate::game::server_side) fn create_empty_test(
+        &mut self,
+        key: &str,
+        at: Pos,
+        size: [i32; 3],
+    ) {
         let padding = self.test_def(key).map_or(0, |d: TestDef| d.padding);
         let corner =
             TestInstanceBlock::structure_pos_of([at.0 + padding, at.1 + padding, at.2 + padding]);

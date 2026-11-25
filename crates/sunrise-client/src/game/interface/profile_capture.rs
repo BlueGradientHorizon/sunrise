@@ -1,22 +1,35 @@
 //! Captures (docs/perf-platform.md §4.1): `sunrise-ctl profile`, `/profiler` and `SUNRISE_PROFILE`. The window writes its own side; in single player the server thread writes its side into the same file.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use super::integrated::{
     NO_ANSWER,
     capture::{Live, ServerSide, Target},
 };
+#[allow(unused_imports)]
 use super::memory::{MEMORY_EVERY_S, PendingMemory};
+#[allow(unused_imports)]
 use super::owner_link::OwnerRequest;
+#[allow(unused_imports)]
 use super::perf_remote::Served;
+#[allow(unused_imports)]
 use super::profile_lines::{self as lines, Notice};
+#[allow(unused_imports)]
 use crate::Result;
+#[allow(unused_imports)]
 use std::collections::VecDeque;
+#[allow(unused_imports)]
 use std::path::{Path, PathBuf};
+#[allow(unused_imports)]
 use std::sync::{
     Arc,
     mpsc::{Receiver, Sender, TryRecvError},
 };
+#[allow(unused_imports)]
 use std::task::Poll;
+#[allow(unused_imports)]
 use std::time::{Duration, Instant};
+#[allow(unused_imports)]
 use sunrise_client::client_perf::{
     self, ClientPerf,
     request::{
@@ -24,35 +37,42 @@ use sunrise_client::client_perf::{
         Started, Status, Stopped, Traced,
     },
 };
+#[allow(unused_imports)]
 use sunrise_client::command::{Arg, CommandError, Dispatcher, PROFILER_GPU, Registries};
+#[allow(unused_imports)]
 use sunrise_client::perf_net::Link;
+#[allow(unused_imports)]
 use sunrise_client::server_perf::{self, TickDetail, WorldCounts};
+#[allow(unused_imports)]
 use sunrise_client::spans::{self, Span};
+#[allow(unused_imports)]
 use sunrise_perf_format::{
     files,
     v1::{BenchResult, ClientSettings, StopReason, Trigger},
 };
 
 /// How often a progress notice is set again so the action bar keeps it until the work is done.
-const PROGRESS_EVERY: Duration = Duration::from_secs(2);
+pub(in crate::game) const PROGRESS_EVERY: Duration = Duration::from_secs(2);
 
 /// The folder `SUNRISE_PROFILE` names; captures go there instead of the game home's `reports/`.
-const ENV_DIR: &str = "SUNRISE_PROFILE";
+pub(in crate::game) const ENV_DIR: &str = "SUNRISE_PROFILE";
 /// The file `SUNRISE_TRACE` names: a timeline-only capture written there.
-const ENV_TRACE: &str = "SUNRISE_TRACE";
+pub(in crate::game) const ENV_TRACE: &str = "SUNRISE_TRACE";
 
-const TRACE_USAGE: &str = "trace [FILE [SECONDS] | stop]";
+pub(in crate::game) const TRACE_USAGE: &str = "trace [FILE [SECONDS] | stop]";
 
 /// What the `trace` words ask for.
 #[derive(Debug, PartialEq, Eq)]
-enum Trace<'a> {
+pub(in crate::game) enum Trace<'a> {
     Status,
     Stop,
     Start { file: &'a str, seconds: Option<u32> },
 }
 
 /// The words after `trace`; SECONDS is a whole number in 1..=`MAX_WINDOW_S`, as for `profile --seconds`.
-fn parse_trace<'a>(words: &[&'a str]) -> std::result::Result<Trace<'a>, &'static str> {
+pub(in crate::game) fn parse_trace<'a>(
+    words: &[&'a str],
+) -> std::result::Result<Trace<'a>, &'static str> {
     match words {
         [] => Ok(Trace::Status),
         ["stop"] => Ok(Trace::Stop),
@@ -71,10 +91,10 @@ fn parse_trace<'a>(words: &[&'a str]) -> std::result::Result<Trace<'a>, &'static
     }
 }
 
-const NO_CAPTURE: &str = "no capture is running; start one with profile start";
+pub(in crate::game) const NO_CAPTURE: &str = "no capture is running; start one with profile start";
 
 /// Whether the single-player server thread writes into the window's capture.
-enum ServerLink {
+pub(in crate::game) enum ServerLink {
     /// The capture is of the window alone.
     Off,
     /// The capture wants the server thread's side, which is asked to join once there is a server thread.
@@ -83,7 +103,7 @@ enum ServerLink {
 
 /// Which capture a `profile stop` ends.
 #[derive(Debug, PartialEq, Eq)]
-enum StopRoute {
+pub(in crate::game) enum StopRoute {
     Window,
     ServerOnly,
     /// A capture of the connected server alone.
@@ -91,43 +111,43 @@ enum StopRoute {
 }
 
 /// A capture of the server thread alone, which writes its own file.
-struct ServerOnly {
-    live: Arc<Live>,
-    path: PathBuf,
-    since: Instant,
+pub(in crate::game) struct ServerOnly {
+    pub(in crate::game) live: Arc<Live>,
+    pub(in crate::game) path: PathBuf,
+    pub(in crate::game) since: Instant,
     /// The window's game clock when the capture began.
-    began: f64,
+    pub(in crate::game) began: f64,
 }
 
 /// An action bar notice that is set again every [`PROGRESS_EVERY`] until its work is done.
-struct Progress {
-    working: Working,
-    due: Instant,
+pub(in crate::game) struct Progress {
+    pub(in crate::game) working: Working,
+    pub(in crate::game) due: Instant,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Working {
+pub(in crate::game) enum Working {
     Saving,
     Uploading,
 }
 
 /// What a player asked of a saved capture, through the captures hook.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Job {
+pub(in crate::game) enum Job {
     Open,
     Share,
 }
 
 #[derive(Default)]
-struct MemorySchedule {
+pub(in crate::game) struct MemorySchedule {
     /// When the next periodic sample is due and its elapsed period number.
-    due: Option<(f64, u32)>,
+    pub(in crate::game) due: Option<(f64, u32)>,
     /// The labeled sample, including canceled work that has not yet released its snapshots.
-    pending: Option<(String, f64, PendingMemory)>,
+    pub(in crate::game) pending: Option<(String, f64, PendingMemory)>,
 }
 
 impl MemorySchedule {
-    fn cancel(&mut self) {
+    pub(in crate::game) fn cancel(&mut self) {
         self.due = None;
         if let Some((_, _, pending)) = &mut self.pending {
             pending.cancel();
@@ -139,31 +159,31 @@ impl MemorySchedule {
 pub(in crate::game) struct Profile {
     /// The server thread's health history and its side of a capture; set on its own Game only.
     pub(in crate::game) server: Option<ServerSide>,
-    link: ServerLink,
+    pub(in crate::game) link: ServerLink,
     /// The server thread's side of the running or last window capture, once it was asked.
-    joined: Option<Arc<Live>>,
-    server_only: Option<ServerOnly>,
+    pub(in crate::game) joined: Option<Arc<Live>>,
+    pub(in crate::game) server_only: Option<ServerOnly>,
     pub(in crate::game) perf: ClientPerf,
-    started_by: Trigger,
-    memory: MemorySchedule,
+    pub(in crate::game) started_by: Trigger,
+    pub(in crate::game) memory: MemorySchedule,
     /// Where the answer to a `/profiler` request that finishes later arrives.
-    chat_answer: Option<Receiver<String>>,
-    jobs: VecDeque<(PathBuf, Job)>,
-    job: Option<(PathBuf, Job, Receiver<std::result::Result<String, String>>)>,
-    last_capture: Option<PathBuf>,
+    pub(in crate::game) chat_answer: Option<Receiver<String>>,
+    pub(in crate::game) jobs: VecDeque<(PathBuf, Job)>,
+    pub(in crate::game) job: Option<(PathBuf, Job, Receiver<std::result::Result<String, String>>)>,
+    pub(in crate::game) last_capture: Option<PathBuf>,
     /// How long the capture had run when its stop was asked, for the saved line.
-    stopped_after: Option<f64>,
+    pub(in crate::game) stopped_after: Option<f64>,
     /// The action bar notice that stays up until the work it names is done.
-    progress: Option<Progress>,
+    pub(in crate::game) progress: Option<Progress>,
     /// `profile stop` waits for the file to be whole.
-    reply: Option<Sender<String>>,
-    spans_were_on: bool,
+    pub(in crate::game) reply: Option<Sender<String>>,
+    pub(in crate::game) spans_were_on: bool,
     /// The file the running capture was asked to write by `trace` or `SUNRISE_TRACE`.
-    trace_file: Option<String>,
-    hardware_warmed: bool,
-    env_tried: bool,
+    pub(in crate::game) trace_file: Option<String>,
+    pub(in crate::game) hardware_warmed: bool,
+    pub(in crate::game) env_tried: bool,
     /// What the running capture asks the renderer to time.
-    gpu: GpuSwitch,
+    pub(in crate::game) gpu: GpuSwitch,
     /// The guests' requests to this server and the capture they ask of it (perf_remote.rs).
     pub(in crate::game) served: Served,
     /// This client's capture on the server it is connected to.
@@ -179,56 +199,26 @@ pub(in crate::game) struct Profile {
 }
 
 impl Profile {
-    pub(in crate::game) fn new(slow_ms: f32) -> Self {
-        Self {
-            server: None,
-            link: ServerLink::Off,
-            joined: None,
-            server_only: None,
-            perf: ClientPerf::new(slow_ms),
-            started_by: Trigger::Unspecified,
-            memory: MemorySchedule::default(),
-            chat_answer: None,
-            jobs: VecDeque::new(),
-            job: None,
-            last_capture: None,
-            stopped_after: None,
-            progress: None,
-            reply: None,
-            spans_were_on: false,
-            trace_file: None,
-            hardware_warmed: false,
-            env_tried: false,
-            gpu: GpuSwitch::Off,
-            served: Served::default(),
-            server_link: Link::default(),
-            server_reply: None,
-            server_joined: false,
-            server_sink: None,
-            incoming: None,
-        }
-    }
-
     /// The GPU timing the running capture needs; off when none runs.
     pub(in crate::game::client_side) fn gpu(&self) -> GpuSwitch {
         self.gpu
     }
 
-    fn server_live(&self) -> bool {
+    pub(in crate::game::client_side) fn server_live(&self) -> bool {
         self.perf.capturing() && self.joined.as_ref().is_some_and(|l| l.active())
     }
 
-    fn server_only_live(&self) -> bool {
+    pub(in crate::game::client_side) fn server_only_live(&self) -> bool {
         self.server_only.as_ref().is_some_and(|s| s.live.active())
     }
 
     /// Whether the last window capture holds the server thread's side.
-    fn served(&self) -> bool {
+    pub(in crate::game) fn served(&self) -> bool {
         self.joined.as_ref().is_some_and(|l| l.wrote())
     }
 
     /// Where a `profile stop` for `side` (or for any side) goes.
-    fn stop_route(
+    pub(in crate::game) fn stop_route(
         &self,
         side: Option<ProfileSide>,
     ) -> std::result::Result<StopRoute, &'static str> {
@@ -247,7 +237,7 @@ impl Profile {
     }
 
     /// The reply to `profile status`; a finished server-only capture is not reported.
-    fn status(&self) -> Status {
+    pub(in crate::game) fn status(&self) -> Status {
         let client = self.perf.status(self.perf.now());
         let alone = self
             .server_only
@@ -279,7 +269,11 @@ impl Profile {
     }
 
     /// Marks the window's capture if `side` wants it; also the `t` of a server mark that is due, for the caller to post. Every `t` is on the game clock.
-    fn mark(&mut self, side: Option<ProfileSide>, name: &str) -> (Option<f64>, Option<f64>) {
+    pub(in crate::game) fn mark(
+        &mut self,
+        side: Option<ProfileSide>,
+        name: &str,
+    ) -> (Option<f64>, Option<f64>) {
         let want = |s| side.is_none_or(|only| only == s);
         let t = self.perf.now();
         let client = (want(ProfileSide::Client) && self.perf.mark(t, name)).then_some(t);
@@ -297,7 +291,7 @@ impl Profile {
     }
 
     /// The sides a capture is writing, server first.
-    fn sides(&self) -> Vec<ProfileSide> {
+    pub(in crate::game::client_side) fn sides(&self) -> Vec<ProfileSide> {
         let server = self.server_live() || self.server_only_live() || self.server_link.running();
         [
             server.then_some(ProfileSide::Server),
@@ -323,7 +317,7 @@ pub(in crate::game) fn shown(path: &Path) -> String {
 
 /// `path` under `home` as `reports/profile-….hzperf`, with `/` on every platform so replies and chat read the same
 /// everywhere; a path outside `home` as the platform writes it, ready to paste into its file manager.
-fn shown_in(path: &Path, home: &Path) -> String {
+pub(in crate::game) fn shown_in(path: &Path, home: &Path) -> String {
     match path.strip_prefix(home) {
         Ok(inside) => inside
             .components()
@@ -334,19 +328,21 @@ fn shown_in(path: &Path, home: &Path) -> String {
     }
 }
 
-fn gpu_readout(
+pub(in crate::game) fn gpu_readout(
     wanted: GpuSwitch,
     renderer: Option<&sunrise_client::gfx::Renderer>,
 ) -> Option<sunrise_client::gfx::pack_timing::GpuReadout> {
     renderer.filter(|_| wanted != GpuSwitch::Off)?.gpu_readout()
 }
 
-fn read_bench(path: &str) -> Result<BenchResult> {
+pub(in crate::game) fn read_bench(path: &str) -> Result<BenchResult> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("cannot read {path}: {e}"))?;
     Ok(client_perf::bench_result(text).map_err(|e| format!("{path}: {e}"))?)
 }
 
-fn json_of<T: serde::Serialize>(reply: &T) -> Result<Option<serde_json::Value>> {
+pub(in crate::game) fn json_of<T: serde::Serialize>(
+    reply: &T,
+) -> Result<Option<serde_json::Value>> {
     Ok(Some(serde_json::to_value(reply)?))
 }
 
@@ -356,10 +352,10 @@ pub(in crate::game) fn reply_text<T: serde::Serialize>(reply: &T) -> String {
 
 /// The fields of a deferred `profile` reply that chat shows.
 #[derive(serde::Deserialize)]
-struct ChatAnswer {
-    error: Option<String>,
-    path: Option<String>,
-    removed: Option<Vec<String>>,
+pub(in crate::game) struct ChatAnswer {
+    pub(in crate::game) error: Option<String>,
+    pub(in crate::game) path: Option<String>,
+    pub(in crate::game) removed: Option<Vec<String>>,
 }
 
 /// The words after `/profiler` when `command`, without its slash, is that command.
@@ -369,24 +365,24 @@ pub(in crate::game::client_side) fn profiler_args(command: &str) -> Option<&str>
         .filter(|rest| rest.is_empty() || rest.starts_with(' '))
 }
 
-fn unavailable() -> String {
+pub(in crate::game) fn unavailable() -> String {
     sunrise_client::lang::get("sunrise.perf.unavailable")
 }
 
 /// A path a request names, relative to the game's home.
-fn game_path(file: &Path) -> PathBuf {
+pub(in crate::game) fn game_path(file: &Path) -> PathBuf {
     sunrise_client::logging::game_home().join(file)
 }
 
 /// Why a `/profiler open` or `share` found no capture.
 #[derive(Debug, PartialEq, Eq)]
-enum Missing {
+pub(in crate::game) enum Missing {
     Last,
     Named(String),
 }
 
 /// The capture `id` names, a capture file in `reports` (this session's `last` one when no id).
-fn resolve_capture(
+pub(in crate::game) fn resolve_capture(
     last: Option<&Path>,
     reports: &Path,
     id: Option<&str>,
@@ -407,7 +403,7 @@ fn resolve_capture(
 }
 
 /// The captures hook's answer: the share link for [`Job::Share`], nothing for [`Job::Open`].
-fn run_job(job: Job, file: &Path) -> std::result::Result<String, String> {
+pub(in crate::game) fn run_job(job: Job, file: &Path) -> std::result::Result<String, String> {
     let captures = sunrise_hooks::engine::captures()
         .ok_or_else(|| sunrise_client::lang::get("sunrise.perf.unavailable"))?;
     match job {
@@ -417,7 +413,7 @@ fn run_job(job: Job, file: &Path) -> std::result::Result<String, String> {
 }
 
 /// A `/profiler` line the tree parsed, as the words `request::parse` reads: `[SIDE] ACTION [--gpu=MODE] [NAME]`.
-fn profiler_words(literals: &[String], name: Option<&str>) -> Vec<String> {
+pub(in crate::game) fn profiler_words(literals: &[String], name: Option<&str>) -> Vec<String> {
     let mut words: Vec<String> = literals
         .iter()
         .skip(1)
@@ -445,7 +441,7 @@ impl Game<'_> {
         self.run_profile(words, reply, Trigger::Ctl)
     }
 
-    fn run_profile(
+    pub(in crate::game::client_side) fn run_profile(
         &mut self,
         words: &[&str],
         reply: &Sender<String>,
@@ -557,7 +553,7 @@ impl Game<'_> {
         }
     }
 
-    fn profile_busy(&self) -> bool {
+    pub(in crate::game::client_side) fn profile_busy(&self) -> bool {
         self.profile.perf.capturing()
             || self.profile.perf.saving()
             || self.profile.server_only_live()
@@ -565,7 +561,7 @@ impl Game<'_> {
     }
 
     /// The client options a capture records: what sets how much world it keeps and draws.
-    fn perf_client_settings(&self) -> ClientSettings {
+    pub(in crate::game::client_side) fn perf_client_settings(&self) -> ClientSettings {
         let s = &self.settings;
         ClientSettings {
             view_distance: Some(s.render_distance.max(0) as u32),
@@ -577,7 +573,7 @@ impl Game<'_> {
         }
     }
 
-    fn start_profile(
+    pub(in crate::game::client_side) fn start_profile(
         &mut self,
         side: Option<ProfileSide>,
         options: &StartOptions,
@@ -640,7 +636,11 @@ impl Game<'_> {
     }
 
     /// `profile server start` in single player: the server thread writes a file of its own.
-    fn start_server_only(&mut self, options: &StartOptions, trigger: Trigger) -> Result<Started> {
+    pub(in crate::game::client_side) fn start_server_only(
+        &mut self,
+        options: &StartOptions,
+        trigger: Trigger,
+    ) -> Result<Started> {
         let integrated = self
             .integrated
             .as_ref()
@@ -674,7 +674,7 @@ impl Game<'_> {
     }
 
     /// Asks the server thread to write its side into the running capture, once there is a server thread to ask.
-    fn join_server_capture(&mut self) {
+    pub(in crate::game::client_side) fn join_server_capture(&mut self) {
         if !matches!(self.profile.link, ServerLink::Pending) {
             return;
         }
@@ -695,11 +695,15 @@ impl Game<'_> {
     }
 
     /// Ends the window's capture and, when the server thread joined it, the server's side too.
-    fn stop_profile(&mut self, reason: StopReason) -> Result<()> {
+    pub(in crate::game::client_side) fn stop_profile(&mut self, reason: StopReason) -> Result<()> {
         self.stop_profile_with(reason, Vec::new())
     }
 
-    fn stop_profile_with(&mut self, reason: StopReason, bench: Vec<BenchResult>) -> Result<()> {
+    pub(in crate::game::client_side) fn stop_profile_with(
+        &mut self,
+        reason: StopReason,
+        bench: Vec<BenchResult>,
+    ) -> Result<()> {
         // Ending a capture never requests or waits for a final memory sample.
         self.profile.memory.cancel();
         let t = self.profile.perf.now();
@@ -721,11 +725,17 @@ impl Game<'_> {
     }
 
     /// The pass timings the running capture asked for, as the renderer shows them now.
-    fn gpu_readout(&self) -> Option<sunrise_client::gfx::pack_timing::GpuReadout> {
+    pub(in crate::game::client_side) fn gpu_readout(
+        &self,
+    ) -> Option<sunrise_client::gfx::pack_timing::GpuReadout> {
         gpu_readout(self.profile.gpu, self.renderer.0.as_ref())
     }
 
-    fn client_syntax_failure(&mut self, e: &CommandError, command: &str) {
+    pub(in crate::game::client_side) fn client_syntax_failure(
+        &mut self,
+        e: &CommandError,
+        command: &str,
+    ) {
         self.client_system_message(crate::game::commands_common::formatted_command_failure(
             e.message.clone(),
             None,
@@ -805,7 +815,7 @@ impl Game<'_> {
     }
 
     /// Puts `notice` in the chat history or on the action bar.
-    fn notify(&mut self, notice: Notice) {
+    pub(in crate::game::client_side) fn notify(&mut self, notice: Notice) {
         match notice {
             Notice::Chat(line) => self.client_system_message(line),
             Notice::Bar(line) => self.set_hud_overlay(line),
@@ -813,7 +823,7 @@ impl Game<'_> {
     }
 
     /// Shows the notice for `working` now and again every [`PROGRESS_EVERY`] until [`Game::profiler_done`].
-    fn profiler_work(&mut self, working: Working) {
+    pub(in crate::game::client_side) fn profiler_work(&mut self, working: Working) {
         self.profile.progress = Some(Progress {
             working,
             due: Instant::now() + PROGRESS_EVERY,
@@ -821,14 +831,14 @@ impl Game<'_> {
         self.notify(Self::progress_notice(working));
     }
 
-    fn progress_notice(working: Working) -> Notice {
+    pub(in crate::game::client_side) fn progress_notice(working: Working) -> Notice {
         match working {
             Working::Saving => lines::saving(),
             Working::Uploading => lines::uploading(),
         }
     }
 
-    fn profiler_done(&mut self, working: Working) {
+    pub(in crate::game::client_side) fn profiler_done(&mut self, working: Working) {
         if self
             .profile
             .progress
@@ -839,7 +849,7 @@ impl Game<'_> {
         }
     }
 
-    fn poll_progress(&mut self) {
+    pub(in crate::game::client_side) fn poll_progress(&mut self) {
         let Some(progress) = &mut self.profile.progress else {
             return;
         };
@@ -851,7 +861,7 @@ impl Game<'_> {
         self.notify(Self::progress_notice(working));
     }
 
-    fn profiler_status(&mut self) {
+    pub(in crate::game::client_side) fn profiler_status(&mut self) {
         let status = self.profile.status();
         self.notify(lines::status(
             &status.sides,
@@ -860,13 +870,13 @@ impl Game<'_> {
     }
 
     /// A capture from chat that asked for both sides, told the server refused to join it.
-    pub(in crate::game) fn profiler_client_only(&mut self, why: &str) {
+    pub(in crate::game::client_side) fn profiler_client_only(&mut self, why: &str) {
         if self.profile.started_by == Trigger::Command {
             self.notify(lines::client_only(why));
         }
     }
 
-    fn profiler_saved(&mut self, path: &str) {
+    pub(in crate::game::client_side) fn profiler_saved(&mut self, path: &str) {
         let full = sunrise_client::logging::game_home().join(path);
         self.profile.last_capture = Some(full.clone());
         let secs = self.profile.stopped_after.take().unwrap_or_default();
@@ -874,7 +884,10 @@ impl Game<'_> {
         self.notify(lines::saved(secs, &full, path, can_open_and_share));
     }
 
-    fn capture_named(&self, id: Option<&str>) -> std::result::Result<PathBuf, Notice> {
+    pub(in crate::game::client_side) fn capture_named(
+        &self,
+        id: Option<&str>,
+    ) -> std::result::Result<PathBuf, Notice> {
         resolve_capture(self.profile.last_capture.as_deref(), &reports_dir(), id).map_err(
             |missing| match missing {
                 Missing::Last => lines::share_missing(),
@@ -884,7 +897,7 @@ impl Game<'_> {
     }
 
     /// `/profiler open|share [ID]`: runs the captures hook on a saved capture, off the game thread.
-    fn profiler_job(&mut self, job: Job, id: Option<&str>) {
+    pub(in crate::game::client_side) fn profiler_job(&mut self, job: Job, id: Option<&str>) {
         if sunrise_hooks::engine::captures().is_none() {
             return self.notify(lines::unavailable());
         }
@@ -894,7 +907,7 @@ impl Game<'_> {
         }
     }
 
-    fn queue_profile_job(&mut self, path: PathBuf, job: Job) {
+    pub(in crate::game::client_side) fn queue_profile_job(&mut self, path: PathBuf, job: Job) {
         let queued = self
             .profile
             .jobs
@@ -913,7 +926,7 @@ impl Game<'_> {
         }
     }
 
-    fn poll_profile_job(&mut self) {
+    pub(in crate::game::client_side) fn poll_profile_job(&mut self) {
         if let Some((file, job, receiver)) = &self.profile.job {
             let (file, job) = (file.clone(), *job);
             let result = match receiver.try_recv() {
@@ -959,7 +972,7 @@ impl Game<'_> {
     }
 
     /// Start a memory census on schedule; publish it only if it finishes in this capture.
-    fn poll_memory_snapshot(&mut self) {
+    pub(in crate::game::client_side) fn poll_memory_snapshot(&mut self) {
         if let Some((label, t, pending)) = self.profile.memory.pending.take() {
             match pending.poll() {
                 Poll::Pending => {
@@ -994,7 +1007,7 @@ impl Game<'_> {
         self.profile.memory.pending = PendingMemory::start(self, cost).map(|job| (label, now, job));
     }
 
-    fn poll_chat_answer(&mut self) {
+    pub(in crate::game::client_side) fn poll_chat_answer(&mut self) {
         let Some(answer) = &self.profile.chat_answer else {
             return;
         };
@@ -1137,7 +1150,10 @@ impl Game<'_> {
         }
     }
 
-    fn profile_saved(&mut self, saved: std::io::Result<sunrise_client::server_perf::Saved>) {
+    pub(in crate::game::client_side) fn profile_saved(
+        &mut self,
+        saved: std::io::Result<sunrise_client::server_perf::Saved>,
+    ) {
         self.stop_joined_server();
         spans::record_here(self.profile.spans_were_on);
         self.profile.trace_file = None;
@@ -1188,7 +1204,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
 
     #[test]

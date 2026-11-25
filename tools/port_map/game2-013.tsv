@@ -37,7 +37,7 @@ DaylightDetectorBlock.getTicker	port	crates/sunrise-world/src/level/mod.rs::Beha
 DaylightDetectorBlock.createBlockStateDefinition	skip:data		power and inverted properties come from the block state tables
 DecoratedPotBlock.updateShape	port	crates/sunrise-world/src/level/shapes.rs::Sim::update_shape_class	DecoratedPot arm: waterlogged tick then the default shape update
 DecoratedPotBlock.getStateForPlacement	port	crates/sunrise-world/src/level/place.rs::Sim::placement_class	DecoratedPot arm: facing from the player, waterlogged from the spot, cracked false
-DecoratedPotBlock.useWithoutItem	port	crates/sunrise-client/src/game/blocks/decorated_pot.rs::Game::use_decorated_pot	empty-hand path plays insert_fail, negative wobble and block change
+DecoratedPotBlock.useWithoutItem	port	crates/sunrise-client/src/game/blocks/decorated_pot_server.rs::Game::use_decorated_pot	empty-hand path plays insert_fail, negative wobble and block change
 DecoratedPotBlock.createBlockStateDefinition	skip:data		facing, waterlogged and cracked properties come from the block state tables
 DecoratedPotBlock.getFluidState	skip:data		waterlogged water source comes from the per-state fluid facts table (Level::fluid)
 DecoratedPotBlock.onProjectileHit	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::projectile_breaks_block	the pot is cracked first, then shattered

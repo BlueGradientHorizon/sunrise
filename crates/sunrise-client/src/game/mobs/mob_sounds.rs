@@ -115,7 +115,7 @@ impl Game<'_> {
 
     /// `ClientPacketListener.handleEntityEvent` 21 starts a fresh instance
     /// for every guardian attack event, even while an earlier one plays.
-    pub(in crate::game) fn start_guardian_sound(&mut self, id: u32) {
+    pub(in crate::game::client_side) fn start_guardian_sound(&mut self, id: u32) {
         let Some(m) = self.mobs.iter().find(|m| {
             m.id == id
                 && !m.removed
@@ -140,7 +140,7 @@ impl Game<'_> {
 
     /// `ClientPacketListener.handleEntityEvent` 63: a sniffer's digging
     /// sound loop starts (`SnifferSoundInstance`).
-    pub(in crate::game) fn start_sniffer_digging_sound(&mut self, id: u32) {
+    pub(in crate::game::client_side) fn start_sniffer_digging_sound(&mut self, id: u32) {
         let Some(m) = self
             .mobs
             .iter()

@@ -20,7 +20,7 @@ pub(in crate::game::server_side) use winit::keyboard::KeyCode;
 
 impl Game<'_> {
     /// `SignBlockEntity.getSlotPlayerIsFacing`: whether the player faces the sign's front side.
-    pub(in crate::game) fn facing_sign_front(&self, pos: (i32, i32, i32)) -> bool {
+    pub(in crate::game::server_side) fn facing_sign_front(&self, pos: (i32, i32, i32)) -> bool {
         let Some(player) = self.player.as_ref() else {
             return true;
         };
@@ -72,7 +72,7 @@ impl Game<'_> {
         sign.waxed && sign.can_execute_click_commands(self.facing_sign_front(pos))
     }
     /// `SignBlockEntity.createCommandSourceStack`: silent game-master source at sign centre.
-    pub(in crate::game) fn sign_command_source(&self, pos: [i32; 3]) -> Source {
+    pub(in crate::game::server_side) fn sign_command_source(&self, pos: [i32; 3]) -> Source {
         Source {
             entity: self.player.is_some().then_some(Target::Player),
             pos: pos.map(|v| f64::from(v) + 0.5),
@@ -89,7 +89,7 @@ impl Game<'_> {
         }
     }
     /// `SignBlockEntity.executeClickCommandsIfPresent`: runs click events on the faced side.
-    pub(in crate::game) fn execute_sign_click_commands(
+    pub(in crate::game::server_side) fn execute_sign_click_commands(
         &mut self,
         pos: [i32; 3],
         front: bool,
@@ -164,7 +164,7 @@ impl Game<'_> {
         }
     }
     /// Whether `SignBlock.useWithoutItem` on the sign at `pos` consumes the click.
-    pub(in crate::game) fn sign_consumes_click(&self, pos: [i32; 3]) -> bool {
+    pub(in crate::game::server_side) fn sign_consumes_click(&self, pos: [i32; 3]) -> bool {
         let key = (pos[0], pos[1], pos[2]);
         let Some(BlockEntity::Sign(sign)) = self.world.block_entities.get(&key) else {
             return false;
@@ -183,7 +183,7 @@ impl Game<'_> {
             .any(|event| click_action(event).is_some())
     }
     /// `SignBlock.useItemOn` with a `SignApplicator` in hand (dyes, ink sacs, honeycomb).
-    pub(in crate::game) fn use_sign_applicator(
+    pub(in crate::game::server_side) fn use_sign_applicator(
         &mut self,
         pos: [i32; 3],
         held: Option<&ItemStack>,
@@ -275,7 +275,7 @@ impl Game<'_> {
     }
     /// `ServerPlayer.openTextEdit` for the guest whose action opened a sign:
     /// the block, then the editor, on its client, and the guest may write on it.
-    pub(in crate::game) fn lan_open_sign_editor(
+    pub(in crate::game::server_side) fn lan_open_sign_editor(
         &mut self,
         conn: u32,
         edit: crate::game::server_side::acting_state::PendingSignEditor,
@@ -320,7 +320,11 @@ impl Game<'_> {
     /// codes stripped, go on the sign the guest may write on unless it is
     /// waxed (`SignBlockEntity.updateSignText`); a guest gone out of reach
     /// may no longer write (`playerIsTooFarAwayToEdit`).
-    pub(in crate::game) fn lan_sign_update(&mut self, conn: u32, mut p: play::SignUpdate) {
+    pub(in crate::game::server_side) fn lan_sign_update(
+        &mut self,
+        conn: u32,
+        mut p: play::SignUpdate,
+    ) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -409,7 +413,10 @@ impl Game<'_> {
     }
     /// `SignBlock.otherPlayerIsEditingSign`: the sign at `key` belongs to
     /// someone else's editor right now.
-    pub(in crate::game) fn other_player_is_editing_sign(&mut self, key: (i32, i32, i32)) -> bool {
+    pub(in crate::game::server_side) fn other_player_is_editing_sign(
+        &mut self,
+        key: (i32, i32, i32),
+    ) -> bool {
         match self.world.block_entities.sign_editor(&key) {
             Some(holder) => holder != self.sign_editor_uuid(),
             None => false,
@@ -418,7 +425,7 @@ impl Game<'_> {
     /// Run a sign's `run_command` line as the prefixed command vanilla runs
     /// it as: a leading slash is allowed, errors are not reported (the NULL
     /// source).
-    pub(in crate::game) fn run_sign_command(&mut self, pos: [i32; 3], command: &str) {
+    pub(in crate::game::server_side) fn run_sign_command(&mut self, pos: [i32; 3], command: &str) {
         let source = self.sign_command_source(pos);
         let line = command.strip_prefix('/').unwrap_or(command);
         self.exec.0 = Default::default();
@@ -432,7 +439,7 @@ impl Game<'_> {
     }
     /// `Player.sendOverlayMessage(CLICK_ACTIONS_DISABLED)`: red text on the
     /// action bar. A guest gets a packet, so its own client translates it.
-    pub(in crate::game) fn sign_click_actions_disabled(&mut self) {
+    pub(in crate::game::server_side) fn sign_click_actions_disabled(&mut self) {
         self.server_send_overlay_message(
             sunrise_client::text::Text::translate("sign.click_actions_disabled", &[])
                 .with_color(sunrise_client::text::RED),
@@ -469,7 +476,7 @@ impl Game<'_> {
     }
     /// `SignText.hasEditableText` of the side the player faces: if every line is
     /// plain text, the editor rewrites nothing a player would miss.
-    pub(in crate::game) fn sign_side_has_editable_text(
+    pub(in crate::game::server_side) fn sign_side_has_editable_text(
         &self,
         key: (i32, i32, i32),
         front: bool,

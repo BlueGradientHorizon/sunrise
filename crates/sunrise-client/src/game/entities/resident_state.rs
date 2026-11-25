@@ -1,6 +1,7 @@
 //! Game-owned residency state; no second membership directory.
+#[allow(unused_imports)]
 use super::*;
-pub(super) struct ResidentEntities {
+pub(in crate::game) struct ResidentEntities {
     pub table: Box<RefCell<sunrise_client::join_seq::residency::table::EntityTable>>,
     pub local_player: sunrise_client::join_seq::residency::member::Member,
     pub knots: sunrise_client::join_seq::JoinList<leads::Knot>,
@@ -9,23 +10,10 @@ pub(super) struct ResidentEntities {
     pub general: super::general::GeneralStore,
 }
 
-impl Default for ResidentEntities {
-    fn default() -> Self {
-        Self {
-            table: Box::new(RefCell::new(
-                sunrise_client::join_seq::residency::table::EntityTable::new(Default::default()),
-            )),
-            local_player: Default::default(),
-            knots: Default::default(),
-            general: Default::default(),
-        }
-    }
-}
-
 impl Game<'_> {
     /// `Player.drop(stack, false)`, as `ItemUtils.createFilledResult` drops what no longer fits
     /// in the inventory: thrown from the eyes, with no thrower, statistic or drop hook.
-    pub(super) fn drop_plain(&mut self, stack: ItemStack) -> Option<u32> {
+    pub(in crate::game) fn drop_plain(&mut self, stack: ItemStack) -> Option<u32> {
         self.drop_stack_from_eyes(stack, false)
     }
 }

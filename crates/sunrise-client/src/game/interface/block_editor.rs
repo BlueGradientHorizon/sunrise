@@ -210,7 +210,11 @@ fn edit_tooltip(
 impl Game<'_> {
     /// `LocalPlayer.open*Block`: the edit screen for the block entity at
     /// `pos`.
-    pub(in crate::game) fn open_block_editor(&mut self, pos: Pos, editor: Box<dyn Editor>) {
+    pub(in crate::game::client_side) fn open_block_editor(
+        &mut self,
+        pos: Pos,
+        editor: Box<dyn Editor>,
+    ) {
         let mut screen = BlockEditScreen::new(pos, editor);
         let opening = self
             .world
@@ -235,7 +239,7 @@ impl Game<'_> {
     /// A use of a game master block on a server's client, which opens the
     /// screen itself (`BlockEntity.usedBy`) while the server only answers the
     /// click. The block at `pos`, when the player may use it.
-    pub(in crate::game) fn open_block_editor_if_editable(&mut self, pos: Pos) {
+    pub(in crate::game::client_side) fn open_block_editor_if_editable(&mut self, pos: Pos) {
         if !self.can_use_game_master_blocks() {
             return;
         }

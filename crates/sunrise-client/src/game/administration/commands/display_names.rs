@@ -16,7 +16,7 @@ impl Game<'_> {
     }
     /// `Entity.getName`: the decoded `CustomName` with click actions removed,
     /// else the entity's type name, free of team formatting, hover or insertion.
-    pub(in crate::game) fn target_base_name(&self, t: Target) -> Text {
+    pub(in crate::game::server_side) fn target_base_name(&self, t: Target) -> Text {
         match t {
             Target::Player => Text::literal(self.acting_player_name()),
             Target::Guest(conn) => self
@@ -90,7 +90,7 @@ impl Game<'_> {
             other => self.target_base_name(other).plain(),
         }
     }
-    pub(in crate::game) fn bolt_plain_name(&self, id: u32) -> Text {
+    pub(in crate::game::server_side) fn bolt_plain_name(&self, id: u32) -> Text {
         if let Some(name) = self
             .bolts
             .iter()
@@ -143,14 +143,14 @@ impl Game<'_> {
         ])
     }
     /// `Entity.getDisplayName` for the mob `id`.
-    pub(in crate::game) fn mob_command_name(&self, id: u32) -> Text {
+    pub(in crate::game::server_side) fn mob_command_name(&self, id: u32) -> Text {
         let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
             return Text::translate("entity.", &[]);
         };
         self.decorate_entity_display_name(id, &m.kind.id, self.mob_team_of(m), m.command_name())
     }
     /// `Entity.getDisplayName` for any non-player, non-mob target.
-    pub(in crate::game) fn entity_display_name(&self, t: Target) -> Text {
+    pub(in crate::game::server_side) fn entity_display_name(&self, t: Target) -> Text {
         let name = self.target_base_name(t);
         let Some(id) = super::super::native_entities::target_id(t) else {
             return name;

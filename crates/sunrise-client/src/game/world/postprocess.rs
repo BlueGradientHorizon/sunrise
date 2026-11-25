@@ -12,7 +12,7 @@ use sunrise_core::position::BlockPos;
 const POSTPROCESS_FLAGS: i32 = 276;
 
 impl Game<'_> {
-    pub(super) fn postprocess_chunks(&mut self) -> Result<()> {
+    pub(in crate::game::server_side) fn postprocess_chunks(&mut self) -> Result<()> {
         let ready: Vec<(i32, i32)> = self
             .world
             .chunks

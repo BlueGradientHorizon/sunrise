@@ -3,55 +3,6 @@ use super::Game;
 #[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
 
-impl Game<'_> {
-    pub(in crate::game) fn remote_move_entity_and_file(
-        &mut self,
-        id: i32,
-        path: Option<super::Path>,
-        rotation: Option<(f32, f32)>,
-        on_ground: bool,
-    ) {
-        self.move_entity(id, path, rotation, on_ground, super::MovePacket::Move);
-        self.entity_section_moved_id(id as u32);
-    }
-
-    pub(in crate::game) fn remote_position_sync_and_file(
-        &mut self,
-        id: i32,
-        path: super::Path,
-        yaw: f32,
-        pitch: f32,
-        on_ground: bool,
-    ) {
-        let packet = if self.remote_entity_is_ticking(id) {
-            super::MovePacket::PositionSync
-        } else {
-            super::MovePacket::PositionSyncSnap
-        };
-        self.move_entity(id, Some(path), Some((yaw, pitch)), on_ground, packet);
-        self.entity_section_moved_id(id as u32);
-    }
-
-    /// The driven vehicle put at `position` with `rotation`, its section crossing filed.
-    pub(in crate::game) fn remote_move_vehicle_and_file(
-        &mut self,
-        position: [f64; 3],
-        rotation: (f32, f32),
-    ) {
-        self.remote_move_vehicle(position, rotation);
-        let boat = self
-            .riding
-            .filter(|&id| self.controls_boat(id) && self.boats.iter().any(|b| b.id == id));
-        if let Some(id) = self.driven_mount().map(|m| m.id).or(boat) {
-            self.entity_section_moved_id(id);
-        }
-    }
-
-    pub(in crate::game) fn remote_entity_section_step(&mut self, id: u32, from: Vec3, to: Vec3) {
-        self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
-    }
-}
-
 pub(in crate::game) fn player_teleport(
     game: &mut Game<'_>,
     had_player: bool,

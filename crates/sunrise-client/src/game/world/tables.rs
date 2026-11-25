@@ -1,13 +1,18 @@
 //! Read-only world content tables shared by server and client games.
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use std::sync::LazyLock;
+#[allow(unused_imports)]
 use sunrise_client::{
     blocks::{MAP_COLORS, RenderShape},
     menu::Env,
     neoforge_mob_maps::NeoForgeMobMaps,
     particles::{ParticleOptions, ParticleType},
 };
+#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
+#[allow(unused_imports)]
 use sunrise_world::level::data::BlockSet;
 
 /// [`Game::level_suffocation`] from the fields it reads, for a caller that holds other fields: the
@@ -22,12 +27,6 @@ pub(in crate::game) fn level_suffocation_of<'a>(
 }
 
 impl Game<'_> {
-    /// The server's recipes a client was sent, over its own; None on a
-    /// server and until a server sends any.
-    pub(in crate::game) fn synced_recipes(&self) -> Option<&sunrise_client::crafting::Recipes> {
-        self.recipe_tables.synced.as_ref()
-    }
-
     /// Server reads active station enchantments; client reads synced remote enchantments or active items.
     pub(in crate::game) fn item_enchantments(&self) -> &Arc<sunrise_client::enchant::Enchantments> {
         if self.is_logical_server() {
@@ -73,17 +72,9 @@ impl Game<'_> {
     pub(in crate::game) fn stations(&self) -> &sunrise_client::stations::StationData {
         world_stations!(self)
     }
-
-    /// The biome colours used by the mesher and client tint queries. On a
-    /// world without its own table, a colour refresh updates the pack's table.
-    pub(in crate::game) fn mesh_biomes(&self) -> &Arc<Biomes> {
-        self.world_biomes
-            .as_ref()
-            .unwrap_or(&self.pack.context.biomes)
-    }
 }
 
-static DEFAULT_CLIENT_FEATURES: LazyLock<Arc<[String]>> =
+pub(in crate::game) static DEFAULT_CLIENT_FEATURES: LazyLock<Arc<[String]>> =
     LazyLock::new(|| Arc::from([String::from("minecraft:vanilla")]));
 
 pub(in crate::game) fn default_client_features() -> &'static Arc<[String]> {
@@ -98,17 +89,17 @@ pub(in crate::game) enum BlockProviderQuery {
 }
 
 #[derive(PartialEq, Eq)]
-struct BlockQueryKey {
-    game: *const (),
-    state: BlockStateId,
-    query: BlockProviderQuery,
+pub(in crate::game) struct BlockQueryKey {
+    pub(in crate::game) game: *const (),
+    pub(in crate::game) state: BlockStateId,
+    pub(in crate::game) query: BlockProviderQuery,
 }
 
 thread_local! {
-    static ACTIVE_BLOCK_QUERIES: RefCell<Vec<BlockQueryKey>> = const { RefCell::new(Vec::new()) };
+    pub(in crate::game) static ACTIVE_BLOCK_QUERIES: RefCell<Vec<BlockQueryKey>> = const { RefCell::new(Vec::new()) };
 }
 
-struct PopBlockQuery;
+pub(in crate::game) struct PopBlockQuery;
 
 impl Drop for PopBlockQuery {
     fn drop(&mut self) {
@@ -119,10 +110,6 @@ impl Drop for PopBlockQuery {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn worker_context(&self) -> Arc<WorkerContext> {
-        self.pack.context_with(self.mesh_biomes().clone())
-    }
-
     pub(in crate::game) fn pack_files(&self) -> sunrise_world::loot::PackOverlay<'_> {
         match self.side_world_tables() {
             Some(t) => sunrise_world::loot::PackOverlay {
@@ -158,17 +145,6 @@ impl Game<'_> {
                 .server_stations
                 .as_ref()
                 .unwrap_or(&self.stations().recipes)
-        }
-    }
-
-    pub(in crate::game) fn display_index(&self) -> &sunrise_client::recipe_book::RecipeIndex {
-        if self.is_logical_server() {
-            &self.stations().recipe_index
-        } else {
-            self.recipe_tables
-                .synced_index
-                .as_ref()
-                .unwrap_or(&self.stations().recipe_index)
         }
     }
 
@@ -580,15 +556,6 @@ impl Game<'_> {
         Some(world_biomes!(self).name(c.biome(x, y, z)).to_owned())
     }
 
-    pub(in crate::game) fn craft_recipe(&self) -> Option<(String, ItemStack)> {
-        let n = self.craft_size;
-        let grid: Vec<Option<ItemStack>> = (0..n * n).map(|i| self.craft_grid[i].clone()).collect();
-        let scale = |id: i32| self.maps.data.get(&id).map(|m| m.scale);
-        self.recipes()
-            .find_with(&self.loop_context, &grid, n, &scale)
-            .map(|(name, result)| (name.to_owned(), result))
-    }
-
     pub(in crate::game) fn enchantments_compatible(&self, a: &str, b: &str) -> bool {
         self.item_enchantments().compatible(a, b)
     }
@@ -617,57 +584,6 @@ impl Game<'_> {
                 .map(|f| f.layer)
         })?;
         pack.layer_names.get(&layer).cloned()
-    }
-
-    pub(in crate::game) fn block_provider_options(
-        &self,
-        ty: ParticleType,
-        state: BlockStateId,
-        pos: [i32; 3],
-    ) -> Option<ParticleOptions> {
-        self.pack.assets.registry.state(state)?;
-        let facts = self.res.facts();
-        let block = facts.get(state);
-        let sprite =
-            || Self::block_particle_sprite(&self.pack, state).unwrap_or_else(|| "missingno".into());
-        let options = match ty {
-            ParticleType::Block | ParticleType::DustPillar | ParticleType::BlockCrumble => {
-                if facts.is_air(state)
-                    || &*block.name == "minecraft:moving_piston"
-                    || !block.spawn_terrain_particles
-                {
-                    return None;
-                }
-                ParticleOptions::block(
-                    ty,
-                    sprite(),
-                    self.terrain_particle_tint(state, pos).unwrap_or(0xFFFFFF),
-                )
-            }
-            ParticleType::FallingDust => {
-                if !facts.is_air(state) && block.render_shape == RenderShape::Invisible {
-                    return None;
-                }
-                let map_color = || MAP_COLORS[usize::from(block.map_color)];
-                let tint = match &*block.name {
-                    "minecraft:anvil" | "minecraft:chipped_anvil" | "minecraft:damaged_anvil" => {
-                        map_color()
-                    }
-                    name if name.starts_with("minecraft:")
-                        && name.ends_with("_concrete_powder") =>
-                    {
-                        map_color()
-                    }
-                    name => sunrise_client::animate_tick::fixed_falling_dust_color(name)
-                        .or_else(|| self.terrain_particle_tint(state, pos))
-                        .unwrap_or_else(map_color),
-                };
-                ParticleOptions::block(ty, String::new(), tint)
-            }
-            ParticleType::BlockMarker => ParticleOptions::block(ty, sprite(), 0xFFFFFF),
-            _ => return None,
-        };
-        Some(options.with_source(&block.name))
     }
 
     pub(in crate::game) fn particle_sprite(
@@ -703,34 +619,5 @@ impl Game<'_> {
             self.streaming.biome_blend,
             self.streaming.nether_shading,
         )
-    }
-
-    pub(in crate::game) fn falling_block_face_sprite(
-        &self,
-        state: BlockStateId,
-    ) -> Option<(String, u32)> {
-        let pack = &self.pack;
-        let models = pack
-            .render
-            .model_catalog
-            .collect(state, sunrise_core::position::BlockPos::new(0, 0, 0))
-            .ok()?;
-        let face = models
-            .iter()
-            .flat_map(|(_, m)| m.faces.iter())
-            .find(|f| f.quad.facing == sunrise_assets::model::Direction::Up)
-            .or_else(|| models.iter().flat_map(|(_, m)| m.faces.iter()).next())?;
-        let name = pack.layer_names.get(&face.layer)?.clone();
-        let tint = if face.quad.tint_index >= 0 {
-            let n = &self.res.facts().get(state).name;
-            if n.contains("leaves") || n.contains("vine") {
-                0x48B518
-            } else {
-                0x91BD59
-            }
-        } else {
-            0xFFFFFF
-        };
-        Some((name, tint))
     }
 }
