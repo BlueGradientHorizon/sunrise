@@ -280,21 +280,23 @@ SDK_INDEX = "sdk.json"
 SDK_ASSETS = SDK_ARCHIVES + (SDK_INDEX, "SHA256SUMS", "SHA256SUMS.sig")
 
 
-def published_releases():
+def published_releases(drafts: bool = False):
+    """The releases, drafts only with `drafts` (a Dev build's, before promote-dev.yml makes it public; the token must
+    be able to write to see them)."""
     pages = train.gh_json("api", "--paginate", "repos/sunrise-org/sunrise/releases?per_page=100")
-    return (release for page in pages for release in page if not release["draft"])
+    return (release for page in pages for release in page if drafts or not release["draft"])
 
 
-def ready_sdk_shas() -> set[str]:
-    """Snapshot of the complete published `sdk-<sha>` releases; API failures fail closed."""
+def ready_sdk_shas(drafts: bool = False) -> set[str]:
+    """Snapshot of the complete published `sdk-<sha>` releases (and drafts, with `drafts`); API failures fail closed."""
     return {release["tag_name"].removeprefix("sdk-")
-            for release in published_releases() if re.fullmatch(r"sdk-[0-9a-f]{40}", release["tag_name"])
+            for release in published_releases(drafts) if re.fullmatch(r"sdk-[0-9a-f]{40}", release["tag_name"])
             and set(SDK_ASSETS) <= {asset["name"] for asset in release["assets"]}}
 
 
-def sdk_ready(sha: str) -> bool:
+def sdk_ready(sha: str, drafts: bool = False) -> bool:
     """A fresh check, never cached across selection and publication."""
-    return sha in ready_sdk_shas()
+    return sha in ready_sdk_shas(drafts)
 
 
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -499,11 +501,13 @@ def previous_sdk(sha: str) -> str:
     return min(behind, key=behind.get) if behind else ""
 
 
-def require_sdk(sha: str) -> None:
-    """Refuse before rotating/publishing Nightly if its SDK disappeared or its index is not this build's."""
+def require_sdk(sha: str, drafts: bool = False) -> None:
+    """Refuse before rotating/publishing Nightly if its SDK disappeared or its index is not this build's. A Dev build's
+    game draft takes its SDK's draft (`drafts`); promote-dev.yml makes the SDK public first."""
     if os.environ.get("GITHUB_REPOSITORY") == "sunrise-org/sunrise":
-        if not sdk_ready(sha):
-            raise SystemExit(f"Nightly publication refused: {sha} has no complete published sdk-{sha} release")
+        if not sdk_ready(sha, drafts):
+            raise SystemExit(f"Nightly publication refused: {sha} has no complete sdk-{sha} release"
+                             + (" or draft" if drafts else ""))
         published_index(sha)
 
 
@@ -1216,7 +1220,9 @@ def main() -> None:
     picker.add_argument("--force", action="store_true")
     picker.add_argument("--kind", choices=["nightly", "dev", "stable"], default="nightly")
     sub.add_parser("rotate")
-    sub.add_parser("require-sdk").add_argument("sha")
+    require = sub.add_parser("require-sdk")
+    require.add_argument("sha")
+    require.add_argument("--draft", action="store_true", help="a draft sdk-<sha> counts (a Dev build's)")
     reserve = sub.add_parser("reserve-stable-tag")
     reserve.add_argument("sha")
     reserve.add_argument("tag")
@@ -1256,7 +1262,7 @@ def main() -> None:
         else:
             pick(args.force)
     elif args.cmd == "require-sdk":
-        require_sdk(args.sha)
+        require_sdk(args.sha, args.draft)
     elif args.cmd == "reserve-stable-tag":
         reserve_stable_tag(args.sha, args.tag)
     elif args.cmd == "sdk-archives":

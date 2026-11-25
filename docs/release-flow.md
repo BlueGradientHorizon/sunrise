@@ -121,23 +121,36 @@ commit on main. In order:
    - `sdk` builds its prebuilt SDK on every OS (`prebuilt-game-build.yml`; skipped when `sdk-<sha>` already
      exists). A build it makes runs the SDK's own checks too, as the daily run's does: the native linkage probe on
      the Linux and Windows client legs, and the API-source check and the source stage
-     (`tools/ci/test_stage_catalog.py`) on Linux. `sdk-publish` signs and publishes it as `sdk-<sha>` from this run's
-     artifacts as soon as those legs are done, through `sdk-publish.yml`, the one workflow that publishes an SDK (the
-     daily run and `prebuilt-game.yml` call it too).
+     (`tools/ci/test_stage_catalog.py`) on Linux. `sdk-publish` signs it and releases it as the draft `sdk-<sha>` from
+     this run's artifacts as soon as those legs are done, through `sdk-publish.yml`, the one workflow that publishes an
+     SDK (the daily run and `prebuilt-game.yml` call it too, publishing at once; one of them finding a Dev build's
+     draft of its commit makes that draft public as it is).
    - `build` builds the game alone (no picked pull requests, no build branch, no nightly-state), as
      `SUNRISE_VERSION` `dev-<date>` so the game calls itself "Dev <date> · <short>". The game's legs read nothing of
      the SDK.
-4. `sdk-index` takes the published `sdk-<sha>`'s `sdk.json`; only then does `sign` sign the game for the `dev`
+4. `sdk-index` takes `sdk-<sha>`'s `sdk.json`, its draft's; only then does `sign` sign the game for the `dev`
    channel and for `dev-<date>-<short>` (`SHA256SUMS.sig`, `SHA256SUMS.v2.sig`, the Nightly's key), with that
    `sdk.json` in its signed sums as the Nightly carries its own, so the launcher reads its build id from it and
-   builds native mods against `sdk-<sha>`. `publish` checks the smoke test and that `sdk-<sha>` is out, and
-   publishes the pre-release `dev-<date>-<short>` titled "Dev <date> · <short>": the SDK always first. A commit
-   already published that day is skipped. Dev builds older than 7 days are deleted, never the newest one, and never
-   an `sdk-<sha>` SDK.
+   builds native mods against `sdk-<sha>`. `publish` checks the smoke test and that `sdk-<sha>` is there, and
+   releases the draft pre-release `dev-<date>-<short>` titled "Dev <date> · <short>". A commit already published
+   (or drafted) that day is skipped; an earlier attempt's draft of the same tag is replaced.
+5. Nothing public has changed yet: no tag, no release anyone lists, no modding book. The build is tested from its two
+   drafts, downloaded into one folder with a subfolder per release, as GitHub's download paths have them:
+
+   ```sh
+   gh release download dev-<date>-<short> -R sunrise-org/sunrise -D drafts/dev-<date>-<short>
+   gh release download sdk-<sha> -R sunrise-org/sunrise -D drafts/sdk-<sha>
+   SUNRISE_LAUNCHER_DRAFTS=drafts sunrise-launcher install dev-<date>-<short>   # Sunrise Launcher 1.3.3 and later
+   SUNRISE_SDK_BASE=drafts cargo sunrise-mod …                                  # the mod tools, against the draft SDK
+   ```
+6. `gh workflow run promote-dev.yml -R sunrise-org/sunrise --ref main -f tag=dev-<date>-<short>` makes them public,
+   rebuilding nothing: it checks both drafts as launchers check them and that the game carries its SDK's `sdk.json`,
+   makes `sdk-<sha>` public, then the game, deletes the Dev builds older than 7 days (never the newest one, and
+   never an `sdk-<sha>` SDK), and publishes the SDK's generated modding book (`modding-book-generated.yml`).
 
 A failed Dev build is retried with **Re-run failed jobs** on its `nightly build` run: only the failed jobs and those
 after them run again, every SDK or game leg that built is kept, and a published `sdk-<sha>` is never rebuilt (a new
-dispatch of the same commit reuses it too, and skips a commit already published that day). Only a new commit, a fix,
+dispatch of the same commit reuses it too, and skips a commit already published or drafted that day). Only a new commit, a fix,
 builds everything again. `BLACKSMITH_DEV_MACOS=on` (a repository variable the owner sets; unset is off) moves the
 macOS legs of a Dev build, the SDK's and the game's, to Blacksmith while `BLACKSMITH` stays `off` for everything else.
 

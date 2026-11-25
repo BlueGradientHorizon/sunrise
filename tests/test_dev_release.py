@@ -70,7 +70,21 @@ class NightlyBuildDevTests(unittest.TestCase):
         for never in ("rotate", "keep-source", "daily-green", "release create nightly", "prune --days", "release edit"):
             self.assertNotIn(never, run)
         self.assertIn('--title "Dev $DATE · $SHORT"', run)
-        self.assertLess(run.index("require-sdk"), run.index("gh release create"))
+        self.assertLess(run.index("require-sdk --draft"), run.index("gh release create"))
+
+    def test_a_dev_build_is_a_draft_until_promoted_sdk_first(self):
+        run = self.steps["Publish as the dev-<date>-<short> pre-release"]["run"]
+        self.assertIn('gh release create "$TAG" --draft', run)
+        self.assertNotIn("prune-dev", run)
+        promote = load("promote-dev.yml")
+        self.assertEqual(set(promote["on"]), {"workflow_dispatch"})
+        public = next(step for step in promote["jobs"]["promote"]["steps"] if step.get("id") == "public")["run"]
+        self.assertLess(public.index('gh release edit "sdk-$SHA" --draft=false'),
+                        public.index('gh release edit "$TAG" --draft=false'))
+        self.assertLess(public.index('gh release edit "$TAG" --draft=false'), public.index("prune-dev"))
+        check = next(step for step in promote["jobs"]["promote"]["steps"] if step.get("id") == "check")["run"]
+        self.assertIn('cmp "$game/sdk.json" "$sdk/sdk.json"', check)
+        self.assertLess(check.index("verify-sums"), check.index('echo "sha=$sha"'))
 
     def test_the_channel_signed_and_checked_is_the_kind(self):
         sign = self.workflow["jobs"]["sign"]["steps"][2]
@@ -135,7 +149,8 @@ class NightlyBuildDevTests(unittest.TestCase):
         self.assertEqual(jobs["sdk"]["with"]["commit"], "${{ needs.pick.outputs.sha }}")
         self.assertEqual(jobs["sdk-publish"]["needs"], ["pick", "sdk"])
         self.assertEqual(jobs["sdk-publish"]["with"], {"commit": "${{ needs.pick.outputs.sha }}",
-                                                       "publish": "${{ needs.pick.outputs.publish == 'true' }}"})
+                                                       "publish": "${{ needs.pick.outputs.publish == 'true' }}",
+                                                   "draft": "true"})
         self.assertEqual(jobs["sdk-index"]["needs"], ["pick", "sdk", "sdk-publish"])
         for name in ("sdk", "sdk-publish", "sdk-index"):
             self.assertIn("inputs.kind == 'dev'", jobs[name]["if"], name)
