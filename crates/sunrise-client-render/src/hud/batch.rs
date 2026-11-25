@@ -98,9 +98,9 @@ pub struct HudBatch {
     viewport: [u32; 2],
     /// Glyph pixels to upload into the atlas before drawing.
     pub patches: Vec<crate::font::Patch>,
-    /// Client mods' dynamic textures to upload into their atlas slots before drawing, sharing
-    /// the pixels the game keeps of them.
-    pub image_patches: Vec<dynamic_textures::ImagePatch>,
+    /// The changes to client mods' dynamic textures, applied in order before drawing. Never
+    /// rolled back: a change a refused draw would have followed was still made.
+    pub dynamic_commands: Vec<dynamic_textures::Command>,
     /// Vertex ranges with another blend or depth/scissor state, in order.
     pub blends: Vec<(Range<u32>, Blend)>,
     /// Disjoint, ordered vertex ranges with a screen-space scissor in GUI pixels.
@@ -123,7 +123,6 @@ struct HudTail {
     vertices: usize,
     pictures: usize,
     patches: usize,
-    image_patches: usize,
     inline_profiles: usize,
     blends: usize,
     last_blend: Option<(std::ops::Range<u32>, Blend)>,
@@ -143,7 +142,6 @@ impl Drop for HudDrawRollback<'_> {
         self.batch.truncate_vertices(tail.vertices);
         self.batch.pictures.truncate(tail.pictures);
         self.batch.patches.truncate(tail.patches);
-        self.batch.image_patches.truncate(tail.image_patches);
         self.batch.inline_profiles.truncate(tail.inline_profiles);
         self.batch.blends.truncate(tail.blends);
         // `blend_since` can extend the preceding run instead of appending a new one.
@@ -189,6 +187,8 @@ impl HudPaintCheckpoint {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Blend {
     Picture(u64),
+    /// A run sampling the dynamic texture with this handle (`dynamic_textures::Command`).
+    Dynamic(u64),
     /// A run sampling a separately stitched registered atlas page.
     AtlasPage(usize, AtlasBlend),
     /// `BlendFunction.TRANSLUCENT`.
@@ -263,7 +263,7 @@ impl HudBatch {
             height: gui.size[1] as f32,
             viewport: window,
             patches: Vec::new(),
-            image_patches: Vec::new(),
+            dynamic_commands: Vec::new(),
             blends: Vec::new(),
             scissors: SmallVec::new(),
             end_portal: EndPortalFill::default(),
@@ -305,7 +305,6 @@ impl HudBatch {
             vertices: self.vertices.len(),
             pictures: self.pictures.len(),
             patches: self.patches.len(),
-            image_patches: self.image_patches.len(),
             inline_profiles: self.inline_profiles.len(),
             blends: self.blends.len(),
             last_blend: self.blends.last().cloned(),
@@ -843,6 +842,17 @@ impl HudBatch {
                         tint,
                     );
                 }
+            }
+            InlineObject::Dynamic { handle, size, .. } => {
+                let side = crate::font::INLINE_OBJECT_SIZE;
+                self.dynamic_texture(
+                    *handle,
+                    *size,
+                    [x, y, side, side],
+                    [0.0, 0.0],
+                    [[1, 1], [1, 1]],
+                    tint,
+                );
             }
             InlineObject::Atlas { .. } => {
                 if let Some(rect) = atlas.inline_object_sprite(object) {

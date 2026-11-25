@@ -88,7 +88,6 @@ impl HudAtlas {
         defaults: &ResourceSource,
         folders: &[&str],
         full: bool,
-        pool: bool,
         max_atlas_size: u32,
     ) -> Result<Self> {
         let textures = "assets/minecraft/textures";
@@ -385,7 +384,7 @@ impl HudAtlas {
                 let (width, height, rgba) = decode_bytes(png)?;
                 images.push((format!("sunrise/jei/{name}"), width, height, rgba));
             }
-            Self::slots(&mut images, crate::trims::slot_size(root), pool);
+            Self::slots(&mut images, crate::trims::slot_size(root));
             let (width, height, missing) = missing_image();
             images.push((MISSING_SPRITE.into(), width, height, missing));
             let (width, height, rgba) =
@@ -530,7 +529,6 @@ impl HudAtlas {
             registered_owners,
             registered_pages,
             stitch_limit: Some(max_atlas_size),
-            live: HashMap::new(),
             object_skins: HashMap::new(),
             object_skins_revision: Self::next_revision(),
             translucent,
@@ -555,7 +553,6 @@ impl HudAtlas {
             blinks,
             font,
             white,
-            dynamic_texture_pool: None,
         })
     }
     /// `misc/<name>.png` on its own, or a transparent texel if the resource

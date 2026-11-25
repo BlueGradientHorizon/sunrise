@@ -54,8 +54,8 @@ pub trait DrawContext {
     }
     /// Part `src` (`[x, y, w, h]` in the sprite's own pixels) of sprite
     /// `name` (a GUI atlas sprite by its id, `container/slot` or a mod's `mymod:panel`, another
-    /// texture the atlas holds such as vanilla's `gui/...` files, or
-    /// a client mod's dynamic texture, `ClientRenderClientHost::create_dynamic_texture`),
+    /// texture the atlas holds such as vanilla's `gui/...` files; a client mod's dynamic texture
+    /// is not one: draw it with `GuiCanvas::texture`),
     /// drawn stretched into `dst` (`[x, y, w, h]` in GUI pixels), every texel multiplied by
     /// `tint` (`0xAARRGGBB`, a fluid's colour) when there is one. False when there is
     /// no such sprite.

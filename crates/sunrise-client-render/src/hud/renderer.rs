@@ -4,6 +4,14 @@ use crate::gfx::hud_coverage::{self, Pipeline};
 pub struct HudRenderer {
     pub(super) atlas_pages: Vec<Option<AtlasPageGpu>>,
     pub(super) pictures: HashMap<u64, (Arc<pictures::Picture>, wgpu::BindGroup)>,
+    /// Client mods' dynamic textures, shared with the renderers that follow this one on the
+    /// same device, and the bind groups of those this renderer draws, with the revision of the
+    /// texture each was made for.
+    pub(super) dynamic: dynamic_textures::Store,
+    pub(super) dynamic_groups: HashMap<u64, (u64, wgpu::BindGroup)>,
+    /// What a dynamic texture released after its draw was submitted draws as: vanilla's missing
+    /// texture, made when first needed.
+    pub(super) dynamic_missing: Option<wgpu::BindGroup>,
     pub sprite_animations: Vec<(
         AnimatedPlacement,
         crate::sprites::SpriteAnimation,
@@ -319,6 +327,9 @@ impl HudRenderer {
         Ok(Self {
             atlas_pages,
             pictures: HashMap::new(),
+            dynamic: Default::default(),
+            dynamic_groups: HashMap::new(),
+            dynamic_missing: None,
             atlas_texture: None,
             sprite_animations: Vec::new(),
             pipeline,
@@ -374,8 +385,7 @@ impl HudRenderer {
     ) -> Option<&mut crate::gfx::expression_blocks::ExpressionBlocks> {
         self.pack_text.as_mut().map(|text| &mut text.extra)
     }
-    /// Stage the batch's `patches` and `image_patches` (client mods' dynamic textures) into
-    /// the shared atlas texture.
+    /// Stage the glyph `patches` into the shared atlas texture.
     pub fn upload_glyph_patches(
         &self,
         uploads: &mut crate::gfx::upload::Uploads,
@@ -408,41 +418,55 @@ impl HudRenderer {
             }
         }
     }
+    /// The dynamic textures the renderers on this device share: a renderer made on the same
+    /// device takes them over with [`Self::share_dynamic`].
+    pub fn dynamic(&self) -> &dynamic_textures::Store {
+        &self.dynamic
+    }
+    /// Use `store`, the previous renderer's, so a resource reload keeps every dynamic texture.
+    pub fn share_dynamic(&mut self, store: dynamic_textures::Store) {
+        self.dynamic = store;
+    }
+    /// Stage the batch's glyph patches into the shared atlas texture, then apply its dynamic
+    /// texture commands in order.
     pub fn upload_patches(
         &self,
+        device: &wgpu::Device,
         uploads: &mut crate::gfx::upload::Uploads,
         encoder: &mut wgpu::CommandEncoder,
         batch: &HudBatch,
     ) {
-        let Some(texture) = &self.atlas_texture else {
-            return;
-        };
-        let glyphs = batch
-            .patches
-            .iter()
-            .map(|p| ([p.x, p.y], [p.width, p.height], &p.rgba[..]));
-        let images = batch
-            .image_patches
-            .iter()
-            .map(|p| (p.origin, p.size, &p.rgba[..]));
-        for ([x, y], [width, height], rgba) in glyphs.chain(images) {
-            if x.saturating_add(width) <= texture.width()
-                && y.saturating_add(height) <= texture.height()
-            {
-                uploads.texture(
-                    encoder,
-                    wgpu::TexelCopyTextureInfo {
-                        texture,
-                        mip_level: 0,
-                        origin: wgpu::Origin3d { x, y, z: 0 },
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    width,
-                    height,
-                    rgba,
-                );
+        if let Some(texture) = &self.atlas_texture {
+            for p in &batch.patches {
+                if p.x.saturating_add(p.width) <= texture.width()
+                    && p.y.saturating_add(p.height) <= texture.height()
+                {
+                    uploads.texture(
+                        encoder,
+                        wgpu::TexelCopyTextureInfo {
+                            texture,
+                            mip_level: 0,
+                            origin: wgpu::Origin3d {
+                                x: p.x,
+                                y: p.y,
+                                z: 0,
+                            },
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        p.width,
+                        p.height,
+                        &p.rgba,
+                    );
+                }
             }
         }
+        self.dynamic.apply(
+            device,
+            uploads,
+            encoder,
+            self.atlas_texture.as_ref(),
+            &batch.dynamic_commands,
+        );
     }
     /// Stage the batch's atlas patches, vertices and uniform: before the
     /// frame's first pass, so the copies share one command buffer.
@@ -455,7 +479,8 @@ impl HudRenderer {
         size: [u32; 2],
     ) {
         self.prepare_pictures(device, uploads, encoder, batch);
-        self.upload_patches(uploads, encoder, batch);
+        self.upload_patches(device, uploads, encoder, batch);
+        self.prepare_dynamic(device, uploads, encoder, batch);
         if batch.vertices.is_empty() || size.contains(&0) {
             return;
         }
@@ -612,6 +637,10 @@ impl HudRenderer {
                     let pipeline = match blend {
                         Blend::Picture(id) => {
                             self.draw_picture(&mut pass, *id, range, coverage.is_some());
+                            continue;
+                        }
+                        Blend::Dynamic(handle) => {
+                            self.draw_dynamic(&mut pass, *handle, range, coverage.is_some());
                             continue;
                         }
                         Blend::AtlasPage(page, blend) => {
