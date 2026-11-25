@@ -12,12 +12,12 @@ use sunrise_world::collision_context::CollisionContext;
 
 const COLLISION_CELLS: usize = 1_000_000;
 
-fn aabb_of(b: [f64; 6]) -> Option<Aabb> {
+pub(in crate::game) fn aabb_of(b: [f64; 6]) -> Option<Aabb> {
     (b.iter().all(|v| v.is_finite()) && b[0] <= b[3] && b[1] <= b[4] && b[2] <= b[5])
         .then(|| Aabb::new(Vec3::new(b[0], b[1], b[2]), Vec3::new(b[3], b[4], b[5])))
 }
 
-fn corners(b: Aabb) -> [f64; 6] {
+pub(in crate::game) fn corners(b: Aabb) -> [f64; 6] {
     let (lo, hi) = (b.min_position(), b.max_position());
     [lo.x, lo.y, lo.z, hi.x, hi.y, hi.z]
 }

@@ -528,7 +528,7 @@ mod tests {
                 player.set_walking_speed_base(0.1).unwrap();
                 player.ground.on_ground = true;
                 player.velocity = Vec3::new(0.2, 0.0, 0.0);
-                let side = game_side!(game);
+                let side = game_side!(game, game.side_game_side_meta());
                 let mut world = MotionWorld {
                     side: &side,
                     entities: &[],
@@ -904,7 +904,7 @@ mod tests {
                 Ok(true)
             );
             let facts = game.res.facts();
-            let side = game_side!(game);
+            let side = game_side!(game, game.side_game_side_meta());
             let view = FrictionLevel {
                 world: &game.world,
                 registry,
@@ -949,7 +949,7 @@ mod tests {
                 (3, 64, 3),
                 sunrise_client::containers::BlockEntity::Chest(vec![None; 27]),
             );
-            let side = game_side!(game);
+            let side = game_side!(game, game.side_game_side_meta());
             let coefficient = |_: sunrise_world::registry::BlockStateId| None;
             let view = FrictionView(FrictionLevel {
                 world: &game.world,
@@ -1054,7 +1054,7 @@ mod tests {
                 boat.leash_spin = 2.0;
                 boat.leash = Some(leash::Holder::Mob(99));
                 calls.store(0, Ordering::SeqCst);
-                game.tick_boat_leash(&mut boat);
+                game.server_tick_boat_leash(&mut boat);
                 assert!(
                     (boat.leash_spin - spin).abs() < 1.0e-6,
                     "boat lead {block}: {}",

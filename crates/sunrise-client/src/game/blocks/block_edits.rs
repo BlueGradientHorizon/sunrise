@@ -419,6 +419,7 @@ mod tests {
     use super::*;
     use mod_api::BlockRun;
     use sunrise_client::chunk::Chunk;
+    use sunrise_world::heightmap::HeightmapType;
 
     #[test]
     #[ignore = "daily"]

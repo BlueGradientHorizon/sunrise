@@ -307,6 +307,11 @@ impl Game<'_> {
         self.mods.live = Some(std::time::Instant::now());
         self.reload_packs();
     }
+
+    #[cfg(test)]
+    pub(in crate::game) fn test_add_hook_panic_toasts(&mut self) {
+        self.add_hook_panic_toasts();
+    }
 }
 
 impl ModsState {

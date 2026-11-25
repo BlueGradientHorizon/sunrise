@@ -379,12 +379,12 @@ mod tests {
             let (reply, _answer) = std::sync::mpsc::channel();
             let mut save = game.test_begin_server_control_save(true, reply).unwrap();
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
-            while save.is_some() {
+            while !game.test_poll_server_closing_save(&mut save).unwrap() {
                 assert!(
                     std::time::Instant::now() < deadline,
                     "the save did not finish"
                 );
-                let _ = game.test_poll_server_closing_save(&mut save);
+                std::thread::yield_now();
             }
         });
     }

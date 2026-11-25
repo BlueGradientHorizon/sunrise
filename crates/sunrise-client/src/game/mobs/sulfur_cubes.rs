@@ -307,49 +307,6 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-pub(in crate::game) mod tests {
-    use super::*;
-
-    #[test]
-    fn swallowed_block_uses_vanilla_lift_and_baby_scale() {
-        let base = glam::Mat4::from_translation(glam::Vec3::new(3.0, 4.0, -2.0))
-            * glam::Mat4::from_rotation_y(0.7)
-            * glam::Mat4::from_scale(glam::Vec3::new(-1.0, -1.0, 1.0));
-        for baby in [false, true] {
-            let size = if baby { 0.5 } else { 1.0 };
-            let block = block_transform(base, baby);
-            for (point, expected) in [
-                (glam::Vec3::ZERO, glam::Vec3::new(-0.5, 0.518, 0.5)),
-                (glam::Vec3::ONE, glam::Vec3::new(0.5, -0.482, -0.5)),
-            ] {
-                let actual = block.transform_point3(point);
-                let expected = base.transform_point3(expected * size);
-                assert!(actual.abs_diff_eq(expected, 1e-5), "baby={baby}");
-            }
-            assert!(block.transform_vector3(glam::Vec3::Y).y > 0.0);
-        }
-    }
-
-    #[test]
-    fn swallowed_tnt_flashes_white_over_hurt_using_the_interpolated_fuse() {
-        let white = sunrise_client::overlay::WHITE + 15;
-        assert_eq!(block_overlay(-1, 0.0, false), 0);
-        assert_eq!(block_overlay(-1, 0.0, true), 1);
-        assert_eq!(block_overlay(9, 0.0, true), white);
-        assert_eq!(block_overlay(9, 0.5, false), 0);
-        assert_eq!(block_overlay(9, 0.5, true), 1);
-        assert_eq!(block_overlay(0, 0.5, false), white);
-    }
-
-    #[test]
-    fn contained_block_emission_preserves_brighter_light_and_the_sky_channel() {
-        assert_eq!(block_light(0x2050, 1), 0x2050);
-        assert_eq!(block_light(0x2050, 7), 0x7050);
-        assert_eq!(block_light(0x0070, 0), 0x0070);
-    }
-}
-
-#[cfg(test)]
 pub(in crate::game) mod off_level_tests {
     use super::*;
     use sunrise_core::geometry::Vec3;

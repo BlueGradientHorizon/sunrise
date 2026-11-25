@@ -192,6 +192,7 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::native_bots_common::{aabb_of, corners};
 
     fn input(forward: f32, strafe: f32) -> PlayerInput {
         let mut input = PlayerInput::default();

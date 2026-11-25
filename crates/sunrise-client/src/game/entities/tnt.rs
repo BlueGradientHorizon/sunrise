@@ -2304,9 +2304,6 @@ pub(in crate::game) mod tests {
         }
     }
 
-    #[allow(unused_imports)]
-    pub(in crate::game) use crate::game::client_side::tnt_client::tests::source_silence_game;
-
     /// #10063: TNT lit between level ticks (flint and steel, a command) has its
     /// first tick in the next level tick, so its fuse reads 79 after it, and it
     /// explodes on the 80th (`PrimedTnt.tick`). Sunrise held every TNT that

@@ -1365,9 +1365,6 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
             .remote
             .as_ref()
             .unwrap()
-            .registries
-            .as_ref()
-            .unwrap()
             .builtin
             .get("minecraft:entity_type")
             .unwrap()
