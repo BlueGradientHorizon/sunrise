@@ -685,7 +685,7 @@ fn a_project_of_the_retired_shader_kind_is_left_out_with_a_reason() {
     let listed = text.replacen(
         "\"projects\": [",
         r#""projects": [{
-          "id": "glow", "kind": "shader", "name": "Soft Glow", "license": "MIT",
+          "id": "glow", "kind": "shader", "name": "Soft Glow", "summary": "A soft glow.", "license": "MIT",
           "source": "https://github.com/sunrise-org/sunrise-mods",
           "versions": [{
             "version": "1.0.0", "api": "0.1", "game": "26.3",
