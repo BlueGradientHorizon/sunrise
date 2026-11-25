@@ -52,6 +52,20 @@ impl Tracker {
     }
 }
 
+/// `Mob.doHurtTarget` with every species' override, for a caller other than the mob's own goals
+/// and brain (a mod's `MobRef::do_hurt_target`): the warden's (`Warden.doHurtTarget`), which
+/// its brain calls by itself, and the creeper's (`Creeper.doHurtTarget`), which does nothing and
+/// answers true, before [`do_hurt_target`]'s. `Some` is vanilla's answer when no hit decides it
+/// (the creeper's); `None` leaves it to the hit the events carry.
+pub fn do_hurt_target_any(m: &mut Mob, who: Who, cx: &mut Cx) -> Option<bool> {
+    match m.species() {
+        Species::Creeper => return Some(true),
+        Species::Warden => super::warden::do_hurt_target(m, who, cx.w, cx.level, cx.events),
+        _ => do_hurt_target(m, who, cx),
+    }
+    None
+}
+
 pub fn do_hurt_target(m: &mut Mob, who: Who, cx: &mut Cx) {
     if m.species() == Species::IronGolem {
         return super::golem::iron_hurt_target(m, who, cx);

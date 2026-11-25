@@ -1437,7 +1437,7 @@ impl Game<'_> {
         // Hurts dealt since the last creature tick (explosions, commands, the
         // systems after it) teleport an enderman before it ticks, not in its AI step.
         self.settle_hurt_teleports()?;
-        self.attack_ticks = self.attack_ticks.saturating_add(1);
+        self.attack_ticks = self.attack_ticks.wrapping_add(1);
         self.refresh_gear_knockback_resistance();
         self.tick_leads();
         // Vanilla's spawning and raids run before ChunkMap.tick.
@@ -3526,6 +3526,7 @@ impl Game<'_> {
                         }
                         Who::Mob(id) => self.mob_hits_mob(id, amount, source),
                     };
+                    self.combat.hit_landed = hurt;
                     if hurt {
                         let resistance = match target {
                             Who::Player => self.player.as_mut().map_or(0.0, |p| {

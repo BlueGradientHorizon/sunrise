@@ -1515,6 +1515,8 @@ mod native_menus;
 mod native_merchant_refs;
 #[path = "game/modding/native_minecart_refs.rs"]
 mod native_minecart_refs;
+#[path = "game/modding/native_mob_attack.rs"]
+mod native_mob_attack;
 #[path = "game/modding/native_mob_draw.rs"]
 mod native_mob_draw;
 #[path = "game/modding/native_mob_goals.rs"]
@@ -3876,7 +3878,7 @@ struct Game<'a> {
     creatures: creatures::Creatures,
     sculk: sculk::SculkState,
     raiding: raids::Raiding,
-    attack_ticks: u32,
+    attack_ticks: i32,
     /// The main hand's item at the last player tick, whose attack damage and
     /// speed modifiers apply (`LivingEntity.detectEquipmentUpdates`): a hotbar
     /// swap just before an attack keeps them, with the new item's enchantments
@@ -4572,7 +4574,7 @@ struct Game<'a> {
     lan_acting_entity: Option<u32>,
     /// Whether the player currently swapped into the game is connectionless.
     lan_acting_fake: bool,
-    /// A fake player's `perform_action` in progress, and what it refused.
+    /// A fake player's `perform_action`, or a mod's attack, in progress, and what it refused.
     fake_action: std::sync::Arc<native_server::FakeAction>,
     /// Command feedback to forward to a guest.
     chat_capture: Option<Vec<sunrise_client::text::Text>>,
