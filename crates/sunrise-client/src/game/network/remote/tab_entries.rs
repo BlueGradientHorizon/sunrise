@@ -1,7 +1,7 @@
 //! The tab list's entries as the client holds them, for reads that must not change them.
 
 use super::Remote;
-use sunrise_client::tab_list::{TabPlayer, default_skin};
+use sunrise_client::tab_list::TabPlayer;
 
 impl Remote {
     /// The listed players (`ClientPacketListener.getListedOnlinePlayers`) in encounter order.
@@ -16,25 +16,31 @@ impl Remote {
 impl Remote {
     /// The listed players' skins as the Tab overlay draws them: each player's resolved skin
     /// texture path and whether it uses the slim model, in no order. A skin still downloading
-    /// reads as the profile's default (`tab_list::default_skin`), as the overlay draws it.
+    /// reads as the profile's default (`ResolvedSkin::default().body`), as the overlay draws it.
     pub(in crate::game) fn listed_player_skins(&self) -> Vec<(u128, String, bool)> {
-        self.listed
-            .iter()
-            .map(|uuid| {
-                // The resolved skin's model is the one `update_remote_skins`
-                // kept (`ResolvedSkin::body`): the textures' `slim`, plus the
-                // local player's launcher offline skin and signed-in account
-                // skin, which `skin_textures` never holds.
-                let (skin, slim) = self
-                    .skins
-                    .get(uuid)
-                    .map(|skin| skin.body(*uuid))
-                    .unwrap_or_else(|| {
-                        let skin = default_skin(*uuid);
-                        (skin, skin.contains("/slim/"))
-                    });
-                (*uuid, skin.to_owned(), slim)
-            })
-            .collect()
+        listed_player_skins(self.listed.iter(), &self.tab_players, &self.skins)
     }
+}
+
+/// `Remote::listed_player_skins`'s body, free so a test can drive it without a connected
+/// session: only listed uuids with a tab entry (`listed_tab_player_refs`), each resolved
+/// through `ResolvedSkin::body` — the textures' `slim` model, or the UUID's default body
+/// and model where the server sent no textures.
+pub(in crate::game) fn listed_player_skins<'a>(
+    listed: impl Iterator<Item = &'a u128>,
+    tab_players: &std::collections::HashMap<u128, TabPlayer>,
+    skins: &std::collections::HashMap<u128, sunrise_client::skins::ResolvedSkin>,
+) -> Vec<(u128, String, bool)> {
+    listed
+        .filter_map(|uuid| tab_players.get(uuid))
+        .map(|player| {
+            let uuid = player.uuid;
+            let default = sunrise_client::skins::ResolvedSkin::default();
+            let (skin, slim) = skins
+                .get(&uuid)
+                .map(|skin| skin.body(uuid))
+                .unwrap_or_else(|| default.body(uuid));
+            (uuid, skin.to_owned(), slim)
+        })
+        .collect()
 }

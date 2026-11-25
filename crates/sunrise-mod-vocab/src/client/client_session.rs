@@ -143,12 +143,15 @@ pub trait ClientTabListEntry {
 
 /// The locator bar's tracked waypoints (`ClientWaypointManager`), read with
 /// `ClientSession::client_waypoints`: what this client has been sent, changing as the server
-/// tracks and untracks waypoints.
+/// tracks and untracks waypoints. With a camera entity the read follows
+/// `ClientWaypointManager.forEachWaypoint`: farthest first by the vanilla squared distance,
+/// ties in no promised order; without one, in no promised order.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct ClientWaypoints {
-    /// The tracked waypoints in the order the server sent them.
+    /// The tracked waypoints, farthest from the camera entity first by the vanilla squared
+    /// distance (ties in no promised order); no promised order without a camera entity.
     pub entries: Vec<ClientWaypointEntry>,
 }
 

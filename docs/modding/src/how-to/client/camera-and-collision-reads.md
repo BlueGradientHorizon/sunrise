@@ -300,7 +300,9 @@ These read the local player as the client sees it. They take no mod-controlled n
   a player's waypoint, `Name` for a named one), its `target` (`Block`, `Chunk`, `Azimuth` or
   `Empty`), the icon `style` (`waypoint_style` asset id) and the icon `color` as `0xRRGGBB`
   (`None` when the server sent none — the bar then colours the dot from the waypoint's id).
-  Entries come in the order the server sent them. It is what this client has been sent and
+  With a camera entity the entries follow `ClientWaypointManager.forEachWaypoint`: farthest
+  first by the vanilla squared distance, ties in no promised order; without a camera entity,
+  in no promised order. It is what this client has been sent and
   changes as the server tracks and untracks waypoints; `None` outside a world.
 - `ClientHost::client_session().client_player_skins()` is the listed players' skins as the Tab
   overlay draws them: `ClientPlayerSkins { entries }`. Each `ClientPlayerSkin` has the player's

@@ -232,12 +232,13 @@ impl ClientTabListEntry for TabEntryView<'_> {
     }
 }
 
-/// `ClientWaypointManager`'s table: the tracked waypoints in the order the server sent them,
-/// so the read cannot drift from what the bar holds.
+/// `ClientWaypointManager`'s table, in `forEachWaypoint`'s read order: farthest first by
+/// `distanceSquared` with a camera entity, no promised order without one, so the read cannot
+/// drift from what the bar draws.
 fn waypoints(waypoints: &sunrise_client::locator_bar::ClientWaypoints) -> mod_api::ClientWaypoints {
     use sunrise_protocol::packets::play::{WaypointId, WaypointTarget};
-    let entries = waypoints
-        .entries()
+    let rows = waypoints.for_read(None);
+    let entries = rows
         .iter()
         .map(|w| {
             let id = match &w.id {
@@ -252,12 +253,10 @@ fn waypoints(waypoints: &sunrise_client::locator_bar::ClientWaypoints) -> mod_ap
                 WaypointTarget::Chunk([x, z]) => mod_api::ClientWaypointTarget::Chunk([x, z]),
                 WaypointTarget::Azimuth(angle) => mod_api::ClientWaypointTarget::Azimuth(angle),
             };
-            // `Ident::read` validates the style on the wire, so a server-sent style always
-            // parses; keep the entry on the default style rather than dropping it.
-            let style = mod_api::Identifier::parse(&w.style).unwrap_or_else(|_| {
-                mod_api::Identifier::parse("minecraft:default")
-                    .expect("the default waypoint style is a valid identifier")
-            });
+            // `Ident::read` validated the style on the wire; a malformed id fails through
+            // normal packet decoding, so the value carries as parsed, without a default.
+            let style = mod_api::Identifier::parse(&w.style)
+                .expect("the wire validator accepted this style");
             mod_api::ClientWaypointEntry::new(
                 id,
                 target,
@@ -532,20 +531,68 @@ pub(super) mod tests {
     /// slim flag, joined on UUID.
     #[test]
     fn the_player_skins_read_as_the_tab_list_draws_them() {
-        let skins = player_skins(&[
-            (1, "skins/abc123".to_owned(), true),
-            (2, "entity/player/wide/steve".to_owned(), false),
-            (3, "entity/player/slim/alex".to_owned(), true),
-        ]);
-        assert_eq!(skins.entries.len(), 3, "every listed player's skin");
+        use sunrise_client::skins::ResolvedSkin;
+        use sunrise_client::tab_list::TabPlayer;
+        // Listed uuids need a tab entry to be drawn; 4 has none and must not appear.
+        let listed: [u128; 4] = [1, 2, 3, 4];
+        let tab_players: std::collections::HashMap<u128, TabPlayer> = [
+            (1, TabPlayer::new(1, "Slim")),
+            (2, TabPlayer::new(2, "Wide")),
+            (3, TabPlayer::new(3, "Default")),
+        ]
+        .into();
+        let resolved: std::collections::HashMap<u128, ResolvedSkin> = [
+            (
+                1,
+                ResolvedSkin {
+                    custom_body: Some(("skins/abc123".into(), true)),
+                    ..ResolvedSkin::default()
+                },
+            ),
+            (
+                2,
+                ResolvedSkin {
+                    custom_body: Some(("skins/wide42".into(), false)),
+                    ..ResolvedSkin::default()
+                },
+            ),
+        ]
+        .into();
+        let mut rows =
+            crate::game::remote::listed_player_skins(listed.iter(), &tab_players, &resolved);
+        rows.sort_by_key(|row| row.0);
+        assert_eq!(
+            rows,
+            vec![
+                (1, "skins/abc123".to_owned(), true),
+                (2, "skins/wide42".to_owned(), false),
+                // No resolved skin: the UUID's default body and its own slim flag.
+                (
+                    3,
+                    sunrise_client::tab_list::default_skin(3).to_owned(),
+                    sunrise_client::tab_list::default_skin(3).contains("/slim/")
+                ),
+            ],
+            "every drawn player's skin, and no skin for the uuid without a tab entry"
+        );
+        let skins = player_skins(
+            &rows
+                .iter()
+                .map(|(uuid, skin, slim)| (*uuid, skin.clone(), *slim))
+                .collect::<Vec<_>>(),
+        );
+        assert_eq!(skins.entries.len(), 3);
         assert_eq!(skins.entries[0].uuid, 1);
         assert_eq!(skins.entries[0].skin, "skins/abc123");
         assert!(skins.entries[0].slim, "a downloaded slim skin stays slim");
         assert_eq!(skins.entries[1].uuid, 2);
-        assert_eq!(skins.entries[1].skin, "entity/player/wide/steve");
-        assert!(!skins.entries[1].slim, "a wide default is not slim");
+        assert!(!skins.entries[1].slim, "a wide skin is not slim");
         assert_eq!(skins.entries[2].uuid, 3);
-        assert!(skins.entries[2].slim, "a slim default is slim");
+        assert_eq!(skins.entries[2].skin, rows[2].1.clone());
+        assert_eq!(
+            skins.entries[2].slim, rows[2].2,
+            "the default path keeps its slim flag"
+        );
     }
 
     pub(in crate::game) fn logged_client(
