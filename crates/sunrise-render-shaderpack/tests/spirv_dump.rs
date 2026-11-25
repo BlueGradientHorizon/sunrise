@@ -408,6 +408,7 @@ fn crate_root() -> PathBuf {
 }
 
 #[test]
+#[ignore = "daily"]
 fn spirv_dump_matches_the_committed_manifests() {
     let bless = std::env::var("SUNRISE_BLESS_SPIRV_DUMP").as_deref() == Ok("1");
     let mut total = Kinds::default();
