@@ -36,7 +36,6 @@ impl Game<'_> {
                 .rows
                 .iter()
                 .any(|r| r.id == uid)
-            || self.others.0.iter().any(|o| o.id == uid)
         {
             return false;
         }

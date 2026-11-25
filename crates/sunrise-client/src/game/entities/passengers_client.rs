@@ -66,22 +66,7 @@ impl Game<'_> {
                 yaw: 0.0,
             });
         }
-        let o = self.others.0.iter().find(|o| o.id == id)?;
-        if !crate::game::seats::could_accept_passenger(&o.kind) {
-            return None;
-        }
-        let (height, width) = match o.kind.as_str() {
-            "minecraft:interaction" => (1.0, 1.0),
-            "minecraft:area_effect_cloud" => (0.5, 6.0),
-            _ => (0.0, 0.0),
-        };
-        Some(crate::game::seats::Seat {
-            position: o.position,
-            height,
-            width,
-            attachment: [0.0, height, 0.0],
-            yaw: 0.0,
-        })
+        None
     }
 
     /// Client-side passenger order from applied `SetPassengers` seats.

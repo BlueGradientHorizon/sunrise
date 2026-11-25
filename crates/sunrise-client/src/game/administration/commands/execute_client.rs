@@ -24,18 +24,11 @@ impl Game<'_> {
                 Some(a) if a.small => f64::from(0.9875f32),
                 _ => self.type_eye_height("minecraft:armor_stand"),
             },
-            Target::Other(id) => self.client.interactions.get(&(id as i32)).map_or_else(
-                || {
-                    let ty = self
-                        .others
-                        .0
-                        .iter()
-                        .find(|o| o.id == id)
-                        .map_or("", |o| o.kind.as_str());
-                    self.type_eye_height(ty)
-                },
-                |i| f64::from(i.eye_height()),
-            ),
+            Target::Other(id) => self
+                .client
+                .interactions
+                .get(&(id as i32))
+                .map_or(0.0, |i| f64::from(i.eye_height())),
             Target::General(id) => {
                 let ty = self
                     .remote
