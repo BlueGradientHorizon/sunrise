@@ -563,3 +563,321 @@ pub(in crate::game) mod trident_family_tests;
 #[cfg(test)]
 #[path = "shared/item_fall_on_tests_server.rs"]
 pub(in crate::game) mod item_fall_on_tests;
+
+impl Game<'_> {
+    /// Deliver what the batch just ticked recorded, in order: `minecart_pass`
+    /// to the parts, and the writes a landing, step, or mid-walk `entity_inside`
+    /// contact asked for to the level. A write is skipped when the block at
+    /// its position is no longer the state it touched, as vanilla never sees
+    /// a stale one. The parts' own `entity_inside` contacts fire mid-walk now,
+    /// on the shared inside sweep, not here.
+    pub(in crate::game) fn drain_entity_inside(&mut self) {
+        for contact in sunrise_client::block_contact::take_pending() {
+            let (state, pos) = match &contact {
+                Pending::Landed(landed) => (landed.state, landed.position),
+                Pending::MinecartPass(pass) => (pass.state, pass.position),
+                Pending::InsideWritten(written) => (written.state, written.position),
+            };
+            let Some(level) = self.level(self.dim.id()) else {
+                continue;
+            };
+            if self.level_block_state(level, [pos.x, pos.y, pos.z]) != Some(state) {
+                continue;
+            }
+            match contact {
+                Pending::MinecartPass(pass) => {
+                    if let Some(entity) = u32::try_from(pass.entity)
+                        .ok()
+                        .and_then(|id| self.entity(id))
+                    {
+                        self.native_minecart_pass(state, pos, entity);
+                    }
+                }
+                Pending::Landed(landed) => {
+                    for write in landed.writes {
+                        self.apply_landing_write(level, pos, write);
+                    }
+                }
+                // The mid-walk contacts' own level writes, guarded on the touched
+                // state above, as a landing's are.
+                Pending::InsideWritten(written) => {
+                    for write in written.writes {
+                        self.apply_inside_write(level, pos, write);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Apply one already-validated engine write, at the block the entity landed on.
+    /// The original-state guard runs once before the ordered batch, not between writes.
+    pub(in crate::game) fn apply_landing_write(
+        &mut self,
+        level: mod_api::LevelRef,
+        pos: BlockPos,
+        write: sunrise_world::level::LandingWrite,
+    ) {
+        let at = [pos.x, pos.y, pos.z];
+        match write {
+            // `Level.setBlockAndUpdate`: flag 3, the neighbours and the clients.
+            sunrise_world::level::LandingWrite::SetBlock(state) => {
+                let flags = BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS;
+                let _ = self.level_set_block(level, at, state, flags);
+            }
+            sunrise_world::level::LandingWrite::DestroyBlock { drop } => {
+                self.level_destroy_block(level, at, drop, None, false);
+            }
+            // A write a later API adds that this game does not know is not applied.
+            _ => {}
+        }
+    }
+    /// A write an `entity_inside` part asked for, applied as a landing write is: at the
+    /// touched block, once the entity's batch has ticked.
+    pub(in crate::game) fn apply_inside_write(
+        &mut self,
+        level: mod_api::LevelRef,
+        pos: BlockPos,
+        write: sunrise_world::level::InsideWrite,
+    ) {
+        let at = [pos.x, pos.y, pos.z];
+        match write {
+            sunrise_world::level::InsideWrite::SetBlock(state) => {
+                let flags = BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS;
+                let _ = self.level_set_block(level, at, state, flags);
+            }
+            sunrise_world::level::InsideWrite::DestroyBlock { drop } => {
+                self.level_destroy_block(level, at, drop, None, false);
+            }
+            // A write a later API adds that this game does not know is not applied.
+            _ => {}
+        }
+    }
+
+    /// [`Self::attack_of`] for the attacker a damage source names: the player, a mob, or (none)
+    /// the attack the enclosing [`Self::with_attack`] lends.
+    pub(in crate::game) fn attack_of_who(&self, attacker: Option<Who>) -> Attack {
+        match attacker {
+            Some(Who::Player) => self.attack_of(self.player.as_ref().map_or(0, |p| p.entity_id)),
+            Some(Who::Mob(id)) => self.attack_of(id as i32),
+            None => self.current_attack(),
+        }
+    }
+
+    /// `BonemealEvent` for bone meal from `stack` on `pos`, used by the
+    /// acting player (`by_player`) or by a dispenser or a villager:
+    /// `Some(successful)` when a mod canceled it, the answer `growCrop`
+    /// gives in vanilla's place. The caller keeps what the mods did to
+    /// `stack`.
+    pub(in crate::game) fn bonemeal(
+        &mut self,
+        pos: BlockPos,
+        by_player: bool,
+        stack: &mut ItemStack,
+    ) -> BonemealAsk {
+        if !mod_api::__private::listened(mod_api::HookId::Bonemeal) {
+            return BonemealAsk {
+                crop: None,
+                check: None,
+            };
+        }
+        let client = self.remote.is_some();
+        let check = self.with_level(|b, level, _| b.is_valid_bonemeal_target(level, pos, client));
+        let valid = check.is_valid();
+        let state = self.world.block(pos.x, pos.y, pos.z);
+        let (player, player_entity_id) = if by_player {
+            let (uuid, entity) = self.native_clicker();
+            (Some(uuid), Some(entity))
+        } else {
+            (None, None)
+        };
+        let (mut successful, mut canceled) = (false, false);
+        let mut snapshot = Some(stack.clone());
+        self.native_bonemeal(crate::game::native_hooks::fire::BonemealCall {
+            dimension: self.dim.level(),
+            player,
+            player_entity_id,
+            pos,
+            state,
+            source: BonemealSource::Interaction,
+            stack: &mut snapshot,
+            valid_bonemeal_target: valid,
+            successful: &mut successful,
+            canceled: &mut canceled,
+        });
+        match snapshot {
+            Some(next) => *stack = next,
+            None => stack.count = 0,
+        }
+        BonemealAsk {
+            crop: canceled.then_some(successful),
+            check: Some(check),
+        }
+    }
+    /// Whether a mod canceled `placer` writing `state` at `pos` (`entity_place`):
+    /// `placer` is an entity id, `placed_against` the block it goes against and
+    /// `companion` the second half of a bed, door or tall plant.
+    pub(in crate::game) fn place_canceled(
+        &mut self,
+        placer: u32,
+        pos: BlockPos,
+        state: BlockStateId,
+        placed_against: BlockStateId,
+        companion: Option<(BlockPos, BlockStateId)>,
+    ) -> bool {
+        if !mod_api::__private::listened(mod_api::HookId::EntityPlace) {
+            return false;
+        }
+        self.placement_canceled(self.entity(placer), pos, state, placed_against, companion)
+    }
+    /// `PlayerInteractEvent.RightClickBlock` for a click on `hit` with
+    /// `hand` holding `stack`: what the mods let it use.
+    pub(in crate::game) fn right_click_block(
+        &mut self,
+        hit: &super::Hit,
+        hand: Hand,
+        stack: Option<&ItemStack>,
+    ) -> BlockClickAnswer {
+        let (mut use_block, mut use_item) = (TriState::Default, TriState::Default);
+        if !mod_api::__private::listened(mod_api::HookId::RightClickBlock) {
+            return BlockClickAnswer::Go {
+                use_block,
+                use_item,
+            };
+        }
+        let Ok(snapshot) = stack.try_into_api() else {
+            return BlockClickAnswer::Go {
+                use_block,
+                use_item,
+            };
+        };
+        let click = self.block_click(hit, hand, snapshot.as_ref());
+        let (mut result, mut canceled) = (mod_api::InteractionResult::Pass, false);
+        self.native_right_click_block(
+            &click,
+            &mut use_block,
+            &mut use_item,
+            &mut result,
+            &mut canceled,
+        );
+        if canceled {
+            BlockClickAnswer::Canceled(result)
+        } else {
+            BlockClickAnswer::Go {
+                use_block,
+                use_item,
+            }
+        }
+    }
+    /// `ItemStack.onItemUseFirst` for a click on a block: the broadcast
+    /// event's `ItemBeforeBlock` phase, then the held item's Part. Canceling skips that Part.
+    /// Only `Pass` continues to the block.
+    pub(in crate::game) fn item_use_first(
+        &mut self,
+        hit: &super::Hit,
+        hand: Hand,
+        stack: &ItemStack,
+    ) -> Option<mod_api::InteractionResult> {
+        if let Some(answer) =
+            self.use_item_on_block(hit, hand, Some(stack), UsePhase::ItemBeforeBlock)
+        {
+            return Some(answer);
+        }
+        if !mod_api::__private::has_part_hook(mod_api::HookId::OnItemUseFirst) {
+            return None;
+        }
+        let snapshot = stack.try_into_api().ok()?;
+        let click = self.block_click(hit, hand, Some(&snapshot));
+        let mut answer = None;
+        self.native_on_item_use_first(&snapshot, &click, &mut answer);
+        answer.filter(|answer| *answer != mod_api::InteractionResult::Pass)
+    }
+    /// The acting player as the hook points name one: the guest whose turn
+    /// it is, else the host.
+    pub(in crate::game) fn native_acting_id(&mut self) -> u128 {
+        sunrise_client::lan::playerdata::ints_uuid(self.acting_player_uuid())
+    }
+    /// The mobs from index `from` on are new in the world.
+    pub(in crate::game) fn native_mobs_joined(&mut self, from: usize, natural: bool) {
+        // Preserve saved/constructed UUIDs. Natural spawns built with provisional
+        // IDs get their persistent identity when admitted, not on their first hit.
+        for mob in self.mobs.iter().skip(from) {
+            self.persist
+                .uuids
+                .get_or_insert_with(mob.id, sunrise_client::save::random_uuid);
+        }
+        self.join_spawn_tags(from);
+        // A mod can keep a mob out; it is then taken out and not told of.
+        self.native_joins_flush(false, 0);
+        for i in from..self.mobs.len() {
+            let m = &self.mobs[i];
+            let (kind, pos) = (mob_kind(m), [m.position.x, m.position.y, m.position.z]);
+            self.native_mob_spawned(self.dim.id(), &kind, pos, natural);
+        }
+    }
+    /// Menu button `id` on a mod menu (`clickMenuButton`), with the acting
+    /// player's cursor stack (`carried`, read and written). A block-backed
+    /// menu lends its live resident block entity through `BlockEntityScope`;
+    /// a blockless menu lends no view while keeping `host()` and
+    /// `transaction(...)` usable.
+    pub(in crate::game) fn mod_menu_button(
+        &mut self,
+        menu: &str,
+        context: mod_api::item::menu::MenuButtonContext,
+        block: Option<&str>,
+        backing: Option<(i32, i32, i32)>,
+        carried: &mut Option<ItemStack>,
+    ) {
+        if !mod_api::__private::has_part_hook(mod_api::HookId::MenuButton) {
+            return;
+        }
+        let Ok(mut api_cursor) = carried.try_into_api() else {
+            return;
+        };
+        let original_api = api_cursor.clone();
+        let target_pos = backing.filter(|&pos| self.mod_menu_at(pos) == Some(menu));
+        let target = target_pos.and_then(|pos| self.resident_block_entity_target(pos));
+        let items_changed = {
+            let mut access = match target {
+                Some((handle, state)) => ResidentBlockEntityAccess::for_handle(self, handle, state),
+                None => ResidentBlockEntityAccess::blockless(self),
+            };
+            crate::game::native_hooks::native_menu_button(
+                menu,
+                block,
+                &context,
+                mod_api::BlockEntityScope::new(&mut access),
+                &mut api_cursor,
+            );
+            access.items_changed()
+        };
+        if items_changed
+            && let Some((handle, _)) = target
+            && let Some(pos) = self.native_block_entity_write_key(handle)
+        {
+            self.after_commit(crate::game::transactions::After::Changed(pos));
+        }
+        apply_menu_button_cursor(self.items(), &original_api, &api_cursor, carried);
+    }
+    /// Runs `change` on the mod block entity at `pos` (a generator charging
+    /// the machine beside it) and returns what it returns; none for any
+    /// other block entity. Afterwards, as its `setChanged` would, its chunk is saved next
+    /// time and, when its items changed, comparators read it again.
+    pub(in crate::game) fn native_with_mod_block_entity<R>(
+        &mut self,
+        pos: [i32; 3],
+        change: impl FnOnce(&mut EngineBlockEntity) -> R,
+    ) -> Option<R> {
+        let key = (pos[0], pos[1], pos[2]);
+        let Some(BlockEntity::Mod(m)) = self.world.block_entities.get_mut(&key) else {
+            return None;
+        };
+        let items = m.items.clone();
+        let out = change(m);
+        let moved = m.items != items;
+        self.world.modified.insert((key.0 >> 4, key.2 >> 4));
+        if moved {
+            self.container_changed(key);
+        }
+        Some(out)
+    }
+}

@@ -86,4 +86,3 @@ pub(in crate::game) fn mod_data_root() -> PathBuf {
 pub(in crate::game) fn native_config_dir() -> std::io::Result<PathBuf> {
     config_dir(&crate::game::game_dir())
 }
-

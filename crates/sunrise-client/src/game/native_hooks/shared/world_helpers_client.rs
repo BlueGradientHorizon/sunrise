@@ -1,6 +1,8 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
+use crate::game::host::draw::GameDrawContext;
+#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::host::draw::GameDrawContext;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::native_hooks::world_helpers::GuiLayerWrapFrame;
@@ -9,9 +11,13 @@ pub(in crate::game::client_side) use crate::game::native_hooks::world_helpers::V
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::native_hooks::world_helpers::*;
 #[allow(unused_imports)]
+use mod_api::__private::game::CallbackOwner;
+#[allow(unused_imports)]
 pub(in crate::game::client_side) use mod_api::{
     __private::game::CallbackOwner, ClientHost, DrawContext, GuiLayerWrapContext,
 };
+#[allow(unused_imports)]
+use sunrise_client::gui_layers::{self, GuiLayerBody, VanillaGuiLayer};
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::{
     gui_layers::{self, GuiLayerBody, VanillaGuiLayer},
@@ -120,5 +126,110 @@ impl<'g> Game<'g> {
         }
         // Past `until` itself: its paint site draws it, not the cursor.
         self.client.hud_layer_next = Some(next.max(end + usize::from(until.is_some())));
+    }
+}
+
+impl<'g> Game<'g> {
+    /// Dispatches a vanilla slot after flushing inserted layers below it. Replacing or wrapping
+    /// a body leaves the slot's ID, order and hooks unchanged. The original body's eligibility
+    /// applies only to the original paint, including when a wrapper delegates to it.
+    pub(in crate::game) fn gui_layer(
+        &mut self,
+        layer: VanillaGuiLayer,
+        batch: &mut HudBatch,
+        draw: &mut dyn FnMut(&mut Game<'g>, &mut HudBatch),
+    ) {
+        self.draw_mod_gui_layers(Some(layer), batch);
+        self.run_gui_layer(
+            layer.id(),
+            batch,
+            gui_layers::order().map_or(&GuiLayerBody::Vanilla, |order| {
+                &order.slots()[order.position(layer)].body
+            }),
+            Some(draw),
+            matches!(
+                layer,
+                VanillaGuiLayer::PlayerHealth
+                    | VanillaGuiLayer::ArmorLevel
+                    | VanillaGuiLayer::FoodLevel
+                    | VanillaGuiLayer::VehicleHealth
+                    | VanillaGuiLayer::AirLevel
+            ),
+        );
+    }
+
+    pub(in crate::game) fn run_gui_layer(
+        &mut self,
+        id: &str,
+        batch: &mut HudBatch,
+        body: &GuiLayerBody,
+        vanilla: Option<&mut VanillaGuiDraw<'_, 'g>>,
+        status_row: bool,
+    ) {
+        let mut canceled = false;
+        self.native_gui_layer_pre(id, batch, &mut canceled);
+        if canceled {
+            return;
+        }
+        let start = batch.vertices.len();
+        self.draw_gui_layer_body(batch, body, vanilla);
+        if status_row {
+            self.keep_status_rows(&batch.vertices[start..], batch.width, batch.height);
+        }
+        self.native_gui_layer_post(id, batch);
+    }
+
+    pub(in crate::game) fn draw_gui_layer_body(
+        &mut self,
+        batch: &mut HudBatch,
+        body: &GuiLayerBody,
+        vanilla: Option<&mut VanillaGuiDraw<'_, 'g>>,
+    ) {
+        match body {
+            GuiLayerBody::Vanilla => {
+                // Only a vanilla slot can contain this node; its paint site lends the closure.
+                if let Some(draw) = vanilla {
+                    CallbackOwner::call_engine(|| draw(self, batch));
+                }
+            }
+            GuiLayerBody::Native { owner, draw } => {
+                if let Some(owner) = owner.as_ref().filter(|owner| owner.is_enabled()) {
+                    let paint = batch.paint_checkpoint();
+                    if owner
+                        .call("HUD layer", "gui_layer_draw", || {
+                            draw(self, &mut GameDrawContext::new(self, batch));
+                        })
+                        .is_err()
+                    {
+                        paint.discard(batch);
+                    }
+                }
+            }
+            GuiLayerBody::Wrapped {
+                owner,
+                wrap,
+                previous,
+            } => {
+                let Some(owner) = owner.as_ref().filter(|owner| owner.is_enabled()) else {
+                    self.draw_gui_layer_body(batch, previous, vanilla);
+                    return;
+                };
+                let mut paint = batch.paint_checkpoint();
+                if owner
+                    .call("HUD layer", "gui_layer_wrapper", || {
+                        wrap(&mut GuiLayerWrapFrame {
+                            game: self,
+                            batch,
+                            previous,
+                            vanilla,
+                            paint: &mut paint,
+                        });
+                    })
+                    .is_err()
+                {
+                    paint.discard(batch);
+                }
+            }
+        }
     }
 }

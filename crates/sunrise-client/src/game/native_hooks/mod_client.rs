@@ -1672,3 +1672,244 @@ pub(in crate::game) mod slot_icon_tests;
 #[cfg(test)]
 #[path = "shared/slot_tooltip_tests_client.rs"]
 pub(in crate::game) mod slot_tooltip_tests;
+
+impl Game<'_> {
+    /// Like `decide_screen`, for `mod_screen_open`, which clears any active
+    /// overlay via `close_replaced_screen_for_mod` before applying the
+    /// decision, so `ScreenOpening::ModScreen` and `ScreenOpening::Vanilla`
+    /// answers remain eligible even when replacing an overlay.
+    pub(in crate::game) fn decide_screen_for_mod_open(
+        &self,
+        current: &ScreenView<'_>,
+        new: &ScreenView<'_>,
+        closes: bool,
+    ) -> ScreenDecision {
+        self.screen_decision_with(self.screen_change(current, new, true, closes), true)
+    }
+    /// What a mod's `screen_opening` answer does here: a `ModScreen` only
+    /// where a mod's screen can open (`mod_screen_blocked`), a `Vanilla`
+    /// target only where it opens (a title screen while the title shows, a
+    /// world's screen where a mod's could open in a world), else the change
+    /// goes ahead and the refused target is logged. Records whether a mod's
+    /// answer changed what shows (`ScreenState::answered`).
+    pub(in crate::game) fn screen_decision(
+        &self,
+        answer: Option<Answered<ScreenOpening>>,
+    ) -> ScreenDecision {
+        self.screen_decision_with(answer, false)
+    }
+
+    /// What `observe_screen` compares with the last frame's.
+    pub(in crate::game) fn observed_now(&self) -> Option<ObservedScreen> {
+        // Only the title's screens and the overlays show over `Screen::Playing`.
+        self.observed_screen_view()
+            .map(|view| self.observe_view(view))
+    }
+
+    /// Snapshot of the receiving screen for screen input hooks, including overlays.
+    pub(in crate::game) fn observed_input_screen(&self) -> Option<ObservedScreen> {
+        let view = self.observed_screen_view()?;
+        let regions = view.regions.to_vec();
+        let mut snapshot = self.observe_view(view);
+        snapshot.regions = regions;
+        Some(snapshot)
+    }
+
+    pub(in crate::game) fn observe_screen(&mut self) {
+        self.settle_title_mode();
+        self.refresh_screen_widgets();
+    }
+
+    /// The menu type resolved for this client's opening, including in ScreenOpening.
+    pub(in crate::game) fn native_screen_menu_type(
+        &self,
+        window: i32,
+        name: &str,
+    ) -> Option<&'static sunrise_client::containers::ModMenuType> {
+        let menu = &self.active_native_screen()?.menu;
+        (menu.window == window && menu.name == name).then_some(menu.mod_type)?
+    }
+    /// Deliver a non-repeat key press to the native panel.
+    pub(in crate::game) fn native_panel_key_event(
+        &mut self,
+        key: KeyCode,
+        pressed: bool,
+        repeat: bool,
+    ) {
+        if pressed
+            && !repeat
+            && let Some(name) = keybinds::key_name(key)
+        {
+            self.native_panel_key(name);
+        }
+    }
+    /// The open screen's container panel in GUI pixels (`screen`'s, the one
+    /// this frame draws), or the whole window for a screen with none
+    /// (`ScreenView.rect`).
+    pub(in crate::game) fn screen_rect(&self, batch: &HudBatch, screen: Screen) -> [f32; 4] {
+        if screen != Screen::Inventory && screen != Screen::Creative {
+            return [0.0, 0.0, batch.width, batch.height];
+        }
+        // The window the game itself draws (`container_image`): the merchant
+        // and the beacon are wider and shifted, creative is its own size.
+        let image = self.container_image(batch);
+        [
+            image.left as f32,
+            image.top as f32,
+            image.width as f32,
+            image.height as f32,
+        ]
+    }
+    /// A key press's characters (`ScreenEvent.CharacterTyped.Pre`, vanilla's
+    /// `KeyboardHandler.charTyped`), dispatched once the screen has acted on
+    /// the key: GLFW's char callback comes after its key callback, so the
+    /// characters go to the screen that is open now — a key that closed the
+    /// screen leaves none to hear them, as vanilla's closed screen hears
+    /// nothing, and one that moved the focus types into the box it moved to.
+    /// Each printable one snapshots the current screen, runs
+    /// `native_screen_char_typed_pre` (when hooks apply), then mounted widgets,
+    /// then the focused text box, and unhandled characters fire
+    /// `native_screen_char_typed_post` on that character's captured receiver.
+    pub(in crate::game) fn screen_chars_typed(&mut self, text: Option<&str>) {
+        let Some(text) = text else {
+            return;
+        };
+        if self.observed_screen_view().is_none() && self.headless_screen_snapshot().is_none() {
+            return;
+        }
+        // A held edit modifier makes a shortcut of the key, not text.
+        let text = chars_to_type(text, self.types_text());
+        if text.is_empty() {
+            return;
+        }
+        self.screen_chars_dispatch(&text, |game, c| game.type_chars_into_screen(c).is_ok());
+    }
+    /// The living entity an effect decision names: `Some(id)` a mob's
+    /// `Entity.getId`, `None` the acting player. `None` when no native
+    /// world runs, and the decision falls back to vanilla's.
+    pub(in crate::game) fn effect_living_ref(&self, entity: Option<i32>) -> Option<LivingRef> {
+        let epoch = self.native_lifecycle.epoch()?;
+        let id = match entity {
+            Some(id) => id as u32,
+            None => self.own_entity_id() as u32,
+        };
+        Some(LivingRef::new(EntityRef::new(epoch, id)))
+    }
+    /// Where the open mod screen puts container slot `slot` this frame: where
+    /// a mod last moved it, else where the screen declared it; None when
+    /// inactive/hidden.
+    pub(in crate::game) fn native_screen_slot(&self, slot: usize) -> Option<(f32, f32)> {
+        let s = self.shown_native_screen()?;
+        let declared = s
+            .layout()
+            .slots
+            .get(slot)?
+            .as_ref()
+            .map(|slot| slot.position);
+        let [x, y] = s.slot_moves.position(slot, declared)?;
+        Some((x, y))
+    }
+    pub(in crate::game) fn native_screen_slot_icon(&self, slot: usize) -> Option<&str> {
+        self.shown_native_screen()?
+            .layout()
+            .slots
+            .get(slot)?
+            .as_ref()?
+            .no_item_icon
+            .as_deref()
+    }
+    /// The internal container slot base of the open mod screen (`MOD_MENU_SLOT_BASE`
+    /// for a `ModMenuType`, `300` for a stock menu).
+    pub(in crate::game) fn native_screen_container_slot_base(&self) -> usize {
+        self.shown_native_screen()
+            .map_or(300, OpenNativeScreen::container_slot_base)
+    }
+    /// The container slots the open mod screen shows this frame.
+    pub(in crate::game) fn native_screen_slots(&self) -> Option<Vec<usize>> {
+        Some(
+            self.shown_native_screen()?
+                .visible_container_slots()
+                .collect(),
+        )
+    }
+    /// The first row of the player's inventory on the open mod screen.
+    pub(in crate::game) fn native_screen_inventory_y(&self) -> Option<f32> {
+        self.shown_native_screen().map(|s| s.layout().inventory_y)
+    }
+    /// The open mod screen's inventory's left column.
+    pub(in crate::game) fn native_screen_inventory_x(&self) -> Option<f32> {
+        self.shown_native_screen().map(|s| s.layout().inventory_x)
+    }
+    /// The open mod screen's width.
+    pub(in crate::game) fn native_screen_width(&self) -> Option<f32> {
+        self.shown_native_screen().map(|s| s.layout().width)
+    }
+    /// The zoom in effect while playing (a native mod's); the spyglass's own
+    /// view wins.
+    pub(in crate::game) fn native_zoom_now(&self) -> Option<mod_api::Zoom> {
+        if !self.playing() || self.scoping() {
+            return None;
+        }
+        let mut zoom = None;
+        self.native_zoom(&mut zoom);
+        let z = zoom?;
+        let factor = finite(z.factor, 1.0, 10.0);
+        (factor > 1.0).then_some(mod_api::Zoom {
+            factor,
+            smooth: z.smooth,
+            turn: if z.turn.is_finite() {
+                z.turn.clamp(0.05, 1.0)
+            } else {
+                1.0
+            },
+        })
+    }
+    /// The pose of native mods' camera shake in this frame (`native_camera_shake`),
+    /// none while not playing.
+    pub(in crate::game) fn native_shake_matrix(&self, partial: f32) -> glam::Mat4 {
+        if !self.playing() {
+            return glam::Mat4::IDENTITY;
+        }
+        let mut shake = Shake::default();
+        self.native_camera_shake(partial, &mut shake);
+        if shake == Shake::default() {
+            return glam::Mat4::IDENTITY;
+        }
+        shake_pose(bounded_shake(shake, self.screen_effect_scale()))
+    }
+
+    /// The camera native mods draw this frame from (`native_camera_pose`), starting from
+    /// `view`, vanilla's position, yaw and pitch.
+    pub(in crate::game) fn native_camera_pose_now(
+        &mut self,
+        partial: f32,
+        view: (glam::DVec3, f32, f32),
+    ) -> (glam::DVec3, f32, f32) {
+        let (mut position, mut yaw, mut pitch) = (view.0.to_array(), view.1, view.2);
+        self.native_camera_pose(partial, &mut position, &mut yaw, &mut pitch);
+        let posed = posed_camera(view, position, yaw, pitch);
+        if self.apply_requested_camera_type()
+            && let Some(refreshed) = self.camera_view(partial)
+        {
+            // Refresh vanilla components, not the listener's explicit overrides.
+            return (
+                if posed.0 == view.0 {
+                    refreshed.0
+                } else {
+                    posed.0
+                },
+                if posed.1 == view.1 {
+                    refreshed.1
+                } else {
+                    posed.1
+                },
+                if posed.2 == view.2 {
+                    refreshed.2
+                } else {
+                    posed.2
+                },
+            );
+        }
+        posed
+    }
+}

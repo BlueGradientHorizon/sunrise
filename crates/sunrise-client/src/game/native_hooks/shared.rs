@@ -141,30 +141,6 @@ impl Game<'_> {
     ) -> ScreenDecision {
         self.screen_decision(self.screen_change(current, new, true, closes))
     }
-    /// Like `decide_screen`, for `mod_screen_open`, which clears any active
-    /// overlay via `close_replaced_screen_for_mod` before applying the
-    /// decision, so `ScreenOpening::ModScreen` and `ScreenOpening::Vanilla`
-    /// answers remain eligible even when replacing an overlay.
-    pub(in crate::game) fn decide_screen_for_mod_open(
-        &self,
-        current: &ScreenView<'_>,
-        new: &ScreenView<'_>,
-        closes: bool,
-    ) -> ScreenDecision {
-        self.screen_decision_with(self.screen_change(current, new, true, closes), true)
-    }
-    /// What a mod's `screen_opening` answer does here: a `ModScreen` only
-    /// where a mod's screen can open (`mod_screen_blocked`), a `Vanilla`
-    /// target only where it opens (a title screen while the title shows, a
-    /// world's screen where a mod's could open in a world), else the change
-    /// goes ahead and the refused target is logged. Records whether a mod's
-    /// answer changed what shows (`ScreenState::answered`).
-    pub(in crate::game) fn screen_decision(
-        &self,
-        answer: Option<Answered<ScreenOpening>>,
-    ) -> ScreenDecision {
-        self.screen_decision_with(answer, false)
-    }
     /// The events of one change of screen, in order, for
     /// `set_screen` and for the overlays `observe_screen` announces: `opens`
     /// fires `screen_opening` (`ScreenEvent.Opening`) from `current` to `new`
@@ -195,22 +171,6 @@ impl Game<'_> {
         outcome
     }
 
-    /// What `observe_screen` compares with the last frame's.
-    pub(in crate::game) fn observed_now(&self) -> Option<ObservedScreen> {
-        // Only the title's screens and the overlays show over `Screen::Playing`.
-        self.observed_screen_view()
-            .map(|view| self.observe_view(view))
-    }
-
-    /// Snapshot of the receiving screen for screen input hooks, including overlays.
-    pub(in crate::game) fn observed_input_screen(&self) -> Option<ObservedScreen> {
-        let view = self.observed_screen_view()?;
-        let regions = view.regions.to_vec();
-        let mut snapshot = self.observe_view(view);
-        snapshot.regions = regions;
-        Some(snapshot)
-    }
-
     /// Shows `title`, as `Minecraft.setScreen(new TitleScreen())` (or the
     /// screen it opens on: the multiplayer list, a disconnect, an error)
     /// does at startup and when a world closes. `screen_opening` fires to its
@@ -221,11 +181,6 @@ impl Game<'_> {
     pub(in crate::game) fn show_title(&mut self, mut title: sunrise_client::title::Title) {
         title.set_rule_registry(Arc::new(crate::game::api_values::game_rule_registry()));
         self.show_title_with_registry(title);
-    }
-
-    pub(in crate::game) fn observe_screen(&mut self) {
-        self.settle_title_mode();
-        self.refresh_screen_widgets();
     }
 }
 
@@ -394,18 +349,6 @@ impl SlotMoves {
         if !pending.is_empty() {
             self.committed.borrow_mut().extend(pending.drain());
         }
-    }
-}
-
-impl Game<'_> {
-    /// The menu type resolved for this client's opening, including in ScreenOpening.
-    pub(in crate::game) fn native_screen_menu_type(
-        &self,
-        window: i32,
-        name: &str,
-    ) -> Option<&'static sunrise_client::containers::ModMenuType> {
-        let menu = &self.active_native_screen()?.menu;
-        (menu.window == window && menu.name == name).then_some(menu.mod_type)?
     }
 }
 
@@ -734,20 +677,6 @@ impl Game<'_> {
         self.native_player_heart_type(&mut kind);
         Some(kind)
     }
-    /// Deliver a non-repeat key press to the native panel.
-    pub(in crate::game) fn native_panel_key_event(
-        &mut self,
-        key: KeyCode,
-        pressed: bool,
-        repeat: bool,
-    ) {
-        if pressed
-            && !repeat
-            && let Some(name) = keybinds::key_name(key)
-        {
-            self.native_panel_key(name);
-        }
-    }
     /// Whether any mod listens to a hook given the open screen's
     /// `ScreenView` (render, input, open and close, room, exclusion): only
     /// then are its regions collected.
@@ -848,23 +777,6 @@ impl Game<'_> {
             regions: self.screen_regions(screen),
         })
     }
-    /// The open screen's container panel in GUI pixels (`screen`'s, the one
-    /// this frame draws), or the whole window for a screen with none
-    /// (`ScreenView.rect`).
-    pub(in crate::game) fn screen_rect(&self, batch: &HudBatch, screen: Screen) -> [f32; 4] {
-        if screen != Screen::Inventory && screen != Screen::Creative {
-            return [0.0, 0.0, batch.width, batch.height];
-        }
-        // The window the game itself draws (`container_image`): the merchant
-        // and the beacon are wider and shifted, creative is its own size.
-        let image = self.container_image(batch);
-        [
-            image.left as f32,
-            image.top as f32,
-            image.width as f32,
-            image.height as f32,
-        ]
-    }
     /// Button Post sees the original receiver and its answer; return the final handled bit.
     pub(in crate::game) fn screen_button_post(
         &self,
@@ -913,30 +825,6 @@ impl Game<'_> {
             }
         }
     }
-    /// A key press's characters (`ScreenEvent.CharacterTyped.Pre`, vanilla's
-    /// `KeyboardHandler.charTyped`), dispatched once the screen has acted on
-    /// the key: GLFW's char callback comes after its key callback, so the
-    /// characters go to the screen that is open now — a key that closed the
-    /// screen leaves none to hear them, as vanilla's closed screen hears
-    /// nothing, and one that moved the focus types into the box it moved to.
-    /// Each printable one snapshots the current screen, runs
-    /// `native_screen_char_typed_pre` (when hooks apply), then mounted widgets,
-    /// then the focused text box, and unhandled characters fire
-    /// `native_screen_char_typed_post` on that character's captured receiver.
-    pub(in crate::game) fn screen_chars_typed(&mut self, text: Option<&str>) {
-        let Some(text) = text else {
-            return;
-        };
-        if self.observed_screen_view().is_none() && self.headless_screen_snapshot().is_none() {
-            return;
-        }
-        // A held edit modifier makes a shortcut of the key, not text.
-        let text = chars_to_type(text, self.types_text());
-        if text.is_empty() {
-            return;
-        }
-        self.screen_chars_dispatch(&text, |game, c| game.type_chars_into_screen(c).is_ok());
-    }
     pub(in crate::game) fn observe_client_packet(
         &mut self,
         packet: &sunrise_protocol::packets::play::Clientbound,
@@ -959,104 +847,6 @@ impl Game<'_> {
         let mut canceled = false;
         self.native_client_packet_send(&serverbound_packet_view(packet), &mut canceled);
         canceled
-    }
-    /// The living entity an effect decision names: `Some(id)` a mob's
-    /// `Entity.getId`, `None` the acting player. `None` when no native
-    /// world runs, and the decision falls back to vanilla's.
-    pub(in crate::game) fn effect_living_ref(&self, entity: Option<i32>) -> Option<LivingRef> {
-        let epoch = self.native_lifecycle.epoch()?;
-        let id = match entity {
-            Some(id) => id as u32,
-            None => self.own_entity_id() as u32,
-        };
-        Some(LivingRef::new(EntityRef::new(epoch, id)))
-    }
-    /// Deliver what the batch just ticked recorded, in order: `minecart_pass`
-    /// to the parts, and the writes a landing, step, or mid-walk `entity_inside`
-    /// contact asked for to the level. A write is skipped when the block at
-    /// its position is no longer the state it touched, as vanilla never sees
-    /// a stale one. The parts' own `entity_inside` contacts fire mid-walk now,
-    /// on the shared inside sweep, not here.
-    pub(in crate::game) fn drain_entity_inside(&mut self) {
-        for contact in sunrise_client::block_contact::take_pending() {
-            let (state, pos) = match &contact {
-                Pending::Landed(landed) => (landed.state, landed.position),
-                Pending::MinecartPass(pass) => (pass.state, pass.position),
-                Pending::InsideWritten(written) => (written.state, written.position),
-            };
-            let Some(level) = self.level(self.dim.id()) else {
-                continue;
-            };
-            if self.level_block_state(level, [pos.x, pos.y, pos.z]) != Some(state) {
-                continue;
-            }
-            match contact {
-                Pending::MinecartPass(pass) => {
-                    if let Some(entity) = u32::try_from(pass.entity)
-                        .ok()
-                        .and_then(|id| self.entity(id))
-                    {
-                        self.native_minecart_pass(state, pos, entity);
-                    }
-                }
-                Pending::Landed(landed) => {
-                    for write in landed.writes {
-                        self.apply_landing_write(level, pos, write);
-                    }
-                }
-                // The mid-walk contacts' own level writes, guarded on the touched
-                // state above, as a landing's are.
-                Pending::InsideWritten(written) => {
-                    for write in written.writes {
-                        self.apply_inside_write(level, pos, write);
-                    }
-                }
-            }
-        }
-    }
-
-    /// Apply one already-validated engine write, at the block the entity landed on.
-    /// The original-state guard runs once before the ordered batch, not between writes.
-    pub(in crate::game) fn apply_landing_write(
-        &mut self,
-        level: mod_api::LevelRef,
-        pos: BlockPos,
-        write: sunrise_world::level::LandingWrite,
-    ) {
-        let at = [pos.x, pos.y, pos.z];
-        match write {
-            // `Level.setBlockAndUpdate`: flag 3, the neighbours and the clients.
-            sunrise_world::level::LandingWrite::SetBlock(state) => {
-                let flags = BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS;
-                let _ = self.level_set_block(level, at, state, flags);
-            }
-            sunrise_world::level::LandingWrite::DestroyBlock { drop } => {
-                self.level_destroy_block(level, at, drop, None, false);
-            }
-            // A write a later API adds that this game does not know is not applied.
-            _ => {}
-        }
-    }
-    /// A write an `entity_inside` part asked for, applied as a landing write is: at the
-    /// touched block, once the entity's batch has ticked.
-    pub(in crate::game) fn apply_inside_write(
-        &mut self,
-        level: mod_api::LevelRef,
-        pos: BlockPos,
-        write: sunrise_world::level::InsideWrite,
-    ) {
-        let at = [pos.x, pos.y, pos.z];
-        match write {
-            sunrise_world::level::InsideWrite::SetBlock(state) => {
-                let flags = BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS;
-                let _ = self.level_set_block(level, at, state, flags);
-            }
-            sunrise_world::level::InsideWrite::DestroyBlock { drop } => {
-                self.level_destroy_block(level, at, drop, None, false);
-            }
-            // A write a later API adds that this game does not know is not applied.
-            _ => {}
-        }
     }
 }
 
@@ -1328,18 +1118,6 @@ pub(in crate::game) fn shield_block(
     );
 }
 
-impl Game<'_> {
-    /// [`Self::attack_of`] for the attacker a damage source names: the player, a mob, or (none)
-    /// the attack the enclosing [`Self::with_attack`] lends.
-    pub(in crate::game) fn attack_of_who(&self, attacker: Option<Who>) -> Attack {
-        match attacker {
-            Some(Who::Player) => self.attack_of(self.player.as_ref().map_or(0, |p| p.entity_id)),
-            Some(Who::Mob(id)) => self.attack_of(id as i32),
-            None => self.current_attack(),
-        }
-    }
-}
-
 /// `native_living_knockback` for the knockback code: whether it
 /// canceled the push. Its one caller. The pushed entity and the source are named as the
 /// damage hook names them.
@@ -1604,73 +1382,6 @@ pub(in crate::game) struct BonemealAsk {
 
 /// Where the game calls the hook points.
 impl Game<'_> {
-    /// `BonemealEvent` for bone meal from `stack` on `pos`, used by the
-    /// acting player (`by_player`) or by a dispenser or a villager:
-    /// `Some(successful)` when a mod canceled it, the answer `growCrop`
-    /// gives in vanilla's place. The caller keeps what the mods did to
-    /// `stack`.
-    pub(in crate::game) fn bonemeal(
-        &mut self,
-        pos: BlockPos,
-        by_player: bool,
-        stack: &mut ItemStack,
-    ) -> BonemealAsk {
-        if !mod_api::__private::listened(mod_api::HookId::Bonemeal) {
-            return BonemealAsk {
-                crop: None,
-                check: None,
-            };
-        }
-        let client = self.remote.is_some();
-        let check = self.with_level(|b, level, _| b.is_valid_bonemeal_target(level, pos, client));
-        let valid = check.is_valid();
-        let state = self.world.block(pos.x, pos.y, pos.z);
-        let (player, player_entity_id) = if by_player {
-            let (uuid, entity) = self.native_clicker();
-            (Some(uuid), Some(entity))
-        } else {
-            (None, None)
-        };
-        let (mut successful, mut canceled) = (false, false);
-        let mut snapshot = Some(stack.clone());
-        self.native_bonemeal(crate::game::native_hooks::fire::BonemealCall {
-            dimension: self.dim.level(),
-            player,
-            player_entity_id,
-            pos,
-            state,
-            source: BonemealSource::Interaction,
-            stack: &mut snapshot,
-            valid_bonemeal_target: valid,
-            successful: &mut successful,
-            canceled: &mut canceled,
-        });
-        match snapshot {
-            Some(next) => *stack = next,
-            None => stack.count = 0,
-        }
-        BonemealAsk {
-            crop: canceled.then_some(successful),
-            check: Some(check),
-        }
-    }
-    /// Whether a mod canceled `placer` writing `state` at `pos` (`entity_place`):
-    /// `placer` is an entity id, `placed_against` the block it goes against and
-    /// `companion` the second half of a bed, door or tall plant.
-    pub(in crate::game) fn place_canceled(
-        &mut self,
-        placer: u32,
-        pos: BlockPos,
-        state: BlockStateId,
-        placed_against: BlockStateId,
-        companion: Option<(BlockPos, BlockStateId)>,
-    ) -> bool {
-        if !mod_api::__private::listened(mod_api::HookId::EntityPlace) {
-            return false;
-        }
-        self.placement_canceled(self.entity(placer), pos, state, placed_against, companion)
-    }
-
     pub(in crate::game) fn placement_canceled(
         &mut self,
         placer: Option<EntityRef>,
@@ -1806,45 +1517,6 @@ impl Game<'_> {
         }
         Ok(())
     }
-    /// `PlayerInteractEvent.RightClickBlock` for a click on `hit` with
-    /// `hand` holding `stack`: what the mods let it use.
-    pub(in crate::game) fn right_click_block(
-        &mut self,
-        hit: &super::Hit,
-        hand: Hand,
-        stack: Option<&ItemStack>,
-    ) -> BlockClickAnswer {
-        let (mut use_block, mut use_item) = (TriState::Default, TriState::Default);
-        if !mod_api::__private::listened(mod_api::HookId::RightClickBlock) {
-            return BlockClickAnswer::Go {
-                use_block,
-                use_item,
-            };
-        }
-        let Ok(snapshot) = stack.try_into_api() else {
-            return BlockClickAnswer::Go {
-                use_block,
-                use_item,
-            };
-        };
-        let click = self.block_click(hit, hand, snapshot.as_ref());
-        let (mut result, mut canceled) = (mod_api::InteractionResult::Pass, false);
-        self.native_right_click_block(
-            &click,
-            &mut use_block,
-            &mut use_item,
-            &mut result,
-            &mut canceled,
-        );
-        if canceled {
-            BlockClickAnswer::Canceled(result)
-        } else {
-            BlockClickAnswer::Go {
-                use_block,
-                use_item,
-            }
-        }
-    }
     /// The chosen phase's broadcast event, before its scoped behaviour.
     pub(in crate::game) fn use_item_on_block(
         &mut self,
@@ -1875,29 +1547,6 @@ impl Game<'_> {
             });
         }
         Some(result)
-    }
-    /// `ItemStack.onItemUseFirst` for a click on a block: the broadcast
-    /// event's `ItemBeforeBlock` phase, then the held item's Part. Canceling skips that Part.
-    /// Only `Pass` continues to the block.
-    pub(in crate::game) fn item_use_first(
-        &mut self,
-        hit: &super::Hit,
-        hand: Hand,
-        stack: &ItemStack,
-    ) -> Option<mod_api::InteractionResult> {
-        if let Some(answer) =
-            self.use_item_on_block(hit, hand, Some(stack), UsePhase::ItemBeforeBlock)
-        {
-            return Some(answer);
-        }
-        if !mod_api::__private::has_part_hook(mod_api::HookId::OnItemUseFirst) {
-            return None;
-        }
-        let snapshot = stack.try_into_api().ok()?;
-        let click = self.block_click(hit, hand, Some(&snapshot));
-        let mut answer = None;
-        self.native_on_item_use_first(&snapshot, &click, &mut answer);
-        answer.filter(|answer| *answer != mod_api::InteractionResult::Pass)
     }
     /// `GameRuleChangedEvent` once the server set the rule `name` to `value`
     /// (`GameRules.set` with a server).
@@ -1938,11 +1587,6 @@ impl Game<'_> {
             .owner
             .map(sunrise_client::lan::playerdata::ints_uuid);
         self.native_entity_tame(entity, &kind, owner);
-    }
-    /// The acting player as the hook points name one: the guest whose turn
-    /// it is, else the host.
-    pub(in crate::game) fn native_acting_id(&mut self) -> u128 {
-        sunrise_client::lan::playerdata::ints_uuid(self.acting_player_uuid())
     }
 
     /// Tells the mods of the chunks that came into this level.
@@ -1988,24 +1632,6 @@ impl Game<'_> {
             .collect();
         for (player, name) in players {
             self.native_player_logged_out(player, &name);
-        }
-    }
-    /// The mobs from index `from` on are new in the world.
-    pub(in crate::game) fn native_mobs_joined(&mut self, from: usize, natural: bool) {
-        // Preserve saved/constructed UUIDs. Natural spawns built with provisional
-        // IDs get their persistent identity when admitted, not on their first hit.
-        for mob in self.mobs.iter().skip(from) {
-            self.persist
-                .uuids
-                .get_or_insert_with(mob.id, sunrise_client::save::random_uuid);
-        }
-        self.join_spawn_tags(from);
-        // A mod can keep a mob out; it is then taken out and not told of.
-        self.native_joins_flush(false, 0);
-        for i in from..self.mobs.len() {
-            let m = &self.mobs[i];
-            let (kind, pos) = (mob_kind(m), [m.position.x, m.position.y, m.position.z]);
-            self.native_mob_spawned(self.dim.id(), &kind, pos, natural);
         }
     }
     /// The acting player's blow killed mob `index`.
@@ -2238,29 +1864,6 @@ impl Game<'_> {
         let c = self.world.block_entities.mod_container(state)?;
         mod_menu(c.menu.as_deref()?).map(|(menu, _)| menu)
     }
-    /// Where the open mod screen puts container slot `slot` this frame: where
-    /// a mod last moved it, else where the screen declared it; None when
-    /// inactive/hidden.
-    pub(in crate::game) fn native_screen_slot(&self, slot: usize) -> Option<(f32, f32)> {
-        let s = self.shown_native_screen()?;
-        let declared = s
-            .layout()
-            .slots
-            .get(slot)?
-            .as_ref()
-            .map(|slot| slot.position);
-        let [x, y] = s.slot_moves.position(slot, declared)?;
-        Some((x, y))
-    }
-    pub(in crate::game) fn native_screen_slot_icon(&self, slot: usize) -> Option<&str> {
-        self.shown_native_screen()?
-            .layout()
-            .slots
-            .get(slot)?
-            .as_ref()?
-            .no_item_icon
-            .as_deref()
-    }
     /// Where the open screen of mod menu type `menu` puts container slot
     /// `slot` from the next frame: the mod's last move, else the screen's
     /// declaration; None for an inactive/hidden slot, another menu type's screen or none.
@@ -2282,76 +1885,6 @@ impl Game<'_> {
             .filter(|s| s.menu.name == menu)
             .ok_or(mod_api::ScreenSlotRefusal::NoScreen)?;
         s.slot_moves.set(&s.layout().slots, slot, pos)
-    }
-    /// The internal container slot base of the open mod screen (`MOD_MENU_SLOT_BASE`
-    /// for a `ModMenuType`, `300` for a stock menu).
-    pub(in crate::game) fn native_screen_container_slot_base(&self) -> usize {
-        self.shown_native_screen()
-            .map_or(300, OpenNativeScreen::container_slot_base)
-    }
-    /// The container slots the open mod screen shows this frame.
-    pub(in crate::game) fn native_screen_slots(&self) -> Option<Vec<usize>> {
-        Some(
-            self.shown_native_screen()?
-                .visible_container_slots()
-                .collect(),
-        )
-    }
-    /// The first row of the player's inventory on the open mod screen.
-    pub(in crate::game) fn native_screen_inventory_y(&self) -> Option<f32> {
-        self.shown_native_screen().map(|s| s.layout().inventory_y)
-    }
-    /// The open mod screen's inventory's left column.
-    pub(in crate::game) fn native_screen_inventory_x(&self) -> Option<f32> {
-        self.shown_native_screen().map(|s| s.layout().inventory_x)
-    }
-    /// The open mod screen's width.
-    pub(in crate::game) fn native_screen_width(&self) -> Option<f32> {
-        self.shown_native_screen().map(|s| s.layout().width)
-    }
-    /// Menu button `id` on a mod menu (`clickMenuButton`), with the acting
-    /// player's cursor stack (`carried`, read and written). A block-backed
-    /// menu lends its live resident block entity through `BlockEntityScope`;
-    /// a blockless menu lends no view while keeping `host()` and
-    /// `transaction(...)` usable.
-    pub(in crate::game) fn mod_menu_button(
-        &mut self,
-        menu: &str,
-        context: mod_api::item::menu::MenuButtonContext,
-        block: Option<&str>,
-        backing: Option<(i32, i32, i32)>,
-        carried: &mut Option<ItemStack>,
-    ) {
-        if !mod_api::__private::has_part_hook(mod_api::HookId::MenuButton) {
-            return;
-        }
-        let Ok(mut api_cursor) = carried.try_into_api() else {
-            return;
-        };
-        let original_api = api_cursor.clone();
-        let target_pos = backing.filter(|&pos| self.mod_menu_at(pos) == Some(menu));
-        let target = target_pos.and_then(|pos| self.resident_block_entity_target(pos));
-        let items_changed = {
-            let mut access = match target {
-                Some((handle, state)) => ResidentBlockEntityAccess::for_handle(self, handle, state),
-                None => ResidentBlockEntityAccess::blockless(self),
-            };
-            crate::game::native_hooks::native_menu_button(
-                menu,
-                block,
-                &context,
-                mod_api::BlockEntityScope::new(&mut access),
-                &mut api_cursor,
-            );
-            access.items_changed()
-        };
-        if items_changed
-            && let Some((handle, _)) = target
-            && let Some(pos) = self.native_block_entity_write_key(handle)
-        {
-            self.after_commit(crate::game::transactions::After::Changed(pos));
-        }
-        apply_menu_button_cursor(self.items(), &original_api, &api_cursor, carried);
     }
     /// Options > Mods' rows for loaded code mods, after the content-only rows.
     pub(in crate::game) fn list_native_mods(&mut self) {
@@ -2483,74 +2016,6 @@ impl Game<'_> {
         if let Some(page) = row.and_then(|m| m.native.as_mut()) {
             page.settings = settings;
         }
-    }
-    /// The zoom in effect while playing (a native mod's); the spyglass's own
-    /// view wins.
-    pub(in crate::game) fn native_zoom_now(&self) -> Option<mod_api::Zoom> {
-        if !self.playing() || self.scoping() {
-            return None;
-        }
-        let mut zoom = None;
-        self.native_zoom(&mut zoom);
-        let z = zoom?;
-        let factor = finite(z.factor, 1.0, 10.0);
-        (factor > 1.0).then_some(mod_api::Zoom {
-            factor,
-            smooth: z.smooth,
-            turn: if z.turn.is_finite() {
-                z.turn.clamp(0.05, 1.0)
-            } else {
-                1.0
-            },
-        })
-    }
-    /// The pose of native mods' camera shake in this frame (`native_camera_shake`),
-    /// none while not playing.
-    pub(in crate::game) fn native_shake_matrix(&self, partial: f32) -> glam::Mat4 {
-        if !self.playing() {
-            return glam::Mat4::IDENTITY;
-        }
-        let mut shake = Shake::default();
-        self.native_camera_shake(partial, &mut shake);
-        if shake == Shake::default() {
-            return glam::Mat4::IDENTITY;
-        }
-        shake_pose(bounded_shake(shake, self.screen_effect_scale()))
-    }
-
-    /// The camera native mods draw this frame from (`native_camera_pose`), starting from
-    /// `view`, vanilla's position, yaw and pitch.
-    pub(in crate::game) fn native_camera_pose_now(
-        &mut self,
-        partial: f32,
-        view: (glam::DVec3, f32, f32),
-    ) -> (glam::DVec3, f32, f32) {
-        let (mut position, mut yaw, mut pitch) = (view.0.to_array(), view.1, view.2);
-        self.native_camera_pose(partial, &mut position, &mut yaw, &mut pitch);
-        let posed = posed_camera(view, position, yaw, pitch);
-        if self.apply_requested_camera_type()
-            && let Some(refreshed) = self.camera_view(partial)
-        {
-            // Refresh vanilla components, not the listener's explicit overrides.
-            return (
-                if posed.0 == view.0 {
-                    refreshed.0
-                } else {
-                    posed.0
-                },
-                if posed.1 == view.1 {
-                    refreshed.1
-                } else {
-                    posed.1
-                },
-                if posed.2 == view.2 {
-                    refreshed.2
-                } else {
-                    posed.2
-                },
-            );
-        }
-        posed
     }
 
     /// What native mods hand shader packs in this frame (`native_shader_params`),
