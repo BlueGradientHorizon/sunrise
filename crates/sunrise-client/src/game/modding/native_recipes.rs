@@ -687,7 +687,7 @@ mod tests {
         assert_eq!(types, ["minecraft:smelting"]);
     }
 
-    use super::super::native_entity_refs::tests::{with_game, with_game_at};
+    use super::super::native_entity_refs::tests::{with_client_game, with_game, with_game_at};
     use mod_api::{ItemStack, RecipeInput, RecipeLookupError};
 
     fn stack(item: &str) -> Option<ItemStack> {
@@ -709,7 +709,7 @@ mod tests {
                 .map(|e| e.display_id)
                 .collect()
         }
-        with_game(|game| {
+        with_client_game(|game| {
             let ids = [
                 "minecraft:stick",
                 "minecraft:chest",
@@ -897,7 +897,24 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn recipe_for_dispatches_cooking_and_stonecutting_and_pack_recipes() {
-        mod_platform::testing::with_mods(Vec::new().into(), || {
+        struct PackSmelting;
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for PackSmelting {
+            fn data_pack_files(
+                &self,
+                _: &mut dyn mod_api::ServerHost,
+                event: &mut mod_api::DataPackFilesEvent<'_>,
+            ) {
+                event.files.push((
+                    "recipe/test:pack_smelting".into(),
+                    br#"{"type":"minecraft:smelting","ingredient":"minecraft:dirt","result":{"id":"minecraft:diamond"},"experience":0.25,"cookingtime":42}"#
+                        .to_vec(),
+                ));
+            }
+        }
+        let mods: mod_api::Mods =
+            vec![mod_api::ModEntry::new("test_pack", Box::new(PackSmelting))].into();
+        mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
                 let level = game.level(game.dim.id()).unwrap();
                 let kind = |name| mod_api::Identifier::parse(name).unwrap();
@@ -955,21 +972,7 @@ mod tests {
                 );
                 assert_eq!(cut.output.count(), 2);
                 // Same resolved source path as a world's merged data packs, with a vanilla type.
-                let recipes = sunrise_client::crafting::Recipes::from_sources(
-                    &game.options.resources,
-                    game.items(),
-                    &sunrise_world::loot::PackOverlay::NONE,
-                    vec![(
-                        "test:pack_smelting".into(),
-                        serde_json::json!({
-                            "type":"minecraft:smelting", "ingredient":"minecraft:dirt",
-                            "result":{"id":"minecraft:diamond"}, "experience":0.25, "cookingtime":42
-                        }),
-                    )],
-                    game.res.core.item_data.context(),
-                )
-                .unwrap();
-                game.recipe_tables.synced = Some(recipes);
+                game.reload_datapacks(false, &[]).unwrap();
                 let made = level
                     .recipe_for(
                         game,

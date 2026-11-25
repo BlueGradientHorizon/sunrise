@@ -698,6 +698,7 @@ pub(in crate::game) use crate::game::server_side::native_components_server::item
             );
             game.creative = false;
             game.set_mapping_held("key.use", true);
+            game.server_set_acting_use(true);
             game.client.screen = crate::game::Screen::Playing;
             game.inventory[game.selected] = Some(stack);
             assert!(game.server_start_eating(&info));

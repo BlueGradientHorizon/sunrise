@@ -85,6 +85,7 @@ pub(in crate::game::server_side) fn burn_in(game: &mut Game<'_>, pos: [i32; 3]) 
         w.server_block_damage(at).unwrap();
         std::mem::take(&mut w.player.events)
     };
+    game.start_audio_capture();
     game.block_extinguish_player(&events);
 }
 
@@ -109,7 +110,18 @@ fn powder_snow_puts_a_burning_player_out_with_the_hiss() {
     burn_in(&mut game, pos);
     assert!(game.player.as_ref().unwrap().fire_ticks <= 0, "fire out");
     assert_eq!(block(&game, pos), "minecraft:air", "the snow is destroyed");
-    assert_eq!(heard(&game), 1, "one hiss");
+    let server_hiss = game
+        .server
+        .pending_sounds
+        .iter()
+        .filter(|s| s.event == "minecraft:entity.generic.extinguish_fire")
+        .count();
+    assert_eq!(server_hiss, 1, "one hiss");
+    assert_eq!(
+        heard(&game),
+        0,
+        "server does not play to local client audio"
+    );
 }
 
 /// `LayeredCauldronBlock.handleEntityOnFireInside`: the level-3 water
@@ -132,7 +144,18 @@ fn a_cauldron_puts_a_burning_player_out_with_the_hiss() {
         .state(game.world.block(pos[0], pos[1], pos[2]))
         .and_then(|s| s.properties.get("level").cloned());
     assert_eq!(level.as_deref(), Some("2"), "the water drops a level");
-    assert_eq!(heard(&game), 1, "one hiss");
+    let server_hiss = game
+        .server
+        .pending_sounds
+        .iter()
+        .filter(|s| s.event == "minecraft:entity.generic.extinguish_fire")
+        .count();
+    assert_eq!(server_hiss, 1, "one hiss");
+    assert_eq!(
+        heard(&game),
+        0,
+        "server does not play to local client audio"
+    );
 }
 
 /// `ServerPlayer.mayInteract` outside the world border: the fire still goes
@@ -150,7 +173,18 @@ fn outside_the_border_powder_snow_stays_but_the_fire_goes_out() {
     burn_in(&mut game, pos);
     assert!(game.player.as_ref().unwrap().fire_ticks <= 0, "fire out");
     assert_eq!(block(&game, pos), "minecraft:powder_snow", "it stays");
-    assert_eq!(heard(&game), 1, "the hiss still plays");
+    let server_hiss = game
+        .server
+        .pending_sounds
+        .iter()
+        .filter(|s| s.event == "minecraft:entity.generic.extinguish_fire")
+        .count();
+    assert_eq!(server_hiss, 1, "the hiss still plays");
+    assert_eq!(
+        heard(&game),
+        0,
+        "server does not play to local client audio"
+    );
 }
 
 /// The same for a cauldron: level 3 stays level 3, the fire goes out and the
@@ -174,5 +208,16 @@ fn outside_the_border_a_cauldron_keeps_its_level_but_the_fire_goes_out() {
         .state(game.world.block(pos[0], pos[1], pos[2]))
         .and_then(|s| s.properties.get("level").cloned());
     assert_eq!(level.as_deref(), Some("3"), "it keeps its level");
-    assert_eq!(heard(&game), 1, "the hiss still plays");
+    let server_hiss = game
+        .server
+        .pending_sounds
+        .iter()
+        .filter(|s| s.event == "minecraft:entity.generic.extinguish_fire")
+        .count();
+    assert_eq!(server_hiss, 1, "the hiss still plays");
+    assert_eq!(
+        heard(&game),
+        0,
+        "server does not play to local client audio"
+    );
 }

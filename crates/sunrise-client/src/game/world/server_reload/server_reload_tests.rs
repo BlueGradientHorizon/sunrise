@@ -1337,6 +1337,7 @@ fn data_maps_updated_fires_for_each_registry_on_first_open_and_every_reload() {
             // A game that isn't a server holds no maps it may answer, even with
             // tables built.
             game.options.dedicated = None;
+            game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
             assert_eq!(
                 game.data_map_value("minecraft:item", "minecraft:coal", "probe:fuel"),
                 Err(DataMapError::Unavailable)

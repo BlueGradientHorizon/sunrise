@@ -42,8 +42,8 @@ fn unregistered_serializer_failed_reload_preserves_previous_recipes() {
                 game.res.core.item_data.context(),
             )
             .unwrap();
-            game.world_tables.0 = None;
-            game.recipe_tables.install_test_recipes(recipes);
+            game.reload_datapacks(false, &[]).unwrap();
+            game.world_tables.0.as_mut().unwrap().recipes = recipes;
             assert!(game.recipes().recipe("recipe_probe:literal").is_some());
             bad_recipe.store(true, Ordering::Relaxed);
             let error = game
