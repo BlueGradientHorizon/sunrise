@@ -418,6 +418,12 @@ reload context. The scoped contexts do not lend a world.
 - `draw.draw_instance_group(group)` explicitly submits the group's live copies for this
   view. Repeated submissions of the same group in one view each draw again. Culling uses
   the composed pose.
+- `draw.instance_group(group)` draws a retained group under the draw context's current pose,
+  in entity renderers, entity layers, block entities and screen scenes. A stale or destroyed
+  group returns `GroupError::Stale` and draws nothing.
+- `host.prepare_item(stack, display, seed)` resolves an item's model once and returns a
+  `PreparedItemRef`; `draw.prepared_item(item)` then draws it as `draw.item` would, without
+  resolving the model again. A stale handle draws nothing and returns `ModelError::StaleModel`.
 - `group.destroy(host)` retires the handle and releases capacity and CPU caches.
   Copies already accepted for a view remain drawn; subsequent calls return `Stale`.
 - `Hooks::prepare_render_buffers` runs once per world view before any pass-bearing render stage.

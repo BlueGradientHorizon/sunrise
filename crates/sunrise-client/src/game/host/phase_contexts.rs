@@ -137,6 +137,14 @@ impl ClientReloadHost for Game<'_> {
     fn item_uses_block_light(&self, stack: &ItemStack, context: ItemDisplayContext) -> bool {
         <Self as prelude::ClientRenderClientHost>::item_uses_block_light(self, stack, context)
     }
+    fn prepare_item(
+        &self,
+        stack: &ItemStack,
+        display: ItemDisplayContext,
+        seed: i32,
+    ) -> Result<PreparedItemRef, ModelError> {
+        <Self as prelude::ClientRenderClientHost>::prepare_item(self, stack, display, seed)
+    }
     fn block_sprites(&self, blocks: &[BlockState]) -> Vec<Option<BlockSprites>> {
         <Self as prelude::ClientRenderClientHost>::block_sprites(self, blocks)
     }

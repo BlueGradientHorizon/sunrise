@@ -336,6 +336,11 @@ pub mod built {
     pub fn instance_group_ref(generation: u64, slot: u32) -> crate::InstanceGroupRef {
         crate::InstanceGroupRef::from_parts(generation, slot).expect("published group generation")
     }
+    /// Wrap a slot in the prepared item store.
+    pub fn prepared_item_ref(generation: u64, slot: u32) -> crate::PreparedItemRef {
+        crate::PreparedItemRef::from_parts(generation, slot)
+            .expect("published prepared item generation")
+    }
     /// Wrap a slot in the model store's published generation.
     pub fn model_ref(generation: u64, slot: u32) -> crate::ModelRef {
         crate::ModelRef(generation, slot)
