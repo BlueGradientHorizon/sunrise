@@ -5358,7 +5358,6 @@ dependencies = [
  "sunrise-perf-format",
  "sunrise-protocol",
  "sunrise-server-files",
- "sunrise-shader-api",
  "sunrise-shaders",
  "sunrise-system",
  "sunrise-telemetry",
