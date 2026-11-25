@@ -50,6 +50,7 @@ impl Game<'_> {
             causing: 0,
             direct: 0,
             position: None,
+            direct_type: None,
         };
         self.native_nonliving_invulnerable(id, kind, source, vanilla)
     }
@@ -393,6 +394,7 @@ impl Game<'_> {
             causing: attacker,
             direct: attacker,
             position: None,
+            direct_type: None,
         };
         let vanilla = self.saved_refuses_damage(id, "minecraft:player_attack", self.creative);
         self.native_nonliving_invulnerable(id, kind, source, vanilla)

@@ -1862,6 +1862,7 @@ impl Game<'_> {
             causing: causing.and_then(|t| self.network_entity_id(t)).unwrap_or(0),
             direct: direct.and_then(|t| self.network_entity_id(t)).unwrap_or(0),
             position,
+            direct_type: None,
         };
         if !self.native_nonliving_invulnerable(shot.id, shot.entity_type(), source, vanilla) {
             shot.sync_velocity = true;

@@ -1093,9 +1093,16 @@ impl Game<'_> {
             _ => None,
         };
         let landed = match target {
-            Who::Player => {
-                self.hurt_player_from(amount, Some(from), "minecraft:mob_attack", Some(mob), false)
-            }
+            Who::Player => self.hurt_player_from(
+                amount,
+                Some(from),
+                "minecraft:mob_attack",
+                mob.map_or(
+                    crate::game::creatures::KnownCause::None,
+                    crate::game::creatures::KnownCause::Entity,
+                ),
+                false,
+            ),
             Who::Mob(id) => self.mob_attacks_mob(id, amount, source),
         };
         self.combat.hit_landed = landed;
