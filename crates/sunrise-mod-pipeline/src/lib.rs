@@ -13,7 +13,7 @@
 //!
 //! Colour follows vanilla's gamma space: a mod program writes what vanilla core shaders write
 //! (`texture * vertexColor * ColorModulator`). On frames storing vanilla's encoding, outputs are
-//! stored as written; on frames holding linear light, [`LINEAR_FRAGMENT_FINISH`] decodes the
+//! stored as written; on frames holding linear light, [`linear_fragment_finish`] decodes the
 //! fragment output after `main()` (sanitized against negatives/NaN, alpha clamped as coverage).
 
 pub mod check;
@@ -94,10 +94,40 @@ vec4 sampleSprite(vec2 uv) {
 /// Post-`main()` fragment finish for frames holding linear light: sanitizes negative and NaN
 /// RGB channels to 0 before applying vanilla's 2.2 gamma-to-linear power, and clamps alpha
 /// coverage to `[0, 1]` (NaN covers nothing).
-pub const LINEAR_FRAGMENT_FINISH: &str = "\
-vec3 hz_rgb = mix(vec3(0.0), hz_frag_out.rgb, greaterThan(hz_frag_out.rgb, vec3(0.0)));
-float hz_a = clamp(hz_frag_out.a > 0.0 ? hz_frag_out.a : 0.0, 0.0, 1.0);
-hz_frag_out = vec4(pow(hz_rgb, vec3(2.2)), hz_a);";
+pub fn linear_fragment_finish(out_name: &str) -> String {
+    format!(
+        "vec3 hz_rgb = mix(vec3(0.0), {out_name}.rgb, greaterThan({out_name}.rgb, vec3(0.0)));\n\
+         float hz_a = clamp({out_name}.a > 0.0 ? {out_name}.a : 0.0, 0.0, 1.0);\n\
+         {out_name} = vec4(pow(hz_rgb, vec3(2.2)), hz_a);"
+    )
+}
+
+/// Returns the GLSL output variable name bound to fragment `location = 0` in `module`, if any.
+fn fragment_loc0_output_name(module: &naga::Module) -> Option<&str> {
+    let ep = module
+        .entry_points
+        .iter()
+        .find(|e| e.stage == naga::ShaderStage::Fragment)?;
+    let res = ep.function.result.as_ref()?;
+    if let Some(naga::Binding::Location { location: 0, .. }) = res.binding {
+        // Single scalar/vector return: locate the global output variable naga generated for it.
+        return module.global_variables.iter().find_map(|(_, gv)| {
+            if gv.space == naga::AddressSpace::Private {
+                gv.name.as_deref()
+            } else {
+                None
+            }
+        });
+    }
+    if let naga::TypeInner::Struct { ref members, .. } = module.types[res.ty].inner {
+        for m in members {
+            if let Some(naga::Binding::Location { location: 0, .. }) = m.binding {
+                return m.name.as_deref();
+            }
+        }
+    }
+    None
+}
 
 /// `sampleSprite`'s texel arithmetic, for testing without a GPU: the integer texel of an atlas
 /// `size` texels wide and high that `uv` picks inside the sprite at `rect` (`[u0, v0, u1, v1]`).
@@ -138,7 +168,7 @@ pub struct Options<'a> {
     /// Pipeline defines (`NAME` or `NAME value`) in order; [`DEPTH_ZERO_TO_ONE`] is always
     /// prepended automatically.
     pub defines: &'a [&'a str],
-    /// Whether the target frame stores linear light (attaching [`LINEAR_FRAGMENT_FINISH`]).
+    /// Whether the target frame stores linear light (attaching [`linear_fragment_finish`]).
     pub linear_light: bool,
     /// Also run SPIR-V, Metal and DirectX 12 backend translation checks (used by
     /// `cargo sunrise-mod check` and tests).
@@ -170,7 +200,7 @@ pub struct BuiltProgram {
 }
 
 /// Vertex & fragment `Glue` for `PipelineVertexFormat::PositionTexColor`.
-pub fn pipeline_glue(interface: InterfaceLimits, linear_light: bool) -> Glue<'static> {
+pub fn pipeline_glue<'a>(interface: InterfaceLimits, fragment_finish: Option<&'a str>) -> Glue<'a> {
     Glue {
         inputs: &[("Position", "vec3"), ("UV0", "vec2"), ("Color", "vec4")],
         prelude: "layout(location = 0) in vec3 hz_pos;\n\
@@ -179,7 +209,7 @@ pub fn pipeline_glue(interface: InterfaceLimits, linear_light: bool) -> Glue<'st
         setup: "Position = hz_pos; UV0 = hz_uv; Color = hz_color;",
         finish: "",
         vertex_id: "int(gl_VertexIndex)",
-        fragment_finish: linear_light.then_some(LINEAR_FRAGMENT_FINISH),
+        fragment_finish,
         interface,
     }
 }
@@ -228,11 +258,14 @@ fn translate_inner(
 
     let vertex_expanded = sunrise_glsl::expand_includes(
         sources.vertex,
+        sources.vertex_file,
         sources.vertex_dir,
         &includes,
         Some(&defines),
     )
-    .map_err(|e| vec![problem(sources.vertex_file, e.to_string())])?;
+    .map_err(|e| vec![problem(sources.vertex_file, e.to_string())])?
+    .text()
+    .to_owned();
     if let Some((at, msg)) = guard::refusal(&vertex_expanded) {
         return Err(vec![located(
             sources.vertex_file,
@@ -244,11 +277,14 @@ fn translate_inner(
 
     let fragment_expanded = sunrise_glsl::expand_includes(
         sources.fragment,
+        sources.fragment_file,
         sources.fragment_dir,
         &includes,
         Some(&defines),
     )
-    .map_err(|e| vec![problem(sources.fragment_file, e.to_string())])?;
+    .map_err(|e| vec![problem(sources.fragment_file, e.to_string())])?
+    .text()
+    .to_owned();
     if let Some((at, msg)) = guard::refusal(&fragment_expanded) {
         return Err(vec![located(
             sources.fragment_file,
@@ -266,12 +302,16 @@ fn translate_inner(
             dir: sources.fragment_dir,
             vertex: sources.vertex,
             fragment: sources.fragment,
+            vertex_file: sources.vertex_file,
+            fragment_file: sources.fragment_file,
         }
     } else {
         Stages {
             dir: sources.fragment_dir,
             vertex: &vertex_expanded,
             fragment: sources.fragment,
+            vertex_file: sources.vertex_file,
+            fragment_file: sources.fragment_file,
         }
     };
 
@@ -290,12 +330,19 @@ fn translate_inner(
         defines: &defines,
         includes: &includes,
     };
-    let glue = pipeline_glue(options.interface, options.linear_light);
+    let glue = pipeline_glue(options.interface, None);
 
-    let translated = sunrise_glsl::translate(&stages, &inputs, &glue, &|_| false).map_err(|e| {
-        let (file, msg) = split_stage_error(sources, &e, options.textured);
-        vec![problem(file, msg)]
-    })?;
+    let mut translated = sunrise_glsl::translate(&stages, &inputs, &glue, &|_| false)
+        .map_err(|errs| map_glsl_errors(sources, &errs, options.textured))?;
+
+    if options.linear_light
+        && let Some(out_name) = fragment_loc0_output_name(&translated.fragment)
+    {
+        let finish = linear_fragment_finish(out_name);
+        let linear_glue = pipeline_glue(options.interface, Some(&finish));
+        translated = sunrise_glsl::translate(&stages, &inputs, &linear_glue, &|_| false)
+            .map_err(|errs| map_glsl_errors(sources, &errs, options.textured))?;
+    }
 
     if options.check_backends {
         let mut backend_errors = Vec::new();
@@ -317,7 +364,7 @@ fn translate_inner(
     })
 }
 
-/// Re-translate an already-expanded program with [`LINEAR_FRAGMENT_FINISH`] enabled, returning
+/// Re-translate an already-expanded program with [`linear_fragment_finish`] enabled, returning
 /// the linear-light fragment [`naga::Module`]. Used by the GPU renderer only on linear-light
 /// frames so standard gamma loads avoid translating twice.
 pub fn translate_linear_fragment(
@@ -349,35 +396,65 @@ pub fn translate_linear_fragment(
             defines: &defines,
             includes: &includes,
         };
-        let glue = pipeline_glue(options.interface, true);
         let stages = Stages {
             dir: "",
             vertex: vertex_expanded,
             fragment: fragment_expanded,
+            vertex_file: "",
+            fragment_file: "",
         };
-        sunrise_glsl::translate(&stages, &inputs, &glue, &|_| false)
+        let base = sunrise_glsl::translate(
+            &stages,
+            &inputs,
+            &pipeline_glue(options.interface, None),
+            &|_| false,
+        )
+        .map_err(|errs| sunrise_glsl::describe(&errs))?;
+        let Some(out_name) = fragment_loc0_output_name(&base.fragment) else {
+            return Ok(base.fragment);
+        };
+        let finish = linear_fragment_finish(out_name);
+        sunrise_glsl::translate(
+            &stages,
+            &inputs,
+            &pipeline_glue(options.interface, Some(&finish)),
+            &|_| false,
+        )
+        .map_err(|errs| sunrise_glsl::describe(&errs))
+        .map(|t| t.fragment)
     })
     .unwrap_or_else(Err)
-    .map(|t| t.fragment)
 }
 
-fn split_stage_error<'a>(
-    sources: &'a ProgramSources<'a>,
-    error: &str,
+fn map_glsl_errors(
+    sources: &ProgramSources<'_>,
+    errors: &[sunrise_glsl::Error],
     textured: bool,
-) -> (&'a str, String) {
-    let (file, body) = if let Some(rest) = error.strip_prefix("vertex shader: ") {
-        (sources.vertex_file, rest)
-    } else if let Some(rest) = error.strip_prefix("fragment shader: ") {
-        (sources.fragment_file, rest)
-    } else {
-        (sources.fragment_file, error)
-    };
-    let mut message = body.to_owned();
-    if !textured && (body.contains("Sampler0 is not") || body.contains("SpriteRect is not")) {
-        message += " (requires RenderPipeline::textured)";
-    }
-    (file, message)
+) -> Vec<Problem> {
+    errors
+        .iter()
+        .map(|err| {
+            let mut message = err.message.clone();
+            if !textured
+                && (message.contains("Sampler0 is not") || message.contains("SpriteRect is not"))
+            {
+                message += " (requires RenderPipeline::textured)";
+            }
+            let file = if !err.file.is_empty() {
+                err.file.as_str()
+            } else if message.starts_with("vertex shader: ") {
+                sources.vertex_file
+            } else {
+                sources.fragment_file
+            };
+            Problem {
+                file: file.to_owned(),
+                line: err.line as usize,
+                column: 0,
+                message,
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]

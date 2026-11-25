@@ -527,13 +527,20 @@ mod tests {
                 continue;
             }
             let text = std::fs::read_to_string(&path).unwrap();
+            let file_id = format!(
+                "minecraft:shaders/core/{}",
+                path.file_name().unwrap().to_string_lossy()
+            );
             let expanded = sunrise_glsl::expand_includes(
                 &text,
+                &file_id,
                 "minecraft:shaders/core/",
                 &includes,
                 Some(&[crate::DEPTH_ZERO_TO_ONE]),
             )
-            .unwrap_or_else(|e| panic!("{}: expand failed: {e}", path.display()));
+            .unwrap_or_else(|e| panic!("{}: expand failed: {e}", path.display()))
+            .text()
+            .to_owned();
             assert_eq!(
                 refusal(&expanded),
                 None,

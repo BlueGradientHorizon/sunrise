@@ -587,7 +587,7 @@ mod tests {
         assert_eq!(count, 3);
         assert_eq!(refused.len(), 1, "{refused:?}");
         assert!(
-            refused[0].starts_with("assets/m/shaders/core/broken.fsh: "),
+            refused[0].starts_with("assets/m/shaders/core/broken.fsh:3:"),
             "{refused:?}"
         );
     }
