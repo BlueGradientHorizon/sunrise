@@ -177,7 +177,7 @@ impl Game<'_> {
             // Another item stops the use (`stopUsingItem`); an emptied hand is used up.
             if let Some(began) = began.filter(|_| self.stack_in(hand_slot).is_some()) {
                 let time_left = ticks_left(self.use_duration, ticks);
-                self.stopped_using(&began, None, hand, time_left);
+                self.stopped_using(&began, Some(self.own_entity_id()), hand, time_left);
             }
             return;
         };

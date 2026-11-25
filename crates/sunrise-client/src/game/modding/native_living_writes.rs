@@ -318,7 +318,7 @@ mod tests {
         CanContinueUsingEvent, EntityRef, Flow, Hooks, Host, HostSide, Identifier, ItemPart,
         LivingEntityUseItemFinishEvent, LivingEntityUseItemStartEvent,
         LivingEntityUseItemStopEvent, LivingEntityUseItemTickEvent, LivingRef, ModEntry, Mods,
-        OnUseTickEvent, Registrar, ReleaseUsingEvent, WorldEpoch,
+        OnStopUsingEvent, OnUseTickEvent, Registrar, ReleaseUsingEvent, WorldEpoch,
     };
     use std::sync::{Arc, Mutex};
     use sunrise_client::items::ItemStack;
@@ -380,6 +380,9 @@ mod tests {
         }
         fn can_continue_using(&self, _: &dyn Host, event: &mut CanContinueUsingEvent<'_>) {
             self.heard("can_continue_using", event.entity);
+        }
+        fn on_stop_using(&self, _: HostSide, event: &mut OnStopUsingEvent<'_>) {
+            self.heard("on_stop_using", event.entity);
         }
     }
     impl UsePart {
@@ -586,7 +589,7 @@ mod tests {
     /// Every item-use hook names the player who uses, as NeoForge's
     /// `LivingEntityUseItemEvent` carries its entity: an apple eaten (Start,
     /// the may-still-use check, Tick, `onUseTick`, Finish), then a bow drawn
-    /// and let go (Stop, `releaseUsing`).
+    /// and let go (Stop, `releaseUsing`), each use ending in `onStopUsing`.
     #[test]
     #[ignore = "daily"]
     fn the_item_use_hooks_name_the_player_who_uses() {
@@ -614,6 +617,7 @@ mod tests {
                 "finish",
                 "stop",
                 "release_using",
+                "on_stop_using",
             ] {
                 assert!(
                     heard.iter().any(|(h, _)| *h == hook),

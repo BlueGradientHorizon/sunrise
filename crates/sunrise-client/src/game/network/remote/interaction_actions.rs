@@ -518,7 +518,12 @@ impl Game<'_> {
                     }
                     g.mod_release_using(&stack, ticks);
                 }
-                g.stopped_using(&stack, None, hand, ticks_left(g.use_duration, ticks));
+                g.stopped_using(
+                    &stack,
+                    Some(g.own_entity_id()),
+                    hand,
+                    ticks_left(g.use_duration, ticks),
+                );
             });
         }
     }
