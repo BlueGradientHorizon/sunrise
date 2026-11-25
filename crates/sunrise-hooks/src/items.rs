@@ -4,8 +4,8 @@ use std::sync::RwLock;
 
 static CREATIVE_ORDER: RwLock<Option<engine::CreativeOrder>> = RwLock::new(None);
 
-/// `stack`'s place in vanilla's own creative order, the stock one the built-in sorter ranks by (not
-/// the mod-modified search tab): its own place, else its item's first; `None` if unlisted.
+/// `stack`'s place in the search tab's order as built (after mods' edits and permissions), the
+/// same order the built-in sorter ranks by: its own place, else its item's first; `None` if unlisted.
 pub fn creative_order(stack: &Stack) -> Option<usize> {
     let order = CREATIVE_ORDER.read().unwrap_or_else(|e| e.into_inner());
     order.as_ref()?.of(&stack.item, stack.kind)

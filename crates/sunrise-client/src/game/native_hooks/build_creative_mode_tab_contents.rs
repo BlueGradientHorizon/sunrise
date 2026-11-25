@@ -160,7 +160,7 @@ impl Game<'_> {
             },
         );
         self.creative_contents.active = None;
-        // The platform reads the same stock order the sorter ranks by, refreshed with each build.
+        // The platform reads the same search-tab order (after mods' edits) the sorter ranks by, refreshed with each build.
         if self.options.execution_role.is_client() {
             set_creative_order(self.creative_screen.stock_order(&lists));
         }
