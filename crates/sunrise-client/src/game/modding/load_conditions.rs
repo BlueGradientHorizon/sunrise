@@ -79,16 +79,13 @@ impl Game<'_> {
     }
 
     /// Stage the enabled packs’ actual winners before readers use their holders.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn stage_datapack_registries(
         &self,
         stack: &super::functions::PackStack,
         root: &Path,
         overlay: &PackOverlay<'_>,
         view: &mut RegistryView,
-        items: &sunrise_client::items::Items,
-        tag_files: &PackOverlay<'_>,
-        biomes: &sunrise_client::biome::Biomes,
+        inputs: &VanillaValueInputs<'_, '_>,
     ) -> Result<
         Option<(
             DatapackCandidate,
@@ -113,18 +110,18 @@ impl Game<'_> {
             return admit_datapack_registries(root, overlay, view, declarations, &files)
                 .map(|candidate| Some((candidate, None)));
         }
-        let biome_tags = sunrise_client::items::load_tags(root, "worldgen/biome", tag_files)
+        let biome_tags = sunrise_client::items::load_tags(root, "worldgen/biome", inputs.tag_files)
             .map_err(|error| format!("datapack vanilla value biome tags: {error}"))?;
         let live_features = self.res.behaviours().live_features();
         let catalog = live_features
             .as_ref()
             .and_then(|features| features.state_provider_catalog());
-        let biome_names = biomes.registry_order();
+        let biome_names = inputs.biomes.registry_order();
         let mut decoder = super::native_datapack_values::VanillaValueTableBuilder::new(
             self.pack.assets.registry,
             self.res.behaviours(),
-            &items.block_tags,
-            &items.fluid_tags,
+            &inputs.items.block_tags,
+            &inputs.items.fluid_tags,
             &biome_names,
             &biome_tags,
             catalog,
@@ -140,6 +137,13 @@ impl Game<'_> {
         )?;
         Ok(Some((candidate, Some(decoder.finish()))))
     }
+}
+
+/// The world's loaded tables a vanilla value decoder reads while datapack registries are staged.
+pub(super) struct VanillaValueInputs<'a, 'b> {
+    pub(super) items: &'a sunrise_client::items::Items,
+    pub(super) tag_files: &'a PackOverlay<'b>,
+    pub(super) biomes: &'a sunrise_client::biome::Biomes,
 }
 
 #[derive(Default)]

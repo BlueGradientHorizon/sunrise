@@ -566,9 +566,11 @@ impl Game<'_> {
             root,
             &registry_overlay,
             &mut view,
-            &items,
-            &tag_files,
-            &biomes.table,
+            &load_conditions::VanillaValueInputs {
+                items: &items,
+                tag_files: &tag_files,
+                biomes: &biomes.table,
+            },
         );
         // The downstream reload listeners see every completed producer and the
         // world's flags, not the codec's vanilla flags or a previous generation.
