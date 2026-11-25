@@ -11,6 +11,10 @@ on:
         description: Which legs to build, `all`, `linux` (both Linux legs) or `windows-macos`
         type: string
         default: all
+      c_source_test:
+        description: Whether the Windows and macOS legs also build a native mod with a C source (the daily's call only, so a Dev SDK publish never waits on it)
+        type: boolean
+        default: false
     outputs:
       needed:
         description: Whether sdk-<sha> was missing, so this run built it
@@ -158,7 +162,7 @@ jobs:
       # as a signed release folder (the Linux legs' run of the same test is book-quickstart.yml's). `cc` must find the
       # compiler of the leg's target: MinGW's GCC for windows-gnu, the system's clang on macOS.
       - name: A native mod with a C source builds through the mod tool
-        if: matrix.name == 'windows' || matrix.name == 'macos'
+        if: inputs.c_source_test && (matrix.name == 'windows' || matrix.name == 'macos')
         run: |
           commit=$(git rev-parse HEAD)
           scratch="$RUNNER_TEMP/c-source"
@@ -177,7 +181,7 @@ jobs:
           cp "$scratch/sdk-base/sdk-$commit/sdk.json" "$scratch/sdk-base/nightly/sdk.json"
           echo "SUNRISE_SDK_BASE=$scratch/sdk-base" >> "$GITHUB_ENV"
       - name: The mod tool compiles the C source
-        if: matrix.name == 'windows' || matrix.name == 'macos'
+        if: inputs.c_source_test && (matrix.name == 'windows' || matrix.name == 'macos')
         run: >-
           cargo test --locked -p cargo-sunrise-mod --test build_errors --
           --ignored --exact a_native_mod_compiles_its_c_source_with_cc_from_its_build_script

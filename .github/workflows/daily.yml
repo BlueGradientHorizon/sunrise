@@ -236,6 +236,7 @@ jobs:
     with:
       commit: ${{ needs.resolve.outputs.commit }}
       legs: windows-macos
+      c_source_test: true
 
   # Every automatic vanilla parity harness on this writing run's commit of main. Never on a rollup or a pull
   # request (owner, 2026-11-17). After the test shards, so its large runner is never one of three
