@@ -254,8 +254,9 @@ fn expand(mut implementation: ItemImpl, export: bool) -> TokenStream {
 pub fn host_area(_attribute: TokenStream, input: TokenStream) -> TokenStream {
     let mut area = parse_macro_input!(input as syn::ItemTrait);
     // `#[table_backend("path")]` and `#[server_only]` are read by the build-time generator alone.
-    area.attrs
-        .retain(|attr| !attr.path().is_ident("table_backend") && !attr.path().is_ident("server_only"));
+    area.attrs.retain(|attr| {
+        !attr.path().is_ident("table_backend") && !attr.path().is_ident("server_only")
+    });
     let name = area.ident.to_string();
     let union = [
         "ClientBackendMut",

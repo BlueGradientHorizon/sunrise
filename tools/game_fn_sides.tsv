@@ -113,7 +113,9 @@ commands	impl Game<'_>	spawned_mark	-	server	touches only server-owned fields
 commands	impl Game<'_>	tag_entries	-	server	touches only server-owned fields
 commands	impl Game<'_>	target_name	-	server	touches only server-owned fields
 commands	impl Game<'_>	teleport_across	-	server	touches only server-owned fields
-commands	impl Game<'_>	tp_lands	-	game	invokes module-local macro_rules! target_entity_mut used by staying items
+commands	impl Game<'_>	teleport_stops	-	server	pre-switch server-only split
+commands	impl Game<'_>	teleport_to_relative	-	server	pre-switch server-only split
+commands	impl Game<'_>	tp_lands	-	server	calls target_entity_mut! on server-side entity handles
 commands	impl Game<'_>	xp_change	-	server	touches only server-owned fields
 commands::clone_writes_tests	-	run	#[cfg(test)]	server	touches only server-owned fields
 commands::compute	impl Game<'_>	compute_leaf	-	server	touches only server-owned fields
@@ -785,34 +787,65 @@ native_entity_riding::tests	-	natural_boarding_drops_a_lead_only_after_a_success
 native_guest_turn_tests	-	level_event_excludes_its_source_even_during_another_guests_turn	#[cfg(test)]	client	touches only client-owned fields
 native_hooks	impl Drop for ContentsChangedGuard<'_, '_>	drop	-	server	whole trait impl touches only server-owned fields
 native_hooks	impl Game<'_>	active_native_screen	-	client	touches only client-owned fields
+native_hooks	impl Game<'_>	apply_inside_write	-	server	pre-switch server-only split
+native_hooks	impl Game<'_>	apply_landing_write	-	server	pre-switch server-only split
 native_hooks	impl Game<'_>	apply_screen	-	client	touches only client-owned fields
 native_hooks	impl Game<'_>	attack_of	-	server	touches only server-owned fields
+native_hooks	impl Game<'_>	attack_of_who	-	server	pre-switch server-only split
+native_hooks	impl Game<'_>	bonemeal	-	server	pre-switch server-only split
 native_hooks	impl Game<'_>	client_mod_command	-	server	touches only server-owned fields
 native_hooks	impl Game<'_>	close_replaced_screen_for_mod	-	client	touches only client-owned fields
 native_hooks	impl Game<'_>	close_screen_to_level	-	client	touches only client-owned fields
 native_hooks	impl Game<'_>	commit_screen_transition	-	client	touches only client-owned fields
+native_hooks	impl Game<'_>	decide_screen_for_mod_open	-	client	pre-switch client-only split
+native_hooks	impl Game<'_>	drain_entity_inside	-	server	pre-switch server-only split
 native_hooks	impl Game<'_>	draw_native_screen	-	client	touches only client-owned fields
 native_hooks	impl Game<'_>	draw_native_screen_tooltip	-	client	touches only client-owned fields
+native_hooks	impl Game<'_>	effect_living_ref	-	client	pre-switch client-only split
 native_hooks	impl Game<'_>	finish_damage_post	-	server	touches only server-owned fields
 native_hooks	impl Game<'_>	headless_screen_snapshot	-	client	touches only client-owned fields
 native_hooks	impl Game<'_>	hide_title	-	client	touches only client-owned fields
+native_hooks	impl Game<'_>	item_use_first	-	server	pre-switch server-only split
+native_hooks	impl Game<'_>	mod_menu_button	-	server	pre-switch server-only split
 native_hooks	impl Game<'_>	mod_screen_blocked	-	client	touches only client-owned fields
+native_hooks	impl Game<'_>	native_acting_id	-	server	pre-switch server-only split
+native_hooks	impl Game<'_>	native_camera_pose_now	-	client	pre-switch client-only split
 native_hooks	impl Game<'_>	native_clicker	-	server	touches only server-owned fields
+native_hooks	impl Game<'_>	native_mobs_joined	-	server	pre-switch server-only split
+native_hooks	impl Game<'_>	native_panel_key_event	-	client	pre-switch client-only split
+native_hooks	impl Game<'_>	native_screen_container_slot_base	-	client	pre-switch client-only split
 native_hooks	impl Game<'_>	native_screen_data	-	client	touches only client-owned fields
+native_hooks	impl Game<'_>	native_screen_inventory_x	-	client	pre-switch client-only split
+native_hooks	impl Game<'_>	native_screen_inventory_y	-	client	pre-switch client-only split
+native_hooks	impl Game<'_>	native_screen_menu_type	-	client	pre-switch client-only split
 native_hooks	impl Game<'_>	native_screen_press	-	client	touches only client-owned fields
 native_hooks	impl Game<'_>	native_screen_press_at	-	client	touches only client-owned fields
+native_hooks	impl Game<'_>	native_screen_slot	-	client	pre-switch client-only split
+native_hooks	impl Game<'_>	native_screen_slot_icon	-	client	pre-switch client-only split
+native_hooks	impl Game<'_>	native_screen_slots	-	client	pre-switch client-only split
 native_hooks	impl Game<'_>	native_screen_tooltip_lines	-	client	touches only client-owned fields
+native_hooks	impl Game<'_>	native_screen_width	-	client	pre-switch client-only split
+native_hooks	impl Game<'_>	native_shake_matrix	-	client	pre-switch client-only split
+native_hooks	impl Game<'_>	native_with_mod_block_entity	-	server	pre-switch server-only split
+native_hooks	impl Game<'_>	native_zoom_now	-	client	pre-switch client-only split
 native_hooks	impl Game<'_>	observe_change	-	client	touches only client-owned fields
+native_hooks	impl Game<'_>	observe_screen	-	client	pre-switch client-only split
 native_hooks	impl Game<'_>	observe_view	-	client	touches only client-owned fields
+native_hooks	impl Game<'_>	observed_input_screen	-	client	pre-switch client-only split
+native_hooks	impl Game<'_>	observed_now	-	client	pre-switch client-only split
 native_hooks	impl Game<'_>	observed_overlay_now	-	client	touches only client-owned fields
 native_hooks	impl Game<'_>	observed_screen_view	-	client	touches only client-owned fields
 native_hooks	impl Game<'_>	open_screen_overlay	-	client	touches only client-owned fields
 native_hooks	impl Game<'_>	open_screen_target	-	client	touches only client-owned fields
+native_hooks	impl Game<'_>	place_canceled	-	server	pre-switch server-only split
 native_hooks	impl Game<'_>	refresh_screen_widgets	-	client	touches only client-owned fields
+native_hooks	impl Game<'_>	right_click_block	-	server	pre-switch server-only split
 native_hooks	impl Game<'_>	screen_change_view	-	client	touches only client-owned fields
 native_hooks	impl Game<'_>	screen_char_canceled_on	-	client	touches only client-owned fields
 native_hooks	impl Game<'_>	screen_chars_dispatch	-	client	touches only client-owned fields
 native_hooks	impl Game<'_>	screen_chars_post_on	-	client	touches only client-owned fields
+native_hooks	impl Game<'_>	screen_chars_typed	-	client	pre-switch client-only split
+native_hooks	impl Game<'_>	screen_decision	-	client	pre-switch client-only split
 native_hooks	impl Game<'_>	screen_decision_for_context	-	client	touches only client-owned fields
 native_hooks	impl Game<'_>	screen_decision_with	-	client	touches only client-owned fields
 native_hooks	impl Game<'_>	screen_hooks_heard	-	client	touches only client-owned fields
@@ -822,6 +855,7 @@ native_hooks	impl Game<'_>	screen_key_pressed_on	-	client	touches only client-ow
 native_hooks	impl Game<'_>	screen_key_released_on	-	client	touches only client-owned fields
 native_hooks	impl Game<'_>	screen_mouse_dragged	-	client	touches only client-owned fields
 native_hooks	impl Game<'_>	screen_overlay_view	-	client	touches only client-owned fields
+native_hooks	impl Game<'_>	screen_rect	-	client	pre-switch client-only split
 native_hooks	impl Game<'_>	screen_text_each	-	client	touches only client-owned fields
 native_hooks	impl Game<'_>	screen_view_now	-	client	touches only client-owned fields
 native_hooks	impl Game<'_>	set_screen_with	-	client	touches only client-owned fields
@@ -838,14 +872,284 @@ native_hooks::animate_tick_tests	-	level_random	#[cfg(test)]	client	touches only
 native_hooks::animate_tick_tests	-	sampled_picks_reach_the_parts_of_their_block_only	#[cfg(test)]	client	touches only client-owned fields
 native_hooks::animate_tick_tests	-	the_limiter_roll_of_add_particle_moves_the_parts_random	#[cfg(test)]	client	touches only client-owned fields
 native_hooks::animate_tick_tests	-	the_part_runs_inside_its_pick_before_the_fluid_the_next_pick_and_the_rain	#[cfg(test)]	client	touches only client-owned fields
+native_hooks::base	impl Game<'_>	block_entity_sync	-	server	pre-switch server-only split
 native_hooks::base	impl Game<'_>	clear_particles	-	client	touches only client-owned fields
 native_hooks::base	impl Game<'_>	cursor	-	client	touches only client-owned fields
 native_hooks::base	impl Game<'_>	flame_particle	-	client	touches only client-owned fields
+native_hooks::base	impl Game<'_>	give_stack	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	known_recipes	-	client	pre-switch client-only split
 native_hooks::base	impl Game<'_>	mod_screen	-	client	touches only client-owned fields
+native_hooks::base	impl Game<'_>	mod_screen_close	-	client	pre-switch client-only split
 native_hooks::base	impl Game<'_>	mod_screen_open	-	client	touches only client-owned fields
+native_hooks::base	impl Game<'_>	native_anvil_craft_post	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_anvil_craft_pre	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_anvil_damaged	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_armor_stand_manipulate	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_arrow_loose	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_attack_entity	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_beacon_state_change	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_biome_colors	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_block_break_progress_update	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_block_cook	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_block_damage_abort	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_block_dispense_armor	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_block_entity_render_bounding_box	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_block_entity_submit	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_block_failed_dispense	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_block_highlight	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_block_lock_check	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_block_receive_game	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_block_shear_entity	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_break_block	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_brewing_complete	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_brewing_fuel	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_brewing_start	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_bucket_empty	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_camera_distance	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_camera_shake	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_campfire_start	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_chunk_load	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_client_level_load	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_client_level_unload	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_client_resources_reloaded	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_command	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_compost_item	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_compute_fog_color	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_compute_fov	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_consume_effect	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_container_opened	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_crafter_craft	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_creative_slot	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_creeper_ignite	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_creeper_power	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_critical_hit	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_data_map_types	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_data_pack_files	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_datapack_sync	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_difficulty_changed	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_dispense_item	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_emissive	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_enchant_effect	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_enchant_item	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_ender_pearl_teleport	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_entities_load	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_entities_unload	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_entity_break_door	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_entity_breed	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_entity_change_block	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_entity_drop_item	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_entity_enter_block	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_entity_enter_love_mode	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_entity_join_level	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_entity_leave_level	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_entity_mount	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_entity_portal	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_entity_pose_change	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_entity_shoot_bow	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_entity_tame	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_entity_teleport	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_entity_toggle_glide	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_entity_unleash	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_exp_bottle	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_experience_orb_can_merge	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_experience_orb_merge	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_explosion_prime	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_fill	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_fill_bucket	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_firework_explode	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_food_level_changed	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_framerate_limit	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_furnace_burn	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_furnace_extract	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_furnace_smelt	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_furnace_start_smelt	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_gui_layer_post	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_gui_layer_pre	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_hanging_break	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_hanging_place	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_hopper_inventory_search	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_hurt_enemy	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_inventory_block_start	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_inventory_tick	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_item	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_item_bar	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_item_consumption_teleport	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_item_decorations	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_item_despawn	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_item_expire	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_item_model	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_item_spawn	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_item_stack	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_left_click_block	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_level_load	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_level_unload	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_lightning_strike	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_living_equipment_change	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_living_equipment_listened	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_loot_drops	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_map_decorations	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_menu_clicked	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_menu_closed	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_mob_effect_added	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_mob_killed	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_mob_spawned	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_mod_container_viewers	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_mouse_button_post	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_mouse_button_pre	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_mouse_scrolling	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_music	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_music_layers	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_on_effect_added	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_on_equip	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_panel_event	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_pickup_xp	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_advancement_done	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_advancement_progress	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_arm_swing	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_attack_cooldown_reset	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_bed_enter	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_bucket_entity	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_bundle_item_select	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_change_beacon_effect	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_changed_dimension	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_client_loaded_world	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_clone	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_command	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_commands_sent	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_container_close	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_container_open	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_deep_sleep	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_died	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_edit_book	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_egg_throw	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_elytra_boost	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_exp_cooldown_change	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_fish	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_flower_pot_manipulate	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_handshake	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_input	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_insert_lectern_book	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_item_cooldown	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_item_frame_change	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_item_mend	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_jump	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_kicked	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_launch_projectile	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_lectern_page_change	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_level_change	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_load_from_file	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_logged_in	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_logged_out	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_login	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_login_profile	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_loom_pattern_select	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_map_filled	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_name_entity	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_open_sign	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_pick_item	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_pickup_arrow	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_ready_arrow	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_recipe_book_click	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_recipe_book_settings_change	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_recipe_discovered	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_respawn_position	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_respawned	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_riptide	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_save_to_file	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_shear_entity	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_shield_disable	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_sprint	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_start_tracking	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_stat_award	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_stonecutter_recipe_select	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_stop_spectating_entity	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_stop_tracking	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_stop_using_item	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_swap_with_equipment_slot	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_switch_hotbar_slot_post	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_switch_hotbar_slot_pre	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_take_lectern_book	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_teleport_end_gateway	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_teleported	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_toggle_entity_age_lock	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_toggle_flight	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_toggle_sneak	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_totem	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_trade	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_unleash_entity	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_player_velocity	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_portal_create	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_potion_splash	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_prepare_hopper_transfer	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_prepare_item_craft	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_prepare_item_enchant	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_prepare_smithing	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_projectile_impact	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_projectile_launch	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_quad	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_raid_spawn_wave	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_raid_state_change	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_recipes_received	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_register_client_commands	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_register_commands	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_render_fog	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_resource_pack_status	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_screen_char_typed_pre	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_screen_key_pressed_pre	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_screen_key_released_pre	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_screen_mouse_button_pressed_pre	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_screen_mouse_button_released_pre	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_screen_mouse_dragged_pre	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_screen_mouse_scrolled_pre	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_screen_render_post	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_sculk_bloom	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_server_about_to_start	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_server_started	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_server_starting	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_server_stopped	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_server_stopping	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_server_tick	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_setting_changed	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_shader_params	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_sign_changed	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_size	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_sleep_finished_time	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_spawn_change	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_sprite	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_tab_complete	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_target_hit	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_text	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_text_scaled	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_thunder_change	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_time_skip	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_tnt_primed	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_tooltip	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_tooltip_image	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_trade_select	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_trade_with_villager	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_vault_change_state	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_vault_loot	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_vehicle_create	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_vehicle_damage	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_vehicle_destroy	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_vehicle_moved	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_visuals	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	native_weather_change	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_whitelist_state_update	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_world_border_bounds_change_finish	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_world_border_bounds_changed	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_world_border_center_changed	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_world_lifecycle	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_world_saved	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	native_zoom	-	client	pre-switch client-only split
 native_hooks::base	impl Game<'_>	panel_items	-	client	touches only client-owned fields
 native_hooks::base	impl Game<'_>	particle_count	-	client	touches only client-owned fields
+native_hooks::base	impl Game<'_>	place_recipe	-	client	pre-switch client-only split
 native_hooks::base	impl Game<'_>	play_local_sound	-	client	touches only client-owned fields
+native_hooks::base	impl Game<'_>	screen_title	-	client	pre-switch client-only split
+native_hooks::base	impl Game<'_>	set_block_property	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	set_block_property_with	-	server	pre-switch server-only split
+native_hooks::base	impl Game<'_>	transfer_recipe	-	client	pre-switch client-only split
 native_hooks::base::held_break_slot_tests	-	held_durability_retains_the_stack_hand_and_explicit_break_slot	#[cfg(test)]	server	touches only server-owned fields
 native_hooks::base::screen_open_tests	-	a_cancelled_mapping_press_is_dropped_and_its_release_is_not	#[cfg(test)]	client	touches only client-owned fields
 native_hooks::base::screen_open_tests	-	a_cancelled_repeat_keeps_the_hold_and_a_cancelled_first_press_is_never_held	#[cfg(test)]	client	touches only client-owned fields
@@ -1000,6 +1304,7 @@ native_hooks::placement_context_tests	-	substituted_placement_uses_the_held_item
 native_hooks::play_hit_sound	impl Game<'_>	play_mining_hit_sound	-	client	touches only client-owned fields
 native_hooks::play_hit_sound_tests	-	play_hit_sound_helper_and_eight_mining_ticks	#[cfg(test)]	game	touches both client-owned and server-owned fields
 native_hooks::player_bed_leave	impl Game<'_>	native_acting_bed_leave	-	server	touches only server-owned fields
+native_hooks::player_bed_leave	impl Game<'_>	native_player_bed_leave	-	server	pre-switch server-only split
 native_hooks::player_leave::player_leave_tests	-	first_of_two_leaves	#[cfg(test)]	server	touches only server-owned fields
 native_hooks::player_leave::player_leave_tests	-	what_a_listener_changes_on_a_leaving_player_is_saved	#[cfg(test)]	server	touches only server-owned fields
 native_hooks::preset_title	impl Game<'_>	preset_editor_key	-	client	touches only client-owned fields
@@ -1043,7 +1348,10 @@ native_hooks::world_helpers	impl Game<'_>	client_particle_count	-	client	touches
 native_hooks::world_helpers	impl Game<'_>	close_mod_screen	-	client	touches only client-owned fields
 native_hooks::world_helpers	impl Game<'_>	close_mod_screen_to_title	-	client	touches only client-owned fields
 native_hooks::world_helpers	impl Game<'_>	native_corner_shown	-	client	touches only client-owned fields
+native_hooks::world_helpers	impl<'g> Game<'g>	draw_gui_layer_body	-	client	pre-switch client-only split
 native_hooks::world_helpers	impl<'g> Game<'g>	draw_mod_gui_layers	-	client	touches only client-owned fields
+native_hooks::world_helpers	impl<'g> Game<'g>	gui_layer	-	client	pre-switch client-only split
+native_hooks::world_helpers	impl<'g> Game<'g>	run_gui_layer	-	client	pre-switch client-only split
 native_item_bundle_tests::custom_bundle_integration_tests	-	custom_bundle_transactional_stacking_lan_and_destruction_drops	#[cfg(test)]; #[cfg(test)]	game	touches both client-owned and server-owned fields
 native_item_places::tests	-	stand_equipment_effects_wait_for_root_commit	#[cfg(test)]	client	touches only client-owned fields
 native_level_sound_except_tests	-	cross_level_transaction_replays_effects_in_request_level_and_preserves_packet_order	#[cfg(test)]	client	touches only client-owned fields

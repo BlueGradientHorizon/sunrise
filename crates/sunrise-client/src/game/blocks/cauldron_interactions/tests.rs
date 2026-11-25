@@ -237,7 +237,10 @@ fn a_panicking_cauldron_registrar_leaves_no_exact_tag_or_all_entries() {
             )
             .unwrap();
             let mut registrar = Registrar::new(&items, &registry);
-            crate::game::native_hooks::native_register_cauldron_interaction(&RegistrationContext::new(), &mut registrar);
+            crate::game::native_hooks::native_register_cauldron_interaction(
+                &RegistrationContext::new(),
+                &mut registrar,
+            );
             assert!(
                 added.load(Ordering::Relaxed),
                 "the failed listener reached the intended panic"
@@ -1353,7 +1356,10 @@ fn cauldron_displaced_handlers_drop_under_original_owner_and_order_edits() {
             .unwrap();
 
             let mut registrar = Registrar::new(&items, &registry);
-            crate::game::native_hooks::native_register_cauldron_interaction(&RegistrationContext::new(), &mut registrar);
+            crate::game::native_hooks::native_register_cauldron_interaction(
+                &RegistrationContext::new(),
+                &mut registrar,
+            );
             let table = registrar.finish().unwrap();
 
             assert_eq!(dropped.load(Ordering::SeqCst), 4);

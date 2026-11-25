@@ -2,6 +2,8 @@
 pub(in crate::game::server_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::native_hooks::register_enchantment_damage_effects::*;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::native_hooks::register_enchantment_damage_effects::native_register_enchantment_damage_effects;
 
 #[cfg(test)]
 pub(in crate::game) mod tests {

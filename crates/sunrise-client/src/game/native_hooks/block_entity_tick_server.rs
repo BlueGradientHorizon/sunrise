@@ -7,6 +7,8 @@ pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tic
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tick::ServerBlockEntityData;
 #[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tick::native_block_entity_tick;
+#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tick::valid_tick_subject;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tick::*;

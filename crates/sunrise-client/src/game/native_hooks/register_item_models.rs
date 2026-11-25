@@ -1,8 +1,5 @@
 use super::*;
 
-
-
-
 /// Gather attributed item model node providers at client startup, before resources load
 /// (NeoForge's `RegisterItemModelsEvent`).
 pub(in crate::game) fn native_register_item_models(
@@ -11,4 +8,3 @@ pub(in crate::game) fn native_register_item_models(
 ) {
     crate::game::native_hooks::fire::fire_register_item_models(context, models);
 }
-

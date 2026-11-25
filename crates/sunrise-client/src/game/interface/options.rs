@@ -897,7 +897,6 @@ pub(in crate::game) fn game_dir() -> std::path::PathBuf {
     std::env::current_dir().unwrap_or_default()
 }
 
-
 impl Game<'_> {
     /// Fullbright as this window may draw it (`fullbright_held`): the renderer's flag and the
     /// graphics screen's row. Each tick (`tick_frame_visuals`) and when settings apply, so

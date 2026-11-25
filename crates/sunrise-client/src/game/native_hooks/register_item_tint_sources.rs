@@ -1,8 +1,5 @@
 use super::*;
 
-
-
-
 /// Gather attributed item tint source providers at client startup, before resources load
 /// (NeoForge's `RegisterColorHandlersEvent.ItemTintSources`).
 pub(in crate::game) fn native_register_item_tint_sources(
@@ -11,4 +8,3 @@ pub(in crate::game) fn native_register_item_tint_sources(
 ) {
     crate::game::native_hooks::fire::fire_register_item_tint_sources(context, sources);
 }
-

@@ -5,7 +5,6 @@ use sunrise_client::{
     mobs::{
         Mob,
         spawner::{SpawnDataExt, SpawnerExt},
-        trial_spawner::{TrialSpawnerExt, TrialState},
     },
     particles::{ParticleOptions, ParticleType},
 };

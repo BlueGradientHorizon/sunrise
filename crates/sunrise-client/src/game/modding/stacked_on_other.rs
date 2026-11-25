@@ -207,7 +207,6 @@ impl Game<'_> {
     }
 }
 
-
 /// Whether any listener active on `server` side answers `item_stacked_on_other`.
 pub(in crate::game) fn stacked_listened_for_side(server: bool) -> bool {
     (server && mod_api::__private::listened(mod_api::HookId::ItemStackedOnOther))
@@ -232,13 +231,11 @@ pub(in crate::game) fn stacked_listened() -> bool {
     stacked_listened_for_side(true)
 }
 
-
 /// Whether a server-side global listener or an `ItemPart` on either frozen stack subscribes to
 /// `item_stacked_on_other`.
 pub(in crate::game) fn stacked_listens_for(frozen: &StackedClick) -> bool {
     stacked_listens_for_side(true, frozen)
 }
-
 
 /// Fire the global hook (server side only) and item-part overrides in vanilla
 /// `AbstractContainerMenu.tryItemClickBehaviourOverride` order, validating each phase's answer.

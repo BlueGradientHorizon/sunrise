@@ -165,7 +165,8 @@ pub(in crate::game) fn open_hash_order(keys: &[i16]) -> Vec<i16> {
     zero.then_some(0).into_iter().chain(rest).collect()
 }
 
-impl Game<'_> {    /// The open menu's window id (0: the inventory).
+impl Game<'_> {
+    /// The open menu's window id (0: the inventory).
     pub(in crate::game) fn remote_menu_id(&self) -> i32 {
         self.remote
             .as_ref()
@@ -300,14 +301,12 @@ impl Game<'_> {    /// The open menu's window id (0: the inventory).
     }
 }
 
-
 /// Map a menu slot to Sunrise's inventory screen slot ids.
 pub(in crate::game) fn inventory_screen_slot(menu: &str, slot: i32) -> Option<usize> {
     crate::game::inventory_screen_slot_with_type(menu, slot, || {
         sunrise_client::containers::mod_menu_type(menu)
     })
 }
-
 
 /// Map a slot when the caller already knows the window's registered layout.
 pub(in crate::game) fn inventory_screen_slot_with_type<'m>(
@@ -424,4 +423,3 @@ pub(in crate::game) fn remote_station_kind(menu: &str) -> Option<crate::game::st
         _ => return None,
     })
 }
-

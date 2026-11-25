@@ -134,14 +134,11 @@ impl Game<'_> {
     }
 }
 
-
-pub(in crate::game) fn particle_block_states() -> Option<sunrise_client::particles::BlockStates>
-{
+pub(in crate::game) fn particle_block_states() -> Option<sunrise_client::particles::BlockStates> {
     super::api_values::block_state::current()
         .ok()
         .map(|states| -> sunrise_client::particles::BlockStates { states })
 }
-
 
 #[cfg(test)]
 mod tests {

@@ -66,8 +66,8 @@ sunrise-client game::native_datafix_tests::a_mods_host_upgrades_old_data_and_ref
 sunrise-client game::client_side::native_disconnect_tests::a_client_mod_leaves_at_the_end_of_the_frame_with_its_reason lib daily resources
 sunrise-client game::client_side::native_disconnect_tests::a_leave_request_does_not_follow_a_world_switch lib daily resources
 sunrise-client game::server_side::native_entity_commands::tests::player_command_returns_permission_failures_and_success_without_swallowing_chat lib daily child-process
-sunrise-client game::native_entity_selectors::tests::nearest_teammate_filters_before_limit_and_drops_false_and_panicking_candidates lib daily game-boot
-sunrise-client game::native_entity_selectors::tests::synced_selector_tokens_survive_client_registry_refresh lib daily game-boot
+sunrise-client game::server_side::native_entity_selectors::tests::nearest_teammate_filters_before_limit_and_drops_false_and_panicking_candidates lib daily game-boot
+sunrise-client game::server_side::native_entity_selectors::tests::synced_selector_tokens_survive_client_registry_refresh lib daily game-boot
 sunrise-client game::native_explosion_destroy_tests::a_cancelled_start_destroys_nothing lib daily resources
 sunrise-client game::native_explosion_destroy_tests::a_detonate_listener_spares_a_position_and_adds_none lib daily resources
 sunrise-client game::native_explosion_destroy_tests::a_part_hears_its_block_exploded_once lib daily resources
@@ -160,8 +160,8 @@ sunrise-client game::client_side::native_recipes::tests::a_synced_vanilla_recipe
 sunrise-client game::client_side::native_recipes::tests::synced_vanilla_recipes_keep_their_book_ids lib daily resources
 sunrise-client game::client_side::native_ride_player::tests::a_mob_rides_a_guest_sits_on_it_and_the_guest_is_told lib daily game-boot
 sunrise-client game::native_server::network_settings_tests::server_settings_follow_the_network_config lib daily slow
-sunrise-client game::native_structure_placement::tests::a_carried_structure_places_its_blocks_block_entity_and_entity lib daily resources
-sunrise-client game::native_structure_placement::tests::a_chunk_the_template_covers_that_is_not_loaded_refuses_and_places_nothing lib daily resources
+sunrise-client game::server_side::native_structure_placement::tests::a_carried_structure_places_its_blocks_block_entity_and_entity lib daily resources
+sunrise-client game::server_side::native_structure_placement::tests::a_chunk_the_template_covers_that_is_not_loaded_refuses_and_places_nothing lib daily resources
 sunrise-client game::server_side::natural_spawning::tests::spawn_candidates_match_the_uncached_union_while_players_move lib daily slow
 sunrise-client game::server_side::rectangular_recipe_remainder_tests::rectangular_recipe_for_preserves_two_custom_remainder_cells lib daily resources
 sunrise-client game::remote::interaction_event_tests::mapping_press_tests::a_callback_click_survives_until_the_next_tick lib daily resources

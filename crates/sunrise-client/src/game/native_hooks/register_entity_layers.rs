@@ -1,9 +1,6 @@
 use super::*;
 use crate::game::native_entity_layers::LayerRegistration;
 
-
-
-
 /// The layers a mod adds to living entity renderers (NeoForge's
 /// `EntityRenderersEvent.AddLayers`): `add(target, layer)`, and every living entity of the
 /// type, or every player of the player model, in view draws `EntityRenderLayer::submit` after
@@ -16,6 +13,7 @@ pub(in crate::game) fn native_register_entity_layers(
     context: &mod_api::RegistrationContext,
     layers: &mut LayerRegistration<'_>,
 ) {
-    crate::game::native_hooks::fire::fire_register_entity_layers(context, |listen| layers.register_listener(listen));
+    crate::game::native_hooks::fire::fire_register_entity_layers(context, |listen| {
+        layers.register_listener(listen)
+    });
 }
-

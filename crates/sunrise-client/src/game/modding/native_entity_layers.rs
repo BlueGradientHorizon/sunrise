@@ -229,7 +229,10 @@ impl Game<'_> {
         let mob_types = self.res.mob_types();
         let routed = |id: &str| mob_types.contains_key(id);
         let mut registration = LayerRegistration::new(rows, mod_renderers, &routed);
-        crate::game::native_hooks::native_register_entity_layers(&RegistrationContext::new(), &mut registration);
+        crate::game::native_hooks::native_register_entity_layers(
+            &RegistrationContext::new(),
+            &mut registration,
+        );
         let table = LayerTable::resolve(registration, mob_types);
         let any = !table.is_empty();
         *TABLE.write().unwrap_or_else(PoisonError::into_inner) = Some(table);
@@ -353,7 +356,10 @@ mod tests {
                 let rows = EntityTypeRows::parse(br#"{"test:golem":{"attributes":{}}}"#);
                 let renderers = BTreeMap::new();
                 let mut registration = LayerRegistration::new(&rows, &renderers, &|_| true);
-                crate::game::native_hooks::native_register_entity_layers(&RegistrationContext::new(), &mut registration);
+                crate::game::native_hooks::native_register_entity_layers(
+                    &RegistrationContext::new(),
+                    &mut registration,
+                );
                 assert!(added.load(Ordering::Relaxed));
                 let entity = &registration.entity["test:golem"];
                 assert_eq!(entity.len(), 2);

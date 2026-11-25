@@ -161,13 +161,14 @@ impl Game<'_> {
             subject,
             kind,
         };
-        crate::game::native_hooks::native_general_entity_tick(mod_api::__private::GeneralEntityTickCall {
-            kind,
-            subject: EntityServerScope::new(&mut access),
-        });
+        crate::game::native_hooks::native_general_entity_tick(
+            mod_api::__private::GeneralEntityTickCall {
+                kind,
+                subject: EntityServerScope::new(&mut access),
+            },
+        );
     }
 }
-
 
 /// The authoritative tick of one general entity row of type `kind`
 /// (`mymod:robot`) (#792 stage 4): `ServerLevel.tickNonPassenger`'s
@@ -179,7 +180,6 @@ pub(in crate::game) fn native_general_entity_tick(
 ) {
     crate::game::native_hooks::fire::fire_general_entity_tick(call);
 }
-
 
 #[cfg(test)]
 pub(in crate::game) mod tests {

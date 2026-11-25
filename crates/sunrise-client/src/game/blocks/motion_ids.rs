@@ -1,5 +1,3 @@
-use super::Game;
-
 pub use sunrise_client_gameplay::motion_ids::motion_at;
 
 /// A block entity's `mark_motion` id: its position, packed into the 32 bits beside the tag

@@ -188,7 +188,11 @@ fn two_entities_are_asked_in_the_draw_queues_order() {
         let tracked: Vec<_> = motion.iter().copied().filter(|&(_, id)| id != 0).collect();
         assert_eq!(
             tracked.iter().map(|&(_, id)| id).collect::<Vec<_>>(),
-            [(1 << 32) | 91, crate::game::MOTION_OWN_PLAYER, (1 << 32) | 92]
+            [
+                (1 << 32) | 91,
+                crate::game::MOTION_OWN_PLAYER,
+                (1 << 32) | 92
+            ]
         );
         assert!(tracked[0].0 < tracked[1].0 && tracked[1].0 < tracked[2].0);
         let spans = game.client.entity_spans.borrow();

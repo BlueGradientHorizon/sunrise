@@ -1,8 +1,5 @@
 use super::*;
 
-
-
-
 /// Collect the mods' render pipeline registrations once at startup.
 pub(in crate::game) fn native_register_render_pipelines(
     context: &mod_api::RegistrationContext,
@@ -10,4 +7,3 @@ pub(in crate::game) fn native_register_render_pipelines(
 ) {
     crate::game::native_hooks::fire::fire_register_render_pipelines(context, pipelines);
 }
-

@@ -13,7 +13,6 @@ pub(in crate::game) fn startup_math_profile() -> mod_api::MathProfile {
     selected_profile()
 }
 
-
 fn selected_profile() -> mod_api::MathProfile {
     use sunrise_core::jmath::Platform;
     match sunrise_core::jmath::PLATFORM {

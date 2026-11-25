@@ -56,7 +56,7 @@ TrialSpawnerStateData.resetAfterBecomingOminous	port	crates/sunrise-client/src/m
 TrialSpawnerStateData.transformBadOmenIntoTrialOmen	port	crates/sunrise-client/src/game/mobs/trial_spawner.rs::Game::bad_omen_to_trial_omen	Bad Omen level plus one becomes Trial Omen for 18000 ticks per level
 TrialSpawnerStateData.isReadyToOpenShutter	inline	crates/sunrise-client/src/mobs/trial_spawner.rs::TrialSpawner::tick_and_get_next	WaitingForRewardEjection opens the shutter after the delay and plays its sound
 TrialSpawnerStateData.isReadyToEjectItems	inline	crates/sunrise-client/src/mobs/trial_spawner.rs::TrialSpawner::tick_and_get_next	EjectingReward ejects on the ejection interval
-TrialSpawnerStateData.getOrCreateDisplayEntity	port	crates/sunrise-client/src/game/mobs/spawner.rs::Game::update_spawner_display	the shown mob is made again when its type changes; a trial spawner shows one only with a spinning mob
+TrialSpawnerStateData.getOrCreateDisplayEntity	port	crates/sunrise-client/src/game/mobs/spawner_client.rs::Game::update_spawner_display	the shown mob is made again when its type changes; a trial spawner shows one only with a spinning mob
 TrialSpawnerStateData.getDispensingItems	inline	crates/sunrise-client/src/mobs/trial_spawner.rs::TrialSpawner::spawn_ominous_item_spawner	rolls the loot once and keeps a non-empty roll
 TrialSpawnerStateData.lowResolutionPosition	inline	crates/sunrise-client/src/mobs/trial_spawner.rs::TrialSpawner::spawn_ominous_item_spawner	the 30 by 20 by 30 cell of the position plus the level seed
 VaultBlockEntity.saveAdditional	port	crates/sunrise-client-render/src/vault.rs::Vault::save	writes config, shared data and server data

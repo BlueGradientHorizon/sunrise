@@ -13,7 +13,7 @@ use sunrise_client::mod_content::{
 };
 use sunrise_mod_package::enabled::EnabledMods;
 
-use crate::game::{Game, api_values::TryIntoEngine};
+use crate::game::api_values::TryIntoEngine;
 
 struct Press;
 #[mod_api::__subscriptions]

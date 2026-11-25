@@ -109,6 +109,10 @@ pub(in crate::game::server_side) use crate::game::remote::inventory::{
     mark_synced, menu_items, predict_clicks, predict_clicks_with,
 };
 #[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::remote::inventory::{
+    inventory_screen_slot, inventory_screen_slot_with_type, remote_station_kind,
+};
+#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::remote::item_frame_interact_passes;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::remote::item_has_use;

@@ -7,6 +7,8 @@ pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_cli
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick::ResidentReadBlockEntity;
 #[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick::native_block_entity_client_tick;
+#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use mod_api::{

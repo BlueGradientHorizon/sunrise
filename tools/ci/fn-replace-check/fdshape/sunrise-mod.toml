@@ -50,7 +50,7 @@ bindings = [
 [[native.mixin]]
 id = "native_server_started"
 kind = "HEAD"
-target = "sunrise_client::game::native_hooks::base::Game<'_>::native_server_started"
+target = "sunrise_client::game::server_side::native_hooks_server::base::Game<'_>::native_server_started"
 helper = "src/mixins/server_started.rs"
 bindings = [{ name = "dedicated", ty = "bool", value = "dedicated" }]
 

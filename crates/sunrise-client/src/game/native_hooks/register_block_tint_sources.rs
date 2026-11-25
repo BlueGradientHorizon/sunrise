@@ -1,8 +1,5 @@
 use super::*;
 
-
-
-
 /// The tint sources of blocks (NeoForge's `RegisterColorHandlersEvent.BlockTintSources`,
 /// vanilla's `BlockColors.register`): `register(layers, blocks)`, and a model face with
 /// `tintindex` i is multiplied by layer i of its block's list; a face past the list is not
@@ -15,6 +12,7 @@ pub(in crate::game) fn native_register_block_tint_sources(
     context: &mod_api::RegistrationContext,
     sources: &mut mod_api::BlockTintRegistry,
 ) {
-    crate::game::native_hooks::fire::fire_register_block_tint_sources(context, |listen| sources.register_listener(listen));
+    crate::game::native_hooks::fire::fire_register_block_tint_sources(context, |listen| {
+        sources.register_listener(listen)
+    });
 }
-

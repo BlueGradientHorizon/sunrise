@@ -81,7 +81,8 @@ impl Game<'_> {
             }
             found = menu.stacked_click(env, slot, button, mode);
         });
-        let (Some(frozen), Some(())) = (found.filter(crate::game::stacked_listens_for), planned) else {
+        let (Some(frozen), Some(())) = (found.filter(crate::game::stacked_listens_for), planned)
+        else {
             return action(self, menu, None);
         };
         let conn = self.lan.as_ref()?.hub.guests[gi].conn;

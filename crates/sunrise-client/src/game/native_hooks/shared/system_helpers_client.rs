@@ -1,6 +1,10 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::system_helpers::mod_data_root;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::system_helpers::native_config_dir;
+#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::native_hooks::system_helpers::*;
 
 /// Helpers for native mods, kept as stable as the hook points.

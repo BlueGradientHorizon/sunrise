@@ -1,8 +1,6 @@
 use super::*;
 use crate::game::cauldron_interactions::Registrar;
 
-
-
 /// Declare cauldron interactions before publishing the resource snapshot.
 pub(in crate::game) fn native_register_cauldron_interaction(
     context: &mod_api::RegistrationContext,
@@ -12,4 +10,3 @@ pub(in crate::game) fn native_register_cauldron_interaction(
         interactions.register_listener(listen)
     });
 }
-

@@ -99,7 +99,10 @@ fn with_debug_renderers(test: impl FnOnce(&mut Game<'_>, &Mutex<Fixture>)) {
         with_client_game(|game| {
             let mut entries = Vec::new();
             {
-                crate::game::native_hooks::native_register_debug_entries(&RegistrationContext::new(), &mut entries);
+                crate::game::native_hooks::native_register_debug_entries(
+                    &RegistrationContext::new(),
+                    &mut entries,
+                );
             }
             game.registered_debug_entries.0 = debug_entries::collect_registrations(entries);
             // Status changes stay out of debug-profile.json.

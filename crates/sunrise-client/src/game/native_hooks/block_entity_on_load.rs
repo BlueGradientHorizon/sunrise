@@ -61,24 +61,29 @@ impl Game<'_> {
             );
             if server {
                 let mut access = ResidentBlockEntityAccess::on_load(self, subject);
-                crate::game::native_hooks::native_block_entity_on_load(mod_api::__private::BlockEntityOnLoadCall {
-                    id,
-                    subject: BlockEntitySideScope::Server(BlockEntityScope::new(&mut access)),
-                });
+                crate::game::native_hooks::native_block_entity_on_load(
+                    mod_api::__private::BlockEntityOnLoadCall {
+                        id,
+                        subject: BlockEntitySideScope::Server(BlockEntityScope::new(&mut access)),
+                    },
+                );
             } else {
                 let mut access = ClientBlockEntityAccess {
                     game: self,
                     subject,
                 };
-                crate::game::native_hooks::native_block_entity_on_load(mod_api::__private::BlockEntityOnLoadCall {
-                    id,
-                    subject: BlockEntitySideScope::Client(BlockEntityClientScope::new(&mut access)),
-                });
+                crate::game::native_hooks::native_block_entity_on_load(
+                    mod_api::__private::BlockEntityOnLoadCall {
+                        id,
+                        subject: BlockEntitySideScope::Client(BlockEntityClientScope::new(
+                            &mut access,
+                        )),
+                    },
+                );
             }
         }
     }
 }
-
 
 pub(in crate::game) fn authoritative_world_for_mods(
     resources: &crate::game::Resources,
@@ -88,7 +93,6 @@ pub(in crate::game) fn authoritative_world_for_mods(
     world.authoritative_group_lifetime(resources.rest().behaviours.clone());
     world
 }
-
 
 /// Configure notice collection before this level can receive any block entities.
 pub(in crate::game) fn world_for_mods(
@@ -109,12 +113,9 @@ pub(in crate::game) fn world_for_mods(
     world
 }
 
-
-
 /// Notify subscribers after this instance is attached and its saved data is applied.
 pub(in crate::game) fn native_block_entity_on_load(
     call: mod_api::__private::BlockEntityOnLoadCall<'_>,
 ) {
     crate::game::native_hooks::fire::fire_block_entity_on_load(call);
 }
-

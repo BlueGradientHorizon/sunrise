@@ -613,13 +613,13 @@ pub(in crate::game) type ServerGame<'a> = Game<'a>;
 #[allow(dead_code)]
 pub(in crate::game) type ClientGame<'a> = Game<'a>;
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::modapi_client;
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::spawner_client;
-#[allow(unused_imports)]
 pub(in crate::game) use client_side::allays_client;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::composter_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::modapi_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::spawner_client;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::modapi_server;
 #[cfg(test)]
@@ -676,10 +676,6 @@ pub(in crate::game) use client_side::focused_text_field;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::fov;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::fluid_interactions;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::foxes;
-#[allow(unused_imports)]
 pub(in crate::game) use client_side::frame_geometry;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::friends;
@@ -689,6 +685,10 @@ pub(in crate::game) use client_side::gamemode_switcher;
 pub(in crate::game) use client_side::general_draw;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::ghasts;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::fluid_interactions;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::foxes;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::frames;
 #[allow(unused_imports)]
@@ -975,15 +975,15 @@ mod lightning_bolt_uniform_tests;
 #[path = "game/entities/lightning_item_tests.rs"]
 mod lightning_item_tests;
 #[allow(unused_imports)]
+pub(in crate::game) use client_side::loading_screen;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::loading_window;
+#[allow(unused_imports)]
 pub(in crate::game) use server_side::living_attributes;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::llamas;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::load_conditions;
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::loading_screen;
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::loading_window;
 #[path = "game/blocks/location_world.rs"]
 mod location_world;
 #[allow(unused_imports)]
@@ -1225,9 +1225,9 @@ pub(in crate::game) use server_side::native_console_tests;
 #[path = "game/modding/native_content_items.rs"]
 mod native_content_items;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::native_criteria;
-#[allow(unused_imports)]
 pub(in crate::game) use client_side::native_custom_geometry;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_criteria;
 #[path = "game/modding/native_custom_stats.rs"]
 mod native_custom_stats;
 #[cfg(test)]
@@ -1463,13 +1463,13 @@ pub(in crate::game) use server_side::native_knockback_tests;
 #[cfg(test)]
 #[path = "game/modding/native_level_block_states_tests.rs"]
 mod native_level_block_states_tests;
+#[cfg(test)]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::native_level_notify_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_level_border;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_level_effects;
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::native_level_notify_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_level_events;
 #[allow(unused_imports)]
@@ -1547,9 +1547,9 @@ pub(in crate::game) use server_side::native_menus;
 #[path = "game/modding/native_merchant_refs.rs"]
 mod native_merchant_refs;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::native_minecart_refs;
-#[allow(unused_imports)]
 pub(in crate::game) use client_side::native_mob_draw;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_minecart_refs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_mob_goals;
 #[path = "game/modding/native_mob_navigation.rs"]
@@ -1870,10 +1870,6 @@ mod orb_merge_tests;
 #[cfg(test)]
 #[path = "game/entities/orb_score_store_tests.rs"]
 mod orb_score_store_tests;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::ordered_tick;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::original_player;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::pack_clouds_frame_tests;
@@ -1890,6 +1886,10 @@ pub(in crate::game) use client_side::pad_actions;
 pub(in crate::game) use client_side::pad_craft;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::pad_menu;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::ordered_tick;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::original_player;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::owner_link;
 #[allow(unused_imports)]
@@ -2234,13 +2234,13 @@ pub(in crate::game) use server_side::spawn_save_tests;
 #[cfg(test)]
 #[path = "game/mobs/spawn_yaw_tests.rs"]
 mod spawn_yaw_tests;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::spawner;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::spawner_client_tick_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::spectator;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::spawner;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::spear;
 #[allow(unused_imports)]
@@ -5746,7 +5746,6 @@ impl Game<'_> {
         })
     }
 }
-
 
 /// `mark_motion` ids of entities that aren't mobs or dropped items (boats, minecarts, armor
 /// stands, item frames, paintings, primed TNT, falling blocks, rockets, tridents, thrown

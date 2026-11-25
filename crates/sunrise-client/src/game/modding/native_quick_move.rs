@@ -31,7 +31,12 @@ pub(in crate::game) enum MenuSlot {
 /// asks a mod about, or None when the click is not one: another click type,
 /// a button other than left or right (`doClick` takes 0 and 1), no slot,
 /// or a slot past the menu.
-pub(in crate::game) fn quick_move_slot(input: i32, button: i32, slot: i32, size: usize) -> Option<MenuSlot> {
+pub(in crate::game) fn quick_move_slot(
+    input: i32,
+    button: i32,
+    slot: i32,
+    size: usize,
+) -> Option<MenuSlot> {
     if input != QUICK_MOVE || !(0..=1).contains(&button) {
         return None;
     }

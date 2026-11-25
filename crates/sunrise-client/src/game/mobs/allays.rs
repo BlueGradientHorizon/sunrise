@@ -26,7 +26,11 @@ impl Game<'_> {
     }
     /// `Allay.mobInteract`: duplicate when dancing with an amethyst shard,
     /// take the held item, or hand back what it holds.
-    pub(in crate::game) fn interact_allay(&mut self, index: usize, item: Option<&ItemStack>) -> bool {
+    pub(in crate::game) fn interact_allay(
+        &mut self,
+        index: usize,
+        item: Option<&ItemStack>,
+    ) -> bool {
         let m = &self.mobs[index];
         if m.species() != Species::Allay || !m.alive() {
             return false;

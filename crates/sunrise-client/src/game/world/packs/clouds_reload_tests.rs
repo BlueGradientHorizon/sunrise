@@ -322,8 +322,8 @@ fn content_entity_stays_registered_after_startup_pack_rollback() {
 #[ignore = "daily"]
 fn startup_saves_the_cleared_selection_even_when_a_required_pack_fails() {
     use crate::game::{
-        Game, Progress, Settings, StartupLoadContext, execution_role::ExecutionRole,
-        load_resources_sync, mods,
+        Progress, Settings, StartupLoadContext, execution_role::ExecutionRole, load_resources_sync,
+        mods,
     };
     use std::{path::PathBuf, time::Instant};
     use sunrise_assets::resource_source::ResourceRoot;

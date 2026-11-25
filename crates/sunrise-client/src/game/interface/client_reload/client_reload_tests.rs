@@ -375,7 +375,7 @@ fn a_converted_file_outside_the_pack_is_absent_not_empty() {
 #[ignore = "daily"]
 fn initial_load_stages_and_applies_client_reload_listeners() {
     use crate::game::{
-        Audio, Game, Options, Progress, Settings, load_resources_for_mods,
+        Audio, Options, Progress, Settings, load_resources_for_mods,
         native_entity_refs::tests::fixture_root, start_client_game,
     };
     use mod_api::{
@@ -539,7 +539,10 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
             .into();
             mod_platform::testing::with_mods(mods, || {
                 let mut registrations = Vec::new();
-                crate::game::native_hooks::native_standalone_models(&RegistrationContext::new(), &mut registrations);
+                crate::game::native_hooks::native_standalone_models(
+                    &RegistrationContext::new(),
+                    &mut registrations,
+                );
                 let _models =
                     sunrise_client::models::StandaloneFixture::from_registrations(registrations);
                 for refusal in [None, Some("renderer"), Some("extensions")] {

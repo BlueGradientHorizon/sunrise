@@ -1,8 +1,5 @@
 use super::*;
 
-
-
-
 /// Gather attributed block-state definition providers at client startup, before resources load
 /// (NeoForge's `RegisterBlockStateModels`).
 pub(in crate::game) fn native_register_block_state_models(
@@ -11,4 +8,3 @@ pub(in crate::game) fn native_register_block_state_models(
 ) {
     crate::game::native_hooks::fire::fire_register_block_state_models(context, definitions);
 }
-

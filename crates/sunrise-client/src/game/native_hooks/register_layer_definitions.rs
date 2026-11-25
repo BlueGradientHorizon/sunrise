@@ -1,8 +1,5 @@
 use super::*;
 
-
-
-
 /// Gather attributed layer suppliers at client startup, before the layer table is frozen.
 /// API @API:model_layers@.
 pub(in crate::game) fn native_register_layer_definitions(
@@ -11,4 +8,3 @@ pub(in crate::game) fn native_register_layer_definitions(
 ) {
     crate::game::native_hooks::fire::fire_register_layer_definitions(context, layers);
 }
-

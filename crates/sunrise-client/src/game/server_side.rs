@@ -2,68 +2,14 @@
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::*;
 
-#[path = "mobs/spawner.rs"]
-pub(in crate::game) mod spawner;
-#[path = "blocks/composter.rs"]
-pub(in crate::game) mod composter;
-#[path = "modding/slot_takes.rs"]
-pub(in crate::game) mod slot_takes;
-#[path = "modding/original_player.rs"]
-pub(in crate::game) mod original_player;
-#[path = "modding/native_world_edit.rs"]
-pub(in crate::game) mod native_world_edit;
-#[path = "modding/native_structures.rs"]
-pub(in crate::game) mod native_structures;
-#[path = "modding/native_structure_placement.rs"]
-pub(in crate::game) mod native_structure_placement;
-#[path = "modding/native_server_distances.rs"]
-pub(in crate::game) mod native_server_distances;
-#[path = "modding/native_quick_move.rs"]
-pub(in crate::game) mod native_quick_move;
-#[path = "modding/native_player_disconnect.rs"]
-pub(in crate::game) mod native_player_disconnect;
-#[path = "modding/native_place_feature.rs"]
-pub(in crate::game) mod native_place_feature;
-#[path = "modding/native_level_weather.rs"]
-pub(in crate::game) mod native_level_weather;
-#[path = "modding/native_level_effects.rs"]
-pub(in crate::game) mod native_level_effects;
-#[path = "modding/native_level_border.rs"]
-pub(in crate::game) mod native_level_border;
-#[path = "modding/native_hanging.rs"]
-pub(in crate::game) mod native_hanging;
-#[path = "modding/native_explosion_resistance.rs"]
-pub(in crate::game) mod native_explosion_resistance;
-#[path = "modding/native_explosion_destroy.rs"]
-pub(in crate::game) mod native_explosion_destroy;
-#[path = "modding/native_entity_selectors.rs"]
-pub(in crate::game) mod native_entity_selectors;
-#[path = "modding/native_criteria.rs"]
-pub(in crate::game) mod native_criteria;
-#[path = "modding/native_chunk_areas.rs"]
-pub(in crate::game) mod native_chunk_areas;
-#[path = "modding/native_book_scope.rs"]
-pub(in crate::game) mod native_book_scope;
-#[path = "modding/native_book_grid.rs"]
-pub(in crate::game) mod native_book_grid;
-#[path = "modding/native_book_backings.rs"]
-pub(in crate::game) mod native_book_backings;
-#[path = "modding/native_book_apply.rs"]
-pub(in crate::game) mod native_book_apply;
-#[path = "modding/load_conditions.rs"]
-pub(in crate::game) mod load_conditions;
-#[path = "modding/dropped_item_setter.rs"]
-pub(in crate::game) mod dropped_item_setter;
-#[path = "mobs/foxes.rs"]
-pub(in crate::game) mod foxes;
-#[path = "mobs/allays.rs"]
-pub(in crate::game) mod allays;
-#[path = "side_ops/modapi_server.rs"]
-pub(in crate::game) mod modapi_server;
+#[path = "network/lan_actions/acting_state.rs"]
+pub(in crate::game) mod acting_state;
 #[path = "interface/advancements/mod.rs"]
 pub(in crate::game) mod advancements;
 #[path = "entities/ahead.rs"]
 pub(in crate::game) mod ahead;
+#[path = "mobs/allays.rs"]
+pub(in crate::game) mod allays;
 #[path = "modding/api_values.rs"]
 pub(crate) mod api_values;
 #[cfg(test)]
@@ -136,6 +82,8 @@ pub(in crate::game) mod clone_dimensions_tests;
 pub(in crate::game) mod combat;
 #[path = "administration/command_harness.rs"]
 pub(in crate::game) mod command_harness;
+#[path = "blocks/composter.rs"]
+pub(in crate::game) mod composter;
 #[path = "items/consume.rs"]
 pub(in crate::game) mod consume;
 #[path = "world/container_loot.rs"]
@@ -170,6 +118,8 @@ pub(in crate::game) mod dragon;
 #[cfg(test)]
 #[path = "mobs/dragon_fireball_motion_tests.rs"]
 pub(in crate::game) mod dragon_fireball_motion_tests;
+#[path = "modding/dropped_item_setter.rs"]
+pub(in crate::game) mod dropped_item_setter;
 #[path = "world/dynamic_light_emission.rs"]
 pub(in crate::game) mod dynamic_light_emission;
 #[path = "items/enchant_effects.rs"]
@@ -226,6 +176,8 @@ pub(in crate::game) mod first_tick_registration_tests;
 pub(in crate::game) mod fishing;
 #[path = "modding/fluid_interactions.rs"]
 pub(in crate::game) mod fluid_interactions;
+#[path = "mobs/foxes.rs"]
+pub(in crate::game) mod foxes;
 #[path = "entities/frames.rs"]
 pub(in crate::game) mod frames;
 #[path = "administration/functions.rs"]
@@ -351,6 +303,8 @@ pub(in crate::game) mod levels;
 pub(in crate::game) mod living_attributes;
 #[path = "mobs/llamas.rs"]
 pub(in crate::game) mod llamas;
+#[path = "modding/load_conditions.rs"]
+pub(in crate::game) mod load_conditions;
 #[cfg(test)]
 #[path = "administration/loot_kill_guest_tests.rs"]
 pub(in crate::game) mod loot_kill_guest_tests;
@@ -387,6 +341,8 @@ pub(in crate::game) mod mod_container_openers;
 #[cfg(test)]
 #[path = "modding/mod_container_openers_tests.rs"]
 pub(in crate::game) mod mod_container_openers_tests;
+#[path = "side_ops/modapi_server.rs"]
+pub(in crate::game) mod modapi_server;
 #[path = "mobs/mounts.rs"]
 pub(in crate::game) mod mounts;
 #[path = "modding/native_ai_pause.rs"]
@@ -403,10 +359,18 @@ pub(in crate::game) mod native_block_entity_item_tests;
 pub(in crate::game) mod native_block_entity_refs;
 #[path = "modding/native_block_sounds.rs"]
 pub(crate) mod native_block_sounds;
+#[path = "modding/native_book_apply.rs"]
+pub(in crate::game) mod native_book_apply;
+#[path = "modding/native_book_backings.rs"]
+pub(in crate::game) mod native_book_backings;
+#[path = "modding/native_book_grid.rs"]
+pub(in crate::game) mod native_book_grid;
 #[path = "modding/native_book_invalidation.rs"]
 pub(in crate::game) mod native_book_invalidation;
 #[path = "modding/native_book_net.rs"]
 pub(in crate::game) mod native_book_net;
+#[path = "modding/native_book_scope.rs"]
+pub(in crate::game) mod native_book_scope;
 #[path = "modding/native_boss_bar_refs.rs"]
 pub(in crate::game) mod native_boss_bar_refs;
 #[path = "modding/native_bots.rs"]
@@ -414,6 +378,8 @@ pub(in crate::game) mod native_bots;
 #[cfg(test)]
 #[path = "modding/native_chat_recipients_tests.rs"]
 pub(in crate::game) mod native_chat_recipients_tests;
+#[path = "modding/native_chunk_areas.rs"]
+pub(in crate::game) mod native_chunk_areas;
 #[path = "modding/native_chunk_save.rs"]
 pub(in crate::game) mod native_chunk_save;
 #[path = "modding/native_colliders.rs"]
@@ -430,6 +396,8 @@ pub(in crate::game) mod native_connection_groups;
 #[cfg(test)]
 #[path = "modding/native_console_tests.rs"]
 pub(in crate::game) mod native_console_tests;
+#[path = "modding/native_criteria.rs"]
+pub(in crate::game) mod native_criteria;
 #[cfg(test)]
 #[path = "modding/native_damage_tests.rs"]
 pub(in crate::game) mod native_damage_tests;
@@ -476,10 +444,16 @@ pub(in crate::game) mod native_entity_refs;
 pub(in crate::game) mod native_entity_remove;
 #[path = "modding/native_entity_riding.rs"]
 pub(in crate::game) mod native_entity_riding;
+#[path = "modding/native_entity_selectors.rs"]
+pub(in crate::game) mod native_entity_selectors;
 #[path = "modding/native_entity_sounds.rs"]
 pub(in crate::game) mod native_entity_sounds;
 #[path = "modding/native_entity_state.rs"]
 pub(in crate::game) mod native_entity_state;
+#[path = "modding/native_explosion_destroy.rs"]
+pub(in crate::game) mod native_explosion_destroy;
+#[path = "modding/native_explosion_resistance.rs"]
+pub(in crate::game) mod native_explosion_resistance;
 #[path = "modding/native_explosions.rs"]
 pub(in crate::game) mod native_explosions;
 #[cfg(test)]
@@ -502,6 +476,8 @@ pub(in crate::game) mod native_goal_ticks;
 #[cfg(test)]
 #[path = "modding/native_guest_turn_tests.rs"]
 pub(in crate::game) mod native_guest_turn_tests;
+#[path = "modding/native_hanging.rs"]
+pub(in crate::game) mod native_hanging;
 #[cfg(test)]
 #[path = "modding/native_hanging_tests.rs"]
 pub(in crate::game) mod native_hanging_tests;
@@ -531,6 +507,10 @@ pub(in crate::game) mod native_knockback_credit;
 #[cfg(test)]
 #[path = "modding/native_knockback_tests.rs"]
 pub(in crate::game) mod native_knockback_tests;
+#[path = "modding/native_level_border.rs"]
+pub(in crate::game) mod native_level_border;
+#[path = "modding/native_level_effects.rs"]
+pub(in crate::game) mod native_level_effects;
 #[path = "modding/native_level_events.rs"]
 pub(in crate::game) mod native_level_events;
 #[path = "modding/native_level_items.rs"]
@@ -551,6 +531,8 @@ pub(in crate::game) mod native_level_sound_except_tests;
 pub(in crate::game) mod native_level_spawning;
 #[path = "modding/native_level_ticking.rs"]
 pub(in crate::game) mod native_level_ticking;
+#[path = "modding/native_level_weather.rs"]
+pub(in crate::game) mod native_level_weather;
 #[path = "modding/native_level_world.rs"]
 pub(in crate::game) mod native_level_world;
 #[path = "modding/native_lifecycle.rs"]
@@ -595,6 +577,8 @@ pub(in crate::game) mod native_passages;
 pub(in crate::game) mod native_path_types_tests;
 #[path = "modding/native_pending_children.rs"]
 pub(in crate::game) mod native_pending_children;
+#[path = "modding/native_place_feature.rs"]
+pub(in crate::game) mod native_place_feature;
 #[cfg(test)]
 #[path = "modding/native_placement_state_tests.rs"]
 pub(in crate::game) mod native_placement_state_tests;
@@ -605,6 +589,8 @@ pub(in crate::game) mod native_player_cooldowns;
 #[cfg(test)]
 #[path = "modding/native_player_destroyed_block_tests.rs"]
 pub(in crate::game) mod native_player_destroyed_block_tests;
+#[path = "modding/native_player_disconnect.rs"]
+pub(in crate::game) mod native_player_disconnect;
 #[path = "modding/native_player_ender_chest.rs"]
 pub(in crate::game) mod native_player_ender_chest;
 #[cfg(test)]
@@ -639,6 +625,8 @@ pub(in crate::game) mod native_projectile_launch_tests;
 pub(in crate::game) mod native_projectile_refs;
 #[path = "modding/native_projectiles.rs"]
 pub(in crate::game) mod native_projectiles;
+#[path = "modding/native_quick_move.rs"]
+pub(in crate::game) mod native_quick_move;
 #[path = "modding/native_raid_refs.rs"]
 pub(in crate::game) mod native_raid_refs;
 #[path = "modding/native_recipe_properties.rs"]
@@ -655,6 +643,8 @@ pub(in crate::game) mod native_registry_ids_tests;
 pub(in crate::game) mod native_resources;
 #[path = "modding/native_scoreboard.rs"]
 pub(in crate::game) mod native_scoreboard;
+#[path = "modding/native_server_distances.rs"]
+pub(in crate::game) mod native_server_distances;
 #[cfg(test)]
 #[path = "modding/native_shield_totem_tests.rs"]
 pub(in crate::game) mod native_shield_totem_tests;
@@ -665,6 +655,10 @@ pub(in crate::game) mod native_singleplayer_owner;
 pub(in crate::game) mod native_singleplayer_owner_tests;
 #[path = "modding/native_sound_refs.rs"]
 pub(in crate::game) mod native_sound_refs;
+#[path = "modding/native_structure_placement.rs"]
+pub(in crate::game) mod native_structure_placement;
+#[path = "modding/native_structures.rs"]
+pub(in crate::game) mod native_structures;
 #[cfg(test)]
 #[path = "modding/native_success_broadcast_tests.rs"]
 pub(in crate::game) mod native_success_broadcast_tests;
@@ -676,6 +670,8 @@ pub(in crate::game) mod native_tick_time;
 pub(in crate::game) mod native_ticks;
 #[path = "modding/native_unspawned_mob.rs"]
 pub(in crate::game) mod native_unspawned_mob;
+#[path = "modding/native_world_edit.rs"]
+pub(in crate::game) mod native_world_edit;
 #[path = "modding/native_world_read.rs"]
 pub(in crate::game) mod native_world_read;
 #[path = "mobs/natural_spawning.rs"]
@@ -693,6 +689,8 @@ pub(in crate::game) mod ominous_item_spawner;
 pub(in crate::game) mod orb_data_tests;
 #[path = "world/ordered_tick.rs"]
 pub(in crate::game) mod ordered_tick;
+#[path = "modding/original_player.rs"]
+pub(in crate::game) mod original_player;
 #[path = "world/owner_link.rs"]
 pub(in crate::game) mod owner_link;
 #[path = "modding/pack_finders/mod.rs"]
@@ -781,6 +779,8 @@ pub(in crate::game) mod scoreboard;
 pub(in crate::game) mod sculk_fixture;
 #[path = "entities/seats.rs"]
 pub(in crate::game) mod seats;
+#[path = "server_side/server_effects.rs"]
+pub(in crate::game) mod server_effects;
 #[path = "world/server_lifecycle/mod.rs"]
 pub(in crate::game) mod server_lifecycle;
 #[path = "world/server_reload/mod.rs"]
@@ -799,9 +799,13 @@ pub(in crate::game) mod slot_changes;
 #[cfg(test)]
 #[path = "modding/slot_take_tests.rs"]
 pub(in crate::game) mod slot_take_tests;
+#[path = "modding/slot_takes.rs"]
+pub(in crate::game) mod slot_takes;
 #[cfg(test)]
 #[path = "world/spawn_save_tests.rs"]
 pub(in crate::game) mod spawn_save_tests;
+#[path = "mobs/spawner.rs"]
+pub(in crate::game) mod spawner;
 #[path = "items/spear.rs"]
 pub(in crate::game) mod spear;
 #[path = "items/spear_players.rs"]
@@ -859,6 +863,8 @@ pub(in crate::game) mod use_hand;
 #[cfg(test)]
 #[path = "items/use_stop_tests.rs"]
 pub(in crate::game) mod use_stop_tests;
+#[path = "items/using_item.rs"]
+pub(in crate::game) mod using_item;
 #[path = "blocks/vault.rs"]
 pub(in crate::game) mod vault;
 #[cfg(test)]
@@ -904,13 +910,6 @@ pub(in crate::game) mod world_test_def_tests;
 pub(in crate::game) mod xp_repair_ratio_tests;
 #[path = "mobs/zombie_reinforcements.rs"]
 pub(in crate::game) mod zombie_reinforcements;
-
-#[path = "network/lan_actions/acting_state.rs"]
-pub(in crate::game) mod acting_state;
-#[path = "server_side/server_effects.rs"]
-pub(in crate::game) mod server_effects;
-#[path = "items/using_item.rs"]
-pub(in crate::game) mod using_item;
 
 #[path = "runtime/agent/mod_server.rs"]
 pub(in crate::game) mod agent_server;

@@ -1,8 +1,5 @@
 use super::*;
 
-
-
-
 /// A player (`player`, their UUID) took `taken` out of slot `slot` (the menu's index) of
 /// the mod menu type `menu`, which holds `left` after it: `Slot.onTake`, on the server,
 /// after the take. `subject` lends the live resident block entity of a block-backed menu,
@@ -17,4 +14,3 @@ pub(in crate::game) fn native_menu_slot_take(
 ) {
     crate::game::native_hooks::fire::fire_menu_slot_take(menu, subject, player, slot, taken, left);
 }
-

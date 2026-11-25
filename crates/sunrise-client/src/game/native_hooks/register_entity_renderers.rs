@@ -1,8 +1,5 @@
 use super::*;
 
-
-
-
 /// The code-defined renderers of entity types (NeoForge's
 /// `EntityRenderersEvent.RegisterRenderers`, `registerEntityRenderer`): `register(type,
 /// renderer)`, and every entity of the type `type` (`mymod:bolt`) in view is drawn by
@@ -14,6 +11,7 @@ pub(in crate::game) fn native_register_entity_renderers(
     context: &mod_api::RegistrationContext,
     renderers: &mut mod_api::EntityRendererRegistry,
 ) {
-    crate::game::native_hooks::fire::fire_register_entity_renderers(context, |listen| renderers.register_listener(listen));
+    crate::game::native_hooks::fire::fire_register_entity_renderers(context, |listen| {
+        renderers.register_listener(listen)
+    });
 }
-

@@ -21,7 +21,6 @@ impl Game<'_> {
     }
 }
 
-
 /// Collect attributed world-preset editor factories once at client startup
 /// (NeoForge's `RegisterPresetEditorsEvent`).
 pub(in crate::game) fn native_register_preset_editors(
@@ -30,7 +29,6 @@ pub(in crate::game) fn native_register_preset_editors(
 ) {
     crate::game::native_hooks::fire::fire_register_preset_editors(context, editors);
 }
-
 
 #[cfg(test)]
 pub(in crate::game) mod tests {

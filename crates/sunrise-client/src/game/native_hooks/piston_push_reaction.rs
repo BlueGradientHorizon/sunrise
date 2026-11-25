@@ -17,9 +17,6 @@ impl Game<'_> {
     }
 }
 
-
-
-
 /// Pure state-only callback, with no game receiver or Host.
 pub(in crate::game) fn native_piston_push_reaction(
     state: BlockStateId,
@@ -27,4 +24,3 @@ pub(in crate::game) fn native_piston_push_reaction(
 ) {
     crate::game::native_hooks::fire::fire_piston_push_reaction(state, reaction);
 }
-

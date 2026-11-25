@@ -1,8 +1,5 @@
 use super::*;
 
-
-
-
 /// Gather attributed categorical `minecraft:select` item model property providers at client
 /// startup, before resources load (NeoForge's `RegisterSelectItemModelPropertyEvent`).
 pub(in crate::game) fn native_register_select_item_model_property(
@@ -11,4 +8,3 @@ pub(in crate::game) fn native_register_select_item_model_property(
 ) {
     crate::game::native_hooks::fire::fire_register_select_item_model_property(context, properties);
 }
-

@@ -1,7 +1,18 @@
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use super::native_data_maps::DataMapType;
+pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_tick::ResidentBlockEntityAccess;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use super::screen_build::ObservedScreen;
+pub(in crate::game::client_side) use crate::game::native_hooks::build_creative_mode_tab_contents::CreativeCache;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::ClientPick;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::fire::{
+    ConnectsToCall, EntityChangeBlockPreCall, HotbarAttackIndicatorProgressCall,
+    ItemAfterVerticalCollisionCall, PlayerPongCall, PreRemoveSideEffectsCall, UpdateShapeCall,
+};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use mod_api::{BlockEntityDataSource, BlockEntityRef, ClockAdjustment};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use super::native_data_maps::DataMapType;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::{
     Game, GameLevel, LevelDimension, Screen,
@@ -13,165 +24,6 @@ pub(in crate::game::client_side) use super::{
     native_panel_recipes::RecipePage,
 };
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::api_values::{TryIntoApi, TryIntoEngine};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::BLOCK_CONTACT_HOOKS;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::BlockClickAnswer;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::BonemealAsk;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::ContentsChangedGuard;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::DAMAGE_HOOKS;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::HitLevel;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::LiveDamageContainer;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::LiveDamageRead;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::NativeItem;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::NativeItemEntity;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::NativePlayer;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::NativeRecipe;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::NativeRecipeKind;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::NativeRecipeLayout;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::NativeRecipeResult;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::NativeRecipeStack;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::NativeRecipeView;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::NativeRecipes;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::OpenNativeMenu;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::OpenNativeScreen;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::SHAKE_MAX_DEGREES;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::SHAKE_MAX_OFFSET;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::ScreenDecision;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::ScreenMousePost;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::ScreenMousePostKind;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::ScreenMousePre;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::SlotMoves;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::add_attribute_tooltips::HookedAttributeTooltips;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::apply_menu_button_cursor;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::base::LevelView;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_tick::ResidentBlockEntityAccess;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::block_use_result;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::bounce_restitution::install_block_contact_hooks;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::box_meets;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::build_creative_mode_tab_contents::CreativeCache;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::camera_pose::bounded_shake;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::camera_pose::hand_pose_matrix;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_packet_view;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::ClientPick;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::config_dir;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::damage_post;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::damage_pre;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::debug_takes;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::dimension_id;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::engine_reduction;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::fire::{
-    ConnectsToCall, EntityChangeBlockPreCall, HotbarAttackIndicatorProgressCall,
-    ItemAfterVerticalCollisionCall, PlayerPongCall, PreRemoveSideEffectsCall, UpdateShapeCall,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::incoming_damage;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::invulnerability_check;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::knockback;
-#[allow(unused_imports)]
-#[cfg(test)]
-pub(in crate::game::client_side) use crate::game::native_hooks::level_helpers::block_entity_for_block;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::living_change_target::NativeHookHost;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::living_death::hurt_server_args;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::mob_kind;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::mod_menu;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::mod_particles_ok;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::mod_screen_opens;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::observed_overlay_id;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::packet_types;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::packet_view;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::posed_camera;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::property_change;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::screen_chars::chars_to_type;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::screen_view::{
-    screen_view_for_mod, screen_view_with_id,
-};
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::seed_native_menu;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::serverbound_packet_view;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::shake_pose;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::shield_block;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::sound_and_shader_helpers::{
-    finite, finite_params, local_sound_ok,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::sound_and_shader_helpers::{
-    level_sound_playable, mod_sound_ok, sound_id,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::title_target_id;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::use_totem;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::with_property;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::*;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use mod_api::__private::game::{
     BlockStateDefinitionRegistration, ItemModelRegistration, ItemTintSourceRegistration,
     JsonAnimationTypeRegistration, LayerDefinitionRegistration, ModelLoaderRegistration,
@@ -182,8 +34,6 @@ pub(in crate::game::client_side) use mod_api::__private::game::{
 pub(in crate::game::client_side) use mod_api::GameMode;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use mod_api::GameTests;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::ModBlockEntity;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use mod_api::game::{PhantomSpawnResult, Shake, SleepProblem};
 #[allow(unused_imports)]
@@ -204,10 +54,6 @@ pub(in crate::game::client_side) use mod_api::{
     ActiveEffect, AttachmentStore, BlockClick, BlockUpdateFlags, BonemealSource, ChunkRef,
     FluidStack, ItemClick, LevelRef, LogicalSide, NeighbourUpdate, TooltipElement, TriState,
     UsePhase,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{
-    BlockEntityDataSource, BlockEntityRef, ClockAdjustment,
 };
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use mod_api::{
@@ -232,10 +78,6 @@ pub(in crate::game::client_side) use std::{
 };
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::block_contact::Pending;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::containers::ModBlockEntity as EngineBlockEntity;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::health::mob_source;
 #[allow(unused_imports)]
 #[cfg(test)]
 pub(in crate::game::client_side) use sunrise_client::mobs::Damage;
@@ -279,8 +121,6 @@ pub(in crate::game::client_side) use sunrise_core::{
     ticks::{ScheduleResult, TickPriority},
 };
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_world::level::flags;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::level::{BonemealCheck, PlaceContext};
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use winit::{event::MouseButton, keyboard::KeyCode};
@@ -296,6 +136,262 @@ pub(in crate::game::client_side) use {
         registry::{BlockRegistry, BlockStateId},
     },
 };
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::add_attribute_tooltips::HookedAttributeTooltips;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::base::LevelView;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::bounce_restitution::install_block_contact_hooks;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::living_change_target::NativeHookHost;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use mod_api::ModBlockEntity;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::sound_and_shader_helpers::{finite, finite_params, local_sound_ok};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::sound_and_shader_helpers::{level_sound_playable, mod_sound_ok, sound_id};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::add_section_geometry::{native_add_section_geometry};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::base::{native_block_entity_update_tag, native_blocks, native_component_types, native_items, native_menu_button, native_menu_quick_move, native_standalone_models};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick::{native_block_entity_client_tick};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_data_received::{native_block_entity_data_received};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_on_load::{native_block_entity_on_load};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_tick::{native_block_entity_tick};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_type_add_blocks::{native_block_entity_type_add_blocks};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::can_place_item::{native_can_place_item};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::{native_can_rider_interact};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::create_skull_models::{native_create_skull_models};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::extend_poi_types::{native_extend_poi_types};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::general_entity_tick::{native_general_entity_tick};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::map_decoration_types::{native_map_decoration_types};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::menu_slot_take::{native_menu_slot_take};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::on_entity_item_update::{native_on_entity_item_update};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::piston_push_reaction::{native_piston_push_reaction};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_block_state_models::{native_register_block_state_models};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_block_tint_sources::{native_register_block_tint_sources};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_cauldron_fluid_content::{native_register_cauldron_fluid_content};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_cauldron_interaction::{native_register_cauldron_interaction};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_client_item_extensions::{native_register_client_item_extensions};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_client_tooltip_component_factories::{native_register_client_tooltip_component_factories};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_color_resolvers::{native_register_color_resolvers};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_debug_entries::{native_register_debug_entries};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_debug_renderers::{native_register_debug_renderers};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_dimension_transition_screen::{native_register_dimension_transition_screen};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_enchantment_damage_effects::{native_register_enchantment_damage_effects};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_entity_layers::{native_register_entity_layers};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_entity_renderers::{native_register_entity_renderers};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_entity_spectator_shaders::{native_register_entity_spectator_shaders};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_fluid_models::{native_register_fluid_models};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_gui_layers::{native_register_gui_layers};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_item_models::{native_register_item_models};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_item_tint_sources::{native_register_item_tint_sources};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_json_animation_types::{native_register_json_animation_types};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_layer_definitions::{native_register_layer_definitions};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_load_conditions::{native_register_load_conditions};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_model_loaders::{native_register_model_loaders};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_particle_groups::{native_register_particle_groups};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_particle_providers::{native_register_particle_providers};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_preset_editors::{native_register_preset_editors};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_range_select_item_model_property::{native_register_range_select_item_model_property};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_render_pipelines::{native_register_render_pipelines};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_select_item_model_property::{native_register_select_item_model_property};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_special_model_renderer::{native_register_special_model_renderer};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_sprite_sources::{native_register_sprite_sources};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_texture_atlases::{native_register_texture_atlases};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_villager_professions::{native_register_villager_professions};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_on_load::{authoritative_world_for_mods, world_for_mods};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::math::startup_math_profile;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::system_helpers::{mod_data_root, native_config_dir};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::base::{another_mods, startup_setting};
+#[allow(unused_imports)]
+#[cfg(test)]
+pub(in crate::game::client_side) use crate::game::native_hooks::level_helpers::block_entity_for_block;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use super::screen_build::ObservedScreen;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::api_values::{TryIntoApi, TryIntoEngine};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::screen_chars::chars_to_type;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use sunrise_client::containers::ModBlockEntity as EngineBlockEntity;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::screen_view::{screen_view_for_mod, screen_view_with_id};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use sunrise_world::level::flags;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::camera_pose::bounded_shake;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::camera_pose::hand_pose_matrix;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::living_death::hurt_server_args;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use sunrise_client::health::mob_source;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::*;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::ContentsChangedGuard;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::apply_menu_button_cursor;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::ScreenDecision;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::title_target_id;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::observed_overlay_id;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::posed_camera;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::SHAKE_MAX_DEGREES;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::SHAKE_MAX_OFFSET;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::shake_pose;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::OpenNativeScreen;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::OpenNativeMenu;
+#[cfg(test)]
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::seed_native_menu;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::SlotMoves;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::NativePlayer;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::NativeRecipeLayout;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::NativeRecipeResult;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::NativeRecipeView;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::NativeRecipeStack;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::NativeRecipeKind;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::NativeRecipe;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::NativeItem;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::NativeRecipes;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::ScreenMousePostKind;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::ScreenMousePost;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::ScreenMousePre;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::use_totem;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::HitLevel;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::invulnerability_check;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::engine_reduction;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::LiveDamageRead;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::LiveDamageContainer;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::incoming_damage;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::damage_pre;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::damage_post;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::shield_block;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::knockback;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::DAMAGE_HOOKS;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::BLOCK_CONTACT_HOOKS;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::mod_particles_ok;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::dimension_id;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::mob_kind;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::block_use_result;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::BlockClickAnswer;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::BonemealAsk;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::debug_takes;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::mod_menu;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::with_property;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::property_change;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::config_dir;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::NativeItemEntity;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::box_meets;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::mod_screen_opens;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::client_packet_view;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::serverbound_packet_view;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::packet_types;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::packet_view;
 
 #[path = "animate_tick_client.rs"]
 pub(in crate::game) mod animate_tick;
@@ -602,6 +698,18 @@ impl Game<'_> {
             self.init_screen_widgets(&obs.view());
         }
     }
+    /// Like `decide_screen`, for `mod_screen_open`, which clears any active
+    /// overlay via `close_replaced_screen_for_mod` before applying the
+    /// decision, so `ScreenOpening::ModScreen` and `ScreenOpening::Vanilla`
+    /// answers remain eligible even when replacing an overlay.
+    pub(in crate::game) fn decide_screen_for_mod_open(
+        &self,
+        current: &ScreenView<'_>,
+        new: &ScreenView<'_>,
+        closes: bool,
+    ) -> ScreenDecision {
+        self.screen_decision_with(self.screen_change(current, new, true, closes), true)
+    }
     /// The open mod screen: a plain panel with its slots' frames, the mod's
     /// drawing over it, then the title and the inventory's label. False when
     /// none is showing.
@@ -688,6 +796,17 @@ impl Game<'_> {
         self.native_screen_tooltip_lines(batch, slot, &mut lines);
         self.draw_tooltip_lines(batch, &lines, self.client.cursor.0, self.client.cursor.1);
     }
+    /// The living entity an effect decision names: `Some(id)` a mob's
+    /// `Entity.getId`, `None` the acting player. `None` when no native
+    /// world runs, and the decision falls back to vanilla's.
+    pub(in crate::game) fn effect_living_ref(&self, entity: Option<i32>) -> Option<LivingRef> {
+        let epoch = self.native_lifecycle.epoch()?;
+        let id = match entity {
+            Some(id) => id as u32,
+            None => self.own_entity_id() as u32,
+        };
+        Some(LivingRef::new(EntityRef::new(epoch, id)))
+    }
     pub(in crate::game) fn headless_screen_snapshot(&self) -> Option<ObservedScreen> {
         if self.renderer.0.is_some() || self.remote_loading() {
             return None;
@@ -728,6 +847,60 @@ impl Game<'_> {
             || self.screen_over_playing()
             || self.remote_loading()
     }
+    /// The camera native mods draw this frame from (`native_camera_pose`), starting from
+    /// `view`, vanilla's position, yaw and pitch.
+    pub(in crate::game) fn native_camera_pose_now(
+        &mut self,
+        partial: f32,
+        view: (glam::DVec3, f32, f32),
+    ) -> (glam::DVec3, f32, f32) {
+        let (mut position, mut yaw, mut pitch) = (view.0.to_array(), view.1, view.2);
+        self.native_camera_pose(partial, &mut position, &mut yaw, &mut pitch);
+        let posed = posed_camera(view, position, yaw, pitch);
+        if self.apply_requested_camera_type()
+            && let Some(refreshed) = self.camera_view(partial)
+        {
+            // Refresh vanilla components, not the listener's explicit overrides.
+            return (
+                if posed.0 == view.0 {
+                    refreshed.0
+                } else {
+                    posed.0
+                },
+                if posed.1 == view.1 {
+                    refreshed.1
+                } else {
+                    posed.1
+                },
+                if posed.2 == view.2 {
+                    refreshed.2
+                } else {
+                    posed.2
+                },
+            );
+        }
+        posed
+    }
+    /// Deliver a non-repeat key press to the native panel.
+    pub(in crate::game) fn native_panel_key_event(
+        &mut self,
+        key: KeyCode,
+        pressed: bool,
+        repeat: bool,
+    ) {
+        if pressed
+            && !repeat
+            && let Some(name) = keybinds::key_name(key)
+        {
+            self.native_panel_key(name);
+        }
+    }
+    /// The internal container slot base of the open mod screen (`MOD_MENU_SLOT_BASE`
+    /// for a `ModMenuType`, `300` for a stock menu).
+    pub(in crate::game) fn native_screen_container_slot_base(&self) -> usize {
+        self.shown_native_screen()
+            .map_or(300, OpenNativeScreen::container_slot_base)
+    }
     /// A data slot of window `window`'s menu (`ContainerSetData`); false
     /// when no mod screen is showing for that active remote window.
     pub(in crate::game) fn native_screen_data(
@@ -743,6 +916,23 @@ impl Game<'_> {
             .0
             .as_mut()
             .is_some_and(|s| s.set_data(window, index, value))
+    }
+    /// The open mod screen's inventory's left column.
+    pub(in crate::game) fn native_screen_inventory_x(&self) -> Option<f32> {
+        self.shown_native_screen().map(|s| s.layout().inventory_x)
+    }
+    /// The first row of the player's inventory on the open mod screen.
+    pub(in crate::game) fn native_screen_inventory_y(&self) -> Option<f32> {
+        self.shown_native_screen().map(|s| s.layout().inventory_y)
+    }
+    /// The menu type resolved for this client's opening, including in ScreenOpening.
+    pub(in crate::game) fn native_screen_menu_type(
+        &self,
+        window: i32,
+        name: &str,
+    ) -> Option<&'static sunrise_client::containers::ModMenuType> {
+        let menu = &self.active_native_screen()?.menu;
+        (menu.window == window && menu.name == name).then_some(menu.mod_type)?
     }
     /// A press consumed by the shown screen goes to the server as a menu button click.
     pub(in crate::game::client_side) fn native_screen_press(&mut self, right: bool) -> bool {
@@ -786,6 +976,37 @@ impl Game<'_> {
         self.audio.0.play_button_click();
         true
     }
+    /// Where the open mod screen puts container slot `slot` this frame: where
+    /// a mod last moved it, else where the screen declared it; None when
+    /// inactive/hidden.
+    pub(in crate::game) fn native_screen_slot(&self, slot: usize) -> Option<(f32, f32)> {
+        let s = self.shown_native_screen()?;
+        let declared = s
+            .layout()
+            .slots
+            .get(slot)?
+            .as_ref()
+            .map(|slot| slot.position);
+        let [x, y] = s.slot_moves.position(slot, declared)?;
+        Some((x, y))
+    }
+    pub(in crate::game) fn native_screen_slot_icon(&self, slot: usize) -> Option<&str> {
+        self.shown_native_screen()?
+            .layout()
+            .slots
+            .get(slot)?
+            .as_ref()?
+            .no_item_icon
+            .as_deref()
+    }
+    /// The container slots the open mod screen shows this frame.
+    pub(in crate::game) fn native_screen_slots(&self) -> Option<Vec<usize>> {
+        Some(
+            self.shown_native_screen()?
+                .visible_container_slots()
+                .collect(),
+        )
+    }
     /// The screen-specific line override, shared by filled-slot and empty-space tooltips.
     /// Item images and component gathering remain on the stack's normal drawing path.
     pub(in crate::game::client_side) fn native_screen_tooltip_lines(
@@ -815,6 +1036,43 @@ impl Game<'_> {
         {
             *lines = replacement;
         }
+    }
+    /// The open mod screen's width.
+    pub(in crate::game) fn native_screen_width(&self) -> Option<f32> {
+        self.shown_native_screen().map(|s| s.layout().width)
+    }
+    /// The pose of native mods' camera shake in this frame (`native_camera_shake`),
+    /// none while not playing.
+    pub(in crate::game) fn native_shake_matrix(&self, partial: f32) -> glam::Mat4 {
+        if !self.playing() {
+            return glam::Mat4::IDENTITY;
+        }
+        let mut shake = Shake::default();
+        self.native_camera_shake(partial, &mut shake);
+        if shake == Shake::default() {
+            return glam::Mat4::IDENTITY;
+        }
+        shake_pose(bounded_shake(shake, self.screen_effect_scale()))
+    }
+    /// The zoom in effect while playing (a native mod's); the spyglass's own
+    /// view wins.
+    pub(in crate::game) fn native_zoom_now(&self) -> Option<mod_api::Zoom> {
+        if !self.playing() || self.scoping() {
+            return None;
+        }
+        let mut zoom = None;
+        self.native_zoom(&mut zoom);
+        let z = zoom?;
+        let factor = finite(z.factor, 1.0, 10.0);
+        (factor > 1.0).then_some(mod_api::Zoom {
+            factor,
+            smooth: z.smooth,
+            turn: if z.turn.is_finite() {
+                z.turn.clamp(0.05, 1.0)
+            } else {
+                1.0
+            },
+        })
     }
     /// What the frame's screen changed since the last one. The `Screen` list,
     /// the overlays' opening and the title's screens announce their own
@@ -902,6 +1160,10 @@ impl Game<'_> {
         }
         self.screen_state.0.observed = current;
     }
+    pub(in crate::game) fn observe_screen(&mut self) {
+        self.settle_title_mode();
+        self.refresh_screen_widgets();
+    }
     pub(in crate::game) fn observe_view(&self, view: ScreenView<'_>) -> ObservedScreen {
         let screen_size = if self.renderer.0.is_some() {
             self.gui_frame_now().1.size.map(|size| size as f32)
@@ -931,6 +1193,20 @@ impl Game<'_> {
             partial_tick: view.partial_tick,
             regions: Vec::new(),
         }
+    }
+    /// Snapshot of the receiving screen for screen input hooks, including overlays.
+    pub(in crate::game) fn observed_input_screen(&self) -> Option<ObservedScreen> {
+        let view = self.observed_screen_view()?;
+        let regions = view.regions.to_vec();
+        let mut snapshot = self.observe_view(view);
+        snapshot.regions = regions;
+        Some(snapshot)
+    }
+    /// What `observe_screen` compares with the last frame's.
+    pub(in crate::game) fn observed_now(&self) -> Option<ObservedScreen> {
+        // Only the title's screens and the overlays show over `Screen::Playing`.
+        self.observed_screen_view()
+            .map(|view| self.observe_view(view))
     }
     pub(in crate::game::client_side) fn observed_overlay_now(&self) -> Option<&'static str> {
         let book = self.client.book.as_ref().map(super::books::BookScreen::id);
@@ -1161,6 +1437,42 @@ impl Game<'_> {
         let modifiers = super::glfw_modifiers(self.client.modifiers);
         self.native_screen_char_typed_post(&receiver.view(), c, modifiers);
     }
+    /// A key press's characters (`ScreenEvent.CharacterTyped.Pre`, vanilla's
+    /// `KeyboardHandler.charTyped`), dispatched once the screen has acted on
+    /// the key: GLFW's char callback comes after its key callback, so the
+    /// characters go to the screen that is open now — a key that closed the
+    /// screen leaves none to hear them, as vanilla's closed screen hears
+    /// nothing, and one that moved the focus types into the box it moved to.
+    /// Each printable one snapshots the current screen, runs
+    /// `native_screen_char_typed_pre` (when hooks apply), then mounted widgets,
+    /// then the focused text box, and unhandled characters fire
+    /// `native_screen_char_typed_post` on that character's captured receiver.
+    pub(in crate::game) fn screen_chars_typed(&mut self, text: Option<&str>) {
+        let Some(text) = text else {
+            return;
+        };
+        if self.observed_screen_view().is_none() && self.headless_screen_snapshot().is_none() {
+            return;
+        }
+        // A held edit modifier makes a shortcut of the key, not text.
+        let text = chars_to_type(text, self.types_text());
+        if text.is_empty() {
+            return;
+        }
+        self.screen_chars_dispatch(&text, |game, c| game.type_chars_into_screen(c).is_ok());
+    }
+    /// What a mod's `screen_opening` answer does here: a `ModScreen` only
+    /// where a mod's screen can open (`mod_screen_blocked`), a `Vanilla`
+    /// target only where it opens (a title screen while the title shows, a
+    /// world's screen where a mod's could open in a world), else the change
+    /// goes ahead and the refused target is logged. Records whether a mod's
+    /// answer changed what shows (`ScreenState::answered`).
+    pub(in crate::game) fn screen_decision(
+        &self,
+        answer: Option<Answered<ScreenOpening>>,
+    ) -> ScreenDecision {
+        self.screen_decision_with(answer, false)
+    }
     pub(in crate::game::client_side) fn screen_decision_for_context(
         &self,
         answer: Option<Answered<ScreenOpening>>,
@@ -1373,6 +1685,23 @@ impl Game<'_> {
             partial_tick: self.clock.fraction() as f32,
             regions: &[],
         })
+    }
+    /// The open screen's container panel in GUI pixels (`screen`'s, the one
+    /// this frame draws), or the whole window for a screen with none
+    /// (`ScreenView.rect`).
+    pub(in crate::game) fn screen_rect(&self, batch: &HudBatch, screen: Screen) -> [f32; 4] {
+        if screen != Screen::Inventory && screen != Screen::Creative {
+            return [0.0, 0.0, batch.width, batch.height];
+        }
+        // The window the game itself draws (`container_image`): the merchant
+        // and the beacon are wider and shifted, creative is its own size.
+        let image = self.container_image(batch);
+        [
+            image.left as f32,
+            image.top as f32,
+            image.width as f32,
+            image.height as f32,
+        ]
     }
     /// Text into a text box a character at a time (`Screen.charTyped`): each
     /// printable one snapshots the current receiving screen, is offered to
@@ -1672,244 +2001,3 @@ pub(in crate::game) mod slot_icon_tests;
 #[cfg(test)]
 #[path = "shared/slot_tooltip_tests_client.rs"]
 pub(in crate::game) mod slot_tooltip_tests;
-
-impl Game<'_> {
-    /// Like `decide_screen`, for `mod_screen_open`, which clears any active
-    /// overlay via `close_replaced_screen_for_mod` before applying the
-    /// decision, so `ScreenOpening::ModScreen` and `ScreenOpening::Vanilla`
-    /// answers remain eligible even when replacing an overlay.
-    pub(in crate::game) fn decide_screen_for_mod_open(
-        &self,
-        current: &ScreenView<'_>,
-        new: &ScreenView<'_>,
-        closes: bool,
-    ) -> ScreenDecision {
-        self.screen_decision_with(self.screen_change(current, new, true, closes), true)
-    }
-    /// What a mod's `screen_opening` answer does here: a `ModScreen` only
-    /// where a mod's screen can open (`mod_screen_blocked`), a `Vanilla`
-    /// target only where it opens (a title screen while the title shows, a
-    /// world's screen where a mod's could open in a world), else the change
-    /// goes ahead and the refused target is logged. Records whether a mod's
-    /// answer changed what shows (`ScreenState::answered`).
-    pub(in crate::game) fn screen_decision(
-        &self,
-        answer: Option<Answered<ScreenOpening>>,
-    ) -> ScreenDecision {
-        self.screen_decision_with(answer, false)
-    }
-
-    /// What `observe_screen` compares with the last frame's.
-    pub(in crate::game) fn observed_now(&self) -> Option<ObservedScreen> {
-        // Only the title's screens and the overlays show over `Screen::Playing`.
-        self.observed_screen_view()
-            .map(|view| self.observe_view(view))
-    }
-
-    /// Snapshot of the receiving screen for screen input hooks, including overlays.
-    pub(in crate::game) fn observed_input_screen(&self) -> Option<ObservedScreen> {
-        let view = self.observed_screen_view()?;
-        let regions = view.regions.to_vec();
-        let mut snapshot = self.observe_view(view);
-        snapshot.regions = regions;
-        Some(snapshot)
-    }
-
-    pub(in crate::game) fn observe_screen(&mut self) {
-        self.settle_title_mode();
-        self.refresh_screen_widgets();
-    }
-
-    /// The menu type resolved for this client's opening, including in ScreenOpening.
-    pub(in crate::game) fn native_screen_menu_type(
-        &self,
-        window: i32,
-        name: &str,
-    ) -> Option<&'static sunrise_client::containers::ModMenuType> {
-        let menu = &self.active_native_screen()?.menu;
-        (menu.window == window && menu.name == name).then_some(menu.mod_type)?
-    }
-    /// Deliver a non-repeat key press to the native panel.
-    pub(in crate::game) fn native_panel_key_event(
-        &mut self,
-        key: KeyCode,
-        pressed: bool,
-        repeat: bool,
-    ) {
-        if pressed
-            && !repeat
-            && let Some(name) = keybinds::key_name(key)
-        {
-            self.native_panel_key(name);
-        }
-    }
-    /// The open screen's container panel in GUI pixels (`screen`'s, the one
-    /// this frame draws), or the whole window for a screen with none
-    /// (`ScreenView.rect`).
-    pub(in crate::game) fn screen_rect(&self, batch: &HudBatch, screen: Screen) -> [f32; 4] {
-        if screen != Screen::Inventory && screen != Screen::Creative {
-            return [0.0, 0.0, batch.width, batch.height];
-        }
-        // The window the game itself draws (`container_image`): the merchant
-        // and the beacon are wider and shifted, creative is its own size.
-        let image = self.container_image(batch);
-        [
-            image.left as f32,
-            image.top as f32,
-            image.width as f32,
-            image.height as f32,
-        ]
-    }
-    /// A key press's characters (`ScreenEvent.CharacterTyped.Pre`, vanilla's
-    /// `KeyboardHandler.charTyped`), dispatched once the screen has acted on
-    /// the key: GLFW's char callback comes after its key callback, so the
-    /// characters go to the screen that is open now — a key that closed the
-    /// screen leaves none to hear them, as vanilla's closed screen hears
-    /// nothing, and one that moved the focus types into the box it moved to.
-    /// Each printable one snapshots the current screen, runs
-    /// `native_screen_char_typed_pre` (when hooks apply), then mounted widgets,
-    /// then the focused text box, and unhandled characters fire
-    /// `native_screen_char_typed_post` on that character's captured receiver.
-    pub(in crate::game) fn screen_chars_typed(&mut self, text: Option<&str>) {
-        let Some(text) = text else {
-            return;
-        };
-        if self.observed_screen_view().is_none() && self.headless_screen_snapshot().is_none() {
-            return;
-        }
-        // A held edit modifier makes a shortcut of the key, not text.
-        let text = chars_to_type(text, self.types_text());
-        if text.is_empty() {
-            return;
-        }
-        self.screen_chars_dispatch(&text, |game, c| game.type_chars_into_screen(c).is_ok());
-    }
-    /// The living entity an effect decision names: `Some(id)` a mob's
-    /// `Entity.getId`, `None` the acting player. `None` when no native
-    /// world runs, and the decision falls back to vanilla's.
-    pub(in crate::game) fn effect_living_ref(&self, entity: Option<i32>) -> Option<LivingRef> {
-        let epoch = self.native_lifecycle.epoch()?;
-        let id = match entity {
-            Some(id) => id as u32,
-            None => self.own_entity_id() as u32,
-        };
-        Some(LivingRef::new(EntityRef::new(epoch, id)))
-    }
-    /// Where the open mod screen puts container slot `slot` this frame: where
-    /// a mod last moved it, else where the screen declared it; None when
-    /// inactive/hidden.
-    pub(in crate::game) fn native_screen_slot(&self, slot: usize) -> Option<(f32, f32)> {
-        let s = self.shown_native_screen()?;
-        let declared = s
-            .layout()
-            .slots
-            .get(slot)?
-            .as_ref()
-            .map(|slot| slot.position);
-        let [x, y] = s.slot_moves.position(slot, declared)?;
-        Some((x, y))
-    }
-    pub(in crate::game) fn native_screen_slot_icon(&self, slot: usize) -> Option<&str> {
-        self.shown_native_screen()?
-            .layout()
-            .slots
-            .get(slot)?
-            .as_ref()?
-            .no_item_icon
-            .as_deref()
-    }
-    /// The internal container slot base of the open mod screen (`MOD_MENU_SLOT_BASE`
-    /// for a `ModMenuType`, `300` for a stock menu).
-    pub(in crate::game) fn native_screen_container_slot_base(&self) -> usize {
-        self.shown_native_screen()
-            .map_or(300, OpenNativeScreen::container_slot_base)
-    }
-    /// The container slots the open mod screen shows this frame.
-    pub(in crate::game) fn native_screen_slots(&self) -> Option<Vec<usize>> {
-        Some(
-            self.shown_native_screen()?
-                .visible_container_slots()
-                .collect(),
-        )
-    }
-    /// The first row of the player's inventory on the open mod screen.
-    pub(in crate::game) fn native_screen_inventory_y(&self) -> Option<f32> {
-        self.shown_native_screen().map(|s| s.layout().inventory_y)
-    }
-    /// The open mod screen's inventory's left column.
-    pub(in crate::game) fn native_screen_inventory_x(&self) -> Option<f32> {
-        self.shown_native_screen().map(|s| s.layout().inventory_x)
-    }
-    /// The open mod screen's width.
-    pub(in crate::game) fn native_screen_width(&self) -> Option<f32> {
-        self.shown_native_screen().map(|s| s.layout().width)
-    }
-    /// The zoom in effect while playing (a native mod's); the spyglass's own
-    /// view wins.
-    pub(in crate::game) fn native_zoom_now(&self) -> Option<mod_api::Zoom> {
-        if !self.playing() || self.scoping() {
-            return None;
-        }
-        let mut zoom = None;
-        self.native_zoom(&mut zoom);
-        let z = zoom?;
-        let factor = finite(z.factor, 1.0, 10.0);
-        (factor > 1.0).then_some(mod_api::Zoom {
-            factor,
-            smooth: z.smooth,
-            turn: if z.turn.is_finite() {
-                z.turn.clamp(0.05, 1.0)
-            } else {
-                1.0
-            },
-        })
-    }
-    /// The pose of native mods' camera shake in this frame (`native_camera_shake`),
-    /// none while not playing.
-    pub(in crate::game) fn native_shake_matrix(&self, partial: f32) -> glam::Mat4 {
-        if !self.playing() {
-            return glam::Mat4::IDENTITY;
-        }
-        let mut shake = Shake::default();
-        self.native_camera_shake(partial, &mut shake);
-        if shake == Shake::default() {
-            return glam::Mat4::IDENTITY;
-        }
-        shake_pose(bounded_shake(shake, self.screen_effect_scale()))
-    }
-
-    /// The camera native mods draw this frame from (`native_camera_pose`), starting from
-    /// `view`, vanilla's position, yaw and pitch.
-    pub(in crate::game) fn native_camera_pose_now(
-        &mut self,
-        partial: f32,
-        view: (glam::DVec3, f32, f32),
-    ) -> (glam::DVec3, f32, f32) {
-        let (mut position, mut yaw, mut pitch) = (view.0.to_array(), view.1, view.2);
-        self.native_camera_pose(partial, &mut position, &mut yaw, &mut pitch);
-        let posed = posed_camera(view, position, yaw, pitch);
-        if self.apply_requested_camera_type()
-            && let Some(refreshed) = self.camera_view(partial)
-        {
-            // Refresh vanilla components, not the listener's explicit overrides.
-            return (
-                if posed.0 == view.0 {
-                    refreshed.0
-                } else {
-                    posed.0
-                },
-                if posed.1 == view.1 {
-                    refreshed.1
-                } else {
-                    posed.1
-                },
-                if posed.2 == view.2 {
-                    refreshed.2
-                } else {
-                    posed.2
-                },
-            );
-        }
-        posed
-    }
-}

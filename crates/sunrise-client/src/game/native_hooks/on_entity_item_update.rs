@@ -74,14 +74,15 @@ impl Game<'_> {
             subject,
             index,
         };
-        crate::game::native_hooks::native_on_entity_item_update(mod_api::__private::OnEntityItemUpdateCall {
-            subject: mod_api::ItemEntityServerScope::new(&mut access, &item_id),
-            canceled: &mut canceled,
-        });
+        crate::game::native_hooks::native_on_entity_item_update(
+            mod_api::__private::OnEntityItemUpdateCall {
+                subject: mod_api::ItemEntityServerScope::new(&mut access, &item_id),
+                canceled: &mut canceled,
+            },
+        );
         canceled
     }
 }
-
 
 /// `IItemExtension.onEntityItemUpdate`: a dropped item entity is about to
 /// tick (`ItemEntity.tick`). Set `canceled` and its
@@ -91,7 +92,6 @@ pub(in crate::game) fn native_on_entity_item_update(
 ) {
     crate::game::native_hooks::fire::fire_on_entity_item_update(call);
 }
-
 
 pub(in crate::game) struct ResidentDroppedItem<'g, 'w> {
     pub(in crate::game) game: &'g mut Game<'w>,

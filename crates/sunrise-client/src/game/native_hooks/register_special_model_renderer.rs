@@ -1,8 +1,5 @@
 use super::*;
 
-
-
-
 /// Collect the mods' special item model factories once at client startup, before loading
 /// resources (NeoForge's `RegisterSpecialModelRendererEvent`). The last registration of a
 /// type wins over any earlier mod or builtin registration. Resource loads reuse the factories
@@ -16,10 +13,8 @@ pub(in crate::game) fn native_register_special_model_renderer(
     });
 }
 
-
 #[cfg(test)]
 mod tests {
-    use super::Game;
     use mod_api::__private::game::RegistrationContextNew;
     use mod_api::{
         ClientHost, Hooks, ModEntry, RegisterSpecialModelRendererEvent, RegistrationContext,

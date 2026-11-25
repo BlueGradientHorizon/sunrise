@@ -96,83 +96,6 @@ impl Game<'_> {
 }
 
 impl<'g> Game<'g> {
-    /// Draws inserted layers not drawn yet this frame, below `until` or to the end with `None`.
-    /// A skipped vanilla layer keeps its place; its neighbours draw at the next paint site.
-    /// Inserted layers don't draw while the HUD is hidden.
-    pub(in crate::game) fn draw_mod_gui_layers(
-        &mut self,
-        until: Option<VanillaGuiLayer>,
-        batch: &mut HudBatch,
-    ) {
-        let Some(next) = self.client.hud_layer_next else {
-            return;
-        };
-        let Some(order) = gui_layers::order() else {
-            return;
-        };
-        let slots = order.slots();
-        let end = until.map_or(slots.len(), |layer| order.position(layer));
-        // An earlier anchor can still paint later (e.g. deferred subtitles). Don't redraw slots.
-        for slot in &slots[next.min(end)..end] {
-            if slot.vanilla_anchor().is_none() {
-                self.run_gui_layer(slot.id(), batch, &slot.body, None, false);
-            }
-        }
-        // Past `until` itself: its paint site draws it, not the cursor.
-        self.client.hud_layer_next = Some(next.max(end + usize::from(until.is_some())));
-    }
-}
-
-impl<'g> Game<'g> {
-    /// Dispatches a vanilla slot after flushing inserted layers below it. Replacing or wrapping
-    /// a body leaves the slot's ID, order and hooks unchanged. The original body's eligibility
-    /// applies only to the original paint, including when a wrapper delegates to it.
-    pub(in crate::game) fn gui_layer(
-        &mut self,
-        layer: VanillaGuiLayer,
-        batch: &mut HudBatch,
-        draw: &mut dyn FnMut(&mut Game<'g>, &mut HudBatch),
-    ) {
-        self.draw_mod_gui_layers(Some(layer), batch);
-        self.run_gui_layer(
-            layer.id(),
-            batch,
-            gui_layers::order().map_or(&GuiLayerBody::Vanilla, |order| {
-                &order.slots()[order.position(layer)].body
-            }),
-            Some(draw),
-            matches!(
-                layer,
-                VanillaGuiLayer::PlayerHealth
-                    | VanillaGuiLayer::ArmorLevel
-                    | VanillaGuiLayer::FoodLevel
-                    | VanillaGuiLayer::VehicleHealth
-                    | VanillaGuiLayer::AirLevel
-            ),
-        );
-    }
-
-    pub(in crate::game) fn run_gui_layer(
-        &mut self,
-        id: &str,
-        batch: &mut HudBatch,
-        body: &GuiLayerBody,
-        vanilla: Option<&mut VanillaGuiDraw<'_, 'g>>,
-        status_row: bool,
-    ) {
-        let mut canceled = false;
-        self.native_gui_layer_pre(id, batch, &mut canceled);
-        if canceled {
-            return;
-        }
-        let start = batch.vertices.len();
-        self.draw_gui_layer_body(batch, body, vanilla);
-        if status_row {
-            self.keep_status_rows(&batch.vertices[start..], batch.width, batch.height);
-        }
-        self.native_gui_layer_post(id, batch);
-    }
-
     pub(in crate::game) fn draw_gui_layer_body(
         &mut self,
         batch: &mut HudBatch,
@@ -225,5 +148,77 @@ impl<'g> Game<'g> {
                 }
             }
         }
+    }
+    /// Draws inserted layers not drawn yet this frame, below `until` or to the end with `None`.
+    /// A skipped vanilla layer keeps its place; its neighbours draw at the next paint site.
+    /// Inserted layers don't draw while the HUD is hidden.
+    pub(in crate::game) fn draw_mod_gui_layers(
+        &mut self,
+        until: Option<VanillaGuiLayer>,
+        batch: &mut HudBatch,
+    ) {
+        let Some(next) = self.client.hud_layer_next else {
+            return;
+        };
+        let Some(order) = gui_layers::order() else {
+            return;
+        };
+        let slots = order.slots();
+        let end = until.map_or(slots.len(), |layer| order.position(layer));
+        // An earlier anchor can still paint later (e.g. deferred subtitles). Don't redraw slots.
+        for slot in &slots[next.min(end)..end] {
+            if slot.vanilla_anchor().is_none() {
+                self.run_gui_layer(slot.id(), batch, &slot.body, None, false);
+            }
+        }
+        // Past `until` itself: its paint site draws it, not the cursor.
+        self.client.hud_layer_next = Some(next.max(end + usize::from(until.is_some())));
+    }
+    /// Dispatches a vanilla slot after flushing inserted layers below it. Replacing or wrapping
+    /// a body leaves the slot's ID, order and hooks unchanged. The original body's eligibility
+    /// applies only to the original paint, including when a wrapper delegates to it.
+    pub(in crate::game) fn gui_layer(
+        &mut self,
+        layer: VanillaGuiLayer,
+        batch: &mut HudBatch,
+        draw: &mut dyn FnMut(&mut Game<'g>, &mut HudBatch),
+    ) {
+        self.draw_mod_gui_layers(Some(layer), batch);
+        self.run_gui_layer(
+            layer.id(),
+            batch,
+            gui_layers::order().map_or(&GuiLayerBody::Vanilla, |order| {
+                &order.slots()[order.position(layer)].body
+            }),
+            Some(draw),
+            matches!(
+                layer,
+                VanillaGuiLayer::PlayerHealth
+                    | VanillaGuiLayer::ArmorLevel
+                    | VanillaGuiLayer::FoodLevel
+                    | VanillaGuiLayer::VehicleHealth
+                    | VanillaGuiLayer::AirLevel
+            ),
+        );
+    }
+    pub(in crate::game) fn run_gui_layer(
+        &mut self,
+        id: &str,
+        batch: &mut HudBatch,
+        body: &GuiLayerBody,
+        vanilla: Option<&mut VanillaGuiDraw<'_, 'g>>,
+        status_row: bool,
+    ) {
+        let mut canceled = false;
+        self.native_gui_layer_pre(id, batch, &mut canceled);
+        if canceled {
+            return;
+        }
+        let start = batch.vertices.len();
+        self.draw_gui_layer_body(batch, body, vanilla);
+        if status_row {
+            self.keep_status_rows(&batch.vertices[start..], batch.width, batch.height);
+        }
+        self.native_gui_layer_post(id, batch);
     }
 }

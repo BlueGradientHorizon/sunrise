@@ -1,8 +1,5 @@
 use super::*;
 
-
-
-
 /// The colour resolvers block tints blend over the biomes around a block (NeoForge's
 /// `RegisterColorHandlersEvent.ColorResolvers`): `register(resolver)` adds the mod's own
 /// `BiomeColorResolver` and returns the `ColorResolver` its block tint sources pass to
@@ -12,6 +9,7 @@ pub(in crate::game) fn native_register_color_resolvers(
     context: &mod_api::RegistrationContext,
     resolvers: &mut mod_api::ColorResolverRegistry,
 ) {
-    crate::game::native_hooks::fire::fire_register_color_resolvers(context, |listen| resolvers.register_listener(listen));
+    crate::game::native_hooks::fire::fire_register_color_resolvers(context, |listen| {
+        resolvers.register_listener(listen)
+    });
 }
-

@@ -60,14 +60,16 @@ impl Game<'_> {
             mod_api::__private::game::block_entity_ref(level, [pos.0, pos.1, pos.2], generation);
         let mut access =
             ResidentBlockEntityAccess::new(self, Some(subject), Loan::Tick(Some(live_state)));
-        crate::game::native_hooks::native_block_entity_tick(kind, BlockEntityScope::new(&mut access));
+        crate::game::native_hooks::native_block_entity_tick(
+            kind,
+            BlockEntityScope::new(&mut access),
+        );
         self.world
             .block_entities
             .clear_ticker_warning(pos, generation);
         true
     }
 }
-
 
 /// Dispatch the one resident server ticker; the scope owns access to the Host.
 pub(in crate::game) fn native_block_entity_tick(
@@ -76,7 +78,6 @@ pub(in crate::game) fn native_block_entity_tick(
 ) {
     crate::game::native_hooks::fire::fire_block_entity_tick(kind, subject);
 }
-
 
 pub(in crate::game) fn valid_tick_subject(block: &str, entity: &EngineBlockEntity) -> bool {
     sunrise_client::block_entity_types::valid(block, entity.id()) == Some(true)

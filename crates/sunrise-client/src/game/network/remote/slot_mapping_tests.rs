@@ -3,7 +3,10 @@ use super::*;
 #[test]
 fn every_inventory_menu_slot_is_a_game_slot_and_45_is_the_off_hand() {
     // InventoryMenu: result, 2x2 grid, armour, 27 + 9 inventory slots, then the off hand.
-    assert_eq!(crate::game::inventory_screen_slot("inventory", 45), Some(504));
+    assert_eq!(
+        crate::game::inventory_screen_slot("inventory", 45),
+        Some(504)
+    );
     let mut seen = std::collections::HashSet::new();
     for slot in 0..46 {
         let internal = crate::game::inventory_screen_slot("inventory", slot);

@@ -1,5 +1,5 @@
 //! Client-only standalone model registration.
-use super::{ExecutionRole, Game, RegistrationContext};
+use super::{ExecutionRole, RegistrationContext};
 use mod_api::{
     __private::game::{RegistrationContextNew, StandaloneModelRegistration},
     Answered,
@@ -12,7 +12,10 @@ pub(in crate::game) fn collect_standalone_models(
         return None;
     }
     let mut registrations = Vec::new();
-    crate::game::native_hooks::native_standalone_models(&RegistrationContext::new(), &mut registrations);
+    crate::game::native_hooks::native_standalone_models(
+        &RegistrationContext::new(),
+        &mut registrations,
+    );
     Some(registrations)
 }
 

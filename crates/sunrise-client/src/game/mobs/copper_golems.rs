@@ -489,7 +489,6 @@ pub(in crate::game) fn golem_preserved_equipment(m: &mut Mob) -> Vec<ItemStack> 
     stacks
 }
 
-
 #[cfg(test)]
 #[path = "copper_golems/lifetime_tests.rs"]
 mod lifetime_tests;

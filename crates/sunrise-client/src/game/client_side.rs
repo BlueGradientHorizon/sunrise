@@ -2,18 +2,6 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::*;
 
-#[path = "mobs/spawner_client.rs"]
-pub(in crate::game) mod spawner_client;
-#[path = "mobs/allays_client.rs"]
-pub(in crate::game) mod allays_client;
-#[path = "blocks/composter_client.rs"]
-pub(in crate::game) mod composter_client;
-#[path = "modding/native_mob_draw.rs"]
-pub(in crate::game) mod native_mob_draw;
-#[path = "interface/random_textures.rs"]
-pub(in crate::game) mod random_textures;
-#[path = "side_ops/modapi_client.rs"]
-pub(in crate::game) mod modapi_client;
 #[path = "runtime/activity.rs"]
 pub(in crate::game) mod activity;
 #[path = "interface/advancements_screen.rs"]
@@ -22,6 +10,8 @@ pub(in crate::game) mod advancements_screen;
 pub(in crate::game) mod agent;
 #[path = "runtime/agent_settings.rs"]
 pub(in crate::game) mod agent_settings;
+#[path = "mobs/allays_client.rs"]
+pub(in crate::game) mod allays_client;
 #[path = "blocks/beacon.rs"]
 pub(in crate::game) mod beacon;
 #[cfg(test)]
@@ -71,6 +61,8 @@ pub(in crate::game) mod cloud_height_frame_tests;
 pub(in crate::game) mod code_of_conduct;
 #[path = "administration/command_blocks.rs"]
 pub(in crate::game) mod command_blocks;
+#[path = "blocks/composter_client.rs"]
+pub(in crate::game) mod composter_client;
 #[path = "interface/container_hooks.rs"]
 pub(in crate::game) mod container_hooks;
 #[path = "interface/container_layout.rs"]
@@ -224,6 +216,8 @@ pub(in crate::game) mod mod_raycast_tests;
 pub(in crate::game) mod mod_recipe_property_tests;
 #[path = "interface/mod_toasts.rs"]
 pub(in crate::game) mod mod_toasts;
+#[path = "side_ops/modapi_client.rs"]
+pub(in crate::game) mod modapi_client;
 #[cfg(test)]
 #[path = "modding/model_baking_completed_tests.rs"]
 pub(in crate::game) mod model_baking_completed_tests;
@@ -300,6 +294,8 @@ pub(in crate::game) mod native_mapping_presses;
 pub(in crate::game) mod native_menu_refs;
 #[path = "modding/native_menu_slot_kinds.rs"]
 pub(in crate::game) mod native_menu_slot_kinds;
+#[path = "modding/native_mob_draw.rs"]
+pub(in crate::game) mod native_mob_draw;
 #[path = "modding/native_model_3d.rs"]
 pub(in crate::game) mod native_model_3d;
 #[path = "modding/native_net.rs"]
@@ -403,6 +399,8 @@ pub(in crate::game) mod pumpkin;
 pub(in crate::game) mod pvp;
 #[path = "interface/quick_actions.rs"]
 pub(in crate::game) mod quick_actions;
+#[path = "interface/random_textures.rs"]
+pub(in crate::game) mod random_textures;
 #[path = "items/recipe_book.rs"]
 pub(in crate::game) mod recipe_book;
 #[cfg(test)]
@@ -487,6 +485,8 @@ pub(in crate::game) mod sign_outline_tests;
 pub(in crate::game) mod sniffers;
 #[path = "network/social.rs"]
 pub(in crate::game) mod social;
+#[path = "mobs/spawner_client.rs"]
+pub(in crate::game) mod spawner_client;
 #[cfg(test)]
 #[path = "mobs/spawner_client_tick_tests.rs"]
 pub(in crate::game) mod spawner_client_tick_tests;

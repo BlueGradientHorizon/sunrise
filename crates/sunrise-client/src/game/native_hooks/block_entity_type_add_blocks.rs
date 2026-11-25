@@ -1,7 +1,5 @@
 use super::*;
 
-
-
 pub(in crate::game) fn native_block_entity_type_add_blocks(
     context: &mod_api::RegistrationContext,
     types: &[mod_api::BlockEntityTypeKey],
@@ -9,4 +7,3 @@ pub(in crate::game) fn native_block_entity_type_add_blocks(
 ) {
     crate::game::native_hooks::fire::fire_block_entity_type_add_blocks(context, types, additions);
 }
-

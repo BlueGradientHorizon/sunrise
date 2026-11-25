@@ -1,8 +1,6 @@
 #[allow(unused_imports)]
 use super::*;
 
-
-
 /// Register damage value effects before loading enchantment content.
 pub(in crate::game) fn native_register_enchantment_damage_effects(
     context: &mod_api::RegistrationContext,
@@ -12,7 +10,6 @@ pub(in crate::game) fn native_register_enchantment_damage_effects(
         effects.register_listener(listen)
     });
 }
-
 
 #[cfg(test)]
 pub(in crate::game) mod tests {

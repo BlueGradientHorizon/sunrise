@@ -80,7 +80,7 @@ mod tests {
     fn the_server_is_published_while_open_to_lan() {
         use super::super::execution_role::ExecutionRole;
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::native_server_distances::tests::the_server_is_published_while_open_to_lan",
+            "game::server_side::native_server_distances::tests::the_server_is_published_while_open_to_lan",
             "SUNRISE_TEST_SERVER_PUBLISHED_CASE",
             &["published"],
         ) {

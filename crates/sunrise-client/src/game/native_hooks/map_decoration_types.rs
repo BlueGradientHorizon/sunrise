@@ -2,8 +2,6 @@ use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
 
-
-
 /// Collect the mods' map decoration types once at startup on each side.
 pub(in crate::game) fn native_map_decoration_types(
     context: &mod_api::RegistrationContext,
@@ -11,4 +9,3 @@ pub(in crate::game) fn native_map_decoration_types(
 ) {
     crate::game::native_hooks::fire::fire_map_decoration_types(context, types);
 }
-

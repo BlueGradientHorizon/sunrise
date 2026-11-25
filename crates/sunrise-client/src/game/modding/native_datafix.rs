@@ -12,7 +12,6 @@ impl Game<'_> {
     }
 }
 
-
 pub(in crate::game) fn upgrade_nbt(
     kind: NbtDataType,
     data_version: i32,
@@ -20,4 +19,3 @@ pub(in crate::game) fn upgrade_nbt(
 ) -> Result<Compound, NbtUpgradeError> {
     sunrise_world::datafix::upgrade_compound(kind, data_version, nbt)
 }
-

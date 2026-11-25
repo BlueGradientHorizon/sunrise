@@ -7,6 +7,8 @@ pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::Cli
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::ResidentClientPickEntity;
 #[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::native_can_rider_interact;
+#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::native_hooks::client_pick::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::{Dim, view_vector};

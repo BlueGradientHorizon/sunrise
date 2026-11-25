@@ -78,7 +78,10 @@ impl Game<'_> {
     /// The connection a level sound leaves out for `except` (`Level.playSound(except, ...)`):
     /// `Some(None)` for no one, and for a fake player, who has no client to leave out; `None`
     /// refuses the sound for a stale or client-side player.
-    pub(in crate::game) fn native_sound_except(&self, except: Option<PlayerRef>) -> Option<Option<u32>> {
+    pub(in crate::game) fn native_sound_except(
+        &self,
+        except: Option<PlayerRef>,
+    ) -> Option<Option<u32>> {
         let Some(player) = except else {
             return Some(None);
         };
@@ -287,7 +290,7 @@ mod tests {
         const SPEED: f64 = 0.125;
         const COUNT: i32 = 3;
         if run_fresh_cases(
-            "game::native_level_effects::tests::particle_batch_is_atomic_and_follows_level_delivery_order",
+            "game::server_side::native_level_effects::tests::particle_batch_is_atomic_and_follows_level_delivery_order",
             CASE,
             &["server", "client"],
         ) {

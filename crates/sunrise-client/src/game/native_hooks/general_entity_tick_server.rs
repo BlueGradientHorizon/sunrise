@@ -5,6 +5,8 @@ pub(in crate::game::server_side) use crate::game::native_hooks::general_entity_t
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::native_hooks::general_entity_tick::ResidentGeneralRow;
 #[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::native_hooks::general_entity_tick::native_general_entity_tick;
+#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::native_hooks::general_entity_tick::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::{

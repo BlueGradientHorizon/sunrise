@@ -2805,4 +2805,6 @@ pub(in crate::game) mod rider_tick_tests;
 pub(in crate::game) mod smoke_source_tests;
 
 #[allow(unused_imports)]
-pub(in crate::game) use inventory::{inventory_screen_slot, inventory_screen_slot_with_type, remote_station_kind};
+pub(in crate::game) use inventory::{
+    inventory_screen_slot, inventory_screen_slot_with_type, remote_station_kind,
+};

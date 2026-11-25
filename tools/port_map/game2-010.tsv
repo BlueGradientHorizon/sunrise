@@ -73,7 +73,7 @@ BaseCommandBlock.createSource	inline	crates/sunrise-client/src/game/administrati
 BaseCommandBlock.CloseableCommandBlockSource.acceptsSuccess	port	crates/sunrise-client/src/game/administration/command_blocks.rs::Game::command_block_success	track_output and send_command_feedback; a removed block gets no output
 BaseCommandBlock.CloseableCommandBlockSource.shouldInformAdmins	port	crates/sunrise-client/src/game/administration/command_blocks.rs::Game::command_block_success	command_block_output rule, with feedback on
 BaseSpawner.setEntityData	port	crates/sunrise-client/src/mobs/spawner.rs::Spawner::set_entity_id
-BaseSpawner.getOrCreateDisplayEntity	port	crates/sunrise-client/src/game/mobs/spawner.rs::Game::update_spawner_display	display mob made per spawner from its next spawn data
+BaseSpawner.getOrCreateDisplayEntity	port	crates/sunrise-client/src/game/mobs/spawner_client.rs::Game::update_spawner_display	display mob made per spawner from its next spawn data
 BaseSpawner.onEventTriggered	port	crates/sunrise-client/src/mobs/spawner.rs::Spawner::client_event	block event 1 resets the client's delay
 BaseSpawner.getOrCreateNextSpawnData	port	crates/sunrise-client/src/mobs/spawner.rs::Spawner::next_or_create	next spawn data picked once and kept
 Level.isInWorldBounds	port	crates/sunrise-world/src/level/update.rs::Sim::is_in_valid_bounds	height and horizontal range

@@ -1,8 +1,5 @@
 use super::*;
 
-
-
-
 /// Collect world-space debug renderers with their registering mods at each client
 /// renderer-list refresh (NeoForge's `RegisterDebugRenderersEvent`).
 pub(in crate::game) fn native_register_debug_renderers(
@@ -12,4 +9,3 @@ pub(in crate::game) fn native_register_debug_renderers(
 ) {
     crate::game::native_hooks::fire::fire_register_debug_renderers(context, entries, renderers);
 }
-

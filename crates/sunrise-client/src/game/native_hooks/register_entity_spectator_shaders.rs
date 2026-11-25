@@ -1,8 +1,5 @@
 use super::*;
 
-
-
-
 /// Collect typed client spectator post-effect registrations once at startup.
 pub(in crate::game) fn native_register_entity_spectator_shaders(
     context: &mod_api::RegistrationContext,
@@ -10,4 +7,3 @@ pub(in crate::game) fn native_register_entity_spectator_shaders(
 ) {
     crate::game::native_hooks::fire::fire_register_entity_spectator_shaders(context, shaders);
 }
-

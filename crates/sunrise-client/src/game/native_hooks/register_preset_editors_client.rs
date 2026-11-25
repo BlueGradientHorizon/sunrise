@@ -1,6 +1,8 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::register_preset_editors::native_register_preset_editors;
+#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::native_hooks::register_preset_editors::*;
 
 impl Game<'_> {

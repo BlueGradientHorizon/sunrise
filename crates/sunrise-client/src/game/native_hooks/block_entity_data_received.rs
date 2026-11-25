@@ -94,7 +94,6 @@ impl Game<'_> {
     }
 }
 
-
 /// Notice after a matching mod block entity has merged its synchronized tag.
 pub(in crate::game) fn native_block_entity_data_received(
     subject: mod_api::BlockEntityClientReadScope<'_>,
@@ -103,4 +102,3 @@ pub(in crate::game) fn native_block_entity_data_received(
 ) {
     crate::game::native_hooks::fire::fire_block_entity_data_received(subject, source, tag);
 }
-

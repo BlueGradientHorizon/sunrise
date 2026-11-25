@@ -5,6 +5,8 @@ pub(in crate::game::server_side) use crate::game::native_hooks::on_entity_item_u
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::native_hooks::on_entity_item_update::ResidentDroppedItem;
 #[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::native_hooks::on_entity_item_update::native_on_entity_item_update;
+#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::native_hooks::on_entity_item_update::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::native_ticks;
