@@ -3409,7 +3409,7 @@ def run_fix(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str], *, 
                     elif it.kind == "use":
                         norm_u = re.sub(r"\s+", "", it.name)
                         rm = re.search(rf"crate::game::(client_side|server_side)::{re.escape(top_name)}_(client|server)(?:::[A-Za-z0-9_:]+)?::([A-Za-z0-9_]+)$", norm_u)
-                        if rm:
+                        if rm and f"{top_name}_{rm.group(2)}" not in regular_mods:
                             cur_side = rm.group(2)
                             fname = rm.group(3)
                             want_keys = [

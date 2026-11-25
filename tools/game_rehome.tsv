@@ -1,0 +1,1049 @@
+kind	module	impl	name	cfg	current_side	target_side	reason
+fn	api_values	impl TryIntoApi for (sunrise_client::text::Text, u32)	try_into_api	-	server	client	role-reachability:client
+fn	api_values	impl TryIntoApi for sunrise_client::boss_overlay::ModBar	try_into_api	-	server	client	role-reachability:client
+fn	api_values	impl TryIntoEngine for mod_api::ItemDisplayContext	try_into_engine	-	server	client	role-reachability:client
+fn	api_values	impl super::Game<'_>	api_block_entity_submit	-	server	client	role-reachability:client
+fn	api_values	impl<T: TryIntoApi, E: Clone> TryIntoApi for Result<T, E>	try_into_api	-	server	client	role-reachability:client
+fn	armor_stands	impl ArmorStandAssets	apply_resources	-	server	client	role-reachability:client
+fn	armor_stands	impl ArmorStandAssets	trim_texture	-	server	client	role-reachability:client
+fn	armor_stands	impl Game<'_>	cit_worn_rule	-	server	client	role-reachability:client
+fn	armor_stands	impl Game<'_>	player_armor_layers	-	server	client	role-reachability:client
+fn	armor_stands	impl Game<'_>	stack_armor_layers	-	server	client	role-reachability:client
+fn	armor_stands	impl Game<'_>	worn_armor_layers	-	server	client	role-reachability:client
+fn	autosave	impl Game<'_>	save_game_with	-	server	game	role-reachability:common
+fn	banners	impl Game<'_>	banner_layers_at	-	game	client	role-reachability:client
+fn	banners	impl Game<'_>	map_banner_at	-	game	server	role-reachability:server
+fn	block_breaking	impl Game<'_>	break_block	-	client	server	role-reachability:server
+fn	block_breaking	impl Game<'_>	destroy_progress_event	-	client	server	role-reachability:server
+fn	block_breaking	impl Game<'_>	drop_bundle_content	-	client	server	role-reachability:server
+fn	block_breaking	impl Game<'_>	mine_block_with_held	-	client	server	role-reachability:server
+fn	block_entity_anims_common	impl Game<'_>	begin_block_entity_anims	-	game	client	role-reachability:client
+fn	block_entity_anims_common	impl Game<'_>	block_anim	-	game	client	role-reachability:client
+fn	block_entity_anims_common	impl Game<'_>	chest_lid	-	game	client	role-reachability:client
+fn	block_entity_anims_common	impl Game<'_>	finish_block_entity_anims	-	game	client	role-reachability:client
+fn	block_entity_anims_common	impl Game<'_>	tick_chest_lid	-	game	client	role-reachability:client
+fn	block_entity_ticks	impl Drop for Enclosing<'_, '_>	drop	-	game	server	role-reachability:server
+fn	block_entity_ticks	impl Game<'_>	block_ticking_area	-	game	server	role-reachability:server
+fn	block_entity_ticks	impl Game<'_>	tick_block_entities	-	game	server	role-reachability:server
+fn	block_entity_ticks	impl Game<'_>	tick_furnace	-	game	server	role-reachability:server
+fn	block_entity_ticks	impl Game<'_>	ticking_states	-	game	server	role-reachability:server
+fn	block_items	impl Game<'_>	apply_predicted_item	-	game	client	role-reachability:client
+fn	block_particles	impl Game<'_>	block_provider_options	-	server	client	retain-in-client-mirror
+fn	block_particles	impl Game<'_>	falling_block_face_sprite	-	server	client	retain-in-client-mirror
+fn	block_particles	impl Game<'_>	transform_particle	-	server	server	retain-in-server-mirror
+fn	boat_leads	impl Game<'_>	interact_boat_leash	-	client	server	role-reachability:server
+fn	brush	impl Game<'_>	brush_block	-	server	server	retain-in-server-mirror
+fn	brush	impl Game<'_>	brush_stroke	-	server	server	retain-in-server-mirror
+fn	brush	impl Game<'_>	brushable_geometry	-	server	client	retain-in-client-mirror
+fn	brush	impl Game<'_>	brushable_items	-	server	client	retain-in-client-mirror
+fn	brush	impl Game<'_>	brushable_tick	-	server	server	retain-in-server-mirror
+fn	brush	impl Game<'_>	brushing_completed	-	server	server	retain-in-server-mirror
+fn	brush	impl Game<'_>	tick_brush	-	server	server	retain-in-server-mirror
+fn	brush	impl Game<'_>	unpack_brush_loot	-	server	server	retain-in-server-mirror
+fn	bucket_empty	impl Game<'_>	predicted_bucket_contents	-	server	client	role-reachability:client
+fn	campfire	impl Game<'_>	campfire_geometry	-	server	client	role-reachability:client
+fn	campfire	impl Game<'_>	campfire_items	-	server	client	role-reachability:client
+fn	campfire_douse	impl Game<'_>	use_campfire_douse	-	server	server	retain-in-server-mirror
+fn	cauldrons	impl Game<'_>	cauldron_outcome	-	game	client	role-reachability:client
+fn	cauldrons	impl Game<'_>	use_on_cauldron	-	game	server	role-reachability:server
+fn	chat_common	impl Game<'_>	set_allow_commands	-	game	server	role-reachability:server
+fn	chat_common	impl Game<'_>	translate_with_fallback	-	game	client	role-reachability:client
+fn	client_cracks	impl Game<'_>	set_client_mining	-	client	server	role-reachability:server
+fn	client_cracks	impl Game<'_>	update_local_crack	-	client	server	role-reachability:server
+fn	clocks	impl Game<'_>	advance_clock	-	game	server	role-reachability:server
+fn	clocks	impl Game<'_>	hub_clock_snapshot	-	game	server	role-reachability:server
+fn	clocks	impl Game<'_>	network_clock_rate	-	game	server	role-reachability:server
+fn	commands_common	impl Game<'_>	block_entity_tag	-	game	server	role-reachability:server
+fn	consume	impl Game<'_>	portal_particles	-	server	client	role-reachability:client
+fn	control	impl Game<'_>	control_save	-	client	server	role-reachability:server
+fn	copper_golems	impl Game<'_>	golem_chest_open	-	client	server	role-reachability:server
+fn	copper_golems	impl Game<'_>	golem_chest_slot	-	client	server	role-reachability:server
+fn	copper_golems	impl Game<'_>	interact_copper_golem	-	client	server	role-reachability:server
+fn	copper_golems	impl Game<'_>	receive_gift	-	client	server	role-reachability:server
+fn	creative_screen	impl Game<'_>	click_creative	-	client	client	retain-in-client-mirror
+fn	creative_screen	impl Game<'_>	creative_display_stack	-	client	client	retain-in-client-mirror
+fn	creative_screen	impl Game<'_>	creative_inventory_open	-	client	client	retain-in-client-mirror
+fn	creative_screen	impl Game<'_>	creative_page_button	-	client	client	retain-in-client-mirror
+fn	creative_screen	impl Game<'_>	creative_search_click	-	client	client	retain-in-client-mirror
+fn	creative_screen	impl Game<'_>	creative_tab_open	-	client	client	retain-in-client-mirror
+fn	creative_screen	impl Game<'_>	creative_tab_title	-	client	client	retain-in-client-mirror
+fn	creative_screen	impl Game<'_>	creative_tooltip_tabs	-	client	client	retain-in-client-mirror
+fn	creative_screen	impl Game<'_>	creative_trash_hovered	-	client	client	retain-in-client-mirror
+fn	creative_screen	impl Game<'_>	draw_creative	-	client	client	retain-in-client-mirror
+fn	creative_screen	impl Game<'_>	draw_creative_pages	-	client	client	retain-in-client-mirror
+fn	creative_screen	impl Game<'_>	tooltip	-	client	client	retain-in-client-mirror
+fn	creatures_client	impl Game<'_>	interact_armadillo	-	client	server	role-reachability:server
+fn	cushions	impl Game<'_>	state_suffocating	-	server	client	role-reachability:client
+fn	cushions	impl Game<'_>	state_view_blocking	-	server	client	role-reachability:client
+fn	debug_lines	impl Game<'_>	crosshair_entity_type	-	client	client	retain-in-client-mirror
+fn	debug_lines	impl Game<'_>	debug_biome_line	-	client	client	retain-in-client-mirror
+fn	debug_lines	impl Game<'_>	debug_block_hit	-	client	client	retain-in-client-mirror
+fn	debug_lines	impl Game<'_>	debug_chunk_render_line	-	client	client	retain-in-client-mirror
+fn	debug_lines	impl Game<'_>	debug_chunk_source_lines	-	client	client	retain-in-client-mirror
+fn	debug_lines	impl Game<'_>	debug_entity_render_line	-	client	client	retain-in-client-mirror
+fn	debug_lines	impl Game<'_>	debug_entry_lines	-	client	client	retain-in-client-mirror
+fn	debug_lines	impl Game<'_>	debug_feet	-	client	client	retain-in-client-mirror
+fn	debug_lines	impl Game<'_>	debug_fluid_hit	-	client	client	retain-in-client-mirror
+fn	debug_lines	impl Game<'_>	debug_heightmap_lines	-	client	client	retain-in-client-mirror
+fn	debug_lines	impl Game<'_>	debug_looking_at_block	-	client	client	retain-in-client-mirror
+fn	debug_lines	impl Game<'_>	debug_looking_at_fluid	-	client	client	retain-in-client-mirror
+fn	debug_lines	impl Game<'_>	fluid_state	-	client	client	retain-in-client-mirror
+fn	debug_lines	impl Game<'_>	server_debug	-	client	client	retain-in-client-mirror
+fn	decorated_pot	impl Game<'_>	pot_tag	-	server	server	retain-in-server-mirror
+fn	decorated_pot	impl Game<'_>	use_decorated_pot	-	server	server	retain-in-server-mirror
+fn	deflect	impl Game<'_>	deflect	-	client	server	role-reachability:server
+fn	deflect	impl Game<'_>	shulker_bullet_hurt	-	client	server	role-reachability:server
+fn	developer_launch	impl Game<'_>	connect_local	-	game	client	role-reachability:client
+fn	developer_launch	impl Game<'_>	join_server	-	game	client	role-reachability:client
+fn	developer_launch	impl Game<'_>	lan_host	-	game	server	role-reachability:server
+fn	durability	impl Game<'_>	damage_living_stack	-	game	server	role-reachability:server
+fn	enchant_effects	impl Game<'_>	apply_piercing_effect	-	client	server	role-reachability:server
+fn	end_client	impl Game<'_>	throw_ender_eye	-	client	server	role-reachability:server
+fn	end_client	impl Game<'_>	tick_eyes	-	client	server	role-reachability:server
+fn	entity_initialization	impl Game<'_>	forget_remote_entity_construction	-	server	client	role-reachability:client
+fn	entity_sections	impl Game<'_>	client_entity_sections_stepped	-	game	client	role-reachability:client
+fn	entity_sections	impl Game<'_>	handle_packet	-	game	client	role-reachability:client
+fn	entity_sections	impl Game<'_>	tick_projectiles	-	game	server	role-reachability:server
+fn	entity_sections	impl LiveSectionObserver	new	-	game	server	role-reachability:server
+fn	entity_sections::observer_cache	impl ObserverCache	begin	-	game	server	role-reachability:server
+fn	entity_type_rows	impl EntityTypeRows	contains	-	game	client	role-reachability:client
+fn	entity_type_rows	impl EntityTypeRows	dimensions	-	game	client	role-reachability:client
+fn	entity_type_rows	impl EntityTypeRows	is_living	-	game	client	role-reachability:client
+fn	fireworks	impl Game<'_>	advance_rocket	-	game	server	role-reachability:server
+fn	fireworks	impl Game<'_>	explode_rocket	-	game	server	role-reachability:server
+fn	fireworks	impl Game<'_>	rocket_blast_player	-	game	server	role-reachability:server
+fn	fireworks	impl Game<'_>	rocket_owner	-	game	server	role-reachability:server
+fn	fireworks	impl Game<'_>	rocket_splash	-	game	server	role-reachability:server
+fn	fireworks	impl Game<'_>	rocket_struck	-	game	server	role-reachability:server
+fn	fireworks	impl Game<'_>	shooter_who	-	game	server	role-reachability:server
+fn	fireworks	impl Game<'_>	store_rocket_back	-	game	server	role-reachability:server
+fn	fireworks	impl Game<'_>	tick_rocket	-	game	server	role-reachability:server
+fn	fireworks	impl Game<'_>	tick_rockets	-	game	server	role-reachability:server
+fn	fireworks	impl Rocket	motion	-	game	server	role-reachability:server
+fn	fireworks	impl Rocket	update_rotation	-	game	server	role-reachability:server
+fn	fireworks::impact	impl Game<'_>	rocket_impact	-	game	server	role-reachability:server
+fn	fishing_client	impl Game<'_>	send_particles	-	client	server	role-reachability:server
+fn	fluid_interactions	impl Game<'_>	install_fluid_interactions	-	server	server	retain-in-server-mirror
+fn	game_mode_common	impl Game<'_>	can_hurt_player	-	game	client	role-reachability:client
+fn	game_mode_common	impl Game<'_>	may_use_on	-	game	server	role-reachability:server
+fn	game_mode_common	impl Game<'_>	stack_can_place_on_in_adventure	-	game	client	role-reachability:client
+fn	ghasts	impl Game<'_>	interact_happy_ghast	-	client	server	role-reachability:server
+fn	growth	impl Game<'_>	install_live_features	-	client	server	role-reachability:server
+fn	growth	impl Game<'_>	shears_crop	-	client	server	role-reachability:server
+fn	growth	impl Game<'_>	use_bone_meal	-	client	server	role-reachability:server
+fn	held_items	impl Game<'_>	attack_damage	-	game	server	role-reachability:server
+fn	held_items	impl Game<'_>	held_range_allows	-	game	server	role-reachability:server
+fn	held_items	impl Game<'_>	wear_glider	-	game	server	role-reachability:server
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	animation_time	-	game	client	role-reachability:client
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	block	-	game	client	role-reachability:client
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	cube	-	game	client	role-reachability:client
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	fluid_box	-	game	client	role-reachability:client
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	game_time	-	game	client	role-reachability:client
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	item	-	game	client	role-reachability:client
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	keep	-	game	client	role-reachability:client
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	level_light	-	game	client	role-reachability:client
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	light	-	game	client	role-reachability:client
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	model	-	game	client	role-reachability:client
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	model_part	-	game	client	role-reachability:client
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	partial	-	game	client	role-reachability:client
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	pop	-	game	client	role-reachability:client
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	push	-	game	client	role-reachability:client
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	quad	-	game	client	role-reachability:client
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	rotate_about	-	game	client	role-reachability:client
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	scale	-	game	client	role-reachability:client
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	set_light	-	game	client	role-reachability:client
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	spin	-	game	client	role-reachability:client
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	still	-	game	client	role-reachability:client
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	terrain_model	-	game	client	role-reachability:client
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	text	-	game	client	role-reachability:client
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	text_width	-	game	client	role-reachability:client
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	translate	-	game	client	role-reachability:client
+fn	host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	unlit	-	game	client	role-reachability:client
+fn	host::draw	impl CameraDrawContext for GameCameraDrawContext<'_, '_>	quad	-	game	client	role-reachability:client
+fn	host::draw	impl CameraDrawContext for GameCameraDrawContext<'_, '_>	sprite	-	game	client	role-reachability:client
+fn	host::draw	impl Drop for GameDrawContext<'_, '_>	drop	-	game	client	role-reachability:client
+fn	host::draw	impl HandDrawContext for GameBlockEntityDrawContext<'_, '_>	render_arm	-	game	client	role-reachability:client
+fn	host::draw	impl TooltipFont for EngineTooltipFont<'_>	id	-	game	client	role-reachability:client
+fn	host::draw	impl TooltipFont for EngineTooltipFont<'_>	line_height	-	game	client	role-reachability:client
+fn	host::draw	impl TooltipFont for EngineTooltipFont<'_>	split	-	game	client	role-reachability:client
+fn	host::draw	impl TooltipFont for EngineTooltipFont<'_>	width	-	game	client	role-reachability:client
+fn	host::draw	impl WorldDrawContext for GameWorldDrawContext<'_, '_>	draw_instance_group	-	game	client	role-reachability:client
+fn	host::draw	impl WorldDrawContext for GameWorldDrawContext<'_, '_>	draw_model_instances	-	game	client	role-reachability:client
+fn	host::draw	impl WorldDrawContext for GameWorldDrawContext<'_, '_>	lines	-	game	client	role-reachability:client
+fn	host::draw	impl WorldDrawContext for GameWorldDrawContext<'_, '_>	name_tag	-	game	client	role-reachability:client
+fn	host::draw	impl WorldDrawContext for GameWorldDrawContext<'_, '_>	pipeline_quads	-	game	client	role-reachability:client
+fn	host::draw	impl WorldDrawContext for GameWorldDrawContext<'_, '_>	quads	-	game	client	role-reachability:client
+fn	host::draw	impl WorldDrawContext for GameWorldDrawContext<'_, '_>	usage	-	game	client	role-reachability:client
+fn	host::draw	impl<'a, 'g> GameBlockEntityDrawContext<'a, 'g>	new	-	game	client	role-reachability:client
+fn	host::draw	impl<'a, 'g> GameCameraDrawContext<'a, 'g>	new	-	game	client	role-reachability:client
+fn	host::draw	impl<'a, 'g> GameDrawContext<'a, 'g>	new	-	game	client	role-reachability:client
+fn	host::draw	impl<'a, 'g> GameDrawContext<'a, 'g>	stage	-	game	client	role-reachability:client
+fn	host::draw	impl<'a, 'g> GameDrawContext<'a, 'g>	with_active_tooltip_font	-	game	client	role-reachability:client
+fn	host::draw	impl<'a, 'g> GameWorldDrawContext<'a, 'g>	new	-	game	client	role-reachability:client
+fn	host::draw	impl<'a> EngineTooltipFont<'a>	name	-	game	client	role-reachability:client
+fn	host::draw	impl<'a> EngineTooltipFont<'a>	new	-	game	client	role-reachability:client
+fn	host::services	impl RenderAssets for Game<'_>	animation	-	game	client	role-reachability:client
+fn	host::services	impl RenderAssets for Game<'_>	baked_model	-	game	client	role-reachability:client
+fn	host::services	impl RenderAssets for Game<'_>	block_state_model	-	game	client	role-reachability:client
+fn	host::services	impl RenderAssets for Game<'_>	block_state_models	-	game	client	role-reachability:client
+fn	host::services	impl RenderAssets for Game<'_>	model	-	game	client	role-reachability:client
+fn	host::services	impl RenderAssets for Game<'_>	render_pipeline	-	game	client	role-reachability:client
+fn	infiniburn	impl Game<'_>	enter_opened_dim	-	server	server	retain-in-server-mirror
+fn	infiniburn	impl Game<'_>	finish_remote_level	-	server	client	retain-in-client-mirror
+fn	infiniburn	impl Game<'_>	refresh_infiniburn	-	server	server	retain-in-server-mirror
+fn	inventory_slots	impl Game<'_>	craft_recipe	-	client	client	retain-in-client-mirror
+fn	inventory_slots	impl Game<'_>	craft_result	-	client	client	retain-in-client-mirror
+fn	inventory_slots	impl Game<'_>	drag_view	-	client	client	retain-in-client-mirror
+fn	inventory_slots	impl Game<'_>	draw_carried	-	client	client	retain-in-client-mirror
+fn	inventory_slots	impl Game<'_>	draw_hovered_slot_highlight	-	client	client	retain-in-client-mirror
+fn	inventory_slots	impl Game<'_>	draw_inventory	-	client	client	retain-in-client-mirror
+fn	inventory_slots	impl Game<'_>	draw_inventory_slots	-	client	client	retain-in-client-mirror
+fn	inventory_slots	impl Game<'_>	draw_item	-	client	client	retain-in-client-mirror
+fn	inventory_slots	impl Game<'_>	draw_item_decorations	-	client	client	retain-in-client-mirror
+fn	inventory_slots	impl Game<'_>	draw_slot_highlight	-	client	client	retain-in-client-mirror
+fn	inventory_slots	impl Game<'_>	draw_slot_item	-	client	client	retain-in-client-mirror
+fn	inventory_slots	impl Game<'_>	first_hovered	-	client	client	retain-in-client-mirror
+fn	inventory_slots	impl Game<'_>	inventory_origin	-	client	client	retain-in-client-mirror
+fn	inventory_slots	impl Game<'_>	inventory_origin_unbuilt	-	client	client	retain-in-client-mirror
+fn	inventory_slots	impl Game<'_>	quick_craft_accepts	-	client	client	retain-in-client-mirror
+fn	inventory_slots	impl Game<'_>	slot_at	-	client	client	retain-in-client-mirror
+fn	inventory_slots	impl Game<'_>	slot_at_unbuilt	-	client	client	retain-in-client-mirror
+fn	inventory_slots	impl Game<'_>	slot_count	-	client	client	retain-in-client-mirror
+fn	inventory_slots	impl Game<'_>	slot_mut	-	client	client	retain-in-client-mirror
+fn	inventory_slots	impl Game<'_>	slot_position	-	client	client	retain-in-client-mirror
+fn	inventory_slots	impl Game<'_>	slot_view	-	client	client	retain-in-client-mirror
+fn	inventory_slots	impl Game<'_>	slots	-	client	client	retain-in-client-mirror
+fn	item_abilities	impl Game<'_>	held_shears	-	game	server	role-reachability:server
+fn	item_actions	impl Game<'_>	bucket_empty_cancelled	-	server	server	retain-in-server-mirror
+fn	item_actions	impl Game<'_>	interact_entity	-	server	server	retain-in-server-mirror
+fn	item_actions	impl Game<'_>	same_item_and_count	-	server	server	retain-in-server-mirror
+fn	item_actions	impl Game<'_>	use_context	-	server	server	retain-in-server-mirror
+fn	item_actions	impl Game<'_>	use_item	-	server	server	retain-in-server-mirror
+fn	item_actions	impl Game<'_>	use_item_as_player	-	server	server	retain-in-server-mirror
+fn	item_entity_spawn	impl Game<'_>	push_item_entity	-	server	server	retain-in-server-mirror
+fn	item_use	impl Game<'_>	finish_result	-	server	client	role-reachability:client
+fn	item_use	impl Game<'_>	remote_use_item_finished	-	server	client	role-reachability:client
+fn	jigsaw_blocks	impl Game<'_>	lan_set_jigsaw_block	-	game	server	role-reachability:server
+fn	lan	impl Game<'_>	lan_port	-	server	client	role-reachability:client
+fn	lan_actions	impl GuestPlay	decay_recipe_checks	-	game	server	role-reachability:server
+fn	lan_actions	impl GuestPlay	dig_ended	-	game	server	role-reachability:server
+fn	lan_actions	impl GuestPlay	dig_start_for	-	game	server	role-reachability:server
+fn	lan_actions	impl GuestPlay	recipe_check_available	-	game	server	role-reachability:server
+fn	lan_actions	impl Rules for ItemRules<'_>	enchantments	-	game	server	role-reachability:server
+fn	lan_actions	impl Rules for ItemRules<'_>	items	-	game	server	role-reachability:server
+fn	lan_actions	impl Rules for ItemRules<'_>	max_stack	-	game	server	role-reachability:server
+fn	lan_actions	impl Rules for ItemRules<'_>	mod_container_insert_rule	-	game	server	role-reachability:server
+fn	lan_actions	impl Rules for ItemRules<'_>	slot_rules	-	game	server	role-reachability:server
+fn	lan_actions	impl Rules for ItemRules<'_>	stacked	-	game	server	role-reachability:server
+fn	lan_actions::attack_checks	impl Game<'_>	guest_attack_stops	-	game	server	role-reachability:server
+fn	lan_actions::attack_checks	impl Game<'_>	holds_piercing_weapon	-	game	server	role-reachability:server
+fn	lan_actions::commands	impl Game<'_>	guest_try_suggestions	-	game	server	role-reachability:server
+fn	lan_actions::commands	impl Game<'_>	run_guest_command	-	game	server	role-reachability:server
+fn	lan_actions::commands	impl Game<'_>	run_guest_commands	-	game	server	role-reachability:server
+fn	lan_actions::effects	impl Game<'_>	lan_living_flags	-	game	server	role-reachability:server
+fn	lan_actions::effects	impl Game<'_>	lan_swing_back	-	game	server	role-reachability:server
+fn	lan_actions::effects	impl Game<'_>	lan_swings	-	game	server	role-reachability:server
+fn	lan_actions::effects	impl Game<'_>	send_captured_level_sound	-	game	server	role-reachability:server
+fn	lan_actions::guest_body	impl Game<'_>	record_guest_motion_combat	-	game	server	role-reachability:server
+fn	lan_actions::hub_click	impl Game<'_>	with_lan_lifted	-	game	server	role-reachability:server
+fn	lan_actions::interaction	impl Game<'_>	block_between	-	game	server	role-reachability:server
+fn	lan_actions::interaction	impl Game<'_>	guest_attack	-	game	server	role-reachability:server
+fn	lan_actions::interaction	impl Game<'_>	guest_target_box	-	game	server	role-reachability:server
+fn	lan_actions::interaction	impl Game<'_>	guest_tick_death	-	game	server	role-reachability:server
+fn	lan_actions::interaction	impl Game<'_>	inside_border	-	game	server	role-reachability:server
+fn	lan_actions::interaction	impl Game<'_>	look_at_entity	-	game	server	role-reachability:server
+fn	lan_actions::menus	impl Game<'_>	chest_vehicle_still_valid	-	game	server	role-reachability:server
+fn	lan_actions::menus	impl Game<'_>	container_menu_valid	-	game	server	role-reachability:server
+fn	lan_actions::menus	impl Game<'_>	guest_close_menus_for_travel	-	game	server	role-reachability:server
+fn	lan_actions::menus	impl Game<'_>	guest_disconnected	-	game	server	role-reachability:server
+fn	lan_actions::menus	impl Game<'_>	guest_menu_still_valid	-	game	server	role-reachability:server
+fn	lan_actions::menus	impl Game<'_>	guest_validate_menu	-	game	server	role-reachability:server
+fn	lan_actions::menus	impl Game<'_>	lan_containers_tick	-	game	server	role-reachability:server
+fn	lan_actions::mining	impl Game<'_>	guest_delayed_destroy	-	game	server	role-reachability:server
+fn	lan_actions::mining	impl Game<'_>	guest_destroy	-	game	server	role-reachability:server
+fn	lan_actions::mining	impl Game<'_>	guest_destroy_at	-	game	server	role-reachability:server
+fn	lan_actions::mining	impl Game<'_>	guest_dig_feedback	-	game	server	role-reachability:server
+fn	lan_actions::mining	impl Game<'_>	guest_stop_digging	-	game	server	role-reachability:server
+fn	lan_actions::movement	impl Game<'_>	guest_can_glide	-	game	server	role-reachability:server
+fn	lan_actions::movement	impl Game<'_>	guest_glide_tick	-	game	server	role-reachability:server
+fn	lan_actions::movement	impl Game<'_>	in_wall	-	game	server	role-reachability:server
+fn	lan_actions::movement	impl Game<'_>	lan_start_gliding	-	game	server	role-reachability:server
+fn	lan_actions::movement	impl Game<'_>	lan_start_riding_jump	-	game	server	role-reachability:server
+fn	lan_actions::packets	impl Game<'_>	build_limit_message	-	game	server	role-reachability:server
+fn	lan_actions::packets	impl Game<'_>	creative_stack_valid	-	game	server	role-reachability:server
+fn	lan_actions::packets	impl Game<'_>	guest_pick_item	-	game	server	role-reachability:server
+fn	lan_actions::packets	impl Game<'_>	guest_spectate_teleport	-	game	server	role-reachability:server
+fn	lan_actions::packets	impl Game<'_>	item_from_network	-	game	server	role-reachability:server
+fn	lan_actions::packets	impl Game<'_>	lan_default_container_click	-	game	server	role-reachability:server
+fn	lan_actions::packets	impl Game<'_>	lan_flight_toggled	-	game	server	role-reachability:server
+fn	lan_actions::packets	impl Game<'_>	lan_guest_packet	-	game	server	role-reachability:server
+fn	lan_actions::packets	impl Game<'_>	level_entity_tag	-	game	server	role-reachability:server
+fn	lan_actions::packets	impl Game<'_>	spawn_protection_message	-	game	server	role-reachability:server
+fn	lan_actions::packets	impl Game<'_>	under_spawn_protection	-	game	server	role-reachability:server
+fn	lan_actions::packets	impl Game<'_>	was_block_placement_attempt	-	game	server	role-reachability:server
+fn	lan_actions::pickups	impl Game<'_>	guest_arrows	-	game	server	role-reachability:server
+fn	lan_actions::respawn	impl Game<'_>	commit_player_respawn	-	game	server	role-reachability:server
+fn	lan_actions::respawn	impl Game<'_>	guest_respawn	-	game	server	role-reachability:server
+fn	lan_actions::respawn	impl Game<'_>	remove_old_player_for_clone	-	game	server	role-reachability:server
+fn	lan_actions::sleep	impl Game<'_>	announce_guest_advancements	-	game	server	role-reachability:server
+fn	lan_actions::sleep	impl Game<'_>	enough_slept	-	game	server	role-reachability:server
+fn	lan_actions::sleep	impl Game<'_>	guest_counts_for_sleep	-	game	server	role-reachability:server
+fn	lan_actions::sleep	impl Game<'_>	guest_sleep_tick	-	game	server	role-reachability:server
+fn	lan_actions::sleep	impl Game<'_>	sleepers_needed	-	game	server	role-reachability:server
+fn	lan_actions::sleep	impl Game<'_>	wake_guest	-	game	server	role-reachability:server
+fn	lan_actions::sleep	impl Game<'_>	wake_guest_from	-	game	server	role-reachability:server
+fn	lan_actions::sleep	impl Game<'_>	wake_guests	-	game	server	role-reachability:server
+fn	lan_actions::sleep	impl Game<'_>	wake_woken_guests	-	game	server	role-reachability:server
+fn	lan_actions::tick	impl Game<'_>	advance_guest_entity_clock	-	game	server	role-reachability:server
+fn	lan_actions::tick	impl Game<'_>	finish_guest_connection_level	-	game	server	role-reachability:server
+fn	lan_actions::tick	impl Game<'_>	guest_body_ticks	-	game	server	role-reachability:server
+fn	lan_actions::tick	impl Game<'_>	guest_player_tick	-	game	server	role-reachability:server
+fn	lan_actions::tick	impl Game<'_>	server_spin_attack	-	game	server	role-reachability:server
+fn	lan_actions::tick	impl Game<'_>	tick_guest_connection	-	game	server	role-reachability:server
+fn	lan_actions::tick	impl Game<'_>	tick_level_guests	-	game	server	role-reachability:server
+fn	lan_actions::turns	impl Game<'_>	guest_hurt_sound	-	server	game	role-reachability:common
+fn	lan_mount_menu	impl Game<'_>	lan_mount_valid	-	game	server	role-reachability:server
+fn	lan_op	impl Game<'_>	lan_op_control	-	game	client	role-reachability:client
+fn	lan_particles	impl Game<'_>	vibration_destination	-	server	client	role-reachability:client
+fn	lan_stations	impl Game<'_>	lan_lectern_valid	-	client	server	role-reachability:server
+fn	lan_stations	impl Game<'_>	lan_station_closed	-	client	server	role-reachability:server
+fn	lan_stations	impl Game<'_>	lan_station_own_slots	-	client	server	role-reachability:server
+fn	lan_stations	impl Game<'_>	lan_station_valid	-	client	server	role-reachability:server
+fn	lan_trade_decisions	impl Game<'_>	apply_merchant_take	-	server	server	retain-in-server-mirror
+fn	lan_trade_decisions	impl Game<'_>	commit_merchant_effect	-	server	server	retain-in-server-mirror
+fn	lan_trade_decisions	impl Game<'_>	journal_trade_sequences	-	server	server	retain-in-server-mirror
+fn	lan_trade_decisions	impl Game<'_>	lan_merchant_click	-	server	server	retain-in-server-mirror
+fn	lan_trade_decisions	impl Game<'_>	menu_click_in_progress	-	server	server	retain-in-server-mirror
+fn	lan_trade_decisions	impl Game<'_>	resend_merchant_take	-	server	server	retain-in-server-mirror
+fn	lan_trade_decisions	impl Game<'_>	run_merchant_take	-	server	server	retain-in-server-mirror
+fn	lan_trade_decisions	impl Game<'_>	send_merchant_take	-	server	server	retain-in-server-mirror
+fn	lan_trade_decisions	impl Journal	merge	-	server	server	retain-in-server-mirror
+fn	lan_trade_decisions	impl Journal	rollback	-	server	server	retain-in-server-mirror
+fn	lan_trade_decisions	impl TakeReads	fresh	-	server	server	retain-in-server-mirror
+fn	launch_options	impl Options	is_client_start	-	game	client	role-reachability:client
+fn	launch_options	impl Options	time_limit	-	game	client	role-reachability:client
+fn	leads	impl Game<'_>	interact_leash_with_item_context	-	client	server	role-reachability:server
+fn	leads	impl Game<'_>	use_knot	-	client	server	role-reachability:server
+fn	level_sounds	impl Game<'_>	play_client_player_sound	-	server	client	role-reachability:client
+fn	light_emission	impl Game<'_>	ask_updated_light_emission	-	game	client	role-reachability:client
+fn	llamas	impl Game<'_>	interact_llama	-	client	server	role-reachability:server
+fn	llamas	impl Game<'_>	llama_sound	-	client	server	role-reachability:server
+fn	maps	impl Game<'_>	held_map	-	server	client	role-reachability:client
+fn	maps	impl Game<'_>	maps_status	-	server	client	role-reachability:client
+fn	maps	impl Game<'_>	mod_map_decorations	-	server	client	role-reachability:client
+fn	maps	impl Game<'_>	two_handed_map_geometry	-	server	client	role-reachability:client
+fn	maps	impl Game<'_>	use_lodestone_compass	-	client	server	role-reachability:server
+fn	memory_common	impl Drop for ServerMemoryRequest	drop	-	game	server	role-reachability:server
+fn	memory_common	impl Generation	of	-	game	server	role-reachability:server
+fn	memory_common	impl MemoryCancellation	cancel	-	game	client	role-reachability:client
+fn	memory_common	impl PendingMemory	cancel	-	game	client	role-reachability:client
+fn	memory_common	impl PendingMemory	poll	-	game	client	role-reachability:client
+fn	memory_common	impl PendingMemory	spawn	-	game	client	role-reachability:client
+fn	memory_common	impl ServerMemoryRequest	collect	-	game	server	role-reachability:server
+fn	menu_clicks	impl Game<'_>	anvil_menu_session	-	client	client	retain-in-client-mirror
+fn	menu_clicks	impl Game<'_>	click_inventory	-	client	client	retain-in-client-mirror
+fn	menu_clicks	impl Game<'_>	click_open_inventory	-	client	client	retain-in-client-mirror
+fn	menu_clicks	impl Game<'_>	creative_display_click	-	client	client	retain-in-client-mirror
+fn	menu_clicks	impl Game<'_>	deliver_client_anvil_update	-	client	client	retain-in-client-mirror
+fn	menu_clicks	impl Game<'_>	hovered_inventory_slot	-	client	client	retain-in-client-mirror
+fn	menu_clicks	impl Game<'_>	menu_ops	-	client	client	retain-in-client-mirror
+fn	menu_clicks	impl Game<'_>	menu_session_with_game	-	client	client	retain-in-client-mirror
+fn	menu_clicks	impl Game<'_>	reset_inventory_clicks	-	client	client	retain-in-client-mirror
+fn	menu_clicks	impl Game<'_>	run_client_anvil_click	-	client	client	retain-in-client-mirror
+fn	minecart_moves	impl Game<'_>	move_cart	-	server	server	retain-in-server-mirror
+fn	minecarts	impl CartIndex	carts_near	-	game	server	role-reachability:server
+fn	minecarts	impl CartIndex	forget_carts	-	game	server	role-reachability:server
+fn	minecarts	impl CartIndex	mobs_near	-	game	server	role-reachability:server
+fn	minecarts	impl CartIndex	moved	-	game	server	role-reachability:server
+fn	minecarts	impl CartIndex	usable	-	game	server	role-reachability:server
+fn	minecarts	impl CartKind	interact_passes	-	game	client	role-reachability:client
+fn	minecarts	impl Game<'_>	activate_cart	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	adjust_cart_to_rails	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	arrow_hits_cart	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	baked_model_vertices	-	game	client	role-reachability:client
+fn	minecarts	impl Game<'_>	block_display_light	-	game	client	role-reachability:client
+fn	minecarts	impl Game<'_>	block_display_model_vertices	-	game	client	role-reachability:client
+fn	minecarts	impl Game<'_>	block_model_vertices	-	game	client	role-reachability:client
+fn	minecarts	impl Game<'_>	cart_block_effects	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	cart_inside_blocks	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	cart_lava_tick	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	cart_max_speed	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	come_off_track	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	conductor	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	default_block_tint	-	game	client	role-reachability:client
+fn	minecarts	impl Game<'_>	display_state	-	game	client	role-reachability:client
+fn	minecarts	impl Game<'_>	display_state_unfiltered	-	game	client	role-reachability:client
+fn	minecarts	impl Game<'_>	finish_cart_step	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	interact_cart	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	is_descending	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	max_speed	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	max_speed_new	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	move_along_track	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	move_along_track_new	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	natural_slowdown	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	new_step_along_track	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	note_cart_pass	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	open_cart_container	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	pickup_from_cart	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	push_carts	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	push_carts_from_mobs	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	push_from_cart	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	push_from_ticked_cart	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	rail_pos_offs	-	game	client	role-reachability:client
+fn	minecarts	impl Game<'_>	record_cart_step	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	redstone_direction	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	remote_tnt_cart_event	-	game	client	role-reachability:client
+fn	minecarts	impl Game<'_>	set_cart_rotation	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	special_block_model	-	game	client	role-reachability:client
+fn	minecarts	impl Game<'_>	tick_cart	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	tick_cart_riding	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	tick_carts	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	tick_carts_now	-	game	server	role-reachability:server
+fn	minecarts	impl Game<'_>	tinted_block_model_vertices	-	game	client	role-reachability:client
+fn	minecarts	impl Game<'_>	unpack_cart_loot	-	game	server	role-reachability:server
+fn	minecarts	impl Minecart	accumulate_rotation	-	game	client	role-reachability:client
+fn	minecarts	impl Minecart	container_signal	-	game	server	role-reachability:server
+fn	minecarts	impl Minecart	horizontal	-	game	server	role-reachability:server
+fn	minecarts	impl Minecart	rotate_passenger	-	game	client	role-reachability:client
+fn	minecarts	impl PreparedModelFace	gpu_vertex	-	game	client	role-reachability:client
+fn	minecarts	impl PreparedModelFace	hidden_by	-	game	client	role-reachability:client
+fn	minecarts::hit	impl CartHit	player	-	game	server	role-reachability:server
+fn	minecarts::hit	impl CartHit	projectile	-	game	server	role-reachability:server
+fn	mods	impl Game<'_>	applied_mods	-	game	client	role-reachability:client
+fn	mods	impl Game<'_>	mods_reloaded	-	game	client	role-reachability:client
+fn	mods	impl Game<'_>	switch_mods	-	game	client	role-reachability:client
+fn	mods	impl ModsState	startup_admission	-	game	client	role-reachability:client
+fn	mods::package_files	impl StartupAdmission	matches_selection	-	game	client	role-reachability:client
+fn	mounts	impl Game<'_>	draw_jump_bar	-	server	client	role-reachability:client
+fn	mounts	impl Game<'_>	mount_jumping	-	server	client	role-reachability:client
+fn	moving_pistons	impl Game<'_>	moving_block_vertices	-	client	client	retain-in-client-mirror
+fn	moving_pistons	impl Game<'_>	moving_piston_blocks	-	client	client	retain-in-client-mirror
+fn	moving_pistons	impl Game<'_>	moving_piston_geometry	-	client	client	retain-in-client-mirror
+fn	moving_pistons	impl Game<'_>	section_mesh_pending	-	client	client	retain-in-client-mirror
+fn	moving_pistons	impl Game<'_>	section_mesh_pending_in	-	client	client	retain-in-client-mirror
+fn	moving_pistons	impl Game<'_>	section_upload_pending	-	client	client	retain-in-client-mirror
+fn	native_block_sounds	impl Game<'_>	own_sound_type	-	server	client	role-reachability:client
+fn	native_book_placement	impl Server	new	-	game	server	role-reachability:server
+fn	native_colliders	impl Game<'_>	forget_client_collider	-	server	client	role-reachability:client
+fn	native_colliders	impl Game<'_>	remote_collider_sync	-	server	client	role-reachability:client
+fn	native_components	impl Game<'_>	item_combat_component	-	client	server	role-reachability:server
+fn	native_components	impl Game<'_>	item_combat_stack	-	client	server	role-reachability:server
+fn	native_configs	impl Game<'_>	native_configs_tick_client	-	game	client	role-reachability:client
+fn	native_entity_refs_common	impl Game<'_>	native_client_entity_target	-	game	client	role-reachability:client
+fn	native_hooks	impl Game<'_>	animal_tame_cancelled	-	game	server	role-reachability:server
+fn	native_hooks	impl Game<'_>	apply_inside_write	-	server	game	role-reachability:common
+fn	native_hooks	impl Game<'_>	apply_landing_write	-	server	game	role-reachability:common
+fn	native_hooks	impl Game<'_>	attack_of_who	-	server	game	role-reachability:common
+fn	native_hooks	impl Game<'_>	bonemeal	-	server	game	role-reachability:common
+fn	native_hooks	impl Game<'_>	drain_entity_inside	-	server	game	role-reachability:common
+fn	native_hooks	impl Game<'_>	mob_place_block	-	game	server	role-reachability:server
+fn	native_hooks	impl Game<'_>	native_acting_id	-	server	game	role-reachability:common
+fn	native_hooks	impl Game<'_>	native_carried_slot	-	game	server	role-reachability:server
+fn	native_hooks	impl Game<'_>	native_containers	-	game	server	role-reachability:server
+fn	native_hooks	impl Game<'_>	native_energy_tables	-	game	server	role-reachability:server
+fn	native_hooks	impl Game<'_>	native_fluid_tables	-	game	server	role-reachability:server
+fn	native_hooks	impl Game<'_>	native_hurt_enemy_event	-	game	server	role-reachability:server
+fn	native_hooks	impl Game<'_>	native_inventory_ticks	-	game	server	role-reachability:server
+fn	native_hooks	impl Game<'_>	native_mobs_joined	-	server	game	role-reachability:common
+fn	native_hooks	impl Game<'_>	native_slot_tick	-	game	server	role-reachability:server
+fn	native_hooks	impl Game<'_>	native_ticks	-	game	server	role-reachability:server
+fn	native_hooks	impl Game<'_>	pet_tamed	-	game	server	role-reachability:server
+fn	native_hooks	impl Game<'_>	right_click_block	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_anvil_damaged	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_block_dispense_armor	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_block_entity_container	-	game	server	role-reachability:server
+fn	native_hooks::base	impl Game<'_>	native_block_entity_energy	-	game	server	role-reachability:server
+fn	native_hooks::base	impl Game<'_>	native_block_entity_fluids	-	game	server	role-reachability:server
+fn	native_hooks::base	impl Game<'_>	native_block_failed_dispense	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_block_lock_check	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_block_shear_entity	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_consume_effect	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_container_opened	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_crafter_craft	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_data_map_types	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_data_pack_files	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_datapack_sync	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_difficulty_changed	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_dispense_item	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_entities_load	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_entity_leave_level	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_entity_mount	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_entity_teleport	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_entity_unleash	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_explosion_prime	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_food_level_changed	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_hanging_break	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_inventory_block_start	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_item_spawn	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_lightning_strike	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_loot_drops	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_mob_killed	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_mob_spawned	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_mod_container_viewers	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_player_advancement_done	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_player_advancement_progress	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_player_bed_enter	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_player_commands_sent	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_player_container_close	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_player_container_open	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_player_died	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_player_item_cooldown	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_player_launch_projectile	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_player_level_change	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_player_logged_out	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_player_open_sign	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_player_recipe_discovered	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_player_save_to_file	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_player_shield_disable	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_player_stat_award	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_player_teleported	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_player_totem	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_player_unleash_entity	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_projectile_launch	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_raid_state_change	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_sculk_bloom	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_server_started	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_spawn_change	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_thunder_change	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_time_skip	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_tnt_primed	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_trade_with_villager	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_vehicle_create	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_vehicle_damage	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_vehicle_destroy	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_weather_change	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_whitelist_state_update	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_world_border_bounds_changed	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_world_border_center_changed	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_world_lifecycle	-	server	game	role-reachability:common
+fn	native_hooks::base	impl Game<'_>	native_world_saved	-	server	game	role-reachability:common
+fn	native_hooks::block_entity_on_load	impl Game<'_>	tick_mod_block_entity	-	game	server	role-reachability:server
+fn	native_hooks::block_entity_tick	impl Game<'_>	resident_block_entity_target	-	game	server	role-reachability:server
+fn	native_hooks::block_entity_tick	impl Game<'_>	tick_mod_block_entity_loaded	-	game	server	role-reachability:server
+fn	native_hooks::block_entity_tick	impl<'g, 'w> ResidentBlockEntityAccess<'g, 'w>	blockless	-	game	server	role-reachability:server
+fn	native_hooks::block_entity_tick	impl<'g, 'w> ResidentBlockEntityAccess<'g, 'w>	for_handle	-	game	server	role-reachability:server
+fn	native_hooks::block_entity_tick	impl<'g, 'w> ResidentBlockEntityAccess<'g, 'w>	items_changed	-	game	server	role-reachability:server
+fn	native_hooks::client_information_updated	impl Game<'_>	announce_login	-	game	server	role-reachability:server
+fn	native_hooks::damage_item	impl Game<'_>	damage_item_loss	-	game	server	role-reachability:server
+fn	native_hooks::exp_drop	impl Game<'_>	entity_block_dropped	-	game	server	role-reachability:server
+fn	native_hooks::exp_drop	impl Game<'_>	live_block_entity	-	game	server	role-reachability:server
+fn	native_hooks::exp_drop	impl Game<'_>	player_block_dropped	-	game	server	role-reachability:server
+fn	native_hooks::exp_drop	impl Game<'_>	prepare_part_break_experience	-	game	server	role-reachability:server
+fn	native_hooks::exp_drop	impl GameLevel<'_>	resident_block_entity	-	game	server	role-reachability:server
+fn	native_hooks::explosion_notice_containment	impl Game<'_>	contained_block_exploded	-	game	server	role-reachability:server
+fn	native_hooks::fire_behaviour	impl GameLevel<'_>	player_near_fire	-	game	server	role-reachability:server
+fn	native_hooks::general_entity_tick	impl EntityServerAccess for GeneralTickAccess<'_, '_, '_>	host	-	game	server	role-reachability:server
+fn	native_hooks::general_entity_tick	impl EntityServerAccess for GeneralTickAccess<'_, '_, '_>	with_current_transaction_scope	-	game	server	role-reachability:server
+fn	native_hooks::general_entity_tick	impl EntityServerAccess for GeneralTickAccess<'_, '_, '_>	with_transaction_scope	-	game	server	role-reachability:server
+fn	native_hooks::general_entity_tick	impl EntityServerAccess for GeneralTickAccess<'_, '_, '_>	with_view	-	game	server	role-reachability:server
+fn	native_hooks::general_entity_tick	impl Game<'_>	tick_general_row_scoped	-	game	server	role-reachability:server
+fn	native_hooks::general_entity_tick	impl ResidentGeneralEntity for ResidentGeneralRow<'_>	kind	-	game	server	role-reachability:server
+fn	native_hooks::general_entity_tick	impl ResidentGeneralEntity for ResidentGeneralRow<'_>	position	-	game	server	role-reachability:server
+fn	native_hooks::general_entity_tick	impl ResidentGeneralEntity for ResidentGeneralRow<'_>	reset_fall_distance	-	game	server	role-reachability:server
+fn	native_hooks::general_entity_tick	impl ResidentGeneralEntity for ResidentGeneralRow<'_>	rotation	-	game	server	role-reachability:server
+fn	native_hooks::general_entity_tick	impl ResidentGeneralEntity for ResidentGeneralRow<'_>	set_rotation	-	game	server	role-reachability:server
+fn	native_hooks::general_entity_tick	impl ResidentGeneralEntity for ResidentGeneralRow<'_>	set_velocity	-	game	server	role-reachability:server
+fn	native_hooks::general_entity_tick	impl ResidentGeneralEntity for ResidentGeneralRow<'_>	uuid	-	game	server	role-reachability:server
+fn	native_hooks::general_entity_tick	impl ResidentGeneralEntity for ResidentGeneralRow<'_>	velocity	-	game	server	role-reachability:server
+fn	native_hooks::item_attack	impl Game<'_>	native_left_click_entity_event	-	game	server	role-reachability:server
+fn	native_hooks::item_fallthrough	impl Game<'_>	use_item_fallthrough	-	game	server	role-reachability:server
+fn	native_hooks::item_picked_up	impl Game<'_>	native_pickup_allowed	-	game	server	role-reachability:server
+fn	native_hooks::item_picked_up	impl Game<'_>	native_pickup_answer	-	game	server	role-reachability:server
+fn	native_hooks::item_picked_up	impl Game<'_>	native_pickup_insert	-	game	server	role-reachability:server
+fn	native_hooks::item_picked_up	impl Game<'_>	native_pickup_lent	-	game	server	role-reachability:server
+fn	native_hooks::item_picked_up	impl Game<'_>	native_pickup_post	-	game	server	role-reachability:server
+fn	native_hooks::item_picked_up	impl Game<'_>	native_player_pickups	-	game	server	role-reachability:server
+fn	native_hooks::item_picked_up	impl Game<'_>	pickup_decision	-	game	server	role-reachability:server
+fn	native_hooks::living_breathe	impl Game<'_>	ask_breath	-	game	server	role-reachability:server
+fn	native_hooks::living_breathe	impl Game<'_>	ask_mob_breath	-	game	server	role-reachability:server
+fn	native_hooks::living_breathe	impl Game<'_>	ask_player_breath	-	game	server	role-reachability:server
+fn	native_hooks::living_breathe	impl Game<'_>	ask_stand_breath	-	game	server	role-reachability:server
+fn	native_hooks::on_chunk_unloaded	impl Game<'_>	native_chunk_and_block_entities_unload	-	game	server	role-reachability:server
+fn	native_hooks::on_entity_item_update	impl Game<'_>	item_update_halts	-	game	server	role-reachability:server
+fn	native_hooks::on_entity_item_update	impl Game<'_>	item_update_round	-	game	server	role-reachability:server
+fn	native_hooks::on_entity_item_update	impl mod_api::ItemEntityServerAccess for ItemEntityTickAccess<'_, '_>	host	-	game	server	role-reachability:server
+fn	native_hooks::on_entity_item_update	impl mod_api::ItemEntityServerAccess for ItemEntityTickAccess<'_, '_>	with_current_transaction_scope	-	game	server	role-reachability:server
+fn	native_hooks::on_entity_item_update	impl mod_api::ItemEntityServerAccess for ItemEntityTickAccess<'_, '_>	with_transaction_scope	-	game	server	role-reachability:server
+fn	native_hooks::on_entity_item_update	impl mod_api::ItemEntityServerAccess for ItemEntityTickAccess<'_, '_>	with_view	-	game	server	role-reachability:server
+fn	native_hooks::on_entity_item_update	impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_>	age	-	game	server	role-reachability:server
+fn	native_hooks::on_entity_item_update	impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_>	owner	-	game	server	role-reachability:server
+fn	native_hooks::on_entity_item_update	impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_>	pickup_delay	-	game	server	role-reachability:server
+fn	native_hooks::on_entity_item_update	impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_>	position	-	game	server	role-reachability:server
+fn	native_hooks::on_entity_item_update	impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_>	set_pickup_delay	-	game	server	role-reachability:server
+fn	native_hooks::on_entity_item_update	impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_>	set_stack	-	game	server	role-reachability:server
+fn	native_hooks::on_entity_item_update	impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_>	set_target	-	game	server	role-reachability:server
+fn	native_hooks::on_entity_item_update	impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_>	set_velocity	-	game	server	role-reachability:server
+fn	native_hooks::on_entity_item_update	impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_>	target	-	game	server	role-reachability:server
+fn	native_hooks::on_entity_item_update	impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_>	velocity	-	game	server	role-reachability:server
+fn	native_hooks::on_entity_item_update	impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_>	with_stack	-	game	server	role-reachability:server
+fn	native_hooks::player_leave	impl Game<'_>	announce_guest_left	-	game	server	role-reachability:server
+fn	native_hooks::player_leave	impl Game<'_>	native_guest_left	-	game	server	role-reachability:server
+fn	native_hooks::remove_block	impl GameLevel<'_>	removal_replacement	-	game	server	role-reachability:server
+fn	native_item_entity_refs	impl Game<'_>	item_entity_owner	-	game	server	role-reachability:server
+fn	native_knockback_credit	impl Game<'_>	knockback_credit_entity	-	server	server	retain-in-server-mirror
+fn	native_knockback_credit	impl Game<'_>	knockback_player_credit	-	server	server	retain-in-server-mirror
+fn	native_knockback_credit	impl Game<'_>	prepare_knockback_credit	-	server	server	retain-in-server-mirror
+fn	native_living_body	impl Game<'_>	causer_id	-	server	server	retain-in-server-mirror
+fn	native_living_body	impl Game<'_>	native_living_body	-	server	server	retain-in-server-mirror
+fn	native_living_body	impl Game<'_>	native_parked_causer	-	server	server	retain-in-server-mirror
+fn	native_local_sounds	impl Default for ModSounds	default	-	client	server	role-reachability:server
+fn	native_passages	impl Game<'_>	forget_chunk_passages	-	server	client	role-reachability:client
+fn	native_server	impl Game<'_>	client_abilities	-	game	client	role-reachability:client
+fn	native_server	impl Game<'_>	native_as_player_handle	-	game	server	role-reachability:server
+fn	native_server	impl Game<'_>	native_server_players	-	game	server	role-reachability:server
+fn	native_server	impl Game<'_>	remove_level_fake_players	-	game	server	role-reachability:server
+fn	native_server	impl Game<'_>	run_chunk_watches	-	game	server	role-reachability:server
+fn	native_server::registered_commands	impl NativeCommandState	level	-	game	server	role-reachability:server
+fn	native_state_shapes	impl Game<'_>	outline_edges_iter	-	game	client	role-reachability:client
+fn	nether_portal::respawn_attributes	impl Game<'_>	apply_own_attributes	-	server	client	role-reachability:client
+fn	nether_portal::respawn_attributes	impl Game<'_>	drop_remote_player	-	server	client	role-reachability:client
+fn	nether_portal::respawn_attributes	impl Game<'_>	take_carried_attributes	-	server	client	role-reachability:client
+fn	nether_portal::respawn_attributes	impl RespawnAttributes	respawn	-	server	client	role-reachability:client
+fn	passengers	impl Game<'_>	seat_own_stands	-	server	client	role-reachability:client
+fn	pick_ray	impl PickAccumulator	nearest_sq	-	game	client	role-reachability:client
+fn	pick_ray	impl PickAccumulator	recording_with	-	game	client	role-reachability:client
+fn	pick_ray	impl PickAccumulator	take_candidates	-	game	client	role-reachability:client
+fn	piston_carry	impl Game<'_>	forget_moving_piston	-	game	client	role-reachability:client
+fn	piston_push	impl Game<'_>	lid_push_local	-	game	client	role-reachability:client
+fn	piston_push	impl Game<'_>	push_shulker_entities	-	game	server	role-reachability:server
+fn	piston_push	impl Game<'_>	push_shulker_local	-	game	client	role-reachability:client
+fn	play_keys	impl Game<'_>	own_swap_hands	-	client	server	role-reachability:server
+fn	player_equip	impl Game<'_>	put_equipment_modifiers	-	server	server	retain-in-server-mirror
+fn	player_identity	impl Game<'_>	remove_local_player_body	-	game	client	role-reachability:client
+fn	potent_sulfur	impl Game<'_>	launch_local_player_ticker	-	server	client	role-reachability:client
+fn	potions	impl CloudSettings	lingering	-	client	server	role-reachability:server
+fn	potions	impl Game<'_>	apply_indirect_effect_action	-	client	server	role-reachability:server
+fn	potions	impl Game<'_>	breath_affect_mob	-	client	server	role-reachability:server
+fn	potions	impl Game<'_>	cloud_fluid_step	-	client	server	role-reachability:server
+fn	potions	impl Game<'_>	effects_on_death	-	client	server	role-reachability:server
+fn	potions	impl Game<'_>	fill_held	-	client	server	role-reachability:server
+fn	potions	impl Game<'_>	finish_drinking	-	client	server	role-reachability:server
+fn	potions	impl Game<'_>	potion_attack	-	client	server	role-reachability:server
+fn	potions	impl Game<'_>	restore_effects	-	client	server	role-reachability:server
+fn	potions	impl Game<'_>	spawn_cobwebs_around	-	client	server	role-reachability:server
+fn	potions	impl Game<'_>	spawn_creeper_cloud	-	client	server	role-reachability:server
+fn	potions	impl Game<'_>	splash_on_player	-	client	server	role-reachability:server
+fn	potions	impl Game<'_>	tick_drinking	-	client	server	role-reachability:server
+fn	potions	impl Game<'_>	tick_potion_cloud	-	client	server	role-reachability:server
+fn	potions	impl Game<'_>	tick_potion_clouds	-	client	server	role-reachability:server
+fn	potions	impl Game<'_>	use_water_bottle_on_block	-	client	server	role-reachability:server
+fn	potions	impl PotionCloud	particle	-	client	server	role-reachability:server
+fn	potions	impl PotionOwner	who	-	client	server	role-reachability:server
+fn	potions	impl PotionState	thrown_ids	-	client	server	role-reachability:server
+fn	powder_snow	impl Game<'_>	pick_up_powder_snow	-	client	server	role-reachability:server
+fn	powder_snow	impl Game<'_>	rain_extinguish_player	-	client	server	role-reachability:server
+fn	profile_capture	impl Profile	new	-	client	server	role-reachability:server
+fn	recipe_book	impl Game<'_>	menu_transfer_answer	-	client	server	role-reachability:server
+fn	remote	impl Game<'_>	connection_group_limit	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	decode_remote_stack	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	hashed_stack	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	item_name	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	next_sequence	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	own_latency	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	patched_held_use	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	play_predicted_sounds	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	player_position	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	poll_remote	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	poll_remote_before_tick	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	predict_map_on_banner	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	predict_use	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	reconfigure_layout	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	remote_abilities	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	remote_attack_clicks_queued	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	remote_backlog	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	remote_bone_meal_succeeds	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	remote_carts	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	remote_drop	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	remote_hurt_sound	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	remote_item_data	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	remote_minecart_lerp	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	remote_player_names	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	remote_respawn	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	remote_screen_up	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	remote_seat_passengers	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	remote_secondary_use_skips_block	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	remote_server_data	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	remote_shift_down	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	remote_stop_sleeping	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	remote_synced	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	remote_synced_since	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	remote_vehicle_ids	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	send_action	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	send_suggestion_request	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	snap_player_to	-	game	client	role-reachability:client
+fn	remote	impl Game<'_>	to_stack	-	game	client	role-reachability:client
+fn	remote	impl PlayerTextures	new	-	game	client	role-reachability:client
+fn	remote	impl Remote	display_address_for	-	game	client	role-reachability:client
+fn	remote	impl ServicesKeys	fetching	-	game	client	role-reachability:client
+fn	remote	impl ServicesKeys	fetching_with	-	game	client	role-reachability:client
+fn	remote::abilities	impl Game<'_>	apply_remote_abilities	-	game	client	role-reachability:client
+fn	remote::abilities	impl Game<'_>	remote_rotation	-	game	client	role-reachability:client
+fn	remote::abilities	impl Game<'_>	set_remote_flying_speed	-	game	client	role-reachability:client
+fn	remote::abilities	impl Game<'_>	sync_remote_player_game_mode	-	game	client	role-reachability:client
+fn	remote::abilities	impl Remote	own_player_info_game_mode	-	game	client	role-reachability:client
+fn	remote::abilities	impl Remote	sync_body_flight	-	game	client	role-reachability:client
+fn	remote::abilities	impl Remote	update_local_mode_abilities	-	game	client	role-reachability:client
+fn	remote::block_entity_data	impl Game<'_>	remote_block_entity_data	-	game	client	role-reachability:client
+fn	remote::block_entity_data	impl Game<'_>	remote_block_entity_packet	-	game	client	role-reachability:client
+fn	remote::block_entity_data	impl Game<'_>	remote_open_command_block	-	game	client	role-reachability:client
+fn	remote::block_entity_data	impl Game<'_>	sync_block_entity	-	game	client	role-reachability:client
+fn	remote::break_prediction	impl Game<'_>	check_active_group_updates	-	game	client	role-reachability:client
+fn	remote::break_prediction	impl Game<'_>	retire_client_block_entity	-	game	client	role-reachability:client
+fn	remote::break_prediction	impl Game<'_>	stop_remote_mining	-	game	client	role-reachability:client
+fn	remote::break_prediction	impl Game<'_>	supersede_group_predictions	-	game	client	role-reachability:client
+fn	remote::chat	impl ChatTrust	tag	-	game	client	role-reachability:client
+fn	remote::chat	impl Game<'_>	add_chat_line	-	game	client	role-reachability:client
+fn	remote::chat	impl Game<'_>	chat_trust	-	game	client	role-reachability:client
+fn	remote::chat	impl Game<'_>	decorate_chat	-	game	client	role-reachability:client
+fn	remote::chat	impl Game<'_>	handle_chat_message_error	-	game	client	role-reachability:client
+fn	remote::chat	impl Game<'_>	handle_delete_chat	-	game	client	role-reachability:client
+fn	remote::chat	impl Game<'_>	remote_chat	-	game	client	role-reachability:client
+fn	remote::chat	impl Game<'_>	send_chat_from_screen	-	game	client	role-reachability:client
+fn	remote::chat	impl Game<'_>	send_signed_chat_input	-	game	client	role-reachability:client
+fn	remote::chat	impl Game<'_>	show_queued_chat	-	game	client	role-reachability:client
+fn	remote::chat_queue	impl Game<'_>	chat_delay_ms	-	game	client	role-reachability:client
+fn	remote::chat_queue	impl Game<'_>	chat_queue_len	-	game	client	role-reachability:client
+fn	remote::chat_queue	impl Remote	remove_queued_chat	-	game	client	role-reachability:client
+fn	remote::chat_received	impl Game<'_>	chat_received	-	game	client	role-reachability:client
+fn	remote::client_level_tick	impl Game<'_>	tick_remote_level	-	game	client	role-reachability:client
+fn	remote::client_level_tick	impl Game<'_>	tick_remote_level_with	-	game	client	role-reachability:client
+fn	remote::commands	impl Game<'_>	handle_command_suggestions	-	game	client	role-reachability:client
+fn	remote::connection	impl Game<'_>	connect_cancel	-	game	client	role-reachability:client
+fn	remote::connection	impl Game<'_>	connect_server	-	game	client	role-reachability:client
+fn	remote::connection	impl Game<'_>	is_level_player	-	game	client	role-reachability:client
+fn	remote::connection	impl Game<'_>	set_registries	-	game	client	role-reachability:client
+fn	remote::dry_level	impl PredictionBase for crate::game::GameLevel<'_>	fire_odds_level	-	game	client	role-reachability:client
+fn	remote::dry_level	impl<'w> DryLevel<'w>	new	-	game	client	role-reachability:client
+fn	remote::entity_section_steps	impl Game<'_>	remote_entity_section_step	-	game	client	role-reachability:client
+fn	remote::entity_section_steps	impl Game<'_>	remote_move_entity_and_file	-	game	client	role-reachability:client
+fn	remote::entity_section_steps	impl Game<'_>	remote_move_vehicle_and_file	-	game	client	role-reachability:client
+fn	remote::entity_section_steps	impl Game<'_>	remote_position_sync_and_file	-	game	client	role-reachability:client
+fn	remote::fall_sound	impl Game<'_>	block_fall	-	game	client	role-reachability:client
+fn	remote::general	impl Game<'_>	forget_remote_general	-	game	client	role-reachability:client
+fn	remote::general	impl Game<'_>	remote_general_entity	-	game	client	role-reachability:client
+fn	remote::general	impl RemoteGeneral	new	-	game	client	role-reachability:client
+fn	remote::general	impl RemoteGeneral	publish_attachments	-	game	client	role-reachability:client
+fn	remote::general	impl RemoteGenerals	attachments_arrived	-	game	client	role-reachability:client
+fn	remote::general	impl RemoteGenerals	clear	-	game	client	role-reachability:client
+fn	remote::interaction_actions	impl Game<'_>	block_meets_player	-	game	client	role-reachability:client
+fn	remote::interaction_actions	impl Game<'_>	block_swallows_click	-	game	client	role-reachability:client
+fn	remote::interaction_actions	impl Game<'_>	block_takes_click	-	game	client	role-reachability:client
+fn	remote::interaction_actions	impl Game<'_>	can_hint_block_placement	-	game	client	role-reachability:client
+fn	remote::interaction_actions	impl Game<'_>	client_block_answer	-	game	client	role-reachability:client
+fn	remote::interaction_actions	impl Game<'_>	held_until_released	-	game	client	role-reachability:client
+fn	remote::interaction_actions	impl Game<'_>	place_ghast_under	-	game	client	role-reachability:client
+fn	remote::interaction_actions	impl Game<'_>	predict_place	-	game	client	role-reachability:client
+fn	remote::interaction_actions	impl Game<'_>	remote_can_place	-	game	client	role-reachability:client
+fn	remote::interaction_actions	impl Game<'_>	remote_handle_input	-	game	client	role-reachability:client
+fn	remote::interaction_actions	impl Game<'_>	remote_look_at	-	game	client	role-reachability:client
+fn	remote::interaction_actions	impl Game<'_>	remote_would_place	-	game	client	role-reachability:client
+fn	remote::interaction_actions	impl Game<'_>	use_finds_no_target	-	game	client	role-reachability:client
+fn	remote::interaction_actions	impl Game<'_>	with_interaction_swing_scope	-	game	client	role-reachability:client
+fn	remote::interaction_prediction	impl Game<'_>	finish_remote_item_on	-	game	client	role-reachability:client
+fn	remote::interaction_prediction	impl Game<'_>	predict_item_on_block	-	game	client	role-reachability:client
+fn	remote::interaction_prediction	impl Game<'_>	receive_cauldron_use	-	game	client	role-reachability:client
+fn	remote::interaction_prediction	impl Game<'_>	remote_armor_stand_fits	-	game	client	role-reachability:client
+fn	remote::interaction_prediction	impl Game<'_>	remote_item_after_block	-	game	client	role-reachability:client
+fn	remote::interaction_prediction	impl Game<'_>	remote_item_use_aim	-	game	client	role-reachability:client
+fn	remote::interaction_prediction	impl Game<'_>	remote_use_item_on	-	game	client	role-reachability:client
+fn	remote::interaction_prediction	impl Game<'_>	remote_vanilla_item_on	-	game	client	role-reachability:client
+fn	remote::inventory	impl Game<'_>	menu_slot_index	-	game	client	role-reachability:client
+fn	remote::inventory	impl Game<'_>	open_menu_name	-	game	client	role-reachability:client
+fn	remote::inventory	impl Game<'_>	remote_creative_slot_add	-	game	server	role-reachability:server
+fn	remote::inventory	impl Game<'_>	remote_hand_slot_set	-	game	client	role-reachability:client
+fn	remote::inventory	impl Game<'_>	remote_menu_id	-	game	client	role-reachability:client
+fn	remote::inventory	impl Game<'_>	set_menu_slot	-	game	client	role-reachability:client
+fn	remote::kept_columns	impl Game<'_>	forget_all_remote_columns	-	game	client	role-reachability:client
+fn	remote::kept_columns	impl Game<'_>	forget_remote_columns	-	game	client	role-reachability:client
+fn	remote::kept_columns	impl Game<'_>	forget_remote_packets	-	game	client	role-reachability:client
+fn	remote::kept_columns	impl Game<'_>	remote_chunk_in_range	-	game	client	role-reachability:client
+fn	remote::kept_columns	impl Game<'_>	set_remote_chunk_cache_center	-	game	client	role-reachability:client
+fn	remote::kept_columns	impl Game<'_>	set_remote_chunk_cache_radius	-	game	client	role-reachability:client
+fn	remote::level_format	impl crate::game::Game<'_>	track_remote_levels	-	game	client	role-reachability:client
+fn	remote::menu_interactions	impl Game<'_>	close_creative_menu	-	game	client	role-reachability:client
+fn	remote::menu_interactions	impl Game<'_>	creative_screen_drop	-	game	client	role-reachability:client
+fn	remote::menu_interactions	impl Game<'_>	prepare_clicks	-	game	client	role-reachability:client
+fn	remote::menu_interactions	impl Game<'_>	refresh_remote_language	-	game	client	role-reachability:client
+fn	remote::menu_interactions	impl Game<'_>	remote_button_click	-	game	client	role-reachability:client
+fn	remote::menu_interactions	impl Game<'_>	remote_menu	-	game	client	role-reachability:client
+fn	remote::menu_interactions	impl Game<'_>	remote_menu_ops	-	game	client	role-reachability:client
+fn	remote::menu_interactions	impl Game<'_>	remote_menu_state	-	game	client	role-reachability:client
+fn	remote::menu_interactions	impl Game<'_>	remote_menu_title	-	game	client	role-reachability:client
+fn	remote::menu_interactions	impl Game<'_>	remote_merchant_offers	-	game	client	role-reachability:client
+fn	remote::menu_interactions	impl Game<'_>	remote_open_merchant	-	game	client	role-reachability:client
+fn	remote::menu_interactions	impl Game<'_>	remote_quick_move_all	-	game	client	role-reachability:client
+fn	remote::menu_interactions	impl Game<'_>	remote_quick_move_unpredicted	-	game	client	role-reachability:client
+fn	remote::menu_interactions	impl Game<'_>	remote_stacked_menu_ops	-	game	client	role-reachability:client
+fn	remote::menu_interactions	impl Game<'_>	remote_storage_open	-	game	client	role-reachability:client
+fn	remote::menu_interactions	impl Game<'_>	remote_throw	-	game	client	role-reachability:client
+fn	remote::menu_interactions	impl Game<'_>	send_clicks	-	game	client	role-reachability:client
+fn	remote::menu_interactions	impl Game<'_>	send_unpredicted_clicks	-	game	client	role-reachability:client
+fn	remote::minecarts	impl CartLerp	at	-	game	client	role-reachability:client
+fn	remote::minecarts	impl CartLerp	new	-	game	client	role-reachability:client
+fn	remote::minecarts	impl CartLerp	tick	-	game	client	role-reachability:client
+fn	remote::minecarts	impl Game<'_>	remote_move_minecart	-	game	client	role-reachability:client
+fn	remote::motion	impl Game<'_>	cancel_driven_mount_interpolation	-	game	client	role-reachability:client
+fn	remote::motion	impl Game<'_>	driven_mount_heading	-	game	client	role-reachability:client
+fn	remote::motion	impl Game<'_>	interpolate_driven_mount	-	game	client	role-reachability:client
+fn	remote::motion	impl Game<'_>	interpolate_driven_mount_to	-	game	client	role-reachability:client
+fn	remote::motion	impl Game<'_>	move_entity	-	game	client	role-reachability:client
+fn	remote::motion	impl Game<'_>	remote_motion	-	game	client	role-reachability:client
+fn	remote::movement	impl MovePacket	snaps	-	game	client	role-reachability:client
+fn	remote::packets_entity	impl Game<'_>	apply_damage_event_packet	-	game	client	role-reachability:client
+fn	remote::packets_entity	impl Game<'_>	apply_remove_mob_effect_packet	-	game	client	role-reachability:client
+fn	remote::packets_entity	impl Game<'_>	apply_set_entity_data_entry	-	game	client	role-reachability:client
+fn	remote::packets_entity	impl Game<'_>	apply_set_entity_data_packet	-	game	client	role-reachability:client
+fn	remote::packets_entity	impl Game<'_>	apply_set_equipment_packet	-	game	client	role-reachability:client
+fn	remote::packets_entity	impl Game<'_>	remote_entity_kind	-	game	client	role-reachability:client
+fn	remote::packets_object	impl Game<'_>	apply_entity_position_sync_packet	-	game	client	role-reachability:client
+fn	remote::packets_object	impl Game<'_>	apply_hurt_animation_packet	-	game	client	role-reachability:client
+fn	remote::packets_object	impl Game<'_>	apply_move_vehicle_packet	-	game	client	role-reachability:client
+fn	remote::packets_object	impl Game<'_>	apply_projectile_power_packet	-	game	client	role-reachability:client
+fn	remote::packets_object	impl Game<'_>	apply_remove_entities_packet	-	game	client	role-reachability:client
+fn	remote::packets_object	impl Game<'_>	apply_rotate_head_packet	-	game	client	role-reachability:client
+fn	remote::packets_object	impl Game<'_>	apply_set_entity_motion_packet	-	game	client	role-reachability:client
+fn	remote::packets_object	impl Game<'_>	apply_swing_animation_packet	-	game	client	role-reachability:client
+fn	remote::packets_player	impl Game<'_>	apply_award_stats_packet	-	game	client	role-reachability:client
+fn	remote::packets_player	impl Game<'_>	apply_commands_packet	-	game	client	role-reachability:client
+fn	remote::packets_player	impl Game<'_>	apply_container_set_content_packet	-	game	client	role-reachability:client
+fn	remote::packets_player	impl Game<'_>	apply_container_set_data_packet	-	game	client	role-reachability:client
+fn	remote::packets_player	impl Game<'_>	apply_disguised_chat_packet	-	game	client	role-reachability:client
+fn	remote::packets_player	impl Game<'_>	apply_player_abilities_packet	-	game	client	role-reachability:client
+fn	remote::packets_player	impl Game<'_>	apply_player_chat_packet	-	game	client	role-reachability:client
+fn	remote::packets_player	impl Game<'_>	apply_player_info_remove_packet	-	game	client	role-reachability:client
+fn	remote::packets_player	impl Game<'_>	apply_player_info_update_packet	-	game	client	role-reachability:client
+fn	remote::packets_player	impl Game<'_>	apply_set_cursor_item_packet	-	game	client	role-reachability:client
+fn	remote::packets_player	impl Game<'_>	apply_set_display_objective_packet	-	game	client	role-reachability:client
+fn	remote::packets_player	impl Game<'_>	apply_set_experience_packet	-	game	client	role-reachability:client
+fn	remote::packets_player	impl Game<'_>	apply_set_held_slot_packet	-	game	client	role-reachability:client
+fn	remote::packets_player	impl Game<'_>	apply_set_player_inventory_packet	-	game	client	role-reachability:client
+fn	remote::packets_player	impl Game<'_>	apply_set_score_packet	-	game	client	role-reachability:client
+fn	remote::packets_world	impl Game<'_>	apply_block_destruction_packet	-	game	client	role-reachability:client
+fn	remote::packets_world	impl Game<'_>	apply_forget_level_chunk_packet	-	game	client	role-reachability:client
+fn	remote::packets_world	impl Game<'_>	apply_initialize_border_packet	-	game	client	role-reachability:client
+fn	remote::packets_world	impl Game<'_>	apply_section_blocks_update_packet	-	game	client	role-reachability:client
+fn	remote::packets_world	impl Game<'_>	apply_set_border_lerp_size_packet	-	game	client	role-reachability:client
+fn	remote::packets_world	impl Game<'_>	apply_set_default_spawn_position_packet	-	game	client	role-reachability:client
+fn	remote::packets_world	impl Game<'_>	apply_set_time_packet	-	game	client	role-reachability:client
+fn	remote::packets_world	impl Game<'_>	apply_sound_entity_packet	-	game	client	role-reachability:client
+fn	remote::packets_world	impl Game<'_>	apply_sound_packet	-	game	client	role-reachability:client
+fn	remote::r#use	impl Game<'_>	remote_block_reacts	-	game	client	role-reachability:client
+fn	remote::r#use	impl Game<'_>	remote_block_template	-	game	client	role-reachability:client
+fn	remote::r#use	impl Game<'_>	remote_complete_using	-	game	client	role-reachability:client
+fn	remote::r#use	impl Game<'_>	remote_place_preview	-	game	client	role-reachability:client
+fn	remote::r#use	impl Game<'_>	remote_start_held_use	-	game	client	role-reachability:client
+fn	remote::r#use	impl Game<'_>	remote_use_block	-	game	client	role-reachability:client
+fn	remote::r#use	impl Game<'_>	remote_use_bucket	-	game	client	role-reachability:client
+fn	remote::r#use	impl Game<'_>	remote_use_instrument	-	game	client	role-reachability:client
+fn	remote::raw_ingress	impl Game<'_>	apply_staged_attachment_sync	-	game	client	role-reachability:client
+fn	remote::raw_ingress	impl Game<'_>	dispatch_packet_turn	-	game	client	role-reachability:client
+fn	remote::raw_ingress	impl Game<'_>	finish_remote_disconnect	-	game	client	role-reachability:client
+fn	remote::raw_ingress	impl Game<'_>	handle_listener_transfer	-	game	client	role-reachability:client
+fn	remote::raw_ingress	impl Game<'_>	handle_play_bundle	-	game	client	role-reachability:client
+fn	remote::raw_ingress	impl Game<'_>	record_packet_error	-	game	client	role-reachability:client
+fn	remote::raw_ingress	impl Remote	receive_credited_backlog	-	game	client	role-reachability:client
+fn	remote::remote_state	impl Remote	clock_time	-	game	client	role-reachability:client
+fn	remote::remote_state	impl Remote	level_player	-	game	client	role-reachability:client
+fn	remote::remote_state	impl Remote	listed_player_count	-	game	client	role-reachability:client
+fn	remote::remote_state	impl Remote	named_clock_time	-	game	client	role-reachability:client
+fn	remote::remote_state	impl Remote	new_chat_validator	-	game	client	role-reachability:client
+fn	remote::remote_state	impl Remote	player_entity	-	game	client	role-reachability:client
+fn	remote::remote_state	impl Remote	resolve_clocks	-	game	client	role-reachability:client
+fn	remote::remote_state	impl Remote	sent_radius	-	game	client	role-reachability:client
+fn	remote::remote_state	impl Remote	set_tracked_position	-	game	client	role-reachability:client
+fn	remote::remote_state	impl Remote	take_object_lerp	-	game	client	role-reachability:client
+fn	remote::remote_state	impl Remote	validate_chat	-	game	client	role-reachability:client
+fn	remote::selector_metadata	impl Game<'_>	receive_selector_tokens	-	game	client	role-reachability:client
+fn	remote::session	impl Game<'_>	connect_remote_session	-	game	client	role-reachability:client
+fn	remote::session	impl Game<'_>	install_remote_transfer	-	game	client	role-reachability:client
+fn	remote::session	impl Game<'_>	leave_server	-	game	client	role-reachability:client
+fn	remote::session	impl Game<'_>	refuse_play_payload	-	game	client	role-reachability:client
+fn	remote::session	impl Game<'_>	retain_remote_player_on_login	-	game	client	role-reachability:client
+fn	remote::session	impl Game<'_>	start_remote_transfer	-	game	client	role-reachability:client
+fn	remote::sync	impl Game<'_>	apply_remote_health	-	game	client	role-reachability:client
+fn	remote::sync	impl Game<'_>	creative_stacks	-	game	client	role-reachability:client
+fn	remote::sync	impl Game<'_>	remote_effect_def	-	game	client	role-reachability:client
+fn	remote::sync	impl Game<'_>	remote_effect_id	-	game	client	role-reachability:client
+fn	remote::sync	impl Game<'_>	remote_effect_network_id	-	game	client	role-reachability:client
+fn	remote::sync	impl Game<'_>	remote_objective	-	game	client	role-reachability:client
+fn	remote::sync	impl Game<'_>	remote_send_carried	-	game	client	role-reachability:client
+fn	remote::sync	impl Game<'_>	remote_send_state	-	game	client	role-reachability:client
+fn	remote::sync	impl Game<'_>	remote_sound_entity_state	-	game	client	role-reachability:client
+fn	remote::sync	impl Game<'_>	remote_sound_name	-	game	client	role-reachability:client
+fn	remote::sync	impl Game<'_>	remote_team	-	game	client	role-reachability:client
+fn	remote::sync	impl Game<'_>	send_creative_slots	-	game	client	role-reachability:client
+fn	remote::sync	impl Remote	player_info_by_name	-	game	server	role-reachability:server
+fn	remote::tick	impl Game<'_>	client_passenger	-	game	client	role-reachability:client
+fn	remote::tick	impl Game<'_>	count_client_tick	-	game	client	role-reachability:client
+fn	remote::tick	impl Game<'_>	count_told_client_tick	-	game	client	role-reachability:client
+fn	remote::tick	impl Game<'_>	remote_clock_tick	-	game	client	role-reachability:client
+fn	remote::tick	impl Game<'_>	tick_remote	-	game	client	role-reachability:client
+fn	remote::tick	impl Game<'_>	tick_remote_arm_poses	-	game	client	role-reachability:client
+fn	remote::tick	impl Game<'_>	tick_remote_block_entities	-	game	client	role-reachability:client
+fn	remote::tracking	impl Game<'_>	spawn_entity	-	game	client	role-reachability:client
+fn	remote::use_item	impl Game<'_>	remote_tick_using	-	game	client	role-reachability:client
+fn	remote::use_item	impl Game<'_>	remote_use_item	-	game	client	role-reachability:client
+fn	resident_state	impl Default for ResidentEntities	default	-	game	server	role-reachability:server
+fn	resource_load	impl Progress	fraction	-	game	client	role-reachability:client
+fn	resource_load	impl Progress	line	-	game	client	role-reachability:client
+fn	resource_load	impl Progress	new	-	game	client	role-reachability:client
+fn	resource_load	impl Progress	set	-	game	client	role-reachability:client
+fn	resource_load	impl Progress	with	-	game	client	role-reachability:client
+fn	resource_load	impl<'scope, T: Send + 'scope> Step<'scope, T>	join	-	game	client	role-reachability:client
+fn	resource_load	impl<'scope, T: Send + 'scope> Step<'scope, T>	spawn	-	game	client	role-reachability:client
+fn	resource_tables	impl Game<'_>	new_title	-	game	client	role-reachability:client
+fn	resource_tables	impl PackResources	load	-	game	client	role-reachability:client
+fn	resource_tables	impl PlainTexts	with	-	game	client	role-reachability:client
+fn	resource_tables	impl Resources	ambient	-	game	client	role-reachability:client
+fn	resource_tables	impl Resources	animate	-	game	client	role-reachability:client
+fn	resource_tables	impl Resources	block_entity_render	-	game	client	role-reachability:client
+fn	resource_tables	impl Resources	fog	-	game	client	role-reachability:client
+fn	resource_tables	impl Resources	music	-	game	client	role-reachability:client
+fn	resource_tables	impl Resources	player_arm	-	game	client	role-reachability:client
+fn	resource_tables	impl Resources	spin_attack	-	game	client	role-reachability:client
+fn	resource_tables	impl UiResources	load	-	game	client	role-reachability:client
+fn	resource_tables	impl UiResources	with_splashes	-	game	client	role-reachability:client
+fn	scheduled_tasks	impl ScheduledTasks	begin_tick	-	game	server	role-reachability:server
+fn	scoreboard	impl Game<'_>	draw_scoreboard	-	server	client	role-reachability:client
+fn	scoreboard	impl Game<'_>	sidebar_objective	-	server	client	role-reachability:client
+fn	scoreboard	impl Game<'_>	sidebar_status	-	server	client	role-reachability:client
+fn	screen_backgrounds	impl Game<'_>	border_draw	-	client	client	retain-in-client-mirror
+fn	screen_backgrounds	impl Game<'_>	draw_dimension_transition_screen	-	client	client	retain-in-client-mirror
+fn	screen_backgrounds	impl Game<'_>	draw_level_loading_background	-	client	client	retain-in-client-mirror
+fn	screen_backgrounds	impl Game<'_>	draw_mod_screen	-	client	client	retain-in-client-mirror
+fn	screen_backgrounds	impl Game<'_>	draw_overlay_mounted_widgets	-	client	client	retain-in-client-mirror
+fn	screen_backgrounds	impl Game<'_>	draw_screen_phase	-	client	client	retain-in-client-mirror
+fn	screen_backgrounds	impl Game<'_>	draw_screen_with_post_hook	-	client	client	retain-in-client-mirror
+fn	screen_backgrounds	impl Game<'_>	draw_screen_with_pre_hook	-	client	client	retain-in-client-mirror
+fn	screen_backgrounds	impl Game<'_>	draw_title_screen_with_post_hook	-	client	client	retain-in-client-mirror
+fn	screen_backgrounds	impl Game<'_>	draw_title_screen_with_pre_hook	-	client	client	retain-in-client-mirror
+fn	screen_backgrounds	impl Game<'_>	menu_blur	-	client	client	retain-in-client-mirror
+fn	screen_backgrounds	impl Game<'_>	render_transparent_background	-	client	client	retain-in-client-mirror
+fn	screen_backgrounds	impl Game<'_>	requested_post_effects	-	client	client	retain-in-client-mirror
+fn	screen_backgrounds	impl Game<'_>	screen_render_view	-	client	client	retain-in-client-mirror
+fn	screen_backgrounds	impl Game<'_>	screen_wants_panorama	-	client	client	retain-in-client-mirror
+fn	screen_backgrounds	impl Game<'_>	shows_panorama	-	client	client	retain-in-client-mirror
+fn	screen_backgrounds	impl Game<'_>	sync_requested_post_effects	-	client	client	retain-in-client-mirror
+fn	screen_backgrounds	impl Game<'_>	title_screen_render_view	-	client	client	retain-in-client-mirror
+fn	screen_widgets	impl Default for MountedScreenWidgets	default	-	client	server	role-reachability:server
+fn	screen_widgets	impl Drop for MountedScreenWidgets	drop	-	client	server	role-reachability:server
+fn	sheep_dye	impl Game<'_>	sheep_would_take_dye	-	game	client	role-reachability:client
+fn	sniffers	impl Game<'_>	lay_sniffer_egg	-	client	server	role-reachability:server
+fn	sniffers	impl Game<'_>	tick_sniffer_server	-	client	server	role-reachability:server
+fn	social	impl Default for Social	default	-	client	server	role-reachability:server
+fn	spear	impl Game<'_>	cannot_attack_with_item	-	server	server	retain-in-server-mirror
+fn	spear	impl Game<'_>	clip_collider	-	server	server	retain-in-server-mirror
+fn	spear	impl Game<'_>	damage_stats_and_hearts	-	server	server	retain-in-server-mirror
+fn	spear	impl Game<'_>	jab	-	server	server	retain-in-server-mirror
+fn	spear	impl Game<'_>	kinetic_hit_feedback	-	server	server	retain-in-server-mirror
+fn	spear	impl Game<'_>	kinetic_hit_ticks	-	server	server	retain-in-server-mirror
+fn	spear	impl Game<'_>	remote_kinetic_hit	-	server	server	retain-in-server-mirror
+fn	spear	impl Game<'_>	server_play_at_feet	-	server	server	retain-in-server-mirror
+fn	spear	impl Game<'_>	spear_hit_feedback	-	server	server	retain-in-server-mirror
+fn	spear	impl Game<'_>	spear_tick	-	server	server	retain-in-server-mirror
+fn	spear	impl Game<'_>	stab_mob	-	server	server	retain-in-server-mirror
+fn	spear	impl Game<'_>	stab_targets	-	server	server	retain-in-server-mirror
+fn	spear	impl Game<'_>	use_spear	-	server	server	retain-in-server-mirror
+fn	stack_names	impl Game<'_>	styled_stack_name	-	game	client	role-reachability:client
+fn	state_resolver	impl Game<'_>	resolve_per_state_fluid	-	game	client	role-reachability:client
+fn	stations	impl Game<'_>	enchantment_performed	-	client	server	role-reachability:server
+fn	stations	impl Game<'_>	play_at	-	client	server	role-reachability:server
+fn	sulfur_cubes	impl Game<'_>	sulfur_sound	-	client	server	role-reachability:server
+fn	tables	impl Game<'_>	mesh_biomes	-	game	client	role-reachability:client
+fn	tables	impl Game<'_>	synced_recipes	-	game	client	role-reachability:client
+fn	test_entities	impl Game<'_>	discard_entities_in	-	server	server	retain-in-server-mirror
+fn	toast_manager	impl Game<'_>	add_or_update_system_toast	-	client	client	retain-in-client-mirror
+fn	toast_manager	impl Game<'_>	add_system_toast	-	client	client	retain-in-client-mirror
+fn	toast_manager	impl Game<'_>	draw_every_toast	-	client	client	retain-in-client-mirror
+fn	toast_manager	impl ToastManager	system_mut	-	client	client	retain-in-client-mirror
+fn	toast_manager	impl ToastManager	update	-	client	client	retain-in-client-mirror
+fn	totem	impl Game<'_>	sync_mob_death_protection	-	client	server	role-reachability:server
+fn	trading	impl Game<'_>	merchant_targets	-	server	client	role-reachability:client
+fn	trading	impl Game<'_>	try_move_items	-	server	client	role-reachability:client
+fn	trading	impl MerchantState	progress	-	server	client	role-reachability:client
+fn	vault	impl Game<'_>	vault_events	-	client	server	role-reachability:server
+fn	vault	impl Game<'_>	vault_geometry	-	server	client	role-reachability:client
+fn	vault	impl Game<'_>	vault_items	-	server	client	role-reachability:client
+fn	vault	impl Game<'_>	vault_takes_click	-	server	client	role-reachability:client
+fn	villager_client	impl super::Game<'_>	client_professions	-	game	client	role-reachability:client
+fn	villager_client	impl super::Game<'_>	install_client_professions	-	game	client	role-reachability:client
+fn	villager_client	impl super::Game<'_>	prepare_client_professions	-	game	client	role-reachability:client
+fn	weather	impl Game<'_>	tick_weather_effects	-	game	server	role-reachability:server
+module	block_particles	-	-	-	server	game	promote-for-common-fns:5
+module	brush	-	-	-	server	game	promote-for-common-fns:2
+module	campfire_douse	-	-	-	server	game	promote-for-common-fns:2
+module	cat_spawner	-	-	-	game	server	role-reachability:server
+module	creative_screen	-	-	-	client	game	promote-for-common-fns:1
+module	custom_spawner_level	-	-	-	game	server	role-reachability:server
+module	custom_spawners	-	-	-	game	server	role-reachability:server
+module	debug_lines	-	-	-	client	game	promote-for-common-fns:2
+module	debug_stick	-	-	-	game	server	role-reachability:server
+module	decided_action	-	-	-	game	server	role-reachability:server
+module	decorated_pot	-	-	-	server	game	promote-for-common-fns:4
+module	draw_boundary	-	-	-	game	client	role-reachability:client
+module	early_game_rules	-	-	-	game	server	role-reachability:server
+module	entity_part_state	-	-	-	game	client	role-reachability:client
+module	event_loop	-	-	-	game	client	role-reachability:client
+module	fluid_interactions	-	-	-	server	game	promote-for-common-fns:4
+module	gui_clips	-	-	-	game	client	role-reachability:client
+module	gui_paint_items	-	-	-	game	client	role-reachability:client
+module	gui_pose	-	-	-	game	client	role-reachability:client
+module	headless	-	-	-	game	client	role-reachability:client
+module	infiniburn	-	-	-	server	game	promote-for-common-fns:1
+module	inventory_slots	-	-	-	client	game	promote-for-common-fns:4
+module	item_actions	-	-	-	server	game	promote-for-common-fns:1
+module	item_entity_spawn	-	-	-	server	game	promote-for-common-fns:3
+module	item_model_context	-	-	-	game	client	role-reachability:client
+module	item_particle_send	-	-	-	game	server	role-reachability:server
+module	lan_attributes	-	-	-	game	server	role-reachability:server
+module	lan_far	-	-	-	game	server	role-reachability:server
+module	lan_menus	-	-	-	game	server	role-reachability:server
+module	lan_pickup	-	-	-	game	server	role-reachability:server
+module	lan_quiet	-	-	-	game	server	role-reachability:server
+module	lan_trade_decisions	-	-	-	server	game	promote-for-common-fns:8
+module	load_conditions	-	-	-	server	game	role-reachability:common
+module	menu_clicks	-	-	-	client	game	promote-for-common-fns:3
+module	minecart_moves	-	-	-	server	game	promote-for-common-fns:2
+module	mob_light	-	-	-	game	client	role-reachability:client
+module	motion_ids	-	-	-	game	client	role-reachability:client
+module	moving_pistons	-	-	-	client	game	promote-for-common-fns:1
+module	native_book_catalogue	-	-	-	game	server	role-reachability:server
+module	native_book_transport	-	-	-	game	server	role-reachability:server
+module	native_connection_groups	-	-	-	server	client	role-reachability:client
+module	native_entity_layers	-	-	-	game	client	role-reachability:client
+module	native_entity_renderers	-	-	-	game	client	role-reachability:client
+module	native_entity_selectors	-	-	-	server	game	role-reachability:common
+module	native_item_particles	-	-	-	game	client	role-reachability:client
+module	native_knockback_credit	-	-	-	server	game	promote-for-common-fns:6
+module	native_level_weather	-	-	-	server	game	role-reachability:common
+module	native_living_body	-	-	-	server	game	promote-for-common-fns:15
+module	native_merchant_refs	-	-	-	server	game	role-reachability:common
+module	native_mob_navigation	-	-	-	server	game	role-reachability:common
+module	native_mobs	-	-	-	game	server	role-reachability:server
+module	native_part_tables	-	-	-	game	client	role-reachability:client
+module	native_player_inventory	-	-	-	game	server	role-reachability:server
+module	native_player_moves	-	-	-	game	server	role-reachability:server
+module	native_player_persistent_data	-	-	-	game	server	role-reachability:server
+module	native_render_visibility	-	-	-	game	client	role-reachability:client
+module	native_section_visibility	-	-	-	game	client	role-reachability:client
+module	nautili	-	-	-	client	server	role-reachability:server
+module	no_resources	-	-	-	game	client	role-reachability:client
+module	pack_finders	-	-	-	server	game	role-reachability:common
+module	pick_hotbar	-	-	-	game	server	role-reachability:server
+module	player_destroy	-	-	-	game	server	role-reachability:server
+module	player_equip	-	-	-	server	game	promote-for-common-fns:3
+module	player_hit_sources	-	-	-	game	server	role-reachability:server
+module	postprocess	-	-	-	game	server	role-reachability:server
+module	pumpkin	-	-	-	client	server	role-reachability:server
+module	remote_chunks	-	-	-	game	client	role-reachability:client
+module	respawn_position	-	-	-	game	server	role-reachability:server
+module	screen_backgrounds	-	-	-	client	game	promote-for-common-fns:1
+module	spear	-	-	-	server	game	promote-for-common-fns:1
+module	stack_attribute_tooltip	-	-	-	game	client	role-reachability:client
+module	subtitles	-	-	-	game	client	role-reachability:client
+module	table_enchant	-	-	-	game	server	role-reachability:server
+module	test_entities	-	-	-	server	game	promote-for-common-fns:1
+module	toast_manager	-	-	-	client	game	promote-for-common-fns:2
+module	world_rest	-	-	-	game	client	role-reachability:client
+module	xp_orb_targeting	-	-	-	game	server	role-reachability:server
+module	zombie_villagers	-	-	-	client	server	role-reachability:server
