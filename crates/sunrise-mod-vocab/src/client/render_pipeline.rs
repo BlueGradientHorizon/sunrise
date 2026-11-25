@@ -1,10 +1,17 @@
 //! Render pipelines a client mod registers as plain data, and the quads it draws with them.
 use crate::{Identifier, WorldDepth};
 
-/// A pipeline registered by `Hooks::register_render_pipelines`: a fragment shader from the
-/// mod's assets and the fixed state it draws with. This is a restricted form: the mod supplies
-/// the fragment stage and the host fixes the rest. Vanilla requires a vertex shader and a
-/// primitive type; this API fixes both. The engine builds every GPU object.
+/// A pipeline registered by `Hooks::register_render_pipelines`: a GLSL core shader program
+/// (`assets/<ns>/shaders/core/<path>.vsh` and `.fsh`, optionally reusing another program's
+/// vertex stage), its preprocessor defines, optional sprite texture, and fixed blend/depth
+/// state. The engine translates the GLSL via `sunrise-glsl` and builds every GPU object.
+///
+/// ## Colour space
+/// Mod pipeline GLSL programs work in vanilla's gamma space, matching vanilla core shaders
+/// (`texture * vertexColor * ColorModulator`). On frames storing vanilla's encoding the output is
+/// stored as written; on frames holding linear light the engine decodes the fragment shader's
+/// location-0 output after `main()` (sanitizing negative/NaN RGB to 0 and clamping alpha
+/// coverage to `[0, 1]`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 // no wire: local client render-pipeline registration descriptor.
@@ -12,9 +19,20 @@ pub struct RenderPipeline {
     owner: String,
     /// The pipeline's own name (`mymod:glow`), unique among mod pipelines.
     pub id: Identifier,
-    /// The fragment shader (`mymod:glow` is `assets/mymod/shaders/pipeline/glow.wgsl`), as the
-    /// mod's assets or a resource pack supply it.
+    /// The core shader program (`mymod:core/glow` resolves to
+    /// `assets/mymod/shaders/core/glow.vsh` and `assets/mymod/shaders/core/glow.fsh`, or
+    /// `mymod:glow` resolves to `assets/mymod/shaders/glow.vsh` and `.fsh`), as the mod's assets
+    /// or a resource pack supply it. When [`Self::vertex_shader`] is set, this id supplies only
+    /// the `.fsh` fragment stage.
     pub fragment: Identifier,
+    /// Optional separate vertex shader program id (`withVertexShader`): defaults to
+    /// [`Self::fragment`] when `None`. Lets a mod reuse another program's vertex stage such as
+    /// `minecraft:core/position_tex_color` or a library mod's vertex shader.
+    pub vertex_shader: Option<Identifier>,
+    /// Preprocessor defines compiled into both stages (`withShaderDefine`): `(name, value)`.
+    /// Each `name` must be a valid non-`GL_` ASCII GLSL identifier, and each `value` (when
+    /// present) a non-empty single-line token without comments, backslashes, or `#`.
+    pub defines: Vec<(String, Option<String>)>,
     /// What the pipeline's draws are made of.
     pub vertex_format: PipelineVertexFormat,
     /// How the shader's result joins the frame.
@@ -27,8 +45,9 @@ pub struct RenderPipeline {
     /// fails and keeps the previous resources. An optional one is logged once by id and resolves
     /// to [`RenderPipelineError::Invalid`] while the other pipelines draw.
     pub optional: bool,
-    /// What the shader samples with `pipeline_texture(uv)`, if anything ([`Self::textured`]).
-    /// `None`, the default, binds no texture: the shader reads only its input and `frame`.
+    /// What the shader samples via `Sampler0` / `<sunrise:pipeline_sprite.glsl>`'s
+    /// `sampleSprite(uv)`, if anything ([`Self::textured`]). `None`, the default, binds no
+    /// texture: referencing `Sampler0` or `SpriteRect` refuses the pipeline.
     pub texture: Option<PipelineTexture>,
     /// What kind of world geometry this pipeline draws ([`Self::geometry_class`]), so an active
     /// Iris/OptiFine shader pack can route it through the matching standard `gbuffers_*`
@@ -42,17 +61,20 @@ pub struct RenderPipeline {
 }
 impl RenderPipeline {
     /// Describe a required pipeline that draws [`PipelineVertexFormat::PositionTexColor`]
-    /// geometry.
+    /// geometry with the GLSL core program `shader` (`ns:core/path` ->
+    /// `assets/<ns>/shaders/core/<path>.vsh` and `.fsh`).
     pub fn new(
         id: Identifier,
-        fragment: Identifier,
+        shader: Identifier,
         blend: PipelineBlend,
         depth: WorldDepth,
     ) -> Self {
         Self {
             owner: String::new(),
             id,
-            fragment,
+            fragment: shader,
+            vertex_shader: None,
+            defines: Vec::new(),
             vertex_format: PipelineVertexFormat::PositionTexColor,
             blend,
             depth,
@@ -67,6 +89,48 @@ impl RenderPipeline {
         &self.owner
     }
 
+    /// Use a separate GLSL vertex shader program (vanilla's `withVertexShader`), such as
+    /// `minecraft:core/position_tex_color` or another mod's vertex shader. Defaults to
+    /// [`Self::fragment`] when omitted.
+    pub fn vertex_shader(mut self, id: Identifier) -> Self {
+        self.vertex_shader = Some(id);
+        self
+    }
+
+    /// Define a preprocessor flag `#define NAME` for both stages of this pipeline
+    /// (vanilla's `withShaderDefine(key)`). Validated at registration startup.
+    pub fn define(mut self, name: impl Into<String>) -> Self {
+        self.defines.push((name.into(), None));
+        self
+    }
+
+    /// Define a preprocessor macro `#define NAME VALUE` for both stages of this pipeline
+    /// (vanilla's `withShaderDefine(key, value)`). Validated at registration startup.
+    pub fn define_value(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.defines.push((name.into(), Some(value.into())));
+        self
+    }
+
+    /// Validate GLSL define names and values declared on this pipeline. Called by the engine
+    /// during pipeline registration freeze.
+    pub fn validate_defines(&self) -> Result<(), String> {
+        for (name, value) in &self.defines {
+            if !is_valid_glsl_identifier(name) || name.starts_with("GL_") {
+                return Err(format!(
+                    "invalid shader define name {name:?}: expected a valid non-GL_ GLSL identifier"
+                ));
+            }
+            if let Some(val) = value
+                && !is_valid_glsl_define_value(val)
+            {
+                return Err(format!(
+                    "invalid shader define value for {name}: {val:?} must be a non-empty single-line token without comments, backslashes, or '#'"
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// Let a resource load that cannot build this pipeline go on without it (NeoForge's
     /// `registerOptionalPipeline`).
     pub fn optional(mut self) -> Self {
@@ -74,11 +138,11 @@ impl RenderPipeline {
         self
     }
 
-    /// Let the shader sample `texture` with `pipeline_texture(uv)` (vanilla's `Sampler0`, as
-    /// `RenderPipeline.withSampler` declares it). A texture the load refuses
-    /// ([`PipelineTextureError`]) refuses the pipeline as a missing shader does: a required one
-    /// fails the load, an optional one is logged with the named cause and resolves to
-    /// [`RenderPipelineError::Invalid`].
+    /// Let the shader sample `texture` via `Sampler0` or `<sunrise:pipeline_sprite.glsl>`'s
+    /// `sampleSprite(uv)` (vanilla's `RenderPipeline.withSampler("Sampler0")`). A texture the
+    /// load refuses ([`PipelineTextureError`]) refuses the pipeline as a missing shader does: a
+    /// required one fails the load, an optional one is logged with the named cause and resolves
+    /// to [`RenderPipelineError::Invalid`].
     pub fn textured(mut self, texture: PipelineTexture) -> Self {
         self.texture = Some(texture);
         self
@@ -523,6 +587,59 @@ pub enum PackUniformType {
     Mat4,
 }
 
+/// How an active shader pack binds a registered [`RenderPipeline`], reported by
+/// [`crate::WorldDrawContext::pack_override_state`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+// no wire: local client query value describing active shader-pack override state.
+pub enum PackOverrideState {
+    /// No translated shader pack is active.
+    NoPack,
+    /// A shader pack is active, but the pipeline was not bound to a translated pack program
+    /// (either it has no [`PackBinding`] or no candidate program compiled); the mod's own shader
+    /// runs instead.
+    UnboundPack,
+    /// The active shader pack translated and bound a pack program for this pipeline.
+    Bound,
+}
+
+/// Per-frame value for a mod-declared shader-pack uniform ([`PackUniformDecl`]),
+/// supplied through [`crate::WorldDrawContext::set_pack_uniform`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
+// no wire: local client shader-pack per-frame uniform value.
+pub enum PackUniformValue {
+    /// GLSL `float`
+    Float(f32),
+    /// GLSL `int`
+    Int(i32),
+    /// GLSL `vec2`
+    Vec2([f32; 2]),
+    /// GLSL `vec3`
+    Vec3([f32; 3]),
+    /// GLSL `vec4`
+    Vec4([f32; 4]),
+    /// GLSL `mat3` (column-major)
+    Mat3([[f32; 3]; 3]),
+    /// GLSL `mat4` (column-major)
+    Mat4([[f32; 4]; 4]),
+}
+
+impl PackUniformValue {
+    /// The [`PackUniformType`] matching this value's variant.
+    pub const fn ty(&self) -> PackUniformType {
+        match self {
+            Self::Float(_) => PackUniformType::Float,
+            Self::Int(_) => PackUniformType::Int,
+            Self::Vec2(_) => PackUniformType::Vec2,
+            Self::Vec3(_) => PackUniformType::Vec3,
+            Self::Vec4(_) => PackUniformType::Vec4,
+            Self::Mat3(_) => PackUniformType::Mat3,
+            Self::Mat4(_) => PackUniformType::Mat4,
+        }
+    }
+}
+
 /// Mapping from a pipeline vertex attribute or per-draw value to a pack-side GLSL input name.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -582,10 +699,10 @@ fn is_valid_pack_program_name(name: &str) -> bool {
 }
 
 /// A texture a pipeline's shader samples ([`RenderPipeline::textured`]): always a rectangle of
-/// the atlas the host binds, never a texture of its own. `pipeline_texture(uv)` maps `fract(uv)`
-/// into that rectangle and loads one texel by integer coordinates at mip level 0 (nearest, no
-/// filtering, so no neighbouring sprite's texel enters): `uv` 0 to 1 spans it once and beyond
-/// that it repeats. It returns linear light (the mod render colour rule) with the texel's alpha.
+/// the atlas the host binds, never a texture of its own. Including `<sunrise:pipeline_sprite.glsl>`
+/// exposes `vec4 sampleSprite(vec2 uv)`, which maps `fract(uv)` into the sprite's rectangle and
+/// loads one texel by integer coordinates at mip level 0 (nearest, unfiltered, so no neighbouring
+/// sprite's texel enters) in vanilla's gamma space.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 // no wire: local client render-pipeline texture binding.
@@ -686,7 +803,8 @@ pub struct PipelineQuad {
     pub corners: [[f64; 3]; 4],
     /// Each corner's texture coordinate, handed to the shader as given.
     pub uv: [[f32; 2]; 4],
-    /// Packed 0xAARRGGBB colour in vanilla's space; the shader reads it as linear light.
+    /// Packed 0xAARRGGBB colour in vanilla's gamma space, passed straight to the GLSL `Color`
+    /// attribute.
     pub color: u32,
 }
 impl PipelineQuad {
@@ -717,17 +835,15 @@ pub enum PipelineDrawError {
     Pipeline(RenderPipelineError),
 }
 
-/// Attribute every pipeline `owner` added in `register_render_pipelines` to `owner`.
-/// Duplicate mod IDs and collisions with the matching vanilla table are rejected
-/// with a startup error when the collected registrations are frozen.
-pub(crate) fn validate_render_pipelines(
-    owner: &str,
-    previous: &[RenderPipeline],
-    pipelines: &mut [RenderPipeline],
-) {
-    let start = previous.len().min(pipelines.len());
-    for pipeline in &mut pipelines[start..] {
-        pipeline.owner = owner.to_owned();
+impl crate::RegisterRenderPipelinesEvent<'_> {
+    /// Register one render pipeline without exposing earlier registrations.
+    ///
+    /// The entry is attributed to this listener immediately. Any valid identifier is accepted
+    /// here; duplicate IDs and vanilla collisions are refused when the engine freezes the
+    /// registrations at startup.
+    pub fn register(&mut self, mut entry: RenderPipeline) {
+        entry.owner = self.mod_id.to_owned();
+        self.pipelines.push(entry);
     }
 }
 
@@ -749,66 +865,55 @@ mod tests {
     }
 
     #[test]
-    fn a_mod_can_register_pipelines_in_any_valid_namespace() {
-        let previous = vec![pipeline("other:glow")];
-        let mut pipelines = previous.clone();
-        pipelines.extend([
-            pipeline("minecraft:glow"),
-            pipeline("other:beam"),
-            pipeline("minecraft:custom_beam"),
-        ]);
-        validate_render_pipelines("owning_mod", &previous, &mut pipelines);
+    fn stamps_owner_on_new_pipelines_across_namespaces_and_preserves_duplicates_for_freeze() {
+        let mut pipelines = Vec::new();
+        let mut event = crate::RegisterRenderPipelinesEvent {
+            mod_id: "first_mod",
+            pipelines: &mut pipelines,
+        };
+        event.register(pipeline("other:glow"));
+        event.mod_id = "owning_mod";
+        for id in ["minecraft:glow", "other:beam", "other:glow", "mine:beam"] {
+            event.register(pipeline(id));
+        }
         assert_eq!(
             ids(&pipelines),
             [
                 "other:glow".to_owned(),
                 "minecraft:glow".to_owned(),
                 "other:beam".to_owned(),
-                "minecraft:custom_beam".to_owned(),
+                "other:glow".to_owned(),
+                "mine:beam".to_owned(),
             ]
         );
+        assert_eq!(pipelines[0].owner(), "first_mod");
         assert_eq!(pipelines[1].owner(), "owning_mod");
         assert_eq!(pipelines[2].owner(), "owning_mod");
         assert_eq!(pipelines[3].owner(), "owning_mod");
-    }
-
-    #[test]
-    fn validator_attributes_owners_and_preserves_entries_for_startup_collision_checks() {
-        let mut pipelines = vec![
-            pipeline("shared:glow"),
-            pipeline("shared:glow"),
-            pipeline("shared:glow").optional(),
-        ];
-        validate_render_pipelines("first", &[], &mut pipelines);
-        assert_eq!(
-            ids(&pipelines),
-            [
-                "shared:glow".to_owned(),
-                "shared:glow".to_owned(),
-                "shared:glow".to_owned(),
-            ]
-        );
-        assert!(pipelines.iter().all(|p| p.owner() == "first"));
-
-        let previous = pipelines.clone();
-        pipelines.push(pipeline("shared:glow").optional());
-        validate_render_pipelines("second", &previous, &mut pipelines);
-        assert_eq!(pipelines.len(), 4);
-        assert_eq!(pipelines[3].owner(), "second");
-        assert!(pipelines[3].optional);
+        assert_eq!(pipelines[4].owner(), "owning_mod");
     }
 
     #[test]
     fn a_mod_can_register_more_than_vanillas_pipeline_count() {
-        let mut pipelines: Vec<_> = (0..195).map(|i| pipeline(&format!("mine:p{i}"))).collect();
-        validate_render_pipelines("mine", &[], &mut pipelines);
-        assert_eq!(pipelines.len(), 195);
-        assert_eq!(pipelines.last().unwrap().id.to_string(), "mine:p194");
+        let mut pipelines = Vec::new();
+        {
+            let mut event = crate::RegisterRenderPipelinesEvent {
+                mod_id: "mine",
+                pipelines: &mut pipelines,
+            };
+            for i in 0..131 {
+                event.register(pipeline(&format!("mine:p{i}")));
+            }
+        }
+        assert_eq!(pipelines.len(), 131);
+        assert_eq!(pipelines.last().unwrap().id.to_string(), "mine:p130");
 
-        let previous = pipelines.clone();
-        pipelines.push(pipeline("next:glow"));
-        validate_render_pipelines("next", &previous, &mut pipelines);
-        assert_eq!(pipelines.len(), 196);
+        crate::RegisterRenderPipelinesEvent {
+            mod_id: "next",
+            pipelines: &mut pipelines,
+        }
+        .register(pipeline("next:glow"));
+        assert_eq!(pipelines.len(), 132);
     }
 
     #[test]
@@ -1009,5 +1114,52 @@ mod tests {
                 .validate_syntax()
                 .is_err()
         );
+    }
+
+    #[test]
+    fn shader_defines_and_vertex_shader_builder_validate_syntax() {
+        let p = pipeline("example:glow")
+            .vertex_shader(Identifier::parse("minecraft:core/position_tex_color").unwrap())
+            .define("PULSE")
+            .define_value("STEPS", "4");
+        assert_eq!(
+            p.vertex_shader,
+            Some(Identifier::parse("minecraft:core/position_tex_color").unwrap())
+        );
+        assert_eq!(
+            p.defines,
+            vec![
+                ("PULSE".to_owned(), None),
+                ("STEPS".to_owned(), Some("4".to_owned())),
+            ]
+        );
+        assert_eq!(p.validate_defines(), Ok(()));
+
+        for bad_name in ["", "1BAD", "BAD-NAME", "GL_RESERVED", "has space"] {
+            assert!(
+                pipeline("example:bad")
+                    .define(bad_name)
+                    .validate_defines()
+                    .is_err(),
+                "expected invalid define name {bad_name:?} to fail"
+            );
+        }
+        for bad_val in [
+            "",
+            "   ",
+            "1\n#define INJECT 1",
+            "1 // comment",
+            "1 /* comment */",
+            "1 \\",
+            "#include",
+        ] {
+            assert!(
+                pipeline("example:bad")
+                    .define_value("GOOD", bad_val)
+                    .validate_defines()
+                    .is_err(),
+                "expected invalid define value {bad_val:?} to fail"
+            );
+        }
     }
 }

@@ -22,7 +22,7 @@ known state reads as `Ok(None)`; unavailable metadata, invalid states and refuse
 | `replaceable(state) -> Option<bool>` | `BlockState.canBeReplaced()` |
 | `destroy_speed(state) -> Option<f32>` | `BlockBehaviour.Properties.destroyTime` (`getDestroySpeed`): stone 1.5, -1 unbreakable |
 | `requires_correct_tool(state) -> Option<bool>` | `BlockState.requiresCorrectToolForDrops()`: stone and ores true, dirt and logs false; which tool is correct for a state is `BlockStates::is_correct_tool_for_drops` |
-| `sound(state) -> Option<BlockSoundType>` | `BlockState.getSoundType()`: volume, pitch and the break, step, place, hit and fall events |
+| `sound(state) -> Option<BlockSoundType>` | `BlockState.getSoundType()`: sound type identity, base volume and pitch, and the validated break, step, place, hit and fall event keys |
 | `has_block_entity(state) -> Option<bool>` | `BlockState.hasBlockEntity()` |
 | `light_emission(state) -> Option<u8>` | `BlockState.getLightEmission()`: 0 to 15; a block with `dynamic_light` answers per cell through its parts, which this does not ask |
 | `friction(state) -> Option<f32>` | `BlockBehaviour.getFriction()` of the block: 0.6 usually, 0.98 ice, 0.8 slime |
@@ -68,16 +68,43 @@ position).
 
 Option-only queries return `None` for an unknown state or block, including an invalid local ordinal, and on a host with no game behind it (a mod's test double). Queries returning `Result<Option<_>, LevelReadError>` distinguish unknown states (`Ok(None)`) from unavailable metadata (`Err(LevelReadError::Unavailable)`). The ordinal order is defined by the complete canonical property constraints, not by the engine's numeric enumeration.
 
+## Spawn rule
+
+A declared block's `spawn_rule` property (`default`, `always`, `never` or `ocelot_or_parrot`; see
+[content mods](../content-mods.md)) sets the block's mob spawn surface flags, which natural spawning reads as
+`BlockBehaviour.Properties.isValidSpawn` does. The default rule asks for a sturdy top face and light emission below
+14 from the block's own light, which `light_emission` above reports without the cell's dynamic answer.
+
+## Block sounds
+
+The facts query does not run the block's parts or check loaded sound resources. Read an event by
+name with `sound.step.as_str()`, or borrow the key for a known action with `sound.event(cause)`.
+
+To change a contextual sound through `BlockPart::sound_type`, parse its event key once during
+registration with `SoundEventKey::parse("my_mod:block.machine.step")`, handle `None` as invalid
+syntax, and keep the key on the part. For example, on `BlockSoundCause::Step`, assign
+`event.sound.step = self.step.clone()`. Both `block.stone.step` and `:block.stone.step` resolve to
+`minecraft:block.stone.step`. The game reads the event for that action and applies its usual
+volume and pitch factors. A solid bucket uses the item's placement event with those same levels.
+Block break and placement play in the Blocks category even if their event is from another namespace.
+An event missing from the active sound resources plays nothing; it never causes the block to play
+its old sound instead.
+
+Changing an event key does not change `sound.identity`: a horse chooses its hoof sound from the
+sound type's identity, not from the step or placement events. When constructing a custom
+`BlockSoundType` literal, set `identity: BlockSoundTypeIdentity::Other`.
+
 ## Contextual friction
 
 `host.block_states().friction(state)` is the static coefficient. To ask the state's friction parts,
 use `level.friction(host, pos, state, entity)` on either side. Pass `None` if no entity is asking,
-or `Some((id, kind))` to forward the caller's entity. The queried state need not be the block at
+or `Some(entity)` with the caller's live `EntityRef`. The queried state need not be the block at
 `pos`. The read never loads chunks or writes blocks. It returns `Ok(None)` for a repeated active
 query or a query beyond the nesting bound, and a read error for a stale or unavailable level
-or an unknown state.
+or entity, or an unknown state.
 
-Inside `BlockPart::friction`, match `LevelSide` to borrow the read-only level. Use
+Inside `BlockPart::friction`, match `LevelSide` to borrow the read-only level. `view.entity_kind(entity)` reads the type
+key for the entity lent in `event.entity`, without looking up other entities. Use
 `view.block_entity(pos)` to get a resident block entity's handle, then
 `view.block_entity_data(handle)` to read its saved data without identity or position metadata.
 On the client this reads the local copy, not unsynced server data; synchronize any data that
@@ -116,6 +143,23 @@ your own scan and transmitter checks if summing powers for a table; the read doe
 cap them. It doesn't load chunks or write to the world. A stale handle or unavailable view
 or state refuses the query. A nested enchanting-power query for an active provider state
 is also refused, even at another level or position; it can still ask a different state.
+
+## Where an enchanting table finds its bookshelves
+
+A table scans vanilla's 32 positions (the ring two blocks out, two blocks high). A mod adds
+positions with `registrar.add_enchanting_table_offsets(&[[3, 0, 0], ...])` in `register`; they
+follow vanilla's in mod load order, and one already scanned is dropped. The list is fixed at
+startup, so a mod whose offsets come from its settings needs a restart to change them; `/reload`
+doesn't re-run registration. Each added position adds one `nextInt(16)` draw to every table's
+particle tick on the client, and nothing to the server's offers.
+
+At each scanned position, `is_valid_book_shelf(level, table_pos, offset, valid)` decides whether
+it counts (`EnchantingTableBlock.isValidBookShelf`). `valid` starts at vanilla's answer: the block
+there has a nonzero enchanting power and the block halfway to the table (x and z halved, rounded
+toward zero) is in `#minecraft:enchantment_power_transmitter`. A position set to valid adds its
+block's enchanting power to the offers, so a block with none still adds 0. The client's
+glyphs ask it too, only where vanilla does (after that position's `nextInt(16)` draw is 0), so a
+mod that changes it belongs on both sides.
 
 ## Block classes
 
@@ -188,6 +232,13 @@ What depends on a position is on `LevelRef`, not in this service: `fluid_tick_de
 (water 5, lava 30 and 10 in the Nether, a mod fluid's as its `fluid_rules` parts change it there),
 `fluid_height`, `fluid_height_for_camera` and `fluid_can_be_replaced_with(host, pos, fluid, direction)`.
 `fluid_tick(server, pos)` runs a fluid's flow step immediately; `schedule_fluid_tick` queues one.
+
+`fluid_passage` closes one side of a cell to a flowing fluid. It is asked on the server wherever a fluid decides
+where to go: the step down, the choice of sides and every step of the search for the way down, so a closed side
+changes which sides the fluid picks and not only whether one cell fills. It is asked only after the game's own
+answer was yes, so it can close a side and never open a wall; the answer is not kept, and it reschedules no fluid tick
+(the neighbour updates of the block change that moved your answer already do). `fluid_rules` changes how a mod's fluid
+flows everywhere it is; `fluid_passage` answers for one step of one position, for any fluid.
 
 `FluidState::matches(constraints)` is a pure local check of carried vanilla fields. Unknown properties
 or noncanonical serialized values return false. A falling source remains a source; a flowing state

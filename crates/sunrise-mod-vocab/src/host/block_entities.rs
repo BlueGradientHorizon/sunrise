@@ -15,22 +15,6 @@ pub trait BlockEntitiesHost {
     /// data reads find nothing until the row is put back.
     fn block_entity_identity(&self, level: LevelRef, pos: [i32; 3]) -> Option<BlockEntityRef>;
 }
-/// The server host's methods of the `block_entities` area, implemented by the game and reached through [`ServerHost`].
-#[sunrise_mod_api_macros::host_area]
-pub trait BlockEntitiesServerHost {
-    /// Side: server.
-    /// Sends clients the block at `pos` and its block entity's update tag
-    /// (`block_entity_update_tag`) again, as `Level.sendBlockUpdated`
-    /// does: with the level's other block changes, to the players who see its
-    /// chunk, once however often it is called before then. Changes made in a
-    /// block entity's tick go out at the start of the next tick, as vanilla's
-    /// do (`ServerLevel.tick` broadcasts chunks before it ticks block
-    /// entities). Call it when what clients show changed (a machine started),
-    /// not for every tick's progress: a menu's data slots carry that. Nothing
-    /// happens for an unloaded block. It also sends the one-shot fields of
-    /// `BlockEntityView::set_client_update_fields`.
-    fn block_entity_sync(&mut self, pos: [i32; 3]);
-}
 /// The handles' reads of the `block_entities` area, implemented by the game and reached through [`Backend`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait
 #[doc(hidden)]
@@ -106,6 +90,14 @@ pub trait BlockEntitiesBackend {
 #[doc(hidden)]
 #[sunrise_mod_api_macros::host_area]
 pub trait BlockEntitiesBackendMut {
+    /// Side: server.
+    /// `ServerLevel.sendBlockUpdated`: send the holder's block and update tag
+    /// (including one-shot client update fields) on its level's next block broadcast.
+    /// Requests before that broadcast coalesce. Call when the display changes, not
+    /// for progress carried by a menu's data slots. Works during the holder's own tick
+    /// and in parked levels. Returns `Stale` after replacement or unload, or
+    /// `Unavailable` when server world access is unavailable.
+    fn block_entity_sync(&mut self, entity: BlockEntityRef) -> Result<(), LevelWriteError>;
     /// Side: server.
     /// Change the lock through the same storage used by container opening and saving.
     /// The lock belongs to this block entity, not to the position or its previous occupant.
@@ -229,4 +221,30 @@ pub trait BlockEntitiesBackendMut {
         slot: u32,
         stack: Option<ItemStack>,
     ) -> Result<bool, BlockEntityItemError>;
+    /// Side: server.
+    /// Removes this block entity from its level without changing its block or state and
+    /// without running `pre_remove_side_effects` (`Level.removeBlockEntity`,
+    /// `LevelChunk.removeBlockEntity`, `BlockEntity.setRemoved`).
+    ///
+    /// Accepts any resident block entity (vanilla or mod) in a writable server level.
+    /// Unregisters its game-event listener (sculk sensors, calibrated sensors, shriekers,
+    /// catalysts), runs its `setRemoved` effects (a jukebox stops playing; a beacon plays
+    /// its deactivation sound), retires its ticker, attachments, custom name, lock, and
+    /// contents watches, and notifies neighbours if a mod block entity's published shapes
+    /// disappeared. Sends no network packet and does not mark the chunk unsaved.
+    ///
+    /// Change the block after removing if it still carries a block entity type; otherwise
+    /// a fresh, empty entity is created on the next access or reload.
+    ///
+    /// Inside a transaction, tentative reads immediately see the entity as gone and this
+    /// handle as stale; `setRemoved` effects (listener unregister, jukebox stop, beacon
+    /// sound, neighbour updates) are deferred to root commit and never happen on abort,
+    /// which restores the entity, generation, attachments, custom name, lock, watches,
+    /// and published shapes. A subsequent `set_block` at the same position in the same
+    /// transaction does not run `pre_remove_side_effects` for the already-removed entity.
+    ///
+    /// Returns `Err(BlockEntityError::Stale)` when this handle is stale, unloaded,
+    /// temporarily taken out by an engine operation, on a client, or in a level not
+    /// writable here.
+    fn block_entity_remove(&mut self, entity: BlockEntityRef) -> Result<(), BlockEntityError>;
 }

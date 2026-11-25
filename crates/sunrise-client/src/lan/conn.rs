@@ -469,6 +469,26 @@ impl PlayerSender {
         };
         (sender, move || inspect.queued_contents())
     }
+    /// A pooled test sender whose client answered no keep-alive since joining, longer ago than
+    /// the keep-alive timeout.
+    #[cfg(test)]
+    pub(crate) fn timed_out_test_sender() -> Self {
+        let (mut sender, _) = Self::payload_executor_test_sender(Transport::empty());
+        let To::Pool(outbox, _) = &sender.to else {
+            unreachable!("the executor test sender is pooled");
+        };
+        let start = Instant::now()
+            .checked_sub(2 * KEEP_ALIVE_EVERY + Duration::from_secs(1))
+            .unwrap();
+        sender.to = To::Pool(
+            outbox.clone(),
+            Arc::new(KeepAliveWatch {
+                start,
+                alive: Arc::new(AtomicI64::new(-1)),
+            }),
+        );
+        sender
+    }
     /// Override framing on a test sender (e.g. `Framing::Network(None)` for TCP frame limits).
     #[cfg(test)]
     pub fn with_framing(mut self, framing: sunrise_protocol::connection::Framing) -> Self {
@@ -1598,17 +1618,18 @@ fn login_and_configure(
                 data: Vec::new(),
             }),
         )?;
-        // Advertise private custom-book synchronization independently of mod registration.
-        send(
-            c,
-            cfg::Clientbound::CustomPayload(cfg::CustomPayload {
-                channel: sunrise_protocol::custom_book::CHANNEL.into(),
-                data: sunrise_protocol::custom_book::CAPABILITY.to_vec(),
-            }),
-        )?;
         c.ask_viewed_levels().map_err(e)?;
         c.ask_menu_extra_rev().map_err(e)?;
     }
+    // Any brand can use the book channel. Clients that don't understand this advertisement
+    // ignore it; the server sends no settings or placement data before the play exchange.
+    send(
+        c,
+        cfg::Clientbound::CustomPayload(cfg::CustomPayload {
+            channel: sunrise_protocol::custom_book::CHANNEL.into(),
+            data: sunrise_protocol::custom_book::CAPABILITY.to_vec(),
+        }),
+    )?;
     // And how far it samples far terrain for it (crate::lod_net).
     if brand == "sunrise" && shared.config.lod_distance > 0 {
         send(
@@ -2306,17 +2327,6 @@ struct PlayConn {
     /// Shared with the player's [`PlayerSender`]: what the hub hasn't taken yet.
     undrained: Arc<Undrained>,
 }
-impl PlayConn {
-    /// `IntegratedServer.isSingleplayerOwner`: the integrated server's own player,
-    /// by name (ignoring case).
-    fn is_owner(&self) -> bool {
-        self.shared
-            .config
-            .singleplayer_profile
-            .as_ref()
-            .is_some_and(|(owner, _)| owner.eq_ignore_ascii_case(&self.name))
-    }
-}
 impl io_pool::Session for PlayConn {
     /// Forward the player's packet, or say why it ends the connection: a
     /// required resource pack declined, a rate-limit excess, a cookie response
@@ -2355,7 +2365,7 @@ impl io_pool::Session for PlayConn {
                     self.latency.store((old * 3 + ms) / 4, Ordering::Relaxed);
                     self.sent_at = None;
                     Verdict::Go
-                } else if self.is_owner() {
+                } else if self.shared.is_singleplayer_owner(&self.name) {
                     Verdict::Go
                 } else {
                     kick((
@@ -3275,59 +3285,119 @@ mod tests {
     }
 
     #[test]
-    fn vanilla_configuration_does_not_disclose_sunrise_mods() {
-        let config = crate::lan::NetConfig {
-            announce: false,
-            listen: false,
-            ..crate::lan::NetConfig::lan(0, "Owner - World".into(), 8)
+    fn book_offer_crosses_configuration_for_either_brand_without_disclosing_mods() {
+        use crate::recipe_book::{
+            CustomBooks, settings_codec, settings_connection, settings_sync::Message,
         };
-        let lan = crate::lan::Lan::start_with(Arc::new(SyncData::empty()), config).unwrap();
-        let mut c = Connection::local(lan.connect_local().unwrap());
-        c.reader
-            .set_read_timeout(Some(Duration::from_secs(10)))
+        use sunrise_protocol::custom_book::{CAPABILITY, CHANNEL};
+        use sunrise_protocol::packets::play::Serverbound as S;
+
+        for (brand, supports_books) in [("vanilla", false), ("other-client", true)] {
+            let config = crate::lan::NetConfig {
+                announce: false,
+                listen: false,
+                ..crate::lan::NetConfig::lan(0, "Owner - World".into(), 8)
+            };
+            let lan = crate::lan::Lan::start_with(Arc::new(SyncData::empty()), config).unwrap();
+            let mut c = Connection::local(lan.connect_local().unwrap());
+            let timeout = Duration::from_secs(10);
+            c.reader.set_read_timeout(Some(timeout)).unwrap();
+            login_profile(&mut c, "Owner");
+            c.send(
+                &login::Serverbound::LoginAcknowledged(sunrise_protocol::packets::Empty).encode(),
+            )
             .unwrap();
-        login_profile(&mut c, "Owner");
-        c.send(&login::Serverbound::LoginAcknowledged(sunrise_protocol::packets::Empty).encode())
+            let mut data = ::sunrise_core::vanilla_bytes::Writer::new();
+            data.string(brand);
+            c.send(
+                &cfg::Serverbound::CustomPayload(cfg::CustomPayload {
+                    channel: "minecraft:brand".into(),
+                    data: data.data,
+                })
+                .encode(),
+            )
             .unwrap();
-        let mut data = ::sunrise_core::vanilla_bytes::Writer::new();
-        data.string("vanilla");
-        c.send(
-            &cfg::Serverbound::CustomPayload(cfg::CustomPayload {
-                channel: "minecraft:brand".into(),
-                data: data.data,
-            })
-            .encode(),
-        )
-        .unwrap();
-        // Vanilla's server sends a vanilla client its brand and no ping in configuration
-        // (ServerConfigurationPacketListenerImpl.startConfiguration): neither the mod list nor
-        // `sunrise:payloads`, even with the engine's declarations in this server's manifest.
-        let mut sent = Vec::new();
-        loop {
-            let (id, payload) = c.recv().unwrap();
-            match cfg::Clientbound::decode(id, &payload).unwrap() {
-                cfg::Clientbound::CustomPayload(p) => sent.push(p.channel),
-                cfg::Clientbound::Ping(p) => {
-                    sent.push(format!("ping {}", p.id));
-                    c.send(&cfg::Serverbound::Pong(p).encode()).unwrap();
-                }
-                cfg::Clientbound::SelectKnownPacks(p) => {
-                    c.send(&cfg::Serverbound::SelectKnownPacks(p).encode())
-                        .unwrap();
-                }
-                cfg::Clientbound::Disconnect(d) => panic!("unexpected refusal: {:?}", d.reason),
-                cfg::Clientbound::FinishConfiguration(_) => {
-                    c.send(
-                        &cfg::Serverbound::FinishConfiguration(sunrise_protocol::packets::Empty)
+            // The book announcement is not a mod list or a mandatory protocol query.
+            let mut announced = false;
+            loop {
+                let (id, payload) = c.recv().unwrap();
+                match cfg::Clientbound::decode(id, &payload).unwrap() {
+                    cfg::Clientbound::CustomPayload(p) if p.channel == CHANNEL => {
+                        assert!(!announced);
+                        assert_eq!(p.data.as_slice(), CAPABILITY);
+                        announced = true;
+                    }
+                    cfg::Clientbound::CustomPayload(p) => assert_eq!(p.channel, "minecraft:brand"),
+                    cfg::Clientbound::Ping(_) => {
+                        panic!("unexpected configuration ping for {brand}")
+                    }
+                    cfg::Clientbound::SelectKnownPacks(p) => {
+                        c.send(&cfg::Serverbound::SelectKnownPacks(p).encode())
+                            .unwrap();
+                    }
+                    cfg::Clientbound::Disconnect(d) => panic!("unexpected refusal: {:?}", d.reason),
+                    cfg::Clientbound::FinishConfiguration(_) => {
+                        c.send(
+                            &cfg::Serverbound::FinishConfiguration(
+                                sunrise_protocol::packets::Empty,
+                            )
                             .encode(),
-                    )
-                    .unwrap();
-                    break;
+                        )
+                        .unwrap();
+                        break;
+                    }
+                    _ => {}
                 }
-                _ => {}
+            }
+            assert!(announced);
+            let (event, _credit) = lan.events.recv_timeout_owned(timeout).unwrap().into_parts();
+            let NetEvent::Joined(joined, _) = event else {
+                panic!("expected a play connection");
+            };
+            assert_eq!(joined.brand, brand);
+
+            let mut book_connection = settings_connection::Connection::default();
+            let mut books = CustomBooks::default();
+            let mut turn = |packet: S| {
+                c.send(&packet.encode()).unwrap();
+                let (event, _credit) = lan.events.recv_timeout_owned(timeout).unwrap().into_parts();
+                let NetEvent::Packet(conn, packet, _) = event else {
+                    panic!("expected a play packet");
+                };
+                assert_eq!(conn, joined.conn);
+                if let S::CustomPayload(payload) = *packet {
+                    assert_eq!(payload.channel, CHANNEL);
+                    book_connection
+                        .receive(&payload.data, &mut books, Default::default, || 1)
+                        .map(|reply| reply.message)
+                } else {
+                    assert!(matches!(*packet, S::ClientInformation(_)));
+                    None
+                }
+            };
+            if supports_books {
+                let mut send_book = |message| {
+                    turn(S::CustomPayload(cfg::CustomPayload {
+                        channel: CHANNEL.to_owned(),
+                        data: settings_codec::encode(&message).unwrap(),
+                    }))
+                };
+                assert_eq!(send_book(Message::Hello), Some(Message::Ready));
+                assert_eq!(
+                    send_book(Message::Offer(vec![])),
+                    Some(Message::Snapshot {
+                        epoch: 1,
+                        revision: 0,
+                        entries: vec![]
+                    })
+                );
+                assert!(book_connection.authority.is_some());
+            } else {
+                // An unsupported client ignores the announcement and enters ordinary play.
+                assert_eq!(turn(S::ClientInformation(ClientInformation::new(10))), None);
+                assert!(book_connection.authority.is_none());
             }
         }
-        assert_eq!(sent, ["minecraft:brand"]);
     }
 
     #[test]

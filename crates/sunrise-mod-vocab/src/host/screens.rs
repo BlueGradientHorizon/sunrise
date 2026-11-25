@@ -104,6 +104,32 @@ pub trait ScreensClientHost {
     /// closes a screen (back to the game, or to the title screen with no world).
     fn mod_screen_close(&mut self, mod_id: &str);
     /// Side: client.
+    /// Takes (`grab` true) or gives back (`grab` false) the pointer for the calling mod's own
+    /// open screen: the cursor is hidden and held, and the screen hears the device's relative
+    /// motion only as `screen_pointer_motion`, unscaled (not as `screen_mouse_moved_pre`, and
+    /// never as camera turns), while it stays a screen that draws, takes keys (Escape
+    /// included) and has widgets. Vanilla's own screens never hold a grabbed pointer
+    /// (`MouseHandler.grabMouse` closes the screen), so this is a Sunrise capability with no
+    /// vanilla limit. A mod that wants click-to-capture grabs from its click hook and releases
+    /// with `false`.
+    ///
+    /// Returns `true` when the pointer is (or, for `false`, is no longer) held by this mod's
+    /// screen. Returns `false` and changes nothing when the open screen belongs to another
+    /// mod, when no screen is open, or, for a grab, when the window does not have focus
+    /// (`MouseHandler.grabMouse` never grabs an inactive window). A grab the system then
+    /// refuses shows as `pointer_grabbed` false. Releasing a screen that holds no grab returns `true`.
+    ///
+    /// The grab ends by itself when the screen closes by any route, when the window loses
+    /// focus, and when the mod unloads. Refocusing does not take it back: call again. The
+    /// grab takes effect at the start of the next input event or frame, and
+    /// [`pointer_grabbed`](Self::pointer_grabbed) already reports it.
+    fn set_pointer_grab(&self, grab: bool) -> bool;
+    /// Side: client.
+    /// Whether the calling mod's own open screen holds the pointer grab
+    /// ([`set_pointer_grab`](Self::set_pointer_grab)). `false` once the grab has ended by
+    /// itself, and `false` for a mod whose screen is not the open one.
+    fn pointer_grabbed(&self) -> bool;
+    /// Side: client.
     /// Closes the open screen as its Escape key does: a container screen
     /// closes as the player's container close (`ServerboundContainerClosePacket`
     /// with the menu's id, then the client menu closed), a pause menu closes
@@ -157,4 +183,12 @@ pub trait ScreensClientHost {
     /// `key.mouse.left`, `key.mouse.4`, for example).
     /// Unknown names are not down. Modifier combinations use `ClientHost::modifiers`.
     fn is_key_down(&self, key: &str) -> bool;
+    /// Side: client.
+    /// Bounding rectangle `[x, y, width, height]` in GUI pixels of a HUD layer's
+    /// geometry after viewport and scissor clipping, before other layers can cover it.
+    /// Use a vanilla id such as `"minecraft:effects"` or a registered mod layer id.
+    /// Returns `Ok(None)` if the layer has not painted visible geometry, including
+    /// before it draws, if it is canceled, or outside the HUD pass (including screen render hooks).
+    /// Returns `Err(LevelReadError::Unavailable)` outside a client window.
+    fn hud_layer_bounds(&self, layer: &str) -> Result<Option<[f32; 4]>, LevelReadError>;
 }

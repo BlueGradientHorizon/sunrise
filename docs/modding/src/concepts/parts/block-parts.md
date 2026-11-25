@@ -145,6 +145,15 @@ state whose parts are asked. The host is a read-only `LevelSide`.
 | `block_changed` | The global server hook hears a change earlier, right after the state is written, and also for replaced writes. |
 | Panics | A panicking part is contained with a warning. |
 
+## Placement writes
+
+`BlockPart::on_place` is vanilla's `BlockBehaviour.onPlace`, heard on the server for every write of a
+new state: a player's placement, `/setblock`, `/fill`, a structure, a piston. Only the parts on the new
+state hear it, and `event.old_state` and `event.moved_by_piston` say what it replaced and whether a
+piston wrote it. It gets the level writer `neighbor_changed` gets, so a part can read its signals and set
+blocks in the call, as a lamp switches to its lit block the moment it is placed beside power; the write's
+neighbour updates run as vanilla's do. It runs before the block's own `onPlace` handling.
+
 ## Rotation
 
 `BlockPart::rotate` answers how a structure template turns your block as it places it: world
@@ -323,7 +332,8 @@ is not empty, passing the fluid (`FluidState`) and its position. The contract is
 
 Normally rain on the block above, session water tickets and dry-out work as usual. With no Part on the farmland the
 scan is vanilla's. When the content owner's subscribed rule is [switched off](../disabled-content.md), only earlier
-enabled Parts or an enabled mod's session water ticket can wet the block. Rain and dry-out are held, not trampling.
+enabled Parts or an active session water ticket (tickets attributed to a disabled mod are cleared on disable) can wet
+the block. Rain and dry-out are held, not trampling.
 Bookshelf slot-occupancy flags and the last-interacted slot are transactional storage bookkeeping,
 not notification effects. Aborting restores them with the items. Changed observers, comparator
 ticks and data-send requests already issued still survive that abort.
@@ -367,5 +377,5 @@ explicit state and position, or `event.level.add_terrain_particle(host, state, s
 velocity)` for an individual piece of debris. The debris uses the supplied state's material and
 samples its tint at `source_pos`, which can differ from the spawn point. These helpers don't
 redispatch the hit or destroy Part or play a sound, but can ask block tint sources. Read the
-supplied state's outline with `event.level.block_shape` if you need to sample it. The hit helper
-uses the same random stream as `event.random`.
+supplied state's outline with `event.level.visit_block_shape` if you need to sample it. The hit
+helper uses the same random stream as `event.random`.

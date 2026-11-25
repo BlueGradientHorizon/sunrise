@@ -365,26 +365,19 @@ impl CoreParticles {
         shader: &GpuShader,
     ) -> Option<Pipeline> {
         let program = &shader.program;
-        let Some(other) = program
-            .other
-            .iter()
-            .map(|name| {
-                if name == GPU_BLOCK {
-                    Some(Other::Knobs)
-                } else if shader.uniforms.iter().any(|(n, _)| n == name) {
-                    Some(Other::Uniform(name.clone()))
-                } else {
-                    None
-                }
-            })
-            .collect::<Option<Vec<Other>>>()
-        else {
-            log::warn!(
-                "custom particle shader {} is not used: it reads a block or sampler that is \
-                 neither polytone:gpu_particle.glsl's nor one of its uniforms",
-                shader.id
-            );
-            return None;
+        let other = match others(shader) {
+            Ok(other) => other,
+            Err(at) => {
+                log::warn!(
+                    "custom particle shader {} is not used: {}",
+                    shader.id,
+                    at.error(
+                        "it reads a block or sampler that is neither \
+                         polytone:gpu_particle.glsl's nor one of its uniforms"
+                    )
+                );
+                return None;
+            }
         };
         // A pack's shader is untrusted: the backend failing to compile it is an internal error.
         let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
@@ -634,6 +627,23 @@ fn texture(
         wgpu::util::TextureDataOrder::LayerMajor,
         pixels,
     )
+}
+
+/// What the pipeline gives each of `shader`'s blocks and samplers beyond vanilla's
+/// ([`sunrise_glsl::Translated::other`]), or where the first one it doesn't give is declared.
+fn others(shader: &GpuShader) -> Result<Vec<Other>, sunrise_glsl::Location> {
+    let program = &shader.program;
+    (program.other.iter().enumerate())
+        .map(|(i, name)| {
+            if name == GPU_BLOCK {
+                Ok(Other::Knobs)
+            } else if shader.uniforms.iter().any(|(n, _)| n == name) {
+                Ok(Other::Uniform(name.clone()))
+            } else {
+                Err(program.declared_at(program.other_binding(i)))
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]

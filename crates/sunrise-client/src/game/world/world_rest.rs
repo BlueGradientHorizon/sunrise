@@ -46,6 +46,13 @@ pub(super) fn load_world_rest(
         api_values::resolve_item_registry(&items)?;
         log::info!("load items: {:.2}s", started.elapsed().as_secs_f32());
         progress.set(7);
+        // The recipes and the stations see the tags the items just bound
+        // (`neoforge:tag_empty`), as a world's own load does.
+        let conditions = overlay.conditions.with_tags(items.bound_tags());
+        let overlay = &sunrise_world::loot::PackOverlay {
+            conditions: &conditions,
+            ..*overlay
+        };
         // The recipe tables, the stations and the recipe book read one folder:
         // hold its files so it is read once.
         let _recipe_files = sunrise_client::json_folder::read(&root.join("data/minecraft/recipe"));
@@ -127,14 +134,10 @@ pub(super) fn load_world_rest(
             catalog,
             mod_api::__private::entity_attribute_modifications(),
         );
-        // The types mods name to `entity_tick_each` hear their ticks one entity at a time
-        // (game/modding/native_ticks.rs): marked once here, so a tick reads a flag.
-        let each = mod_api::__private::entity_tick_each();
         let mob_types: HashMap<_, _> = types
             .types
             .into_iter()
             .map(|(k, mut v)| {
-                v.flags.tick_alone = each.is_some_and(|each| each.names(&v.id));
                 // The entity-type registry is complete before the rest loads
                 // (`register_iterated_registries`): the type keeps its key from it.
                 v.type_key = mod_api::__private::resolved_entity_type_key(&v.id);

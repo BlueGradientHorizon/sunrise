@@ -153,6 +153,8 @@ pub struct Batch<'a> {
     pub oit: OitBatch<'a>,
     /// The quads mods draw with their own pipelines (`gfx::mod_pipelines`), with their stages.
     pub pipelines: super::mod_pipelines::Batch<'a>,
+    /// Per-frame shader-pack uniform values supplied by mods via `WorldDrawContext::set_pack_uniform`.
+    pub pack_uniforms: &'a [(&'static str, mod_api::PackUniformValue)],
 }
 
 impl Batch<'_> {
@@ -210,6 +212,10 @@ pub struct WorldPrimitives {
     oit_stage_ends: [[u32; 4]; OIT_STAGES - 1],
     /// Mods' own pipelines and their quads, drawn after each stage's primitives.
     pub(super) pipelines: super::mod_pipelines::ModPipelines,
+    pack_uniforms: Vec<(&'static str, mod_api::PackUniformValue)>,
+    /// Pipeline slots currently bound to an active shader pack's translated mod passes,
+    /// refreshed per frame without allocating so fallback engine passes never double-draw them.
+    bound_mod_slots: Vec<usize>,
 }
 
 struct AtlasGroup {
@@ -396,7 +402,9 @@ impl WorldPrimitives {
             stage_ends: [[0; 4]; STAGES - 1],
             oit_counts: [0; 4],
             oit_stage_ends: [[0; 4]; OIT_STAGES - 1],
-            pipelines: super::mod_pipelines::ModPipelines::new(device, color_format),
+            pipelines: super::mod_pipelines::ModPipelines::new(device, (color_format, linear)),
+            pack_uniforms: Vec::new(),
+            bound_mod_slots: Vec::new(),
         }
     }
 
@@ -742,9 +750,12 @@ impl WorldPrimitives {
     }
 
     /// Uploads this frame's `batch`, drawn with `view_proj` (camera-relative world to clip,
-    /// jittered as the world is) into a frame `viewport` pixels big, sampling `atlas`. Whether
-    /// there is anything to draw. CPU and GPU storage grows at its high-water mark; subsequent
-    /// frames within that capacity reuse it. Bindings are rebuilt only when the atlas view changes.
+    /// jittered as the world is) into a frame `viewport` pixels big, sampling `atlas`. When
+    /// `vanilla_blocks` is `Some`, mod GLSL pipelines bind those `core_lines::uniforms` blocks
+    /// (`Globals`, `Projection`, `DynamicTransforms`, `Fog`); when `None`, fallback blocks are
+    /// synthesized from `(view_proj, viewport, batch.pipelines.time)`. Whether there is anything
+    /// to draw. CPU and GPU storage grows at its high-water mark; subsequent frames within that
+    /// capacity reuse it. Bindings are rebuilt only when the atlas view changes.
     pub fn prepare(
         &mut self,
         device: &wgpu::Device,
@@ -753,6 +764,7 @@ impl WorldPrimitives {
         view_proj: Mat4,
         viewport: [u32; 2],
         atlas: &wgpu::TextureView,
+        vanilla_blocks: Option<&[u8; 1024]>,
     ) -> bool {
         let quads = [batch.quads, batch.quads_through].map(|q| (q.len() / 4) as u32);
         let lines = [batch.lines, batch.lines_through].map(|l| l.len() as u32);
@@ -762,11 +774,18 @@ impl WorldPrimitives {
         let oit_lines = [batch.oit.lines, batch.oit.lines_through].map(|l| l.len() as u32);
         self.oit_counts = [oit_quads[0], oit_quads[1], oit_lines[0], oit_lines[1]];
         self.oit_stage_ends = clamped_ends(batch.oit.stage_ends, self.oit_counts);
+        self.pack_uniforms.clear();
+        self.pack_uniforms.extend_from_slice(batch.pack_uniforms);
         // Before the empty check, which counts the pipeline runs this queues; the pipelines
         // themselves were built with the renderer (`Renderer::build_mod_pipelines`).
-        let pipeline_quads =
-            self.pipelines
-                .prepare(device, upload, &batch.pipelines, view_proj, viewport);
+        let pipeline_quads = self.pipelines.prepare(
+            device,
+            upload,
+            &batch.pipelines,
+            view_proj,
+            viewport,
+            vanilla_blocks,
+        );
         if batch.is_empty() {
             return false;
         }
@@ -909,13 +928,53 @@ impl WorldPrimitives {
         self.draw_prepared_ranges(&mut pass, pipelines, false, draws)
     }
 
-    /// Draws deferred custom geometry (`STAGE_CUSTOM_GEOMETRY`, including `ModPipelines` runs)
-    /// into a classic shader pack's active `colortex0` + `depthtex0` attachments.
+    /// Per-frame shader-pack uniform values uploaded from the latest [`Batch`].
+    pub(super) fn pack_uniforms(&self) -> &[(&'static str, mod_api::PackUniformValue)] {
+        &self.pack_uniforms
+    }
+
+    /// Cache the active shader pack's bound mod pipeline slots for this frame (reusing capacity).
+    pub(super) fn set_bound_mod_slots(&mut self, slots: &[usize]) {
+        self.bound_mod_slots.clear();
+        self.bound_mod_slots.extend_from_slice(slots);
+    }
+
+    /// Append uploaded vertex chunks for mod pipelines bound to translated shader-pack passes.
+    pub(super) fn pack_bound_chunks_into(
+        &self,
+        bound_slots: &[usize],
+        out: &mut Vec<super::pack_post::ModDrawChunk>,
+    ) {
+        self.pipelines
+            .pack_bound_chunks_into(&self.indices, bound_slots, out);
+    }
+
+    /// Draws deferred custom geometry (`STAGE_CUSTOM_GEOMETRY`, including unbound `ModPipelines`
+    /// runs) into a classic shader pack's active `colortex0` + `depthtex0` attachments.
     pub(super) fn draw_pack_custom(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         color: &wgpu::TextureView,
         depth: &wgpu::TextureView,
+    ) -> bool {
+        self.draw_pack_stages(
+            encoder,
+            color,
+            depth,
+            STAGE_CUSTOM_GEOMETRY,
+            STAGE_CUSTOM_GEOMETRY,
+        )
+    }
+
+    /// Draws prepared primitive and unbound `ModPipelines` runs in `first..=last` into a
+    /// classic shader pack's active `colortex0` + `depthtex0` attachments.
+    pub(super) fn draw_pack_stages(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        color: &wgpu::TextureView,
+        depth: &wgpu::TextureView,
+        first: usize,
+        last: usize,
     ) -> bool {
         let Some((_, pipelines)) = &self.pack_pipelines else {
             return false;
@@ -923,19 +982,15 @@ impl WorldPrimitives {
         let Some(AtlasGroup { group, .. }) = &self.group else {
             return false;
         };
-        let [quads, quads_through, lines, lines_through] = spans(
-            self.counts,
-            &self.stage_ends,
-            STAGE_CUSTOM_GEOMETRY,
-            STAGE_CUSTOM_GEOMETRY,
-        );
+        let [quads, quads_through, lines, lines_through] =
+            spans(self.counts, &self.stage_ends, first, last);
         let has_primitives = !(quads.is_empty()
             && quads_through.is_empty()
             && lines.is_empty()
             && lines_through.is_empty());
         let has_pipelines = self
             .pipelines
-            .has_runs(STAGE_CUSTOM_GEOMETRY, STAGE_CUSTOM_GEOMETRY);
+            .has_unbound_runs(first, last, &self.bound_mod_slots);
         if !has_primitives && !has_pipelines {
             return false;
         }
@@ -980,12 +1035,8 @@ impl WorldPrimitives {
             }
         }
         if has_pipelines {
-            self.pipelines.draw_pack(
-                &mut pass,
-                &self.indices,
-                STAGE_CUSTOM_GEOMETRY,
-                STAGE_CUSTOM_GEOMETRY,
-            );
+            self.pipelines
+                .draw_pack(&mut pass, &self.indices, first, last, &self.bound_mod_slots);
         }
         true
     }
@@ -1119,7 +1170,8 @@ impl WorldPrimitives {
                 (&self.lines, 0, line_range),
             );
         }
-        self.pipelines.draw(pass, &self.indices, first, last);
+        self.pipelines
+            .draw_excluding(pass, &self.indices, first, last, &self.bound_mod_slots);
     }
 }
 
@@ -1410,6 +1462,7 @@ mod tests {
             view_proj,
             [SIZE, SIZE],
             &atlas_view,
+            None,
         ));
         assert!(primitives.group.is_none());
         let mut writes = Vec::new();
@@ -1446,6 +1499,7 @@ mod tests {
             view_proj,
             [SIZE, SIZE],
             &atlas_view,
+            None,
         ));
         assert_eq!(primitives.counts, [1, 1, 1, 1]);
         assert_eq!(writes.len(), 4);
@@ -1497,6 +1551,7 @@ mod tests {
                 view_proj,
                 [SIZE, SIZE],
                 &atlas_view.clone(),
+                None,
             );
             assert_eq!(active, !batch.is_empty());
             let expected_uploads = if batch.is_empty() {
@@ -1539,6 +1594,7 @@ mod tests {
             view_proj,
             [SIZE, SIZE],
             &atlas_view,
+            None,
         );
         assert_ne!(primitives.indices, old_indices);
         assert_eq!(
@@ -1648,6 +1704,7 @@ mod tests {
             view_proj,
             [SIZE, SIZE],
             &atlas_view,
+            None,
         ));
         let original_group = primitives.group.as_ref().unwrap().group.clone();
         // A resource reload replaces the atlas, even at the same dimensions. Blue is now
@@ -1675,6 +1732,7 @@ mod tests {
             view_proj,
             [SIZE, SIZE],
             &replacement_view,
+            None,
         );
         let replacement_group = primitives.group.as_ref().unwrap().group.clone();
         assert_ne!(replacement_group, original_group);
@@ -1685,6 +1743,7 @@ mod tests {
             view_proj,
             [SIZE, SIZE],
             &replacement_view.clone(),
+            None,
         );
         assert_eq!(primitives.group.as_ref().unwrap().group, replacement_group);
         let mut encoder = device.create_command_encoder(&Default::default());
@@ -1857,6 +1916,7 @@ mod tests {
             view_proj,
             [SIZE, SIZE],
             &atlas_view,
+            None,
         ));
         assert_eq!(primitives.quads.buffers.len(), 1);
 
@@ -1894,6 +1954,7 @@ mod tests {
             view_proj,
             [SIZE, SIZE],
             &atlas_view,
+            None,
         ));
         assert_eq!(primitives.quads.buffers.len(), 3);
         assert!(primitives.indices.size() <= limit);

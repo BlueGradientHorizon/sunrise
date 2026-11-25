@@ -81,19 +81,41 @@ impl StationData {
 // ---------------------------------------------------------------- enchanting
 
 /// `EnchantingTableBlock.BOOKSHELF_OFFSETS`: the 5x5 ring two blocks out, two high, in
-/// `BlockPos.betweenClosed` order (x fastest, then y, then z), which a float power sum can see.
-pub fn bookshelf_offsets() -> Vec<[i32; 3]> {
-    let mut v = Vec::new();
-    for z in -2i32..=2 {
-        for y in 0..=1 {
-            for x in -2i32..=2 {
+/// `BlockPos.betweenClosed` order (x fastest, then y, then z). The power sum and the
+/// table's particles walk it in this order, so a float sum and the particles' random draws
+/// see what vanilla's do.
+pub const BOOKSHELF_OFFSETS: [[i32; 3]; 32] = {
+    let mut v = [[0; 3]; 32];
+    let mut i = 0;
+    let mut z: i32 = -2;
+    while z <= 2 {
+        let mut y = 0;
+        while y <= 1 {
+            let mut x: i32 = -2;
+            while x <= 2 {
                 if x.abs() == 2 || z.abs() == 2 {
-                    v.push([x, y, z]);
+                    v[i] = [x, y, z];
+                    i += 1;
                 }
+                x += 1;
             }
+            y += 1;
         }
+        z += 1;
     }
     v
+};
+
+/// The positions an enchanting table scans: [`BOOKSHELF_OFFSETS`], then the offsets mods
+/// added with `add_enchanting_table_offsets`, in load order, one of vanilla's dropped.
+pub fn bookshelf_offsets() -> impl Iterator<Item = [i32; 3]> {
+    let declared = mod_api::__private::enchanting_table_offset_declarations();
+    BOOKSHELF_OFFSETS.into_iter().chain(
+        declared
+            .iter()
+            .copied()
+            .filter(|offset| !BOOKSHELF_OFFSETS.contains(offset)),
+    )
 }
 /// The three offers of `EnchantmentMenu.slotsChanged`.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -354,7 +376,7 @@ pub fn item_name_part(context: &LoopContext, stack: &ItemStack) -> Option<crate:
 #[inline(never)]
 pub fn native_item_name(
     context: &LoopContext,
-    stack: &mod_api::ItemStack,
+    stack: mod_api::ItemStackView<'_>,
     name: &mut Option<mod_api::Text>,
 ) {
     mod_api::dispatch_item_name(
@@ -648,7 +670,7 @@ pub fn can_grindstone_repair(context: &LoopContext, items: &Items, stack: &ItemS
 #[inline(never)]
 pub fn native_can_grindstone_repair(
     context: &LoopContext,
-    stack: &mod_api::ItemStack,
+    stack: mod_api::ItemStackView<'_>,
     can_repair: &mut bool,
 ) {
     mod_api::dispatch_can_grindstone_repair(
@@ -1573,8 +1595,7 @@ mod tests {
 
     #[test]
     fn bookshelf_ring_has_32_positions() {
-        let o = bookshelf_offsets();
-        assert_eq!(o.len(), 32);
+        let o = BOOKSHELF_OFFSETS;
         assert!(o.contains(&[-2, 0, -2]) && o.contains(&[2, 1, 0]) && !o.contains(&[1, 0, 1]));
         // BlockPos.betweenClosed(-2, 0, -2, 2, 1, 2): x fastest, then y, then z.
         let start = [[-2, 0, -2], [-1, 0, -2], [0, 0, -2], [1, 0, -2], [2, 0, -2]];
@@ -1582,6 +1603,13 @@ mod tests {
         assert_eq!(o[5], [-2, 1, -2]);
         assert_eq!(o[10..12], [[-2, 0, -1], [2, 0, -1]]);
         assert_eq!(o[31], [2, 1, 2]);
+    }
+
+    /// With no mod installed the scan list is vanilla's 32.
+    #[test]
+    fn no_declared_offsets_leave_the_scan_list_vanillas() {
+        assert!(mod_api::__private::enchanting_table_offset_declarations().is_empty());
+        assert!(bookshelf_offsets().eq(BOOKSHELF_OFFSETS));
     }
 
     /// `EnchantmentLevelSetEvent`: each row is asked once, in order, with the
