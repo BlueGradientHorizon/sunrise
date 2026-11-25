@@ -444,6 +444,23 @@ impl<'a> BlockTables<'a> {
         self.pack.assets.registry.state(state)?;
         Some(self.res.facts().get(state).solid_render)
     }
+    /// `BlockState.isSolid()`, the exported `legacySolid`. None for an unknown state.
+    pub(in crate::game) fn block_state_is_solid(&self, state: BlockStateId) -> Option<bool> {
+        self.pack.assets.registry.state(state)?;
+        Some(self.res.facts().get(state).legacy_solid)
+    }
+    /// The cached `isCollisionShapeFullBlock` at the origin with an empty getter. None for an
+    /// unknown state, and for a block with a dynamic shape, which vanilla never caches.
+    pub(in crate::game) fn block_state_collision_is_full_block(
+        &self,
+        state: BlockStateId,
+    ) -> Option<bool> {
+        self.pack.assets.registry.state(state)?;
+        if self.res.behaviours().data(state).dynamic_shape {
+            return None;
+        }
+        Some(self.res.facts().get(state).full_collision)
+    }
     /// `BlockState.propagatesSkylightDown()`. None for an unknown state.
     pub(in crate::game) fn block_state_propagates_skylight_down(
         &self,
@@ -495,7 +512,34 @@ impl<'a> BlockTables<'a> {
             BlockClass::StainedGlassPane => data.is(Class::StainedGlassPane),
             BlockClass::TrapDoor => data.is(Class::TrapDoor),
             BlockClass::Bonemealable => data.implements(Interface::Bonemealable),
+            BlockClass::Slab => data.is(Class::Slab),
+            BlockClass::Wall => data.is(Class::Wall),
+            BlockClass::Fence => data.is(Class::Fence),
         }))
+    }
+    /// `instanceof LiquidBlockContainer`, `SimpleWaterloggedBlock` included as its subinterface.
+    /// None for an unknown state.
+    pub(in crate::game) fn block_state_is_liquid_block_container(
+        &self,
+        state: BlockStateId,
+    ) -> Option<bool> {
+        self.pack.assets.registry.state(state)?;
+        Some(self.res.behaviours().is_liquid_container(state))
+    }
+    /// `instanceof SimpleWaterloggedBlock`, from the block's exported interfaces. None for an
+    /// unknown state.
+    pub(in crate::game) fn block_state_is_simple_waterlogged(
+        &self,
+        state: BlockStateId,
+    ) -> Option<bool> {
+        use sunrise_world::level::classes::Interface;
+        self.pack.assets.registry.state(state)?;
+        Some(
+            self.res
+                .behaviours()
+                .data(state)
+                .implements(Interface::SimpleWaterlogged),
+        )
     }
     /// The immutable local ordinals of `block`, independent of current world ID order.
     pub(in crate::game) fn block_states_of(&self, block: BlockKey) -> Option<BlockStateRange> {
@@ -589,6 +633,22 @@ impl<'a> BlockTables<'a> {
             block,
             properties,
         )
+    }
+    pub(in crate::game) fn block_metadata_key(&self, id: &str) -> Option<mod_api::BlockKey> {
+        mod_api::BlockMetadata::key(super::api_values::block_metadata_table().ok()?, id)
+    }
+    pub(in crate::game) fn block_metadata_state_definition(
+        &self,
+        block: mod_api::BlockKey,
+    ) -> Result<StateProperties<'static>, mod_api::BlockStateError> {
+        mod_api::BlockMetadata::state_definition(super::api_values::block_metadata_table()?, block)
+    }
+    /// The published definitions themselves, shared: the same immutable tables every read here
+    /// borrows.
+    pub(in crate::game) fn block_metadata_snapshot(
+        &self,
+    ) -> Option<std::sync::Arc<dyn mod_api::BlockMetadata + Send + Sync>> {
+        Some(mod_api::__private::block_definitions_shared()?)
     }
 
     /// The waxed twin of `state`, its properties kept: the world's
