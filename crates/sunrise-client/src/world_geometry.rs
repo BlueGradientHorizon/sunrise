@@ -324,13 +324,39 @@ impl WorldGeometry {
         self.modifier_stack
             .iter()
             .rev()
-            .filter_map(|&slot| defs.get(slot as usize).and_then(|m| m.depth))
+            .filter_map(|&slot| defs.get(slot as usize).and_then(|m| m.depth_compare))
             .next_back()
+            .map(|cmp| {
+                if cmp == mod_api::DepthCompare::Always {
+                    WorldDepth::ThroughWalls
+                } else {
+                    WorldDepth::Tested
+                }
+            })
     }
 
     /// Effective `WorldDepth` after applying the active modifier stack.
     fn effective_depth(&self, base: WorldDepth) -> WorldDepth {
         self.depth_override().unwrap_or(base)
+    }
+
+    /// Effective [`mod_api::PrimitiveTopology`] after applying the active modifier stack
+    /// (outermost wins).
+    pub fn effective_topology(
+        &self,
+        base: mod_api::PrimitiveTopology,
+    ) -> mod_api::PrimitiveTopology {
+        if self.modifier_stack.is_empty() {
+            return base;
+        }
+        let defs = crate::mod_pipelines::registered_modifiers();
+        let mut topology = base;
+        for &slot in self.modifier_stack.iter().rev() {
+            if let Some(t) = defs.get(slot as usize).and_then(|m| m.topology) {
+                topology = t;
+            }
+        }
+        topology
     }
 
     /// Append geometry to a shared CPU stream and return a handle to just the appended ranges.
