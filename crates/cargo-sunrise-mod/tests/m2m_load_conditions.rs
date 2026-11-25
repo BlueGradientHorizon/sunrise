@@ -10,6 +10,8 @@
 //! Run 2 (`boiler` installed alone): `boiler` starts cleanly with zero errors, `boiler:filtered_out`
 //! survives, every `chemlib`-guarded entry is absent, and the static-tag `tag_empty` pack feature
 //! still loads.
+//! Run 3: an unknown condition type on a worldgen file and on a dimension file fails the load,
+//! naming each file and the type.
 
 use serde_json::Value;
 use std::{
@@ -69,6 +71,7 @@ impl mod_api::Hooks for Boiler {
         let pack_feature = has_entry("minecraft:worldgen/feature", "boiler:pack_chem_feature");
         let pack_tag_feature = has_entry("minecraft:worldgen/feature", "boiler:pack_tag_feature");
         let false_feature = has_entry("minecraft:worldgen/feature", "boiler:never_feature");
+        let false_dimension = has_entry("minecraft:dimension", "boiler:never_dimension");
         let trade = has_entry("minecraft:villager_trade", "boiler:chem_trade");
         let trade_set = has_entry("minecraft:trade_set", "boiler:chem_set");
         let predicate = has_entry("minecraft:predicate", "boiler:chem_pred");
@@ -76,7 +79,7 @@ impl mod_api::Hooks for Boiler {
         let slot_source = has_entry("minecraft:slot_source", "boiler:chem_slots");
 
         println!(
-            "m2m_load_conditions chemlib_custom={chemlib_custom} boiler_recipe={boiler_recipe} filtered_out={filtered_out} content_feature={content_feature} pack_feature={pack_feature} pack_tag_feature={pack_tag_feature} false_feature={false_feature} trade={trade} trade_set={trade_set} predicate={predicate} item_mod={item_mod} slot_source={slot_source}"
+            "m2m_load_conditions chemlib_custom={chemlib_custom} boiler_recipe={boiler_recipe} filtered_out={filtered_out} content_feature={content_feature} pack_feature={pack_feature} pack_tag_feature={pack_tag_feature} false_feature={false_feature} false_dimension={false_dimension} trade={trade} trade_set={trade_set} predicate={predicate} item_mod={item_mod} slot_source={slot_source}"
         );
         std::process::exit(0);
     }
@@ -151,6 +154,12 @@ fn write_world_datapack(game_dir: &Path) {
     write_file(
         &pack.join("data/boiler/worldgen/feature/never_feature.json"),
         r#"{"neoforge:conditions":[{"type":"neoforge:never"}],"type":"minecraft:no_op","config":{}}"#,
+    );
+    // A dimension file whose condition fails is left out of the level stem registry; its stem
+    // names a generator that does not exist, so it would fail the load if it were read.
+    write_file(
+        &pack.join("data/boiler/dimension/never_dimension.json"),
+        r#"{"neoforge:conditions":[{"type":"neoforge:never"}],"type":"boiler:no_such_type","generator":{"type":"boiler:no_such_generator"}}"#,
     );
 }
 
@@ -338,7 +347,7 @@ fn two_separately_built_mods_gate_all_data_loaders_with_load_conditions() {
     }
     fs::write(combined.join("native-mods.json"), merged.to_string()).unwrap();
 
-    let start_dedicated = |app: &Path, name: &str| -> String {
+    let run_dedicated = |app: &Path, name: &str| -> Output {
         let game_dir = root.join(name);
         fs::create_dir_all(&game_dir).unwrap();
         fs::write(game_dir.join("eula.txt"), "eula=true\n").unwrap();
@@ -357,12 +366,13 @@ fn two_separately_built_mods_gate_all_data_loaders_with_load_conditions() {
             .env_remove("SUNRISE_SESSION_FILE");
         #[cfg(target_os = "linux")]
         cmd.env("LD_LIBRARY_PATH", app);
-        passed(cmd.output().unwrap())
+        cmd.output().unwrap()
     };
+    let start_dedicated = |app: &Path, name: &str| passed(run_dedicated(app, name));
 
     // Run 1: chemlib + boiler together.
     let stdout_both = start_dedicated(&combined, "game-both");
-    let expected_both = "m2m_load_conditions chemlib_custom=true boiler_recipe=true filtered_out=false content_feature=true pack_feature=true pack_tag_feature=true false_feature=false trade=true trade_set=true predicate=true item_mod=true slot_source=true";
+    let expected_both = "m2m_load_conditions chemlib_custom=true boiler_recipe=true filtered_out=false content_feature=true pack_feature=true pack_tag_feature=true false_feature=false false_dimension=false trade=true trade_set=true predicate=true item_mod=true slot_source=true";
     assert!(
         stdout_both.lines().any(|line| line == expected_both),
         "expected `{expected_both}` in Run 1 output:\n{stdout_both}"
@@ -370,9 +380,38 @@ fn two_separately_built_mods_gate_all_data_loaders_with_load_conditions() {
 
     // Run 2: boiler alone (optional chemlib absent).
     let stdout_alone = start_dedicated(&boiler_app, "game-alone");
-    let expected_alone = "m2m_load_conditions chemlib_custom=false boiler_recipe=false filtered_out=true content_feature=false pack_feature=false pack_tag_feature=true false_feature=false trade=false trade_set=false predicate=false item_mod=false slot_source=false";
+    let expected_alone = "m2m_load_conditions chemlib_custom=false boiler_recipe=false filtered_out=true content_feature=false pack_feature=false pack_tag_feature=true false_feature=false false_dimension=false trade=false trade_set=false predicate=false item_mod=false slot_source=false";
     assert!(
         stdout_alone.lines().any(|line| line == expected_alone),
         "expected `{expected_alone}` in Run 2 output:\n{stdout_alone}"
     );
+
+    // Run 3: an unknown condition type on a worldgen file and on a dimension file fails the
+    // whole registry load (`ConditionalOps` decode error), naming each file and the type.
+    let bad_game = root.join("game-unknown-condition");
+    for file in [
+        "data/boiler/worldgen/feature/unknown_condition.json",
+        "data/boiler/dimension/unknown_condition.json",
+    ] {
+        write_file(
+            &bad_game.join("world/datapacks/m2m_cond_pack").join(file),
+            r#"{"neoforge:conditions":[{"type":"unknown:bogus"}],"type":"minecraft:no_op","config":{}}"#,
+        );
+    }
+    let refused = run_dedicated(&boiler_app, "game-unknown-condition");
+    let log = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&refused.stdout),
+        String::from_utf8_lossy(&refused.stderr)
+    );
+    assert!(!refused.status.success(), "the load must fail:\n{log}");
+    for file in [
+        "data/boiler/worldgen/feature/unknown_condition.json",
+        "data/boiler/dimension/unknown_condition.json",
+    ] {
+        assert!(
+            log.contains(file) && log.contains("unknown:bogus"),
+            "expected `{file}` and `unknown:bogus` in the refusal:\n{log}"
+        );
+    }
 }
