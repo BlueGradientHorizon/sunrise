@@ -5725,6 +5725,7 @@ dependencies = [
  "sunrise-perf",
  "sunrise-perf-format",
  "sunrise-protocol",
+ "sunrise-server-files",
  "sunrise-threads",
  "sunrise-world",
  "tempfile",

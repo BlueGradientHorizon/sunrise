@@ -22,10 +22,10 @@ sunrise-client-lib client_perf::tests::health_samples_carry_the_process_gauges_a
 sunrise-client-lib client_perf::tests::sampled::each_side_samples_its_own_thread_and_side_client_selects_the_render_thread lib daily slow
 sunrise-client-lib client_perf::tests::sampled::the_render_thread_samples_count_the_frames_the_run_made lib daily slow
 sunrise-client-lib client_perf::tests::status_grows_with_the_capture lib daily slow
-sunrise-client-lib control::tests::a_request_longer_than_the_limit_is_refused lib daily network
-sunrise-client-lib control::tests::long_tcp_endpoint_opens lib daily network
-sunrise-client-lib control::tests::tcp_endpoint_round_trip lib daily network
-sunrise-client-lib control::tests::tcp_refuses_a_wrong_token lib daily network
+sunrise-sim control::tests::a_request_longer_than_the_limit_is_refused lib daily network
+sunrise-sim control::tests::long_tcp_endpoint_opens lib daily network
+sunrise-sim control::tests::tcp_endpoint_round_trip lib daily network
+sunrise-sim control::tests::tcp_refuses_a_wrong_token lib daily network
 sunrise-client-lib datapack_net::transport::tests::incompressible_large_registry_snapshot_fits_each_frame_and_activates_only_when_complete lib daily slow
 sunrise-client-lib entities::armor_stand_motion_tests::a_no_gravity_stand_stays_put lib daily resources
 sunrise-client-lib entities::armor_stand_motion_tests::a_stand_lands_on_and_stops_at_the_entity_boxes_it_is_given lib daily resources
@@ -457,7 +457,7 @@ sunrise-client-lib server_packs::download::tests::a_pack_lands_under_its_hash_an
 sunrise-client-lib server_packs::download::tests::a_server_that_goes_silent_fails_the_download lib daily network
 sunrise-client-lib server_packs::download::tests::a_wrong_hash_a_dead_url_and_a_large_pack_fail lib daily network
 sunrise-client-lib server_packs::download::tests::the_queue_logs_each_download lib daily network
-sunrise-client-lib server_perf::tests::sampled::a_sampled_capture_reads_back_with_the_entity_shares_of_the_work lib daily slow
+sunrise-sim server_perf::tests::sampled::a_sampled_capture_reads_back_with_the_entity_shares_of_the_work lib daily slow
 sunrise-client-lib structure_blocks::tests::declared_structure_entities_keep_template_payload_not_template_type lib daily child-process
 sunrise-client-lib telemetry::tests::benchmark_reports_need_their_own_consent_and_go_dated_to_the_day lib daily child-process
 sunrise-sim ticket_levels::tests::grid_matches_the_map lib daily slow

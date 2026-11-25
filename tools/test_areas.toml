@@ -154,7 +154,7 @@ paths = [
   "crates/sunrise-client-render/src/streaming*", "crates/sunrise-client-render/src/chunk*",
   "crates/sunrise-level/src/world.rs", "crates/sunrise-level/src/world/*",
   "crates/sunrise-level/src/mod_chunk_tickets.rs", "crates/sunrise-sim/src/ticket_levels.rs",
-  "crates/sunrise-client/src/tick_chunk_membership.rs", "crates/sunrise-client/src/game/world/world_loading.rs",
+  "crates/sunrise-sim/src/tick_chunk_membership.rs", "crates/sunrise-client/src/game/world/world_loading.rs",
   "crates/sunrise-client/src/game/world/world_entry.rs", "crates/sunrise-world/src/chunk*",
 ]
 cargo = [

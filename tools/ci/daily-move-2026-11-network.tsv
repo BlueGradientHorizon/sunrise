@@ -1,9 +1,9 @@
 # PACKAGE	TARGET	TEST	SOURCE	REASON  (tests that opened an inet socket, bound, connected or resolved a name when run alone
 # under a preload library recording socket, bind, connect and getaddrinfo, on main plus the fixture commit)
-sunrise-client-lib	lib	control::tests::a_request_longer_than_the_limit_is_refused	crates/sunrise-client/src/control.rs:561	network
-sunrise-client-lib	lib	control::tests::long_tcp_endpoint_opens	crates/sunrise-client/src/control.rs:525	network
-sunrise-client-lib	lib	control::tests::tcp_endpoint_round_trip	crates/sunrise-client/src/control.rs:536	network
-sunrise-client-lib	lib	control::tests::tcp_refuses_a_wrong_token	crates/sunrise-client/src/control.rs:589	network
+sunrise-sim	lib	control::tests::a_request_longer_than_the_limit_is_refused	crates/sunrise-sim/src/control.rs:561	network
+sunrise-sim	lib	control::tests::long_tcp_endpoint_opens	crates/sunrise-sim/src/control.rs:525	network
+sunrise-sim	lib	control::tests::tcp_endpoint_round_trip	crates/sunrise-sim/src/control.rs:536	network
+sunrise-sim	lib	control::tests::tcp_refuses_a_wrong_token	crates/sunrise-sim/src/control.rs:589	network
 sunrise-client-lib	lib	lan::io_pool::memory_progress_tests::tcp_server_resumes_only_from_writable_readiness	crates/sunrise-client/src/lan/io_pool/memory_progress_tests.rs:154	network
 sunrise-client-lib	lib	lan::io_pool::tests::a_close_ends_a_disconnect_the_client_does_not_take	crates/sunrise-client/src/lan/io_pool.rs:985	network
 sunrise-client-lib	lib	lan::io_pool::tests::a_socket_carries_packets_both_ways_in_order_then_disconnects	crates/sunrise-client/src/lan/io_pool.rs:898	network

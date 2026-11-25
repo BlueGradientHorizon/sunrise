@@ -31,7 +31,7 @@ pub fn native_entity_move(
     delta: &mut [f64; 3],
     canceled: &mut bool,
 ) {
-    let reader = sunrise_client_render::api_context::LoopReader(context);
+    let reader = sunrise_level::api_context::LoopReader(context);
     mod_api::dispatch_entity_move(&reader.context(), entity, kind, cause, delta, canceled);
 }
 
@@ -98,7 +98,7 @@ pub fn arm_with<'k>(
     let kind = kind();
     let mut replaced = [delta.x, delta.y, delta.z];
     let mut canceled = false;
-    let reader = sunrise_client_render::api_context::LoopReader(context);
+    let reader = sunrise_level::api_context::LoopReader(context);
     mod_api::dispatch_entity_move(
         &reader.context(),
         entity,
@@ -178,7 +178,7 @@ pub fn armed(
 #[allow(clippy::disallowed_methods)]
 mod collide {
     use super::*;
-    use sunrise_client_render::moving_colliders;
+    use sunrise_level::moving_colliders;
     /// `SceneCollisions::resolve` through the gate: the armed move's
     /// collision, stopped by the blocks (and powder snow by the scene's
     /// `subject`).

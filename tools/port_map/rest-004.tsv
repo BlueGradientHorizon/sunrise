@@ -133,14 +133,14 @@ LocalPlayer.openTextEdit	port	crates/sunrise-client/src/game/interface/sign_edit
 LocalPlayer.modifyInputSpeedForSquareMovement	port	crates/sunrise-client-input/src/input.rs::square_movement
 LocalPlayer.distanceToUnitSquare	inline	crates/sunrise-client-input/src/input.rs::square_movement
 LocalPlayer.resetPos	inline	crates/sunrise-client/src/game/interface/screens.rs::Game::respawn_player	gap: minor: no free-height search, pose, rotation or velocity reset
-LocalPlayer.shouldStopRunSprinting	port	crates/sunrise-client/src/sprint.rs::Conditions::should_stop	gap: player: minor_horizontal_collision is always false, so wall slides stop the sprint
-LocalPlayer.shouldStopSwimSprinting	port	crates/sunrise-client/src/sprint.rs::Conditions::should_stop
+LocalPlayer.shouldStopRunSprinting	port	crates/sunrise-sim/src/sprint.rs::Conditions::should_stop	gap: player: minor_horizontal_collision is always false, so wall slides stop the sprint
+LocalPlayer.shouldStopSwimSprinting	port	crates/sunrise-sim/src/sprint.rs::Conditions::should_stop
 LocalPlayer.tickDeath	missing		minor: unsure: the dead local player is not removed after 20 ticks; the death screen flow covers it
 LocalPlayer.rideTick	port	crates/sunrise-client/src/game/network/remote_vehicles.rs::Game::remote_ride	the keys are latched into the boat's input and the seat follows its turn
 LocalPlayer.isHorizontalCollisionMinor	port	crates/sunrise-client/src/motion.rs::EntityMoveWorld::minor_horizontal_collision	the sprint keeps when a move hits a wall at under 8 degrees
-LocalPlayer.isMoving	inline	crates/sunrise-client/src/auto_jump.rs::can_auto_jump
-LocalPlayer.isSprintingPossible	port	crates/sunrise-client/src/sprint.rs::Conditions::possible
-LocalPlayer.canStartSprinting	port	crates/sunrise-client/src/sprint.rs::Conditions::can_start	forward, not sprinting, food or may-fly, no slow item in use and not moving slowly unless underwater; `slow_item` is set from the item use (game.rs item_use_slows_sprint), so eating or drinking blocks the start
+LocalPlayer.isMoving	inline	crates/sunrise-sim/src/auto_jump.rs::can_auto_jump
+LocalPlayer.isSprintingPossible	port	crates/sunrise-sim/src/sprint.rs::Conditions::possible
+LocalPlayer.canStartSprinting	port	crates/sunrise-sim/src/sprint.rs::Conditions::can_start	forward, not sprinting, food or may-fly, no slow item in use and not moving slowly unless underwater; `slow_item` is set from the item use (game.rs item_use_slows_sprint), so eating or drinking blocks the start
 LocalPlayer.onGameModeChanged	missing		minor: switching to spectator keeps vertical momentum
 LocalPlayer.getRopeHoldPosition	port	crates/sunrise-client/src/game/entities/leads_client.rs::Game::player_rope_hold	the first-person rope point from the look angles and the main arm
 LocalPlayer.raycastHitResult	port	crates/sunrise-client/src/game/items/hand.rs::Game::attack_range_pick_result	gap: minor: block fallback is Game::pick; no separate item attack-range pass

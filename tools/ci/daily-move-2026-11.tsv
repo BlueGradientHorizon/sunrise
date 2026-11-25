@@ -38,7 +38,7 @@ sunrise-client-lib	lib	net::tests::lan_login_continues_after_authentication_fail
 sunrise-client-lib	lib	pregen::tests::sweeps_every_chunk_of_the_area_once	crates/sunrise-client/src/pregen.rs:177	slow
 sunrise-client-lib	lib	save::biome_tests::an_exhausted_biome_table_refuses_every_save_before_touching_the_world	crates/sunrise-client/src/save/biome_tests.rs:140	slow
 sunrise-client-lib	lib	save::tests::saved_light_matches_reference_for_layers_and_metadata	crates/sunrise-client/src/save.rs:7947	slow
-sunrise-client-lib	lib	server_perf::tests::sampled::a_sampled_capture_reads_back_with_the_entity_shares_of_the_work	crates/sunrise-client/src/server_perf/tests.rs:317	slow
+sunrise-sim	lib	server_perf::tests::sampled::a_sampled_capture_reads_back_with_the_entity_shares_of_the_work	crates/sunrise-sim/src/server_perf/tests.rs:317	slow
 sunrise-sim	lib	ticket_levels::tests::grid_matches_the_map	crates/sunrise-sim/src/ticket_levels.rs:1052	slow
 sunrise-sim	lib	ticket_levels::tiled_tests::tiles_match_scalar_levels_with_overlaps_and_portals	crates/sunrise-sim/src/ticket_levels.rs:1458	slow
 sunrise-client-render	lib	auth::tests::certificates_response	crates/sunrise-client-render/src/auth.rs:901	slow

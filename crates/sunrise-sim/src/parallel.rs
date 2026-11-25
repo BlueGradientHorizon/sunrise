@@ -357,14 +357,14 @@ impl ListenSnapshot {
 /// ([`TickThread::mint`], `block_contact`'s level):
 ///
 /// ```no_run
-/// # use sunrise_client_lib::parallel::{phase, TickThread};
-/// # fn view() -> &'static sunrise_client_lib::random_tick_sections::RandomTickView<'static> { unimplemented!() }
+/// # use sunrise_sim::parallel::{phase, TickThread};
+/// # fn view() -> &'static sunrise_sim::random_tick_sections::RandomTickView<'static> { unimplemented!() }
 /// let _tick = TickThread::mint();
 /// phase(view(), &[1u32], 1, |_, item| item + 1);
 /// ```
 /// ```compile_fail
-/// # use sunrise_client_lib::parallel::{phase, TickThread};
-/// # fn view() -> &'static sunrise_client_lib::random_tick_sections::RandomTickView<'static> { unimplemented!() }
+/// # use sunrise_sim::parallel::{phase, TickThread};
+/// # fn view() -> &'static sunrise_sim::random_tick_sections::RandomTickView<'static> { unimplemented!() }
 /// let tick = TickThread::mint();
 /// // A worker can't capture the tick's token (or anything else).
 /// phase(view(), &[1u32], 1, |_, item| {

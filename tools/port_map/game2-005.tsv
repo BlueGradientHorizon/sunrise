@@ -109,7 +109,7 @@ Player.startSleepInBed	port	crates/sunrise-client/src/game/game_server.rs::Game:
 Player.isSleepingLongEnough	port	crates/sunrise-client/src/game/network/lan_actions/sleep_server.rs::sleep_counts	100 ticks in bed is what counts a sleeper as deep for SleepStatus.update
 Player.updateSwimming	port	crates/sunrise-client/src/motion.rs::MotionWorld::swimming
 Player.getXpNeededForNextLevel	port	crates/sunrise-client/src/entities.rs::Experience::needed
-Player.hasEnoughFoodToDoExhaustiveManoeuvres	inline	crates/sunrise-client/src/sprint.rs::Conditions::possible	the food-or-mayfly test is the sprint gate's `enough_food || may_fly`: `enough_food` is `FoodData::has_enough_food` (food level above 6) filled in `motion.rs`, and `player_food::enough_food_for_manoeuvres` is the same test as a probed free function
+Player.hasEnoughFoodToDoExhaustiveManoeuvres	inline	crates/sunrise-sim/src/sprint.rs::Conditions::possible	the food-or-mayfly test is the sprint gate's `enough_food || may_fly`: `enough_food` is `FoodData::has_enough_food` (food level above 6) filled in `motion.rs`, and `player_food::enough_food_for_manoeuvres` is the same test as a probed free function
 Player.mayUseItemAt	port	crates/sunrise-client/src/game/use_hand.rs::Game::use_hand	the may-build test before use-on in adventure mode
 Player.isSwimming	port	crates/sunrise-client/src/motion.rs::MotionWorld::swimming
 Player.decorateDisplayNameComponent	port	crates/sunrise-client/src/game/administration/commands/mod_server.rs::player_display_name	click suggests /tell, hover shows the player entity, plus the insertion
