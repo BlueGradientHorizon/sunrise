@@ -281,8 +281,11 @@ pub enum ArgType {
     NbtPath,
     /// NbtTagArgument: any SNBT value (kept as text).
     NbtTag,
-    /// Vec2Argument: `x z` with `~` relative parts.
-    Vec2,
+    /// Vec2Argument: `x z` with `~` relative parts; `center` adds `0.5` to whole numbers
+    /// without a decimal point (`Vec2Argument.vec2()` vs `vec2(false)`).
+    Vec2 {
+        center: bool,
+    },
     /// ColumnPosArgument: block `x z`.
     ColumnPos,
     /// ParticleArgument: a particle id and its options (kept as text).
@@ -1765,15 +1768,10 @@ impl ArgType {
             ArgType::IntRange => Arg::IntRange(read_int_bounds(reader)?),
             ArgType::FloatRange => Arg::DoubleRange(read_double_bounds(reader)?),
             ArgType::Name(_) => Arg::Str(reader.read_string()?),
-            ArgType::Vec2 | ArgType::ColumnPos => {
-                let block = matches!(self, ArgType::ColumnPos);
-                let one = |reader: &mut Reader| {
-                    if block {
-                        parse_coord_int(reader)
-                    } else {
-                        // Vec2Argument.vec2(): integers are centred on the block.
-                        parse_coord_double(reader, true)
-                    }
+            ArgType::Vec2 { .. } | ArgType::ColumnPos => {
+                let one = |reader: &mut Reader| match self {
+                    ArgType::Vec2 { center } => parse_coord_double(reader, *center),
+                    _ => parse_coord_int(reader),
                 };
                 let x = one(reader)?;
                 if !reader.can_read() || reader.peek() != ' ' {
@@ -2078,7 +2076,7 @@ impl ArgType {
                     suggest_resources(builder, known, "");
                 }
             }
-            ArgType::Vec2 => suggest_coordinates(builder, reg, self, false),
+            ArgType::Vec2 { .. } => suggest_coordinates(builder, reg, self, false),
             ArgType::ColumnPos => suggest_coordinates(builder, reg, self, true),
             ArgType::Name(list) => {
                 let names = match *list {

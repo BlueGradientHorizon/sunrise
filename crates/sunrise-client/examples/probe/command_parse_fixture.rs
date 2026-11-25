@@ -98,7 +98,7 @@ fn parser_id(ty: &ArgType) -> String {
         ArgType::FloatRange => "minecraft:float_range".into(),
         ArgType::NbtPath => "minecraft:nbt_path".into(),
         ArgType::NbtTag => "minecraft:nbt_tag".into(),
-        ArgType::Vec2 => "minecraft:vec2".into(),
+        ArgType::Vec2 { .. } => "minecraft:vec2".into(),
         ArgType::ColumnPos => "minecraft:column_pos".into(),
         ArgType::Particle => "minecraft:particle".into(),
         ArgType::Enum(words) => format!("enum:{}", words.join("|")),

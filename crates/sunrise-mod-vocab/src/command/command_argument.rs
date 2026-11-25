@@ -360,6 +360,18 @@ mod tests {
     }
 
     #[test]
+    fn a_vec2_value_crosses_the_wire() {
+        use super::super::CommandArgumentValue;
+        let value = CommandArgumentValue::Vec2([5.5, -2.25]);
+        let mut out = crate::wire::Writer::new();
+        out.put(&value);
+        assert_eq!(
+            crate::wire::Reader::decode::<CommandArgumentValue>(out.bytes()).unwrap(),
+            value
+        );
+    }
+
+    #[test]
     fn suggestion_request_and_builders_preserve_ranges_tooltips_and_int_values() {
         let request = SuggestionRequest::new(
             "stone st",
