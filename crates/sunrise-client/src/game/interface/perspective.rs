@@ -10,7 +10,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 use sunrise_client::{
-    blocks::BlockFacts,
     camera::{CameraEntity, CameraType, LivingCamera},
     collisions::SceneCollisions,
 };
@@ -21,15 +20,12 @@ use sunrise_client::{
     mouse::Rotation,
     pose::Pose,
 };
-use sunrise_core::{
-    geometry::{Aabb, ShapeOp, Vec3, VoxelShape},
-    position::BlockPos,
-};
+use sunrise_core::geometry::{Aabb, ShapeOp, Vec3, VoxelShape};
 use sunrise_world::{
     collision_context::{CollisionContext, CollisionEntity, CollisionItem},
     entity_obstruction::EntityIdentity,
     registry::BlockStateId,
-    world_ray::{RayBlockMode, RayFluidMode, RayWorld, clip_world},
+    world_ray::{RayBlockMode, RayFluidMode, clip_world},
 };
 
 pub(super) fn outline_offset(
@@ -72,74 +68,6 @@ pub(super) fn ray_interaction_shape(
         &state.name,
         state.properties.get("facing").map(String::as_str),
     ))
-}
-
-/// `Level.clip` with `ClipContext.Block.VISUAL` and no fluids:
-/// `BlockBehaviour.getVisualShape` is the collision shape except for the
-/// blocks that override it.
-struct VisualRays<'a, 'r> {
-    inner: super::explosion::ColliderRays<'a, 'r>,
-    facts: &'a BlockFacts,
-}
-impl RayWorld for VisualRays<'_, '_> {
-    type Error = io::Error;
-    type Block = BlockStateId;
-    type Fluid = ();
-    fn block_state(&mut self, p: BlockPos) -> io::Result<BlockStateId> {
-        self.inner.block_state(p)
-    }
-    fn fluid_state(&mut self, _: BlockPos) -> io::Result<()> {
-        Ok(())
-    }
-    fn block_shape(
-        &mut self,
-        state: BlockStateId,
-        p: BlockPos,
-        _: RayBlockMode,
-    ) -> io::Result<VoxelShape> {
-        let facts = self.facts.get(state);
-        let name = &*facts.name;
-        // TransparentBlock (glass, stained and tinted glass, copper grates),
-        // IronBarsBlock (bars and panes) and PowderSnowBlock: nothing;
-        // SoulSandBlock and MudBlock: a full block; SnowLayerBlock and
-        // FenceBlock: their outline.
-        if name.ends_with("glass")
-            || name.ends_with("glass_pane")
-            || name.ends_with("_bars")
-            || name.ends_with("copper_grate")
-            || name == "minecraft:powder_snow"
-        {
-            return Ok(VoxelShape::empty());
-        }
-        if name == "minecraft:soul_sand" || name == "minecraft:mud" {
-            return Ok(VoxelShape::block());
-        }
-        if name == "minecraft:snow" || name.ends_with("_fence") {
-            let shape = ray_shape_from_boxes(&facts.outline)?;
-            let offset = if facts.outline_offset {
-                facts.offset_at(p.x, p.z)
-            } else {
-                [0.0; 3]
-            };
-            return Ok(shape.moved(Vec3::new(offset[0], offset[1], offset[2])));
-        }
-        self.inner.block_shape(state, p, RayBlockMode::Collider)
-    }
-    fn interaction_shape(&mut self, state: BlockStateId, p: BlockPos) -> io::Result<VoxelShape> {
-        self.inner.interaction_shape(state, p)
-    }
-    fn fluid_is_source(&mut self, _: ()) -> io::Result<bool> {
-        Ok(false)
-    }
-    fn fluid_is_empty(&mut self, _: ()) -> io::Result<bool> {
-        Ok(true)
-    }
-    fn fluid_is_water(&mut self, _: ()) -> io::Result<bool> {
-        Ok(false)
-    }
-    fn fluid_shape(&mut self, _: (), _: BlockPos) -> io::Result<VoxelShape> {
-        Ok(VoxelShape::empty())
-    }
 }
 
 /// `Entity.isInvisible` for the window's player: shared flag 5 as its server
@@ -349,17 +277,20 @@ impl Game<'_> {
             },
             false,
         );
-        let mut rays = VisualRays {
-            inner: super::explosion::ColliderRays {
-                scene: SceneCollisions {
-                    world: &self.world,
-                    binding: self.collision,
-                    subject: None,
-                },
-                context,
-                clip_data: None,
+        // `ClipContext.Block.VISUAL` with no fluids.
+        let mut rays = super::explosion::ColliderRays {
+            scene: SceneCollisions {
+                world: &self.world,
+                binding: self.collision,
+                subject: None,
             },
-            facts: self.res.facts(),
+            context,
+            clip_data: Some(super::explosion::ClipData {
+                facts: self.res.facts(),
+                behaviours: self.res.behaviours(),
+                tables: &self.pack.context.tables,
+                registry: self.pack.assets.registry,
+            }),
         };
         view.align_with_entity_angles(
             &source.entity,
