@@ -76,7 +76,7 @@ impl StartupMenu {
                 .map(|folder| PendingWorldEntry::Local {
                     folder: folder.clone(),
                     name: None,
-                    seed: Some(options.seed),
+                    seed: options.seed,
                     creative: options.creative,
                     create: None,
                 })
