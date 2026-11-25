@@ -3530,6 +3530,10 @@ struct Game<'a> {
     /// A grab or release the calling mod asked for through `&self` (`set_pointer_grab`),
     /// applied by `apply_pointer_grab_request` at the next input event or frame.
     pointer_grab_request: std::cell::Cell<Option<bool>>,
+    /// Files dropped on the window in this event-loop pass, in the order winit gave them
+    /// (one event each), kept only while a mod listens to `screen_files_dropped`; the pass's
+    /// `idle` fires them as one list, as vanilla's `MouseHandler.onDrop` hands `Screen.onFilesDrop`.
+    dropped_files: Vec<std::path::PathBuf>,
     /// Controller connection notices.
     controller_notice: sunrise_client::controller_notice::NoticeSlot,
     focused: bool,
@@ -12429,6 +12433,9 @@ impl Game<'_> {
         // Pack drops on the resource-pack and Create New World screens.
         if let WindowEvent::DroppedFile(path) = event {
             self.drop_pack_file(path);
+            if mod_api::__private::listened(mod_api::HookId::ScreenFilesDropped) {
+                self.dropped_files.push(path.clone());
+            }
         }
         // Fullscreen is a window shortcut, before screens consume keyboard input.
         // Not Alt or Super on their own: leaving the window isn't playing with the keyboard.
@@ -14260,6 +14267,7 @@ impl<'a> Game<'a> {
             regrab_on_refocus: false,
             screen_grab: false,
             pointer_grab_request: std::cell::Cell::new(None),
+            dropped_files: Vec::new(),
             controller_notice: Default::default(),
             focused: true,
             unclaimed_window: false,

@@ -301,6 +301,7 @@ impl Game<'_> {
     /// winit's `about_to_wait`: what happens between frames (stop requests, the closing
     /// save, world entry, the control socket, pads), then the next frame.
     pub(super) fn idle(&mut self, event_loop: &dyn EventLoopCtl) {
+        self.fire_dropped_files();
         let quit_requested = match self.client_quit.get() {
             ClientQuit::Running => sunrise_threads::stop_requests() > 0,
             ClientQuit::Requested => true,
