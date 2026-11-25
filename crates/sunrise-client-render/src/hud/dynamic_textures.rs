@@ -323,7 +323,7 @@ impl Store {
     /// Under one lock, for each of `drawn` that has no bind group in `held` of its current
     /// revision, push it to `out` with its view and revision, or with `None` when it no longer
     /// exists. A view is cloned only for a bind group that must be made again.
-    pub(super) fn changed(
+    pub(crate) fn changed(
         &self,
         drawn: &[u64],
         held: &HashMap<u64, (u64, wgpu::BindGroup)>,

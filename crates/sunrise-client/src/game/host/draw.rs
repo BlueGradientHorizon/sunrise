@@ -396,6 +396,17 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
             .native_draw_quad(&mut *self.surface, sprite, corners, uv, tint)
     }
     #[inline]
+    fn textured_quad(
+        &mut self,
+        render_type: RenderTypeRef,
+        corners: [[f32; 3]; 4],
+        uv: [[f32; 2]; 4],
+        tint: u32,
+    ) -> bool {
+        self.game
+            .native_draw_textured_quad(&mut *self.surface, render_type, corners, uv, tint)
+    }
+    #[inline]
     fn cube(
         &mut self,
         from: [f32; 3],

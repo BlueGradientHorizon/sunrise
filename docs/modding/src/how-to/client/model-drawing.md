@@ -610,6 +610,16 @@ top cell still applies, so night, `darkness` and coloured lights still tint it. 
 keeps its glint. It lasts until `unlit(false)` or the end of the draw; `terrain_model` keeps its
 own shading option.
 
+To draw a texture of your own (a dynamic texture a mod made), get a render type from
+`RenderAssets::entity_solid`, `entity_cutout` or `entity_translucent` with the texture's id and call
+`BlockEntityDrawContext::textured_quad(render_type, corners, uv, tint)`. Unlike `quad`, the UVs are
+in the texture's own unit square (0 to 1), not texels of 16. The same texture gives the same render
+type, so keep it. Light and `unlit` apply as for `quad`. The call returns false, drawing nothing,
+for an id that is not a live dynamic texture, a first-person hand draw or a coordinate that is not
+finite. A texture released after the quad was submitted draws the missing texture. Resource-stack
+textures are not accepted. A shader pack does not light these quads through its programs: Sunrise's
+own entity pass draws them.
+
 ## Copycat faces
 
 Ask `block_sprites` for the material's side faces, then use each face's `texture` and

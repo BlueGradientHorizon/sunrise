@@ -334,9 +334,43 @@ pub trait BlockEntityDrawContext {
     /// from its front), textured with the `uv` rectangle (u0, v0, u1, v1 in
     /// texels of 16 per side) of `sprite` (`mymod:entity/screen`,
     /// `mymod:block/casing`, `block/stone`) times the 0xRRGGBB `tint`
-    /// (0xFFFFFF for none). False for an unknown sprite.
+    /// (0xFFFFFF for none). False for an unknown sprite. Its UVs are texels of 16; those of
+    /// [`Self::textured_quad`] are unit.
     fn quad(&mut self, sprite: &str, corners: [[f32; 3]; 4], uv: [f32; 4], tint: u32) -> bool {
         unimplemented!("BlockEntityDrawContext::draw_quad")
+    }
+    /// Draws a quad of `corners` in blocks under `draw`'s pose, in `quad`'s corner order, showing
+    /// the client mod's dynamic texture (`create_dynamic_texture`) that `render_type` was made
+    /// for (`RenderAssets::entity_solid`, `entity_cutout` or `entity_translucent`, as vanilla's
+    /// `RenderTypes.entitySolid(texture)`, `entityCutout` and `entityTranslucent` are), times the
+    /// 0xRRGGBB `tint` (0xFFFFFF for none). `uv` is each corner's texture coordinate, one per
+    /// corner in the order of `corners`, in unit coordinates: 0 to 1 is the texture once, and
+    /// the texture repeats beyond it. A monitor shows its whole texture with
+    /// `[[0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, 0.0]]`. `quad`'s UVs are texels of 16.
+    ///
+    /// The texture is looked up each frame the quad draws, not when it is submitted:
+    /// `update_dynamic_texture` shows on the next frame with no new geometry, and kept geometry
+    /// (`keep`) stays valid. A texture released after the quad was submitted draws the missing
+    /// texture, as vanilla's `TextureManager.getTexture` answers after `release`. Light follows
+    /// `quad`: `set_light`, `level_light`, and `unlit(true)` for full bright and no directional
+    /// shading. `cutout` and `translucent` discard texels under alpha 0.1
+    /// (`ALPHA_CUTOUT`); `translucent` blends, writes depth and sorts far to near. `solid` keeps
+    /// the entity shader's alpha discard too, where vanilla's `ENTITY_SOLID` has none: give it an
+    /// opaque texture. Under a shader pack the quad draws in Sunrise's own entity pass, bound to
+    /// its texture and lit by the lightmap, not by the pack's programs.
+    ///
+    /// Returns false, appending nothing, when `render_type` is not one of the three
+    /// texture-taking built-ins or is stale, when no dynamic texture named by it is live (this
+    /// draw takes only dynamic texture ids), when a corner or UV is not finite, or
+    /// in a first-person hand draw. It never panics.
+    fn textured_quad(
+        &mut self,
+        render_type: RenderTypeRef,
+        corners: [[f32; 3]; 4],
+        uv: [[f32; 2]; 4],
+        tint: u32,
+    ) -> bool {
+        unimplemented!("BlockEntityDrawContext::draw_textured_quad")
     }
     /// Draws a box from `from` to `to` (texels of 16 per block, as a block
     /// model's element) under `draw`'s pose, with the faces given, by

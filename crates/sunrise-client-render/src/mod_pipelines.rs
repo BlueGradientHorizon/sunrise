@@ -971,6 +971,17 @@ pub struct Pipelines {
     generation: u64,
     invalid: std::sync::Arc<std::sync::Mutex<Vec<usize>>>,
     oit_ineligible_logged: std::sync::Arc<std::sync::Mutex<Vec<usize>>>,
+    /// The texture-taking built-in render types made so far, shared by clones of this set.
+    textured: std::sync::Arc<std::sync::Mutex<TexturedRenderTypes>>,
+}
+
+/// The texture-taking built-in render types of one load (`RenderTypes.entitySolid(Identifier)`,
+/// `entityCutout`, `entityTranslucent`): one per built-in and texture, in the order they were
+/// first asked for, which is their slot after the built-in and custom ones.
+#[derive(Debug, Default)]
+struct TexturedRenderTypes {
+    by_texture: BTreeMap<(u32, Identifier), u32>,
+    made: Vec<(BuiltinRenderType, Identifier)>,
 }
 
 impl Pipelines {
@@ -1165,6 +1176,7 @@ impl Pipelines {
             generation,
             invalid: Default::default(),
             oit_ineligible_logged: Default::default(),
+            textured: Default::default(),
         })
     }
 
@@ -1358,6 +1370,89 @@ impl Pipelines {
             self.generation,
             (BUILTIN_RENDER_TYPE_IDS.len() + index) as u32,
         ))
+    }
+
+    /// The handle of the built-in entity render type `kind` (`EntitySolid`, `EntityCutout` or
+    /// `EntityTranslucent`; another built-in takes no texture and is
+    /// [`RenderTypeError::Invalid`]) drawing the dynamic texture `texture`, as vanilla's
+    /// `RenderTypes.entitySolid(Identifier)` and its siblings are memoized per texture
+    /// (`RenderTypes.java`): the same texture gives the same handle. It does not ask whether the
+    /// texture exists; a draw does.
+    pub fn textured_render_type(
+        &self,
+        kind: BuiltinRenderType,
+        texture: &Identifier,
+    ) -> Result<RenderTypeRef, RenderTypeError> {
+        self.textured_render_type_in(registered_render_types().len(), kind, texture)
+    }
+
+    pub(crate) fn textured_render_type_in(
+        &self,
+        custom: usize,
+        kind: BuiltinRenderType,
+        texture: &Identifier,
+    ) -> Result<RenderTypeRef, RenderTypeError> {
+        let key = match kind {
+            BuiltinRenderType::EntitySolid => 3,
+            BuiltinRenderType::EntityCutout => 4,
+            BuiltinRenderType::EntityTranslucent => 5,
+            _ => return Err(RenderTypeError::Invalid),
+        };
+        // An unpublished set has no generation to name a handle in.
+        if self.generation == 0 {
+            return Err(RenderTypeError::Unknown);
+        }
+        let mut table = self.textured.lock().unwrap_or_else(|e| e.into_inner());
+        let index = match table.by_texture.get(&(key, texture.clone())) {
+            Some(&index) => index,
+            None => {
+                let index =
+                    u32::try_from(table.made.len()).map_err(|_| RenderTypeError::Invalid)?;
+                table.made.push((kind, texture.clone()));
+                table.by_texture.insert((key, texture.clone()), index);
+                index
+            }
+        };
+        let slot = (BUILTIN_RENDER_TYPE_IDS.len() + custom)
+            .checked_add(index as usize)
+            .and_then(|slot| u32::try_from(slot).ok())
+            .ok_or(RenderTypeError::Invalid)?;
+        Ok(mod_api::__private::built::render_type_ref(
+            self.generation,
+            slot,
+        ))
+    }
+
+    /// The built-in entity render type and the dynamic texture a handle from
+    /// [`Self::textured_render_type`] names: `Unknown` for any other handle (a plain built-in or
+    /// a custom render type), `Stale` for one of an earlier load.
+    pub fn textured_render_type_of(
+        &self,
+        handle: RenderTypeRef,
+    ) -> Result<(BuiltinRenderType, Identifier), RenderTypeError> {
+        self.textured_render_type_of_in(registered_render_types().len(), handle)
+    }
+
+    pub(crate) fn textured_render_type_of_in(
+        &self,
+        custom: usize,
+        handle: RenderTypeRef,
+    ) -> Result<(BuiltinRenderType, Identifier), RenderTypeError> {
+        use mod_api::__private::game::Fields;
+        let fields = handle.fields();
+        if fields.generation != self.generation {
+            return Err(RenderTypeError::Stale);
+        }
+        let index = (fields.slot as usize)
+            .checked_sub(BUILTIN_RENDER_TYPE_IDS.len() + custom)
+            .ok_or(RenderTypeError::Unknown)?;
+        self.textured
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .made
+            .get(index)
+            .cloned()
+            .ok_or(RenderTypeError::Unknown)
     }
 
     /// Validate a [`RenderTypeRef`] against this load and return its resolved descriptor.
@@ -1918,6 +2013,44 @@ void main() {
         assert!(!error.contains("example:glow"), "{error}");
         assert!(!error.contains("example:extra"), "{error}");
         assert_eq!(before.slot(handle), Ok(1));
+    }
+
+    /// `RenderTypes.entitySolid(Identifier)` and its siblings are memoized per texture: one
+    /// texture gives one handle, another texture another, and the handle names its texture and
+    /// kind back. Only the three entity kinds take a texture.
+    #[test]
+    fn a_textured_render_type_is_one_handle_per_kind_and_texture() {
+        let set = Pipelines::build(&[], 7, |_| Ok(None)).unwrap();
+        let (a, b) = (id("example:dynamic/a"), id("example:dynamic/b"));
+        let solid =
+            |texture| set.textured_render_type_in(0, BuiltinRenderType::EntitySolid, texture);
+        assert_eq!(solid(&a), solid(&a));
+        assert_ne!(solid(&a), solid(&b));
+        let cutout = set.textured_render_type_in(0, BuiltinRenderType::EntityCutout, &a);
+        assert_ne!(cutout, solid(&a));
+        assert_eq!(
+            set.textured_render_type_of_in(0, cutout.unwrap()),
+            Ok((BuiltinRenderType::EntityCutout, a.clone()))
+        );
+        assert_eq!(
+            set.textured_render_type_of_in(0, solid(&b).unwrap()),
+            Ok((BuiltinRenderType::EntitySolid, b))
+        );
+        assert_eq!(
+            set.textured_render_type_in(0, BuiltinRenderType::Lines, &a),
+            Err(RenderTypeError::Invalid)
+        );
+        // A plain built-in handle names no texture, and a handle of another load is stale.
+        let plain = mod_api::__private::built::render_type_ref(7, 0);
+        assert_eq!(
+            set.textured_render_type_of_in(0, plain),
+            Err(RenderTypeError::Unknown)
+        );
+        let earlier = mod_api::__private::built::render_type_ref(6, 40);
+        assert_eq!(
+            set.textured_render_type_of_in(0, earlier),
+            Err(RenderTypeError::Stale)
+        );
     }
 
     #[test]

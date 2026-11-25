@@ -1738,7 +1738,11 @@ impl Renderer {
             glint_only_quads,
             text_offset_solid_quads,
             text_normal_solid_quads,
+            dynamic_solid_quads,
+            dynamic_cutout_quads,
+            dynamic_translucent_quads,
         ] = batch_counts.materials;
+        let dynamic_quads = dynamic_solid_quads + dynamic_cutout_quads + dynamic_translucent_quads;
         let entities = &entities[..batch_counts.admitted_entity_vertices];
         let additive_quads = batch_counts.additive;
         let hand_quads = batch_counts.hand;
@@ -1766,6 +1770,7 @@ impl Renderer {
             + native_cutout_quads
             + native_cutout_mipped_quads
             + native_translucent_quads
+            + dynamic_quads
             + banner_pattern_quads
             + glint_only_quads
             + text_solid_quads;
@@ -1781,9 +1786,29 @@ impl Renderer {
             - native_cutout_quads
             - native_cutout_mipped_quads
             - native_translucent_quads
+            - dynamic_quads
             - banner_pattern_quads
             - glint_only_quads
             - text_solid_quads;
+        // Dynamic-texture quads sit after the terrain models and before banner patterns: their
+        // first quad in the entity buffer, and their runs with one bind group each.
+        let dynamic_first = world_quads
+            - text_solid_quads
+            - glint_only_quads
+            - banner_pattern_quads
+            - dynamic_quads;
+        if dynamic_quads > 0 {
+            let section_start = (dynamic_first - posed / 4) as usize * 4;
+            self.dynamic_entity.prepare(
+                &self.device,
+                &mut self.uploads,
+                &mut encoder,
+                self.hud.dynamic(),
+                &self.entity_batch.combined
+                    [section_start..section_start + dynamic_quads as usize * 4],
+                dynamic_first,
+            );
+        }
         let native_clouds = self.native.as_ref().is_none_or(|n| n.vanilla_clouds);
         // A pack's core/clouds, decided before either mesh is prepared: its faces, or none and
         // the native mesh in this same frame.
@@ -3207,6 +3232,7 @@ impl Renderer {
                 - text_solid_quads
                 - glint_only_quads
                 - banner_pattern_quads
+                - dynamic_quads
                 - native_solid_quads
                 - native_cutout_quads
                 - native_cutout_mipped_quads
@@ -3229,6 +3255,20 @@ impl Renderer {
                 first += count;
             }
             pass.set_bind_group(0, &self.group, &[]);
+            // `RenderTypes.entitySolid` and `entityCutout` of a mod's dynamic texture
+            // (`BlockEntityDrawContext::textured_quad`): the entity pipeline, one bind group a run.
+            for (overlay, count) in [
+                (DYNAMIC_TEXTURE_SOLID_OVERLAY, dynamic_solid_quads),
+                (DYNAMIC_TEXTURE_CUTOUT_OVERLAY, dynamic_cutout_quads),
+            ] {
+                if count > 0 {
+                    pass.stage(self.own_timing.as_mut(), "dynamic texture quads");
+                    pass.set_pipeline(&self.entity_pipeline);
+                    pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+                    self.dynamic_entity.draw(&mut pass, overlay);
+                    pass.set_bind_group(0, &self.group, &[]);
+                }
+            }
             // RenderLevelStageEvent.AfterOpaqueFeatures: after the last opaque feature, including
             // the terrain-material model group. This pass owns those draws even when a pack
             // owns the blocks.
@@ -3320,10 +3360,24 @@ impl Renderer {
                         - text_solid_quads
                         - glint_only_quads
                         - banner_pattern_quads
+                        - dynamic_quads
                         - native_translucent_quads)
                         * 4) as i32,
                     0..1,
                 );
+                pass.set_bind_group(0, &self.group, &[]);
+            }
+            // `RenderTypes.entityTranslucent` of a dynamic texture: blended and depth writing, as
+            // the translucent items are, quads far to near.
+            if dynamic_translucent_quads > 0 {
+                pass.stage(
+                    self.own_timing.as_mut(),
+                    "translucent dynamic texture quads",
+                );
+                pass.set_pipeline(&self.translucent_item_pipeline);
+                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+                self.dynamic_entity
+                    .draw(&mut pass, DYNAMIC_TEXTURE_TRANSLUCENT_OVERLAY);
                 pass.set_bind_group(0, &self.group, &[]);
             }
             // Still-fluid block entities draw as their own ordinary sorted

@@ -8,7 +8,9 @@
 
 use std::ops::Range;
 
-use sunrise_render_core::entity::{QuadSort, TEXT_POLYGON_OFFSET_SOLID_OVERLAY};
+use sunrise_render_core::entity::{
+    QuadSort, TEXT_POLYGON_OFFSET_SOLID_OVERLAY, is_dynamic_texture,
+};
 use sunrise_shaders::render_stage;
 
 use sunrise_render_core::{
@@ -1036,6 +1038,11 @@ fn material_runs<'a>(
         let range_end = range.end;
         let program_at = move |i: usize| {
             let layer = vertices[i].layer;
+            // A mod's own texture is drawn by Sunrise's entity pass with that texture bound,
+            // which the pack's programs have no slot for: it is left to the rest.
+            if is_dynamic_texture(layer) {
+                return (None, false, false, false);
+            }
             let material = material_program(&span, layer, drawn);
             if !is_native_terrain(layer) {
                 return (material, polygon_offset(material, layer), false, false);
