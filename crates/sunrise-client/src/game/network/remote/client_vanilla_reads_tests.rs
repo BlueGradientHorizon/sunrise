@@ -564,8 +564,8 @@ fn a_dying_mount_stays_the_jumpable_vehicle() {
 }
 
 /// `LocalPlayer.getJumpRidingScale` (#5637): 0 off a mount, then the charge the held jump key
-/// builds on a saddled horse (0.1 a tick), as the jump bar reads it; 0 again once the player
-/// leaves the horse.
+/// builds on a saddled horse (0.1 a tick), as the jump bar reads it; 0 again after the first
+/// player tick off the horse, which resets it as `LocalPlayer.aiStep` does.
 #[test]
 #[ignore = "daily"]
 fn the_jump_riding_scale_follows_the_charge_on_a_jumpable_mount() {
@@ -598,7 +598,8 @@ fn the_jump_riding_scale_follows_the_charge_on_a_jumpable_mount() {
                     passengers: Vec::new(),
                 }))
                 .unwrap();
-                assert_eq!(scale(game), 0.0);
+                game.tick_local_player(Vec::new(), 7, None).unwrap();
+                assert_eq!(scale(game), 0.0, "the tick off the horse resets the charge");
             });
         },
     );

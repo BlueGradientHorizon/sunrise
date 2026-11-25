@@ -127,8 +127,9 @@ pub trait ClientViewClientHost {
     /// How far the local player has charged its mount's jump (`LocalPlayer.getJumpRidingScale`),
     /// 0.0 to 1.0: the value the HUD's jump bar draws and `Hud.willPrioritizeJumpInfo` tests
     /// (`> 0`). It rises while the jump key is held on a [`Self::jumpable_vehicle`] and drops
-    /// back to 0.0 when the jump is released and its cooldown runs out. 0.0 when the player
-    /// controls no mount that can jump, and outside a client world. Read-only: the jump key
+    /// back to 0.0 when the jump is released and its cooldown runs out. 0.0 once a client tick
+    /// has run with the player controlling no mount that can jump (that tick resets it), and
+    /// outside a client world. Read-only: the jump key
     /// drives it, and the server checks the jump it is sent.
     fn jump_riding_scale(&self) -> f32;
     /// Side: client.
