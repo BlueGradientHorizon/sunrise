@@ -1185,17 +1185,19 @@ pub fn compiling(id: &str) -> String {
     trf("Compiling {mod}", &[("mod", id)])
 }
 
-/// The launcher's settings for a kept registry build: bumped whenever the launcher changes the
-/// cargo arguments, the compiler plan or how it stages, so a build made the old way is not reused.
+/// The tool's settings for a kept registry build: bumped whenever the tool changes the cargo
+/// arguments, the compiler plan or how it stages, so a build made the old way is not reused.
 const KEPT_BUILD_FLAGS: u32 = 3;
 
 /// The folder a registry build's cargo output is kept in, under `native/prebuilt-build`: one per
-/// game build, Rust toolchain and launcher settings ([`KEPT_BUILD_FLAGS`]). Inside one, cargo's
-/// own fingerprints decide what to rebuild.
+/// game build, Rust toolchain, tool commit ([`crate::contract::TOOL_COMMIT`]) and tool settings
+/// ([`KEPT_BUILD_FLAGS`]), so two different tools never share one. Inside one, cargo's own
+/// fingerprints decide what to rebuild.
 fn kept_build(rust: &dyn Toolchain, package: &Package, revision: &str) -> Result<String, String> {
     let mut hasher = Sha256::new();
     hasher.update(KEPT_BUILD_FLAGS.to_le_bytes());
     hasher.update(crate::rust::VERSION.as_bytes());
+    hasher.update(crate::contract::TOOL_COMMIT.as_bytes());
     hasher.update(rust.target().as_bytes());
     // The package's files reach rustc and the linker through the compiler plan, which cargo
     // doesn't fingerprint: a package any of whose files differ is another key. Each file is known

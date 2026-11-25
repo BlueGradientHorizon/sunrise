@@ -62,7 +62,7 @@ const RUN_DIR: &str = "target/sunrise-mod/run";
 fn version_line() -> String {
     format!(
         "cargo-sunrise-mod commit {} native-contract {}",
-        env!("SUNRISE_TOOL_BUILT_FROM"),
+        sunrise_native_build::contract::TOOL_COMMIT,
         sunrise_native_build::contract::CONTRACT
     )
 }
