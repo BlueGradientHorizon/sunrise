@@ -48,7 +48,10 @@ struct Out {
         if tint.x >= 0.0 {
             glint = vec4(max(glint.r, max(glint.g, glint.b)) * tint, glint.a);
         }
-        return vec4(glint.rgb * glint.rgb, mask);
+        // The vertex colour multiplies the glint as it does the item under it: white (every
+        // glint the game draws) leaves it; a mod's tinted item (`GuiCanvas::item_tinted`) fades
+        // and colours it with the item.
+        return vec4(glint.rgb * glint.rgb * in.color.rgb * in.color.a, mask * in.color.a);
     }
     return textured(in);
 }

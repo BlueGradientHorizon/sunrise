@@ -171,6 +171,30 @@ impl GameGuiCanvas<'_, '_> {
     }
 }
 
+/// Multiplies the vertices from `start` on by `tint` (packed ABGR), as `item_tinted` does. An
+/// OptiFine CIT glint layer's vertices (`Blend::CitGlint`) carry the layer's slot in red and its
+/// intensity in alpha, so only their alpha is multiplied, by the tint's alpha: the slot stays,
+/// and the layer fades with the item.
+fn tint_vertices(batch: &mut HudBatch, start: usize, tint: u32) {
+    let cit: Vec<std::ops::Range<usize>> = batch
+        .blends
+        .iter()
+        .filter(|(range, blend)| {
+            matches!(blend, crate::hud::Blend::CitGlint(_)) && range.end as usize > start
+        })
+        .map(|(range, _)| range.start as usize..range.end as usize)
+        .collect();
+    let alpha = tint | 0x00FF_FFFF;
+    for (i, vertex) in batch.vertices.iter_mut().enumerate().skip(start) {
+        let tint = if cit.iter().any(|range| range.contains(&i)) {
+            alpha
+        } else {
+            tint
+        };
+        vertex.color = multiply_abgr(vertex.color, tint);
+    }
+}
+
 /// Two packed colours multiplied channel by channel, as a shader multiplies a vertex colour by
 /// `ColorModulator`: `u32::MAX` leaves `color` unchanged.
 fn multiply_abgr(color: u32, tint: u32) -> u32 {
@@ -356,9 +380,7 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
         self.item(stack, at, seed)?;
         let tint = abgr(argb);
         if tint != u32::MAX {
-            for vertex in &mut self.batch.vertices[start..] {
-                vertex.color = multiply_abgr(vertex.color, tint);
-            }
+            tint_vertices(self.batch, start, tint);
         }
         Ok(())
     }
@@ -516,6 +538,9 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hud::{Blend as HudBlend, Rect};
+    use crate::resource_source::ResourceSource;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
 
     /// The multiply rounds to the nearest byte for every pair of channels, and white is neutral.
     #[test]
@@ -531,53 +556,97 @@ mod tests {
         assert_eq!(multiply_abgr(0xFFFF_FFFF, 0x80FF_0000), 0x80FF_0000);
     }
 
-    /// `item_tinted` multiplies every vertex `item` draws: opaque white draws `item` itself and
+    /// A CIT glint layer's vertices keep their slot (red) and take only the tint's alpha on their
+    /// intensity; every other vertex is multiplied by the whole tint.
+    #[test]
+    fn a_tint_keeps_a_cit_glint_layers_slot() {
+        let mut batch = HudBatch::scratch([320, 240]);
+        let quad = |batch: &mut HudBatch, color: u32| {
+            batch.quad_glint(
+                [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+                [[0.0; 2]; 4],
+                [[0.0; 2]; 4],
+                color,
+            );
+        };
+        // Drawn before the item: not tinted.
+        quad(&mut batch, 0xFF00_00FF);
+        let start = batch.vertices.len();
+        quad(&mut batch, u32::MAX);
+        let cit = batch.vertices.len();
+        // Slot 7 at intensity 200: red 7, alpha 200 (packed ABGR).
+        quad(&mut batch, 0xC800_0007);
+        batch.blend_since(cit, HudBlend::CitGlint(0));
+        let tint = abgr(0x80FF_4000);
+        tint_vertices(&mut batch, start, tint);
+        let colors: Vec<u32> = batch.vertices.iter().map(|v| v.color).collect();
+        assert!(colors[..start].iter().all(|&c| c == 0xFF00_00FF));
+        assert!(colors[start..cit].iter().all(|&c| c == tint));
+        // 200 * 128 / 255 rounds to 100; the slot stays 7.
+        assert!(
+            colors[cit..].iter().all(|&c| c == 0x6400_0007),
+            "{colors:x?}"
+        );
+    }
+
+    /// `item_tinted` multiplies every vertex `item` draws, the enchantment glint's included (the
+    /// glint shader multiplies by its white vertex colour): opaque white draws `item` itself and
     /// a zero alpha draws nothing.
     #[test]
     #[ignore = "daily"]
     fn a_tinted_item_multiplies_the_vertices_the_item_draws() {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
-            let stack = mod_api::ItemStack::new(
-                mod_api::__private::item_key("minecraft:diamond_sword").unwrap(),
-                1,
-            )
-            .unwrap();
-            let draw = |argb: Option<u32>| {
-                let mut batch = HudBatch::scratch([320, 240]);
-                GameGuiCanvas::draw(
-                    &mut batch,
-                    &game.gui.atlas,
-                    Some(&*game),
-                    None,
-                    &mut |root| match argb {
-                        None => root.item(&stack, [4.0, 4.0], 0),
-                        Some(argb) => root.item_tinted(&stack, [4.0, 4.0], 0, argb),
-                    },
-                )
-                .unwrap();
-                batch
-                    .vertices
+            // A plain item, and one that always has the glint.
+            for (item, foil) in [
+                ("minecraft:diamond_sword", false),
+                ("minecraft:enchanted_golden_apple", true),
+            ] {
+                let stack = mod_api::ItemStack::new(mod_api::__private::item_key(item).unwrap(), 1)
+                    .unwrap();
+                let draw = |argb: Option<u32>| {
+                    let mut batch = HudBatch::scratch([320, 240]);
+                    GameGuiCanvas::draw(
+                        &mut batch,
+                        &game.gui.atlas,
+                        Some(&*game),
+                        None,
+                        &mut |root| match argb {
+                            None => root.item(&stack, [4.0, 4.0], 0),
+                            Some(argb) => root.item_tinted(&stack, [4.0, 4.0], 0, argb),
+                        },
+                    )
+                    .unwrap();
+                    batch
+                        .vertices
+                        .iter()
+                        .map(|v| (v.pos, v.uv, v.color))
+                        .collect::<Vec<_>>()
+                };
+                let plain = draw(None);
+                assert!(!plain.is_empty());
+                assert_eq!(draw(Some(0xFFFF_FFFF)), plain);
+                assert!(draw(Some(0x00FF_FFFF)).is_empty());
+                let tint = 0x80FF_4000;
+                let tinted = draw(Some(tint));
+                assert_eq!(tinted.len(), plain.len());
+                for ((pos, uv, color), (plain_pos, plain_uv, plain_color)) in
+                    tinted.iter().zip(&plain)
+                {
+                    assert_eq!((pos, uv), (plain_pos, plain_uv));
+                    assert_eq!(*color, multiply_abgr(*plain_color, abgr(tint)));
+                }
+                // The glint's quads (atlas U at 2 or more, the shader's glint marker) are drawn white,
+                // so tinted they carry the tint itself, which the glint shader multiplies by.
+                let glint: Vec<u32> = tinted
                     .iter()
-                    .map(|v| (v.pos, v.uv, v.color))
-                    .collect::<Vec<_>>()
-            };
-            let plain = draw(None);
-            assert!(!plain.is_empty());
-            assert_eq!(draw(Some(0xFFFF_FFFF)), plain);
-            assert!(draw(Some(0x00FF_FFFF)).is_empty());
-            let tint = 0x80FF_4000;
-            let tinted = draw(Some(tint));
-            assert_eq!(tinted.len(), plain.len());
-            for ((pos, uv, color), (plain_pos, plain_uv, plain_color)) in tinted.iter().zip(&plain)
-            {
-                assert_eq!((pos, uv), (plain_pos, plain_uv));
-                assert_eq!(*color, multiply_abgr(*plain_color, abgr(tint)));
+                    .filter(|(_, uv, _)| uv[0] >= 2.0)
+                    .map(|&(_, _, color)| color)
+                    .collect();
+                assert_eq!(!glint.is_empty(), foil, "{item}");
+                assert!(glint.iter().all(|&color| color == abgr(tint)), "{item}");
             }
         });
     }
-    use crate::hud::{Blend as HudBlend, Rect};
-    use crate::resource_source::ResourceSource;
-    use std::panic::{AssertUnwindSafe, catch_unwind};
 
     #[test]
     fn gui_groups_clip_posed_leaves_and_restore_vertices_and_blends_on_abort() {
