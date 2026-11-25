@@ -6,7 +6,7 @@ use mod_api::{MobRef, MoveToPathError, PathType};
 /// finite speed, and finite coordinates small enough for the pathfinder's
 /// block arithmetic. The mob handles' boundary, shared with a goal tick's own
 /// `move_to` (#1077) — one check, not a copy per caller.
-pub(super) fn navigation_move_accepts(at: [f64; 3], speed: f64) -> bool {
+pub(in crate::game) fn navigation_move_accepts(at: [f64; 3], speed: f64) -> bool {
     speed.is_finite()
         && at
             .iter()
@@ -16,7 +16,7 @@ pub(super) fn navigation_move_accepts(at: [f64; 3], speed: f64) -> bool {
 /// The coordinates a mod hands a mob's look control (`setLookAt(x, y, z)`):
 /// finite ones — the same boundary the navigation takes, for the control
 /// whose input it shares.
-pub(super) fn navigation_look_accepts(at: [f64; 3]) -> bool {
+pub(in crate::game) fn navigation_look_accepts(at: [f64; 3]) -> bool {
     at.iter().all(|v| v.is_finite())
 }
 
@@ -34,7 +34,7 @@ fn navigation_flags_supported(mob: &sunrise_client::mobs::Mob) -> bool {
 /// carries no cap); a node outside the block-coordinate range is floored to
 /// the saturating integer and reads as void air, as vanilla's `BlockPos` cast
 /// does.
-pub(super) fn supplied_path_accepts(nodes: &[mod_api::PathNode], speed: f64) -> bool {
+pub(in crate::game) fn supplied_path_accepts(nodes: &[mod_api::PathNode], speed: f64) -> bool {
     speed.is_finite()
         && nodes
             .iter()
@@ -45,7 +45,7 @@ pub(super) fn supplied_path_accepts(nodes: &[mod_api::PathNode], speed: f64) -> 
 /// numbers and the mob are known to be fine: `PathNavigation.moveTo(Path)`
 /// refuses a path with no node left, an empty one or one the trim emptied.
 /// One conversion, shared by the handle and by a goal tick's view (#4410).
-pub(super) fn supplied_path_refusal(followed: bool) -> Result<(), MoveToPathError> {
+pub(in crate::game) fn supplied_path_refusal(followed: bool) -> Result<(), MoveToPathError> {
     if followed {
         Ok(())
     } else {
@@ -59,7 +59,7 @@ impl Game<'_> {
     /// and coordinates too large for safe block arithmetic. As in vanilla,
     /// the mob's own goals may replace the path next tick. False for the
     /// dragon, which flies by its phase and keeps no navigation.
-    pub(super) fn mob_move_to(&mut self, mob: MobRef, at: [f64; 3], speed: f64) -> bool {
+    pub(in crate::game) fn mob_move_to(&mut self, mob: MobRef, at: [f64; 3], speed: f64) -> bool {
         if !navigation_move_accepts(at, speed) {
             return false;
         }
@@ -91,7 +91,7 @@ impl Game<'_> {
     /// nor clamped, and an extreme finite node is classified and followed with
     /// saturating block arithmetic. `Unavailable` for a stale or unavailable
     /// mob, a client, and the dragon; `Empty` when no node is left to follow.
-    pub(super) fn mob_move_to_path(
+    pub(in crate::game) fn mob_move_to_path(
         &mut self,
         mob: MobRef,
         nodes: Vec<mod_api::PathNode>,
@@ -121,7 +121,7 @@ impl Game<'_> {
 
     /// `PathNavigation.stop`. False for a stale or unavailable mob, or on a
     /// client, and for the dragon (no navigation).
-    pub(super) fn mob_stop(&mut self, mob: MobRef) -> bool {
+    pub(in crate::game) fn mob_stop(&mut self, mob: MobRef) -> bool {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
@@ -134,7 +134,7 @@ impl Game<'_> {
 
     /// `PathNavigation.isDone`; None for a stale or unavailable mob, or on a
     /// client, and for the dragon (no navigation).
-    pub(super) fn mob_is_done(&self, mob: MobRef) -> Option<bool> {
+    pub(in crate::game) fn mob_is_done(&self, mob: MobRef) -> Option<bool> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
@@ -145,7 +145,7 @@ impl Game<'_> {
     /// is followed at (1.0 is the mob's normal speed; 0 until a path sets
     /// one). This is not the mob's movement-speed attribute. None for a
     /// stale or unavailable mob, or on a client, and for the dragon.
-    pub(super) fn mob_navigation_speed(&self, mob: MobRef) -> Option<f64> {
+    pub(in crate::game) fn mob_navigation_speed(&self, mob: MobRef) -> Option<f64> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
@@ -153,7 +153,7 @@ impl Game<'_> {
     }
 
     /// The live supported navigation's `can_open_doors` flag; unavailable mobs refuse.
-    pub(super) fn mob_can_open_doors(&self, mob: MobRef) -> Option<bool> {
+    pub(in crate::game) fn mob_can_open_doors(&self, mob: MobRef) -> Option<bool> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
@@ -162,7 +162,7 @@ impl Game<'_> {
     }
 
     /// `PathNavigation.setCanOpenDoors`; leaves the current path intact.
-    pub(super) fn mob_set_can_open_doors(&mut self, mob: MobRef, value: bool) -> bool {
+    pub(in crate::game) fn mob_set_can_open_doors(&mut self, mob: MobRef, value: bool) -> bool {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
@@ -177,7 +177,7 @@ impl Game<'_> {
     }
 
     /// The live supported navigation's `can_pass_doors` flag; unavailable mobs refuse.
-    pub(super) fn mob_can_pass_doors(&self, mob: MobRef) -> Option<bool> {
+    pub(in crate::game) fn mob_can_pass_doors(&self, mob: MobRef) -> Option<bool> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
@@ -186,7 +186,7 @@ impl Game<'_> {
     }
 
     /// Sets the pass-door navigation wish; leaves the current path intact.
-    pub(super) fn mob_set_can_pass_doors(&mut self, mob: MobRef, value: bool) -> bool {
+    pub(in crate::game) fn mob_set_can_pass_doors(&mut self, mob: MobRef, value: bool) -> bool {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
@@ -201,7 +201,7 @@ impl Game<'_> {
     }
 
     /// The live supported navigation's `can_float` flag; unavailable mobs refuse.
-    pub(super) fn mob_can_float(&self, mob: MobRef) -> Option<bool> {
+    pub(in crate::game) fn mob_can_float(&self, mob: MobRef) -> Option<bool> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
@@ -210,7 +210,7 @@ impl Game<'_> {
     }
 
     /// `PathNavigation.setCanFloat`; leaves the current path intact.
-    pub(super) fn mob_set_can_float(&mut self, mob: MobRef, value: bool) -> bool {
+    pub(in crate::game) fn mob_set_can_float(&mut self, mob: MobRef, value: bool) -> bool {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
@@ -228,7 +228,7 @@ impl Game<'_> {
     /// pathfinder — its own override, else the kind's default (a negative
     /// malus closes the kind). None for a stale or unavailable mob, the
     /// dragon, or on a client.
-    pub(super) fn mob_pathfinding_malus(&self, mob: MobRef, kind: PathType) -> Option<f32> {
+    pub(in crate::game) fn mob_pathfinding_malus(&self, mob: MobRef, kind: PathType) -> Option<f32> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
@@ -245,7 +245,7 @@ impl Game<'_> {
     /// saved, as in vanilla, so a reload or conversion keeps the species'
     /// own. False for a malus that is not finite, a stale or unavailable mob,
     /// the dragon, or on a client.
-    pub(super) fn mob_set_pathfinding_malus(
+    pub(in crate::game) fn mob_set_pathfinding_malus(
         &mut self,
         mob: MobRef,
         kind: PathType,
@@ -269,7 +269,7 @@ impl Game<'_> {
     /// own AI — a goal's or a brain species' next `moveTo` — sets its own
     /// again, as in vanilla. False for a non-finite speed, a stale or
     /// unavailable mob, or on a client, and for the dragon.
-    pub(super) fn mob_set_navigation_speed(&mut self, mob: MobRef, speed: f64) -> bool {
+    pub(in crate::game) fn mob_set_navigation_speed(&mut self, mob: MobRef, speed: f64) -> bool {
         if !speed.is_finite() {
             return false;
         }

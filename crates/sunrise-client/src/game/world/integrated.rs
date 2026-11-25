@@ -183,7 +183,7 @@ impl Integrated {
 
     /// Queue every change, even if the currently published tree still has the requested state:
     /// an earlier update may be waiting for a busy server thread.
-    pub(in crate::game::server_side) fn queue_pregen_option(&self, enabled: bool) {
+    pub(in crate::game) fn queue_pregen_option(&self, enabled: bool) {
         self.tell(OwnerRequest::SetPregen(enabled));
     }
     /// The generator of the server's level in `dimension`, once it has run.
@@ -449,7 +449,7 @@ pub(in crate::game) struct Launch {
 
 impl Game<'_> {
     pub(in crate::game) fn server_has_singleplayer_server(&self) -> bool { false }
-    pub(in crate::game) fn server_is_published(&self) -> bool { self.lan.is_some() }
+    pub(in crate::game) fn server_is_lan_published(&self) -> bool { self.lan.is_some() }
 
     /// `PrepareSpawnTask`'s `LOAD_PLAYER_CHUNKS`, reported to the window's
     /// loading screen: the focus moves to the spawn chunk when the stage

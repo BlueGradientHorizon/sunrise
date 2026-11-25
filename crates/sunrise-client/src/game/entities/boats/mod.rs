@@ -516,7 +516,7 @@ impl Boat {
         fired
     }
     /// `getRowingTime`.
-    pub(in crate::game::server_side) fn paddle_state(&self, side: usize) -> bool {
+    pub(in crate::game) fn paddle_state(&self, side: usize) -> bool {
         self.paddling[side] && self.paddle_controller
     }
     pub fn rowing_time(&self, side: usize, a: f32) -> f32 {

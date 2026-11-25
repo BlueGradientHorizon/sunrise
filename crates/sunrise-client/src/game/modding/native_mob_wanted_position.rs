@@ -3,7 +3,7 @@ use super::{Game, commands::Target};
 use mod_api::{MobRef, WantedPositionError};
 
 impl Game<'_> {
-    pub(super) fn mob_set_wanted_position(
+    pub(in crate::game) fn mob_set_wanted_position(
         &mut self,
         mob: MobRef,
         at: [f64; 3],
@@ -25,7 +25,7 @@ impl Game<'_> {
         Ok(true)
     }
 
-    pub(super) fn mob_wanted_position(&self, mob: MobRef) -> Option<[f64; 3]> {
+    pub(in crate::game) fn mob_wanted_position(&self, mob: MobRef) -> Option<[f64; 3]> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
@@ -39,7 +39,7 @@ impl Game<'_> {
         )
     }
 
-    pub(super) fn mob_speed_modifier(&self, mob: MobRef) -> Option<f64> {
+    pub(in crate::game) fn mob_speed_modifier(&self, mob: MobRef) -> Option<f64> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };

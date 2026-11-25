@@ -1,9 +1,9 @@
 use super::Game;
 use crate::game::transactions::{
-    After, ClosingPhase, JournaledPlayer, Kept, KeptPlayer, Level, StorageSettlement, entities,
+    After, ClosingPhase, JournaledPlayer, Kept, KeptPlayer, Level, Pos, StorageSettlement, entities,
 };
 use mod_api::TransactionLifecycle;
-use sunrise_client::{block_entities::BlockEntityIdentity, containers::Pos};
+use sunrise_client::block_entities::BlockEntityIdentity;
 
 impl Game<'_> {
     pub(in crate::game) fn client_tx_close_storage_transaction(

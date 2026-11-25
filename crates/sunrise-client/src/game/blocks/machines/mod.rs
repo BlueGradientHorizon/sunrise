@@ -378,7 +378,7 @@ impl Containers<'_> {
         self.registry.state(state).map_or("", |s| s.name.as_str())
     }
     /// `ItemInstance.getMaxStackSize`, using the effective component after patching.
-    pub(in crate::game::server_side) fn max_stack(&self, stack: &ItemStack) -> u32 {
+    pub(in crate::game) fn max_stack(&self, stack: &ItemStack) -> u32 {
         let info = self.items.get(&stack.item);
         match stack.effective_max_stack_size(info) {
             Some(max) => max.clamp(1, 99) as u32,
@@ -839,7 +839,7 @@ pub(in crate::game) fn container_signal(level: &mut super::GameLevel<'_>, pos: B
 }
 
 impl super::GameLevel<'_> {
-    pub(in crate::game::server_side) fn containers(&self) -> Containers<'_> {
+    pub(in crate::game) fn containers(&self) -> Containers<'_> {
         Containers {
             world: self.world,
             behaviours: self.behaviours,
@@ -852,7 +852,7 @@ impl super::GameLevel<'_> {
 }
 
 impl Game<'_> {
-    pub(in crate::game::server_side) fn containers(&self) -> Containers<'_> {
+    pub(in crate::game) fn containers(&self) -> Containers<'_> {
         Containers {
             world: &self.world,
             behaviours: self.res.behaviours(),

@@ -191,7 +191,7 @@ impl Game<'_> {
     /// box for its pose (`Player`'s default passenger attachment, unrotated
     /// as it lies on the axis), less the mob's own vehicle attachment. False,
     /// changing nothing, when `vehicle` is no player of this level.
-    pub(in crate::game::client_side) fn seat_player_passenger(
+    pub(in crate::game) fn seat_player_passenger(
         &mut self,
         index: usize,
         vehicle: u32,

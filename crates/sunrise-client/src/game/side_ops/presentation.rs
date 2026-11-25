@@ -74,7 +74,7 @@ impl Game<'_> {
     #[inline(always)]
     pub(in crate::game) fn side_is_published(&self) -> bool {
         if self.is_logical_server() {
-            self.server_is_published()
+            self.server_is_lan_published()
         } else {
             self.client_is_published()
         }

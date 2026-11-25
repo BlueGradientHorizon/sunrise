@@ -7,8 +7,9 @@ use std::{
 };
 use sunrise_client::command::Registries;
 use sunrise_world::{
-    heightmap::HeightmapType,
+    heightmap::{HeightmapState, HeightmapType},
     registry::{BlockRegistry, BlockStateId},
+    worldgen::terrain::TerrainBlockStates,
 };
 
 /// The local player's name (offline single player).
