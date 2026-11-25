@@ -105,3 +105,43 @@ fn a_failed_registry_build_names_the_authors_file_and_a_good_one_still_builds() 
     let built = project.build(type_error);
     project.assert_names_the_authors_file(&built);
 }
+
+/// A native mod whose build script compiles one C file with `cc` and whose Rust calls it, built by
+/// the tool: the C compiler must match the target the SDK builds for (on Windows MinGW's GCC for
+/// `x86_64-pc-windows-gnu`, where `cc` would look for MSVC on an `-msvc` target). The tool's own
+/// build runs the script, on the registry route.
+#[test]
+#[ignore = "daily"]
+fn a_native_mod_compiles_its_c_source_with_cc_from_its_build_script() {
+    let project = Mod::new("\n[build-dependencies]\ncc = \"1\"\n");
+    std::fs::write(
+        project.project.join("build.rs"),
+        "fn main() {\n    cc::Build::new().file(\"c/answer.c\").compile(\"answer\");\n}\n",
+    )
+    .unwrap();
+    std::fs::create_dir(project.project.join("c")).unwrap();
+    std::fs::write(
+        project.project.join("c/answer.c"),
+        "unsigned int sunrise_c_answer(void) { return 42; }\n",
+    )
+    .unwrap();
+    let built = project.build(|source| {
+        let source = source.replace(
+            "fn greeting(player: &str) -> String {",
+            "fn greeting(player: &str) -> String {\n    let _ = unsafe { sunrise_c_answer() };",
+        );
+        format!("{source}\nunsafe extern \"C\" {{\n    fn sunrise_c_answer() -> u32;\n}}\n")
+    });
+    assert!(
+        built.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&built.stdout),
+        String::from_utf8_lossy(&built.stderr)
+    );
+    assert!(
+        project
+            .project
+            .join("target/sunrise-mod/greeter.smod")
+            .is_file()
+    );
+}
