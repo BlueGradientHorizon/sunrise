@@ -17,7 +17,9 @@ use std::{
 /// The largest jar downloaded or written (512 MiB).
 pub const MAX_JAR: u64 = 512 << 20;
 
-/// Maximum size of a Modrinth API JSON response (16 MiB).
+/// The largest Modrinth API answer read (16 MiB). An answer for one version, or for the few hashes
+/// one mod lists, is a few kilobytes; a body this large is not one, and reading on would only
+/// spend memory.
 const MAX_API_RESPONSE: u64 = 16 << 20;
 
 /// Modrinth project types that may appear in a version page URL.

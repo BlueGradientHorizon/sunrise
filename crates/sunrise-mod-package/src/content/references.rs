@@ -80,12 +80,18 @@ impl JarLayer {
     }
 
     /// Collects the entry names (and `assets/<ns>/lang/en_us.json` contents) of one `.jar` zip
-    /// archive into this layer.
+    /// archive into this layer, within the content limits a mod's own files have: at most
+    /// [`MAX_FILES`](super::MAX_FILES) entries, [`MAX_FILE`](super::MAX_FILE) bytes per English
+    /// names file and [`MAX_TOTAL`](super::MAX_TOTAL) bytes across them. A jar past a limit is an
+    /// error, and the caller passes no layer.
     pub fn add_archive(&mut self, path: &std::path::Path) -> Result<(), String> {
+        use super::{MAX_FILE, MAX_FILES, MAX_TOTAL};
         use std::io::Read;
-        const MAX_LANG_FILE: u64 = 16 << 20;
         let file = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
         let mut zip = zip::ZipArchive::new(file).map_err(|e| format!("{}: {e}", path.display()))?;
+        if zip.len() > MAX_FILES {
+            return Err(format!("{}: more than {MAX_FILES} entries", path.display()));
+        }
         let mut lang_indices = Vec::new();
         for i in 0..zip.len() {
             let entry = zip
@@ -97,15 +103,17 @@ impl JarLayer {
             let Ok(name) = entry.name() else {
                 continue;
             };
-            let normalized = name.trim_start_matches('/').replace('\\', "/");
+            let normalized = name.replace('\\', "/");
+            let normalized = normalized.trim_start_matches('/');
             if normalized.is_empty() {
                 continue;
             }
-            if is_en_us_lang(&normalized) {
-                lang_indices.push((i, normalized.clone()));
+            if is_en_us_lang(normalized) {
+                lang_indices.push((i, normalized.to_owned()));
             }
-            self.files.insert(normalized);
+            self.files.insert(normalized.to_owned());
         }
+        let mut total = 0u64;
         for (i, normalized) in lang_indices {
             let mut entry = zip
                 .by_index(i)
@@ -113,12 +121,25 @@ impl JarLayer {
             let mut bytes = Vec::new();
             entry
                 .by_ref()
-                .take(MAX_LANG_FILE.saturating_add(1))
+                .take(MAX_FILE.saturating_add(1))
                 .read_to_end(&mut bytes)
                 .map_err(|e| format!("{}: {normalized}: {e}", path.display()))?;
-            if bytes.len() as u64 <= MAX_LANG_FILE {
-                self.lang_files.entry(normalized).or_default().push(bytes);
+            if bytes.len() as u64 > MAX_FILE {
+                return Err(format!(
+                    "{}: {normalized} is over {} MiB",
+                    path.display(),
+                    MAX_FILE >> 20
+                ));
             }
+            total += bytes.len() as u64;
+            if total > MAX_TOTAL {
+                return Err(format!(
+                    "{}: English names files are over {} MiB together",
+                    path.display(),
+                    MAX_TOTAL >> 20
+                ));
+            }
+            self.lang_files.entry(normalized).or_default().push(bytes);
         }
         Ok(())
     }
@@ -1743,5 +1764,40 @@ mod tests {
             "{\"type\":\"minecraft:smelting\",\"ingredient\":\"gb:nope\", // note\n\"result\":{\"id\":\"gb:slab\"}}",
         )]);
         assert!(e[0].contains("gb:nope is not an item"), "{e:?}");
+    }
+
+    /// 10. A jar's entries join the layer under `/` paths, and an English names file over the
+    ///     content limit fails the jar rather than leaving its names out.
+    #[test]
+    fn a_jar_archive_is_read_within_the_content_limits() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let write = |name: &str, entries: &[(&str, &[u8])]| {
+            let path = dir.path().join(name);
+            let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+            let options = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored);
+            for (entry, bytes) in entries {
+                zip.start_file(*entry, options).unwrap();
+                zip.write_all(bytes).unwrap();
+            }
+            zip.finish().unwrap();
+            path
+        };
+        let mut layer = JarLayer::new();
+        let jar = write("ok.jar", &[("\\assets\\gb\\lang\\en_us.json", b"{}")]);
+        layer.add_archive(&jar).unwrap();
+        assert!(layer.contains("assets/gb/lang/en_us.json"), "{layer:?}");
+        assert_eq!(
+            layer.lang_files["assets/gb/lang/en_us.json"],
+            [b"{}".to_vec()]
+        );
+        let big = vec![b' '; (crate::content::MAX_FILE + 1) as usize];
+        let jar = write("big.jar", &[("assets/gb/lang/en_us.json", &big)]);
+        let error = JarLayer::new().add_archive(&jar).unwrap_err();
+        assert!(
+            error.ends_with("assets/gb/lang/en_us.json is over 16 MiB"),
+            "{error}"
+        );
     }
 }

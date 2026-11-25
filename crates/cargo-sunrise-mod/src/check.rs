@@ -291,7 +291,8 @@ fn uses_list(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Loads every listed `[[jar]]` from the local jar store, fetching missing jars from Modrinth.
+/// Loads every listed `[[jar]]` from the local jar store, fetching a missing or changed jar from
+/// Modrinth.
 /// Returns `None` when the manifest lists no jars or when any jar cannot be fetched or read,
 /// printing one note so `check` and `build` still succeed offline.
 fn load_jar_layer(
@@ -304,7 +305,12 @@ fn load_jar_layer(
     let mut layer = sunrise_mod_package::content::JarLayer::new();
     for jar in &manifest.jar {
         let cached = jar.cache_path(&store);
-        if !cached.is_file()
+        // A cached file is used only when its bytes still match the listed SHA-512, as `run`
+        // checks before staging; otherwise it is fetched again, which replaces it.
+        let verified = std::fs::File::open(&cached)
+            .and_then(|file| sunrise_jar_fetch::hash_reader::<sha2::Sha512>(file, std::io::sink()))
+            .is_ok_and(|hash| format!("{hash:x}") == jar.sha512());
+        if !verified
             && let Err(error) = sunrise_jar_fetch::fetch(
                 &crate::jar::ProxyHttp,
                 crate::jar::MODRINTH,
