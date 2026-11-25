@@ -86,6 +86,9 @@ pub struct Writer {
 struct PayloadLimits {
     ceiling: usize,
     budget: Budget,
+    /// The shortest body the reader accepts after the zero-width lists written so far: it
+    /// refuses a count the rest of the body cannot hold at one byte per entry.
+    zero_width_end: usize,
 }
 
 impl Writer {
@@ -99,6 +102,7 @@ impl Writer {
             payload: Some(PayloadLimits {
                 ceiling: limit,
                 budget: Budget::payload(),
+                zero_width_end: 0,
             }),
             ..Self::default()
         }
@@ -107,6 +111,9 @@ impl Writer {
     /// payload the enclosing limits, budget already spent and first failure stay in force.
     pub fn clear(&mut self) {
         self.bytes.clear();
+        if let Some(limits) = &mut self.payload {
+            limits.zero_width_end = 0;
+        }
         self.limit = self.payload.as_ref().map(|limits| limits.ceiling);
         if self.payload.is_none() {
             self.error = None;
@@ -118,11 +125,12 @@ impl Writer {
         self.clear();
     }
     pub(crate) fn finish_payload(self) -> Result<Vec<u8>, WireError> {
-        if self.payload.is_none() {
+        let Some(limits) = &self.payload else {
             return Err(WireError::Invalid("payload writer was replaced"));
-        }
+        };
         match self.error {
             Some(error) => Err(error),
+            None if self.bytes.len() < limits.zero_width_end => Err(WireError::Length),
             None => Ok(self.bytes),
         }
     }
@@ -209,6 +217,13 @@ impl Writer {
                     out.bytes.reserve(size);
                 }
                 out.bytes.extend_from_slice(&len.to_le_bytes());
+                // Every other entry writes at least the one byte the reader counts for it.
+                if min == 0
+                    && let Some(limits) = &mut out.payload
+                {
+                    limits.zero_width_end =
+                        limits.zero_width_end.max(out.bytes.len() + items.len());
+                }
             } else {
                 out.put_len(items.len());
             }
