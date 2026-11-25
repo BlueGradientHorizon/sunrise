@@ -2276,7 +2276,7 @@ mod tests {
         assert_eq!(s.sunrise.preset, Preset::Ultra);
         // Ultra keeps the optimizations that leave the picture as it is, and no others.
         assert_eq!(s.sunrise.entity_culling, EntityCullingMode::Asynchronous);
-        assert_eq!(s.sunrise.gpu_culling, GpuCullingMode::Auto);
+        assert_eq!(s.sunrise.gpu_culling, GpuCullingMode::Off);
         assert_eq!((s.sunrise.lod_distance, s.sunrise.fxaa), (128, true));
         assert_eq!(
             (s.sunrise.resolution_scale, s.sunrise.opaque_ice),
