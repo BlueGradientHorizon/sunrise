@@ -44,7 +44,7 @@ pub trait PlayerSessionBackend {
     /// single-player owner's 4 with commands allowed. A displaced connected
     /// player keeps their permission level even while their body is unavailable.
     /// On a client, the local player's level as the server last sent it (entity events 24 to
-    /// 28, `LocalPlayer.setPermissionLevel`), so a mod can tell whether a command it would send
+    /// 28, `LocalPlayer.setPermissions`), so a mod can tell whether a command it would send
     /// is allowed; None there for any other player. None for a stale or unavailable player.
     fn player_permission_level(&self, player: PlayerRef) -> Option<u8>;
     /// Side: server.
