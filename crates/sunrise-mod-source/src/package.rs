@@ -164,7 +164,6 @@ pub fn source_files(root: &Path) -> io::Result<Vec<String>> {
     let mut wanted = std::collections::HashMap::new();
     let mut nested = Vec::new();
     wanted_folders(&manifest, "", &mut wanted)?;
-    let mut lowercase = std::collections::HashMap::<String, String>::new();
     loop {
         while let Some((dir, prefix)) = pending.pop() {
             for entry in std::fs::read_dir(&dir)? {
@@ -190,11 +189,6 @@ pub fn source_files(root: &Path) -> io::Result<Vec<String>> {
                         pending.push((entry.path(), name));
                     }
                 } else if source_file(&name) && !hidden(&name) && packaged(&name, false) {
-                    if let Some(other) = lowercase.insert(name.to_lowercase(), name.clone()) {
-                        return Err(invalid(format!(
-                            "{other} and {name} differ only by case, which a Windows or macOS extraction cannot keep apart"
-                        )));
-                    }
                     found.push(name);
                 }
             }
@@ -217,6 +211,7 @@ pub fn source_files(root: &Path) -> io::Result<Vec<String>> {
             pending.push((dir, name));
         }
     }
+    refuse_case_twins(&found)?;
     for (folder, dependency) in &wanted {
         if !found.contains(&format!("{folder}/Cargo.toml")) {
             return Err(invalid(format!(
@@ -226,6 +221,23 @@ pub fn source_files(root: &Path) -> io::Result<Vec<String>> {
     }
     found.sort();
     Ok(found)
+}
+
+/// Refuses two of `names` that differ only by case: a Windows or macOS extraction keeps one.
+#[cfg(feature = "folder")]
+fn refuse_case_twins(names: &[String]) -> io::Result<()> {
+    let mut lowercase = std::collections::HashMap::new();
+    for name in names {
+        if let Some(other) = lowercase.insert(name.to_lowercase(), name) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "{other} and {name} differ only by case, which a Windows or macOS extraction cannot keep apart"
+                ),
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Adds to `wanted` the folders (relative to the package, `/`-separated) that `manifest`, the
@@ -365,7 +377,7 @@ mod tests {
 
 #[cfg(all(test, feature = "folder"))]
 mod folder_tests {
-    use super::source_files;
+    use super::{refuse_case_twins, source_files};
     use std::path::Path;
 
     fn project(files: &[(&str, &str)]) -> tempfile::TempDir {
@@ -549,13 +561,9 @@ mod folder_tests {
 
     #[test]
     fn names_that_differ_only_by_case_are_refused() {
-        let root = project(&[
-            ("Cargo.toml", "[package]\nname = 'ruby'\n"),
-            ("src/lib.rs", ""),
-            ("src/Evil.rs", ""),
-            ("src/evil.rs", ""),
-        ]);
-        let error = source_files(root.path()).unwrap_err().to_string();
+        // A list, not a folder: Windows' and macOS's file systems cannot hold both names.
+        let names = ["Cargo.toml", "src/Evil.rs", "src/evil.rs", "src/lib.rs"].map(String::from);
+        let error = refuse_case_twins(&names).unwrap_err().to_string();
         assert!(
             error.contains("src/Evil.rs") && error.contains("src/evil.rs"),
             "{error}"
