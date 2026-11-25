@@ -1494,7 +1494,7 @@ impl Package {
         let code = manifest.native.is_some();
         let (mut source_bytes, mut source_count) = (0u64, 0usize);
         for (name, bytes) in files {
-            if let Some(other) = lowercase.insert(name.to_lowercase(), name) {
+            if let Some(other) = lowercase.insert(name.to_lowercase(), *name) {
                 return Err(format!(
                     "{other} and {name} differ only by case, which a Windows or macOS extraction cannot keep apart"
                 ));
