@@ -395,6 +395,13 @@ Changing only the costs doesn't revalidate vanilla's stack. Cancellation clears 
 and both costs; an invalid replacement output is logged and ignored, keeping vanilla's
 output while still applying the cost edits.
 
+A mod's own anvil menu (an upgraded or portable anvil) runs the same listeners for its own
+inputs with `player.anvil_update(host, pos, &inputs)`, NeoForge's `CommonHooks.onAnvilUpdate`.
+Build an `AnvilUpdateInputs` from the menu's stacks, rename text, result and costs (the
+listeners see those as vanilla's), and apply the `AnvilUpdateEdits` it returns to the menu, or
+clear the result and both costs on `None` (a listener canceled). Other mods' anvil recipes
+then work in that menu too. It declines from inside an `anvil_update` listener.
+
 The server's `anvil_craft_pre` and `anvil_craft_post` both borrow the same pre-take snapshot
 through `event.inputs` (`AnvilCraftInputs<'_>`). Read the optional stacks through `inputs.left`
 and `inputs.right`, and the taken result through `inputs.output`. Set `event.cancelled` or
