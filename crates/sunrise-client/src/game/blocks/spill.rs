@@ -952,6 +952,7 @@ impl GameLevel<'_> {
             self.world,
             origin,
             &self.facts.get(state).name,
+            self.items,
             |key, entity, block| self.encode_live_block_entity(key, entity, block),
         );
         let (block_entity, block_components) = match source {
@@ -1678,9 +1679,15 @@ impl Game<'_> {
     ) -> Vec<ItemStack> {
         let centre = pos.map(|c| f64::from(c) + 0.5);
         let source = self.pack.assets.registry.state(state).and_then(|block| {
-            world_source(&self.world, pos, &block.name, |key, entity, block| {
-                self.encode_live_block_entity(key, entity, block, world_items!(self))
-            })
+            world_source(
+                &self.world,
+                pos,
+                &block.name,
+                world_items!(self),
+                |key, entity, block| {
+                    self.encode_live_block_entity(key, entity, block, world_items!(self))
+                },
+            )
         });
         let mut place = self.loot_place_at(centre, None);
         if let Some(source) = source {

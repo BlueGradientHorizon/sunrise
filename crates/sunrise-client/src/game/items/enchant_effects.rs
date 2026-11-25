@@ -477,6 +477,7 @@ impl Game<'_> {
                 damage_type: &damage_type,
                 causing: attack.attacker,
                 direct: attack.attacker,
+                direct_type: attack.direct_type.as_deref(),
                 position: None,
             };
             self.evaluate_weapon_value(
@@ -896,6 +897,9 @@ impl Game<'_> {
             damage_type: damage_type.unwrap_or("minecraft:mob_attack"),
             causing,
             direct: direct.map_or(causing, |(id, _)| id as i32),
+            direct_type: direct
+                .map(|(_, kind)| kind)
+                .or(attack.direct_type.as_deref()),
             position: attack.position,
         };
         let Some(target) = self.post_attack_target(victim) else {

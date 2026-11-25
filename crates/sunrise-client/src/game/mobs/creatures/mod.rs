@@ -2295,6 +2295,7 @@ impl Game<'_> {
             damage_type,
             causing: attack.attacker,
             direct: attack.attacker,
+            direct_type: attack.direct_type.as_deref(),
             position: source.from,
         };
         let ctx = attack.enchantment_context(hurt_source, &kind);

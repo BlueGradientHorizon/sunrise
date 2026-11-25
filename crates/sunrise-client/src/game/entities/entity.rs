@@ -1646,6 +1646,7 @@ impl Game<'_> {
             damage_type,
             causing: 0,
             direct: 0,
+            direct_type: None,
             position: None,
         };
         if damage_level_of!(self, self.combat.attack(), no_push, None).invulnerability_check(

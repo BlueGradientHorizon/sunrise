@@ -996,6 +996,7 @@ impl Game<'_> {
                             damage_type: "minecraft:trident",
                             causing,
                             direct: t.id as i32,
+                            direct_type: Some("minecraft:trident"),
                             position: Some([t.previous.x, t.previous.y, t.previous.z]),
                         };
                         let hurt_living = hurt_mob
