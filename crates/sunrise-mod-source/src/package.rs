@@ -15,15 +15,19 @@ pub const MANIFEST: &str = "sunrise-mod.toml";
 pub const RUNTIME_DIR: &str = "runtime";
 
 /// Folders of a mod's project that are never part of its package: Git's, Cargo's build output
-/// and the pinned SDK the mod tool fetches into `.sunrise/`.
-pub const NOT_PACKAGED: [&str; 3] = [".git", "target", ".sunrise"];
+/// (only the root `target`, as Cargo skips only that one), Cargo's `.cargo/config.toml` folder,
+/// which the build would apply, and the pinned SDK the mod tool fetches into `.sunrise/`.
+pub const NOT_PACKAGED: [&str; 4] = [".git", "target", ".sunrise", ".cargo"];
 
 /// Whether `name` (`/`-separated, relative to the package) is a source file: any path outside
 /// [`NOT_PACKAGED`] folders that is not one of the package's own names, which are the manifest,
 /// the uses table, the icon, and what is under `runtime/`, `assets/` and `data/`. A name is never
 /// judged by its extension; a trailing `/` reads as a file below the folder.
 pub fn source_file(name: &str) -> bool {
-    !name.split('/').any(|part| NOT_PACKAGED.contains(&part))
+    let mut parts = name.split('/');
+    let first = parts.next().unwrap_or_default();
+    !NOT_PACKAGED.contains(&first)
+        && !parts.any(|part| part != "target" && NOT_PACKAGED.contains(&part))
         && name != MANIFEST
         && name != USES_FILE
         && name != "icon.png"
@@ -33,18 +37,29 @@ pub fn source_file(name: &str) -> bool {
         })
 }
 
-/// The kind of prebuilt binary a file is, from its first bytes alone, whatever its name: ELF,
-/// Mach-O (32- and 64-bit in both byte orders, and the universal header), PE, or an `ar` archive
-/// (which covers `.a` and `.lib`). `head` is the file's first bytes, at least 8 of them when the
-/// file has that many. The packer refuses a source file this names.
+/// The kind of prebuilt object code a file is, from its header alone, whatever its name: ELF,
+/// Mach-O (32- and 64-bit in both byte orders, and both universal headers), PE, WebAssembly, or
+/// an `ar` archive (which covers `.a` and `.lib`). `head` is the file's first 1024 bytes, or the
+/// whole file when it is shorter: a PE is told from a text file starting with `MZ` by the `PE\0\0`
+/// signature its header points to. This catches a prebuilt binary by its header; it is not a
+/// security boundary, since `build.rs` runs code. The tools refuse a source file this names.
 pub fn binary_kind(head: &[u8]) -> Option<&'static str> {
+    let pe = head.starts_with(b"MZ")
+        && head.get(0x3c..0x40).is_some_and(|at| {
+            let at = u32::from_le_bytes([at[0], at[1], at[2], at[3]]) as usize;
+            head.get(at..at.saturating_add(4)) == Some(&b"PE\0\0"[..])
+        });
     match head {
         [0x7f, b'E', b'L', b'F', ..] => Some("ELF"),
         [0xfe, 0xed, 0xfa, 0xce | 0xcf, ..] | [0xce | 0xcf, 0xfa, 0xed, 0xfe, ..] => Some("Mach-O"),
         [0xca, 0xfe, 0xba, 0xbe, ..] | [0xbe, 0xba, 0xfe, 0xca, ..] => {
             Some("Mach-O universal binary or Java class file")
         }
-        [b'M', b'Z', ..] => Some("PE"),
+        [0xca, 0xfe, 0xba, 0xbf, ..] | [0xbf, 0xba, 0xfe, 0xca, ..] => {
+            Some("Mach-O 64-bit universal binary")
+        }
+        [0, b'a', b's', b'm', ..] => Some("WebAssembly"),
+        _ if pe => Some("PE"),
         _ if head.starts_with(b"!<arch>\n") => Some("ar archive"),
         _ => None,
     }
@@ -53,7 +68,10 @@ pub fn binary_kind(head: &[u8]) -> Option<&'static str> {
 /// The source files a package of the folder at `root` carries, `/`-separated and sorted: the files
 /// `cargo package` would put in the crate. The whole folder is walked, but not [`NOT_PACKAGED`]
 /// folders, nested packages (a folder holding its own `Cargo.toml`) that no packaged manifest names
-/// as a `path` dependency, `.`-named files and folders (unless `include` is set), the names [`source_file`] refuses, or what the root `.gitignore` ignores. Then
+/// as a `path` dependency, `.`-named files and folders (unless `include` is set), the names [`source_file`] refuses, or what the root `.gitignore` ignores. A `path` dependency of a
+/// packaged manifest that leaves the package, or names a folder the walk leaves out, is refused by
+/// the manifest and path (one under `.sunrise/`, the SDK the native build replaces, is not). Two
+/// names that differ only by case are refused, since a Windows or macOS extraction keeps one. Then
 /// `[package] include` of `Cargo.toml` keeps only the files it matches, or else `[package]
 /// exclude` drops the files it matches, both as gitignore-style patterns. `Cargo.toml` and
 /// `Cargo.lock` at the root are always kept. No entry whose name a package path cannot hold (not
@@ -143,9 +161,10 @@ pub fn source_files(root: &Path) -> io::Result<Vec<String>> {
     let mut found = Vec::new();
     let mut pending = vec![(root.to_path_buf(), String::new())];
     // Folders a packaged manifest names as a `path` dependency, and the nested packages seen so far.
-    let mut wanted = std::collections::HashSet::new();
+    let mut wanted = std::collections::HashMap::new();
     let mut nested = Vec::new();
-    wanted_folders(&manifest, "", &mut wanted);
+    wanted_folders(&manifest, "", &mut wanted)?;
+    let mut lowercase = std::collections::HashMap::<String, String>::new();
     loop {
         while let Some((dir, prefix)) = pending.pop() {
             for entry in std::fs::read_dir(&dir)? {
@@ -171,6 +190,11 @@ pub fn source_files(root: &Path) -> io::Result<Vec<String>> {
                         pending.push((entry.path(), name));
                     }
                 } else if source_file(&name) && !hidden(&name) && packaged(&name, false) {
+                    if let Some(other) = lowercase.insert(name.to_lowercase(), name.clone()) {
+                        return Err(invalid(format!(
+                            "{other} and {name} differ only by case, which a Windows or macOS extraction cannot keep apart"
+                        )));
+                    }
                     found.push(name);
                 }
             }
@@ -179,7 +203,7 @@ pub fn source_files(root: &Path) -> io::Result<Vec<String>> {
         // found after it, so the list is read again until none is newly named.
         let (named, others): (Vec<_>, Vec<_>) = std::mem::take(&mut nested)
             .into_iter()
-            .partition(|(_, name)| wanted.contains(name));
+            .partition(|(_, name)| wanted.contains_key(name));
         nested = others;
         if named.is_empty() {
             break;
@@ -189,8 +213,15 @@ pub fn source_files(root: &Path) -> io::Result<Vec<String>> {
             let table = text
                 .parse::<toml::Table>()
                 .map_err(|e| invalid(format!("{name}/Cargo.toml: {e}")))?;
-            wanted_folders(&table, &name, &mut wanted);
+            wanted_folders(&table, &name, &mut wanted)?;
             pending.push((dir, name));
+        }
+    }
+    for (folder, dependency) in &wanted {
+        if !found.contains(&format!("{folder}/Cargo.toml")) {
+            return Err(invalid(format!(
+                "{dependency}: the folder `{folder}` is not in the package (a dot-folder, `include`, `exclude`, `.gitignore` or a missing Cargo.toml leaves it out)"
+            )));
         }
     }
     found.sort();
@@ -199,14 +230,15 @@ pub fn source_files(root: &Path) -> io::Result<Vec<String>> {
 
 /// Adds to `wanted` the folders (relative to the package, `/`-separated) that `manifest`, the
 /// `Cargo.toml` of the folder `base`, names as `path` dependencies in `[dependencies]`,
-/// `[build-dependencies]`, `[dev-dependencies]` and their `[target.*.*]` forms. A path that leaves
-/// the package is not added.
+/// `[build-dependencies]`, `[dev-dependencies]` and their `[target.*.*]` forms, each with the
+/// manifest and path that name it. A path that leaves the package is refused; one under
+/// `.sunrise/` is the SDK, which the native build removes, and is not added.
 #[cfg(feature = "folder")]
 fn wanted_folders(
     manifest: &toml::Table,
     base: &str,
-    wanted: &mut std::collections::HashSet<String>,
-) {
+    wanted: &mut std::collections::HashMap<String, String>,
+) -> io::Result<()> {
     const TABLES: [&str; 3] = ["dependencies", "build-dependencies", "dev-dependencies"];
     let mut tables: Vec<&toml::Value> =
         TABLES.iter().filter_map(|key| manifest.get(*key)).collect();
@@ -215,13 +247,20 @@ fn wanted_folders(
             tables.extend(TABLES.iter().filter_map(|key| target.get(*key)));
         }
     }
+    let label = if base.is_empty() {
+        "Cargo.toml".to_owned()
+    } else {
+        format!("{base}/Cargo.toml")
+    };
     for table in tables.into_iter().filter_map(toml::Value::as_table) {
-        for dependency in table.values() {
+        for (key, dependency) in table {
             let Some(path) = dependency.get("path").and_then(toml::Value::as_str) else {
                 continue;
             };
             let mut parts: Vec<&str> = base.split('/').filter(|part| !part.is_empty()).collect();
-            let mut inside = true;
+            // An absolute path or a drive leaves the package as `..` does.
+            let mut inside =
+                !path.starts_with(['/', '\\']) && path.as_bytes().get(1) != Some(&b':');
             for part in path.split(['/', '\\']) {
                 match part {
                     "" | "." => {}
@@ -229,11 +268,19 @@ fn wanted_folders(
                     part => parts.push(part),
                 }
             }
-            if inside && !parts.is_empty() {
-                wanted.insert(parts.join("/"));
+            let named = format!("{label}: dependency `{key}` has path `{path}`");
+            if !inside {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("{named}, which leaves the package"),
+                ));
+            }
+            if parts.first() != Some(&".sunrise") && !parts.is_empty() {
+                wanted.entry(parts.join("/")).or_insert(named);
             }
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -251,6 +298,9 @@ mod tests {
             "Makefile",
             "tools/gen.sh",
             "assetsx/a.c",
+            // Cargo skips only the root `target`.
+            "src/target/x.c",
+            "vendor/foo/target/x.c",
         ] {
             assert!(source_file(name), "{name}");
         }
@@ -264,8 +314,9 @@ mod tests {
             "assets/",
             ".git/config",
             "target/debug/x.c",
-            "src/target/x.c",
             ".sunrise/sdk/api/lib.rs",
+            ".cargo/config.toml",
+            "vendor/.git/config",
         ] {
             assert!(!source_file(name), "{name}");
         }
@@ -273,6 +324,11 @@ mod tests {
 
     #[test]
     fn binary_kind_reads_the_first_bytes_whatever_the_name() {
+        // A DOS header whose offset 0x3c points at `PE\0\0`.
+        let mut pe = vec![0u8; 0x48];
+        pe[..2].copy_from_slice(b"MZ");
+        pe[0x3c] = 0x40;
+        pe[0x40..0x44].copy_from_slice(b"PE\0\0");
         for (head, kind) in [
             (&b"\x7fELF\x02\x01\x01\0"[..], Some("ELF")),
             (b"\xcf\xfa\xed\xfe\x07\0\0\x01", Some("Mach-O")),
@@ -281,7 +337,20 @@ mod tests {
                 b"\xca\xfe\xba\xbe\0\0\0\x02",
                 Some("Mach-O universal binary or Java class file"),
             ),
-            (b"MZ\x90\0", Some("PE")),
+            (
+                b"\xca\xfe\xba\xbf\0\0\0\x02",
+                Some("Mach-O 64-bit universal binary"),
+            ),
+            (
+                b"\xbf\xba\xfe\xca\0\0\0\x02",
+                Some("Mach-O 64-bit universal binary"),
+            ),
+            (b"\0asm\x01\0\0\0", Some("WebAssembly")),
+            (&pe, Some("PE")),
+            // `MZ` alone, or a pointer that leads nowhere, is text.
+            (b"MZ\x90\0", None),
+            (b"MZ is a prefix of this C comment", None),
+            (&pe[..0x42], None),
             (b"!<arch>\nfoo.o/", Some("ar archive")),
             (b"#include <stdio.h>", None),
             (b"!<arch>", None),
@@ -411,6 +480,83 @@ mod folder_tests {
                 "src/lib.rs",
                 "vendor/plain.c"
             ]
+        );
+    }
+
+    #[test]
+    fn a_path_dependency_that_leaves_the_package_or_is_left_out_is_refused_by_name() {
+        for (manifest, files, wanted) in [
+            (
+                "[dependencies]\nhelper = { path = '../helper' }\n",
+                &[][..],
+                "Cargo.toml: dependency `helper` has path `../helper`, which leaves the package",
+            ),
+            (
+                "[target.'cfg(unix)'.build-dependencies]\nhelper = { path = '/opt/helper' }\n",
+                &[][..],
+                "which leaves the package",
+            ),
+            (
+                "[dependencies]\nhelper = { path = 'src/helper' }\n",
+                &[(
+                    "src/helper/Cargo.toml",
+                    "[package]\nname = 'helper'\n[dependencies]\nup = { path = '../../../up' }\n",
+                )][..],
+                "src/helper/Cargo.toml: dependency `up`",
+            ),
+            (
+                "[dependencies]\nhelper = { path = '.vendor/helper' }\n",
+                &[(".vendor/helper/Cargo.toml", "[package]\nname = 'helper'\n")][..],
+                "the folder `.vendor/helper` is not in the package",
+            ),
+        ] {
+            let mut all = vec![(
+                "Cargo.toml",
+                format!("[package]\nname = 'ruby'\n{manifest}"),
+            )];
+            all.extend(files.iter().map(|(name, text)| (*name, (*text).to_owned())));
+            let all: Vec<(&str, &str)> = all.iter().map(|(n, t)| (*n, t.as_str())).collect();
+            let error = source_files(project(&all).path()).unwrap_err().to_string();
+            assert!(error.contains(wanted), "{error}");
+        }
+    }
+
+    #[test]
+    fn the_sdks_own_path_dependency_is_allowed() {
+        let root = project(&[
+            (
+                "Cargo.toml",
+                "[package]\nname = 'ruby'\n[dependencies]\nsunrise-mod-api = { path = '.sunrise/sdk/api/crates/sunrise-mod-api' }\n",
+            ),
+            ("src/lib.rs", ""),
+            (".sunrise/sdk/api/crates/sunrise-mod-api/Cargo.toml", ""),
+        ]);
+        assert_eq!(names(root.path()), ["Cargo.toml", "src/lib.rs"]);
+    }
+
+    #[test]
+    fn only_the_root_target_and_never_cargos_own_folder_are_left_out() {
+        let root = project(&[
+            ("Cargo.toml", "[package]\nname = 'ruby'\ninclude = ['**']\n"),
+            ("target/debug/x.c", ""),
+            ("src/target/x.c", ""),
+            (".cargo/config.toml", ""),
+        ]);
+        assert_eq!(names(root.path()), ["Cargo.toml", "src/target/x.c"]);
+    }
+
+    #[test]
+    fn names_that_differ_only_by_case_are_refused() {
+        let root = project(&[
+            ("Cargo.toml", "[package]\nname = 'ruby'\n"),
+            ("src/lib.rs", ""),
+            ("src/Evil.rs", ""),
+            ("src/evil.rs", ""),
+        ]);
+        let error = source_files(root.path()).unwrap_err().to_string();
+        assert!(
+            error.contains("src/Evil.rs") && error.contains("src/evil.rs"),
+            "{error}"
         );
     }
 }
