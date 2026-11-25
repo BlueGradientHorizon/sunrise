@@ -1039,7 +1039,7 @@ impl PackGlslInput {
 }
 
 /// Whether `name` is a valid ASCII GLSL identifier (`[A-Za-z_][A-Za-z0-9_]*`).
-fn is_valid_glsl_identifier(name: &str) -> bool {
+pub(crate) fn is_valid_glsl_identifier(name: &str) -> bool {
     let mut bytes = name.bytes();
     let Some(first) = bytes.next() else {
         return false;
@@ -1051,7 +1051,7 @@ fn is_valid_glsl_identifier(name: &str) -> bool {
 /// Whether `value` is a safe, non-empty single-line GLSL `#define` value token sequence:
 /// no ASCII control characters (including newlines), no leading/trailing whitespace, no
 /// backslash continuations, no preprocessor `#`, and no `//`, `/*`, or `*/` comment tokens.
-fn is_valid_glsl_define_value(value: &str) -> bool {
+pub(crate) fn is_valid_glsl_define_value(value: &str) -> bool {
     !value.is_empty()
         && value.trim() == value
         && !value.bytes().any(|b| b.is_ascii_control())
@@ -2446,6 +2446,13 @@ pub enum TextureSource<'a> {
     /// level is skipped when a draw in the same pass binds that level as a storage image it
     /// writes.
     RenderTargetColorMip(RenderTargetMipView),
+    /// Colour attachment `attachment` (`0..color_targets.len()`) of a transient per-frame target
+    /// allocated via [`crate::FrameGraphContext::create_transient`].
+    TransientTargetColor(crate::TransientTargetId, u8),
+    /// Depth aspect of a transient per-frame target allocated via
+    /// [`crate::FrameGraphContext::create_transient`] (must be bound to a non-filtering
+    /// [`SamplerFilter::Nearest`] sampler).
+    TransientTargetDepth(crate::TransientTargetId),
 }
 
 /// A view of a mip range of a render target colour attachment (vanilla's `GpuTextureView`:
@@ -2533,6 +2540,13 @@ pub struct RenderCapabilities {
     /// [`StorageImageAccess::ReadOnly`] is also the adapter's answer: creating the target
     /// refuses with [`RenderTargetError::UnsupportedStorage`] when it does not.
     pub read_write_storage: Vec<RenderTargetFormat>,
+    /// Whether the adapter runs compute shaders that use subgroup operations
+    /// (`GL_KHR_shader_subgroup_*`). A [`crate::ComputePipeline`] that uses them is refused with
+    /// [`crate::ComputePipelineError::UnsupportedFeature`] without it.
+    pub subgroup: bool,
+    /// Whether an indirect draw's `first_instance` may be non-zero on this adapter
+    /// (`INDIRECT_FIRST_INSTANCE`).
+    pub indirect_first_instance: bool,
 }
 
 /// Why a mod-owned offscreen [`RenderTargetRef`] operation was refused.
@@ -2797,6 +2811,97 @@ impl crate::__private::game::Fields for RenderTargetRef {
             generation: self.0,
             slot: self.1,
         }
+    }
+}
+
+/// Configuration for an offscreen render pass targeting a mod-owned [`RenderTargetRef`].
+///
+/// Used by `frame_graph_setup` for world offscreen passes and by picture-in-picture GUI
+/// renderers. Unset clear ops (`None`) preserve the target's existing contents (`LoadOp::Load`).
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+// no wire: local client offscreen render pass configuration.
+pub struct OffscreenPass {
+    /// Destination offscreen render target.
+    pub target: RenderTargetRef,
+    /// Per-colour-attachment clear values (`None` = preserve existing pixels, `Some(rgba)` =
+    /// clear to `rgba`). Entries beyond the target's attachment count are ignored; omitted
+    /// trailing entries preserve existing pixels.
+    pub clear_color: Vec<Option<[f32; 4]>>,
+    /// Depth clear value (`None` = preserve existing depth, `Some(d)` = clear to `d`, e.g.
+    /// `0.0` for reversed-Z).
+    pub clear_depth: Option<f32>,
+    /// Stencil clear value when the target has a stencil aspect (`None` = preserve).
+    pub clear_stencil: Option<u32>,
+    /// Optional column-major 4x4 projection matrix overriding `Projection.ProjMat` for this pass.
+    pub projection: Option<[f32; 16]>,
+    /// Optional column-major 4x4 model-view matrix overriding `DynamicTransforms.ModelViewMat`
+    /// for this pass.
+    pub view: Option<[f32; 16]>,
+    /// The mip level of the target's attachments the pass renders into (default 0), at that
+    /// level's size (`GpuTextureView.getWidth(mipLevel)`). Must be below the target's
+    /// [`RenderTargetDescriptor::mip_levels`].
+    pub mip_level: u32,
+}
+
+impl OffscreenPass {
+    /// Start an offscreen pass targeting `target` that preserves all existing attachment contents.
+    pub fn new(target: RenderTargetRef) -> Self {
+        Self {
+            target,
+            clear_color: Vec::new(),
+            clear_depth: None,
+            clear_stencil: None,
+            projection: None,
+            view: None,
+            mip_level: 0,
+        }
+    }
+
+    /// Render into mip level `mip_level` of the target (default 0).
+    pub fn mip_level(mut self, mip_level: u32) -> Self {
+        self.mip_level = mip_level;
+        self
+    }
+
+    /// Set per-attachment colour clear operations.
+    pub fn clear_color(mut self, clears: impl IntoIterator<Item = Option<[f32; 4]>>) -> Self {
+        self.clear_color = clears.into_iter().collect();
+        self
+    }
+
+    /// Clear colour attachment 0 to `rgba`.
+    pub fn clear_color_0(mut self, rgba: [f32; 4]) -> Self {
+        if self.clear_color.is_empty() {
+            self.clear_color.push(Some(rgba));
+        } else {
+            self.clear_color[0] = Some(rgba);
+        }
+        self
+    }
+
+    /// Clear the depth attachment to `depth`.
+    pub fn clear_depth(mut self, depth: f32) -> Self {
+        self.clear_depth = Some(depth);
+        self
+    }
+
+    /// Clear the stencil attachment to `stencil`.
+    pub fn clear_stencil(mut self, stencil: u32) -> Self {
+        self.clear_stencil = Some(stencil);
+        self
+    }
+
+    /// Override `Projection.ProjMat` (column-major 4x4) for draws inside this pass.
+    pub fn projection(mut self, matrix: [f32; 16]) -> Self {
+        self.projection = Some(matrix);
+        self
+    }
+
+    /// Override `DynamicTransforms.ModelViewMat` (column-major 4x4) for draws inside this pass.
+    pub fn view(mut self, matrix: [f32; 16]) -> Self {
+        self.view = Some(matrix);
+        self
     }
 }
 
@@ -3873,9 +3978,11 @@ mod tests {
     #[test]
     fn stamps_owner_on_new_pipelines_across_namespaces_and_preserves_duplicates_for_freeze() {
         let mut pipelines = Vec::new();
+        let mut compute_pipelines = Vec::new();
         let mut event = crate::RegisterRenderPipelinesEvent {
             mod_id: "first_mod",
             pipelines: &mut pipelines,
+            compute_pipelines: &mut compute_pipelines,
         };
         event.register(pipeline("other:glow"));
         event.mod_id = "owning_mod";
@@ -3902,10 +4009,12 @@ mod tests {
     #[test]
     fn a_mod_can_register_more_than_vanillas_pipeline_count() {
         let mut pipelines = Vec::new();
+        let mut compute_pipelines = Vec::new();
         {
             let mut event = crate::RegisterRenderPipelinesEvent {
                 mod_id: "mine",
                 pipelines: &mut pipelines,
+                compute_pipelines: &mut compute_pipelines,
             };
             for i in 0..131 {
                 event.register(pipeline(&format!("mine:p{i}")));
@@ -3917,6 +4026,7 @@ mod tests {
         crate::RegisterRenderPipelinesEvent {
             mod_id: "next",
             pipelines: &mut pipelines,
+            compute_pipelines: &mut compute_pipelines,
         }
         .register(pipeline("next:glow"));
         assert_eq!(pipelines.len(), 132);
@@ -4839,6 +4949,19 @@ mod tests {
             vec!["size", "resize", "size", "release"]
         );
 
+        let pass = OffscreenPass::new(rt)
+            .clear_color_0([0.1, 0.2, 0.3, 1.0])
+            .clear_depth(0.0)
+            .clear_stencil(0)
+            .projection([1.0; 16])
+            .view([2.0; 16]);
+        assert_eq!(pass.target, rt);
+        assert_eq!(pass.clear_color, vec![Some([0.1, 0.2, 0.3, 1.0])]);
+        assert_eq!(pass.clear_depth, Some(0.0));
+        assert_eq!(pass.clear_stencil, Some(0));
+        assert_eq!(pass.projection, Some([1.0; 16]));
+        assert_eq!(pass.view, Some([2.0; 16]));
+
         let bindings = DrawBindings::new()
             .texture("uColor", TextureSource::RenderTargetColor(rt, 0))
             .texture("uDepth", TextureSource::RenderTargetDepth(rt));
@@ -4911,5 +5034,7 @@ mod tests {
             bindings.entries[1],
             ("uNext", BindingValue::StorageImage(i)) if i == image
         ));
+        assert_eq!(OffscreenPass::new(rt).mip_level, 0);
+        assert_eq!(OffscreenPass::new(rt).mip_level(3).mip_level, 3);
     }
 }

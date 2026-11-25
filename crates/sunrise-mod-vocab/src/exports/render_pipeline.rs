@@ -13,6 +13,11 @@ pub use client::render_pipeline::{
     PackDepthTarget, PackGlslInput, PackOverrideState, PackPassSlot, PackUniformDecl,
 };
 pub use client::render_pipeline::{
+    OffscreenPass, RenderTargetBackendRef, RenderTargetContext, RenderTargetDepth,
+    RenderTargetDescriptor, RenderTargetError, RenderTargetFormat, RenderTargetMipView,
+    RenderTargetRef,
+};
+pub use client::render_pipeline::{
     PackUniformType, PackUniformValue, PipelineBlend, PipelineDrawError, PipelineGeometryClass,
     PipelineModifier, PipelineModifierRef, PipelineQuad, PipelineState, PipelineTexture,
     PipelineTextureError, PipelineVertexFormat,
@@ -23,10 +28,6 @@ pub use client::render_pipeline::{
     UniformBufferContext, UniformBufferRef,
 };
 pub use client::render_pipeline::{RenderCapabilities, StorageImageAccess, StorageImageBinding};
-pub use client::render_pipeline::{
-    RenderTargetBackendRef, RenderTargetContext, RenderTargetDepth, RenderTargetDescriptor,
-    RenderTargetError, RenderTargetFormat, RenderTargetMipView, RenderTargetRef,
-};
 pub use client::render_pipeline::{
     UniformValue, VANILLA_BIND_GROUP_LAYOUT_NAMES, VERTEX_ALIGNMENT, VertexAttribute,
     VertexAttributeFormat, VertexFormat, VertexFormatBuilder, VertexFormatError, VertexStepMode,

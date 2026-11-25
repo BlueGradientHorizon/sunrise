@@ -349,6 +349,11 @@ pub mod built {
         crate::RenderPipelineRef::from_parts(generation, slot)
             .expect("published pipeline generation")
     }
+    /// Wrap a slot in the compute-pipeline table's published generation.
+    pub fn compute_pipeline_ref(generation: u64, slot: u32) -> crate::ComputePipelineRef {
+        crate::ComputePipelineRef::from_parts(generation, slot)
+            .expect("published compute pipeline generation")
+    }
     /// Wrap a registered pipeline modifier slot.
     pub fn pipeline_modifier_ref(slot: u32) -> crate::PipelineModifierRef {
         crate::PipelineModifierRef::from_slot(slot)
@@ -361,10 +366,14 @@ pub mod built {
     pub fn render_capabilities(
         float32_filterable: bool,
         read_write_storage: Vec<crate::RenderTargetFormat>,
+        subgroup: bool,
+        indirect_first_instance: bool,
     ) -> crate::RenderCapabilities {
         crate::RenderCapabilities {
             float32_filterable,
             read_write_storage,
+            subgroup,
+            indirect_first_instance,
         }
     }
     /// Wrap a slot in the retained GPU storage buffer store.
@@ -582,6 +591,16 @@ pub mod game {
     }
 
     impl Fields for RenderPipelineRef {
+        type Fields<'a> = ModelRefFields;
+        fn fields(&self) -> ModelRefFields {
+            ModelRefFields {
+                generation: self.0,
+                slot: self.1,
+            }
+        }
+    }
+
+    impl Fields for ComputePipelineRef {
         type Fields<'a> = ModelRefFields;
         fn fields(&self) -> ModelRefFields {
             ModelRefFields {

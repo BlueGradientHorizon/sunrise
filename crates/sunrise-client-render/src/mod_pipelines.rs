@@ -54,6 +54,7 @@ pub enum RegistrationError {
     InvalidPipelineState(String),
     InvalidVertexFormat(String),
     InvalidBindGroupLayout(String),
+    InvalidComputePipeline(String),
     AlreadyPublished,
 }
 
@@ -96,6 +97,7 @@ impl std::fmt::Display for RegistrationError {
             Self::InvalidPipelineState(reason) => f.write_str(reason),
             Self::InvalidVertexFormat(reason) => f.write_str(reason),
             Self::InvalidBindGroupLayout(reason) => f.write_str(reason),
+            Self::InvalidComputePipeline(reason) => f.write_str(reason),
             Self::AlreadyPublished => f.write_str("pipeline registrations were already published"),
         }
     }
@@ -649,7 +651,7 @@ impl Built {
     }
 }
 
-fn mod_bindings_from_layout(
+pub(crate) fn mod_bindings_from_layout(
     layout: &mod_api::BindGroupLayout,
 ) -> Vec<sunrise_mod_pipeline::ModBinding<'_>> {
     layout
@@ -713,6 +715,8 @@ pub struct Pipelines {
     generation: u64,
     invalid: std::sync::Arc<std::sync::Mutex<Vec<usize>>>,
     oit_ineligible_logged: std::sync::Arc<std::sync::Mutex<Vec<usize>>>,
+    /// The registered compute pipelines of the same load (`mod_compute`).
+    compute: crate::mod_compute::ComputeSet,
 }
 
 impl Pipelines {
@@ -723,13 +727,18 @@ impl Pipelines {
         source: &crate::resource_source::ResourceSource,
         generation: u64,
     ) -> Result<Self, String> {
-        Self::build(registered(), generation, |file| {
-            match source.read_to_string(file) {
-                Ok(text) => Ok(Some(text)),
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-                Err(e) => Err(e.to_string()),
-            }
-        })
+        let read = |file: &str| match source.read_to_string(file) {
+            Ok(text) => Ok(Some(text)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e.to_string()),
+        };
+        let mut set = Self::build(registered(), generation, read)?;
+        set.compute = crate::mod_compute::ComputeSet::build(
+            crate::mod_compute::registered(),
+            generation,
+            read,
+        );
+        Ok(set)
     }
 
     /// Build every registered pipeline, reading `.vsh`, `.fsh`, and include files via `read`
@@ -907,7 +916,14 @@ impl Pipelines {
             generation,
             invalid: Default::default(),
             oit_ineligible_logged: Default::default(),
+            compute: Default::default(),
         })
+    }
+
+    /// The compute pipelines of this load: what `RenderAssets::compute_pipeline` resolves in and
+    /// the renderer builds on its device.
+    pub fn compute(&self) -> &crate::mod_compute::ComputeSet {
+        &self.compute
     }
 
     /// The registered [`PrimitiveTopology`] of `slot`, or `None` if `slot` is out of range or
@@ -1738,8 +1754,10 @@ void main() {
             let mut result = Err(String::new());
             mod_platform::testing::with_mods(mods.into(), || {
                 let mut staged = Vec::new();
+                let mut staged_compute = Vec::new();
                 mod_api::dispatch_register_render_pipelines(
                     &RegistrationContext::new(),
+                    &mut staged_compute,
                     &mut staged,
                 );
                 result = validate_pack_bindings(&staged).map(|()| staged);

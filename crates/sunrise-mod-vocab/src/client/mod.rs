@@ -9,6 +9,7 @@ pub(crate) mod client_executor;
 pub mod camera;
 pub(crate) mod client_reload;
 pub(crate) mod client_session;
+pub(crate) mod compute_pipeline;
 pub(crate) mod debug_entries;
 pub(crate) mod dynamic_texture;
 pub(crate) mod entity_layers;
@@ -23,6 +24,7 @@ pub(crate) mod fluid_draw;
 // hidden: a module of game-side types; mods use their re-exports
 #[doc(hidden)]
 pub mod fog;
+pub(crate) mod frame_graph;
 pub(crate) mod gui_canvas;
 pub(crate) mod gui_clip;
 pub(crate) mod gui_entity;

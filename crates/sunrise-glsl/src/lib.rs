@@ -534,6 +534,131 @@ pub fn translate(
     Ok(program)
 }
 
+/// A compute shader, expanded, translated and validated ([`translate_compute`]).
+#[derive(Debug)]
+pub struct ComputeTranslated {
+    pub module: naga::Module,
+    /// The `local_size_x`, `local_size_y` and `local_size_z` the entry point declares.
+    pub workgroup_size: [u32; 3],
+    /// Bytes of `shared` (workgroup address space) variables the entry point uses
+    /// (`max_compute_workgroup_storage_size` bounds them).
+    pub workgroup_storage_bytes: u32,
+    /// Whether the shader uses subgroup operations (`GL_KHR_shader_subgroup_*`, `subgroupAdd` and
+    /// the like): a device without `Features::SUBGROUP` must refuse it.
+    pub uses_subgroup: bool,
+    /// The bindings of group 0 the entry point reads or writes.
+    pub read: Vec<u32>,
+}
+
+/// One GLSL 450 compute shader under `inputs`, whose extra bindings are in
+/// [`Inputs::extra_set`] (a compute pipeline has one bind group, the mod's, so callers use set
+/// `0`). `layout(local_size_x = ..., local_size_y = ..., local_size_z = ...) in;` declares the
+/// workgroup size; the caller checks it, [`ComputeTranslated::workgroup_storage_bytes`] and
+/// [`ComputeTranslated::uses_subgroup`] against the device's limits and features, as only it
+/// knows them. `in` and `out` variables are refused: a compute shader has no stage interface.
+pub fn translate_compute(
+    text: &str,
+    file: &str,
+    dir: &str,
+    inputs: &Inputs,
+    interface: InterfaceLimits,
+) -> Result<ComputeTranslated, Vec<Error>> {
+    let mut expanded = expand_includes(text, file, dir, inputs.includes, Some(inputs.defines))
+        .map_err(|e| vec![Error::from(e)])?;
+    expanded.lines = glsl_fixups::fixups(expanded.lines);
+    texel_fetches(&mut expanded.lines);
+    let glue = Glue {
+        inputs: &[],
+        prelude: "",
+        setup: "",
+        finish: "",
+        vertex_id: "0",
+        fragment_finish: None,
+        interface,
+    };
+    let mut names = Names::new(other_binding_base(inputs).map_err(|message| {
+        vec![Error {
+            file: file.to_owned(),
+            line: 0,
+            message,
+        }]
+    })?);
+    let code =
+        rewrite(&expanded, ShaderStage::Compute, inputs, &glue, &mut names).map_err(|e| vec![e])?;
+    let (module, info) = compile(
+        ShaderStage::Compute,
+        &code,
+        inputs.defines,
+        &names,
+        &|_| false,
+        interface,
+    )?;
+    let Some(entry) = module.entry_points.first() else {
+        return Err(vec![Error {
+            file: file.to_owned(),
+            line: 0,
+            message: "the compute shader has no `main`".to_owned(),
+        }]);
+    };
+    let workgroup_size = entry.workgroup_size;
+    let uses_subgroup = module_uses_subgroup(&module);
+    let used = info.get_entry_point(0);
+    let mut workgroup_storage_bytes = 0u32;
+    let mut read = Vec::new();
+    for (handle, global) in module.global_variables.iter() {
+        if used[handle].is_empty() {
+            continue;
+        }
+        if global.space == naga::AddressSpace::WorkGroup {
+            workgroup_storage_bytes = workgroup_storage_bytes
+                .saturating_add(module.types[global.ty].inner.size(module.to_ctx()));
+        }
+        if let Some(binding) = global.binding.as_ref().filter(|b| b.group == 0) {
+            read.push(binding.binding);
+        }
+    }
+    Ok(ComputeTranslated {
+        module,
+        workgroup_size,
+        workgroup_storage_bytes,
+        uses_subgroup,
+        read,
+    })
+}
+
+/// Whether `module` has a subgroup operation (each of the ballot, gather and collective
+/// statements yields a result expression, which is what is looked for, so no statement walk is
+/// needed) or an entry point that reads a subgroup built-in.
+fn module_uses_subgroup(module: &naga::Module) -> bool {
+    let operation = |expression: &naga::Expression| {
+        matches!(
+            expression,
+            naga::Expression::SubgroupBallotResult
+                | naga::Expression::SubgroupOperationResult { .. }
+        )
+    };
+    let built_in = |argument: &naga::FunctionArgument| {
+        matches!(
+            argument.binding,
+            Some(naga::Binding::BuiltIn(
+                naga::BuiltIn::SubgroupSize
+                    | naga::BuiltIn::SubgroupInvocationId
+                    | naga::BuiltIn::NumSubgroups
+                    | naga::BuiltIn::SubgroupId
+            ))
+        )
+    };
+    module
+        .functions
+        .iter()
+        .map(|(_, function)| function)
+        .chain(module.entry_points.iter().map(|entry| &entry.function))
+        .any(|function| {
+            function.expressions.iter().any(|(_, e)| operation(e))
+                || function.arguments.iter().any(built_in)
+        })
+}
+
 /// A bound on a program's includes, which are pasted every time.
 const MAX_PASTES: u32 = 1024;
 pub const MAX_EXPANDED: usize = 1 << 20;
@@ -1399,6 +1524,12 @@ fn rewrite(
                 write(&mut out, "\n");
                 continue;
             };
+            if stage == ShaderStage::Compute && matches!(decl.storage, "in" | "out") {
+                return Err(at(format!(
+                    "{} {} is not allowed in a compute shader, which has no stage interface",
+                    decl.storage, decl.name
+                )));
+            }
             let qualifiers = decl.qualifiers.join(" ");
             match decl.storage {
                 "uniform" if matches!(decl.ty, "isamplerBuffer" | "usamplerBuffer") => {
@@ -2783,6 +2914,43 @@ mod tests {
         let err = translate(&stages, &no_pc, &glue, &|_| false)
             .expect_err("undeclared push_constant must fail");
         assert!(describe(&err).contains("push_constant"), "got: {err:?}");
+    }
+
+    fn compute_uses_subgroup(source: &str) -> bool {
+        let read = |_: &str| -> Result<Option<String>, String> { Ok(None) };
+        let includes = includes(&read);
+        let inputs = Inputs {
+            blocks: &[],
+            samplers: &[],
+            extra_set: 0,
+            extra_blocks: &[],
+            extra_samplers: &[],
+            extra_texel_buffers: &[],
+            extra_storage_buffers: &[("Out", 0, false)],
+            extra_storage_images: &[],
+            push_constant_binding: None,
+            loose: &[],
+            defines: &[],
+            includes: &includes,
+        };
+        translate_compute(source, "t:test.csh", "", &inputs, LIMITS)
+            .unwrap_or_else(|e| panic!("{e:?}"))
+            .uses_subgroup
+    }
+
+    /// Subgroup use is read from the translated module, not the source text: an identifier that
+    /// merely starts with `subgroup` is not an operation.
+    #[test]
+    fn only_a_real_subgroup_operation_sets_uses_subgroup() {
+        let body = "layout(local_size_x = 8) in;\nlayout(std430) buffer Out { uint values[]; };\n";
+        let named = format!(
+            "#version 450\n{body}void main() {{ uint subgroupCount = 3u; values[gl_GlobalInvocationID.x] = subgroupCount; }}\n"
+        );
+        assert!(!compute_uses_subgroup(&named));
+        let built_in = format!(
+            "#version 450\n#extension GL_KHR_shader_subgroup_basic : enable\n{body}void main() {{ values[gl_GlobalInvocationID.x] = gl_SubgroupSize; }}\n"
+        );
+        assert!(compute_uses_subgroup(&built_in));
     }
 }
 
