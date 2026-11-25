@@ -184,6 +184,7 @@ fn new(body: &str, defines: &[&str]) -> Read {
     let code = Expanded {
         lines: Lines::from_text(&text),
         files: vec!["t:shaders/t.fsh".into()],
+        version: crate::stage_version(&text),
     };
     let Ok(code) = run_directives(&code, defines) else {
         return Refused;
@@ -751,6 +752,7 @@ fn calls_nested_to_the_bound_fit_a_small_thread() {
                 let code = Expanded {
                     lines: Lines::from_text(&text),
                     files: vec!["t:shaders/t.vsh".into()],
+                    version: crate::stage_version(&text),
                 };
                 run_directives(&code, &[]).map(|c| c.text().to_owned())
             })
@@ -776,6 +778,7 @@ fn a_defined_made_by_a_macro_is_read() {
     let code = Expanded {
         lines: Lines::from_text(fsh),
         files: vec!["p:shaders/post/a.fsh".into()],
+        version: crate::stage_version(fsh),
     };
     let text = run_directives(&code, &["DEPTH"]).unwrap().text().to_owned();
     assert!(
@@ -790,4 +793,138 @@ fn a_defined_made_by_a_macro_is_read() {
         "#version 330\n#define HAS defined(FADE)\n#if HAS\n#include <minecraft:scale.glsl>\n#endif\n{MAIN}"
     );
     program(&vsh, &files).unwrap();
+}
+
+/// The value of `module`'s constant `name`.
+fn constant(module: &naga::Module, name: &str) -> i64 {
+    let (_, c) = (module.constants.iter())
+        .find(|(_, c)| c.name.as_deref() == Some(name))
+        .unwrap_or_else(|| panic!("no constant {name}"));
+    match module.global_expressions[c.init] {
+        naga::Expression::Literal(naga::Literal::I32(n)) => n.into(),
+        ref other => panic!("{name} is {other:?}"),
+    }
+}
+
+/// The version a stage file declares, as `__VERSION__` reads it: the first `#version`'s number,
+/// past comments and through a continued line, whatever follows the number; 110 without one.
+#[test]
+fn the_stage_version_is_its_first_version_line() {
+    let cases: &[(&str, u32)] = &[
+        ("#version 330\n", 330),
+        ("#version 150 core\nvoid main() {}\n", 150),
+        ("#version 300 es\n", 300),
+        ("  #  version 140\n", 140),
+        ("// #version 100\n/* #version 120\n */#version 130\n", 130),
+        ("#version \\\n 410\n", 410),
+        ("#version 430\n#version 440\n", 430),
+        ("#if 0\n#version 420\n#endif\n", 420),
+        ("void main() {}\n", 110),
+        ("#version\n", 110),
+        ("#version abc\n", 110),
+        ("#version +330\n", 110),
+        ("#version 99999999999\n", 110),
+    ];
+    for &(text, version) in cases {
+        assert_eq!(crate::stage_version(text), version, "{text:?}");
+    }
+}
+
+/// A core shader's `__VERSION__` is its file's `#version` in the condition that gates an include,
+/// in another condition, in a macro's replacement and in its code; an include's `#version` is
+/// not the stage's.
+#[test]
+fn a_core_shader_reads_its_version() {
+    let files = [(
+        "minecraft:shaders/include/scale.glsl",
+        "#version 400\n#define SCALE 2.0\n",
+    )];
+    let vsh = format!(
+        "#version 150\n#if __VERSION__ == 150\n#include <minecraft:scale.glsl>\n#endif\n\
+         #ifdef __VERSION__\nconst int seen = __VERSION__;\n#endif\n\
+         #define NEXT (__VERSION__ + 1)\nconst int next = NEXT;\n\
+         #if defined(__VERSION__) && __VERSION__ >= 150\nconst int above = 3;\n#endif\n{MAIN}"
+    );
+    let program = program(&vsh, &files).unwrap();
+    let read: Vec<i64> = ["seen", "next", "above"]
+        .map(|name| constant(&program.vertex, name))
+        .into();
+    assert_eq!(read, [150, 151, 3]);
+}
+
+/// A stage without `#version`, or whose `#version` has no number, reads `__VERSION__` as 110
+/// (GLSL 4.60 §3.3), on the walk that pastes includes and in its code alike.
+#[test]
+fn a_stage_without_version_reads_110() {
+    let files = [(
+        "minecraft:shaders/include/scale.glsl",
+        "#define SCALE 2.0\n",
+    )];
+    for header in ["", "#version abc\n"] {
+        let vsh = format!(
+            "{header}#if __VERSION__ == 110\n#include <minecraft:scale.glsl>\n#endif\n\
+             const int seen = __VERSION__;\n{MAIN}"
+        );
+        let program = program(&vsh, &files).unwrap();
+        assert_eq!(constant(&program.vertex, "seen"), 110, "{header:?}");
+    }
+}
+
+/// An include the stage pastes, holding no `#version` of its own: its `#if __VERSION__` gates
+/// the include that defines what the stage uses, and its `#elif`, `#ifndef` and code read the
+/// stage's version (`post_glsl`'s test has the same include).
+const VERSION_INCLUDE: &str = "#if __VERSION__ == 150\n#include \"scale.glsl\"\n#endif\n\
+     const int a = __VERSION__;\n\
+     #if __VERSION__ == 100\nconst int e = 1;\n#elif __VERSION__ == 150\nconst int e = 2;\n#endif\n\
+     #ifndef __VERSION__\nconst int n = 1;\n#else\nconst int n = 4;\n#endif\n";
+
+/// A core shader's include reads the stage's `__VERSION__` in a condition that gates another
+/// include, in `#elif`, in `#ifndef` and in its code.
+#[test]
+fn a_core_shaders_include_reads_the_stage_version() {
+    let files = [
+        ("minecraft:shaders/include/a.glsl", VERSION_INCLUDE),
+        (
+            "minecraft:shaders/include/scale.glsl",
+            "#define SCALE 2.0\n",
+        ),
+    ];
+    let vsh = format!("#version 150\n#include <minecraft:a.glsl>\n{MAIN}");
+    let program = program(&vsh, &files).unwrap();
+    let read: Vec<i64> = ["a", "e", "n"]
+        .map(|name| constant(&program.vertex, name))
+        .into();
+    assert_eq!(read, [150, 2, 4]);
+}
+
+/// A stage's own `#define __VERSION__` replaces the version, as the name was the stage's to define
+/// before (naga's preprocessor had none); defining it again otherwise is still refused, and an
+/// `#undef` removes it.
+#[test]
+fn a_stage_may_define_and_undefine_version() {
+    let run = |body: &str| new(body, &[]);
+    assert_eq!(run("const int v = __VERSION__;"), V(450));
+    assert_eq!(
+        run("#define __VERSION__ 100\nconst int v = __VERSION__;"),
+        V(100)
+    );
+    assert_eq!(
+        run("#define __VERSION__ 100\n#define __VERSION__ 100\nconst int v = __VERSION__;"),
+        V(100)
+    );
+    assert_eq!(
+        run("#define __VERSION__ 100\n#define __VERSION__ 120\nconst int v = __VERSION__;"),
+        Refused
+    );
+    assert_eq!(
+        run(&format!(
+            "#undef __VERSION__\n{}",
+            condition("defined(__VERSION__)")
+        )),
+        V(2)
+    );
+    assert_eq!(
+        run("#undef __VERSION__\nconst int v = __VERSION__;"),
+        Refused
+    );
 }

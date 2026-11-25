@@ -2,8 +2,9 @@
 //! parses it, naga then reading code with no macro left: `#define` and `#undef` ([`Macros`]),
 //! `#if`, `#ifdef`, `#ifndef`, `#elif`, `#else` and `#endif` ([`Conditionals`], each condition
 //! by [`test`]), `#line`, and each other line expanded with the macros of its point, `__LINE__`
-//! its line. Lines ending in `\` continue on the next, comments are blanked, and a macro call's
-//! arguments may span lines ([`Macros::join_call`]). `#version`, `#extension`, `#pragma`,
+//! its line and `__VERSION__` the version the stage's file declares ([`Expanded`]'s). Lines
+//! ending in `\` continue on the next, comments are blanked, and a macro call's arguments may
+//! span lines ([`Macros::join_call`]). `#version`, `#extension`, `#pragma`,
 //! `#error` and any other directive are left as they are, for naga.
 //!
 //! Each line of the result is the line of the code it was, with its origin: an error names the
@@ -14,16 +15,21 @@ use crate::located::Lines;
 use crate::macros::{Macros, Stop, is_ident};
 use crate::{Error, Expanded, ImportRefusal, MAX_SCANNED};
 
-/// The macros a program starts with: its `defines` (`NAME` or `NAME value`, in order), with
-/// `work` to expand ([`Macros::checked`]).
-pub(crate) fn macros(defines: &[&str], work: usize) -> Macros {
+/// The macros a stage starts with: `__VERSION__`, the `version` its file declares
+/// ([`crate::stage_version`]), then its program's `defines` (`NAME` or `NAME value`, in order),
+/// with `work` to expand ([`Macros::checked`]).
+pub(crate) fn macros(defines: &[&str], work: usize, version: u32) -> Macros {
     let mut macros = Macros::checked(work);
+    macros.define(VERSION, version.to_string());
     for define in defines {
         let (name, value) = define.split_once(' ').unwrap_or((define, ""));
         macros.define(name, value);
     }
     macros
 }
+
+/// The macro that reads as the stage's GLSL version (GLSL 4.60 §3.3).
+const VERSION: &str = "__VERSION__";
 
 /// Whether the condition of `#kind rest` holds under `macros` (`kind` is `if` for an `#elif`):
 /// `#ifdef` and `#ifndef` name one macro, `#if` is [`eval_condition`]'s arithmetic.
@@ -100,7 +106,10 @@ fn with_line(line: &str, number: i64) -> String {
 /// stay: a macro defined again with other tokens, a parameter named twice, a name that doesn't
 /// start with a letter or `_`, and a call with the wrong number of arguments. `__LINE__` is the
 /// line it is written on, and in a macro's replacement the line of the call (the last line of a
-/// call over lines). A `#define __LINE__` is taken and changes nothing, as there. The expansion
+/// call over lines). A `#define __LINE__` is taken and changes nothing, as there.
+/// `__VERSION__` is the version the stage's file declares (`stage_version`), in every
+/// condition and in the code; a `#define` of it replaces it, as the name was the stage's to define
+/// before (naga's preprocessor had no `__VERSION__`), and an `#undef` removes it. The expansion
 /// spends at most [`MAX_SCANNED`] tokens of work (what each call reads and what its replacement
 /// makes, [`Macros::checked`]), the bound on what the translator reads for a stage; past it the
 /// stage is refused, at the line.
@@ -109,7 +118,10 @@ pub fn run_directives(code: &Expanded, defines: &[&str]) -> Result<Expanded, Err
         // Every line of the result is a line of the code: a replacement can't add one.
         return Err(code.located(None, format!("the define `{define}` holds a line break")));
     }
-    let mut macros = macros(defines, MAX_SCANNED);
+    let mut macros = macros(defines, MAX_SCANNED, code.version);
+    // Whether `__VERSION__` is still the stage's version: a `#define` of it replaces it once, as
+    // the name was the stage's own to define before it was predefined.
+    let mut predefined_version = !(defines.iter()).any(|d| d.split(' ').next() == Some(VERSION));
     let error = |line: usize, message: String| code.located(code.lines.origin(line), message);
     // Splicing precedes comment removal: each logical line remembers its first physical one.
     let text = code.text();
@@ -189,6 +201,10 @@ pub fn run_directives(code: &Expanded, defines: &[&str]) -> Result<Expanded, Err
                     line_macro = Some(rest);
                 }
                 "define" => {
+                    if predefined_version && rest.split(|c| !is_ident(c)).next() == Some(VERSION) {
+                        macros.undef(VERSION);
+                        predefined_version = false;
+                    }
                     if let Some(name) = repeated_parameter(rest) {
                         return Err(error(at, format!("parameter `{name}` named twice")));
                     }
@@ -200,7 +216,10 @@ pub fn run_directives(code: &Expanded, defines: &[&str]) -> Result<Expanded, Err
                     macros.define_line(rest).map_err(|why| error(at, why))?;
                 }
                 "undef" if rest == "__LINE__" => line_macro = None,
-                "undef" if !rest.is_empty() && rest.chars().all(is_ident) => macros.undef(rest),
+                "undef" if !rest.is_empty() && rest.chars().all(is_ident) => {
+                    predefined_version &= rest != VERSION;
+                    macros.undef(rest);
+                }
                 "undef" => return Err(error(at, format!("invalid #undef {rest}"))),
                 "line" => {
                     let value = eval_line(rest, &macros).map_err(|why| error(at, why))?;
@@ -243,5 +262,6 @@ pub fn run_directives(code: &Expanded, defines: &[&str]) -> Result<Expanded, Err
     Ok(Expanded {
         lines: Lines::relined(&code.lines, &out),
         files: code.files.clone(),
+        version: code.version,
     })
 }

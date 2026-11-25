@@ -12,9 +12,11 @@ pub(super) struct Conditions {
 }
 
 impl Conditions {
-    pub(super) fn new(defines: &[&str]) -> Self {
+    /// The conditions of a stage whose file declares `version` ([`super::stage_version`]),
+    /// under its program's `defines`.
+    pub(super) fn new(defines: &[&str], version: u32) -> Self {
         Self {
-            macros: directives::macros(defines, MAX_SCANNED),
+            macros: directives::macros(defines, MAX_SCANNED, version),
         }
     }
 
