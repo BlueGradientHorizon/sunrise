@@ -68,7 +68,6 @@ fn client_placement_predicts_signal_fire_from_a_block_part() {
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-                game.sync_tick_chunks();
                 game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
                 for (i, (block, expected)) in [
                     ("smoke_test:bale", true),

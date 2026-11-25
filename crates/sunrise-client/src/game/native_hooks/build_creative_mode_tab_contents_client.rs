@@ -40,7 +40,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         self.side.creative_search_named = Some(generation);
         let names = self
-            .side.creative_screen
+            .side
+            .creative_screen
             .0
             .search_items()
             .iter()

@@ -49,7 +49,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Option<&mut Stuck> {
         match self.native_living_target(living)? {
             Target::Player => Some(&mut self.side.combat.0.stuck),
-            Target::Guest(conn) => Some(&mut self.side.guest_combat.0.entry(conn).or_default().stuck),
+            Target::Guest(conn) => {
+                Some(&mut self.side.guest_combat.0.entry(conn).or_default().stuck)
+            }
             Target::Mob(id) => self
                 .mobs
                 .iter_mut()
@@ -88,12 +90,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     game.swing_hand(hand, SwingAnimation::DEFAULT);
                     started = game.swings_started != before;
                     let current = game.swing.current;
-                    if let (true, true, Some(c), Some(id)) = (
-                        started,
-                        send_to_self,
-                        current,
-                        game.side.lan_acting_entity,
-                    ) {
+                    if let (true, true, Some(c), Some(id)) =
+                        (started, send_to_self, current, game.side.lan_acting_entity)
+                    {
                         game.side
                             .guest_packets
                             .push(super::lan_actions::swing_packet(
@@ -763,7 +762,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_use_with_the_button_up_is_released_on_its_next_tick() {
         with_uses(|game, uses, player| {
-            game.set_mapping_held("key.use", false);
+            game.server_set_acting_use(false);
             game.offhand = Some(ItemStack::new("minecraft:bow", 1));
             assert!(game.living_start_using_item(player, Hand::Off));
             game.tick_using_server();

@@ -353,7 +353,6 @@ mod tests {
                 let state = game.world.block(0, 64, 0);
                 let mut handled = false;
                 game.as_guest(12, |game| {
-                    game.audio.0.capture = Some(Vec::new());
                     game.with_level(|_, level, ticks| {
                         level.native_random_tick(
                             ticks,
@@ -542,7 +541,6 @@ mod tests {
             game.lan_flush_effects();
             events(&near);
             events(&far);
-            game.audio.0.capture = Some(Vec::new());
             assert!(game.ui.rules.set("global_sound_events", Value::Bool(false)));
             let level = game.level(game.dim.id()).unwrap();
             assert!(level.global_level_event(game, 1038, [10, 64, -3], 0));

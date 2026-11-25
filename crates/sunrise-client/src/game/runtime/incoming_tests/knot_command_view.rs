@@ -15,7 +15,9 @@ const PIG: &str = "0000609a-0000-0000-0000-000000000001";
 const EXPLICIT: &str = "0000609a-0000-0000-0000-000000000002";
 const NATURAL: &str = "@e[type=minecraft:leash_knot,x=8.5,y=201.375,z=0.5,distance=..0.001]";
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
+fn game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),

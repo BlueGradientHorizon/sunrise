@@ -7,7 +7,7 @@ use super::{Dim, Game, LevelDimension};
 use crate::game::{
     execution_role::ExecutionRole,
     native_client_session::tests::logged_client,
-    native_entity_refs::tests::{run_fresh_cases, with_game_role},
+    native_entity_refs::tests::{run_fresh_cases, with_game_role, with_game_role_client},
 };
 use mod_api::*;
 use std::sync::{
@@ -123,24 +123,18 @@ struct States {
     air: sunrise_world::registry::BlockStateId,
 }
 
-/// Runs `test` in a fresh process on a game whose content root holds the two blocks, with the
-/// overworld's chunk (0, 0) empty and no light edits queued.
-fn with_lights(name: &str, test: impl FnOnce(&mut crate::game::ClientGame<'_>, LevelRef, States, Depth)) {
-    with_lights_sides(name, &["server"], |game, level, states, depth, _| {
+/// Runs `test` in a fresh process on a server game whose content root holds the two blocks, with
+/// the overworld's chunk (0, 0) empty and no light edits queued.
+fn with_lights(
+    name: &str,
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, LevelRef, States, Depth),
+) {
+    with_lights_server(name, |game, level, states, depth, _| {
         test(game, level, states, depth);
     });
 }
 
-fn with_lights_sides(
-    name: &str,
-    cases: &[&str],
-    test: impl FnOnce(&mut crate::game::ClientGame<'_>, LevelRef, States, Depth, &AtomicU8),
-) {
-    const CHILD: &str = "SUNRISE_DYNAMIC_LIGHT_CHILD";
-    if run_fresh_cases(name, CHILD, cases) {
-        return;
-    }
-    let client = std::env::var(CHILD).unwrap() == "client";
+fn prepare_lights_root() -> (std::path::PathBuf, Depth, Arc<AtomicU8>) {
     let depth = Depth::default();
     let proxy_calls = Arc::new(AtomicU8::new(0));
     let mods: Mods = vec![ModEntry::new(
@@ -155,46 +149,76 @@ fn with_lights_sides(
         .unwrap()
         .prepared()
         .to_path_buf();
-    let role = if client {
-        ExecutionRole::Client
-    } else {
-        ExecutionRole::IntegratedServer
+    (root, depth, proxy_calls)
+}
+
+fn init_lights_world<S: crate::game::Side>(game: &mut Game<'_, S>) -> States {
+    let registry = &game.pack.assets.registry;
+    let states = States {
+        lamp: registry.default_state(LAMP).unwrap(),
+        plain: registry.default_state(PLAIN).unwrap(),
+        air: registry.default_state("minecraft:air").unwrap(),
     };
-    with_game_role(root, role, |game| {
-        let _server = client.then(|| {
-            let server = logged_client(game);
+    let light = &game.pack.context.light;
+    assert!(light.is_dynamic(states.lamp.0));
+    assert!(
+        !light.is_dynamic(states.plain.0),
+        "the declaration gates the ask"
+    );
+    assert_eq!(light.emission(states.lamp.0), 4);
+    let mut chunk = Chunk::empty(0, 0);
+    chunk.lit = true;
+    game.world.chunks.insert((0, 0), Arc::new(chunk));
+    game.world.light_edits.clear();
+    states
+}
+
+fn with_lights_server(
+    name: &str,
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, LevelRef, States, Depth, &AtomicU8),
+) {
+    const CHILD: &str = "SUNRISE_DYNAMIC_LIGHT_CHILD";
+    if run_fresh_cases(name, CHILD, &["server"]) {
+        return;
+    }
+    let (root, depth, proxy_calls) = prepare_lights_root();
+    with_game_role(root, ExecutionRole::IntegratedServer, |game| {
+        let states = init_lights_world(game);
+        let level = game.level("minecraft:overworld").unwrap();
+        test(game, level, states, depth, &proxy_calls);
+    });
+}
+
+fn with_lights_sides(
+    name: &str,
+    server_test: impl FnOnce(&mut crate::game::ServerGame<'_>, LevelRef, States, Depth, &AtomicU8),
+    client_test: impl FnOnce(&mut crate::game::ClientGame<'_>, LevelRef, States, Depth, &AtomicU8),
+) {
+    const CHILD: &str = "SUNRISE_DYNAMIC_LIGHT_CHILD";
+    if run_fresh_cases(name, CHILD, &["server", "client"]) {
+        return;
+    }
+    let client = std::env::var(CHILD).unwrap() == "client";
+    let (root, depth, proxy_calls) = prepare_lights_root();
+    if client {
+        with_game_role_client(root, ExecutionRole::Client, |game| {
+            let _server = logged_client(game);
             game.native_lifecycle.begin_open(Authority::RemoteClient);
             // The remote dimension's key, not the client's legacy Dim field, names its level.
             let remote = game.remote.as_mut().unwrap();
             remote.level = "lights:remote".into();
             remote.level_key = mod_api::__private::dimension_key(&remote.level);
-            server
+            let states = init_lights_world(game);
+            let level = game.level("lights:remote").unwrap();
+            client_test(game, level, states, depth, &proxy_calls);
         });
-        let registry = &game.pack.assets.registry;
-        let states = States {
-            lamp: registry.default_state(LAMP).unwrap(),
-            plain: registry.default_state(PLAIN).unwrap(),
-            air: registry.default_state("minecraft:air").unwrap(),
-        };
-        let light = &game.pack.context.light;
-        assert!(light.is_dynamic(states.lamp.0));
-        assert!(
-            !light.is_dynamic(states.plain.0),
-            "the declaration gates the ask"
-        );
-        assert_eq!(light.emission(states.lamp.0), 4);
-        let mut chunk = Chunk::empty(0, 0);
-        chunk.lit = true;
-        game.world.chunks.insert((0, 0), Arc::new(chunk));
-        game.world.light_edits.clear();
-        let name = if client {
-            "lights:remote"
-        } else {
-            "minecraft:overworld"
-        };
-        let level = game.level(name).unwrap();
-        test(game, level, states, depth, &proxy_calls);
-    });
+    } else {
+        with_game_role(root, ExecutionRole::IntegratedServer, |game| {
+            let states = init_lights_world(game);
+            let level = game.level("minecraft:overworld").unwrap();
+            server_test(game, level, states, depth, &proxy_calls);
+        });
+    }
 }
 
 #[test]
@@ -239,60 +263,79 @@ fn light_query_uses_the_supplied_state_and_its_declared_default() {
     );
 }
 
+fn assert_live_answers<S: crate::game::Side>(
+    game: &mut Game<'_, S>,
+    level: LevelRef,
+    depth: &Depth,
+    expected_dimension: &str,
+    before_query: impl FnOnce(&mut Game<'_, S>),
+    after_query: impl FnOnce(&mut Game<'_, S>),
+) where
+    for<'g> Game<'g, S>: Host,
+{
+    let fixed = game.pack.assets.registry.default_state(FIXED).unwrap();
+    let pos = [1, 70, 2];
+    game.world
+        .set_with_notification(1, 70, 2, fixed, false)
+        .unwrap();
+    game.ask_edited_light_emission();
+    game.world.light_edits.clear();
+    assert_eq!(answer(game, 70), Some(5));
+    assert_eq!(level.brightness(game, LightLayer::Block, pos), Some(0));
+    let before = game.world.chunks.get(&(0, 0)).unwrap().clone();
+    before_query(game);
+    let host: &dyn Host = game;
+    let lamp = host.block_state_id(LAMP).unwrap();
+    let unloaded = [200, 70, 200];
+    for requested in [0, 200] {
+        depth.glow.store(requested, Ordering::Relaxed);
+        assert_eq!(level.get_light_emission(host, pos, lamp), Ok(requested));
+        assert_eq!(
+            level.get_light_emission(host, unloaded, lamp),
+            Ok(requested)
+        );
+        let asks = depth.take_asks();
+        assert_eq!(asks.len(), 2);
+        assert_eq!(asks[0].1, pos);
+        assert_eq!(asks[1].1, unloaded);
+        assert!(
+            asks.iter()
+                .all(|(dimension, _)| dimension.key().id() == expected_dimension)
+        );
+    }
+    after_query(game);
+    assert_eq!(game.world.chunks.len(), 1);
+    assert!(Arc::ptr_eq(
+        &before,
+        game.world.chunks.get(&(0, 0)).unwrap()
+    ));
+    assert_eq!(answer(game, 70), Some(5));
+    assert!(game.world.light_checks.is_empty());
+    assert!(game.world.light_edits.is_empty());
+    assert_eq!(level.brightness(game, LightLayer::Block, pos), Some(0));
+}
+
 #[test]
 #[ignore = "daily"]
 fn light_query_reads_live_answers_in_the_named_level_without_publication() {
     with_lights_sides(
         "game::dynamic_light_emission_tests::light_query_reads_live_answers_in_the_named_level_without_publication",
-        &["server", "client"],
         |game, level, _, depth, _| {
-            let fixed = game.pack.assets.registry.default_state(FIXED).unwrap();
-            let pos = [1, 70, 2];
-            game.world
-                .set_with_notification(1, 70, 2, fixed, false)
-                .unwrap();
-            game.ask_edited_light_emission();
-            game.world.light_edits.clear();
-            assert_eq!(answer(game, 70), Some(5));
-            assert_eq!(level.brightness(game, LightLayer::Block, pos), Some(0));
-            let before = game.world.chunks.get(&(0, 0)).unwrap().clone();
-            let expected_dimension = if game.is_logical_server() {
-                assert_eq!(game.enter_command_level(Dim::Nether), Some(Dim::Overworld));
-                "minecraft:overworld"
-            } else {
-                "lights:remote"
-            };
-            let host: &dyn Host = game;
-            let lamp = host.block_state_id(LAMP).unwrap();
-            let unloaded = [200, 70, 200];
-            for requested in [0, 200] {
-                depth.glow.store(requested, Ordering::Relaxed);
-                assert_eq!(level.get_light_emission(host, pos, lamp), Ok(requested));
-                assert_eq!(
-                    level.get_light_emission(host, unloaded, lamp),
-                    Ok(requested)
-                );
-                let asks = depth.take_asks();
-                assert_eq!(asks.len(), 2);
-                assert_eq!(asks[0].1, pos);
-                assert_eq!(asks[1].1, unloaded);
-                assert!(
-                    asks.iter()
-                        .all(|(dimension, _)| dimension.key().id() == expected_dimension)
-                );
-            }
-            if game.is_logical_server() {
-                assert_eq!(game.enter_command_level(Dim::Overworld), Some(Dim::Nether));
-            }
-            assert_eq!(game.world.chunks.len(), 1);
-            assert!(Arc::ptr_eq(
-                &before,
-                game.world.chunks.get(&(0, 0)).unwrap()
-            ));
-            assert_eq!(answer(game, 70), Some(5));
-            assert!(game.world.light_checks.is_empty());
-            assert!(game.world.light_edits.is_empty());
-            assert_eq!(level.brightness(game, LightLayer::Block, pos), Some(0));
+            assert_live_answers(
+                game,
+                level,
+                &depth,
+                "minecraft:overworld",
+                |game| {
+                    assert_eq!(game.enter_command_level(Dim::Nether), Some(Dim::Overworld));
+                },
+                |game| {
+                    assert_eq!(game.enter_command_level(Dim::Overworld), Some(Dim::Nether));
+                },
+            );
+        },
+        |game, level, _, depth, _| {
+            assert_live_answers(game, level, &depth, "lights:remote", |_| {}, |_| {});
         },
     );
 }
@@ -300,9 +343,8 @@ fn light_query_reads_live_answers_in_the_named_level_without_publication() {
 #[test]
 #[ignore = "daily"]
 fn light_providers_can_delegate_but_an_active_cycle_refuses() {
-    with_lights_sides(
+    with_lights_server(
         "game::dynamic_light_emission_tests::light_providers_can_delegate_but_an_active_cycle_refuses",
-        &["server"],
         |game, level, _, depth, calls| {
             let host: &dyn Host = game;
             let proxy = host.block_state_id(PROXY).unwrap();
@@ -334,7 +376,7 @@ fn light_providers_can_delegate_but_an_active_cycle_refuses() {
 }
 
 /// The stored answer of the cell at (1, y, 2) of chunk (0, 0).
-fn answer(game: &crate::game::ClientGame<'_>, y: i32) -> Option<u8> {
+fn answer<S>(game: &Game<'_, S>, y: i32) -> Option<u8> {
     let chunk = game.world.chunks.get(&(0, 0)).unwrap();
     let cell = chunk.dynamic_cell(1, y, 2).unwrap();
     chunk.dynamic_emission.get(&cell).copied()
@@ -456,11 +498,26 @@ fn check_light_and_a_light_update_ask_the_part_again() {
                 !game.level_check_light(nether, [1, 70, 2]),
                 "another dimension"
             );
-            let role = game.options.execution_role;
-            game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-            assert!(!game.level_check_light(level, [1, 70, 2]), "a client");
-            game.options.execution_role = role;
             assert!(game.world.light_edits.is_empty());
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_light_update_asks_the_part_again_on_the_client() {
+    with_lights_sides(
+        "game::dynamic_light_emission_tests::a_light_update_asks_the_part_again_on_the_client",
+        |_, _, _, _, _| {},
+        |game, _, States { lamp, .. }, depth, _| {
+            depth.glow.store(11, Ordering::Relaxed);
+            game.world
+                .set_with_notification(1, 70, 2, lamp, false)
+                .unwrap();
+            game.ask_edited_light_emission();
+            assert_eq!(depth.take(), [[1, 70, 2]]);
+            assert_eq!(answer(game, 70), Some(11));
+            game.world.light_edits.clear();
 
             // A light update for another section asks nothing; one for the lamp's asks it once.
             depth.glow.store(3, Ordering::Relaxed);

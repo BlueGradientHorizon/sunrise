@@ -832,7 +832,7 @@ pub(in crate::game) mod birth_tests {
         // parent before emitting VillagerBirth; the Game owns the other half.
         game.mobs[0].extra.age = 6000;
         game.native_joins_skip();
-        game.audio.0.capture = Some(Vec::new());
+        game.start_audio_capture();
         game.side.lan_entity_events.clear();
         (parent, partner)
     }

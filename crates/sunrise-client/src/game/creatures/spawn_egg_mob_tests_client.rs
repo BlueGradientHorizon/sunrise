@@ -73,7 +73,6 @@ pub(in crate::game) fn game<'a>(
         .add_empty_chunk(ChunkPos::new(0, 0))
         .unwrap();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
-    game.client.screen = Screen::Playing;
     game.selected = 0;
     game.set_mode_id(0);
     game

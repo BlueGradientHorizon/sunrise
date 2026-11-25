@@ -892,7 +892,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return false;
         }
         let Some(size) = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
@@ -1011,7 +1012,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 Some(*flag)
             });
             if taken {
-                self.side.audio
+                self.side
+                    .audio
                     .0
                     .play("minecraft:ui.stonecutter.select_recipe", None, 1.0, 1.0);
                 self.remote_station_button(index as i32);
@@ -1070,7 +1072,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let mut handled = self.loom_drag();
         handled |= self.merchant_drag();
         let Some(size) = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
@@ -2240,7 +2243,7 @@ pub(in crate::game) mod tests {
                     })
             };
             assert!(warns(game));
-            game.set_difficulty_forced(2);
+            game.ui.difficulty = 2;
             assert!(!warns(game));
         });
     }
@@ -2282,7 +2285,7 @@ pub(in crate::game) mod tests {
         let calls = Arc::new(AtomicUsize::new(0));
         let mods = vec![ModEntry::new("listener", Box::new(Listener(calls.clone())))].into();
         mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
+            super::super::native_entity_refs::tests::with_client_game(|game| {
                 let mut station = super::Station::new(super::Kind::Anvil, [0; 3]);
                 station.inputs[0] = Some(super::ItemStack::new("minecraft:iron_sword", 1));
                 station.anvil.cost = 5;
@@ -2298,7 +2301,6 @@ pub(in crate::game) mod tests {
 
                 // Editing the rename box without changing the effective anvil_item_name
                 // does not fire anvil_update (matching vanilla AnvilMenu.setItemName).
-                game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
                 let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(client, "AnvilTest").unwrap();
                 let display = game.pack.names.display_item("minecraft:iron_sword");
@@ -2350,8 +2352,7 @@ pub(in crate::game) mod tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
-                game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
+            super::super::native_entity_refs::tests::with_client_game(|game| {
                 let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(client, "AnvilDrag").unwrap();
                 game.remote
@@ -2406,8 +2407,7 @@ pub(in crate::game) mod tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
-                game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
+            super::super::native_entity_refs::tests::with_client_game(|game| {
                 let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(client, "AnvilTake").unwrap();
                 game.remote
@@ -2797,7 +2797,9 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn tooltip_part_lines_come_after_the_name_and_never_for_a_hidden_tooltip() {
-        use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game, with_client_game};
+        use crate::game::native_entity_refs::tests::{
+            run_fresh_cases, with_client_game, with_game,
+        };
         use mod_api::{
             self, ClientHost, Hooks, ItemPart, ItemTooltipEvent, ModEntry, Mods, Registrar,
             TooltipEvent,

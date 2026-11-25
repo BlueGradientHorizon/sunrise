@@ -188,6 +188,23 @@ fn server_use_item_packet_fires_once_after_use_item_on_with_block_crosshair() {
 #[test]
 #[ignore = "daily"]
 fn targeted_item_fallthrough_keeps_hand_and_fail_vetoes_item_action() {
+    fn run<S: InteractionSide>(observer: &Observer, game: &mut Game<'_, S>) {
+        let side = S::LOGICAL_SIDE;
+        game.set_test_forced_hit(Some(hit()));
+        for hand in [Hand::Main, Hand::Off] {
+            *observer.0.lock().unwrap() = Controls {
+                air_answer: Some(Answer::Fail),
+                ..Controls::default()
+            };
+            game.inventory[game.selected] = Some(ItemStack::new("minecraft:apple", 1));
+            game.offhand = Some(ItemStack::new("minecraft:apple", 1));
+            assert!(!S::interaction_use_air_hand(game, hand));
+            assert_eq!(observer.0.lock().unwrap().steps, [Step::Air(side, hand)]);
+            assert!(game.using.is_none());
+            assert!(!observer.0.lock().unwrap().steps.contains(&Step::ItemPart));
+        }
+    }
+
     let observer = Observer::default();
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "fallthrough_observer",
@@ -196,31 +213,7 @@ fn targeted_item_fallthrough_keeps_hand_and_fail_vetoes_item_action() {
     .into();
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
-        for client in [false, true] {
-            with_interaction_game(client, |game| {
-                let side = if client {
-                    LogicalSide::Client
-                } else {
-                    LogicalSide::Server
-                };
-                game.set_test_forced_hit(Some(hit()));
-                for hand in [Hand::Main, Hand::Off] {
-                    *observer.0.lock().unwrap() = Controls {
-                        air_answer: Some(Answer::Fail),
-                        ..Controls::default()
-                    };
-                    game.inventory[game.selected] = Some(ItemStack::new("minecraft:apple", 1));
-                    game.offhand = Some(ItemStack::new("minecraft:apple", 1));
-                    if client {
-                        assert!(!game.remote_use_item(hand));
-                    } else {
-                        assert!(!game.with_hand(hand, |g| g.use_hand(None)).unwrap());
-                    }
-                    assert_eq!(observer.0.lock().unwrap().steps, [Step::Air(side, hand)]);
-                    assert!(game.using.is_none());
-                    assert!(!observer.0.lock().unwrap().steps.contains(&Step::ItemPart));
-                }
-            });
-        }
+        with_interaction_server_game(|game| run(&observer, game));
+        with_interaction_client_game(|game| run(&observer, game));
     });
 }

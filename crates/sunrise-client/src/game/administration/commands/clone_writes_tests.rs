@@ -71,7 +71,10 @@ pub(in crate::game) fn load_chunk_in(game: &mut crate::game::ServerGame<'_>, dim
 pub(in crate::game) use crate::game::server_side::commands_server::clone_writes_tests::run;
 
 /// The value `/clone` returned, through `execute store result`.
-pub(in crate::game) fn cloned(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Option<String>, i32) {
+pub(in crate::game) fn cloned(
+    game: &mut crate::game::ServerGame<'_>,
+    command: &str,
+) -> (bool, Option<String>, i32) {
     assert!(game.run_command("scoreboard players set r h236 -1"));
     let said = run(
         game,

@@ -748,7 +748,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 "injected: the flush barrier failed after prepared".into(),
             ));
         }
-        self.side.save
+        self.side
+            .save
             .0
             .flush()
             .map_err(|e| TransferError::Io(e.to_string()))?;
@@ -812,7 +813,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 "injected: the flush barrier failed after prepared".into(),
             ));
         }
-        self.side.save
+        self.side
+            .save
             .0
             .flush()
             .map_err(|e| TransferError::Io(e.to_string()))?;
@@ -1024,7 +1026,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if chunks.is_empty() {
             return Ok(());
         }
-        self.side.save
+        self.side
+            .save
             .0
             .save_later(&chunks, self.pack.assets.registry, world_biomes!(self))?;
         self.side.save.0.flush()
@@ -1038,7 +1041,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
 /// (`save_game_with`, world/autosave.rs), so the exit path's save and
 /// any autosave write nothing over the affected regions. The prepared
 /// operation stays on disk for recovery at the next open.
-fn carrier_stop_session(game: &mut Game<'_, crate::game::server_side::ServerState>, error: &TransferError) {
+fn carrier_stop_session(
+    game: &mut Game<'_, crate::game::server_side::ServerState>,
+    error: &TransferError,
+) {
     if game.error.is_none() {
         game.error = Some(format!("carrier transfer failed: {error}").into());
     }
@@ -1949,36 +1955,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// Review item 5's logical-server guard: a client mirror's transfer
-    /// refuses with a reason — the assembly's and the disassembly's
-    /// gates alike — and the refusal leaves the world untouched: no
-    /// store is created, nothing is written.
-    #[test]
-    #[ignore = "daily"]
-    fn a_client_mirror_transfer_refuses_without_touching_the_world() {
-        let root = std::env::temp_dir().join(format!(
-            "sunrise-carrier-client-refusal-{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).unwrap();
-        crate::game::native_entity_refs::tests::with_client_game(|game| {
-            game.server.world_root = root.clone();
-
-            let refused = game.carrier_disassemble(3, 1, [0, 64, 0], [1.0, 0.0, 0.0, 0.0]);
-            assert!(matches!(refused, Err(TransferError::NotLogicalServer)));
-
-            // The assembly's gate refuses the same way, not silently.
-            let refused = game.carrier_assemble(3, &[BlockPos::new(0, 64, 0)]);
-            assert!(matches!(refused, Err(TransferError::NotLogicalServer)));
-
-            // The world is untouched: no store, no journal, no data.
-            assert!(!root.join("data").exists());
-            assert_eq!(std::fs::read_dir(&root).unwrap().count(), 0);
-        });
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
     /// Assemble then disassemble: at every step the chest has exactly
     /// one owner — the world, the carrier's images or the carrier file.
     #[test]
@@ -2189,7 +2165,14 @@ mod tests {
             // A fresh open holds no parked level: drop the Nether so
             // recovery has to open it from disk, as at world load.
             game.side.levels.0.parked.remove(&crate::game::Dim::Nether);
-            assert!(!game.side.levels.0.parked.contains_key(&crate::game::Dim::Nether));
+            assert!(
+                !game
+                    .side
+                    .levels
+                    .0
+                    .parked
+                    .contains_key(&crate::game::Dim::Nether)
+            );
             game.carrier_recover_all_levels().unwrap();
             assert_eq!(
                 game.dim,

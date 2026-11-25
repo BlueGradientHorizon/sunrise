@@ -9,7 +9,7 @@ use crate::game::{Game, PlayerMotion};
 use sunrise_client::mobs::Who;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 
-fn game(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
+fn game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     sculk_game(|game| {
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 100.0, 8.5)).unwrap());
         game.mobs.clear();
@@ -18,7 +18,7 @@ fn game(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
 }
 
 /// A digging sniffer at `(8.5, 100, 8.5)`, facing +z, its head above the stone.
-fn digging_sniffer(game: &mut crate::game::ClientGame<'_>) -> (u32, [i32; 3]) {
+fn digging_sniffer<S: crate::game::Side>(game: &mut Game<'_, S>) -> (u32, [i32; 3]) {
     let kind = game
         .res
         .mob_types()
@@ -76,8 +76,24 @@ fn digging_posts_entity_action_every_ten_ticks_outside_the_dust_window() {
 #[test]
 #[ignore = "daily"]
 fn a_silent_sniffer_still_plays_the_local_searching_and_hit_sounds() {
-    game(|game| {
-        game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
+        game.world.chunks.insert(
+            (0, 0),
+            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+        );
+        let stone = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:stone")
+            .unwrap();
+        for x in 6..=10 {
+            for z in 6..=12 {
+                game.world.set(x, 99, z, stone).unwrap();
+            }
+        }
+        game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 100.0, 8.5)).unwrap());
+        game.mobs.clear();
         let _ = digging_sniffer(game);
         game.mobs[0].silent = true;
         game.mobs[0].age = 20;
@@ -85,7 +101,11 @@ fn a_silent_sniffer_still_plays_the_local_searching_and_hit_sounds() {
         game.side.audio.0.heard.clear();
         game.tick_sniffer_client();
         assert_eq!(
-            game.side.audio.0.heard.get("minecraft:entity.sniffer.searching"),
+            game.side
+                .audio
+                .0
+                .heard
+                .get("minecraft:entity.sniffer.searching"),
             Some(&1)
         );
         sniffer::set_state(&mut game.mobs[0], sniffer::DIGGING);

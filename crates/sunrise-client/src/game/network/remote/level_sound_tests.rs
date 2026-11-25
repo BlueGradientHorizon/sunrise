@@ -119,12 +119,11 @@ fn packets_ask_client_level_before_playback_not_ui() {
                 game.options.resources.clone(),
             ));
             let context = LoadContext::new(DataLoadOrigin::ClientPreload, inputs, []);
-            game.side.audio
-                .0
+            game.test_audio_mut()
                 .set_loop_context(context.loop_context(LoopSide::Client, []));
             // Exercise the real engine and mixer bookkeeping without opening a device.
-            game.side.audio.0.engine.loaded = true;
-            game.side.audio.0.engine.registry.add_file(
+            game.test_audio_mut().engine.loaded = true;
+            game.test_audio_mut().engine.registry.add_file(
                 "minecraft",
                 br#"{
                 "entity.cow.ambient": {"sounds": ["cow"]},
@@ -190,7 +189,7 @@ fn packets_ask_client_level_before_playback_not_ui() {
                 );
                 assert_eq!(heard.position, [3.0, 64.0, 4.0]);
             }
-            let bound = game.side.audio.0.engine.bound_entities();
+            let bound = game.test_audio_mut().engine.bound_entities();
             assert_eq!(bound.len(), 1);
             assert_eq!(bound[0].id, 7);
             game.player.as_mut().unwrap().position.x = 9.0;
@@ -206,16 +205,12 @@ fn packets_ask_client_level_before_playback_not_ui() {
                 );
                 assert_eq!(log.played.len(), 2, "absent emitter starts no playback");
             }
-            game.side.audio.0.play_button_click();
+            game.test_audio_mut().play_button_click();
             let log = log.lock().unwrap();
             assert_eq!(log.requests.len(), 3, "UI playback adds no level request");
             assert_eq!(
                 log.played.last().unwrap().identifier,
                 "minecraft:ui.button.click"
-            );
-            assert!(
-                game.server.bound_sounds.is_empty(),
-                "client playback is never broadcast"
             );
         });
     });

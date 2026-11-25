@@ -1,4 +1,4 @@
-use crate::game::{native_entity_refs::tests::with_game, *};
+use crate::game::{native_entity_refs::tests::with_client_game, *};
 use mod_api::{
     BlockPart, BlockPos, ClientHost, Direction, Flow, Hooks, ModEntry, PlayHitSoundEvent, Registrar,
 };
@@ -35,14 +35,7 @@ fn play_hit_sound_helper_and_eight_mining_ticks() {
             Vec::new()
         };
         mod_platform::testing::with_mods(mods.into(), || {
-            with_game(|game| {
-                let scratch = tempfile::tempdir().unwrap();
-                game.side.world_root = scratch.path().to_path_buf();
-                game.side.save.0 = Arc::new(sunrise_client::save::SaveDir::new(
-                    scratch.path().to_path_buf(),
-                    sunrise_client::save::LevelShape::OVERWORLD,
-                    Some(Default::default()),
-                ));
+            with_client_game(|game| {
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -50,8 +43,8 @@ fn play_hit_sound_helper_and_eight_mining_ticks() {
                     Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 62.0, 4.5)).unwrap());
                 game.player.as_mut().unwrap().ground.on_ground = true;
                 game.creative = false;
-                game.client.screen = Screen::Playing;
-                game.title.0 = None;
+                game.side.screen = Screen::Playing;
+                *game.test_title_mut() = None;
                 game.set_mapping_held("key.attack", true);
                 game.set_test_forced_hit(Some(Hit {
                     pos: [5, 63, 4],
@@ -72,11 +65,11 @@ fn play_hit_sound_helper_and_eight_mining_ticks() {
                     .default_state("minecraft:glass")
                     .unwrap();
                 for state in [stone, glass] {
-                    game.audio.0.capture = Some(Vec::new());
+                    game.test_audio_mut().capture = Some(Vec::new());
                     hits.lock().unwrap().clear();
                     game.play_mining_hit_sound(state, [5, 63, 4], [-1, 0, 0], false);
                     assert_eq!(
-                        game.audio.0.capture.as_ref().unwrap().len(),
+                        game.test_audio_mut().capture.as_ref().unwrap().len(),
                         usize::from(!(installed && state == glass))
                     );
                     if installed && state == glass {
@@ -86,7 +79,7 @@ fn play_hit_sound_helper_and_eight_mining_ticks() {
                         );
                     }
                     if state == stone {
-                        let sound = &game.audio.0.capture.as_ref().unwrap()[0];
+                        let sound = &game.test_audio_mut().capture.as_ref().unwrap()[0];
                         assert_eq!(sound.event, "minecraft:block.stone.hit");
                         assert_eq!(sound.position, [5.5, 63.5, 4.5]);
                         assert_eq!((sound.volume, sound.pitch), (0.25, 0.5));
@@ -94,25 +87,25 @@ fn play_hit_sound_helper_and_eight_mining_ticks() {
                     }
                 }
                 for state in [stone, glass] {
-                    game.audio.0.heard.clear();
+                    game.test_audio_mut().heard.clear();
                     hits.lock().unwrap().clear();
                     game.breaking_block_effects([5, 63, 4], [-1, 0, 0], false);
-                    assert!(game.audio.0.heard.is_empty());
+                    assert!(game.test_audio_mut().heard.is_empty());
                     game.world.set(5, 63, 4, state).unwrap();
                     game.breaking_block_effects([5, 63, 4], [-1, 0, 0], true);
                     assert_eq!(
-                        game.audio.0.heard.values().sum::<u32>(),
+                        game.test_audio_mut().heard.values().sum::<u32>(),
                         u32::from(!(installed && state == glass))
                     );
                 }
                 for state in [stone, glass] {
                     game.world.set(5, 63, 4, state).unwrap();
-                    game.audio.0.heard.clear();
+                    game.test_audio_mut().heard.clear();
                     hits.lock().unwrap().clear();
                     let mut played = Vec::new();
                     for tick in 1..=8 {
                         game.breaking_block_effects([5, 63, 4], [-1, 0, 0], tick % 4 == 1);
-                        for (event, count) in std::mem::take(&mut game.audio.0.heard) {
+                        for (event, count) in std::mem::take(&mut game.test_audio_mut().heard) {
                             for _ in 0..count {
                                 played.push((tick, event.clone()));
                             }

@@ -249,10 +249,7 @@ pub(in crate::game) fn post_effects_cleared_on_login_respawn_and_reconfigure_bod
                 other => Some(other),
             };
             let expected_active = cam_witness[format!("{prefix}_active")].as_bool().unwrap();
-            assert_eq!(
-                game.side.spectated_post_effect, expected_effect,
-                "{prefix}"
-            );
+            assert_eq!(game.side.spectated_post_effect, expected_effect, "{prefix}");
             assert_eq!(
                 game.side.spectated_post_effect_active, expected_active,
                 "{prefix}"

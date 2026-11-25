@@ -89,7 +89,6 @@ fn synced_client_queries_follow_replacement_retirement_and_level_changes() {
             row.holder,
             mod_api::AttachmentHolder::Level(game.level("test:pocket").unwrap())
         );
-        let token = row.write_token();
         sync(game, Holder::Level, 42);
         assert_eq!(values(game), [42]);
         assert_eq!(
@@ -99,10 +98,6 @@ fn synced_client_queries_follow_replacement_retirement_and_level_changes() {
         );
         client(game).attachments.remove(&Holder::Level);
         assert!(values(game).is_empty());
-        assert_eq!(
-            game.attachment_validate_write(token),
-            Err(mod_api::AttachmentRowError::StaleHolder)
-        );
         sync(game, Holder::Chunk([1, 2]), 51);
         assert_eq!(values(game), [51]);
         client(game).attachments.retain(|_, _| false);

@@ -721,15 +721,7 @@ pub(in crate::game) mod tests {
                 Err(Refused::NoIdsLeft)
             );
         });
-        with_client_game(|game| {
-            let epoch = game.native_lifecycle.epoch().unwrap();
-            let level = LevelRef::new(epoch, game.dim.key());
-            assert_eq!(
-                game.level_register_passage(level, doorway()),
-                Err(Refused::Unavailable)
-            );
-            assert!(!game.level_remove_passage(level, PassageId::from_raw(1)));
-        });
+        // Client refusal is enforced at compile time (`ClientGame` lacks server passage writes).
     }
 
     /// A level's passages and their untold changes go when it closes: reopened, it starts
@@ -1102,6 +1094,7 @@ pub(in crate::game) mod tests {
             }),
         )];
         mod_platform::testing::with_mods(mods.into(), || {
+            let mut twelve = Vec::new();
             with_guests(|game| {
                 game.native_lifecycle.world_open_ready().unwrap();
                 let receivers = listen(game, ["sunrise", "sunrise"]);
@@ -1129,7 +1122,7 @@ pub(in crate::game) mod tests {
                 assert_eq!(id, PassageId::from_raw(1));
                 game.run_chunk_watches();
                 game.flush_passages();
-                let twelve = packets(&receivers[0]);
+                twelve = packets(&receivers[0]);
                 assert_eq!(
                     passage_messages(&twelve),
                     [
@@ -1141,15 +1134,21 @@ pub(in crate::game) mod tests {
                     passage_messages(&packets(&receivers[1])),
                     [Message::Remove(vec![1])]
                 );
-                // Guest 12's client, given what it was sent, holds nothing.
+            });
+            // Guest 12's client, given what it was sent, holds nothing.
+            with_client_game(|client| {
+                client
+                    .world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
                 for p in &twelve {
                     if let Clientbound::CustomPayload(p) = p
                         && p.channel == "sunrise:passage_sync"
                     {
-                        assert!(game.remote_passage_sync(&p.data).is_empty());
+                        assert!(client.remote_passage_sync(&p.data).is_empty());
                     }
                 }
-                assert!(game.passages.held.is_empty());
+                assert!(client.passages.held.is_empty());
             });
         });
     }

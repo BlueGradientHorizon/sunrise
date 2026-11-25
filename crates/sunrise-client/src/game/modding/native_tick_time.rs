@@ -2,8 +2,7 @@
 use super::Game;
 use std::time::Instant;
 
-impl Game<'_, crate::game::server_side::ServerState> {
-}
+impl Game<'_, crate::game::server_side::ServerState> {}
 
 impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// `MinecraftServer.haveTime`: the current server tick has not reached the
@@ -42,7 +41,6 @@ mod tests {
     #[ignore = "daily"]
     fn a_client_level_always_has_time() {
         with_client_game(|game| {
-            game.server.server_tick_deadline = Some(Instant::now() - Duration::from_millis(1));
             assert!(game.server_has_time());
         });
     }

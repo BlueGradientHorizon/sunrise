@@ -342,10 +342,10 @@ fn item_parts_rewrite_or_refuse_context_and_control_survival_on_both_sides() {
                 require_scaffolding_survival.store(true, Ordering::Relaxed);
                 assert!(b.placement_preview(level, ticks, &context).is_none());
             });
+        });
 
-            // The connected client actually predicts through DryLevel.
-            game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-            game.options.dedicated = None;
+        // The connected client actually predicts through DryLevel.
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(pipe, "PlacementPrediction").unwrap();
             let remote = game.remote.as_mut().unwrap();
@@ -357,8 +357,9 @@ fn item_parts_rewrite_or_refuse_context_and_control_survival_on_both_sides() {
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-            game.sync_tick_chunks();
             game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
+            let registry = game.pack.assets.registry;
+            let air = registry.default_state("minecraft:air").unwrap();
             let stone = registry.default_state("minecraft:stone").unwrap();
             game.world.set(4, 64, 4, stone).unwrap();
             game.world.set(4, 65, 4, stone).unwrap();
@@ -369,9 +370,15 @@ fn item_parts_rewrite_or_refuse_context_and_control_survival_on_both_sides() {
                 inside: false,
             };
             let stack = |item| ItemStack::new(item, 1);
-            assert!(!crate::game::ClientGame::can_hint_block_placement(&stack("minecraft:stone")));
-            assert!(!crate::game::ClientGame::can_hint_block_placement(&stack("minecraft:poppy")));
-            assert!(crate::game::ClientGame::can_hint_block_placement(&stack("minecraft:glass")));
+            assert!(!crate::game::ClientGame::can_hint_block_placement(&stack(
+                "minecraft:stone"
+            )));
+            assert!(!crate::game::ClientGame::can_hint_block_placement(&stack(
+                "minecraft:poppy"
+            )));
+            assert!(crate::game::ClientGame::can_hint_block_placement(&stack(
+                "minecraft:glass"
+            )));
             assert!(
                 game.remote_can_place(&hit, &stack("minecraft:glass"))
                     .is_none()

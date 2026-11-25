@@ -384,8 +384,9 @@ fn placement_previews_shape_updates_before_the_tripwire_callback() {
             player.place_block(game, level, origin, east.try_into_api().unwrap(), true),
             Err(PlayerWorldRefusal::Fenced)
         );
-        let read =
-            |game: &crate::game::ServerGame<'_>| [origin, near, far].map(|[x, y, z]| game.world.block(x, y, z));
+        let read = |game: &crate::game::ServerGame<'_>| {
+            [origin, near, far].map(|[x, y, z]| game.world.block(x, y, z))
+        };
         assert_eq!(read(game), [stone, east, west_attached]);
         game.world.carrier_fences.unlock_cell(far);
         assert_eq!(game.level_place_block(level, origin, east, true), Ok(true));
@@ -527,7 +528,6 @@ fn a_state_is_fitted_to_its_neighbours_without_a_write() {
 fn a_break_effect_is_played_for_a_state() {
     with_game(|game| {
         loaded(game);
-        game.audio.0.capture = Some(Vec::new());
         let level = game.level(game.dim.id()).unwrap();
         let stone = state(game, "minecraft:stone");
         game.side.lan_events.clear();

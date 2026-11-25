@@ -500,7 +500,11 @@ pub(in crate::game) mod system_helpers;
 pub(in crate::game) mod world_helpers;
 
 #[cfg(test)]
-pub(in crate::game) fn seed_native_menu(game: &mut crate::game::ClientGame<'_>, window: i32, name: &str) -> u64 {
+pub(in crate::game) fn seed_native_menu(
+    game: &mut crate::game::ClientGame<'_>,
+    window: i32,
+    name: &str,
+) -> u64 {
     if game.remote.is_none() {
         let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(pipe, "Native screen fixture").unwrap();
@@ -640,20 +644,20 @@ impl Game<'_, crate::game::client_side::ClientState> {
             && self.remote_menu_type().is_none()
             && self.shown_native_screen().is_none();
         let heard = self.screen_hooks_heard();
-        let outgoing = heard
-            .then(|| {
-                if let Some(id) = overlay {
-                    Some(self.observe_view(self.screen_overlay_view(id)))
-                } else if self.side.screen != Screen::Playing {
-                    Some(self.observe_view(self.screen_change_view(self.side.screen)))
-                } else {
-                    self.side.title
-                        .0
-                        .as_ref()
-                        .map(|title| self.observe_view(self.screen_overlay_view(title.mode.id())))
-                }
-            })
-            .flatten();
+        let outgoing =
+            heard
+                .then(|| {
+                    if let Some(id) = overlay {
+                        Some(self.observe_view(self.screen_overlay_view(id)))
+                    } else if self.side.screen != Screen::Playing {
+                        Some(self.observe_view(self.screen_change_view(self.side.screen)))
+                    } else {
+                        self.side.title.0.as_ref().map(|title| {
+                            self.observe_view(self.screen_overlay_view(title.mode.id()))
+                        })
+                    }
+                })
+                .flatten();
         let detach_native = self.shown_native_screen().is_some();
         self.remote_set_menu(None, None);
         if detach_native && let Some(screen) = self.side.mod_screen.0.as_mut() {
@@ -970,7 +974,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self.shown_active_native_screen().is_none() {
             return false;
         }
-        self.side.mod_screen
+        self.side
+            .mod_screen
             .0
             .as_mut()
             .is_some_and(|s| s.set_data(window, index, value))
@@ -1153,7 +1158,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         if changed {
             let old = self
-                .side.screen_state
+                .side
+                .screen_state
                 .0
                 .observed
                 .as_ref()
@@ -1232,10 +1238,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             overlay: self.side.screen == Screen::Playing || self.observed_overlay_now().is_some(),
             mod_screen: view.mod_screen.map(str::to_owned),
             menu: view.menu.map(str::to_owned),
-            menu_generation: (self.side.screen == Screen::Inventory
-                && !self.screen_over_playing())
-            .then(|| self.remote.as_ref().map(|r| r.menu.generation))
-            .flatten(),
+            menu_generation: (self.side.screen == Screen::Inventory && !self.screen_over_playing())
+                .then(|| self.remote.as_ref().map(|r| r.menu.generation))
+                .flatten(),
             dialog_key: (view.id == "dialog").then(|| match self.dialog_screen_key() {
                 (true, _, _) => (true, false, None),
                 key => key,
@@ -1271,7 +1276,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             (self.side.command_prompt.0.is_some(), "command_prompt"),
             (self.side.link_prompt.is_some(), "link_prompt"),
             (self.side.code_of_conduct.is_some(), "code_of_conduct"),
-            (self.side.server_packs.0.prompt.is_some(), "server_pack_prompt"),
+            (
+                self.side.server_packs.0.prompt.is_some(),
+                "server_pack_prompt",
+            ),
             (self.dialog_open(), "dialog"),
             (book.is_some(), book.unwrap_or("book_view")),
             (self.side.sign_edit.is_some(), "sign_editor"),
@@ -1313,7 +1321,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let decision = {
             let none = self.screen_change_view(Screen::Playing);
             let from = self
-                .side.screen_state
+                .side
+                .screen_state
                 .0
                 .observed
                 .as_ref()
@@ -1368,7 +1377,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             _ => {
                 // A title screen: set the title mode first so `set_screen(Playing)`
                 // commits directly into the target title screen without double-init.
-                if let (Some(title), Some(id)) = (self.side.title.0.as_mut(), title_target_id(target)) {
+                if let (Some(title), Some(id)) =
+                    (self.side.title.0.as_mut(), title_target_id(target))
+                {
                     title.open_by_id(id);
                 }
                 self.release_mappings_on_screen_open();
@@ -1572,7 +1583,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             _ => ScreenDecision::Open,
         };
-        self.side.screen_state
+        self.side
+            .screen_state
             .0
             .answered
             .set(!matches!(decision, ScreenDecision::Open));
@@ -1817,7 +1829,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let menu_replaced = screen == Screen::Inventory
             && new_menu_gen.is_some()
             && self
-                .side.screen_state
+                .side
+                .screen_state
                 .0
                 .observed
                 .as_ref()
@@ -1911,7 +1924,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn settle_title_toasts(&mut self) {
         use super::toast_manager::SystemToastId;
         let pending = self
-            .side.title
+            .side
+            .title
             .0
             .as_mut()
             .and_then(|title| {
@@ -1966,7 +1980,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let none = self.screen_change_view(Screen::Playing);
         // The title's screen or an overlay; a `Screen` told its own change.
         let from = self
-            .side.screen_state
+            .side
+            .screen_state
             .0
             .observed
             .as_ref()
@@ -2435,6 +2450,30 @@ pub(in crate::game) fn posed_camera(
         if yaw.is_finite() { yaw } else { view.1 },
         if pitch.is_finite() { pitch } else { view.2 },
     )
+}
+
+#[cfg(test)]
+impl Game<'_, crate::game::client_side::ClientState> {
+    pub(in crate::game) fn test_title(&self) -> Option<&sunrise_client::title::Title> {
+        self.side.title.0.as_ref()
+    }
+    pub(in crate::game) fn test_title_mut(&mut self) -> &mut Option<sunrise_client::title::Title> {
+        &mut self.side.title.0
+    }
+    pub(in crate::game) fn test_renderer(&self) -> Option<&crate::game::Renderer> {
+        self.side.renderer.0.as_deref()
+    }
+    pub(in crate::game) fn test_renderer_mut(&mut self) -> &mut Option<Box<crate::game::Renderer>> {
+        &mut self.side.renderer.0
+    }
+    pub(in crate::game) fn test_window_mut(
+        &mut self,
+    ) -> &mut Option<std::sync::Arc<winit::window::Window>> {
+        &mut self.side.window.0
+    }
+    pub(in crate::game) fn test_pad(&self) -> &crate::game::pad::Pads {
+        &self.side.pad.0
+    }
 }
 
 #[cfg(test)]

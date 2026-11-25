@@ -33,29 +33,40 @@ pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
 #[ignore = "daily"]
 fn block_crumble_draws_the_block_it_names() {
     let mut resources = None;
-    let mut game = game(&mut resources);
-    game.particles.0.created_requests = None;
-    game.particles.0.clear();
+    let mut server = game(&mut resources);
     let options = drawn(
-        &mut game,
+        &mut server,
         "particle minecraft:block_crumble{block_state:\"minecraft:stone\"} 0.5 100.5 0.5 0 0 0 0 1",
     );
-    game.particles
-        .0
-        .create(&options, [0.5, 100.5, 0.5], [0.0; 3]);
-    let level = ParticleLevel {
-        world: &game.world,
-        facts: game.res.facts(),
-        collision: game.collision,
-        player: None,
-        cached_chunk: std::cell::Cell::new(None),
-    };
-    game.particles.0.tick(&level);
-    assert_eq!(game.particles.0.len(), 1, "the crumble is drawn");
+    crate::game::native_entity_refs::tests::with_client_game(|client| {
+        client
+            .world
+            .chunks
+            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+        client.side.particles.0.created_requests = None;
+        client.side.particles.0.clear();
+        client
+            .side
+            .particles
+            .0
+            .create(&options, [0.5, 100.5, 0.5], [0.0; 3]);
+        let level = ParticleLevel {
+            world: &client.world,
+            facts: client.res.facts(),
+            collision: client.collision,
+            player: None,
+            cached_chunk: std::cell::Cell::new(None),
+        };
+        client.side.particles.0.tick(&level);
+        assert_eq!(client.side.particles.0.len(), 1, "the crumble is drawn");
+    });
 }
 
 /// The one particle the server queues for `command`, decoded into client `ParticleOptions`.
-pub(in crate::game) fn drawn(game: &mut crate::game::ServerGame<'_>, command: &str) -> ParticleOptions {
+pub(in crate::game) fn drawn(
+    game: &mut crate::game::ServerGame<'_>,
+    command: &str,
+) -> ParticleOptions {
     use crate::lan::server_effects::ServerParticleData;
     game.side.pending_particles.clear();
     assert!(game.run_command(command), "{command}");

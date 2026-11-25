@@ -289,7 +289,46 @@ pub(in crate::game::server_side) fn fixture_mods(
         .to_path_buf();
     with_game_at(root, test);
 }
-pub(in crate::game) fn fixture(dye: bool, test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Arc<Seen>)) {
+pub(in crate::game) fn fixture_mods_client(
+    mods: mod_api::Mods,
+    test: impl FnOnce(&mut crate::game::ClientGame<'_>),
+) {
+    mod_platform::__private::install(mods.clone());
+    crate::game::api_values::install_parts(&mods).unwrap();
+    let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+    let root = crate::game::mods::content_root(&base, &Default::default())
+        .unwrap()
+        .prepared()
+        .to_path_buf();
+    crate::game::native_entity_refs::tests::with_game_role_client(
+        root,
+        crate::game::execution_role::ExecutionRole::Client,
+        test,
+    );
+}
+pub(in crate::game::server_side) fn fixture_mods_pair(
+    mods: mod_api::Mods,
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, &mut crate::game::ClientGame<'_>),
+) {
+    mod_platform::__private::install(mods.clone());
+    crate::game::api_values::install_parts(&mods).unwrap();
+    let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+    let root = crate::game::mods::content_root(&base, &Default::default())
+        .unwrap()
+        .prepared()
+        .to_path_buf();
+    with_game_at(root.clone(), |server| {
+        crate::game::native_entity_refs::tests::with_game_role_client(
+            root,
+            crate::game::execution_role::ExecutionRole::Client,
+            |client| test(server, client),
+        );
+    });
+}
+pub(in crate::game) fn fixture(
+    dye: bool,
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Arc<Seen>),
+) {
     let seen = Arc::new(Seen::default());
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "test",
@@ -304,8 +343,8 @@ pub(in crate::game) fn fixture(dye: bool, test: impl FnOnce(&mut crate::game::Se
         test(game, &seen);
     });
 }
-pub(in crate::game) fn setup(
-    game: &mut crate::game::ServerGame<'_>,
+pub(in crate::game) fn setup_common<S>(
+    game: &mut Game<'_, S>,
     block: &str,
     level: Option<&str>,
     item: &str,
@@ -327,22 +366,32 @@ pub(in crate::game) fn setup(
         sunrise_client::motion::PlayerMotion::new(game.motion, sunrise_core::geometry::Vec3::ZERO)
             .unwrap(),
     );
+    game.creative = false;
+    game.selected = 0;
+    game.hand = Hand::Main;
+    game.inventory.fill(None);
+    game.inventory[0] = Some(ItemStack::new(item, count));
+    crate::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
+}
+pub(in crate::game) fn setup(
+    game: &mut crate::game::ServerGame<'_>,
+    block: &str,
+    level: Option<&str>,
+    item: &str,
+    count: u32,
+) {
+    setup_common(game, block, level, item, count);
     if game.remote.is_none() {
         bind_local_player(game, 7, 123);
     } else {
         game.side.lan_acting_entity = None;
         game.side.lan_acting_uuid = None;
     }
-    game.creative = false;
-    game.selected = 0;
-    game.hand = Hand::Main;
-    game.inventory.fill(None);
-    game.inventory[0] = Some(ItemStack::new(item, count));
     game.side.pending_native_sounds.clear();
-    game.audio.0.capture = Some(Vec::new());
-    crate::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
+    game.side.audio_capture_active = true;
+    game.side.pending_sounds.clear();
 }
-pub(in crate::game::server_side) fn state(game: &crate::game::ServerGame<'_>) -> (String, Option<String>) {
+pub(in crate::game) fn state<S>(game: &Game<'_, S>) -> (String, Option<String>) {
     let state = game
         .pack
         .assets
@@ -354,7 +403,7 @@ pub(in crate::game::server_side) fn state(game: &crate::game::ServerGame<'_>) ->
 pub(in crate::game) fn events() -> usize {
     crate::game::sculk::TEST_POSTED_EVENTS.with(|events| events.borrow().as_ref().unwrap().len())
 }
-pub(in crate::game) fn unchanged(game: &crate::game::ServerGame<'_>, seen: &Seen) {
+pub(in crate::game) fn unchanged<S>(game: &Game<'_, S>, seen: &Seen) {
     assert_eq!(state(game), ("minecraft:cauldron".into(), None));
     let held = game.inventory[0].as_ref().unwrap();
     assert_eq!((&*held.item, held.count), ("test:syrup_bottle", 2));
@@ -1460,7 +1509,6 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
     }
     use crate::game::{
         cauldron_prediction::{USE_CHANNEL, UseOnOutcome, registration_packet, use_result},
-        execution_role::ExecutionRole,
         native_sound_refs::tests::{guest, packets},
     };
     use sunrise_protocol::packets::play::{Clientbound as C, Serverbound as S};
@@ -1610,12 +1658,12 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         }),
     )]
     .into();
-    fixture_mods(mods, |game| {
+    fixture_mods_pair(mods, |server, client| {
         let server_table = snapshot();
-        let (mut peer, _writer) = crate::game::remote::tests::connect_menu_test(game);
-        let mut read_uses = |game: &crate::game::ServerGame<'_>| {
+        let (mut peer, _writer) = crate::game::remote::tests::connect_menu_test(client);
+        let mut read_uses = |client: &crate::game::ClientGame<'_>| {
             // Use the same writer, outside the actor hold, to fence each burst.
-            game.remote.as_ref().unwrap().session.send(S::PingRequest(
+            client.remote.as_ref().unwrap().session.send(S::PingRequest(
                 sunrise_protocol::packets::status::Ping { time: 0 },
             ));
             let mut uses = Vec::new();
@@ -1630,21 +1678,22 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
                 }
             }
         };
-        assert!(read_uses(game).is_empty());
-        game.remote.as_mut().unwrap().joined = true;
-        game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
-        setup(game, "minecraft:cauldron", None, item, 1);
+        assert!(read_uses(client).is_empty());
+        client.remote.as_mut().unwrap().joined = true;
+        client.set_local_mode(sunrise_client::command::args::GameMode::Survival);
+        setup_common(client, "minecraft:cauldron", None, item, 1);
         let aim = (35.0, -12.0);
-        (game.yaw, game.pitch) = aim;
+        (client.yaw, client.pitch) = aim;
         if sneaking {
-            game.set_sent_sneak_for_test();
+            client.set_sent_sneak_for_test();
         }
         // The client has no local registration. Selection must come from the server.
         clear();
         if !already_sent {
-            game.apply_packet(registration_packet(&server_table))
+            client
+                .apply_packet(registration_packet(&server_table))
                 .unwrap();
-            game.offhand = Some(ItemStack::new("minecraft:water_bucket", 1));
+            client.offhand = Some(ItemStack::new("minecraft:water_bucket", 1));
         }
         let hit = Hit {
             pos: POS,
@@ -1652,11 +1701,11 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
             point: [0.5, 65.0, 0.5],
             inside: false,
         };
-        game.set_test_forced_hit(Some(hit));
-        let client_swings = game.swings_started;
+        client.set_test_forced_hit(Some(hit));
+        let client_swings = client.swings_started;
         let hold = matches!(case.as_str(), "hold-drop" | "hold-release")
-            .then(|| game.hold_packets().unwrap());
-        game.remote_use(mod_api::InteractionAttempt::Press);
+            .then(|| client.hold_packets().unwrap());
+        client.remote_use(mod_api::InteractionAttempt::Press);
         // In the vanilla transport control, paper's air use passes, so the
         // off hand still gets its ordinary block turn even though it's empty.
         assert_eq!(
@@ -1669,37 +1718,38 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
             "the item phase must wait for receipt on a registered click",
         );
         assert_eq!(
-            game.swings_started - client_swings,
+            client.swings_started - client_swings,
             u32::from(block_terminal)
         );
-        assert!(game.using.is_none(), "no speculative item use");
+        assert!(client.using.is_none(), "no speculative item use");
         assert_eq!(calls.load(Ordering::SeqCst), 0);
-        assert_eq!(state(game).0, "minecraft:cauldron");
+        assert_eq!(state(client).0, "minecraft:cauldron");
         if let Some(hold) = hold {
             assert!(
-                read_uses(game).is_empty(),
+                read_uses(client).is_empty(),
                 "held block use must not reach the peer"
             );
             if case == "hold-drop" {
-                game.drop_held(hold).unwrap();
+                client.drop_held(hold).unwrap();
             } else {
-                assert!(game.release_held(hold).unwrap() > 0);
+                assert!(client.release_held(hold).unwrap() > 0);
             }
         }
-        let mut uses = read_uses(game).into_iter();
+        let mut uses = read_uses(client).into_iter();
         if matches!(case.as_str(), "hold-drop" | "packet-veto") {
             assert_eq!(uses.len(), 0);
             // Neither a dropped request nor a canceled action may leave a
             // continuation waiting for the first receipt of this connection.
-            game.apply_packet(use_result(
-                1,
-                UseOnOutcome {
-                    block_fell_through: true,
-                    passed: true,
-                },
-            ))
-            .unwrap();
-            assert!(read_uses(game).is_empty());
+            client
+                .apply_packet(use_result(
+                    1,
+                    UseOnOutcome {
+                        block_fell_through: true,
+                        passed: true,
+                    },
+                ))
+                .unwrap();
+            assert!(read_uses(client).is_empty());
             return;
         }
         let block_use = uses.next().expect("client must send the block use");
@@ -1714,10 +1764,8 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
             "no speculative follow-up on a registered click"
         );
 
-        let remote = game.remote.take();
-        game.options.execution_role = ExecutionRole::IntegratedServer;
-        crate::game::native_item_places::tests::open_to_lan(game);
-        setup(game, "minecraft:cauldron", None, item, 1);
+        crate::game::native_item_places::tests::open_to_lan(server);
+        setup(server, "minecraft:cauldron", None, item, 1);
         install(server_table);
         let at = if case == "refused" {
             [64.5, 64.0, 2.5]
@@ -1734,8 +1782,8 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         if !already_sent {
             player.offhand = Some(ItemStack::new("minecraft:water_bucket", 1));
         }
-        game.lan.as_mut().unwrap().hub.guests.push(player);
-        game.lan_guest_packet(1, block_use);
+        server.lan.as_mut().unwrap().hub.guests.push(player);
+        server.lan_guest_packet(1, block_use);
         assert_eq!(
             calls.load(Ordering::SeqCst),
             usize::from(!matches!(
@@ -1745,7 +1793,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         );
         if brushing {
             assert_eq!(
-                game.as_guest(1, |guest| guest.using),
+                server.as_guest(1, |guest| guest.using),
                 Some(Some((0, 0))),
                 "the server's BrushItem.useOn started using the brush"
             );
@@ -1761,10 +1809,10 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
                 .next()
                 .expect("client already sent the vanilla Item.use");
             assert!(matches!(&item_use, S::UseItem(p) if p.hand == 0));
-            game.lan_guest_packet(1, item_use);
+            server.lan_guest_packet(1, item_use);
             let offhand = uses.next().expect("the vanilla click tries its other hand");
             assert!(matches!(&offhand, S::UseItemOn(p) if p.hand == 1 && p.pos == POS));
-            game.lan_guest_packet(1, offhand);
+            server.lan_guest_packet(1, offhand);
             assert_eq!(item_uses.load(Ordering::SeqCst), 1);
             return;
         }
@@ -1795,36 +1843,32 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
             return;
         }
         let response = response.expect("server must answer the exact request");
-        let host = game.lan.take();
-        game.remote = remote;
-        game.options.execution_role = ExecutionRole::Client;
-        let dedicated = game.options.dedicated.take();
         // The off hand must use the captured block hit even if picking has
         // changed meanwhile. A changed slot or ray must not start another use.
-        game.set_test_forced_hit(None);
-        (game.yaw, game.pitch) = aim;
+        client.set_test_forced_hit(None);
+        (client.yaw, client.pitch) = aim;
         if case == "slot-changed" {
-            game.inventory[1] = Some(ItemStack::new("minecraft:ender_pearl", 1));
-            game.selected = 1;
+            client.inventory[1] = Some(ItemStack::new("minecraft:ender_pearl", 1));
+            client.selected = 1;
         }
         if case == "aim-changed" {
-            (game.yaw, game.pitch) = (90.0, 25.0);
+            (client.yaw, client.pitch) = (90.0, 25.0);
         }
         if case == "origin-changed" {
-            game.player.as_mut().unwrap().position.x += 1.0;
-            assert_eq!((game.yaw, game.pitch), aim);
+            client.player.as_mut().unwrap().position.x += 1.0;
+            assert_eq!((client.yaw, client.pitch), aim);
             assert_eq!(
-                game.inventory[0],
+                client.inventory[0],
                 Some(ItemStack::new("minecraft:bucket", 1))
             );
             assert_eq!(
-                game.offhand,
+                client.offhand,
                 Some(ItemStack::new("minecraft:water_bucket", 1))
             );
         }
-        game.apply_packet(response.clone()).unwrap();
-        game.apply_packet(response).unwrap();
-        let followup = read_uses(game);
+        client.apply_packet(response.clone()).unwrap();
+        client.apply_packet(response).unwrap();
+        let followup = read_uses(client);
         let pass_to_offhand = matches!(case.as_str(), "pass" | "hold-release");
         if pass_to_offhand {
             assert!(
@@ -1836,7 +1880,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
             assert!(matches!(followup.as_slice(), [S::UseItem(p)]
                 if p.hand == 0 && (p.yaw, p.pitch) == aim));
             assert_eq!(
-                game.swings_started, client_swings,
+                client.swings_started, client_swings,
                 "keep the original input swing policy"
             );
         } else {
@@ -1856,7 +1900,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
             "run the local item phase only once and only after block fallthrough",
         );
         assert_eq!(
-            game.using,
+            client.using,
             brushing.then_some((0, 0)),
             "brush use begins locally even when the server's item phase consumed",
         );
@@ -1866,26 +1910,22 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
             // This case used up the guest's pearl; there is no second item to use.
             Vec::new()
         } else {
-            game.selected = 0;
-            game.inventory[0] = Some(ItemStack::new("minecraft:paper", 1));
-            assert!(!game.remote_use_item(Hand::Main));
-            let independent = read_uses(game);
+            client.selected = 0;
+            client.inventory[0] = Some(ItemStack::new("minecraft:paper", 1));
+            assert!(!client.remote_use_item(Hand::Main));
+            let independent = read_uses(client);
             assert!(matches!(independent.as_slice(), [S::UseItem(p)] if p.hand == 0));
             independent
         };
-        game.remote = None;
-        game.lan = host;
-        game.options.execution_role = ExecutionRole::IntegratedServer;
-        game.options.dedicated = dedicated;
         for packet in followup.into_iter().chain(independent) {
-            game.lan_guest_packet(1, packet);
+            server.lan_guest_packet(1, packet);
         }
         assert_eq!(
             item_uses.load(Ordering::SeqCst),
             usize::from(case != "dead") + usize::from(pass_to_offhand)
         );
         assert_eq!(
-            state(game).0,
+            state(server).0,
             if pass_to_offhand {
                 "minecraft:water_cauldron"
             } else {

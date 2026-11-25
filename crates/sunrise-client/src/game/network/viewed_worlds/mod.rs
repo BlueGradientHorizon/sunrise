@@ -65,8 +65,45 @@ pub(in crate::game) mod tests {
     pub(in crate::game) fn client_with_pipe(
         resources: &mut Option<std::sync::Arc<crate::game::Resources>>,
     ) -> (crate::game::ClientGame<'_>, Pipe) {
-        let mut game = server_game(resources);
-        game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
+        use crate::game::{Audio, Options, Progress, Settings, execution_role, load_resources};
+        let root = std::path::PathBuf::from(
+            std::env::var_os("SUNRISE_TEST_RESOURCES")
+                .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
+        );
+        let settings = Settings::default();
+        let mut gui = None;
+        let mut loaded = load_resources(
+            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+            Vec::new(),
+            None,
+            &root,
+            &settings,
+            std::time::Instant::now(),
+            false,
+            execution_role::ExecutionRole::Client,
+            &Progress::new(),
+            &mut |ui, _| gui = Some(ui),
+        )
+        .unwrap();
+        if let Some(rest) = loaded.rest_loader.take() {
+            rest.finish().unwrap();
+        }
+        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+        options.resources = root.clone();
+        options.execution_role = execution_role::ExecutionRole::Client;
+        let res = resources.insert(loaded.resources);
+        let mut game = crate::game::ClientGame::new(
+            res,
+            loaded.pack,
+            gui.or(loaded.gui).unwrap(),
+            options,
+            settings,
+            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
+                root,
+            )),
+            None,
+        )
+        .unwrap();
         let (pipe, server) = Pipe::pair();
         game.connect_local(pipe, "Steve").unwrap();
         game.handle_packet(C::Login(play::Login {

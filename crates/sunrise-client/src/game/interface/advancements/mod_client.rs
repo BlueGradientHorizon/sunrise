@@ -361,9 +361,7 @@ pub(in crate::game) mod tests {
                 }
                 let mods: mod_api::Mods = vec![ModEntry::new("toasts", Box::new(Listener))].into();
                 mod_platform::testing::with_mods(mods, || {
-                    super::super::native_entity_refs::tests::with_game(|game| {
-                        game.options.execution_role =
-                            super::super::execution_role::ExecutionRole::Client;
+                    super::super::native_entity_refs::tests::with_client_game(|game| {
                         let advancement = |name: &str| Toast {
                             icon: ItemStack::new("minecraft:stone", 1),
                             frame: Frame::Challenge,
@@ -375,10 +373,9 @@ pub(in crate::game) mod tests {
                             last_changed: 0,
                         };
                         game.add_advancement_toast(advancement("cancel"));
-                        assert!(game.client.toast_manager.queued.is_empty());
+                        assert!(game.side.toast_manager.queued.is_empty());
                         game.add_advancement_toast(advancement("untouched"));
-                        let QueuedToast::Advancement(original) =
-                            &game.client.toast_manager.queued[0]
+                        let QueuedToast::Advancement(original) = &game.side.toast_manager.queued[0]
                         else {
                             panic!("expected advancement toast")
                         };
@@ -393,7 +390,7 @@ pub(in crate::game) mod tests {
                             "not animated before admission"
                         );
                         game.add_advancement_toast(advancement("edit"));
-                        let QueuedToast::Advancement(edited) = &game.client.toast_manager.queued[1]
+                        let QueuedToast::Advancement(edited) = &game.side.toast_manager.queued[1]
                         else {
                             panic!("expected advancement toast")
                         };
@@ -416,7 +413,7 @@ pub(in crate::game) mod tests {
                         system.message = Some(Text::literal("edit"));
                         assert!(game.add_system_toast(None, system));
                         let Some(QueuedToast::System(_, system)) =
-                            game.client.toast_manager.queued.back()
+                            game.side.toast_manager.queued.back()
                         else {
                             panic!("expected system toast")
                         };
@@ -429,12 +426,12 @@ pub(in crate::game) mod tests {
                             ));
                         }
                         assert_eq!(
-                            game.client.toast_manager.update(1.0),
+                            game.side.toast_manager.update(1.0),
                             (None, true),
                             "both challenges share a promotion sound"
                         );
-                        assert_eq!(game.client.toast_manager.visible.len(), 5);
-                        assert_eq!(game.client.toast_manager.update(1.0), (Some(true), false));
+                        assert_eq!(game.side.toast_manager.visible.len(), 5);
+                        assert_eq!(game.side.toast_manager.update(1.0), (Some(true), false));
 
                         game.add_toast(mod_api::ModToast::new(mod_api::Text::literal(
                             "Older mod toast",
@@ -443,27 +440,27 @@ pub(in crate::game) mod tests {
                         game.admit_mod_toasts();
                         game.add_advancement_toast(advancement("newer advancement"));
                         let fading = game
-                            .client
+                            .side
                             .toast_manager
                             .system_mut(SystemToastId::PackLoadFailure)
                             .unwrap();
                         fading.slide.origin = Some(Instant::now() - Duration::from_secs(1));
                         fading.force_hide();
-                        assert_eq!(game.client.toast_manager.update(1.0), (Some(false), false));
+                        assert_eq!(game.side.toast_manager.update(1.0), (Some(false), false));
                         assert_eq!(
-                            game.client.toast_manager.queued.len(),
+                            game.side.toast_manager.queued.len(),
                             2,
                             "a sliding-out toast still owns its slot"
                         );
-                        game.client
+                        game.side
                             .toast_manager
                             .system_mut(SystemToastId::PackLoadFailure)
                             .unwrap()
                             .slide
                             .origin = Some(Instant::now() - Duration::from_secs(2));
-                        assert_eq!(game.client.toast_manager.update(1.0), (None, false));
+                        assert_eq!(game.side.toast_manager.update(1.0), (None, false));
                         assert!(matches!(
-                            game.client
+                            game.side
                                 .toast_manager
                                 .visible
                                 .last()
@@ -471,38 +468,22 @@ pub(in crate::game) mod tests {
                             Some(QueuedToast::Mod(_))
                         ));
                         assert!(matches!(
-                            game.client.toast_manager.queued.front(),
+                            game.side.toast_manager.queued.front(),
                             Some(QueuedToast::Advancement(_))
                         ));
 
                         let narrator = game
-                            .client
+                            .side
                             .toast_manager
                             .system_mut(SystemToastId::Narrator)
                             .unwrap();
                         narrator.slide.origin = Some(Instant::now() - Duration::from_secs(1));
                         narrator.force_hide();
                         assert_eq!(
-                            game.client.toast_manager.update(1.0),
+                            game.side.toast_manager.update(1.0),
                             (Some(false), false),
                             "the first visibility change wins, even while another family slides in"
                         );
-
-                        for role in [
-                            super::super::execution_role::ExecutionRole::IntegratedServer,
-                            super::super::execution_role::ExecutionRole::DedicatedServer,
-                        ] {
-                            game.options.execution_role = role;
-                            let mut title = Text::literal("server");
-                            let mut description = Some(Text::literal("edit"));
-                            assert!(!game.admit_toast(
-                                ToastKind::Advancement,
-                                &mut title,
-                                &mut description
-                            ));
-                            assert_eq!(title.plain(), "server", "server must not invoke listener");
-                            assert_eq!(description.unwrap().plain(), "edit");
-                        }
                     });
                 });
             },

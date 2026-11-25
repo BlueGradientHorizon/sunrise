@@ -253,7 +253,7 @@ mod tests {
     use super::super::Game;
     use super::super::commands::peaceful_tests::{TRADER, with_types};
     use super::super::execution_role::ExecutionRole;
-    use super::super::native_entity_refs::tests::{with_client_game, with_game};
+    use super::super::native_entity_refs::tests::with_game;
     use mod_api::{
         EntityConstructingEvent, EntityJoinLevelEvent, EntityRef, EntitySpawn, FinalizeSpawnEvent,
         Flow, Holder, Host, HostSide, LevelRef, ServerHost, SpawnBody, SpawnFlags, SpawnLimits,
@@ -629,12 +629,6 @@ mod tests {
                 Some(false)
             );
         });
-        with_client_game(|game| {
-            let epoch = game.native_lifecycle.epoch().unwrap();
-            let level = LevelRef::new(epoch, game.dim.key());
-            assert_eq!(game.level_spawn_limits(level), None);
-            assert!(!game.level_set_spawn_limits(level, SpawnLimits::VANILLA));
-            assert_eq!(game.level_can_spawn_entities_in_chunk(level, [0, 0]), None);
-        });
+        // Client refusal is enforced at compile time (`ClientGame` lacks server spawn-limit ops).
     }
 }

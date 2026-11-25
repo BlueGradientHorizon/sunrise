@@ -12,7 +12,7 @@ pub(in crate::game::client_side) use sunrise_client::{
     projectiles::{Hit, Projectile, ProjectileKind},
 };
 
-pub(in crate::game) fn check_answer(g: &crate::game::ClientGame<'_>, slot: usize, answers: bool) {
+pub(in crate::game) fn check_answer(g: &crate::game::ServerGame<'_>, slot: usize, answers: bool) {
     let health = g.mobs[0].health;
     assert_eq!(health < 100.0, answers, "attacker health: {health}");
     assert_eq!(
@@ -21,11 +21,8 @@ pub(in crate::game) fn check_answer(g: &crate::game::ClientGame<'_>, slot: usize
     );
     assert_eq!(f::item_stack(&g.mobs[0], f::MAINHAND).unwrap().damage, 0);
     let sounds: Vec<_> = g
-        .side.audio
-        .0
-        .capture
-        .as_ref()
-        .unwrap()
+        .side
+        .pending_sounds
         .iter()
         .filter(|s| s.event == "minecraft:enchant.thorns.hit")
         .collect();
@@ -50,7 +47,7 @@ fn dragon_takes_player_thorns_through_its_body() {
             let mut d = Dragon::new(Vec3::new(0.0, 70.0, 0.0), 0.0, 1);
             d.id = SPECIAL;
             g.dragon.replace(d);
-            g.audio.0.capture.as_mut().unwrap().clear();
+            g.side.pending_sounds.clear();
             if wing {
                 g.dragon_wing_knock_back(Vec3::ZERO, false);
             } else {
@@ -71,11 +68,8 @@ fn dragon_takes_player_thorns_through_its_body() {
                 if wing { 3 } else { 4 }
             );
             assert_eq!(
-                g.audio
-                    .0
-                    .capture
-                    .as_ref()
-                    .unwrap()
+                g.side
+                    .pending_sounds
                     .iter()
                     .filter(|s| s.event == "minecraft:enchant.thorns.hit")
                     .count(),
@@ -108,7 +102,7 @@ fn dragon_takes_player_thorns_through_its_body() {
         d.invulnerable = 0;
         d.last_source = None;
         let before = d.health;
-        g.audio.0.capture.as_mut().unwrap().clear();
+        g.side.pending_sounds.clear();
         let p = g.player.as_mut().unwrap();
         p.health.sync_velocity = false;
         let velocity = Vec3::new(0.25, -0.125, 0.75);
@@ -128,11 +122,8 @@ fn dragon_takes_player_thorns_through_its_body() {
         // Attribution stores the dragon's age, not the world's game time.
         assert_eq!(d.hurt_by_player, Some((FightWho::Host, 0)));
         assert_eq!(
-            g.audio
-                .0
-                .capture
-                .as_ref()
-                .unwrap()
+            g.side
+                .pending_sounds
                 .iter()
                 .filter(|s| s.event == "minecraft:enchant.thorns.hit")
                 .count(),
@@ -141,9 +132,9 @@ fn dragon_takes_player_thorns_through_its_body() {
     });
 }
 
-pub(in crate::game) fn pair(g: &mut crate::game::ClientGame<'_>, slot: usize) -> Damage {
+pub(in crate::game) fn pair(g: &mut crate::game::ServerGame<'_>, slot: usize) -> Damage {
     g.mobs.clear();
-    g.side.audio.0.capture.as_mut().unwrap().clear();
+    g.side.pending_sounds.clear();
     let kind = g.res.mob_types().get("minecraft:husk").unwrap().clone();
     for (id, x) in [(41, 10.5), (42, 0.5)] {
         let mut m = Mob::new(id, kind.clone(), Vec3::new(x, 64.0, 0.5), 0.0);
@@ -188,6 +179,6 @@ pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<
     g.world = World::new(g.res.facts().air, 1);
     g.player = Some(PlayerMotion::new(g.motion, Vec3::new(30.0, 64.0, 0.5)).unwrap());
     g.player.as_mut().unwrap().entity_id = 77;
-    g.audio.0.capture = Some(Vec::new());
+    g.start_audio_capture();
     test(&mut g);
 }

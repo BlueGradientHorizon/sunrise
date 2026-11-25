@@ -42,7 +42,7 @@ pub(in crate::game) mod tests {
 
         let bow = ItemStack::new("minecraft:bow", 1);
         game.release_bow(&bow, 20);
-        let shot = game.audio.0.capture.take().unwrap_or_default();
+        let shot = std::mem::take(&mut game.side.pending_sounds);
         let at: Vec<_> = shot
             .iter()
             .filter(|s| s.event == "minecraft:entity.arrow.shoot")
@@ -50,12 +50,12 @@ pub(in crate::game) mod tests {
             .collect();
         assert_eq!(at, vec![feet]);
 
-        game.audio.0.capture = Some(Vec::new());
+        game.start_audio_capture();
         let mut crossbow = ItemStack::new("minecraft:crossbow", 1);
         crossbow.data_mut().charged = vec![ItemStack::new(ARROW, 1)];
         *game.held_mut() = Some(crossbow);
         game.shoot_crossbow();
-        let shot = game.audio.0.capture.take().unwrap_or_default();
+        let shot = std::mem::take(&mut game.side.pending_sounds);
         let at: Vec<_> = shot
             .iter()
             .filter(|s| s.event == "minecraft:item.crossbow.shoot")
@@ -106,7 +106,7 @@ pub(in crate::game) mod tests {
             .unwrap(),
         );
         let p = game.player.as_ref().expect("a player").position;
-        game.audio.0.capture = Some(Vec::new());
+        game.start_audio_capture();
         (game, [p.x, p.y, p.z])
     }
 }

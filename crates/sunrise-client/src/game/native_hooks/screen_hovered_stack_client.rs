@@ -33,7 +33,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return None;
         }
         let size = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])?;

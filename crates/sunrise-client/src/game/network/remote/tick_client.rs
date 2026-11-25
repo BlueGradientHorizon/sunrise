@@ -130,7 +130,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // (`SectionUpdateTracker.hasAllNeighbors`: its column and the 8 around
         // it lit, as meshing waits for here).
         let shown = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map(|renderer| renderer.section_compiled_and_visible(camera, fade_ms));
@@ -604,9 +605,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .player
             .as_ref()
             .is_some_and(|p| p.is_eye_in_fluid(sunrise_client::motion::WATER));
-        self.side
-            .fog
-            .tick(in_water, self.own_player_is_spectator());
+        self.side.fog.tick(in_water, self.own_player_is_spectator());
     }
     /// One client tick while connected (Minecraft.tick with a ClientLevel).
     pub(in crate::game) fn tick_remote(&mut self) -> Result<()> {
@@ -684,11 +683,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .get_mut()
             .begin_entity_ticks();
         self.tick_remote_entity_turns(running);
-        self.side
-            .client_pick
-            .sections
-            .get_mut()
-            .end_entity_ticks();
+        self.side.client_pick.sections.get_mut().end_entity_ticks();
     }
     pub(in crate::game::client_side) fn tick_remote_entity_turns(&mut self, running: bool) {
         use crate::game::native_ticks::{PLAYER, TickKind};

@@ -34,7 +34,8 @@ pub(in crate::game) fn heard_stone_fall(silent: bool) -> Vec<(f32, f32)> {
             game.side.audio.0.capture = Some(Vec::new());
             game.tick_remote().unwrap();
             out = game
-                .side.audio
+                .side
+                .audio
                 .0
                 .capture
                 .as_ref()

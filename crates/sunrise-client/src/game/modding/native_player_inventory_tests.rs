@@ -15,7 +15,10 @@ fn stack(game: &crate::game::ServerGame<'_>, snbt: &str) -> ItemStack {
     api_item(game, snbt).unwrap_or_else(|| panic!("{snbt}"))
 }
 
-fn guest<'a>(game: &'a crate::game::ServerGame<'_>, conn: u32) -> &'a sunrise_client::lan::guest::Guest {
+fn guest<'a>(
+    game: &'a crate::game::ServerGame<'_>,
+    conn: u32,
+) -> &'a sunrise_client::lan::guest::Guest {
     game.lan.as_ref().unwrap().hub.guest(conn).unwrap()
 }
 
@@ -360,7 +363,7 @@ fn equipment_effects_wait_for_root() {
     with_guests(|game| {
         let player = game.players().server_players()[1];
         let new = stack(game, r#"{id:"minecraft:iron_boots",count:1}"#);
-        game.audio.0.capture = Some(Vec::new());
+        game.start_audio_capture();
         let _: Result<(), ()> = game.storage_transaction(|host, _| {
             host.transaction(|host, _| {
                 player
@@ -371,7 +374,7 @@ fn equipment_effects_wait_for_root() {
             .unwrap();
             Err(())
         });
-        assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
+        assert!(game.side.pending_sounds.is_empty());
         let inner = stack(game, r#"{id:"minecraft:diamond_helmet",count:1}"#);
         let _: Result<(), ()> = game.storage_transaction(|host, _| {
             player
@@ -387,6 +390,6 @@ fn equipment_effects_wait_for_root() {
             Ok(())
         });
         assert_eq!(player.with_inventory(game, snapshot), Some(vec![(36, new)]));
-        assert_eq!(game.audio.0.capture.as_ref().unwrap().len(), 1);
+        assert_eq!(game.side.pending_sounds.len(), 1);
     });
 }

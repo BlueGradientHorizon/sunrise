@@ -622,7 +622,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let inputs = self.settings.gui_scale_inputs();
         let gui = GuiSize::new(framebuffer, inputs.requested, inputs.unicode);
         let identity = self
-            .side.title
+            .side
+            .title
             .0
             .as_ref()
             .map(|title| title.mode.id())
@@ -639,16 +640,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // The container screens' layout is a build input: the frame's own
         // state, and the mods' effects answer, compared here so the panels and
         // the exclusion never disagree by a frame.
-        let container = (shown
-            && matches!(self.side.screen, Screen::Inventory | Screen::Creative))
-        .then(|| {
-            let batch =
-                sunrise_client::hud::HudBatch::new(framebuffer, self.settings.gui_scale_inputs());
-            self.container_layout_inputs(&batch)
-        });
+        let container = (shown && matches!(self.side.screen, Screen::Inventory | Screen::Creative))
+            .then(|| {
+                let batch = sunrise_client::hud::HudBatch::new(
+                    framebuffer,
+                    self.settings.gui_scale_inputs(),
+                );
+                self.container_layout_inputs(&batch)
+            });
         let container = container.and_then(|inputs| {
             let unchanged = self
-                .side.screen_state
+                .side
+                .screen_state
                 .0
                 .build
                 .current
@@ -685,7 +688,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // make the layout only when they moved.
         let pause = (shown && self.side.screen == Screen::Paused).then(|| {
             let unchanged = self
-                .side.screen_state
+                .side
+                .screen_state
                 .0
                 .build
                 .current
@@ -710,7 +714,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .map(ScreenLayout::Container)
             .or_else(|| pause.map(ScreenLayout::Pause))
             .or(text);
-        self.side.screen_state
+        self.side
+            .screen_state
             .0
             .build
             .sync(self.side.screen, shown, identity, gui, layout);
@@ -800,7 +805,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         batch: &sunrise_client::hud::HudBatch,
     ) -> Option<&ContainerLayout> {
-        self.side.screen_state
+        self.side
+            .screen_state
             .0
             .build
             .current
@@ -814,7 +820,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         width: f32,
         height: f32,
     ) -> Option<&PauseLayout> {
-        self.side.screen_state
+        self.side
+            .screen_state
             .0
             .build
             .current
@@ -828,7 +835,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         width: f32,
         height: f32,
     ) -> Option<&ChatLayout> {
-        self.side.screen_state
+        self.side
+            .screen_state
             .0
             .build
             .current
@@ -842,7 +850,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         width: f32,
         height: f32,
     ) -> Option<&CommandBlockLayout> {
-        self.side.screen_state
+        self.side
+            .screen_state
             .0
             .build
             .current
@@ -891,11 +900,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
             _ => return None,
         };
         self.resize_text_screens(w, h);
-        let built = self.side.screen_state.0.build.current.as_ref().filter(|build| {
-            build.screen == self.side.screen
-                && build.identity == identity
-                && build.scale == gui.scale as f32
-        });
+        let built = self
+            .side
+            .screen_state
+            .0
+            .build
+            .current
+            .as_ref()
+            .filter(|build| {
+                build.screen == self.side.screen
+                    && build.identity == identity
+                    && build.scale == gui.scale as f32
+            });
         match cart {
             None => built.and_then(|build| build.chat(w, h)).is_none().then(|| {
                 ScreenLayout::Chat(ChatLayout {
@@ -1005,7 +1021,16 @@ mod tests {
             let before = game.side.screen_state.0.build.builds;
             let constructions =
                 crate::game::container_layout::LAYOUT_CONSTRUCTIONS.with(|count| count.get());
-            let slots = match &game.side.screen_state.0.build.current.as_ref().unwrap().layout {
+            let slots = match &game
+                .side
+                .screen_state
+                .0
+                .build
+                .current
+                .as_ref()
+                .unwrap()
+                .layout
+            {
                 BuildLayout::Container(layout) => layout.slots.as_ptr(),
                 _ => panic!("container"),
             };
@@ -1020,8 +1045,15 @@ mod tests {
                 crate::game::container_layout::LAYOUT_CONSTRUCTIONS.with(|count| count.get()),
                 constructions
             );
-            let BuildLayout::Container(layout) =
-                &game.side.screen_state.0.build.current.as_ref().unwrap().layout
+            let BuildLayout::Container(layout) = &game
+                .side
+                .screen_state
+                .0
+                .build
+                .current
+                .as_ref()
+                .unwrap()
+                .layout
             else {
                 panic!("container")
             };
@@ -1060,7 +1092,8 @@ mod tests {
             game.side.screen = Screen::Creative;
             check(game);
             let inventory = game
-                .side.creative_screen
+                .side
+                .creative_screen
                 .0
                 .tab_headers()
                 .iter()
@@ -1448,15 +1481,14 @@ mod tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            crate::game::native_entity_refs::tests::with_game(|game| {
-                game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-                game.client.screen = Screen::Inventory;
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
+                game.side.screen = Screen::Inventory;
                 game.container = None;
                 game.craft_size = 2;
                 game.potions.effects.list = vec![sunrise_client::effects::EffectInstance::new(
                     "speed", 200, 0,
                 )];
-                game.client.frames = 11;
+                game.side.frames = 11;
                 game.build_screen();
                 assert_eq!(
                     calls.load(Ordering::Relaxed),
@@ -1469,7 +1501,7 @@ mod tests {
                     1,
                     "a second build in the same frame reuses the answer"
                 );
-                game.client.frames = 12;
+                game.side.frames = 12;
                 game.build_screen();
                 assert_eq!(
                     calls.load(Ordering::Relaxed),

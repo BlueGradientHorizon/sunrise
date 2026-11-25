@@ -8,12 +8,12 @@ pub(in crate::game::client_side) use crate::game::remote::tests::client_menu_tes
 #[test]
 #[ignore = "daily"]
 fn client_menu_close_and_button_click_reach_the_server() {
-    use crate::game::native_entity_refs::tests::with_game;
-    use crate::game::{Screen, execution_role::ExecutionRole};
+    use crate::game::Screen;
+    use crate::game::native_entity_refs::tests::with_client_game;
     use sunrise_core::nbt::Tag;
     use sunrise_protocol::packets::play::{self, Clientbound as C};
 
-    with_game(|game| {
+    with_client_game(|game| {
         let (mut reader, _writer) = connect_menu_test(game);
         spawn_menu_test(game);
         let sent = |reader: &mut sunrise_protocol::connection::ConnReader| {
@@ -59,10 +59,6 @@ fn client_menu_close_and_button_click_reach_the_server() {
         // The old inventory handle is stale now that the loom replaced it.
         assert!(!inventory.close(game));
         assert!(!inventory.click_button(game, 0));
-        game.options.execution_role = ExecutionRole::IntegratedServer;
-        assert!(!menu.click_button(game, 3));
-        assert!(!menu.close(game));
-        game.options.execution_role = ExecutionRole::Client;
         assert_eq!(game.side.screen, Screen::Inventory);
         assert!(menu.click_button(game, 3));
         let Some(play::Serverbound::ContainerButtonClick(click)) = sent(&mut reader) else {
@@ -101,9 +97,9 @@ fn client_menu_close_and_button_click_reach_the_server() {
 #[test]
 #[ignore = "daily"]
 fn client_menu_reads_follow_packets_and_lifetimes() {
-    use crate::game::native_entity_refs::tests::with_game;
+    use crate::game::Screen;
+    use crate::game::native_entity_refs::tests::with_client_game;
     use crate::game::remote::RemoteDimensionEntry;
-    use crate::game::{Screen, execution_role::ExecutionRole};
     use sunrise_client::level_loading::Reason;
     use sunrise_core::nbt::Tag;
     use sunrise_protocol::{
@@ -113,7 +109,7 @@ fn client_menu_reads_follow_packets_and_lifetimes() {
         packets::play::{self, Clientbound as C},
     };
 
-    with_game(|game| {
+    with_client_game(|game| {
         let (mut reader, _writer) = connect_menu_test(game);
         assert!(
             game.local_player()
@@ -161,9 +157,6 @@ fn client_menu_reads_follow_packets_and_lifetimes() {
             assert_eq!(menu.slot(game, 36).unwrap().unwrap().count(), 3);
             assert_eq!(menu.carried(game), Some(None));
         }
-        game.options.execution_role = ExecutionRole::IntegratedServer;
-        assert!(!menu.click(game, &[pickup(36)]));
-        game.options.execution_role = ExecutionRole::Client;
         let screen = game.side.screen;
         game.side.screen = Screen::Creative;
         assert!(!menu.click(game, &[pickup(36)]));

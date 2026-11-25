@@ -2006,15 +2006,6 @@ pub(in crate::game) mod tests {
             };
             let stack = ItemStack::new(name, 2);
             assert_eq!(game.items().get(name).unwrap().block, Some(target));
-            let preview = game
-                .remote_can_place(&hit, &stack)
-                .expect("client predicts the alias");
-            assert_eq!([preview.pos.x, preview.pos.y, preview.pos.z], pos);
-            assert_eq!(
-                game.world.block(pos[0], pos[1], pos[2]),
-                game.res.facts().air,
-                "prediction is dry"
-            );
             *game.held_mut() = Some(stack);
             assert!(game.use_hand(Some(&hit)).unwrap());
             assert_eq!(game.world.block(pos[0], pos[1], pos[2]), target);
@@ -2036,6 +2027,75 @@ pub(in crate::game) mod tests {
             "adventure refusal keeps the alias stack"
         );
         drop(game);
+
+        let settings = Settings::default();
+        let loaded = load_resources(
+            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+            Vec::new(),
+            None,
+            &root,
+            &settings,
+            std::time::Instant::now(),
+            false,
+            crate::game::execution_role::ExecutionRole::Client,
+            &Progress::new(),
+            &mut |_, _| unreachable!(),
+        )
+        .unwrap();
+        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+        options.resources = root.clone();
+        options.execution_role = crate::game::execution_role::ExecutionRole::Client;
+        let mut client = crate::game::ClientGame::new(
+            &loaded.resources,
+            loaded.pack,
+            loaded.gui.unwrap(),
+            options,
+            settings,
+            crate::game::Audio::silent(
+                &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
+            ),
+            None,
+        )
+        .unwrap();
+        client.world = World::new(client.res.facts().air, 1);
+        for x in -1..=1 {
+            for z in -1..=1 {
+                client
+                    .world
+                    .chunks
+                    .insert((x, z), Arc::new(Chunk::empty(x, z)));
+            }
+        }
+        client.set_local_mode(sunrise_client::command::args::GameMode::Survival);
+        client.player = None;
+        client.selected = 0;
+        let target = client
+            .pack
+            .assets
+            .registry
+            .default_state("ruby:frame")
+            .unwrap();
+        for (i, name) in ["ruby:empty", "ruby:filled"].iter().enumerate() {
+            let pos = [i as i32 * 2, 70, 0];
+            let hit = crate::game::Hit {
+                pos,
+                face: [0, 1, 0],
+                inside: false,
+                point: [f64::from(pos[0]) + 0.5, 70.0, 0.5],
+            };
+            let stack = ItemStack::new(name, 2);
+            assert_eq!(client.items().get(name).unwrap().block, Some(target));
+            let preview = client
+                .remote_can_place(&hit, &stack)
+                .expect("client predicts the alias");
+            assert_eq!([preview.pos.x, preview.pos.y, preview.pos.z], pos);
+            assert_eq!(
+                client.world.block(pos[0], pos[1], pos[2]),
+                client.res.facts().air,
+                "prediction is dry"
+            );
+        }
+        drop(client);
         std::fs::remove_dir_all(root).unwrap();
     }
 

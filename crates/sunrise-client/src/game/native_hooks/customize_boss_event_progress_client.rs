@@ -89,11 +89,7 @@ pub(in crate::game::client_side) use crate::game::native_hooks::customize_boss_e
                 0,
             );
             assert!(matches!(
-                game.side
-                    .boss_overlay
-                    .mod_bar(0, 0)
-                    .unwrap()
-                    .try_into_api(),
+                game.side.boss_overlay.mod_bar(0, 0).unwrap().try_into_api(),
                 Err(TextFormError::Malformed)
             ));
             let vanilla = game.boss_bar_draws(480, 270);

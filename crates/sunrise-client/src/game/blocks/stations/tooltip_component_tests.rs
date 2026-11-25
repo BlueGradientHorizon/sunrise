@@ -2591,7 +2591,11 @@ fn only_hovered_slots_check_show_tooltip_with_item_in_hand() {
     .into();
 
     with_mod_factories(mods, |game| {
-        assert!(game.open_station([0, 64, 0], "minecraft:anvil"));
+        game.station = Some(crate::game::stations_common::Station::new(
+            crate::game::stations_common::Kind::Anvil,
+            [0, 64, 0],
+        ));
+        game.station_changed();
         game.inventory[9] = Some(ItemStack::new("minecraft:stick", 1));
         game.carried = Some(ItemStack::new("minecraft:stone", 1));
 
@@ -2625,7 +2629,11 @@ fn only_hovered_slots_check_show_tooltip_with_item_in_hand() {
         );
 
         // Both previews bypass that same callback (which would now answer false).
-        assert!(game.open_station([0, 64, 0], "minecraft:stonecutter"));
+        game.station = Some(crate::game::stations_common::Station::new(
+            crate::game::stations_common::Kind::Stonecutter,
+            [0, 64, 0],
+        ));
+        game.station_changed();
         let recipe = game
             .station_recipes()
             .stonecutting

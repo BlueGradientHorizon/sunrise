@@ -2,7 +2,9 @@
 //! vanilla chest leaves the world when its `/forceload` ticket goes, through the game's own
 //! streaming, save and unload; the chunk comes back from its saved data; then the world closes.
 #[allow(unused_imports)]
-use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
+use crate::game::native_entity_refs::tests::{
+    run_fresh_cases, with_game_at, with_game_role_client,
+};
 #[allow(unused_imports)]
 use crate::game::world_loading::WorldRequest;
 #[allow(unused_imports)]
@@ -127,8 +129,7 @@ fn a_client_tells_a_forgotten_column_but_not_its_level_going() {
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("unload_probe", Box::new(Probe))].into();
     mod_platform::__private::install(mods.clone());
     crate::game::api_values::install_parts(&mods).unwrap();
-    with_game_at(prepared_root(), |game| {
-        game.options.execution_role = ExecutionRole::Client;
+    with_game_role_client(prepared_root(), ExecutionRole::Client, |game| {
         game.options.dedicated = None;
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "UnloadProbe").unwrap();

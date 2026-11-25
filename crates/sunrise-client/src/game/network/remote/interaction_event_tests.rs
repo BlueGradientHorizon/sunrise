@@ -290,7 +290,9 @@ impl ItemPart for Observer {
     }
 }
 
-pub(in crate::game) fn with_interaction_client_game(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
+pub(in crate::game) fn with_interaction_client_game(
+    test: impl FnOnce(&mut crate::game::ClientGame<'_>),
+) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     with_interaction_client_game_at(root, test);
 }
@@ -299,21 +301,27 @@ pub(in crate::game) fn with_interaction_client_game_at(
     root: std::path::PathBuf,
     test: impl FnOnce(&mut crate::game::ClientGame<'_>),
 ) {
-    super::super::native_entity_refs::tests::with_game_role_client(root, ExecutionRole::Client, |game| {
-        let (client, _server) = Pipe::pair();
-        game.connect_local(client, "InteractionTest").unwrap();
-        game.remote.as_mut().unwrap().logged_in = true;
-        game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 3.5)).unwrap());
-        game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
-        game.world
-            .chunks
-            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        game.inventory[game.selected] = Some(ItemStack::new("minecraft:stick", 1));
-        test(game);
-    });
+    super::super::native_entity_refs::tests::with_game_role_client(
+        root,
+        ExecutionRole::Client,
+        |game| {
+            let (client, _server) = Pipe::pair();
+            game.connect_local(client, "InteractionTest").unwrap();
+            game.remote.as_mut().unwrap().logged_in = true;
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 3.5)).unwrap());
+            game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            game.inventory[game.selected] = Some(ItemStack::new("minecraft:stick", 1));
+            test(game);
+        },
+    );
 }
 
-pub(in crate::game) fn with_interaction_server_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
+pub(in crate::game) fn with_interaction_server_game(
+    test: impl FnOnce(&mut crate::game::ServerGame<'_>),
+) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     with_interaction_server_game_at(root, test);
 }
@@ -338,21 +346,23 @@ pub(in crate::game) fn with_interaction_server_game_at(
     });
 }
 
-pub(in crate::game) fn with_interaction_game(client: bool, test: impl FnOnce(&mut Game<'_>)) {
-    let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-    with_interaction_game_at(client, root, test);
+pub(in crate::game) trait InteractionSide: crate::game::Side {
+    const IS_CLIENT: bool;
+    const LOGICAL_SIDE: LogicalSide;
+    fn set_interaction_mode(
+        game: &mut Game<'_, Self>,
+        mode: sunrise_client::command::args::GameMode,
+    );
+    fn interaction_use_block_hand(game: &mut Game<'_, Self>, hand: Hand) -> bool;
+    fn interaction_use_air_hand(game: &mut Game<'_, Self>, hand: Hand) -> bool;
+    fn interaction_use_item_as_player(game: &mut Game<'_, Self>) -> bool;
+    fn interaction_set_sneak(game: &mut Game<'_, Self>, sneak: bool);
+    fn interaction_clear_guest_use(game: &mut Game<'_, Self>);
+    fn interaction_reset_use_failed(game: &mut Game<'_, Self>);
 }
 
-pub(in crate::game) fn with_interaction_game_at(
-    client: bool,
-    root: std::path::PathBuf,
-    test: impl FnOnce(&mut Game<'_>),
-) {
-    if client {
-        with_interaction_client_game_at(root, test);
-    } else {
-        with_interaction_server_game_at(root, test);
-    }
+pub(in crate::game) fn use_block<S: InteractionSide>(game: &mut Game<'_, S>) -> bool {
+    S::interaction_use_block_hand(game, Hand::Main)
 }
 
 pub(in crate::game) fn hit() -> Hit {

@@ -44,18 +44,14 @@ pub(in crate::game) mod tests {
                     ExecutionRole::DedicatedServer,
                 ] {
                     game.options.execution_role = role;
-                    game.set_hud_mode(HudMode::NoHud);
                     assert_eq!(game.hud_mode(), HudMode::AllVisible);
                 }
-                game.options.execution_role = ExecutionRole::Client;
+            });
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
                 for mode in [HudMode::NoHud, HudMode::AllHidden, HudMode::AllVisible] {
                     game.fire_client_tick_pre();
                     assert_eq!(game.hud_mode(), mode);
                 }
-                game.side.lan_acting = Some(17);
-                game.fire_client_tick_pre();
-                assert_eq!(game.hud_mode(), HudMode::AllVisible);
-                game.side.lan_acting = None;
                 game.fire_client_tick_pre();
                 assert_eq!(game.hud_mode(), HudMode::NoHud);
                 assert!(game.ui.hands_drawn(false, false, true, true, false));

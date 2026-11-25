@@ -3,19 +3,17 @@
 fn client_epochs_follow_level_replacement_and_logout() {
     use crate::game::remote::RemoteDimensionEntry;
     use crate::game::{
-        execution_role::ExecutionRole, native_entity_refs::tests::with_game,
-        native_lifecycle::NativeLifecycle,
+        native_entity_refs::tests::with_client_game, native_lifecycle::NativeLifecycle,
     };
     use mod_api::{CrosshairTarget, EntityRef};
-    use sunrise_client::{level_loading::Reason, mobs::Mob, motion::PlayerMotion};
+    use sunrise_client::{level_loading::Reason, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::{
         connection::Pipe,
         packets::play::{Clientbound, Respawn, SpawnInfo},
     };
 
-    with_game(|game| {
-        game.options.execution_role = ExecutionRole::Client;
+    with_client_game(|game| {
         game.native_lifecycle = NativeLifecycle::default();
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "EpochTest").unwrap();
@@ -69,9 +67,8 @@ fn client_epochs_follow_level_replacement_and_logout() {
         let replaced = game.native_lifecycle.epoch().unwrap();
         assert_ne!(replaced, joined);
         let current = EntityRef::new(replaced, 12);
-        let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-        game.mobs
-            .push(Mob::new(12, kind, Vec3::new(0.0, 1.0, 2.0), 0.0));
+        game.remote.as_mut().unwrap().logged_in = true;
+        game.spawn_entity(12, "minecraft:pig", [0.0, 1.0, 2.0], [0.0; 3]);
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
         game.yaw = 0.0;
         game.pitch = 0.0;
@@ -80,15 +77,8 @@ fn client_epochs_follow_level_replacement_and_logout() {
             panic!("the crosshair hits the pig in front of the player");
         };
         assert_eq!(entity, current);
-        assert!(
-            game.native_entity_target(current).is_none(),
-            "still server-only"
-        );
-        // Isolate the existing epoch check from the logical-server guard.
-        game.options.execution_role = ExecutionRole::IntegratedServer;
-        assert!(game.native_entity_target(current).is_some());
-        assert!(game.native_entity_target(old).is_none());
-        game.options.execution_role = ExecutionRole::Client;
+        assert!(game.native_client_entity_target(current).is_some());
+        assert!(game.native_client_entity_target(old).is_none());
 
         game.client_logging_out();
         assert!(game.native_lifecycle.epoch().is_none());

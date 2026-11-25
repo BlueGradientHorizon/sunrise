@@ -5,17 +5,15 @@ pub(in crate::game::client_side) use crate::game::native_hooks::runtime_environm
 #[ignore = "daily"]
 fn client_host_reads_playing_and_key_mappings() {
     use super::super::Screen;
-    use super::super::native_entity_refs::tests::with_game;
-    use crate::game::execution_role::ExecutionRole;
+    use super::super::native_entity_refs::tests::with_client_game;
     use mod_api::prelude::ClientInputClientHost;
     use mod_api::{MappingError, Text};
     use winit::keyboard::KeyCode;
 
-    with_game(|game| {
-        game.options.execution_role = ExecutionRole::Client;
-        game.client.screen = Screen::Playing;
+    with_client_game(|game| {
+        game.side.screen = Screen::Playing;
         assert!(mod_api::prelude::ClientInputClientHost::playing(game));
-        game.client.screen = Screen::Chat;
+        game.side.screen = Screen::Chat;
         assert!(!mod_api::prelude::ClientInputClientHost::playing(game));
 
         // Vanilla's default bindings: forward is W, attack the left mouse button.
@@ -35,12 +33,5 @@ fn client_host_reads_playing_and_key_mappings() {
                 key: "key.mymod.boost".into(),
             }),
         );
-
-        game.options.execution_role = ExecutionRole::IntegratedServer;
-        assert_eq!(
-            ClientInputClientHost::vanilla_key_mapping(game, "key.forward"),
-            Err(MappingError::Unavailable),
-        );
-        assert_eq!(forward.binding(game), Err(MappingError::Unavailable));
     });
 }

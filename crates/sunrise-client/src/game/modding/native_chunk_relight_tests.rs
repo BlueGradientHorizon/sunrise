@@ -1,13 +1,16 @@
 //! `level.relight_chunks` (queued, not lit) and `chunk.resend` through the public handles, with a
 //! literal test for each refusal.
 
-use super::native_entity_refs::tests::{with_client_game, with_game};
+use super::native_entity_refs::tests::with_game;
 use mod_api::{ChunkRefusal, LevelRef, WorldEpoch};
 use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
 
 /// A stone roof over the chunk (100, 100), all eight neighbours loaded around it.
-fn roofed<S: crate::game::Side>(game: &mut super::Game<'_, S>) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
+fn roofed<S: crate::game::Side>(game: &mut super::Game<'_, S>)
+where
+    for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host,
+{
     let stone = game
         .pack
         .assets
@@ -142,21 +145,5 @@ fn a_chunk_is_resent_only_when_loaded() {
         let unloaded = mod_api::__private::game::chunk_ref(level, [400, 400]);
         assert_eq!(unloaded.resend(game), Err(ChunkRefusal::NotLoaded));
         assert!(!game.world.bulk_log.contains(&(400, 400)));
-    });
-}
-
-/// On a client both are `Client`.
-#[test]
-#[ignore = "daily"]
-fn a_client_cannot_relight_or_resend() {
-    with_client_game(|game| {
-        roofed(game);
-        let level = LevelRef::new(WorldEpoch::new(0), game.dim.key());
-        assert_eq!(
-            level.relight_chunks(game, &[[100, 100]]),
-            Err(ChunkRefusal::Client)
-        );
-        let chunk = mod_api::__private::game::chunk_ref(level, [100, 100]);
-        assert_eq!(chunk.resend(game), Err(ChunkRefusal::Client));
     });
 }

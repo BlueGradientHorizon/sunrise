@@ -1,6 +1,6 @@
 //! The host's build metadata agrees with the chunk writer, before any world is open.
 use crate::game::execution_role::ExecutionRole;
-use crate::game::native_entity_refs::tests::with_game;
+use crate::game::native_entity_refs::tests::{with_client_game, with_game};
 use mod_api::{ClientHost, Host, ServerHost};
 use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
@@ -42,20 +42,20 @@ fn host_data_version_matches_a_freshly_saved_chunk() {
         assert_eq!(*version, sunrise_core::version::DATA_VERSION);
 
         for role in [
-            ExecutionRole::Client,
             ExecutionRole::IntegratedServer,
             ExecutionRole::DedicatedServer,
         ] {
             game.options.execution_role = role;
-            let host: &dyn Host = if role.is_client() {
-                let client: &dyn ClientHost = game;
-                client
-            } else {
-                let server: &dyn ServerHost = game;
-                server
-            };
+            let server: &dyn ServerHost = game;
+            let host: &dyn Host = server;
             assert_eq!(host.server_data_version(), *version);
             assert_eq!(host.server_data_version(), *version);
         }
+        with_client_game(|client_game| {
+            let client: &dyn ClientHost = client_game;
+            let host: &dyn Host = client;
+            assert_eq!(host.server_data_version(), *version);
+            assert_eq!(host.server_data_version(), *version);
+        });
     });
 }

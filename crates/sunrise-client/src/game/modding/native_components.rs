@@ -271,7 +271,9 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
         self.native_entity_read_target(target)?;
         let target = self.entity_kind(target)?.id(__Side::as_host(self))?;
-        let actor = self.entity_kind(attacker.entity())?.id(__Side::as_host(self))?;
+        let actor = self
+            .entity_kind(attacker.entity())?
+            .id(__Side::as_host(self))?;
         let source = self.item_resource_damage_source(stack, attacker)?;
         let source = source.damage_type.to_string();
         let effective = self.item_combat_stack(stack);
@@ -614,8 +616,8 @@ pub(in crate::game) use crate::game::server_side::native_components_server::item
         )
         .unwrap();
         crate::game::native_entity_refs::tests::with_game_at(root.clone(), |game| {
-            game.side.session_lock.0 =
-                Some(sunrise_client::save::SessionLock::acquire(&game.side.save.0.root).unwrap());
+            let save_root = game.test_save_root();
+            game.test_acquire_session_lock(&save_root);
             let wood = ItemResource::of(&super::super::api_values::test_snapshot(&ItemStack::new(
                 "minecraft:wooden_sword",
                 1,
@@ -715,9 +717,7 @@ pub(in crate::game) use crate::game::server_side::native_components_server::item
                     .is_none()
             );
             game.creative = false;
-            game.set_mapping_held("key.use", true);
             game.server_set_acting_use(true);
-            game.client.screen = crate::game::Screen::Playing;
             game.inventory[game.selected] = Some(stack);
             assert!(game.server_start_eating(&info));
             assert!(game.using.is_some());
@@ -730,7 +730,7 @@ pub(in crate::game) use crate::game::server_side::native_components_server::item
                 1,
                 "completion must consume the patched mod item"
             );
-            game.side.session_lock.0 = None;
+            game.test_clear_session_lock();
         });
         fs::remove_dir_all(root).unwrap();
     }

@@ -159,7 +159,10 @@ fn original_stack_and_hand_reach_used_up_and_broken_item_notices() {
     );
 }
 
-fn refused_use_preserves_the_moved_stack(game: &mut crate::game::ServerGame<'_>, observer: &Observer) {
+fn refused_use_preserves_the_moved_stack(
+    game: &mut crate::game::ServerGame<'_>,
+    observer: &Observer,
+) {
     let book = named_stack("minecraft:knowledge_book", 1);
     game.inventory[game.selected] = Some(book.clone());
     game.offhand = None;
@@ -207,7 +210,10 @@ fn mining_reports_after_the_drop_hook(game: &mut crate::game::ServerGame<'_>, ob
     take_notice(observer, Some(Hand::Main), "minecraft:iron_pickaxe", 249);
 }
 
-fn continuations_preserve_listener_hand_writes(game: &mut crate::game::ServerGame<'_>, observer: &Observer) {
+fn continuations_preserve_listener_hand_writes(
+    game: &mut crate::game::ServerGame<'_>,
+    observer: &Observer,
+) {
     // A broken steering stick must not install its fishing rod over the new stack.
     let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
     game.mobs
@@ -301,159 +307,186 @@ fn run_isolated() {
     .into();
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
-        for client in [false, true] {
-            native_entity_refs::tests::with_game(|game| {
-                let _peer = if client {
-                    game.options.execution_role = execution_role::ExecutionRole::Client;
-                    let (local, peer) = Pipe::pair();
-                    game.connect_local(local, "DestroyTest").unwrap();
-                    let remote = game.remote.as_mut().unwrap();
-                    remote.logged_in = true;
-                    remote.entity_id = 71;
-                    Some(peer)
-                } else {
-                    None
-                };
-                game.player =
-                    Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
-                const PLAYER: u128 = 0x0000_0001_0000_0002_0000_0003_0000_0004;
-                native_entity_refs::tests::bind_local_player(game, 71, PLAYER);
-                if client {
-                    game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
-                } else {
-                    game.set_mode_id(0);
-                }
-                game.selected = 0;
-                game.client.screen = Screen::Playing;
-                game.world
-                    .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-                // Both hands, partial consumption, and creative preservation.
-                for hand in Hand::BOTH {
-                    game.with_hand(hand, |game| {
-                        *game.held_mut() = Some(named_stack("minecraft:apple", 2));
-                        game.consume_held();
-                        assert!(observer.0.lock().unwrap().notices.is_empty());
-                        game.creative = true;
-                        game.consume_held();
-                        assert_eq!(game.held().unwrap().count, 1);
-                        assert!(observer.0.lock().unwrap().notices.is_empty());
-                        game.creative = false;
-                        game.consume_held();
-                        assert!(game.held().is_none());
-                        let notice = take_notice(&observer, Some(hand), "minecraft:apple", 0);
-                        assert_eq!(notice.client, client);
-                        assert_eq!(notice.entity, 71);
-                        if !client {
-                            assert_eq!(notice.player, PLAYER);
-                        }
-                    });
-                }
-                // Actual Item.use: a knowledge book is exhausted even when it has no recipes.
-                game.offhand = Some(named_stack("minecraft:knowledge_book", 1));
-                if client {
-                    assert!(!game.remote_use_item(Hand::Off));
-                } else {
-                    assert!(!game.with_hand(Hand::Off, |g| g.use_hand(None)).unwrap());
-                }
-                assert!(game.offhand.is_none());
-                take_notice(&observer, Some(Hand::Off), "minecraft:knowledge_book", 0);
-
-                // Completed use must report the consumed potion, not its glass bottle remainder.
-                let potion = named_stack("minecraft:potion", 1);
-                game.offhand = Some(potion.clone());
-                let info = game.items().get(&potion.item).unwrap().clone();
-                if client {
-                    game.remote_use_item_finished(shield::OFFHAND_SLOT, &potion, &info);
-                } else {
-                    game.with_hand(Hand::Off, |g| {
-                        g.complete_using_item(shield::OFFHAND_SLOT, &potion, &info)
-                    });
-                }
-                assert_eq!(
-                    &*game.offhand.as_ref().unwrap().item,
-                    "minecraft:glass_bottle"
-                );
-                let drunk = take_notice(&observer, Some(Hand::Off), "minecraft:potion", 0);
-                assert!(
-                    drunk.resolved,
-                    "the listener resolves the player's living handle"
-                );
-                assert!(
-                    drunk.in_hand.is_none(),
-                    "the potion is gone and the bottle is not installed at dispatch"
-                );
-
-                if client {
-                    // Equipment status can arrive with a stale stack in its slot. It
-                    // drives effects only, not a notice claiming an exact original.
-                    let stale = named_stack("minecraft:iron_pickaxe", 1);
-                    game.offhand = Some(stale.clone());
-                    use sunrise_protocol::packets::play::{Clientbound, EntityEvent};
-                    game.apply_packet(Clientbound::EntityEvent(EntityEvent { id: 71, event: 48 }))
-                        .unwrap();
-                    assert_eq!(game.offhand.as_ref(), Some(&stale));
+        const PLAYER: u128 = 0x0000_0001_0000_0002_0000_0003_0000_0004;
+        native_entity_refs::tests::with_game(|game| {
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
+            native_entity_refs::tests::bind_local_player(game, 71, PLAYER);
+            game.set_mode_id(0);
+            game.selected = 0;
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            // Both hands, partial consumption, and creative preservation.
+            for hand in Hand::BOTH {
+                game.with_hand(hand, |game| {
+                    *game.held_mut() = Some(named_stack("minecraft:apple", 2));
+                    game.consume_held();
                     assert!(observer.0.lock().unwrap().notices.is_empty());
-                } else {
-                    refused_use_preserves_the_moved_stack(game, &observer);
-                    mining_reports_after_the_drop_hook(game, &observer);
-                    continuations_preserve_listener_hand_writes(game, &observer);
-
-                    // The same notice identifies a swapped-in guest rather than the local host.
-                    game.side.lan_acting_uuid = Some(0x1111_2222_3333_4444_5555_6666_7777_8888);
-                    game.side.lan_acting_entity = Some(123);
-                    game.offhand = Some(named_stack("minecraft:apple", 1));
-                    game.with_hand(Hand::Off, Game::consume_held);
-                    let guest = take_notice(&observer, Some(Hand::Off), "minecraft:apple", 0);
-                    assert_eq!(guest.player, 0x1111_2222_3333_4444_5555_6666_7777_8888);
-                    assert_eq!(guest.entity, 123);
-                    game.side.lan_acting_uuid = None;
-                    game.side.lan_acting_entity = None;
-
-                    // Native entity interaction: the last wheat is eaten by an adult cow.
-                    let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
-                    game.mobs.clear();
-                    game.mobs.push(sunrise_client::mobs::Mob::new(
-                        42,
-                        kind,
-                        Vec3::new(0.5, 64.0, 2.5),
-                        0.0,
-                    ));
-                    game.offhand = Some(named_stack("minecraft:wheat", 1));
-                    assert!(
-                        game.with_hand(Hand::Off, |g| g.interact_entity(Some(InteractTarget {
-                            id: 42,
-                            location: [0.0, 1.0, 0.0],
-                        })))
-                        .unwrap()
-                    );
-                    assert!(game.offhand.is_none());
-                    take_notice(&observer, Some(Hand::Off), "minecraft:wheat", 0);
-
-                    // Immediate durability reports pre-wear damage.
-                    let mut tool = named_stack("minecraft:iron_pickaxe", 1);
-                    tool.damage = 249;
-                    game.offhand = Some(tool);
-                    game.with_hand(Hand::Off, |g| g.damage_held(1));
-                    assert!(game.offhand.is_none());
-                    take_notice(&observer, Some(Hand::Off), "minecraft:iron_pickaxe", 249);
-
-                    // Armour has no hand; handle-driven wear must keep the same original snapshot.
-                    let mut helmet = named_stack("minecraft:iron_helmet", 1);
-                    helmet.damage = 164;
-                    game.armor[0] = Some(helmet);
-                    game.damage_player_equipment(mod_api::EquipmentSlot::Head, 1);
-                    assert!(game.armor[0].is_none());
-                    take_notice(&observer, None, "minecraft:iron_helmet", 164);
-
-                    // Equipping into an empty armour slot moves the stack: nothing is used up.
-                    game.offhand = Some(named_stack("minecraft:iron_helmet", 1));
-                    game.with_hand(Hand::Off, |g| g.use_hand(None)).unwrap();
-                    assert!(game.armor[0].is_some() && game.offhand.is_none());
+                    game.creative = true;
+                    game.consume_held();
+                    assert_eq!(game.held().unwrap().count, 1);
                     assert!(observer.0.lock().unwrap().notices.is_empty());
-                }
-                assert!(observer.0.lock().unwrap().notices.is_empty());
+                    game.creative = false;
+                    game.consume_held();
+                    assert!(game.held().is_none());
+                    let notice = take_notice(&observer, Some(hand), "minecraft:apple", 0);
+                    assert!(!notice.client);
+                    assert_eq!(notice.entity, 71);
+                    assert_eq!(notice.player, PLAYER);
+                });
+            }
+            // Actual Item.use: a knowledge book is exhausted even when it has no recipes.
+            game.offhand = Some(named_stack("minecraft:knowledge_book", 1));
+            assert!(!game.with_hand(Hand::Off, |g| g.use_hand(None)).unwrap());
+            assert!(game.offhand.is_none());
+            take_notice(&observer, Some(Hand::Off), "minecraft:knowledge_book", 0);
+
+            // Completed use must report the consumed potion, not its glass bottle remainder.
+            let potion = named_stack("minecraft:potion", 1);
+            game.offhand = Some(potion.clone());
+            let info = game.items().get(&potion.item).unwrap().clone();
+            game.with_hand(Hand::Off, |g| {
+                g.complete_using_item(shield::OFFHAND_SLOT, &potion, &info)
             });
-        }
+            assert_eq!(
+                &*game.offhand.as_ref().unwrap().item,
+                "minecraft:glass_bottle"
+            );
+            let drunk = take_notice(&observer, Some(Hand::Off), "minecraft:potion", 0);
+            assert!(
+                drunk.resolved,
+                "the listener resolves the player's living handle"
+            );
+            assert!(
+                drunk.in_hand.is_none(),
+                "the potion is gone and the bottle is not installed at dispatch"
+            );
+
+            refused_use_preserves_the_moved_stack(game, &observer);
+            mining_reports_after_the_drop_hook(game, &observer);
+            continuations_preserve_listener_hand_writes(game, &observer);
+
+            // The same notice identifies a swapped-in guest rather than the local host.
+            game.side.lan_acting_uuid = Some(0x1111_2222_3333_4444_5555_6666_7777_8888);
+            game.side.lan_acting_entity = Some(123);
+            game.offhand = Some(named_stack("minecraft:apple", 1));
+            game.with_hand(Hand::Off, Game::consume_held);
+            let guest = take_notice(&observer, Some(Hand::Off), "minecraft:apple", 0);
+            assert_eq!(guest.player, 0x1111_2222_3333_4444_5555_6666_7777_8888);
+            assert_eq!(guest.entity, 123);
+            game.side.lan_acting_uuid = None;
+            game.side.lan_acting_entity = None;
+
+            // Native entity interaction: the last wheat is eaten by an adult cow.
+            let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
+            game.mobs.clear();
+            game.mobs.push(sunrise_client::mobs::Mob::new(
+                42,
+                kind,
+                Vec3::new(0.5, 64.0, 2.5),
+                0.0,
+            ));
+            game.offhand = Some(named_stack("minecraft:wheat", 1));
+            assert!(
+                game.with_hand(Hand::Off, |g| g.interact_entity(Some(InteractTarget {
+                    id: 42,
+                    location: [0.0, 1.0, 0.0],
+                })))
+                .unwrap()
+            );
+            assert!(game.offhand.is_none());
+            take_notice(&observer, Some(Hand::Off), "minecraft:wheat", 0);
+
+            // Immediate durability reports pre-wear damage.
+            let mut tool = named_stack("minecraft:iron_pickaxe", 1);
+            tool.damage = 249;
+            game.offhand = Some(tool);
+            game.with_hand(Hand::Off, |g| g.damage_held(1));
+            assert!(game.offhand.is_none());
+            take_notice(&observer, Some(Hand::Off), "minecraft:iron_pickaxe", 249);
+
+            // Armour has no hand; handle-driven wear must keep the same original snapshot.
+            let mut helmet = named_stack("minecraft:iron_helmet", 1);
+            helmet.damage = 164;
+            game.armor[0] = Some(helmet);
+            game.damage_player_equipment(mod_api::EquipmentSlot::Head, 1);
+            assert!(game.armor[0].is_none());
+            take_notice(&observer, None, "minecraft:iron_helmet", 164);
+
+            // Equipping into an empty armour slot moves the stack: nothing is used up.
+            game.offhand = Some(named_stack("minecraft:iron_helmet", 1));
+            game.with_hand(Hand::Off, |g| g.use_hand(None)).unwrap();
+            assert!(game.armor[0].is_some() && game.offhand.is_none());
+            assert!(observer.0.lock().unwrap().notices.is_empty());
+        });
+        native_entity_refs::tests::with_client_game(|game| {
+            let (local, _peer) = Pipe::pair();
+            game.connect_local(local, "DestroyTest").unwrap();
+            let remote = game.remote.as_mut().unwrap();
+            remote.logged_in = true;
+            remote.entity_id = 71;
+            remote.profile = PLAYER;
+            let mut player = PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap();
+            player.entity_id = 71;
+            game.player = Some(player);
+            game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
+            game.selected = 0;
+            game.side.screen = Screen::Playing;
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            // Both hands, partial consumption, and creative preservation.
+            for hand in Hand::BOTH {
+                game.with_hand(hand, |game| {
+                    *game.held_mut() = Some(named_stack("minecraft:apple", 2));
+                    game.consume_held();
+                    assert!(observer.0.lock().unwrap().notices.is_empty());
+                    game.creative = true;
+                    game.consume_held();
+                    assert_eq!(game.held().unwrap().count, 1);
+                    assert!(observer.0.lock().unwrap().notices.is_empty());
+                    game.creative = false;
+                    game.consume_held();
+                    assert!(game.held().is_none());
+                    let notice = take_notice(&observer, Some(hand), "minecraft:apple", 0);
+                    assert!(notice.client);
+                    assert_eq!(notice.entity, 71);
+                });
+            }
+            // Actual Item.use: a knowledge book is exhausted even when it has no recipes.
+            game.offhand = Some(named_stack("minecraft:knowledge_book", 1));
+            assert!(!game.remote_use_item(Hand::Off));
+            assert!(game.offhand.is_none());
+            take_notice(&observer, Some(Hand::Off), "minecraft:knowledge_book", 0);
+
+            // Completed use must report the consumed potion, not its glass bottle remainder.
+            let potion = named_stack("minecraft:potion", 1);
+            game.offhand = Some(potion.clone());
+            let info = game.items().get(&potion.item).unwrap().clone();
+            game.remote_use_item_finished(shield::OFFHAND_SLOT, &potion, &info);
+            assert_eq!(
+                &*game.offhand.as_ref().unwrap().item,
+                "minecraft:glass_bottle"
+            );
+            let drunk = take_notice(&observer, Some(Hand::Off), "minecraft:potion", 0);
+            assert!(
+                drunk.resolved,
+                "the listener resolves the player's living handle"
+            );
+            assert!(
+                drunk.in_hand.is_none(),
+                "the potion is gone and the bottle is not installed at dispatch"
+            );
+
+            // Equipment status can arrive with a stale stack in its slot. It
+            // drives effects only, not a notice claiming an exact original.
+            let stale = named_stack("minecraft:iron_pickaxe", 1);
+            game.offhand = Some(stale.clone());
+            use sunrise_protocol::packets::play::{Clientbound, EntityEvent};
+            game.apply_packet(Clientbound::EntityEvent(EntityEvent { id: 71, event: 48 }))
+                .unwrap();
+            assert_eq!(game.offhand.as_ref(), Some(&stale));
+            assert!(observer.0.lock().unwrap().notices.is_empty());
+        });
     });
 }

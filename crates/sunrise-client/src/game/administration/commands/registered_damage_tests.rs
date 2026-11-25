@@ -76,10 +76,16 @@ fn formerly_aliased_types_keep_their_id_and_registry_tags() {
         assert_eq!(damage_type(kind, false), id);
         assert_eq!(damage_type(kind, true), id);
     }
-    let collision = Damage::of(crate::game::ServerGame::damage_kind(&catalog, "minecraft:fly_into_wall"));
+    let collision = Damage::of(crate::game::ServerGame::damage_kind(
+        &catalog,
+        "minecraft:fly_into_wall",
+    ));
     assert!(collision.bypasses_armor() && collision.no_knockback());
     assert!(!collision.causes_panic());
-    let magic = Damage::of(crate::game::ServerGame::damage_kind(&catalog, "minecraft:indirect_magic"));
+    let magic = Damage::of(crate::game::ServerGame::damage_kind(
+        &catalog,
+        "minecraft:indirect_magic",
+    ));
     assert!(magic.bypasses_armor() && magic.kind.witch_resistant_to());
     assert!(!magic.no_knockback());
 
@@ -336,15 +342,19 @@ pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_pl
         );
         // `CreakingHeartBlockEntity.creakingHurt` from its protector starts the 100-tick emitter.
         use sunrise_client::containers::BlockEntity::CreakingHeart;
-        let heart_emitter = |game: &crate::game::ServerGame<'_>| match game.world.block_entities.get(&(8, 64, 8)) {
-            Some(CreakingHeart(heart)) => heart.emitter,
-            _ => panic!("the protecting heart is gone"),
-        };
-        let clear_emitter =
-            |game: &mut crate::game::ServerGame<'_>| match game.world.block_entities.get_mut(&(8, 64, 8)) {
-                Some(CreakingHeart(heart)) => heart.emitter = 0,
+        let heart_emitter =
+            |game: &crate::game::ServerGame<'_>| match game.world.block_entities.get(&(8, 64, 8)) {
+                Some(CreakingHeart(heart)) => heart.emitter,
                 _ => panic!("the protecting heart is gone"),
             };
+        let clear_emitter = |game: &mut crate::game::ServerGame<'_>| match game
+            .world
+            .block_entities
+            .get_mut(&(8, 64, 8))
+        {
+            Some(CreakingHeart(heart)) => heart.emitter = 0,
+            _ => panic!("the protecting heart is gone"),
+        };
 
         assert!(game.run_command("summon pig 6.5 64 4.5 {UUID:[I;85,0,0,2],NoAI:1b,NoGravity:1b}"));
         let arrow_id = spawn_test_projectile(
@@ -692,14 +702,15 @@ fn live_damage_and_blast_ghast_reflected_fireball() {
             [86, 0, 0, 4],
         );
 
-        let spawn_ghast = |game: &mut crate::game::ServerGame<'_>, n: u32, health: f32| -> (u32, String) {
-            assert!(game.run_command(&format!(
-                "summon ghast 4.5 64 4.5 {{UUID:[I;86,0,0,{n}],NoAI:1b,NoGravity:1b}}"
-            )));
-            let g = game.mobs.last_mut().unwrap();
-            g.health = health;
-            (g.id, format!("00000056-0000-0000-0000-{n:012x}"))
-        };
+        let spawn_ghast =
+            |game: &mut crate::game::ServerGame<'_>, n: u32, health: f32| -> (u32, String) {
+                assert!(game.run_command(&format!(
+                    "summon ghast 4.5 64 4.5 {{UUID:[I;86,0,0,{n}],NoAI:1b,NoGravity:1b}}"
+                )));
+                let g = game.mobs.last_mut().unwrap();
+                g.health = health;
+                (g.id, format!("00000056-0000-0000-0000-{n:012x}"))
+            };
 
         // Vary damage type with fixed reflected LargeFireball from @p: every type deals 1000.
         for (i, ty) in [

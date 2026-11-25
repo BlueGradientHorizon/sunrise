@@ -99,7 +99,7 @@ pub(in crate::game) fn restock_after_hero_change(test: &str, before_work: bool) 
                 ) = (5, 10);
                 // The voice from opening the screen has finished its cooldown by work time.
                 game.mobs[0].ambient_timer = 0;
-                game.audio.0.capture = Some(Vec::new());
+                game.start_audio_capture();
 
                 tick_work(game);
 
@@ -111,11 +111,8 @@ pub(in crate::game) fn restock_after_hero_change(test: &str, before_work: bool) 
                 );
                 assert_eq!(screen.merchant.session.hero, (!before_work).then_some(0));
                 let feedback: Vec<_> = game
-                    .audio
-                    .0
-                    .capture
-                    .as_ref()
-                    .unwrap()
+                    .side
+                    .pending_sounds
                     .iter()
                     .map(|sound| sound.event.as_str())
                     .filter(|&event| {

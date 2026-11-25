@@ -520,7 +520,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         loop {
             // Capture tasks before checking the packet queue, so a task published after the
             // empty packet boundary cannot overtake a packet that arrived before that task.
-            self.side.pending_client_tasks
+            self.side
+                .pending_client_tasks
                 .0
                 .append(&mut self.side.client_tasks.0.take_turn());
             let Some(remote) = self.remote.as_mut() else {

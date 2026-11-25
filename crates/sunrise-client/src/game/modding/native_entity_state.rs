@@ -177,9 +177,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
 
-
-
-
     pub(in crate::game) fn entity_set_fire_immunity(
         &mut self,
         entity: EntityRef,
@@ -983,7 +980,8 @@ mod tests {
                 assert!(world.player.is_in_lava());
                 world.tick_environment_damage().unwrap();
             };
-            let health = |game: &crate::game::ServerGame<'_>| game.player.as_ref().unwrap().health.health();
+            let health =
+                |game: &crate::game::ServerGame<'_>| game.player.as_ref().unwrap().health.health();
             let before = health(game);
             assert_eq!(player.fire_immune(game), Some(false));
             assert!(player.set_fire_immunity(game, true));
@@ -1515,36 +1513,8 @@ mod tests {
         });
     }
 
-    #[test]
-    #[ignore = "daily"]
-    fn portal_cooldown_write_is_refused_on_a_client() {
-        use super::super::execution_role::ExecutionRole;
-        use super::super::native_entity_refs::tests::with_game;
-        use sunrise_core::geometry::Vec3;
-        use sunrise_protocol::connection::Pipe;
-
-        with_game(|game| {
-            game.options.execution_role = ExecutionRole::Client;
-            game.options.dedicated = None;
-            let (client, _server) = Pipe::pair();
-            game.connect_local(client, "PortalWriteTest").unwrap();
-            let remote = game.remote.as_mut().unwrap();
-            remote.logged_in = true;
-            remote.entity_id = 7;
-            remote.profile = 42;
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            game.spawn_entity(15, "minecraft:pig", [2.0, 0.0, 0.0], [0.0; 3]);
-            // A handle this client really shows, so the refusal is the client
-            // side's and not a fabricated id that never resolved.
-            let entity = game.entity(15).unwrap();
-            assert!(
-                entity.position(game).is_some(),
-                "the handle is live on this client"
-            );
-            assert!(!entity.set_portal_cooldown(game, 5));
-            assert!(!entity.set_portal_cooldown(game, 0));
-        });
-    }
+    // `portal_cooldown_write_is_refused_on_a_client` is now enforced at compile time
+    // (`ClientGame` does not implement `ServerHost`).
 
     #[test]
     #[ignore = "daily"]
@@ -1758,71 +1728,66 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn under_water_reads_previous_eye_sample_and_current_contact_on_both_sides() {
-        mod_platform::testing::with_mods(Vec::new().into(), || {
-            for client in [false, true] {
-                super::super::native_entity_refs::tests::with_game(|g| {
-                    if client {
-                        g.options.execution_role =
-                            super::super::execution_role::ExecutionRole::Client;
-                        g.options.dedicated = None;
-                    }
-                    let _server = client
-                        .then(|| super::super::native_client_session::tests::logged_client(g));
-                    g.player = Some(
-                        PlayerMotion::new(g.motion, sunrise_core::geometry::Vec3::ZERO).unwrap(),
+        fn check_under_water<S: crate::game::Side>(
+            g: &mut crate::game::Game<'_, S>,
+            client: bool,
+            player: EntityRef,
+            mob: EntityRef,
+        ) {
+            for old_eye in [false, true] {
+                for contact in [false, true] {
+                    let p = g.player.as_mut().unwrap();
+                    p.fluids.was_eye_in_water = old_eye;
+                    p.fluids.was_touching_water = contact;
+                    assert_eq!(
+                        g.entity_is_under_water(player),
+                        Some(if client { old_eye } else { old_eye && contact })
                     );
-                    if !client {
-                        g.options.dedicated = Some(Vec::new());
-                        super::super::native_entity_refs::tests::bind_local_player(g, 7, 123);
-                    }
-                    let player = g.entity(7).unwrap();
-                    if client {
-                        g.spawn_entity(15, "minecraft:zombie", [0.0; 3], [0.0; 3]);
-                    } else {
-                        let kind = g.res.mob_types().get("minecraft:zombie").unwrap().clone();
-                        g.mobs
-                            .push(Mob::new(15, kind, sunrise_core::geometry::Vec3::ZERO, 0.0));
-                    }
-                    let mob = g.entity(15).unwrap();
-                    for old_eye in [false, true] {
-                        for contact in [false, true] {
-                            let p = g.player.as_mut().unwrap();
-                            p.fluids.was_eye_in_water = old_eye;
-                            p.fluids.was_touching_water = contact;
-                            assert_eq!(
-                                g.entity_is_under_water(player),
-                                Some(if client { old_eye } else { old_eye && contact })
-                            );
-                            let m = g.mobs.iter_mut().find(|m| m.id == 15).unwrap();
-                            m.was_eye_in_water = old_eye;
-                            m.fluids.eye_in_water = !old_eye;
-                            m.fluids.in_water = contact;
-                            assert_eq!(g.entity_is_under_water(mob), Some(old_eye && contact));
-                            assert_eq!(
-                                g.entity_is_under_water(EntityRef::new(
-                                    mod_api::WorldEpoch::new(0),
-                                    15
-                                )),
-                                None
-                            );
-                        }
-                    }
-                });
+                    let m = g.mobs.iter_mut().find(|m| m.id == 15).unwrap();
+                    m.was_eye_in_water = old_eye;
+                    m.fluids.eye_in_water = !old_eye;
+                    m.fluids.in_water = contact;
+                    assert_eq!(g.entity_is_under_water(mob), Some(old_eye && contact));
+                    assert_eq!(
+                        g.entity_is_under_water(EntityRef::new(mod_api::WorldEpoch::new(0), 15)),
+                        None
+                    );
+                }
             }
+        }
+        mod_platform::testing::with_mods(Vec::new().into(), || {
+            super::super::native_entity_refs::tests::with_game(|g| {
+                g.player =
+                    Some(PlayerMotion::new(g.motion, sunrise_core::geometry::Vec3::ZERO).unwrap());
+                g.options.dedicated = Some(Vec::new());
+                super::super::native_entity_refs::tests::bind_local_player(g, 7, 123);
+                let player = g.entity(7).unwrap();
+                let kind = g.res.mob_types().get("minecraft:zombie").unwrap().clone();
+                g.mobs
+                    .push(Mob::new(15, kind, sunrise_core::geometry::Vec3::ZERO, 0.0));
+                let mob = g.entity(15).unwrap();
+                check_under_water(g, false, player, mob);
+            });
+            super::super::native_entity_refs::tests::with_client_game(|g| {
+                let _server = super::super::native_client_session::tests::logged_client(g);
+                g.player =
+                    Some(PlayerMotion::new(g.motion, sunrise_core::geometry::Vec3::ZERO).unwrap());
+                let player = g.entity(7).unwrap();
+                g.spawn_entity(15, "minecraft:zombie", [0.0; 3], [0.0; 3]);
+                let mob = g.entity(15).unwrap();
+                check_under_water(g, true, player, mob);
+            });
         });
     }
 
     #[test]
     #[ignore = "daily"]
     fn secondary_use_reads_reachable_client_handles_and_keeps_server_flags() {
-        use super::super::execution_role::ExecutionRole;
         use sunrise_core::geometry::Vec3;
         use sunrise_protocol::connection::Pipe;
 
         use winit::keyboard::KeyCode;
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.options.execution_role = ExecutionRole::Client;
-            game.options.dedicated = None;
+        super::super::native_entity_refs::tests::with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "SneakReadTest").unwrap();
             // The joined client's state; the local-player and entity constructors must both
@@ -1852,7 +1817,6 @@ mod tests {
             assert_eq!(entity.is_shift_key_down(game), None);
         });
         with_player(|game, player| {
-            game.clear_device_keys();
             game.player.as_mut().unwrap().shift_key_down = true;
             assert_eq!(
                 player.is_shift_key_down(game),

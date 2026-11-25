@@ -1562,8 +1562,13 @@ mod attachment_membership_tests {
             summon!("pig", mobs);
             summon!("item_frame", item_frames);
             summon!("painting", paintings);
-            summon!("marker", others.0);
-            summon!("leash_knot", others.0);
+            for name in ["marker", "leash_knot"] {
+                game.summon_with_nbt(&format!("minecraft:{name}"), [0.5, 70.0, 0.5], "{}")
+                    .unwrap();
+                game.lan_assign_ids();
+                let id = game.test_last_other_id();
+                assert_membership(game, id);
+            }
             summon!("area_effect_cloud", breath_clouds);
             summon!("end_crystal", crystals);
             summon!("cushion", cushions);

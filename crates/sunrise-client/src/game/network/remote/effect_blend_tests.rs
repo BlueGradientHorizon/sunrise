@@ -1,5 +1,5 @@
 //! Ordinary effect blends through the public handle and the client's packet/countdown paths.
-use super::super::{Game, execution_role::ExecutionRole, native_entity_refs::tests::with_game};
+use super::super::native_entity_refs::tests::with_client_game;
 use mod_api::LivingRef;
 use mod_platform::__private::part_tests::effect_key;
 use sunrise_client::motion::PlayerMotion;
@@ -9,10 +9,8 @@ use sunrise_protocol::{
     packets::play::{self, Clientbound as C},
 };
 
-fn with_client(test: impl FnOnce(&mut crate::game::ServerGame<'_>, LivingRef, i32)) {
-    with_game(|game| {
-        game.options.execution_role = ExecutionRole::Client;
-        game.options.dedicated = None;
+fn with_client(test: impl FnOnce(&mut crate::game::ClientGame<'_>, LivingRef, i32)) {
+    with_client_game(|game| {
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "BlendLifecycleTest").unwrap();
         let remote = game.remote.as_mut().unwrap();
@@ -47,7 +45,7 @@ fn remove(game: &mut crate::game::ClientGame<'_>, effect: i32) {
         .unwrap();
 }
 
-fn assert_blend(game: &crate::game::ServerGame<'_>, living: LivingRef, expected: [f32; 6]) {
+fn assert_blend(game: &crate::game::ClientGame<'_>, living: LivingRef, expected: [f32; 6]) {
     // Vanilla Mth.lerp does not clamp partial ticks, even outside a frame.
     for (partial, expected) in [-1.0, 0.0, 0.25, 0.5, 1.0, 2.0].into_iter().zip(expected) {
         assert_eq!(

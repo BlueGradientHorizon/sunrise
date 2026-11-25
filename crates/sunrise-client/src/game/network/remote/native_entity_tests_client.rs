@@ -143,7 +143,15 @@ fn a_client_reads_the_entities_and_menu_the_server_shows_it() {
     assert_eq!(game.entity_position(stand), Some([1.5, 64.0, 2.5]));
     assert_eq!(game.entity_block_position(stand), Some([1, 64, 2]));
     assert_eq!(game.entity_rotation(stand), Some([90.0, 0.0]));
-    assert_eq!(game.entity_uuid(stand), Some(uuid));
+    let uuid_from_words = |words: [i32; 4]| -> u128 {
+        words
+            .iter()
+            .fold(0, |uuid, w| (uuid << 32) | u128::from(*w as u32))
+    };
+    assert_eq!(
+        game.persist.uuids.get(&20).copied().map(uuid_from_words),
+        Some(uuid)
+    );
     assert_eq!(
         stand.name(&game as &dyn mod_api::ClientHost).as_deref(),
         Some("Greeter")
@@ -161,11 +169,6 @@ fn a_client_reads_the_entities_and_menu_the_server_shows_it() {
         head.as_ref().map(|s| &*s.item),
         Some("minecraft:diamond_helmet")
     );
-    // A client knows no saved data or tags, and changes nothing itself.
-    assert_eq!(game.entity_nbt(stand), None);
-    assert!(game.entity_tags(stand).is_none());
-    assert!(!game.entity_add_tag(stand, "seen"));
-    assert!(!game.entity_set_velocity(stand, [0.0, 1.0, 0.0]));
 
     // An entity the client keeps no list of its own for: its type and
     // where the server put it.
@@ -179,7 +182,10 @@ fn a_client_reads_the_entities_and_menu_the_server_shows_it() {
         Some("minecraft:text_display")
     );
     assert_eq!(game.entity_position(display), Some([4.0, 70.0, -3.0]));
-    assert_eq!(game.entity_uuid(display), Some(5));
+    assert_eq!(
+        game.persist.uuids.get(&21).copied().map(uuid_from_words),
+        Some(5)
+    );
     assert_eq!(game.entity(99), None);
 
     // Before the chest opens, the player's inventory menu is current.
@@ -245,26 +251,42 @@ fn a_client_reads_the_entities_and_menu_the_server_shows_it() {
     game.handle_packet(metadata(31, vec![creepy(true), stared(true)]))
         .unwrap();
     assert_eq!(
-        game.side.audio.0.heard.get("minecraft:entity.enderman.stare"),
+        game.side
+            .audio
+            .0
+            .heard
+            .get("minecraft:entity.enderman.stare"),
         None
     );
     game.handle_packet(metadata(32, vec![stared(true), creepy(true)]))
         .unwrap();
     assert_eq!(
-        game.side.audio.0.heard.get("minecraft:entity.enderman.stare"),
+        game.side
+            .audio
+            .0
+            .heard
+            .get("minecraft:entity.enderman.stare"),
         Some(&1)
     );
     game.handle_packet(metadata(32, vec![creepy(false), stared(false)]))
         .unwrap();
     assert_eq!(
-        game.side.audio.0.heard.get("minecraft:entity.enderman.stare"),
+        game.side
+            .audio
+            .0
+            .heard
+            .get("minecraft:entity.enderman.stare"),
         Some(&1)
     );
     game.mobs.iter_mut().find(|mob| mob.id == 31).unwrap().age = 400;
     game.handle_packet(metadata(31, vec![creepy(false), stared(false)]))
         .unwrap();
     assert_eq!(
-        game.side.audio.0.heard.get("minecraft:entity.enderman.stare"),
+        game.side
+            .audio
+            .0
+            .heard
+            .get("minecraft:entity.enderman.stare"),
         Some(&2)
     );
     assert!(game.side.audio.0.capture.as_ref().unwrap().is_empty());

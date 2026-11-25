@@ -31,8 +31,7 @@ fn client_player_ticks_on_the_death_screen_too() {
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        with_game(|game| {
-            game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             let (client, server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "tick-client").unwrap();
             let remote = game.remote.as_mut().unwrap();
@@ -81,7 +80,7 @@ fn client_player_ticks_on_the_death_screen_too() {
             game.tick_remote().unwrap();
             assert_eq!(game.cooldowns.remaining().next().unwrap().1, 2);
             assert_eq!(game.sleep_timer, 5);
-            game.client.screen = super::super::Screen::Dead;
+            game.side.screen = super::super::Screen::Dead;
             game.player
                 .as_mut()
                 .unwrap()

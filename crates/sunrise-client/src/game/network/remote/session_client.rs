@@ -369,7 +369,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.streaming.sky_light = has_sky;
         self.streaming.nether_shading = self.nether_lighting();
         let player = self.player.as_ref();
-        self.side.particles
+        self.side
+            .particles
             .0
             .detach_tracking_target(TrackingTarget::LocalPlayer, || {
                 player.map(player_tracking_body)

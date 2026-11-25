@@ -97,10 +97,7 @@ fn each_respawn_refusal_has_its_own_name_and_changes_nothing() {
     use sunrise_client::motion::PlayerMotion;
     use sunrise_core::geometry::Vec3;
     with_guests(|game| {
-        let (a, b) = {
-            let players = game.players().server_players();
-            (players[0], players[1])
-        };
+        let b = game.players().server_players()[1];
         // Alive.
         assert_eq!(b.respawn(game), Err(RespawnRefusal::Alive));
         assert!(!is_dead(game, 13));
@@ -145,10 +142,6 @@ fn each_respawn_refusal_has_its_own_name_and_changes_nothing() {
         hub.guests.remove(index);
         assert_eq!(b.respawn(game), Err(RespawnRefusal::Stale));
 
-        // A client.
-        game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-        let (client, _server) = sunrise_protocol::connection::Pipe::pair();
-        game.connect_local(client, "RespawnRefusalTest").unwrap();
-        assert_eq!(a.respawn(game), Err(RespawnRefusal::Client));
+        // Client refusal is enforced at compile time (`ClientGame` is not a `ServerHost`).
     });
 }

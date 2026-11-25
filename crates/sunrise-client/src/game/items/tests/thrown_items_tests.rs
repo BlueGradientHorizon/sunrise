@@ -34,8 +34,17 @@ pub(in crate::game::server_side) fn standing_game<'a>(
     game.update_chunk_tickets();
     assert!(game.entity_ticking_area()(8, 8));
     game.side.ticked_entities_through = u32::MAX;
-    game.audio.0.capture = Some(Vec::new());
+    game.start_audio_capture();
     game
+}
+
+fn server_sound(game: &mut crate::game::ServerGame<'_>, event: &str) -> (f32, f32) {
+    let heard = std::mem::take(&mut game.side.pending_sounds);
+    let sound = heard
+        .iter()
+        .find(|s| s.event == event)
+        .unwrap_or_else(|| panic!("no {event} sound among {heard:?}"));
+    (sound.volume, sound.pitch)
 }
 
 #[allow(unused_imports)]
@@ -244,7 +253,7 @@ fn a_burning_items_sound_is_not_drawn_from_the_levels_random() {
     game.dropped[0].ticks = 9;
     let level = game.world.random.state();
     game.tick_items();
-    let (volume, pitch) = sound(&mut game, "minecraft:entity.generic.burn");
+    let (volume, pitch) = server_sound(&mut game, "minecraft:entity.generic.burn");
     assert_eq!(volume, 0.4);
     // `2.0 + nextFloat * 0.4`.
     assert!((2.0..2.4).contains(&pitch), "pitch {pitch}");

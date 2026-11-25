@@ -62,16 +62,14 @@ mod client_packet_send_tests {
     #[ignore = "daily"]
     fn a_client_mod_hears_and_cancels_packets_the_game_sends() {
         let slot = Serverbound::SetCarriedItem(SetCarriedItem { slot: 2 });
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            game.options.execution_role = super::ExecutionRole::Client;
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             assert!(!game.client_packet_send_canceled(&payload("example:secret")));
         });
         let seen = Arc::new(Mutex::new(Vec::new()));
         let mods: mod_api::Mods =
             vec![ModEntry::new("filter", Box::new(Filter(Arc::clone(&seen))))].into();
         with_mods(mods, || {
-            crate::game::native_entity_refs::tests::with_game(|game| {
-                game.options.execution_role = super::ExecutionRole::Client;
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
                 assert!(!game.client_packet_send_canceled(&slot));
                 assert!(game.client_packet_send_canceled(&payload("example:secret")));
                 assert!(!game.client_packet_send_canceled(&payload("example:open")));

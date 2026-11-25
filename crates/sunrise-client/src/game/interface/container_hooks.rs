@@ -569,7 +569,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game::game_tests::tests::server_game;
+    use crate::game::native_entity_refs::tests::with_client_game;
     use sunrise_hooks::containers::{ContainerHooks, engine::with_registrants};
 
     /// Takes every press, drag and key.
@@ -728,104 +728,106 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_hooks_click_goes_through_the_menu() {
-        let mut resources = None;
-        let mut game = server_game(&mut resources);
-        game.client.screen = Screen::Inventory;
-        let stone = ItemStack::new("minecraft:stone", 5);
-        game.inventory[9] = Some(stone.clone());
-        with_registrants(&[&PICK_NINE], || {
-            assert!(game.container_mouse(MouseButton::Left, true, false))
+        with_client_game(|game| {
+            let _server = crate::game::native_client_session::tests::logged_client(game);
+            game.side.screen = Screen::Inventory;
+            let stone = ItemStack::new("minecraft:stone", 5);
+            game.inventory[9] = Some(stone.clone());
+            with_registrants(&[&PICK_NINE], || {
+                assert!(game.container_mouse(MouseButton::Left, true, false))
+            });
+            assert_eq!(game.carried, Some(stone));
+            assert!(game.inventory[9].is_none());
         });
-        assert_eq!(game.carried, Some(stone));
-        assert!(game.inventory[9].is_none());
     }
 
     #[test]
     #[ignore = "daily"]
     fn a_taken_press_keeps_its_release_from_vanilla() {
-        let mut resources = None;
-        let mut game = server_game(&mut resources);
-        game.client.screen = Screen::Inventory;
-        with_registrants(&[&TAKE], || {
-            assert!(game.container_mouse(MouseButton::Left, true, false));
-            // Take takes no release: the button-up says the press was the hooks'.
-            let owned = game.container_button_up(MouseButton::Left);
-            assert!(owned);
-            assert!(game.container_mouse(MouseButton::Left, false, owned));
-            assert!(
-                !game.container_button_up(MouseButton::Left),
-                "the latch is cleared"
-            );
-        });
-        with_registrants(&[&PASS], || {
-            assert!(!game.container_mouse(MouseButton::Left, true, false));
-            assert!(!game.container_button_up(MouseButton::Left));
+        with_client_game(|game| {
+            game.side.screen = Screen::Inventory;
+            with_registrants(&[&TAKE], || {
+                assert!(game.container_mouse(MouseButton::Left, true, false));
+                // Take takes no release: the button-up says the press was the hooks'.
+                let owned = game.container_button_up(MouseButton::Left);
+                assert!(owned);
+                assert!(game.container_mouse(MouseButton::Left, false, owned));
+                assert!(
+                    !game.container_button_up(MouseButton::Left),
+                    "the latch is cleared"
+                );
+            });
+            with_registrants(&[&PASS], || {
+                assert!(!game.container_mouse(MouseButton::Left, true, false));
+                assert!(!game.container_button_up(MouseButton::Left));
+            });
         });
     }
 
     #[test]
     #[ignore = "daily"]
     fn a_release_taken_from_vanillas_press_ends_its_drag_unclicked() {
-        let mut resources = None;
-        let mut game = server_game(&mut resources);
-        game.client.screen = Screen::Inventory;
-        game.client.inv_drag = Some((0, vec![9]));
-        with_registrants(&[&TAKE_RELEASE], || {
-            assert!(game.container_mouse(MouseButton::Left, false, false))
+        with_client_game(|game| {
+            game.side.screen = Screen::Inventory;
+            game.side.inv_drag = Some((0, vec![9]));
+            with_registrants(&[&TAKE_RELEASE], || {
+                assert!(game.container_mouse(MouseButton::Left, false, false))
+            });
+            assert!(game.side.inv_drag.is_none());
         });
-        assert!(game.client.inv_drag.is_none());
     }
 
     #[test]
     #[ignore = "daily"]
     fn a_slot_outside_the_open_menu_reads_nothing() {
-        let mut resources = None;
-        let mut game = server_game(&mut resources);
-        game.client.screen = Screen::Inventory;
-        let reads = || READ_FAR.0.load(std::sync::atomic::Ordering::Relaxed);
-        // The press is taken only when the hook ran and every far read came back empty.
-        with_registrants(&[&READ_FAR], || {
-            assert!(game.container_mouse(MouseButton::Left, true, false))
+        with_client_game(|game| {
+            game.side.screen = Screen::Inventory;
+            let reads = || READ_FAR.0.load(std::sync::atomic::Ordering::Relaxed);
+            // The press is taken only when the hook ran and every far read came back empty.
+            with_registrants(&[&READ_FAR], || {
+                assert!(game.container_mouse(MouseButton::Left, true, false))
+            });
+            assert_eq!(reads(), 1);
+            let mut batch = HudBatch::new([854, 480], game.settings.gui_scale_inputs());
+            with_registrants(&[&READ_FAR], || game.draw_container_hooks(&mut batch));
+            assert_eq!(reads(), 2, "the draw view reads nothing there either");
         });
-        assert_eq!(reads(), 1);
-        let mut batch = HudBatch::new([854, 480], game.settings.gui_scale_inputs());
-        with_registrants(&[&READ_FAR], || game.draw_container_hooks(&mut batch));
-        assert_eq!(reads(), 2, "the draw view reads nothing there either");
     }
 
     #[test]
     #[ignore = "daily"]
     fn a_key_is_not_dispatched_while_the_recipe_search_is_focused() {
-        let mut resources = None;
-        let mut game = server_game(&mut resources);
-        game.client.screen = Screen::Inventory;
-        with_registrants(&[&TAKE], || assert!(game.container_key(KeyCode::KeyR)));
-        game.level.recipe_book.open[sunrise_client::recipe_book::BookType::Crafting.index()] = true;
-        game.ensure_recipe_search();
-        game.recipe_focus_search();
-        assert!(game.recipe_search_focused());
-        BUILT.with(|n| n.set(0));
-        with_registrants(&[&TAKE], || assert!(!game.container_key(KeyCode::KeyR)));
-        assert_eq!(BUILT.with(|n| n.get()), 0);
+        with_client_game(|game| {
+            game.side.screen = Screen::Inventory;
+            with_registrants(&[&TAKE], || assert!(game.container_key(KeyCode::KeyR)));
+            game.level.recipe_book.open[sunrise_client::recipe_book::BookType::Crafting.index()] =
+                true;
+            game.ensure_recipe_search();
+            game.recipe_focus_search();
+            assert!(game.recipe_search_focused());
+            BUILT.with(|n| n.set(0));
+            with_registrants(&[&TAKE], || assert!(!game.container_key(KeyCode::KeyR)));
+            assert_eq!(BUILT.with(|n| n.get()), 0);
+        });
     }
 
     #[test]
     #[ignore = "daily"]
     fn no_view_is_built_without_a_registrant_or_a_held_button() {
-        let mut resources = None;
-        let mut game = server_game(&mut resources);
-        game.client.screen = Screen::Inventory;
-        BUILT.with(|n| n.set(0));
-        with_registrants(&[], || {
-            assert!(!game.container_mouse(MouseButton::Left, true, false))
+        with_client_game(|game| {
+            game.side.screen = Screen::Inventory;
+            BUILT.with(|n| n.set(0));
+            with_registrants(&[], || {
+                assert!(!game.container_mouse(MouseButton::Left, true, false))
+            });
+            assert_eq!(BUILT.with(|n| n.get()), 0);
+            // No button is held: a pointer move is no drag, however a press went.
+            with_registrants(&[&TAKE], || assert!(!game.container_drag()));
+            assert_eq!(BUILT.with(|n| n.get()), 0);
+            with_registrants(&[&TAKE], || {
+                assert!(game.container_mouse(MouseButton::Left, true, false))
+            });
+            assert_eq!(BUILT.with(|n| n.get()), 1);
         });
-        assert_eq!(BUILT.with(|n| n.get()), 0);
-        // No button is held: a pointer move is no drag, however a press went.
-        with_registrants(&[&TAKE], || assert!(!game.container_drag()));
-        assert_eq!(BUILT.with(|n| n.get()), 0);
-        with_registrants(&[&TAKE], || {
-            assert!(game.container_mouse(MouseButton::Left, true, false))
-        });
-        assert_eq!(BUILT.with(|n| n.get()), 1);
     }
 }

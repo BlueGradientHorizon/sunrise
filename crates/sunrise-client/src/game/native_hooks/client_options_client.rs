@@ -18,7 +18,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // The size the renderer applies, as the drawing code reads it: it keeps its previous
         // configuration when the window reports a size it cannot draw at.
         let framebuffer = self
-            .side.window
+            .side
+            .window
             .0
             .as_ref()
             .and(self.side.renderer.0.as_ref())

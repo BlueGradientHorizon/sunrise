@@ -77,7 +77,7 @@ fn a_window_crosses_and_keeps_its_velocity_through_the_acceptance() {
         r.is_destroying = true;
         r.destroying = Some(([3, 64, 3], 1, 0.5));
         r.sequence = 7;
-        game.server.attack_ticks = 15;
+        game.test_set_hand_strength_ticker(15);
         let all = relative::X
             | relative::Y
             | relative::Z
@@ -104,7 +104,7 @@ fn a_window_crosses_and_keeps_its_velocity_through_the_acceptance() {
         assert!(!r.is_destroying);
         assert_eq!(r.destroying, Some(([3, 64, 3], 1, 0.0)));
         assert_eq!(r.last_teleport_sequence, 7);
-        assert_eq!(game.server.attack_ticks, 0);
+        assert_eq!(game.test_hand_strength_ticker(), 0);
         let answers = sent(&mut reader);
         assert!(answers.iter().any(|p| matches!(
             p,

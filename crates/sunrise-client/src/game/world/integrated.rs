@@ -1556,7 +1556,6 @@ pub(in crate::game) mod tests {
                     window.settings.clone(),
                 )
                 .unwrap();
-                server.side.save.0 = window.save.0.clone();
                 let result = server.run_server_lifecycle(false, |server, began| {
                     *began = true;
                     // Model publication at open_world_tables, before later steps can fail.
@@ -1782,7 +1781,9 @@ pub(in crate::game) mod tests {
     }
 
     /// Install the mod before building the fixture's frozen block and block entity registries.
-    fn with_checkpoint_mod(test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Mutex<Vec<CheckpointEvent>>)) {
+    fn with_checkpoint_mod(
+        test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Mutex<Vec<CheckpointEvent>>),
+    ) {
         use crate::game::native_entity_refs::tests::{fixture_root, with_game_at};
 
         let events = Arc::new(Mutex::new(Vec::new()));

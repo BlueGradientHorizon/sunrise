@@ -53,7 +53,6 @@ fn level_event_excludes_its_source_even_during_another_guests_turn() {
             guest.sender = PlayerSender::new(tx, Arc::default());
             receivers.push(rx);
         });
-        game.audio.0.capture = Some(Vec::new());
         game.as_guest(13, |game| {
             game.lan_record_events(&[LevelEvent::LevelEvent {
                 id: 2001,

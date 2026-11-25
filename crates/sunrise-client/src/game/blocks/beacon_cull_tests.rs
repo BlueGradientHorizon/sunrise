@@ -13,8 +13,8 @@ use sunrise_client::{
     settings::Settings,
 };
 
-fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
-    game_as(resources, execution_role::ExecutionRole::IntegratedServer)
+fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> crate::game::ClientGame<'a> {
+    game_as_client(resources, execution_role::ExecutionRole::Client)
 }
 
 /// A game loaded from the prepared resources as `role`: a client also loads what it draws with
@@ -142,7 +142,7 @@ fn a_beam_draws_inside_the_render_distance_only_and_leaves_with_its_column() {
     game.settings.render_distance = 4;
     game.streaming.radius = 5;
     game.settings.sunrise.lod_distance = 256;
-    game.lod.0 = Some(sunrise_client::lod::Lod::new(
+    game.side.lod.0 = Some(sunrise_client::lod::Lod::new(
         game.streaming.lod_source(),
         game.worker_context(),
     ));

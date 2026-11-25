@@ -7,8 +7,8 @@
 //! (`BookSignScreen.java:79-87`) signs on Enter whenever the title box is not
 //! empty — `!getValue().isEmpty()`, not blank — and trims the title on send
 //! (`:70`).
-use super::{BookScreen, Game};
-use crate::game::game_tests::tests::server_game;
+use super::BookScreen;
+use crate::game::{Audio, Options, Progress, Settings, execution_role, load_resources};
 use sunrise_client::items::ItemStack;
 use winit::keyboard::KeyCode;
 
@@ -18,7 +18,40 @@ fn editing<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
     text: &str,
 ) -> crate::game::ClientGame<'a> {
-    let mut game = server_game(resources);
+    let root = std::path::PathBuf::from(
+        std::env::var_os("SUNRISE_TEST_RESOURCES")
+            .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
+    );
+    let settings = Settings::default();
+    let loaded = load_resources(
+        sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+        Vec::new(),
+        None,
+        &root,
+        &settings,
+        std::time::Instant::now(),
+        false,
+        execution_role::ExecutionRole::Client,
+        &Progress::new(),
+        &mut |_, _| unreachable!(),
+    )
+    .unwrap();
+    let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+    options.resources = root.clone();
+    options.execution_role = execution_role::ExecutionRole::Client;
+    let res = &*resources.insert(loaded.resources);
+    let mut game = crate::game::ClientGame::new(
+        res,
+        loaded.pack,
+        loaded.gui.unwrap(),
+        options,
+        settings,
+        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
+            root,
+        )),
+        None,
+    )
+    .unwrap();
     *game.held_mut() = Some(ItemStack::new("minecraft:writable_book", 1));
     let stack = game.held().expect("a book in hand").clone();
     assert!(game.remote_use_book(&stack), "the editor opened");

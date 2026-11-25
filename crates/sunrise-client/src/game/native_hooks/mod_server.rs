@@ -972,7 +972,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let veto = mod_api::__private::listened(mod_api::HookId::EntityPlace);
         if veto {
             let against_pos = decision.placed_against_pos();
-            let block = |game: &Game<'_, crate::game::server_side::ServerState>, pos: BlockPos| game.world.block(pos.x, pos.y, pos.z);
+            let block = |game: &Game<'_, crate::game::server_side::ServerState>, pos: BlockPos| {
+                game.world.block(pos.x, pos.y, pos.z)
+            };
             let against = block(self, against_pos);
             let target_before = block(self, preview.pos);
             // One proposed state per affected cell. A companion at the pre-clear
@@ -1247,6 +1249,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return false;
         }
         self.placement_canceled(self.entity(placer), pos, state, placed_against, companion)
+    }
+}
+
+#[cfg(test)]
+impl Game<'_, crate::game::server_side::ServerState> {
+    pub(in crate::game) fn test_save(&self) -> &std::sync::Arc<sunrise_client::save::SaveDir> {
+        &self.side.save.0
     }
 }
 

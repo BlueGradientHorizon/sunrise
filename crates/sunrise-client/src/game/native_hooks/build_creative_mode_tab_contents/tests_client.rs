@@ -70,10 +70,18 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
         ModEntry::new("later_edit", Box::new(Observe)),
     ]
     .into();
-    let check = |game: &mut crate::game::ClientGame<'_>, side| {
-        game.side.creative_screen.0 = Creative::from_json(&catalog).unwrap();
-        assert!(!game.side.creative_screen.0.has_contents());
-        let flags = |game: &mut crate::game::ClientGame<'_>, ids: [&str; 2]| {
+    let check_catalog = Creative::from_json(&catalog).unwrap().catalog().clone();
+    fn check<'g, S: crate::game::Side>(
+        game: &mut crate::game::Game<'g, S>,
+        side: LogicalSide,
+        seen: &Arc<Mutex<Seen>>,
+        mut before_build: impl FnMut(&mut crate::game::Game<'g, S>),
+        mut after_build: impl FnMut(&mut crate::game::Game<'g, S>),
+    ) -> Arc<CreativeModeTabs>
+    where
+        crate::game::Game<'g, S>: mod_api::Host + ItemsHost,
+    {
+        let flags = |game: &mut crate::game::Game<'g, S>, ids: [&str; 2]| {
             let flags = ids.map(str::to_owned);
             if let Some(remote) = &mut game.remote {
                 remote.features = flags.into();
@@ -82,7 +90,7 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
             }
         };
         flags(game, ["test:alpha", "test:beta"]);
-        assert_eq!(game.stock_sort_order()[0].item.as_ref(), "minecraft:stick");
+        before_build(game);
         assert!(seen.lock().unwrap().events.is_empty());
         {
             // A plain read before any build answers nothing and builds nothing.
@@ -98,7 +106,7 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
         let cached = ItemsHost::creative_tabs(game, CreativeTabPermissions::Normal).unwrap();
         assert!(Arc::ptr_eq(&normal, &cached));
         assert_eq!(seen.lock().unwrap().events.len(), built_events);
-        assert_eq!(game.stock_sort_order()[0].item.as_ref(), "minecraft:torch");
+        after_build(game);
         let a = normal.tab("test:a").unwrap();
         assert_eq!(
             a.display_items,
@@ -190,8 +198,14 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
 
         assert_eq!(book_level(&normal), 2);
         normal
-    };
-    let check_replacement = |game: &mut crate::game::ClientGame<'_>, old: &CreativeModeTabs| {
+    }
+    fn check_replacement<'g, S: crate::game::Side>(
+        game: &mut crate::game::Game<'g, S>,
+        old: &CreativeModeTabs,
+        seen: &Arc<Mutex<Seen>>,
+    ) where
+        crate::game::Game<'g, S>: ItemsHost,
+    {
         // Registry installation must not dispatch; the next demand uses the changed definition.
         assert!(seen.lock().unwrap().events.is_empty());
         let fresh = ItemsHost::creative_tabs(game, CreativeTabPermissions::Normal).unwrap();
@@ -199,26 +213,35 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
         assert_eq!(book_level(old), 2);
         assert_eq!(seen.lock().unwrap().events.len(), 6);
         seen.lock().unwrap().events.clear();
-    };
+    }
     mod_platform::testing::with_mods(setups, || {
         let mut dedicated = None;
         with_game_role(fixture_root(), ExecutionRole::DedicatedServer, |game| {
             install_dedicated_holders(game, 2);
-            dedicated = Some(check(game, LogicalSide::Server));
+            game.test_set_creative_catalog(check_catalog.clone());
+            dedicated = Some(check(game, LogicalSide::Server, &seen, |_| {}, |_| {}));
         });
         with_game_role(fixture_root(), ExecutionRole::DedicatedServer, |game| {
             install_dedicated_holders(game, 4);
-            game.creative_screen.0 = Creative::from_json(&catalog).unwrap();
-            check_replacement(game, dedicated.as_deref().unwrap());
+            game.test_set_creative_catalog(check_catalog.clone());
+            check_replacement(game, dedicated.as_deref().unwrap(), &seen);
         });
         with_client_game(|game| {
             let _server = logged_client(game);
             game.native_lifecycle
                 .begin_open(mod_api::Authority::RemoteClient);
             replace_client_definition(game, 2);
-            let old = check(game, LogicalSide::Client);
+            game.side.creative_screen.0 = Creative::from_json(&catalog).unwrap();
+            assert!(!game.side.creative_screen.0.has_contents());
+            let old = check(
+                game,
+                LogicalSide::Client,
+                &seen,
+                |game| assert_eq!(game.stock_sort_order()[0].item.as_ref(), "minecraft:stick"),
+                |game| assert_eq!(game.stock_sort_order()[0].item.as_ref(), "minecraft:torch"),
+            );
             replace_client_definition(game, 4);
-            check_replacement(game, &old);
+            check_replacement(game, &old, &seen);
             game.native_lifecycle.begin_close();
             game.native_lifecycle_world_closed();
             assert!(game.native_lifecycle.epoch().is_none());

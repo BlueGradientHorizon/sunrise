@@ -312,6 +312,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn test_add_hook_panic_toasts(&mut self) {
         self.add_hook_panic_toasts();
     }
+
+    #[cfg(test)]
+    pub(in crate::game) fn test_open_title(&mut self, saves: std::path::PathBuf) {
+        self.side.title.0 = Some(self.new_title(saves));
+    }
 }
 
 impl ModsState {

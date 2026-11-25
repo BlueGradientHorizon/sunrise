@@ -148,7 +148,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 _ => self.type_eye_height(&self.target_type(t)),
             },
             Target::Other(id) => self
-                .side.others
+                .side
+                .others
                 .0
                 .iter()
                 .find(|o| o.id == id)
@@ -681,10 +682,18 @@ pub(in crate::game) mod passenger_relation_tests {
     pub(in crate::game) fn actor(i: usize) -> String {
         format!("00000096-0000-0002-0000-{i:012x}")
     }
-    pub(in crate::game) fn value(game: &crate::game::ServerGame<'_>, i: usize, objective: &str) -> i32 {
+    pub(in crate::game) fn value(
+        game: &crate::game::ServerGame<'_>,
+        i: usize,
+        objective: &str,
+    ) -> i32 {
         game.score.board.score(&actor(i), objective).unwrap().value
     }
-    pub(in crate::game) fn vehicle(game: &mut crate::game::ServerGame<'_>, child: usize, parent: usize) {
+    pub(in crate::game) fn vehicle(
+        game: &mut crate::game::ServerGame<'_>,
+        child: usize,
+        parent: usize,
+    ) {
         assert!(game.run_command("scoreboard players set #r h150u 91"));
         assert!(game.run_command("scoreboard players set #s h150u 17"));
         assert!(game.run_command(&format!(

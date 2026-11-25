@@ -104,8 +104,6 @@ pub(in crate::game::server_side) fn list_query_body<T: Entity + Joined, const DI
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
-
-
     /// `ServerLevel.getEntity(UUID)` for [`LevelRef::entity_by_uuid`]: the level's UUID index,
     /// in place or parked, then the same resolution and visibility as any handle of that level.
     pub(in crate::game) fn level_entity_by_uuid(
@@ -342,7 +340,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 })
                 .map(|guest| guest.bounds()),
             Target::Other(_) if server => self
-                .side.others
+                .side
+                .others
                 .0
                 .get(self.side.others.0.locate(join)?)?
                 .display_marker_or_interaction_bounds(),
@@ -396,7 +395,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         hits.sort_by(|a, b| a.distance.total_cmp(&b.distance));
         Some(hits)
     }
-
 
     /// What the block at `pos` would drop (`Block.getDrops`) with `tool` and `entity` as the
     /// breaker, without breaking it: the level's `block_drops_of`, which draws from the random
@@ -687,8 +685,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self.world.shape.contains_y(pos[1])
     }
 
-
-
     /// Server-side `Entity.getType`: `minecraft:zombie`. API 373.
     pub(in crate::game) fn server_entity_kind(
         &self,
@@ -971,10 +967,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// one in place, as a kill credit can name one (`getEntityInAnyDimension`):
     /// its identity reads (`entity_kind`, `entity_uuid`, `entity_level`)
     /// answer from there. None on a client or for anything else.
-    pub(in crate::game) fn mob_in_other_level(
-        &self,
-        id: u32,
-    ) -> Option<(super::Dim, &super::Mob)> {
+    pub(in crate::game) fn mob_in_other_level(&self, id: u32) -> Option<(super::Dim, &super::Mob)> {
         use sunrise_client::join_seq::residency::table::EntityLookup;
         if !self.is_logical_server() {
             return None;
@@ -1201,7 +1194,12 @@ pub(in crate::game) mod tests {
     }
 
     /// Resolve a fixture after registration or a late Parts reinstall from its loaded table.
-    pub(in crate::game) fn resolve_parts<S: crate::game::Side>(game: &super::Game<'_, S>) -> Result<(), String> where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
+    pub(in crate::game) fn resolve_parts<S: crate::game::Side>(
+        game: &super::Game<'_, S>,
+    ) -> Result<(), String>
+    where
+        for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host,
+    {
         crate::game::api_values::resolve_block_definitions(game.pack.assets.registry)?;
         mod_api::__private::resolve_items(game.items().registry_order.iter().map(|id| &**id))
             .map_err(|errors| format!("fixture item keys refused: {errors:?}"))?;
@@ -1471,7 +1469,11 @@ pub(in crate::game) mod tests {
     }
 
     /// Bind the fixture body's canonical identity before configuring its acting context.
-    pub(in crate::game) fn bind_local_player(game: &mut crate::game::ServerGame<'_>, id: u32, uuid: u128) {
+    pub(in crate::game) fn bind_local_player(
+        game: &mut crate::game::ServerGame<'_>,
+        id: u32,
+        uuid: u128,
+    ) {
         game.side.next_entity = game.side.next_entity.max(id);
         game.player.as_mut().expect("fixture player body").entity_id =
             i32::try_from(id).expect("fixture entity ID fits the protocol");
@@ -1655,7 +1657,9 @@ pub(in crate::game) mod tests {
         );
     }
 
-    pub(in crate::game) fn with_uncached_client_game(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
+    pub(in crate::game) fn with_uncached_client_game(
+        test: impl FnOnce(&mut crate::game::ClientGame<'_>),
+    ) {
         with_game_role_and_facts_with_client(
             fixture_root(),
             super::super::execution_role::ExecutionRole::Client,
@@ -1924,7 +1928,7 @@ pub(in crate::game) mod tests {
             None,
         )
         .unwrap();
-        
+
         game.native_lifecycle
             .begin_open(Authority::IntegratedServer);
 
@@ -1933,7 +1937,7 @@ pub(in crate::game) mod tests {
         resolve_parts(&game).unwrap();
         // The title's save folder is under the working directory: give each test its own, so a
         // test that saves leaves the checkout clean and parallel tests don't share files.
-        
+
         test(&mut game);
     }
 
@@ -2175,7 +2179,10 @@ pub(in crate::game) mod tests {
     }
 
     /// A world with block `support` at (5, 64, 5) and a powered lever on its east face.
-    pub(in crate::game::server_side) fn lever_on(game: &mut crate::game::ServerGame<'_>, support: &str) {
+    pub(in crate::game::server_side) fn lever_on(
+        game: &mut crate::game::ServerGame<'_>,
+        support: &str,
+    ) {
         use std::sync::Arc;
         use sunrise_client::chunk::Chunk;
 
@@ -2282,7 +2289,13 @@ pub(in crate::game) mod tests {
 
         let lit = |game: &crate::game::ServerGame<'_>, [x, y, z]: [i32; 3]| {
             let state = game.world.block(x, y, z);
-            game.block_state_property(state, "lit") == Some("true")
+            game.pack
+                .assets
+                .registry
+                .state(state)
+                .and_then(|s| s.properties.get("lit"))
+                .map(String::as_str)
+                == Some("true")
         };
         let set = |game: &mut crate::game::ServerGame<'_>, [x, y, z]: [i32; 3], name: &str| {
             let state = game.pack.assets.registry.default_state(name).unwrap();
@@ -4066,8 +4079,7 @@ pub(in crate::game) mod tests {
             .unwrap();
             assert_eq!(game.side.guest_packets.len(), 1);
             assert!(
-                game.side.guest_entity_events.is_empty()
-                    && game.side.guest_cooldowns.is_empty()
+                game.side.guest_entity_events.is_empty() && game.side.guest_cooldowns.is_empty()
             );
             assert_eq!(
                 game.lan.as_ref().unwrap().hub.guests[1]
@@ -4079,9 +4091,7 @@ pub(in crate::game) mod tests {
             assert!(rx.try_recv().is_err());
             game.with_guest_swap(real_id, game.dim, |game| {
                 assert!(!game.side.lan_acting_fake);
-                game.side
-                    .guest_cooldowns
-                    .push(("minecraft:real".into(), 7));
+                game.side.guest_cooldowns.push(("minecraft:real".into(), 7));
                 game.side
                     .guest_player_sounds
                     .push(("outer".into(), [0.0; 3], 1.0, 1.0));
@@ -5058,8 +5068,7 @@ pub(in crate::game) mod tests {
             game.level_block_break_speed(level, [5, 64, 0], Some(&custom_tool)),
             Some(2.0)
         );
-        // Server-side game: the client-only crack is refused.
-        assert!(!game.level_set_client_break_progress(level, 1, [3, 64, 0], 4));
+        // Server-side game: the client-only crack is refused at compile time.
         game.world.block_log = None;
         let waterlogged = game
             .pack
@@ -5268,13 +5277,10 @@ pub(in crate::game) mod tests {
         ) {
             return;
         }
-        use super::super::execution_role::ExecutionRole;
         use mod_api::{Host, LevelRef, WorldEpoch};
         use sunrise_core::geometry::Vec3;
         use sunrise_protocol::connection::Pipe;
-        with_game(|game| {
-            game.options.execution_role = ExecutionRole::Client;
-            game.options.dedicated = None;
+        with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "EntitiesInTest").unwrap();
             let remote = game.remote.as_mut().unwrap();
@@ -5345,7 +5351,6 @@ pub(in crate::game) mod tests {
         ) {
             return;
         }
-        use super::super::execution_role::ExecutionRole;
         use mod_api::{Host, LevelRef};
         use sunrise_core::geometry::Vec3;
         use sunrise_protocol::{
@@ -5354,9 +5359,7 @@ pub(in crate::game) mod tests {
                 AddEntity, Clientbound as C, PlayerInfo, PlayerInfoUpdate, RemoveEntities,
             },
         };
-        with_game(|game| {
-            game.options.execution_role = ExecutionRole::Client;
-            game.options.dedicated = None;
+        with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "EntitiesInTest").unwrap();
             let remote = game.remote.as_mut().unwrap();
@@ -5375,7 +5378,7 @@ pub(in crate::game) mod tests {
             game.player = Some(local);
             game.spawn_entity(15, "minecraft:pig", [2.0, 0.0, 0.0], [0.0; 3]);
             game.pick_section_sync_id(15);
-            let add_player = |game: &mut crate::game::ServerGame<'_>, id, uuid, x| {
+            let add_player = |game: &mut crate::game::ClientGame<'_>, id, uuid, x| {
                 game.handle_packet(C::PlayerInfoUpdate(PlayerInfoUpdate {
                     actions: 1,
                     entries: vec![PlayerInfo {
@@ -5442,13 +5445,10 @@ pub(in crate::game) mod tests {
         ) {
             return;
         }
-        use super::super::execution_role::ExecutionRole;
         use mod_api::{Host, LevelRef};
         use sunrise_core::geometry::Vec3;
         use sunrise_protocol::connection::Pipe;
-        with_game(|game| {
-            game.options.execution_role = ExecutionRole::Client;
-            game.options.dedicated = None;
+        with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "EntitiesInTest").unwrap();
             let remote = game.remote.as_mut().unwrap();

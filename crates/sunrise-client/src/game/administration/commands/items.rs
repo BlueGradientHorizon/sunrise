@@ -1070,7 +1070,11 @@ pub(in crate::game) mod mob_equipment_command_tests {
         test(&mut game);
     }
 
-    pub(in crate::game) fn actor(game: &mut crate::game::ServerGame<'_>, kind: &str, n: i32) -> (String, u32) {
+    pub(in crate::game) fn actor(
+        game: &mut crate::game::ServerGame<'_>,
+        kind: &str,
+        n: i32,
+    ) -> (String, u32) {
         let uuid = format!("00000019-0000-0000-0000-{n:012x}");
         assert!(game.run_command(&format!("summon {kind} 4.5 200 5.5 {{UUID:[I;25,0,0,{n}],NoAI:1b,NoGravity:1b,Silent:1b,h025_raw:7,Tags:[h025]}}")), "{kind}/{n}: {:?}", game.ui.chat.recent_lines(3));
         let mob = game

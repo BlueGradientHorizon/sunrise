@@ -13,7 +13,7 @@ use sunrise_mod_runtime::attachments::{
 #[ignore = "daily"]
 fn lifecycle_carts_keep_registrations_through_commands_unload_park_and_remote() {
     use crate::game::entity::taken_pass_tests::{
-        LifecycleFixture, RemoteLifecycle, SlotIdentities,
+        LifecycleFixture, RemoteLifecycle, SlotIdentities, run_remote_lifecycle,
     };
     use sunrise_protocol::{
         connection::Pipe,
@@ -34,7 +34,28 @@ fn lifecycle_carts_keep_registrations_through_commands_unload_park_and_remote() 
         ids: |game| game.carts.iter().map(|cart| cart.id).collect(),
         target: crate::game::commands::Target::Cart,
         unloads_with_chunk: true,
-        remote: Some(RemoteLifecycle {
+        remote: None,
+    }
+    .run_with(|game| {
+        identities.observe(
+            &mut game.carts,
+            game.native_lifecycle.epoch().unwrap(),
+            |cart| cart.id,
+        )
+    });
+    run_remote_lifecycle(
+        |game, entries| {
+            game.carts.clear();
+            for &(id, at) in entries {
+                game.carts.push(Minecart::new(
+                    id,
+                    CartKind::Rideable,
+                    Vec3::new(at[0], at[1], at[2]),
+                ));
+            }
+        },
+        |game| game.carts.iter().map(|cart| cart.id).collect(),
+        RemoteLifecycle {
             prepare: |game| {
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "Lifecycle").unwrap();
@@ -51,15 +72,8 @@ fn lifecycle_carts_keep_registrations_through_commands_unload_park_and_remote() 
                 );
                 game.remove_remote_object(remove);
             },
-        }),
-    }
-    .run_with(|game| {
-        identities.observe(
-            &mut game.carts,
-            game.native_lifecycle.epoch().unwrap(),
-            |cart| cart.id,
-        )
-    });
+        },
+    );
 }
 
 #[test]
@@ -385,7 +399,10 @@ fn a_bound_tnt_cart_keeps_its_join_when_damage_primes_it() {
 // A public entity lookup also hides a temporarily extracted row. Check the
 // residency journal itself so a terminal path cannot leave a permanent Taken
 // record that poisons later level queries (#2855).
-pub(in crate::game) fn assert_vehicle_residency_retired(game: &mut crate::game::ServerGame<'_>, id: u32) {
+pub(in crate::game) fn assert_vehicle_residency_retired(
+    game: &mut crate::game::ServerGame<'_>,
+    id: u32,
+) {
     use crate::game::entity_residency::SlotAccess;
     assert_eq!(
         game.with_resident_slot(

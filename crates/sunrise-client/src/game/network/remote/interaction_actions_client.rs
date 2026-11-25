@@ -233,7 +233,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some((target, body)) = self.remote_tracking_body(id) else {
             return;
         };
-        self.side.particles
+        self.side
+            .particles
             .0
             .tracking_emitter(ParticleOptions::simple(particle), target, body);
     }

@@ -1,5 +1,5 @@
 //! `ItemPart::item_name` (`Item.getName(ItemStack)`) behind every place the game names a stack.
-use super::native_entity_refs::tests::{run_fresh_cases, with_game};
+use super::native_entity_refs::tests::{run_fresh_cases, with_client_game, with_game};
 use mod_api::{Hooks, ItemNameEvent, ItemPart, LoopContext, Registrar, RegistrationContext};
 use sunrise_client::items::ItemStack;
 use sunrise_core::nbt::Tag;
@@ -50,7 +50,6 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
             // An untranslated key reads as itself: the Part's name, independent of the code.
             let named = ItemStack::new("minecraft:paper", 2);
             assert_eq!(plain(game.stack_hover_name_text(&named)), KEY);
-            assert_eq!(plain(game.styled_stack_name(&named)), KEY);
 
             // The Part replaces an explicit `item_name`; a stack it leaves keeps it.
             let mut labelled = named.clone();
@@ -84,10 +83,6 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
             assert_eq!(plain(game.stack_item_name_text(&renamed)), KEY);
             assert_eq!(plain(game.stack_item_name_text(&single)), "Label");
 
-            // The tooltip's and the hotbar's styled name is the same resolved name.
-            assert_eq!(plain(game.styled_stack_name(&labelled)), KEY);
-            assert_eq!(plain(game.styled_stack_name(&single)), "Label");
-
             // The anvil menu itself (`AnvilMenu.createResult`, as the server runs it): the
             // Part's name typed back unchanged makes no result; the item's base name, an
             // edit, renames it; a third name renames it too.
@@ -104,24 +99,6 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
             assert_eq!(base.custom_name().as_deref(), Some("Paper"));
             let other = anvil("Minutes").expect("another name is a rename");
             assert_eq!(other.custom_name().as_deref(), Some("Minutes"));
-
-            // ChargedProjectiles.addProjectileTooltip uses getDisplayName for a single arrow.
-            let mut arrow = ItemStack::new("minecraft:arrow", 1);
-            arrow
-                .data_mut()
-                .set_other("minecraft:rarity", Some(Tag::String("epic".into())));
-            let mut crossbow = ItemStack::new("minecraft:crossbow", 1);
-            crossbow.data_mut().charged.push(arrow);
-            let tooltip = game.stack_tooltip(&crossbow);
-            let (projectile, _) = tooltip
-                .iter()
-                .find(|(line, _)| line.plain().ends_with("[Arrow]"))
-                .expect("a single projectile's bracketed display name");
-            assert!(
-                projectile.spans.iter().any(|span| {
-                    span.text.contains("Arrow") && span.style.color == Some(0xFF55FF)
-                })
-            );
 
             // GiveCommand's refused count still links the one-item prototype, with its patch.
             game.player = Some(
@@ -229,6 +206,39 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
             station.name = "Paper".into();
             assert_eq!(game.anvil_item_name(&station), "Paper");
         });
+        with_client_game(|game| {
+            game.resolve_parts().unwrap();
+            let plain = |t: sunrise_client::text::Text| t.plain();
+            let named = ItemStack::new("minecraft:paper", 2);
+            assert_eq!(plain(game.styled_stack_name(&named)), KEY);
+            let mut labelled = named.clone();
+            labelled
+                .data_mut()
+                .set_other("minecraft:item_name", Some(Tag::String("Label".into())));
+            let mut single = labelled.clone();
+            single.count = 1;
+            // The tooltip's and the hotbar's styled name is the same resolved name.
+            assert_eq!(plain(game.styled_stack_name(&labelled)), KEY);
+            assert_eq!(plain(game.styled_stack_name(&single)), "Label");
+
+            // ChargedProjectiles.addProjectileTooltip uses getDisplayName for a single arrow.
+            let mut arrow = ItemStack::new("minecraft:arrow", 1);
+            arrow
+                .data_mut()
+                .set_other("minecraft:rarity", Some(Tag::String("epic".into())));
+            let mut crossbow = ItemStack::new("minecraft:crossbow", 1);
+            crossbow.data_mut().charged.push(arrow);
+            let tooltip = game.stack_tooltip(&crossbow);
+            let (projectile, _) = tooltip
+                .iter()
+                .find(|(line, _)| line.plain().ends_with("[Arrow]"))
+                .expect("a single projectile's bracketed display name");
+            assert!(
+                projectile.spans.iter().any(|span| {
+                    span.text.contains("Arrow") && span.style.color == Some(0xFF55FF)
+                })
+            );
+        });
     });
 }
 
@@ -240,7 +250,6 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
 #[test]
 #[ignore = "daily"]
 fn a_client_anvil_click_fills_the_rename_box_with_the_parts_name() {
-    use super::execution_role::ExecutionRole;
     use super::stations::{INPUT, Kind, Station};
     use sunrise_client::menu::Input;
     if run_fresh_cases(RENAME_BOX, "SUNRISE_ITEM_NAME_RENAME_BOX_CHILD", &["names"]) {
@@ -250,22 +259,23 @@ fn a_client_anvil_click_fills_the_rename_box_with_the_parts_name() {
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
         crate::entry::install_client_hooks();
-        with_game(|game| {
+        with_client_game(|game| {
             game.resolve_parts().unwrap();
-            game.options.execution_role = ExecutionRole::Client;
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "AnvilTest").unwrap();
             game.remote_set_menu(Some((1, "minecraft:anvil".into())), None);
             game.station = Some(Station::new_kind(Kind::Anvil, [0, 64, 0]));
-            let rename_box = |game: &crate::game::ServerGame<'_>| {
+            let rename_box = |game: &crate::game::ClientGame<'_>| {
                 let station = game.station.as_ref().unwrap();
                 (station.rename.value.clone(), station.rename.editable)
             };
             // One left click on the input slot: puts the carried stack in, or takes it out.
-            let click = |game: &mut crate::game::ServerGame<'_>| {
+            let click = |game: &mut crate::game::ClientGame<'_>| {
                 assert!(game.remote_menu_ops(&[(Some(INPUT), 0, Input::Pickup)]));
             };
-            let input = |game: &crate::game::ServerGame<'_>| game.station.as_ref().unwrap().inputs[0].clone();
+            let input = |game: &crate::game::ClientGame<'_>| {
+                game.station.as_ref().unwrap().inputs[0].clone()
+            };
 
             // The Part names a stack of two: the box shows its name, as the anvil menu compares.
             let notes = ItemStack::new("minecraft:paper", 2);

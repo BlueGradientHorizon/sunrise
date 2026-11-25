@@ -186,7 +186,6 @@ fn declared_vegetation_places_and_breaks_independently_of_its_template() {
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-                game.sync_tick_chunks();
                 game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
                 let hit = crate::game::Hit {
                     pos: [5, 64, 5],

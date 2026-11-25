@@ -21,20 +21,26 @@ pub(in crate::game::client_side) use crate::game::native_hooks::render_gui_pre::
     fn a_screen_hooks_sound_reaches_audio_at_the_next_update() {
         let mods: mod_api::Mods = vec![ModEntry::new("click", Box::new(Mod))].into();
         with_mods(mods, || {
-            crate::game::native_entity_refs::tests::with_game(|game| {
-                game.options.execution_role = super::ExecutionRole::Client;
-                game.audio.0.heard.clear();
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
+                game.side.audio.0.heard.clear();
                 game.native_render_gui_pre(&mut false);
                 assert_eq!(
-                    game.client.mod_sounds.queued.borrow().len(),
+                    game.side.mod_sounds.queued.borrow().len(),
                     1,
                     "held for the audio update"
                 );
-                assert!(!game.audio.0.heard.contains_key("minecraft:ui.button.click"));
+                assert!(
+                    !game
+                        .side
+                        .audio
+                        .0
+                        .heard
+                        .contains_key("minecraft:ui.button.click")
+                );
                 game.tick_sound_engine();
-                assert!(game.client.mod_sounds.queued.borrow().is_empty());
+                assert!(game.side.mod_sounds.queued.borrow().is_empty());
                 assert_eq!(
-                    game.audio.0.heard.get("minecraft:ui.button.click"),
+                    game.side.audio.0.heard.get("minecraft:ui.button.click"),
                     Some(&1)
                 );
             });

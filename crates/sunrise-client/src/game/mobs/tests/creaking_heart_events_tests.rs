@@ -10,7 +10,9 @@ use sunrise_client::chunk::Chunk;
 use sunrise_client::mobs::{Species, Who};
 use sunrise_core::position::ChunkPos;
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
+fn game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> crate::game::ServerGame<'a> {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 200.0, 4.5)).unwrap());
     game.build_registries();
@@ -74,7 +76,7 @@ fn heart_with_a_creaking(game: &mut crate::game::ServerGame<'_>) -> (u32, [f64; 
 fn a_heart_spawn_posts_entity_place_and_the_poof() {
     let mut resources = None;
     let mut game = game(&mut resources);
-    game.audio.0.capture = Some(Vec::new());
+    game.start_audio_capture();
     crate::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
     let (id, at) = heart_with_a_creaking(&mut game);
     let events =

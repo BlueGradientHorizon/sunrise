@@ -14,7 +14,7 @@ fn zombie(game: &mut crate::game::ServerGame<'_>) -> MobRef {
         .push(Mob::new(99, kind, Vec3::new(3.5, 65.0, 3.5), 0.0));
     game.mob(game.entity(99).unwrap()).unwrap()
 }
-fn refused<S: crate::game::Side>(game: &mut crate::game::Game<'_, S>, mob: MobRef) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
+fn refused(game: &mut crate::game::ServerGame<'_>, mob: MobRef) {
     assert_eq!(mob.can_open_doors(game), None);
     assert!(!mob.set_can_open_doors(game, true));
     assert_eq!(mob.can_pass_doors(game), None);
@@ -105,7 +105,10 @@ fn navigation_flags_refuse_no_ground_or_flying_navigation() {
 fn navigation_flags_refuse_client() {
     with_client_game(|game| {
         let mob = MobRef::new(EntityRef::new(WorldEpoch::new(1), 99));
-        refused(game, mob);
+        // Setters require `ServerHost`, so writes are refused at compile time on a client.
+        assert_eq!(mob.can_open_doors(game), None);
+        assert_eq!(mob.can_pass_doors(game), None);
+        assert_eq!(mob.can_float(game), None);
     });
 }
 

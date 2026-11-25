@@ -27,12 +27,10 @@ pub(in crate::game::client_side) use sunrise_core::{
 };
 
 /// The sounds played since capture began, as (event, volume, pitch).
-pub(in crate::game::client_side) fn played(game: &mut crate::game::ClientGame<'_>) -> Vec<(String, f32, f32)> {
-    game.side.audio
-        .0
-        .capture
-        .replace(Vec::new())
-        .unwrap_or_default()
+pub(in crate::game::client_side) fn played(
+    game: &mut crate::game::ServerGame<'_>,
+) -> Vec<(String, f32, f32)> {
+    std::mem::take(&mut game.side.pending_sounds)
         .into_iter()
         .map(|s| {
             assert_eq!(s.source, mod_api::SoundSource::Neutral as usize);
@@ -75,7 +73,7 @@ fn requirements_draw_the_level_random_before_each_effect() {
             let (v, p) = (uniform(0.5, 1.0), uniform(1.0, 2.0));
             expected.push(("minecraft:entity.snowball.throw".to_owned(), v, p));
             let after = own.next_long();
-            game.audio.0.capture = Some(Vec::new());
+            game.start_audio_capture();
             let shot = Projectile::new(ProjectileKind::Snowball, Vec3::new(0.5, 70.0, 0.5), None)
                 .with_entity_random(LegacyRandom::new(seed));
             let id = game.spawn_projectile(shot, &stack);
@@ -161,7 +159,7 @@ fn stack_then_weapon_in_component_order() {
             .chain(["minecraft:block.note_block.flute"])
             .map(str::to_owned)
             .collect();
-        game.audio.0.capture = Some(Vec::new());
+        game.start_audio_capture();
         let id = game.spawn_projectile(arrow(&bow), &ammo);
         assert_eq!(names(played(game)), order);
         let p = game

@@ -6,7 +6,9 @@ use sunrise_client::chunk::Chunk;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 
-fn end_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
+fn end_game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -68,11 +70,35 @@ fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
         game.tick_fight();
     }
     let id = game.dragon.as_ref().expect("the fight's dragon").id;
-    game.client.boss_overlay.reset();
+    let (mut hub, near, _far) =
+        crate::game::lan_particles::tests::test_hub("DragonBossBarNameTest", Vec::new(), None);
+    hub.guests.update(0, |guest| {
+        guest.dimension = "minecraft:the_end".into();
+        guest.position = [0.5, 128.0, 0.5];
+    });
+    game.lan = Some(crate::game::lan::LanHost::for_test(hub));
+    let mut overlay = sunrise_client::boss_overlay::BossOverlay::default();
+    let drain = |rx: &std::sync::mpsc::Receiver<sunrise_client::lan::Out>,
+                 overlay: &mut sunrise_client::boss_overlay::BossOverlay| {
+        let now = sunrise_client::boss_overlay::now_millis();
+        while let Ok(out) = rx.try_recv() {
+            let sunrise_client::lan::Out::Packet(body) = out else {
+                continue;
+            };
+            let mut r = sunrise_protocol::buf::Reader::new(&body);
+            let Ok(id) = r.varint() else {
+                continue;
+            };
+            if let Ok(sunrise_protocol::packets::play::Clientbound::BossEvent(event)) =
+                sunrise_protocol::packets::play::Clientbound::decode(id, r.rest())
+            {
+                overlay.apply(&event, now);
+            }
+        }
+    };
     game.publish_boss_bars();
-    let default = game
-        .client
-        .boss_overlay
+    drain(&near, &mut overlay);
+    let default = overlay
         .bars(sunrise_client::boss_overlay::now_millis())
         .pop()
         .expect("the dragon's bar");
@@ -87,9 +113,8 @@ fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
         Tag::compound([("CustomName", Tag::String("Bob".into()))]),
     );
     game.publish_boss_bars();
-    let named = game
-        .client
-        .boss_overlay
+    drain(&near, &mut overlay);
+    let named = overlay
         .bars(sunrise_client::boss_overlay::now_millis())
         .pop()
         .expect("the dragon's bar");
@@ -102,11 +127,11 @@ fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
         Tag::compound([("CustomName", Tag::String("Not Yet".into()))]),
     );
     game.publish_boss_bars();
-    let still = game
-        .client
-        .boss_overlay
+    drain(&near, &mut overlay);
+    let still = overlay
         .bars(sunrise_client::boss_overlay::now_millis())
         .pop()
         .expect("the dragon's bar");
     assert_eq!(still.name.plain(), "Bob");
+    game.lan = None;
 }

@@ -435,12 +435,9 @@ mod tests {
         ) {
             return;
         }
-        use crate::game::execution_role::ExecutionRole;
         use mod_api::Host;
         use sunrise_protocol::connection::Pipe;
-        with_game(|game| {
-            game.options.execution_role = ExecutionRole::Client;
-            game.options.dedicated = None;
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "EntitiesInTest").unwrap();
             let remote = game.remote.as_mut().unwrap();

@@ -41,7 +41,10 @@ pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_core::random::{LegacyRandom, RandomSource};
 
-pub(in crate::game::client_side) fn reset_arena(game: &mut crate::game::ServerGame<'_>, target: &str) {
+pub(in crate::game::client_side) fn reset_arena(
+    game: &mut crate::game::ServerGame<'_>,
+    target: &str,
+) {
     clear_entities(game);
     let _ = game.run_command("fill 0 63 0 11 63 9 minecraft:stone");
     let _ = game.run_command("fill 0 64 0 11 70 9 minecraft:air");
@@ -68,7 +71,7 @@ pub(in crate::game::client_side) fn reset_arena(game: &mut crate::game::ServerGa
     game.selected = 0;
     game.inventory[0] = Some(ItemStack::new("minecraft:fishing_rod", 1));
     game.tick_server(false).unwrap();
-    game.audio.0.heard.clear();
+    game.start_audio_capture();
 }
 
 pub(in crate::game) fn run_case(
@@ -99,7 +102,7 @@ pub(in crate::game) fn run_case(
 
     let is_dragon = matches!(tracked, TrackedTarget::Dragon);
     for expected in &case.ticks {
-        game.audio.0.heard.clear();
+        game.start_audio_capture();
         crate::game::sculk::TEST_POSTED_EVENTS.with(|e| {
             *e.borrow_mut() = Some(Vec::new());
         });
@@ -238,7 +241,7 @@ pub(in crate::game) fn run_extra_case(
     game.world.random.set_seed(level_seed);
 
     for expected in &case.ticks {
-        game.audio.0.heard.clear();
+        game.start_audio_capture();
         crate::game::sculk::TEST_POSTED_EVENTS.with(|e| {
             *e.borrow_mut() = Some(Vec::new());
         });
@@ -260,12 +263,11 @@ pub(in crate::game) fn run_extra_case(
             .filter(|s| s.as_str() == "minecraft:entity.breeze.deflect")
             .count();
         let got_deflect = game
-            .audio
-            .0
-            .heard
-            .get("minecraft:entity.breeze.deflect")
-            .copied()
-            .unwrap_or(0) as usize;
+            .side
+            .pending_sounds
+            .iter()
+            .filter(|s| s.event == "minecraft:entity.breeze.deflect")
+            .count();
         if got_deflect != exp_deflect {
             errors.push(format!(
                 "{label} t={}: breeze.deflect count expected {exp_deflect} got {got_deflect}",

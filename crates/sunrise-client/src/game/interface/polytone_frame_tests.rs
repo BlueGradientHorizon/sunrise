@@ -10,10 +10,43 @@ use sunrise_client::particles::polytone::Registry;
 use sunrise_client::particles::{ParticleEngine, ParticleOptions};
 
 /// A game over the prepared resources that registers no mod tables of the process (the
-/// particles here are the pack's): `server_game`, not the mod fixture's `with_game`.
-fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
-    let mut resources = None;
-    let mut game = crate::game::game_tests::tests::server_game(&mut resources);
+/// particles here are the pack's): a direct `ClientGame`, not the mod fixture's `with_client_game`.
+fn with_game(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
+    use crate::game::{Audio, Options, Progress, Settings, execution_role, load_resources};
+    let root = std::path::PathBuf::from(
+        std::env::var_os("SUNRISE_TEST_RESOURCES")
+            .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
+    );
+    let settings = Settings::default();
+    let loaded = load_resources(
+        sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+        Vec::new(),
+        None,
+        &root,
+        &settings,
+        std::time::Instant::now(),
+        false,
+        execution_role::ExecutionRole::Client,
+        &Progress::new(),
+        &mut |_, _| unreachable!(),
+    )
+    .unwrap();
+    let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+    options.resources = root.clone();
+    options.execution_role = execution_role::ExecutionRole::Client;
+    let mut game = crate::game::ClientGame::new(
+        &loaded.resources,
+        loaded.pack,
+        loaded.gui.unwrap(),
+        options,
+        settings,
+        Audio::silent(&ResourceSource::directory(root)),
+        None,
+    )
+    .unwrap();
+    game.world
+        .chunks
+        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
     test(&mut game);
 }
 
@@ -62,11 +95,12 @@ fn a_frame_of_gpu_records_only_draws_their_quads() {
     with_game(|game| {
         let at = [0.5, 80.0, 0.5];
         rain_particles(game, &rain_pack(false), at);
-        game.particles
+        game.side
+            .particles
             .0
             .add(&ParticleOptions::named("test:rain"), at, [0.0; 3]);
         assert_eq!(game.client_particle_count(), 0, "not in the native count");
-        assert_eq!(game.particles.0.polytone_gpu_records(), 1);
+        assert_eq!(game.side.particles.0.polytone_gpu_records(), 1);
         let camera = glam::DVec3::new(at[0], at[1] + 2.0, at[2]);
         game.polytone_gpu_decide(camera);
         let mut out = Vec::new();
@@ -86,13 +120,15 @@ fn rain_under_the_surface_is_hidden_from_its_first_frame() {
         let camera = [0.5, bottom + 4.0, 0.5];
         rain_particles(game, &rain_pack(true), camera);
         let rain = ParticleOptions::named("test:rain");
-        game.particles
+        game.side
+            .particles
             .0
             .add(&rain, [0.5, bottom + 2.0, 0.5], [0.0; 3]);
-        game.particles
+        game.side
+            .particles
             .0
             .add(&rain, [0.5, bottom - 2.0, 0.5], [0.0; 3]);
-        assert_eq!(game.particles.0.polytone_gpu_records(), 2);
+        assert_eq!(game.side.particles.0.polytone_gpu_records(), 2);
         let camera = glam::DVec3::from_array(camera);
         game.polytone_gpu_decide(camera);
         let mut out = Vec::new();
@@ -110,13 +146,17 @@ fn a_pending_clear_goes_before_the_heightmap_is_read() {
         let bottom = f64::from(game.world.bottom_y());
         let camera = [0.5, bottom + 4.0, 0.5];
         rain_particles(game, &rain_pack(true), camera);
-        game.particles.0.add(
+        game.side.particles.0.add(
             &ParticleOptions::named("test:rain"),
             [0.5, bottom + 2.0, 0.5],
             [0.0; 3],
         );
-        game.client.mod_clear_particles.set(true);
+        game.side.mod_clear_particles.set(true);
         game.polytone_gpu_decide(glam::DVec3::from_array(camera));
-        assert_eq!(game.particles.0.polytone_gpu_records(), 0, "cleared first");
+        assert_eq!(
+            game.side.particles.0.polytone_gpu_records(),
+            0,
+            "cleared first"
+        );
     });
 }

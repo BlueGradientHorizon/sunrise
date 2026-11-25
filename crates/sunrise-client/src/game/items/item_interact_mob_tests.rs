@@ -74,13 +74,12 @@ impl ItemPart for Probe {
         }
     }
 }
-fn setup(game: &mut crate::game::ClientGame<'_>, probe: &Probe, kind: &str, id: u32) {
+fn setup(game: &mut crate::game::ServerGame<'_>, probe: &Probe, kind: &str, id: u32) {
     game.mobs.clear();
     let kind = game.res.mob_types().get(kind).unwrap().clone();
     game.mobs
         .push(Mob::new(id, kind, Vec3::new(0.5, 64.0, 2.5), 0.0));
     game.station = None;
-    game.side.screen = Screen::Playing;
     game.inventory[0] = Some(ItemStack::new("minecraft:stick", 2));
     game.offhand = Some(ItemStack::new("minecraft:paper", 3));
     game.swing = Default::default();

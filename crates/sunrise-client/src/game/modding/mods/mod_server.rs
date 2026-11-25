@@ -268,6 +268,43 @@ impl Game<'_, crate::game::server_side::ServerState> {
 }
 
 #[cfg(test)]
+impl crate::game::ServerGame<'_> {
+    pub(in crate::game) fn test_save_root(&self) -> std::path::PathBuf {
+        self.side.save.0.root.clone()
+    }
+
+    pub(in crate::game) fn test_acquire_session_lock(&mut self, root: &std::path::Path) {
+        self.side.session_lock.0 = Some(sunrise_client::save::SessionLock::acquire(root).unwrap());
+    }
+
+    pub(in crate::game) fn test_clear_session_lock(&mut self) {
+        self.side.session_lock.0 = None;
+    }
+
+    pub(in crate::game) fn test_set_world_recipes(
+        &mut self,
+        recipes: sunrise_client::crafting::Recipes,
+    ) {
+        self.side.world_tables.0.as_mut().unwrap().recipes = recipes;
+    }
+
+    pub(in crate::game) fn test_update_tickets(
+        &mut self,
+        sources: Option<sunrise_client::ticket_levels::Sources>,
+    ) {
+        self.side.tickets.0.update(sources);
+    }
+
+    pub(in crate::game) fn test_block_ticking(&self, cx: i32, cz: i32) -> bool {
+        self.side.tickets.0.levels().block_ticking(cx, cz)
+    }
+
+    pub(in crate::game) fn test_last_other_id(&self) -> u32 {
+        self.side.others.0.last().unwrap().id
+    }
+}
+
+#[cfg(test)]
 pub(in crate::game) mod tests {
     #[allow(unused_imports)]
     pub(in crate::game::server_side) use super::*;

@@ -441,14 +441,19 @@ mod tests {
         )
     }
 
-    fn place_parts(game: &mut crate::game::ServerGame<'_>) {
+    fn place_parts<S>(game: &mut crate::game::Game<'_, S>) {
         for i in 0..8 {
             let [x, y, z] = part_fixture(i).0;
             game.dragon.as_mut().unwrap().parts[i].0 = Vec3::new(x, y, z);
         }
     }
 
-    fn assert_parts_are_the_dragons_own(game: &crate::game::ServerGame<'_>, dragon: EntityRef) {
+    fn assert_parts_are_the_dragons_own<S: crate::game::Side>(
+        game: &crate::game::Game<'_, S>,
+        dragon: EntityRef,
+    ) where
+        for<'a> crate::game::Game<'a, S>: mod_api::Host,
+    {
         let parts = game.entity_parts(dragon).unwrap();
         let ids: Vec<u32> = parts.iter().map(|part| part.id()).collect();
         assert_eq!(ids, (dragon.id() + 1..=dragon.id() + 8).collect::<Vec<_>>());
@@ -482,7 +487,6 @@ mod tests {
             // No living entity, mob or dragon behind it.
             assert!(game.living(*part).is_none());
             assert!(game.mob(*part).is_none());
-            assert!(game.dragon(*part).is_none());
         }
         // The parent keeps its own place and has no box.
         assert_eq!(game.entity_position(dragon), Some([0.0; 3]));
@@ -497,6 +501,7 @@ mod tests {
             place_parts(game);
             assert_parts_are_the_dragons_own(game, entity);
             let parts = game.entity_parts(entity).unwrap();
+            assert!(parts.iter().all(|part| game.dragon(*part).is_none()));
             // Only the eight ids after the dragon's are its parts.
             assert!(game.entity(entity.id() - 1).is_none());
             assert!(game.entity(entity.id() + 9).is_none());
@@ -550,11 +555,9 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_clients_dragon_parts_resolve_through_its_own_copy() {
-        use super::super::execution_role::ExecutionRole;
+        use super::super::native_entity_refs::tests::with_client_game;
         use sunrise_protocol::connection::Pipe;
-        with_game(|game| {
-            game.options.execution_role = ExecutionRole::Client;
-            game.options.dedicated = None;
+        with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "PartReadTest").unwrap();
             let remote = game.remote.as_mut().unwrap();

@@ -158,7 +158,9 @@ fn data_edits_keep_hit_cooldown_separate_from_saved_immunity() {
             .find(|m| m.species() == sunrise_client::mobs::Species::Cow)
             .unwrap()
             .id;
-        let health = |game: &crate::game::ServerGame<'_>| game.mobs.iter().find(|m| m.id == id).unwrap().health;
+        let health = |game: &crate::game::ServerGame<'_>| {
+            game.mobs.iter().find(|m| m.id == id).unwrap().health
+        };
         assert!(game.run_command("damage @e[type=cow,limit=1] 4 minecraft:generic"));
         assert_eq!(health(game), 6.0);
         assert!(game.run_command("data merge entity @e[type=cow,limit=1] {Silent:1b}"));

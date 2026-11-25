@@ -398,7 +398,9 @@ mod tests {
     }
 
     /// The client's server names the chest's block entity type 0: the chest's state.
-    fn with_chests(game: &mut crate::game::ClientGame<'_>) -> sunrise_world::registry::BlockStateId {
+    fn with_chests(
+        game: &mut crate::game::ClientGame<'_>,
+    ) -> sunrise_world::registry::BlockStateId {
         std::sync::Arc::make_mut(&mut game.remote.as_mut().unwrap().builtin)
             .registries
             .insert(

@@ -125,7 +125,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// A container click: the server answers with the authoritative slots.
     pub(in crate::game::client_side) fn remote_click(&mut self, right: bool) -> bool {
         let Some(size) = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
@@ -133,8 +134,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return false;
         };
         let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
-        let Some(internal) = self.slot_at(&batch, self.side.cursor.0, self.side.cursor.1)
-        else {
+        let Some(internal) = self.slot_at(&batch, self.side.cursor.0, self.side.cursor.1) else {
             return false;
         };
         let input = if self.has_shift_down() {

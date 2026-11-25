@@ -33,7 +33,7 @@ mod player_heart_type_tests {
         }
     }
 
-    fn add_player(game: &mut crate::game::ServerGame<'_>) {
+    fn add_player(game: &mut crate::game::ClientGame<'_>) {
         let at = sunrise_core::geometry::Vec3::ZERO;
         game.player = Some(sunrise_client::motion::PlayerMotion::new(game.motion, at).unwrap());
     }
@@ -43,8 +43,7 @@ mod player_heart_type_tests {
     #[test]
     #[ignore = "daily"]
     fn a_client_mod_changes_the_health_bars_hearts() {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            game.options.execution_role = super::ExecutionRole::Client;
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             assert_eq!(game.player_heart_kind(), None, "no player, no hearts");
             add_player(game);
             assert_eq!(game.player_heart_kind(), Some(HeartKind::Normal));
@@ -56,8 +55,7 @@ mod player_heart_type_tests {
         let mods: mod_api::Mods =
             vec![ModEntry::new("swap", Box::new(Swap(Arc::clone(&seen))))].into();
         with_mods(mods, || {
-            crate::game::native_entity_refs::tests::with_game(|game| {
-                game.options.execution_role = super::ExecutionRole::Client;
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
                 add_player(game);
                 assert_eq!(game.player_heart_kind(), Some(HeartKind::Frozen));
                 game.player.as_mut().unwrap().ticks_frozen = 1000;

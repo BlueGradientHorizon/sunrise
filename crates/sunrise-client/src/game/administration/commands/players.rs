@@ -30,7 +30,6 @@ pub(in crate::game) fn mode_name(id: i32) -> &'static str {
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
-
     /// `CommandSourceStack.getPlayerOrException` for the commands whose
     /// player argument is optional: the source's player (the player in
     /// place when it has none, as before).

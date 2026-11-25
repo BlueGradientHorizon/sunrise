@@ -66,7 +66,9 @@ fn a_sniffers_tag_hangs_from_its_name_tag_attachment() {
     );
 }
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
+fn game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -107,13 +109,58 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
         .add_empty_chunk(ChunkPos::new(0, 0))
         .unwrap();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
-    game.client.screen = Screen::Playing;
     game.selected = 0;
     game.set_mode_id(0);
     game
 }
 
-fn spawn(game: &mut crate::game::ServerGame<'_>, kind: &str, id: u32, at: [f64; 3]) -> usize {
+fn client_game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> crate::game::ClientGame<'a> {
+    let root = std::path::PathBuf::from(
+        std::env::var_os("SUNRISE_TEST_RESOURCES")
+            .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
+    );
+    let settings = Settings::default();
+    let loaded = load_resources(
+        sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+        Vec::new(),
+        None,
+        &root,
+        &settings,
+        std::time::Instant::now(),
+        false,
+        crate::game::execution_role::ExecutionRole::Client,
+        &Progress::new(),
+        &mut |_, _| unreachable!(),
+    )
+    .unwrap();
+    let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+    options.resources = root.clone();
+    options.execution_role = execution_role::ExecutionRole::Client;
+    let res = &*resources.insert(loaded.resources);
+    let mut game = crate::game::ClientGame::new(
+        res,
+        loaded.pack,
+        loaded.gui.unwrap(),
+        options,
+        settings,
+        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
+            root,
+        )),
+        None,
+    )
+    .unwrap();
+    game.world
+        .chunks
+        .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+    game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
+    game.side.screen = Screen::Playing;
+    game.selected = 0;
+    game
+}
+
+fn spawn<S: crate::game::Side>(game: &mut Game<'_, S>, kind: &str, id: u32, at: [f64; 3]) -> usize {
     let kind = game.res.mob_types().get(kind).unwrap().clone();
     game.mobs
         .push(Mob::new(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0));
@@ -194,7 +241,7 @@ fn naming_posts_entity_interact_at_the_named_entity() {
 #[ignore = "daily"]
 fn an_armour_stands_name_ignores_f1_and_team_visibility() {
     let mut resources = None;
-    let mut game = game(&mut resources);
+    let mut game = client_game(&mut resources);
     let mut stand = ArmorStand::new(42, Vec3::new(0.0, 64.0, 4.0), 0.0);
     stand.custom_name = Some(Text::literal("Holo"));
     stand.name_visible = true;
@@ -238,8 +285,8 @@ fn an_armour_stands_name_ignores_f1_and_team_visibility() {
 #[ignore = "daily"]
 fn a_trades_title_draws_the_names_style() {
     let mut resources = None;
-    let mut game = game(&mut resources);
-    // This test draws the merchant screen; the server fixture only has font metrics.
+    let mut game = client_game(&mut resources);
+    // This test draws the merchant screen; load full UI resources for glyph metrics.
     game.gui = UiResources::load(&game.pack.source, &game.options.resources).unwrap();
     // `MerchantScreen.extractLabels` draws the menu's title, the merchant's
     // `getDisplayName()`: a name with a colour keeps it, instead of coming out

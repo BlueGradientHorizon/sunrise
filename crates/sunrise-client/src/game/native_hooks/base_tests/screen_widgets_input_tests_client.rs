@@ -161,7 +161,8 @@ fn native_and_mounted_press_tab_and_preedit_use_the_receiving_screen() {
         game.show_dialog(&dialog);
         assert!(game.dialog_open());
         publish_frame(game, 2);
-        let tab = |game: &mut crate::game::ClientGame<'_>| key(game, KeyCode::Tab, ElementState::Pressed);
+        let tab =
+            |game: &mut crate::game::ClientGame<'_>| key(game, KeyCode::Tab, ElementState::Pressed);
         tab(game); // Warning, tab group -10.
         tab(game); // Native field.
         assert!(game.dialog_typing());
@@ -203,7 +204,10 @@ fn native_and_mounted_press_tab_and_preedit_use_the_receiving_screen() {
     });
 }
 
-pub(in crate::game::client_side) fn publish_frame(game: &mut crate::game::ClientGame<'_>, frame: u64) {
+pub(in crate::game::client_side) fn publish_frame(
+    game: &mut crate::game::ClientGame<'_>,
+    frame: u64,
+) {
     let renderer = game.side.renderer.0.as_ref().unwrap();
     let size = [renderer.config.width, renderer.config.height];
     game.hud(size);
@@ -230,8 +234,7 @@ fn release_drag_and_wheel_cancellation_preserve_input_bookkeeping() {
         game.insert_device_key(KeyCode::KeyW);
         game.insert_device_key(KeyCode::Space);
         assert!(
-            game.side.vanilla_mappings.is_down(forward)
-                && game.side.vanilla_mappings.is_down(jump)
+            game.side.vanilla_mappings.is_down(forward) && game.side.vanilla_mappings.is_down(jump)
         );
         cancel(Cancel::ReleasePre);
         key(game, KeyCode::KeyW, ElementState::Released);

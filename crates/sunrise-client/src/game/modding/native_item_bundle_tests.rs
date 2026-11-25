@@ -277,7 +277,6 @@ mod custom_bundle_integration_tests {
         Arc,
         atomic::{AtomicBool, Ordering},
     };
-    use sunrise_client::menu::Input;
     use sunrise_core::nbt::Tag;
     use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
 
@@ -748,34 +747,36 @@ mod custom_bundle_integration_tests {
         mod_platform::testing::with_mods(mods.clone(), || {
             crate::game::api_values::install_parts(&mods).unwrap();
             with_guests(|game| {
-                // 1. Local menu click: carried pouch inserts clicked arrows (`CarriedOnOther`).
-                game.level.player_uuid = Some([0, 0, 0, 99]);
-                let mut body = sunrise_client::motion::PlayerMotion::new(
-                    game.motion,
-                    sunrise_core::geometry::Vec3::new(0.0, 64.0, 0.0),
-                )
-                .unwrap();
-                body.entity_id = 99;
-                game.player = Some(body);
-                game.side.next_entity = game.side.next_entity.max(100);
-                game.creative = false;
-                game.client.screen = crate::game::Screen::Inventory;
-                game.inventory = vec![None; game.inventory.len()];
-                game.carried = Some(empty_pouch(1));
-                game.inventory[9] = Some(ItemStack::new("minecraft:arrow", 12));
-                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
-                assert!(game.inventory[9].is_none());
-                let slots = game
-                    .bundle_slots(game.carried.as_ref().unwrap(), &config)
-                    .unwrap()
-                    .unwrap();
+                // 1. Server inventory click: carried pouch inserts clicked arrows (`CarriedOnOther`).
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.inventory = vec![None; guest.inventory.len()];
+                    guest.carried = Some(empty_pouch(1));
+                    guest.inventory[9] = Some(ItemStack::new("minecraft:arrow", 12));
+                });
+                game.lan_guest_packet(
+                    12,
+                    Serverbound::ContainerClick(ContainerClick {
+                        container: 0,
+                        state: 0,
+                        slot: 9,
+                        button: 0,
+                        input: 0,
+                        changed: Vec::new(),
+                        carried: None,
+                    }),
+                );
+                let pouch = {
+                    let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+                    assert!(guest.inventory[9].is_none());
+                    guest.carried.clone().unwrap()
+                };
+                let slots = game.bundle_slots(&pouch, &config).unwrap().unwrap();
                 assert_eq!(slots, vec![Some(ItemStack::new("minecraft:arrow", 12))]);
 
                 // 2. LAN guest click: carried arrows into clicked pouch (`OtherStackedOnMe`).
-                let pouch = game.carried.clone().unwrap();
                 game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
                     guest.inventory = vec![None; guest.inventory.len()];
-                    guest.inventory[9] = Some(pouch);
+                    guest.inventory[9] = Some(pouch.clone());
                     guest.carried = Some(ItemStack::new("minecraft:arrow", 8));
                 });
                 game.lan_guest_packet(
@@ -801,12 +802,27 @@ mod custom_bundle_integration_tests {
                 // 3. Rollback on panic preserves both cursor and clicked slot (run after the
                 // successful clicks because a panicking callback is retired for the session).
                 panic_stack.store(true, Ordering::Relaxed);
-                let before_carried = game.carried.clone();
-                game.inventory[10] = Some(ItemStack::new("minecraft:arrow", 5));
-                assert!(game.menu_ops(&[(Some(10), 0, Input::Pickup)]));
-                assert_eq!(game.carried, before_carried);
+                let before_carried = Some(pouch);
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.carried = before_carried.clone();
+                    guest.inventory[10] = Some(ItemStack::new("minecraft:arrow", 5));
+                });
+                game.lan_guest_packet(
+                    12,
+                    Serverbound::ContainerClick(ContainerClick {
+                        container: 0,
+                        state: 0,
+                        slot: 10,
+                        button: 0,
+                        input: 0,
+                        changed: Vec::new(),
+                        carried: None,
+                    }),
+                );
+                let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+                assert_eq!(guest.carried, before_carried);
                 assert_eq!(
-                    game.inventory[10].as_ref().map(|s| (&*s.item, s.count)),
+                    guest.inventory[10].as_ref().map(|s| (&*s.item, s.count)),
                     Some(("minecraft:arrow", 5))
                 );
                 panic_stack.store(false, Ordering::Relaxed);

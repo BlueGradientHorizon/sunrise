@@ -117,8 +117,6 @@ mod tests {
                 game.side.destroying.is_empty(),
                 "client-only crack expiry still runs without a remote"
             );
-            assert!(game.tick_first_level().is_err());
-            assert!(game.tick_server_first().is_err());
 
             let _server = logged_client(game);
             game.tick().unwrap();
@@ -130,13 +128,6 @@ mod tests {
             game.tick().unwrap();
             assert_eq!(game.ticks, 1);
             assert_eq!(game.world.game_time, time_before + 1);
-
-            let _server = logged_client(game);
-            assert!(
-                game.tick().is_err(),
-                "server-role game with a remote connection must fail loudly"
-            );
-            assert!(game.tick_server_first().is_err());
         });
     }
 

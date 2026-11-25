@@ -34,7 +34,6 @@ fn cross_level_transaction_replays_effects_in_request_level_and_preserves_packet
 
             with_guests(|game| {
                 game.options.dedicated = Some(Vec::new());
-                game.audio.0.capture = Some(Vec::new());
                 assert!(game.ui.rules.set("global_sound_events", Value::Bool(true)));
                 let (tx12, rx12) = mpsc::channel();
                 let (tx13, rx13) = mpsc::channel();

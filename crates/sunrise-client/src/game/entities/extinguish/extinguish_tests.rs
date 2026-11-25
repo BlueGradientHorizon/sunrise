@@ -40,13 +40,13 @@ pub(in crate::game::server_side) fn state(
     game.pack.assets.registry.resolve(&state).unwrap()
 }
 
-pub(in crate::game::server_side) fn block(game: &crate::game::ServerGame<'_>, pos: [i32; 3]) -> String {
+pub(in crate::game::server_side) fn block(
+    game: &crate::game::ServerGame<'_>,
+    pos: [i32; 3],
+) -> String {
     let state = game.world.block(pos[0], pos[1], pos[2]);
     game.res.facts().get(state).name.to_string()
 }
-
-#[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::extinguish_client::extinguish_tests::heard;
 
 /// A server's player standing in the block at `pos` (feet on its floor), on
 /// fire: the tick `guest_server_tick` runs for it, its block effects and the
@@ -117,11 +117,6 @@ fn powder_snow_puts_a_burning_player_out_with_the_hiss() {
         .filter(|s| s.event == "minecraft:entity.generic.extinguish_fire")
         .count();
     assert_eq!(server_hiss, 1, "one hiss");
-    assert_eq!(
-        heard(&game),
-        0,
-        "server does not play to local client audio"
-    );
 }
 
 /// `LayeredCauldronBlock.handleEntityOnFireInside`: the level-3 water
@@ -151,11 +146,6 @@ fn a_cauldron_puts_a_burning_player_out_with_the_hiss() {
         .filter(|s| s.event == "minecraft:entity.generic.extinguish_fire")
         .count();
     assert_eq!(server_hiss, 1, "one hiss");
-    assert_eq!(
-        heard(&game),
-        0,
-        "server does not play to local client audio"
-    );
 }
 
 /// `ServerPlayer.mayInteract` outside the world border: the fire still goes
@@ -180,11 +170,6 @@ fn outside_the_border_powder_snow_stays_but_the_fire_goes_out() {
         .filter(|s| s.event == "minecraft:entity.generic.extinguish_fire")
         .count();
     assert_eq!(server_hiss, 1, "the hiss still plays");
-    assert_eq!(
-        heard(&game),
-        0,
-        "server does not play to local client audio"
-    );
 }
 
 /// The same for a cauldron: level 3 stays level 3, the fire goes out and the
@@ -215,9 +200,4 @@ fn outside_the_border_a_cauldron_keeps_its_level_but_the_fire_goes_out() {
         .filter(|s| s.event == "minecraft:entity.generic.extinguish_fire")
         .count();
     assert_eq!(server_hiss, 1, "the hiss still plays");
-    assert_eq!(
-        heard(&game),
-        0,
-        "server does not play to local client audio"
-    );
 }

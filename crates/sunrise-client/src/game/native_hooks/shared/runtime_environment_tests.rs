@@ -1,11 +1,9 @@
 #[test]
 #[ignore = "daily"]
 fn client_host_reads_current_pause_state() {
-    use super::super::native_entity_refs::tests::with_game;
-    use crate::game::execution_role::ExecutionRole;
+    use super::super::native_entity_refs::tests::with_client_game;
 
-    with_game(|game| {
-        game.options.execution_role = ExecutionRole::Client;
+    with_client_game(|game| {
         game.pause = false;
         assert!(!mod_api::prelude::ClientViewClientHost::is_paused(game));
         game.pause = true;

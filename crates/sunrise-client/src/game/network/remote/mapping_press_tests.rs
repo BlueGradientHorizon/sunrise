@@ -228,7 +228,7 @@ fn the_host_presses_by_name_and_refuses_the_others() {
         assert_eq!(game.pending_mapping_clicks("key.hotbar.3"), 0);
         // An open screen suppresses polling, not changes to the logical mappings.
         game.player = None;
-        game.side.title.0 = Some(game.new_title(game.save.0.root.clone()));
+        game.test_show_title_screen();
         assert!(game.mod_mappings_screen_open());
         let hotbar_slot = game.vanilla_mapping_slot(hotbar).unwrap();
         let before_clicks = game.side.vanilla_mappings.pending_clicks(hotbar_slot);

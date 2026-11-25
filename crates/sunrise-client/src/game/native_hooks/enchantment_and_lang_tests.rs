@@ -89,14 +89,14 @@ fn translate_gives_the_text_of_a_defined_key_and_none_otherwise() {
 #[ignore = "daily"]
 fn a_trait_mod_measures_text_through_its_draw_context() {
     use super::super::host::draw::GameDrawContext;
-    use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::with_client_game;
     use mod_api::DrawContext;
 
-    with_game(|game| {
+    with_client_game(|game| {
         let mut batch = sunrise_client::hud::HudBatch::scratch([320, 240]);
         let draw = GameDrawContext::new(game, &mut batch);
-        // A server's HUD atlas is metrics-only (upstream 2e5a2629a): no sprite sheets,
-        // while an upper-case A still advances 6 GUI pixels.
+        // A headless client's HUD atlas still measures glyph advances: an upper-case A
+        // advances 6 GUI pixels.
         assert_eq!(draw.text_width("AA"), 12.0);
         assert_eq!(draw.text_width(""), 0.0);
     });

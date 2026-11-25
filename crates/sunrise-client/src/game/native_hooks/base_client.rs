@@ -59,7 +59,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else {
             ParticleType::Flame
         };
-        self.side.particles
+        self.side
+            .particles
             .0
             .add(&ParticleOptions::simple(kind), at, [0.0, 0.01, 0.0]);
     }

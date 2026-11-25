@@ -190,7 +190,11 @@ fn local_level_requests_can_mute_sound_without_undoing_prediction() {
             game.side.audio.0.engine.loaded = true;
             game.play_client_player_sound("minecraft:block.honey_block.slide", 1.0, 1.0);
             assert_eq!(
-                game.side.audio.0.heard.get("minecraft:block.honey_block.slide"),
+                game.side
+                    .audio
+                    .0
+                    .heard
+                    .get("minecraft:block.honey_block.slide"),
                 Some(&1)
             );
             assert!(

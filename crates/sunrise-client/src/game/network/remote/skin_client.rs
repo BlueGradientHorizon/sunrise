@@ -11,8 +11,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let mut downloads = self.side.skin_downloads.0.borrow_mut();
         // A slot without its sprite (the atlas was rebuilt, or the upload
         // never happened) counts as missing, so the skin is stored again.
-        if self.side.skin_slots.contains(location)
-            && self.gui.atlas.sprites.contains_key(location)
+        if self.side.skin_slots.contains(location) && self.gui.atlas.sprites.contains_key(location)
         {
             downloads.drawn(location);
             true

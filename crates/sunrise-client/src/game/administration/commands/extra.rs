@@ -835,7 +835,10 @@ pub(in crate::game) mod waypoint_icon_save_tests {
     #[test]
     fn a_style_alone_or_a_colour_alone_is_data_and_is_saved() {
         let mut only_style = None;
-        crate::game::ServerGame::save_waypoint_icon(&icon("minecraft:bowtie", None), &mut only_style);
+        crate::game::ServerGame::save_waypoint_icon(
+            &icon("minecraft:bowtie", None),
+            &mut only_style,
+        );
         let tag = only_style.unwrap();
         assert_eq!(
             tag.get("locator_bar_icon"),
@@ -845,7 +848,10 @@ pub(in crate::game) mod waypoint_icon_save_tests {
             )]))
         );
         let mut only_color = None;
-        crate::game::ServerGame::save_waypoint_icon(&icon("minecraft:default", Some(7)), &mut only_color);
+        crate::game::ServerGame::save_waypoint_icon(
+            &icon("minecraft:default", Some(7)),
+            &mut only_color,
+        );
         assert_eq!(
             crate::game::ServerGame::waypoint_icon_from_saved(only_color.as_ref()),
             Some(icon("minecraft:default", Some(7)))
@@ -864,7 +870,10 @@ pub(in crate::game) mod waypoint_icon_save_tests {
         // The default icon on a player with no file writes nothing, not even a file.
         crate::game::ServerGame::save_waypoint_icon(&Icon::default(), &mut level.player_extra);
         assert!(level.player_extra.is_none());
-        crate::game::ServerGame::save_waypoint_icon(&icon("minecraft:default", Some(1)), &mut level.player_extra);
+        crate::game::ServerGame::save_waypoint_icon(
+            &icon("minecraft:default", Some(1)),
+            &mut level.player_extra,
+        );
         assert!(
             level
                 .player_tag(&Default::default())
@@ -883,12 +892,21 @@ pub(in crate::game) mod waypoint_icon_save_tests {
 
     #[test]
     fn a_save_without_the_key_or_with_a_broken_one_loads_the_default_icon() {
-        assert_eq!(crate::game::ServerGame::waypoint_icon_from_saved(None), None);
+        assert_eq!(
+            crate::game::ServerGame::waypoint_icon_from_saved(None),
+            None
+        );
         let none = Tag::compound([("Health", Tag::Float(20f32.to_bits()))]);
-        assert_eq!(crate::game::ServerGame::waypoint_icon_from_saved(Some(&none)), None);
+        assert_eq!(
+            crate::game::ServerGame::waypoint_icon_from_saved(Some(&none)),
+            None
+        );
         // `style` is required by the codec.
         let no_style =
             Tag::compound([("locator_bar_icon", Tag::compound([("color", Tag::Int(5))]))]);
-        assert_eq!(crate::game::ServerGame::waypoint_icon_from_saved(Some(&no_style)), None);
+        assert_eq!(
+            crate::game::ServerGame::waypoint_icon_from_saved(Some(&no_style)),
+            None
+        );
     }
 }

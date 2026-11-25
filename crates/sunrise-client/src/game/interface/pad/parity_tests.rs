@@ -15,7 +15,7 @@ use winit::keyboard::KeyCode;
 /// A game at play with no world: input reaches the mappings, as in `Screen::Playing`.
 use crate::game::execution_role::ExecutionRole;
 
-fn playing(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
+fn playing(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -26,25 +26,28 @@ fn playing(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         &settings,
         std::time::Instant::now(),
         false,
-        ExecutionRole::IntegratedServer,
+        ExecutionRole::Client,
         &Progress::new(),
         &mut |_, _| unreachable!("no menu handoff"),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = crate::game::ServerGame::new(
+    options.execution_role = ExecutionRole::Client;
+    let mut game = crate::game::ClientGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
+        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
+            root,
+        )),
         None,
     )
     .unwrap();
-    game.title.0 = None;
-    game.client.screen = Screen::Playing;
+    game.side.title.0 = None;
+    game.side.screen = Screen::Playing;
     test(&mut game);
 }
 
@@ -119,35 +122,35 @@ fn pad_smooth_camera_binding_toggles_the_cinematic_camera() {
         game.settings
             .controller
             .bind("key.smoothCamera", Some(Button::Select));
-        assert!(!game.client.smooth_camera);
+        assert!(!game.side.smooth_camera);
         pad_press(game, Button::Select, "key.smoothCamera");
         pad_release(game, Button::Select);
         assert!(
-            !game.client.smooth_camera,
+            !game.side.smooth_camera,
             "the pad click waits for keybind polling"
         );
         game.handle_play_keybinds();
-        assert!(game.client.smooth_camera);
+        assert!(game.side.smooth_camera);
         game.handle_play_keybinds();
-        assert!(game.client.smooth_camera, "the pad click was consumed");
+        assert!(game.side.smooth_camera, "the pad click was consumed");
 
         game.settings.keys.set("key.smoothCamera", "key.keyboard.k");
         game.mapped_key_event(KeyCode::KeyK, true, false).unwrap();
         game.mapped_key_event(KeyCode::KeyK, false, false).unwrap();
         assert!(
-            game.client.smooth_camera,
+            game.side.smooth_camera,
             "the keyboard click also waits for polling"
         );
         game.handle_play_keybinds();
         assert!(
-            !game.client.smooth_camera,
+            !game.side.smooth_camera,
             "the keyboard toggles the same camera"
         );
     });
 }
 
 /// A player at the origin: the wheel's gates ask for one.
-fn with_player(game: &mut crate::game::ServerGame<'_>) {
+fn with_player(game: &mut crate::game::ClientGame<'_>) {
     game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
 }
 
@@ -165,7 +168,7 @@ fn bumpers_step_the_hotbar_where_the_wheel_does() {
         assert_eq!(game.selected, 8, "and back");
         game.pad_action("pad.hotbarNext", false).unwrap();
         assert_eq!(game.selected, 8, "a release does nothing");
-        game.client.screen = Screen::Paused;
+        game.side.screen = Screen::Paused;
         game.pad_action("pad.hotbarNext", true).unwrap();
         assert_eq!(game.selected, 8, "a screen keeps the wheel from the hotbar");
     });
@@ -191,16 +194,15 @@ fn a_spectators_bumpers_set_the_flying_speed_as_the_wheel_does() {
 #[ignore = "daily"]
 fn readers_of_the_movement_keys_see_the_stick() {
     playing(|game| {
-        game.options.execution_role = ExecutionRole::Client;
         let forward_mapping = game.vanilla_key_mapping("key.forward").unwrap();
         let left_mapping = game.vanilla_key_mapping("key.left").unwrap();
         let back_mapping = game.vanilla_key_mapping("key.back").unwrap();
         let right_mapping = game.vanilla_key_mapping("key.right").unwrap();
         let jump_mapping = game.vanilla_key_mapping("key.jump").unwrap();
-        game.client.focused = true;
+        game.side.focused = true;
         assert!(!forward_mapping.is_down(game).unwrap());
         // Up and to the left, on a diagonal: two keys, as a keyboard would hold.
-        game.pad.0.state.left = [-0.7, 0.7];
+        game.side.pad.0.state.left = [-0.7, 0.7];
         assert!(forward_mapping.is_down(game).unwrap());
         assert!(left_mapping.is_down(game).unwrap());
         assert!(!back_mapping.is_down(game).unwrap());
@@ -212,7 +214,7 @@ fn readers_of_the_movement_keys_see_the_stick() {
         // Forward is inside the eight-direction sector, left outside it. A direct
         // write on forward must not reclassify what remains of the stick.
         with_player(game);
-        game.pad.0.state.left = [-0.34, 0.93];
+        game.side.pad.0.state.left = [-0.34, 0.93];
         let before = game.sample_movement_keys(game.pad_move());
         assert!(forward_mapping.is_down(game).unwrap());
         assert!(!left_mapping.is_down(game).unwrap());
@@ -227,7 +229,7 @@ fn readers_of_the_movement_keys_see_the_stick() {
         assert_eq!(after.left, before.left);
         assert_eq!(after.direction(), [left, 0.0]);
 
-        game.pad.0.state.left = [-0.85, 0.0];
+        game.side.pad.0.state.left = [-0.85, 0.0];
         let [left, _] = game.pad_move().unwrap();
         forward_mapping.set_down(game, true).unwrap();
         let after = game.sample_movement_keys(game.pad_move());
@@ -237,22 +239,22 @@ fn readers_of_the_movement_keys_see_the_stick() {
 
         // A tilt below the digital threshold is new analog input and still
         // takes over. A changed left component does not take over forward.
-        game.pad.0.state.left = [0.0, 0.0];
+        game.side.pad.0.state.left = [0.0, 0.0];
         let before = game.pad_move();
         forward_mapping.set_down(game, false).unwrap();
-        game.pad.0.state.left = [-0.4, 0.0];
+        game.side.pad.0.state.left = [-0.4, 0.0];
         game.resume_stick_mappings(before);
-        assert_eq!(game.client.keys.override_for(&KeyCode::KeyW), Some(false));
-        game.pad.0.state.left = [0.0, 0.0];
+        assert_eq!(game.side.keys.override_for(&KeyCode::KeyW), Some(false));
+        game.side.pad.0.state.left = [0.0, 0.0];
         let before = game.pad_move();
-        game.pad.0.state.left = [0.0, game.settings.controller.move_deadzone + 0.01];
+        game.side.pad.0.state.left = [0.0, game.settings.controller.move_deadzone + 0.01];
         game.resume_stick_mappings(before);
         let after = game.sample_movement_keys(game.pad_move());
         assert!(!after.forward);
         assert!(after.direction()[1] > 0.0);
 
         // A screen takes the stick away.
-        game.client.screen = Screen::Paused;
+        game.side.screen = Screen::Paused;
         assert!(!forward_mapping.is_down(game).unwrap());
     });
 }
@@ -261,13 +263,12 @@ fn readers_of_the_movement_keys_see_the_stick() {
 #[ignore = "daily"]
 fn resolved_mapping_reads_live_state_and_binding() {
     playing(|game| {
-        game.options.execution_role = ExecutionRole::Client;
-        game.client.focused = true;
+        game.side.focused = true;
         let forward = game.vanilla_key_mapping("key.forward").unwrap();
         assert_eq!(forward.binding(game), Ok("key.keyboard.w"));
         assert_eq!(forward.is_down(game), Ok(false));
 
-        game.pad.0.state.left = [-0.7, 0.7];
+        game.side.pad.0.state.left = [-0.7, 0.7];
         assert_eq!(forward.is_down(game), Ok(true));
         assert_eq!(forward.binding(game), Ok("key.keyboard.w"));
 
@@ -277,7 +278,7 @@ fn resolved_mapping_reads_live_state_and_binding() {
         assert_eq!(forward.binding(game), Ok("key.keyboard.up"));
         assert_eq!(forward.is_down(game), Ok(true));
 
-        game.pad.0.state.left = [0.0, 0.0];
+        game.side.pad.0.state.left = [0.0, 0.0];
         assert_eq!(forward.is_down(game), Ok(false));
         assert_eq!(forward.binding(game), Ok("key.keyboard.up"));
     });
@@ -316,7 +317,6 @@ fn a_held_pad_toolbar_action_counts_as_the_toolbar_key() {
 #[ignore = "daily"]
 fn the_pads_attack_and_use_reach_what_the_mouse_tells_mods() {
     playing(|game| {
-        game.options.execution_role = ExecutionRole::Client;
         let attack_mapping = game.vanilla_key_mapping("key.attack").unwrap();
         let use_mapping = game.vanilla_key_mapping("key.use").unwrap();
         assert_eq!(game.native_clicks(), (0, 0));
@@ -349,7 +349,7 @@ fn the_mouse_letting_go_leaves_what_the_pad_holds_and_back() {
         assert!(!game.mapped_key_down("key.attack"));
 
         // The other way round: the mouse button is physically down.
-        game.client.physical_buttons.insert(MouseButton::Right);
+        game.side.physical_buttons.insert(MouseButton::Right);
         game.mouse_mapping(MouseButton::Right, true, Source::Keyboard)
             .unwrap();
         pad_press(game, Button::LeftTrigger, "key.use");
@@ -358,14 +358,13 @@ fn the_mouse_letting_go_leaves_what_the_pad_holds_and_back() {
             game.mapped_key_down("key.use"),
             "the mouse still holds the use"
         );
-        game.client.physical_buttons.remove(&MouseButton::Right);
+        game.side.physical_buttons.remove(&MouseButton::Right);
         game.mouse_mapping(MouseButton::Right, false, Source::Keyboard)
             .unwrap();
         assert!(!game.mapped_key_down("key.use"));
 
         // Rebinding a physical mouse button to an ordinary key goes through
         // the keyboard source path, not the default attack/use path above.
-        game.options.execution_role = ExecutionRole::Client;
         with_player(game);
         let binding = "key.mouse.left";
         game.settings.keys.set("key.forward", binding);

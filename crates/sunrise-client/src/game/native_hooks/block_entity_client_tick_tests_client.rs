@@ -1,6 +1,6 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::native_entity_refs::tests::{
-    run_fresh_cases, with_game_at,
+    run_fresh_cases, with_game_role_client,
 };
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::native_hooks::block_entity_client_tick_tests::CHUNK;
@@ -95,8 +95,7 @@ fn a_clients_frames_tick_its_declared_copies_until_they_go() {
         "client_tick_probe:quiet",
         "client_tick_probe:crate_shulker_box",
     ];
-    with_game_at(prepared_root(), |game| {
-        game.options.execution_role = ExecutionRole::Client;
+    with_game_role_client(prepared_root(), ExecutionRole::Client, |game| {
         game.options.dedicated = None;
 
         // Not connected yet: no client level, nothing told.
@@ -175,12 +174,12 @@ fn a_clients_frames_tick_its_declared_copies_until_they_go() {
         // quiet type never. The spawner ticks between the second hum and the first, as it arrived:
         // its two particles come between their ticks.
         let all = |first| ticked(&[(HUMS[1], 10), (HUMS[0], first), (OTHER, 40), (CRATE_AT, 50)]);
-        game.particles.0.requested = Some(Vec::new());
+        game.side.particles.0.requested = Some(Vec::new());
         TICK_PARTICLES.lock().unwrap().clear();
         assert_eq!(frame(game, 1), all(30));
         let seen = std::mem::take(&mut *TICK_PARTICLES.lock().unwrap());
         assert_eq!([seen[1] - seen[0], seen[2] - seen[1]], [2, 0], "{seen:?}");
-        game.particles.0.requested = None;
+        game.side.particles.0.requested = None;
         assert_eq!(frame(game, 2), [all(30), all(30)].concat());
 
         // The server's update reaches the next frame's drain: the notice comes first, and both

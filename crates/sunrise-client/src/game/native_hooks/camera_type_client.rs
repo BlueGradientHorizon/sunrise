@@ -41,8 +41,7 @@ pub(in crate::game::client_side) use crate::game::native_hooks::camera_type::cam
     #[test]
     #[ignore = "daily"]
     fn a_client_mod_picks_the_camera_type_f5_cycles_to() {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            game.options.execution_role = super::ExecutionRole::Client;
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             let mut seen = Vec::new();
             for _ in 0..3 {
                 game.cycle_camera();
@@ -58,25 +57,18 @@ pub(in crate::game::client_side) use crate::game::native_hooks::camera_type::cam
         )]
         .into();
         with_mods(mods, || {
-            crate::game::native_entity_refs::tests::with_game(|game| {
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
                 use CameraType::*;
-                game.options.execution_role = super::ExecutionRole::Client;
                 game.cycle_camera();
                 assert_eq!(game.camera_type(), ThirdPersonBack);
                 game.cycle_camera();
                 assert_eq!(game.camera_type(), FirstPerson, "the front view is skipped");
                 game.set_camera_type(ThirdPersonFront);
                 assert_eq!(game.camera_type(), ThirdPersonFront);
-                assert_eq!(
-                    game.client.camera_type, FirstPerson,
-                    "the request is pending"
-                );
+                assert_eq!(game.side.camera_type, FirstPerson, "the request is pending");
                 assert_eq!(heard.lock().unwrap().len(), 2, "setting is not a cycle");
                 game.cycle_camera();
-                assert_eq!(
-                    game.client.camera_type, FirstPerson,
-                    "F5's final choice wins"
-                );
+                assert_eq!(game.side.camera_type, FirstPerson, "F5's final choice wins");
             });
         });
         use CameraType::*;

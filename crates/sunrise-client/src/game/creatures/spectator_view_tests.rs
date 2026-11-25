@@ -15,7 +15,9 @@ fn root() -> std::path::PathBuf {
         .expect("set SUNRISE_TEST_RESOURCES to prepared resources")
 }
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
+fn game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> crate::game::ClientGame<'a> {
     let root = root();
     let settings = Settings::default();
     let loaded = load_resources(
@@ -26,39 +28,45 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
         &settings,
         std::time::Instant::now(),
         false,
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::Client,
         &Progress::new(),
         &mut |_, _| unreachable!(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = execution_role::ExecutionRole::Client;
     let res = &*resources.insert(loaded.resources);
-    let mut game = crate::game::ServerGame::new(
+    let mut game = crate::game::ClientGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
+        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
+            root.clone(),
+        )),
         None,
     )
     .unwrap();
-    game.build_registries();
     // The atlas the game bakes at startup: `mob_geometry` finds a body's texture in it.
     game.gui.atlas = sunrise_client::hud::HudAtlas::build(
         &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
     )
     .unwrap();
-    game.set_allow_commands(true);
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-    game.block_ticks
-        .add_empty_chunk(ChunkPos::new(0, 0))
+    let stone = game
+        .pack
+        .assets
+        .registry
+        .default_state("minecraft:stone")
         .unwrap();
-    for command in ["forceload add 0 0", "fill 0 63 0 15 63 15 stone"] {
-        assert!(game.run_command(command), "{command}");
+    for x in 0..16 {
+        for z in 0..16 {
+            game.world.set(x, 63, z, stone).unwrap();
+        }
     }
     game
 }
@@ -86,7 +94,7 @@ fn a_spectator_sees_the_invisible_body() {
     assert!(out.is_empty(), "an invisible body is hidden from a player");
 
     // A spectator sees it forced translucent.
-    game.set_mode(GameMode::Spectator);
+    game.mode = GameMode::Spectator;
     let mut out = Vec::new();
     game.mob_geometry(camera, 0.0, &mut out);
     assert!(!out.is_empty(), "a spectator sees the invisible body");

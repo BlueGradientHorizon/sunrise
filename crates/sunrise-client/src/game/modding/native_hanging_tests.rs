@@ -17,7 +17,7 @@ fn with_hanging(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     });
 }
 
-fn with_hanging_in(game: &mut crate::game::ServerGame<'_>) {
+fn with_hanging_entities<S>(game: &mut crate::game::Game<'_, S>) {
     game.item_frames.push(ItemFrame {
         attachment_lifetime: Default::default(),
         join: Default::default(),
@@ -48,6 +48,10 @@ fn with_hanging_in(game: &mut crate::game::ServerGame<'_>) {
         check_interval: 0,
         ticks: 0,
     });
+}
+
+fn with_hanging_in(game: &mut crate::game::ServerGame<'_>) {
+    with_hanging_entities(game);
     game.side.next_entity = game.side.next_entity.max(PAINTING);
 }
 
@@ -161,7 +165,7 @@ fn a_client_turns_its_painting_with_the_servers_direction() {
     super::native_entity_refs::tests::with_client_game(|game| {
         let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(pipe, "Paintings").unwrap();
-        with_hanging_in(game);
+        with_hanging_entities(game);
         let direction = |d| [(8, serializer::DIRECTION, Value::Id(d))];
         // West (3D value 4): the painting keeps its 2D value, 1.
         game.remote_object_data(PAINTING as i32, &direction(4));

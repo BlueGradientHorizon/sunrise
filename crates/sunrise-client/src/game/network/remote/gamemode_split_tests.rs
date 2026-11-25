@@ -153,7 +153,10 @@ pub(in crate::game) fn install_stone_floor(game: &mut crate::game::ClientGame<'_
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::client_side::remote_client::abilities::gamemode_split_tests::setup_client;
 
-pub(in crate::game) fn drain_sent_abilities(game: &crate::game::ClientGame<'_>, peer: &mut ConnReader) -> Vec<bool> {
+pub(in crate::game) fn drain_sent_abilities(
+    game: &crate::game::ClientGame<'_>,
+    peer: &mut ConnReader,
+) -> Vec<bool> {
     game.send(S::ClientTickEnd(Empty));
     let mut sent = Vec::new();
     while let Ok((id, bytes)) = peer.recv() {
@@ -170,7 +173,9 @@ pub(in crate::game) fn run_local_tick(game: &mut crate::game::ClientGame<'_>) {
     game.tick_local_player(Vec::new(), 7, None).unwrap();
 }
 
-pub(in crate::game) fn player_info_mode_name(game: &crate::game::ClientGame<'_>) -> Option<&'static str> {
+pub(in crate::game) fn player_info_mode_name(
+    game: &crate::game::ClientGame<'_>,
+) -> Option<&'static str> {
     let r = game.remote.as_ref()?;
     let t = r.tab_players.get(&r.profile)?;
     Some(mode_from_id(t.game_mode).name())

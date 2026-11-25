@@ -3,8 +3,8 @@
 #[test]
 #[ignore = "daily"]
 fn client_player_reads_answer_from_the_local_players_copy() {
+    use crate::game::native_entity_refs::tests::with_client_game;
     use crate::game::remote::RemoteDimensionEntry;
-    use crate::game::{execution_role::ExecutionRole, native_entity_refs::tests::with_game};
     use mod_api::{EntityRef, GameMode};
     use sunrise_client::{level_loading::Reason, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
@@ -13,8 +13,7 @@ fn client_player_reads_answer_from_the_local_players_copy() {
         packets::play::{self, Clientbound as C, SpawnInfo},
     };
 
-    with_game(|game| {
-        game.options.execution_role = ExecutionRole::Client;
+    with_client_game(|game| {
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "PlayerReadTest").unwrap();
         let spawn = SpawnInfo {

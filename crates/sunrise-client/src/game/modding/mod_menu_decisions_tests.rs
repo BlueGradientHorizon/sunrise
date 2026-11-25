@@ -1023,25 +1023,30 @@ fn a_panicking_live_quick_move_rolls_back_and_disables_only_its_callback() {
             assert_eq!(depot(game), (1, 4, 5, 0));
 
             // The normal toast collector names the failing mod and hook once.
-            game.add_hook_panic_toasts();
-            assert_eq!(game.client.toast_manager.queued.len(), 1);
-            let Some(crate::game::toast_manager::Toast::Diagnostic { toast, .. }) =
-                game.client.toast_manager.queued.front()
-            else {
-                panic!("expected one shared hook error toast");
-            };
-            assert_eq!(
-                toast.message.as_ref().unwrap().component(),
-                serde_json::json!({
-                    "translate": "sunrise.mods.hook_panic.description",
-                    "with": [{"text": "movemod"}, {"text": "menu_quick_move"}],
-                })
-            );
+            crate::game::native_entity_refs::tests::with_client_game(|client| {
+                client.add_hook_panic_toasts();
+                assert_eq!(client.side.toast_manager.queued.len(), 1);
+                let Some(crate::game::toast_manager::Toast::Diagnostic { toast, .. }) =
+                    client.side.toast_manager.queued.front()
+                else {
+                    panic!("expected one shared hook error toast");
+                };
+                assert_eq!(
+                    toast.message.as_ref().unwrap().component(),
+                    serde_json::json!({
+                        "translate": "sunrise.mods.hook_panic.description",
+                        "with": [{"text": "movemod"}, {"text": "menu_quick_move"}],
+                    })
+                );
+            });
         });
     });
 }
 
-fn mod_entity_at<'a>(game: &'a crate::game::ServerGame<'_>, pos: (i32, i32, i32)) -> &'a ModBlockEntity {
+fn mod_entity_at<'a>(
+    game: &'a crate::game::ServerGame<'_>,
+    pos: (i32, i32, i32),
+) -> &'a ModBlockEntity {
     let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&pos) else {
         panic!("live resident block entity missing at {pos:?}");
     };

@@ -337,11 +337,20 @@ use sunrise_client::keymapping::{KeyAction, SNEAK, SPRINT, ToggleKeys};
 fn an_interact_packet_clicks_the_entity_it_names_not_the_nearest() {
     // (server id, distance from the guest) in the level's own order.
     let cows = [(17u32, 1.5f64), (23, 2.5)];
-    assert_eq!(crate::game::ServerGame::named_entity(&cows, 23, |c| c.0), Some(1));
+    assert_eq!(
+        crate::game::ServerGame::named_entity(&cows, 23, |c| c.0),
+        Some(1)
+    );
     // The near cow is reachable too, when that is the one named.
-    assert_eq!(crate::game::ServerGame::named_entity(&cows, 17, |c| c.0), Some(0));
+    assert_eq!(
+        crate::game::ServerGame::named_entity(&cows, 17, |c| c.0),
+        Some(0)
+    );
     // An id the level does not hold clicks nothing (Level.getEntity).
-    assert_eq!(crate::game::ServerGame::named_entity(&cows, 31, |c| c.0), None);
+    assert_eq!(
+        crate::game::ServerGame::named_entity(&cows, 31, |c| c.0),
+        None
+    );
 }
 
 /// The id path keeps the crosshair pick's filters, so a packet cannot name
@@ -394,12 +403,24 @@ fn an_interact_packet_carries_the_point_the_ray_hit() {
 fn a_mod_screen_on_a_machine_menu_takes_the_stock_layout_out() {
     let stock = Some((8.0, 109.0));
     // A mod screen is open: the stock grid does not answer.
-    assert_eq!(crate::game::ServerGame::stock_machine_slot(stock, true), None);
+    assert_eq!(
+        crate::game::ServerGame::stock_machine_slot(stock, true),
+        None
+    );
     // No mod screen: the hopper and dispenser layouts are untouched.
-    assert_eq!(crate::game::ServerGame::stock_machine_slot(stock, false), stock);
+    assert_eq!(
+        crate::game::ServerGame::stock_machine_slot(stock, false),
+        stock
+    );
     // Other menus have no stock layout to stand back from.
-    assert_eq!(crate::game::ServerGame::stock_machine_slot(None, true), None);
-    assert_eq!(crate::game::ServerGame::stock_machine_slot(None, false), None);
+    assert_eq!(
+        crate::game::ServerGame::stock_machine_slot(None, true),
+        None
+    );
+    assert_eq!(
+        crate::game::ServerGame::stock_machine_slot(None, false),
+        None
+    );
 }
 
 /// A falling block is drawn moved by its column's model offset, as
@@ -1026,7 +1047,7 @@ pub(in crate::game) mod wind_charge_burst_tests {
     fn a_nether_charge_bursts_above_the_nethers_top() {
         with_game(|game| {
             game.world.shape = LevelShape::NETHER;
-            game.audio.0.capture = Some(Vec::new());
+            game.start_audio_capture();
             let at = Vec3::new(2.5, 300.5, 2.5);
             game.add_projectile(Projectile::new(
                 ProjectileKind::WindCharge,
@@ -1036,12 +1057,7 @@ pub(in crate::game) mod wind_charge_burst_tests {
             game.side.ticked_entities_through = game.side.next_entity;
             let id = game.creatures.projectiles.last().unwrap().id;
             game.tick_projectiles().unwrap();
-            let bursts: Vec<_> = game
-                .audio
-                .0
-                .capture
-                .take()
-                .unwrap_or_default()
+            let bursts: Vec<_> = std::mem::take(&mut game.side.pending_sounds)
                 .into_iter()
                 .filter(|s| s.event == "minecraft:entity.wind_charge.wind_burst")
                 .collect();

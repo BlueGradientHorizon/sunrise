@@ -7,4 +7,3 @@ sunrise-client game::server_side::native_entity_physics::tests::no_physics_entry
 sunrise-client game::server_side::native_entity_physics::tests::no_physics_entry_is_cleared_when_the_dragons_flame_is_removed lib daily resources
 sunrise-client game::server_side::native_entity_physics::tests::no_physics_reads_supported_entities_and_refuses_others lib daily resources
 sunrise-client game::server_side::native_entity_physics::tests::no_physics_write_holds_and_covers_the_four_constant_kinds lib daily resources
-sunrise-client game::server_side::native_entity_physics::tests::no_physics_write_is_refused_on_a_client lib daily resources

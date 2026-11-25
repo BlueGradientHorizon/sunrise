@@ -298,10 +298,7 @@ fn rider_pick_rejects_shared_passengers_unless_their_part_allows_them() {
                 }
                 let capacity = game.side.client_pick.rider_candidates.capacity();
                 game.refresh_client_pick(1.0);
-                assert_eq!(
-                    game.side.client_pick.rider_candidates.capacity(),
-                    capacity
-                );
+                assert_eq!(game.side.client_pick.rider_candidates.capacity(), capacity);
 
                 game.remote_set_passengers(32, vec![]);
                 game.refresh_client_pick(1.0);

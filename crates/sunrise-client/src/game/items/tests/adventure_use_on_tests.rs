@@ -11,7 +11,9 @@ use sunrise_core::nbt::Tag;
 use sunrise_world::registry::BlockStateId;
 
 /// A server's game with the prepared resources, or `None` where CI has none.
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Option<crate::game::ServerGame<'a>> {
+fn game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> Option<crate::game::ServerGame<'a>> {
     std::env::var_os("SUNRISE_TEST_RESOURCES")?;
     let mut game = server_game(resources);
     game.build_registries();
@@ -32,8 +34,8 @@ fn placeable(name: &str, count: u32, block: &str) -> ItemStack {
 }
 
 /// Puts `name` at `pos` with `properties` overridden, returning its state.
-fn place(
-    game: &mut crate::game::ServerGame<'_>,
+fn place<S: crate::game::Side>(
+    game: &mut Game<'_, S>,
     pos: [i32; 3],
     name: &str,
     properties: &[(&str, &str)],
@@ -327,44 +329,50 @@ fn a_builder_use_on_is_unaffected() {
 /// strip (no sound, no swing), while a builder or a matching stack does.
 #[test]
 fn an_adventure_use_on_is_not_predicted_on_the_client() {
-    let mut resources = None;
-    let Some(mut game) = game(&mut resources) else {
+    if std::env::var_os("SUNRISE_TEST_RESOURCES").is_none() {
         return;
-    };
-    game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-    let saved_player = game.player.take();
-    let _pipe = crate::game::native_client_session::tests::logged_client(&mut game);
-    game.player = saved_player;
-    game.world.chunks.insert(
-        (0, 0),
-        std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
-    );
-    game.set_local_mode(GameMode::Adventure);
-    let log = [2, 4, 3];
-    place(&mut game, log, "minecraft:oak_log", &[]);
-    let axe = ItemStack::new("minecraft:iron_axe", 1);
-    *game.held_mut() = Some(axe.clone());
-    assert!(
-        !predicts(&mut game, &axe, &hit(log)),
-        "the axe's strip was predicted"
-    );
-    let matching = placeable("minecraft:iron_axe", 1, "minecraft:oak_log");
-    *game.held_mut() = Some(matching.clone());
-    assert!(
-        predicts(&mut game, &matching, &hit(log)),
-        "a matching can_place_on still predicts the strip"
-    );
-    game.set_local_mode(GameMode::Survival);
-    assert!(
-        predicts(&mut game, &matching, &hit(log)),
-        "a builder's axe still predicts the strip"
-    );
+    }
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
+        let _pipe = crate::game::native_client_session::tests::logged_client(game);
+        game.player = Some(
+            sunrise_client::motion::PlayerMotion::new(
+                game.motion,
+                sunrise_core::geometry::Vec3::new(0.5, 4.0, 0.5),
+            )
+            .unwrap(),
+        );
+        game.world.chunks.insert(
+            (0, 0),
+            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+        );
+        game.set_local_mode(GameMode::Adventure);
+        let log = [2, 4, 3];
+        place(game, log, "minecraft:oak_log", &[]);
+        let axe = ItemStack::new("minecraft:iron_axe", 1);
+        *game.held_mut() = Some(axe.clone());
+        assert!(
+            !predicts(game, &axe, &hit(log)),
+            "the axe's strip was predicted"
+        );
+        let matching = placeable("minecraft:iron_axe", 1, "minecraft:oak_log");
+        *game.held_mut() = Some(matching.clone());
+        assert!(
+            predicts(game, &matching, &hit(log)),
+            "a matching can_place_on still predicts the strip"
+        );
+        game.set_local_mode(GameMode::Survival);
+        assert!(
+            predicts(game, &matching, &hit(log)),
+            "a builder's axe still predicts the strip"
+        );
+    });
 }
 
 /// The client's `Item.useOn` prediction behind `ItemStack.useOn`'s adventure gate, which the
 /// fork's use phase applies before it selects the prediction.
-fn predicts(game: &mut crate::game::ServerGame<'_>, stack: &ItemStack, hit: &Hit) -> bool {
+fn predicts(game: &mut crate::game::ClientGame<'_>, stack: &ItemStack, hit: &Hit) -> bool {
     game.with_hand(Hand::Main, |g| {
-        g.may_use_on(hit.pos) && g.predict_item_on_block(stack, hit)
+        (g.may_build() || g.can_place_on_in_adventure(hit.pos))
+            && g.predict_item_on_block(stack, hit)
     })
 }

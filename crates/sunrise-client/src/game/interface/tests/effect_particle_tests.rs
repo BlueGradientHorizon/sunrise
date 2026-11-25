@@ -68,7 +68,7 @@ fn every_other_effect_stays_an_entity_effect_in_its_colour() {
 
 /// A game with the prepared vanilla resources (`SUNRISE_TEST_RESOURCES`): the
 /// tests that use it are `#[ignore]`d, as CI has no resources.
-fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
+fn with_game(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     let root = PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -79,24 +79,26 @@ fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         &settings,
         Instant::now(),
         false,
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::Client,
         &Progress::new(),
         &mut |_, _| unreachable!(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = execution_role::ExecutionRole::IntegratedServer;
-    let mut g = crate::game::ServerGame::new(
+    options.execution_role = execution_role::ExecutionRole::Client;
+    let mut g = crate::game::ClientGame::new(
         &loaded.resources,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
+        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
+            root,
+        )),
         None,
     )
     .unwrap();
-    g.options.dedicated = Some(Vec::new());
     g.world = World::new(g.res.facts().air, 1);
     test(&mut g);
 }
@@ -114,12 +116,12 @@ fn an_oozing_player_swirls_slime_ball_crumbs() {
         g.player = Some(PlayerMotion::new(g.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
         // `ParticleEngine.add` records what the level is asked for instead of
         // drawing it, so the swirls are read exactly.
-        g.particles.0.requested = Some(Vec::new());
+        g.side.particles.0.requested = Some(Vec::new());
         // One tick in four swirls one particle.
         for _ in 0..64 {
             g.effect_swirls();
         }
-        let asked = g.particles.0.requested.take().unwrap();
+        let asked = g.side.particles.0.requested.take().unwrap();
         assert!(
             asked
                 .iter()
@@ -128,7 +130,12 @@ fn an_oozing_player_swirls_slime_ball_crumbs() {
             asked.iter().map(|(o, ..)| o.ty).collect::<Vec<_>>()
         );
         // The crumb draws the slime ball's model, not the missing sprite.
-        let sprites = g.particles.0.item_sprites.get(&ParticleType::ItemSlime);
+        let sprites = g
+            .side
+            .particles
+            .0
+            .item_sprites
+            .get(&ParticleType::ItemSlime);
         assert!(sprites.is_some_and(|s| !s.is_empty()), "{sprites:?}");
     });
 }

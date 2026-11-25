@@ -31,7 +31,7 @@ fn a_silent_tnt_cart_primes_without_its_sound() {
     };
     // Silent: the fuse is lit, the entity event goes out, no sound is played.
     tnt_cart(&mut game, 42, true);
-    game.audio.0.capture = Some(Vec::new());
+    game.start_audio_capture();
     let mut silent = game.carts[0].clone();
     game.activate_cart(&mut silent, true);
     assert_eq!(silent.fuse, 80, "a silent cart still primes");
@@ -43,17 +43,19 @@ fn a_silent_tnt_cart_primes_without_its_sound() {
         "a silent cart still broadcasts EntityEvent.TNT_PRIME: {:?}",
         game.side.lan_entity_events
     );
-    let sounds = game.audio.0.capture.take().unwrap();
+    let sounds = std::mem::take(&mut game.side.pending_sounds);
+    game.stop_audio_capture();
     assert!(sounds.is_empty(), "a silent cart hissed: {sounds:?}");
 
     // Not silent: exactly one `entity.tnt.primed` at the cart, on the blocks
     // source (`SoundSource.BLOCKS` ordinal 4), volume and pitch 1.
     tnt_cart(&mut game, 43, false);
-    game.audio.0.capture = Some(Vec::new());
+    game.start_audio_capture();
     let mut normal = game.carts[0].clone();
     game.activate_cart(&mut normal, true);
     assert_eq!(normal.fuse, 80);
-    let sounds = game.audio.0.capture.take().unwrap();
+    let sounds = std::mem::take(&mut game.side.pending_sounds);
+    game.stop_audio_capture();
     assert_eq!(sounds.len(), 1, "{sounds:?}");
     let sound = &sounds[0];
     assert_eq!(sound.event, "minecraft:entity.tnt.primed");

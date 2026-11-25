@@ -13,9 +13,7 @@ fn a_client_reads_the_light_of_its_level() {
     use std::sync::Arc;
     use sunrise_client::chunk::{Chunk, Light};
     use sunrise_protocol::connection::Pipe;
-    with_game(|game| {
-        game.options.execution_role = ExecutionRole::Client;
-        game.options.dedicated = None;
+    super::native_entity_refs::tests::with_client_game(|game| {
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "BrightnessTest").unwrap();
         game.remote.as_mut().unwrap().logged_in = true;

@@ -22,7 +22,40 @@ fn game_with_open_donkey<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
     gap: f64,
 ) -> crate::game::ClientGame<'a> {
-    let mut game = crate::game::game_tests::tests::server_game(resources);
+    let root = std::path::PathBuf::from(
+        std::env::var_os("SUNRISE_TEST_RESOURCES")
+            .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
+    );
+    let settings = Settings::default();
+    let loaded = load_resources(
+        sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+        Vec::new(),
+        None,
+        &root,
+        &settings,
+        std::time::Instant::now(),
+        false,
+        execution_role::ExecutionRole::Client,
+        &Progress::new(),
+        &mut |_, _| unreachable!(),
+    )
+    .unwrap();
+    let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+    options.resources = root.clone();
+    options.execution_role = execution_role::ExecutionRole::Client;
+    let res = &*resources.insert(loaded.resources);
+    let mut game = crate::game::ClientGame::new(
+        res,
+        loaded.pack,
+        loaded.gui.unwrap(),
+        options,
+        settings,
+        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
+            root,
+        )),
+        None,
+    )
+    .unwrap();
     game.player =
         Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5)).expect("a player"));
     let kind = game
@@ -39,7 +72,7 @@ fn game_with_open_donkey<'a>(
     game.mobs[0].position.x = 8.5 + gap + f64::from(game.mobs[0].width()) / 2.0;
     game.open_mount_menu(0);
     assert_eq!(
-        game.client.mount_menu.opened_mob(),
+        game.side.mount_menu.opened_mob(),
         Some(DONKEY),
         "the donkey's menu did not open"
     );

@@ -2371,7 +2371,10 @@ pub(in crate::game) mod peaceful_tests {
         stack
     }
 
-    pub(in crate::game) fn with_types(role: ExecutionRole, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
+    pub(in crate::game) fn with_types(
+        role: ExecutionRole,
+        test: impl FnOnce(&mut crate::game::ServerGame<'_>),
+    ) {
         // All cases use the same data-only fixture. Build its overlay once; never edit the base.
         static PACKAGE: OnceLock<(tempfile::TempDir, std::path::PathBuf)> = OnceLock::new();
         let (_, root) = PACKAGE.get_or_init(|| {
@@ -2428,7 +2431,10 @@ capabilities = ["registries"]
         });
     }
 
-    pub(in crate::game) fn with_types_client(role: ExecutionRole, test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
+    pub(in crate::game) fn with_types_client(
+        role: ExecutionRole,
+        test: impl FnOnce(&mut crate::game::ClientGame<'_>),
+    ) {
         // All cases use the same data-only fixture. Build its overlay once; never edit the base.
         static PACKAGE: OnceLock<(tempfile::TempDir, std::path::PathBuf)> = OnceLock::new();
         let (_, root) = PACKAGE.get_or_init(|| {
@@ -2479,7 +2485,7 @@ capabilities = ["registries"]
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
                 game.build_registries();
-                game.set_difficulty_forced(0);
+                game.ui.difficulty = 0;
                 test(game);
             });
         });

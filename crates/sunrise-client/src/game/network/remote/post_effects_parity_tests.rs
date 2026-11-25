@@ -63,7 +63,11 @@ pub(in crate::game) fn json_strings(v: &serde_json::Value) -> Vec<String> {
         .collect()
 }
 
-pub(in crate::game) fn wait_for_pong(game: &mut crate::game::ClientGame<'_>, peer: &mut Connection, ping_id: i32) {
+pub(in crate::game) fn wait_for_pong(
+    game: &mut crate::game::ClientGame<'_>,
+    peer: &mut Connection,
+    ping_id: i32,
+) {
     peer.send(&C::Ping(cfg::Ping { id: ping_id }).encode())
         .unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);

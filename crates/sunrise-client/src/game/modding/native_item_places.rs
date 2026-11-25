@@ -1074,8 +1074,9 @@ pub(in crate::game) mod tests {
             game.lan.as_mut().unwrap().hub.guests.push(player);
             let host_before = game.inventory.clone();
             let dropped_before = game.dropped.len();
-            let inventory =
-                |game: &crate::game::ServerGame<'_>| game.lan.as_ref().unwrap().hub.guests[0].inventory.clone();
+            let inventory = |game: &crate::game::ServerGame<'_>| {
+                game.lan.as_ref().unwrap().hub.guests[0].inventory.clone()
+            };
             let mut expected = inventory(game);
             let name = Tag::String("named paper".into());
             expected[3].as_mut().unwrap().data_mut().custom_name = Some(name.clone());
@@ -1168,8 +1169,9 @@ pub(in crate::game) mod tests {
             player.inventory[3] = Some(ItemStack::new("minecraft:paper", 16));
             player.inventory[1] = Some(ItemStack::new("minecraft:paper", 16));
             game.lan.as_mut().unwrap().hub.guests.push(player);
-            let inventory =
-                |game: &crate::game::ServerGame<'_>| game.lan.as_ref().unwrap().hub.guests[0].inventory.clone();
+            let inventory = |game: &crate::game::ServerGame<'_>| {
+                game.lan.as_ref().unwrap().hub.guests[0].inventory.clone()
+            };
             let before = inventory(game);
             let slot = ItemPlace::PlayerSlot {
                 player: 123,
@@ -1211,8 +1213,9 @@ pub(in crate::game) mod tests {
                 player: 123,
                 hand: Hand::Main,
             };
-            let has_body =
-                |game: &crate::game::ServerGame<'_>| game.lan.as_ref().unwrap().hub.guests[0].motion.is_some();
+            let has_body = |game: &crate::game::ServerGame<'_>| {
+                game.lan.as_ref().unwrap().hub.guests[0].motion.is_some()
+            };
             game.as_guest(2, |game| {
                 let acting_before = game.inventory.clone();
                 assert!(!has_body(game));
@@ -1282,22 +1285,25 @@ pub(in crate::game) mod tests {
             game.lan.as_mut().unwrap().hub.guests.push(player);
             let slot = |slot| ItemPlace::PlayerSlot { player: 123, slot };
             // Up to a bucket from the cauldron at `at` into the bucket in `slot`, or back.
-            let moved = |game: &mut crate::game::ServerGame<'_>, at, slot: &ItemPlace, into_bucket| {
-                let host: &mut dyn ServerHost = game;
-                let block = level.capability(host, &FLUIDS, at, None).unwrap();
-                let bucket = slot.capability(host, &ITEM_FLUIDS).unwrap();
-                let (from, to) = match into_bucket {
-                    true => (&block, &bucket),
-                    false => (&bucket, &block),
+            let moved =
+                |game: &mut crate::game::ServerGame<'_>, at, slot: &ItemPlace, into_bucket| {
+                    let host: &mut dyn ServerHost = game;
+                    let block = level.capability(host, &FLUIDS, at, None).unwrap();
+                    let bucket = slot.capability(host, &ITEM_FLUIDS).unwrap();
+                    let (from, to) = match into_bucket {
+                        true => (&block, &bucket),
+                        false => (&bucket, &block),
+                    };
+                    host.transaction(|host, tx| {
+                        move_resources(host, from, to, |_| true, 1000, Some(tx))
+                    })
                 };
-                host.transaction(|host, tx| {
-                    move_resources(host, from, to, |_| true, 1000, Some(tx))
-                })
+            let inventory = |game: &crate::game::ServerGame<'_>| {
+                game.lan.as_ref().unwrap().hub.guests[0].inventory.clone()
             };
-            let inventory =
-                |game: &crate::game::ServerGame<'_>| game.lan.as_ref().unwrap().hub.guests[0].inventory.clone();
-            let block =
-                |game: &crate::game::ServerGame<'_>, pos: [i32; 3]| game.world.block(pos[0], pos[1], pos[2]);
+            let block = |game: &crate::game::ServerGame<'_>, pos: [i32; 3]| {
+                game.world.block(pos[0], pos[1], pos[2])
+            };
             // A full cauldron fills one of the three buckets, which splits off.
             assert_eq!(moved(game, a, &slot(0), true), Ok(1000));
             assert_eq!(block(game, a), cauldron(game, 0));
@@ -1340,8 +1346,9 @@ pub(in crate::game) mod tests {
             guest.inventory[0] = Some(ItemStack::new("minecraft:bucket", 3));
             game.lan.as_mut().unwrap().hub.guests.push(guest);
             let host_before = game.inventory.clone();
-            let guest_inventory =
-                |game: &crate::game::ServerGame<'_>| game.lan.as_ref().unwrap().hub.guests[0].inventory.clone();
+            let guest_inventory = |game: &crate::game::ServerGame<'_>| {
+                game.lan.as_ref().unwrap().hub.guests[0].inventory.clone()
+            };
             let before = guest_inventory(game);
             let slot = ItemPlace::PlayerSlot {
                 player: 123,
@@ -1439,7 +1446,8 @@ pub(in crate::game) mod tests {
 
             // With no tickets every chunk is entity-ticking; the zombie must lie outside that
             // range for the tracker to describe it idle (`ChunkMap.tick`).
-            game.side.tickets
+            game.side
+                .tickets
                 .0
                 .update(Some(sunrise_client::ticket_levels::Sources {
                     players: vec![(40, 40)],
@@ -1478,7 +1486,7 @@ pub(in crate::game) mod tests {
             );
             rx.try_iter().for_each(drop);
 
-            game.audio.0.capture = Some(Vec::new());
+            game.start_audio_capture();
             let place = ItemPlace::Equipment { entity: id, slot };
             super::super::dispense_fixture::start_recording();
             game.storage_transaction(|host, tx| {
@@ -1490,7 +1498,7 @@ pub(in crate::game) mod tests {
                 })
             })
             .unwrap();
-            assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
+            assert!(game.side.pending_sounds.is_empty());
             assert!(super::super::dispense_fixture::stop_recording().is_empty());
 
             let tracked = |game: &mut crate::game::ServerGame<'_>| {
@@ -2082,7 +2090,10 @@ pub(in crate::game) mod tests {
                 .collect()
         }
 
-        fn hash_stack(game: &mut crate::game::ServerGame<'_>, stack: &Option<ItemStack>) -> Option<Hashed> {
+        fn hash_stack(
+            game: &mut crate::game::ServerGame<'_>,
+            stack: &Option<ItemStack>,
+        ) -> Option<Hashed> {
             let hub = &mut game.lan.as_mut().unwrap().hub;
             let net = hub.stack(stack)?;
             let sync = hub.sync_data();
@@ -4707,7 +4718,11 @@ pub(in crate::game) mod tests {
             .insert((0, 64, 0), BlockEntity::Chest(slots));
     }
 
-    pub(in crate::game::server_side) fn pig(game: &mut crate::game::ServerGame<'_>, id: u32, y: f64) {
+    pub(in crate::game::server_side) fn pig(
+        game: &mut crate::game::ServerGame<'_>,
+        id: u32,
+        y: f64,
+    ) {
         let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
         game.mobs.push(sunrise_client::mobs::Mob::new(
             id,
@@ -4717,7 +4732,9 @@ pub(in crate::game) mod tests {
         ));
     }
 
-    pub(in crate::game::server_side) fn hopper_slot(game: &crate::game::ServerGame<'_>) -> Option<ItemStack> {
+    pub(in crate::game::server_side) fn hopper_slot(
+        game: &crate::game::ServerGame<'_>,
+    ) -> Option<ItemStack> {
         match game.world.block_entities.get(&(0, 64, 0)) {
             Some(BlockEntity::Chest(slots)) => slots[0].clone(),
             _ => panic!("the hopper is gone"),
@@ -5056,8 +5073,9 @@ pub(in crate::game) mod tests {
         with_game(|game| {
             game.armor_stands.push(ArmorStand::new(40, Vec3::ZERO, 0.0));
             game.armor_stands.push(ArmorStand::new(41, Vec3::ZERO, 0.0));
-            let stand_slot =
-                |game: &crate::game::ServerGame<'_>, id: usize| game.armor_stands[id].equipment.get(4).cloned();
+            let stand_slot = |game: &crate::game::ServerGame<'_>, id: usize| {
+                game.armor_stands[id].equipment.get(4).cloned()
+            };
             let chestplate = ItemResource::of(
                 &ItemStack::new("minecraft:diamond_chestplate", 1)
                     .try_into_api()

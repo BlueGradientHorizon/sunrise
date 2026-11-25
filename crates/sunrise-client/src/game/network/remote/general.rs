@@ -258,7 +258,9 @@ pub(in crate::game) mod tests {
         ids
     }
 
-    pub(in crate::game) fn rows(game: &crate::game::ClientGame<'_>) -> IndexMap<i32, RemoteGeneral> {
+    pub(in crate::game) fn rows(
+        game: &crate::game::ClientGame<'_>,
+    ) -> IndexMap<i32, RemoteGeneral> {
         game.remote.as_ref().unwrap().general.rows.clone()
     }
 

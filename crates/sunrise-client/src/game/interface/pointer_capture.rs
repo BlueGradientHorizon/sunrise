@@ -64,7 +64,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             && top_screen_pauses(
                 // A dialog (and its warning or waiting screen) is the
                 // screen Minecraft set, over whatever was open.
-                self.dialog_open().then(|| self.side.dialogs.0.pauses_world()),
+                self.dialog_open()
+                    .then(|| self.side.dialogs.0.pauses_world()),
                 self.side.book.as_ref().map(|book| book.pauses_world()),
                 self.side.screen.is_pause_screen(),
                 self.win_screen_pauses(),
@@ -180,7 +181,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // InputQuirks.RESTORE_KEY_STATE_AFTER_MOUSE_GRAB is off (macOS).
             self.restore_held_keys();
         }
-        let Some(window) = &self.side.window.0 else { return };
+        let Some(window) = &self.side.window.0 else {
+            return;
+        };
         let size = self.side.renderer.0.as_ref().map_or_else(
             || window.inner_size().into(),
             |r| [r.config.width, r.config.height],
@@ -279,7 +282,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // A regrab owed since an agent's `pad focus false` would take the pointer as the focus
         // catches up, and the press would then attack.
         self.side.regrab_on_refocus = false;
-        let Some(window) = &self.side.window.0 else { return };
+        let Some(window) = &self.side.window.0 else {
+            return;
+        };
         let (id, focused) = (window.id(), window.has_focus());
         if focused != self.side.focused {
             self.handle_window_event(
@@ -307,7 +312,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         if let Some(focused) = self.side.focus_after_run.take() {
             let id = self
-                .side.window
+                .side
+                .window
                 .0
                 .as_ref()
                 .map_or_else(WindowId::dummy, |w| w.id());
@@ -402,9 +408,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.capture(false);
             return;
         }
-        if std::mem::take(&mut self.side.regrab_on_refocus)
-            && self.side.screen == Screen::Playing
-        {
+        if std::mem::take(&mut self.side.regrab_on_refocus) && self.side.screen == Screen::Playing {
             self.capture(true);
         }
     }
@@ -438,30 +442,31 @@ mod tests {
             &settings,
             Instant::now(),
             false,
-            execution_role::ExecutionRole::IntegratedServer,
+            execution_role::ExecutionRole::Client,
             &Progress::new(),
             &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = execution_role::ExecutionRole::IntegratedServer;
-        let mut game = crate::game::ServerGame::new(
+        options.execution_role = execution_role::ExecutionRole::Client;
+        let mut game = crate::game::ClientGame::new(
             &loaded.resources,
             loaded.pack,
             loaded.gui.unwrap(),
             options,
             settings,
+            Audio::silent(&ResourceSource::directory(root)),
             None,
         )
         .unwrap();
 
-        game.client.focused = true;
-        game.client.screen = Screen::Paused;
-        game.client.physical_keys.insert(KeyCode::KeyW);
+        game.side.focused = true;
+        game.side.screen = Screen::Paused;
+        game.side.physical_keys.insert(KeyCode::KeyW);
         assert!(!game.movement_key_held(KeyCode::KeyW));
 
-        game.client.screen = Screen::Playing;
+        game.side.screen = Screen::Playing;
         game.capture(true);
         assert_eq!(
             game.movement_key_held(KeyCode::KeyW),

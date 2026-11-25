@@ -226,7 +226,11 @@ fn block_items_notify_after_setup_and_before_consumption() {
     });
 }
 
-pub(in crate::game::server_side) fn place(game: &mut crate::game::ServerGame<'_>, pos: [i32; 3], stack: ItemStack) {
+pub(in crate::game::server_side) fn place(
+    game: &mut crate::game::ServerGame<'_>,
+    pos: [i32; 3],
+    stack: ItemStack,
+) {
     *game.held_mut() = Some(stack);
     game.side.guest_use = Some(GuestUse::on_block(mod_api::Hand::Main));
     let [x, y, z] = pos;

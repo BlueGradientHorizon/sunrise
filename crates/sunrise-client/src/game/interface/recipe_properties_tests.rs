@@ -1,14 +1,13 @@
 //! Connection lifecycle of the authoritative recipe property generation.
 #[cfg(test)]
 mod tests {
-    use crate::game::{execution_role::ExecutionRole, native_entity_refs::tests::with_game};
+    use crate::game::native_entity_refs::tests::with_client_game;
     use sunrise_protocol::{connection::Pipe, packets::recipes::UpdateRecipes};
 
     #[test]
     #[ignore = "daily"]
     fn disconnect_discards_properties_before_reconnect() {
-        with_game(|game| {
-            game.options.execution_role = ExecutionRole::Client;
+        with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "PropertiesA").unwrap();
             game.recipe_tables.server_properties.replace(UpdateRecipes {
@@ -16,7 +15,7 @@ mod tests {
                 stonecutter: vec![],
             });
             // Closing a menu is not leaving the connection.
-            game.recipe_ui.0.reset_screen();
+            game.side.recipe_ui.0.reset_screen();
             assert!(
                 game.recipe_tables
                     .server_properties

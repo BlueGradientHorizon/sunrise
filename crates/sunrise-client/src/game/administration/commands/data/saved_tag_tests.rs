@@ -96,7 +96,10 @@ fn a_live_area_effect_cloud_reads_with_the_common_entity_fields() {
 pub(in crate::game) use crate::game::server_side::commands_server::data::saved_tag_tests::say;
 
 /// The `Tags` key of the compound the entity saves (`Entity.saveWithoutId`).
-pub(in crate::game) fn saved_tags(game: &mut crate::game::ServerGame<'_>, target: Target) -> Option<Tag> {
+pub(in crate::game) fn saved_tags(
+    game: &mut crate::game::ServerGame<'_>,
+    target: Target,
+) -> Option<Tag> {
     game.data_of(&DataRef::Entity(target))
         .unwrap()
         .get("Tags")

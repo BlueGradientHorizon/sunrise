@@ -35,7 +35,7 @@ fn a_tick_clone_follows_its_join_but_cannot_replace_a_later_resident() {
 #[test]
 #[ignore = "daily"]
 fn a_bound_boat_keeps_its_registration_through_ticks_until_discard() {
-    bound_boat_case(false, |game, step| {
+    bound_boat_server_case(|game, step| {
         game.tick_boats();
         assert_eq!(game.boats[0].age, step);
         assert_eq!(game.boats[0].hurt_time, 6 - step);
@@ -46,7 +46,7 @@ fn a_bound_boat_keeps_its_registration_through_ticks_until_discard() {
 #[test]
 #[ignore = "daily"]
 fn a_bound_boat_commits_the_driven_client_tick() {
-    bound_boat_case(true, |game, step| {
+    bound_boat_client_case(|game, step| {
         game.riding = Some(71);
         assert!(game.remote_ride(sunrise_client::sprint::Keys {
             forward: true,
@@ -61,7 +61,7 @@ fn a_bound_boat_commits_the_driven_client_tick() {
 #[test]
 #[ignore = "daily"]
 fn a_bound_ridden_boat_commits_the_server_leash_tick() {
-    bound_boat_case(false, |game, step| {
+    bound_boat_server_case(|game, step| {
         game.riding = Some(71);
         game.tick_boats();
         assert_eq!(game.boats[0].age, step);
@@ -70,24 +70,13 @@ fn a_bound_ridden_boat_commits_the_server_leash_tick() {
     });
 }
 
-fn bound_boat_case(client: bool, tick: impl Fn(&mut crate::game::ServerGame<'_>, i32)) {
-    let test = |game: &mut crate::game::ServerGame<'_>| {
-        let _server = if client {
-            let (client, server) = sunrise_protocol::connection::Pipe::pair();
-            game.connect_local(client, "BoatLifetimeTest").unwrap();
-            game.remote.as_mut().unwrap().joined = true;
-            game.remote.as_mut().unwrap().first_passenger = true;
-            Some(server)
-        } else {
-            None
-        };
+fn bound_boat_server_case(tick: impl Fn(&mut crate::game::ServerGame<'_>, i32)) {
+    super::super::native_entity_refs::tests::with_game(|game| {
         game.side.tickets.0.update(None);
         game.boats
             .push(Boat::new(71, "oak".into(), Vec3::new(0.5, 70.0, 0.5), 0.0));
         game.boats.update(0, |boat| boat.hurt_time = 6);
-        let holder = if client {
-            mod_api::EntityRef::new(game.native_lifecycle.epoch().unwrap(), 71)
-        } else {
+        let holder = {
             let host: &dyn mod_api::ServerHost = game;
             host.entity(71).unwrap()
         };
@@ -131,10 +120,55 @@ fn bound_boat_case(client: bool, tick: impl Fn(&mut crate::game::ServerGame<'_>,
         assert!(index.lock().unwrap().snapshot(&key).is_empty());
         assert_eq!(before[0].entry.read(&VALUE), Ok(&10));
         assert_eq!(after[0].entry.read(&VALUE), Ok(&20));
-    };
-    if client {
-        super::super::native_entity_refs::tests::with_client_game(test);
-    } else {
-        super::super::native_entity_refs::tests::with_game(test);
-    }
+    });
+}
+
+fn bound_boat_client_case(tick: impl Fn(&mut crate::game::ClientGame<'_>, i32)) {
+    super::super::native_entity_refs::tests::with_client_game(|game| {
+        let (client, _server) = sunrise_protocol::connection::Pipe::pair();
+        game.connect_local(client, "BoatLifetimeTest").unwrap();
+        game.remote.as_mut().unwrap().joined = true;
+        game.remote.as_mut().unwrap().first_passenger = true;
+        game.boats
+            .push(Boat::new(71, "oak".into(), Vec3::new(0.5, 70.0, 0.5), 0.0));
+        game.boats.update(0, |boat| boat.hurt_time = 6);
+        let holder = mod_api::EntityRef::new(game.native_lifecycle.epoch().unwrap(), 71);
+        let index = Arc::new(Mutex::new(AttachmentIndex::default()));
+        let mut values = Attachments::default();
+        VALUE.set(&mut values, Holder::Entity(71), 10).unwrap();
+        let original = game.boats.update(0, |boat| {
+            boat.attachment_lifetime().bind(&mut values, &index, holder);
+            boat.attachment_lifetime().registration().unwrap()
+        });
+        let key = ("test".into(), "boat_lifetime".into());
+        let before = index.lock().unwrap().snapshot(&key);
+        assert_eq!(before.len(), 1);
+        for step in 1..=3 {
+            tick(game, step);
+            let current = game
+                .boats
+                .update(0, |boat| boat.attachment_lifetime().registration().unwrap());
+            assert!(original.same_registration(&current));
+            assert_eq!(index.lock().unwrap().snapshot(&key).len(), 1);
+            assert_eq!(VALUE.get(&mut values, Holder::Entity(71)), Ok(10));
+        }
+        VALUE.set(&mut values, Holder::Entity(71), 20).unwrap();
+        let after = index.lock().unwrap().snapshot(&key);
+        assert_eq!(after.len(), 1);
+        assert_eq!(after[0].holder, holder);
+        assert_eq!(after[0].entry.read(&VALUE), Ok(&20));
+        game.persist
+            .removals
+            .push(super::super::commands::Target::Boat(71));
+        let clone = game.boats[0].clone();
+        assert!(!game.store_boat_back(0, clone));
+        assert_eq!(index.lock().unwrap().snapshot(&key).len(), 1);
+        game.boats.clear();
+        assert!(game.boats.is_empty());
+        assert!(index.lock().unwrap().snapshot(&key).is_empty());
+        VALUE.set(&mut values, Holder::Entity(71), 30).unwrap();
+        assert!(index.lock().unwrap().snapshot(&key).is_empty());
+        assert_eq!(before[0].entry.read(&VALUE), Ok(&10));
+        assert_eq!(after[0].entry.read(&VALUE), Ok(&20));
+    });
 }

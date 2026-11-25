@@ -6,7 +6,9 @@ use crate::game::game_tests::tests::server_game;
 use sunrise_client::motion::PlayerMotion;
 
 /// A server's game with a player standing at the origin's block.
-fn player_game(resources: &mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'_> {
+fn player_game(
+    resources: &mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> crate::game::ServerGame<'_> {
     let mut game = server_game(resources);
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
     // A fixed name: no generated sunrise-player.txt in the working directory.

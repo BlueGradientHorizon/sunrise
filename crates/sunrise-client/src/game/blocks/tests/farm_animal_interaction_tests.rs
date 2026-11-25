@@ -17,7 +17,10 @@ fn game<'a>(resources: &'a mut Option<Arc<Resources>>) -> crate::game::ServerGam
     game_at(resources, root)
 }
 
-fn game_at<'a>(resources: &'a mut Option<Arc<Resources>>, root: std::path::PathBuf) -> crate::game::ServerGame<'a> {
+fn game_at<'a>(
+    resources: &'a mut Option<Arc<Resources>>,
+    root: std::path::PathBuf,
+) -> crate::game::ServerGame<'a> {
     let settings = Settings::default();
     let loaded = load_resources(
         sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
@@ -54,7 +57,6 @@ fn game_at<'a>(resources: &'a mut Option<Arc<Resources>>, root: std::path::PathB
         .add_empty_chunk(ChunkPos::new(0, 0))
         .unwrap();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
-    game.client.screen = Screen::Playing;
     game.selected = 0;
     game.set_mode_id(0);
     game

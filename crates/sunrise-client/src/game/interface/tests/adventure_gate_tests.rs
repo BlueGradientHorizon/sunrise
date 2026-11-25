@@ -21,6 +21,50 @@ fn game<'a>(
     Some(game)
 }
 
+/// A client's game with nobody playing, or `None` without prepared resources.
+fn client_game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> Option<crate::game::ClientGame<'a>> {
+    use crate::game::{Audio, Options, Progress, Settings, execution_role, load_resources};
+    let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES")?);
+    let settings = Settings::default();
+    let loaded = load_resources(
+        sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+        Vec::new(),
+        None,
+        &root,
+        &settings,
+        std::time::Instant::now(),
+        false,
+        execution_role::ExecutionRole::Client,
+        &Progress::new(),
+        &mut |_, _| unreachable!(),
+    )
+    .unwrap();
+    let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+    options.resources = root.clone();
+    options.execution_role = execution_role::ExecutionRole::Client;
+    let res = &*resources.insert(loaded.resources);
+    let mut game = crate::game::ClientGame::new(
+        res,
+        loaded.pack,
+        loaded.gui.unwrap(),
+        options,
+        settings,
+        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
+            root,
+        )),
+        None,
+    )
+    .unwrap();
+    game.world.chunks.insert(
+        (0, 0),
+        std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+    );
+    game.player = None;
+    Some(game)
+}
+
 /// `stack` with a `can_break` or `can_place_on` component naming `block`.
 fn stack_with(name: &str, component: &str, block: &str) -> ItemStack {
     let mut stack = ItemStack::new(name, 1);
@@ -126,7 +170,7 @@ fn an_adventure_click_primes_tnt_only_with_a_can_break_that_names_it() {
 #[test]
 fn an_adventure_placement_is_predicted_when_can_place_on_names_the_clicked_block() {
     let mut resources = None;
-    let Some(mut game) = game(&mut resources) else {
+    let Some(mut game) = client_game(&mut resources) else {
         return;
     };
     let pos = [2, 4, 2];
@@ -140,7 +184,7 @@ fn an_adventure_placement_is_predicted_when_can_place_on_names_the_clicked_block
     game.world
         .set(pos[0], pos[1] + 1, pos[2], game.res.facts().air)
         .unwrap();
-    game.set_mode(GameMode::Adventure);
+    game.mode = GameMode::Adventure;
     let hit = hit(pos);
     // No `can_place_on`, and one that names another block: nothing to predict.
     for stack in [

@@ -187,7 +187,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
 }
 
 impl<'g, 'w> ResidentBlockEntityAccess<'g, 'w> {
-    pub(in crate::game) fn blockless(game: &'g mut Game<'w, crate::game::server_side::ServerState>) -> Self {
+    pub(in crate::game) fn blockless(
+        game: &'g mut Game<'w, crate::game::server_side::ServerState>,
+    ) -> Self {
         Self::new(game, None, Loan::OnLoad)
     }
     pub(in crate::game) fn for_handle(

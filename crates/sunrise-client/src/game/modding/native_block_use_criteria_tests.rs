@@ -187,37 +187,8 @@ fn block_use_refusals_grant_nothing() {
 
 #[test]
 #[ignore = "daily"]
-fn remote_block_use_refuses() {
-    crate::game::native_entity_refs::tests::with_client_game(|g| {
-        let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
-        g.connect_local(pipe, "CriteriaClient").unwrap();
-        let p = mod_api::__private::game::player_ref(
-            mod_api::EntityRef::new(mod_api::WorldEpoch::new(1), 1),
-            12,
-        );
-        assert_eq!(
-            p.trigger_block_use(g, [0, 64, 0]),
-            Err(TriggerCriterionError::NotServer)
-        );
-    });
-}
-
-#[test]
-#[ignore = "daily"]
 fn consume_item_uses_supplied_snapshot_and_refuses_invalid_inputs() {
-    crate::game::native_entity_refs::tests::with_client_game(|g| {
-        let _server = crate::game::native_client_session::tests::logged_client(g);
-        let p = mod_api::__private::game::player_ref(
-            mod_api::EntityRef::new(mod_api::WorldEpoch::new(1), 7),
-            12,
-        );
-        let key = mod_api::__private::item_key("minecraft:stone").unwrap();
-        let stack = mod_api::ItemStack::new(key, 1).unwrap();
-        assert_eq!(
-            p.trigger_consume_item(g, &stack),
-            Err(TriggerCriterionError::NotServer)
-        );
-    });
+    // Client refusal is enforced at compile time (`ClientGame` is not a `ServerHost`).
     mod_platform::testing::with_mods(Vec::new().into(), || {
         with_guests(|g| {
             install(g);

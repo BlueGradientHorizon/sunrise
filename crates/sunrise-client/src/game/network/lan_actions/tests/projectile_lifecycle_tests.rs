@@ -34,37 +34,61 @@ static VALUE: AttachmentType<i32> = AttachmentType {
     sync: false,
 };
 
+fn exercise_restore<S: crate::game::Side>(
+    game: &mut Game<'_, S>,
+    path: usize,
+    step: impl FnOnce(&mut Game<'_, S>, [f64; 3]),
+) {
+    let at = [3.0, 64.0, 5.0];
+    game.world
+        .chunks
+        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+    game.block_ticks
+        .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
+        .unwrap();
+    game.creatures.projectiles.push(arrow(71, at));
+    game.creatures
+        .projectiles
+        .update(0, |p| p.velocity = Vec3::new(0.3, 0.0, 0.0));
+    let index = Arc::new(Mutex::new(AttachmentIndex::default()));
+    let mut values = Attachments::default();
+    VALUE.set(&mut values, Holder::Entity(71), 10).unwrap();
+    let holder = mod_api::EntityRef::new(game.native_lifecycle.epoch().unwrap(), 71);
+    let original = game.creatures.projectiles.update(0, |p| {
+        p.attachment_lifetime().bind(&mut values, &index, holder);
+        p.attachment_lifetime().registration().unwrap()
+    });
+    let key = ("test".into(), "projectile_restore".into());
+    let before = index.lock().unwrap().snapshot(&key);
+    assert_eq!(before.len(), 1);
+    step(game, at);
+    let current = game
+        .creatures
+        .projectiles
+        .update(0, |p| p.attachment_lifetime().registration().unwrap());
+    assert!(original.same_registration(&current), "restore path {path}");
+    assert_eq!(
+        index.lock().unwrap().snapshot(&key).len(),
+        1,
+        "restore path {path}"
+    );
+    game.creatures.projectiles.clear();
+    assert!(index.lock().unwrap().snapshot(&key).is_empty());
+    assert_eq!(before[0].entry.read(&VALUE), Ok(&10));
+}
+
 #[test]
 #[ignore = "daily"]
 fn projectile_restore_entries_keep_the_bound_arrow() {
-    for path in 0..3 {
-        let exercise = |game: &mut crate::game::ServerGame<'_>| {
-            let at = [3.0, 64.0, 5.0];
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-            game.block_ticks
-                .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
-                .unwrap();
-            game.creatures.projectiles.push(arrow(71, at));
-            game.creatures
-                .projectiles
-                .update(0, |p| p.velocity = Vec3::new(0.3, 0.0, 0.0));
-            let index = Arc::new(Mutex::new(AttachmentIndex::default()));
-            let mut values = Attachments::default();
-            VALUE.set(&mut values, Holder::Entity(71), 10).unwrap();
-            let holder = mod_api::EntityRef::new(game.native_lifecycle.epoch().unwrap(), 71);
-            let original = game.creatures.projectiles.update(0, |p| {
-                p.attachment_lifetime().bind(&mut values, &index, holder);
-                p.attachment_lifetime().registration().unwrap()
-            });
-            let key = ("test".into(), "projectile_restore".into());
-            let before = index.lock().unwrap().snapshot(&key);
-            assert_eq!(before.len(), 1);
-            if path == 0 {
-                game.tick_remote_projectiles(|_, at| at);
-                assert!(game.creatures.projectiles[0].position.x > at[0]);
-            } else {
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
+        exercise_restore(game, 0, |game, at| {
+            game.tick_remote_projectiles(|_, at| at);
+            assert!(game.creatures.projectiles[0].position.x > at[0]);
+        });
+    });
+    for path in 1..3 {
+        crate::game::native_guest_turn_tests::with_guests(|game| {
+            exercise_restore(game, path, |game, at| {
                 // One takeable unbound arrow exercises the pickup branch while
                 // the bound, disallowed arrow must survive the same retain.
                 let mut picked = arrow(72, at);
@@ -101,25 +125,7 @@ fn projectile_restore_entries_keep_the_bound_arrow() {
                         .collect::<Vec<_>>(),
                     [71, 73, 74]
                 );
-            }
-            let current = game
-                .creatures
-                .projectiles
-                .update(0, |p| p.attachment_lifetime().registration().unwrap());
-            assert!(original.same_registration(&current), "restore path {path}");
-            assert_eq!(
-                index.lock().unwrap().snapshot(&key).len(),
-                1,
-                "restore path {path}"
-            );
-            game.creatures.projectiles.clear();
-            assert!(index.lock().unwrap().snapshot(&key).is_empty());
-            assert_eq!(before[0].entry.read(&VALUE), Ok(&10));
-        };
-        if path == 0 {
-            crate::game::native_entity_refs::tests::with_client_game(exercise);
-        } else {
-            crate::game::native_guest_turn_tests::with_guests(exercise);
-        }
+            });
+        });
     }
 }

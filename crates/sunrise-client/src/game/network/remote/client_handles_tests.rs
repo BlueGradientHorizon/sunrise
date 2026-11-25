@@ -5,14 +5,13 @@ use crate::game::remote::RemoteDimensionEntry;
 #[test]
 #[ignore = "daily"]
 fn client_handles_reach_a_custom_level() {
-    use crate::game::{execution_role::ExecutionRole, native_entity_refs::tests::with_game};
+    use crate::game::native_entity_refs::tests::with_client_game;
     use mod_api::{DimensionKey, LevelRef};
     use std::sync::Arc;
     use sunrise_client::level_loading::Reason;
     use sunrise_protocol::{connection::Pipe, packets::play::SpawnInfo};
 
-    with_game(|game| {
-        game.options.execution_role = ExecutionRole::Client;
+    with_client_game(|game| {
         let (client, _server) = Pipe::pair();
         use sunrise_world::dimension_type::DimensionFacts;
         let stale_key = sunrise_core::LevelKey::parse("test:stale_guest_facts").unwrap();
@@ -176,7 +175,7 @@ fn client_handles_reach_a_custom_level() {
 #[test]
 #[ignore = "daily"]
 fn client_handle_reads_answer_from_the_clients_copy() {
-    use crate::game::{execution_role::ExecutionRole, native_entity_refs::tests::with_game};
+    use crate::game::native_entity_refs::tests::{with_client_game, with_game};
     use mod_api::{EntityRef, EquipmentSlot, GlobalPos};
     use std::sync::Arc;
     use sunrise_client::{
@@ -188,8 +187,8 @@ fn client_handle_reads_answer_from_the_clients_copy() {
         packets::play::{self, Clientbound as C, SpawnInfo},
     };
 
-    with_game(|game| {
-        game.options.execution_role = ExecutionRole::Client;
+    let mut untracked_out = None;
+    with_client_game(|game| {
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "HandleReadTest").unwrap();
         let spawn = SpawnInfo {
@@ -383,9 +382,10 @@ fn client_handle_reads_answer_from_the_clients_copy() {
         assert!(!level.is_loaded(game, at));
         assert_eq!(level.day_time(game), None);
         assert_eq!(player.last_death_location(game), None);
-
-        // The server's role keeps its own reads: a client handle names nothing there.
-        game.options.execution_role = ExecutionRole::IntegratedServer;
-        assert_eq!(game.native_entity_target(untracked), None);
+        untracked_out = Some(untracked);
+    });
+    // The server's role keeps its own reads: a client handle names nothing there.
+    with_game(|server| {
+        assert_eq!(server.native_entity_target(untracked_out.unwrap()), None);
     });
 }

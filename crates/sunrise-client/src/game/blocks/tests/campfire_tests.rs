@@ -7,17 +7,18 @@ use crate::game::*;
 use std::sync::Arc;
 use sunrise_client::{
     advancements::{Advancement, Criterion, Rewards, Tree},
-    held::Source,
     items::ItemStack,
     motion::PlayerMotion,
 };
 use sunrise_core::geometry::Vec3;
 use sunrise_world::lazy_json::LazyJson;
-use winit::keyboard::KeyCode;
 
 /// A server game with a campfire at `pos` (its block entity too) and beef in
 /// the main hand, the click forced onto that block.
-fn campfire_game<'a>(pos: [i32; 3], resources: &'a mut Option<Arc<Resources>>) -> crate::game::ServerGame<'a> {
+fn campfire_game<'a>(
+    pos: [i32; 3],
+    resources: &'a mut Option<Arc<Resources>>,
+) -> crate::game::ServerGame<'a> {
     let mut game = server_game(resources);
     // A local player, not a dedicated server's silent world: criteria and
     // statistics apply to them.
@@ -104,7 +105,7 @@ fn a_sneak_keeps_the_food_and_placing_it_fires_item_used_on_block() {
         .insert("minecraft:item_used_on_block".into(), vec![(0, 0)]);
     game.adv.tree = Arc::new(tree);
     let hit = game.side.forced_hit.unwrap();
-    game.press_device_key(KeyCode::ShiftLeft, Source::Keyboard);
+    game.server_set_acting_sneak(true);
     assert!(game.use_hand(Some(&hit)).unwrap());
     assert_eq!(slots(&game, POS), 0, "the sneak put no beef on the fire");
     assert_eq!(game.held().unwrap().count, 4, "the beef stayed in hand");
@@ -115,7 +116,7 @@ fn a_sneak_keeps_the_food_and_placing_it_fires_item_used_on_block() {
     );
     // Stop eating, let go of the sneak: the same click now feeds the fire.
     game.using = None;
-    game.release_device_key(&KeyCode::ShiftLeft, Source::Keyboard);
+    game.server_set_acting_sneak(false);
     assert!(game.use_hand(Some(&hit)).unwrap());
     assert_eq!(slots(&game, POS), 1, "the beef went on the fire");
     assert_eq!(game.held().unwrap().count, 3, "one beef was used");

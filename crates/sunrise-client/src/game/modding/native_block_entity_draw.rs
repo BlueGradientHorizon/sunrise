@@ -1279,7 +1279,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             prepared: prepared_route(
                 self.side.pack_ids.is_some(),
                 !self.side.native_shaders.picked.is_empty(),
-                self.side.renderer
+                self.side
+                    .renderer
                     .0
                     .as_ref()
                     .and_then(|renderer| renderer.prepared_generation()),
@@ -1363,7 +1364,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         incoming: usize,
     ) -> Option<usize> {
         let room = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map(|renderer| renderer.prepared_instance_room(already, incoming));
@@ -2351,7 +2353,9 @@ mod tests {
                     .collect::<Vec<_>>()
             };
             let same = |got: Vec<f32>, want: &[f32]| assert_eq!(got.as_slice(), want);
-            let staged = |game: &crate::game::ClientGame<'_>, want: &[u32]| assert_eq!(cuts(game).as_slice(), want);
+            let staged = |game: &crate::game::ClientGame<'_>, want: &[u32]| {
+                assert_eq!(cuts(game).as_slice(), want)
+            };
             let draw = play(1, &scene);
             same(xs(&draw), &[1.0, 20.0, 2.0, 30.0, 3.0]);
             paint(&draw, 4, 0xFF06_0504, 0x2220);
@@ -2491,11 +2495,8 @@ mod tests {
             );
             fail_next_prepared_upload();
             assert!(
-                instance_pixels(
-                    game.side.standalone_geometry.prepared_upload().1,
-                    uploaded
-                )
-                .is_err(),
+                instance_pixels(game.side.standalone_geometry.prepared_upload().1, uploaded)
+                    .is_err(),
                 "a forced upload failure must not draw"
             );
             assert!(
@@ -2888,8 +2889,9 @@ mod tests {
             let camera = DVec3::new(8_000_000.3, 70.4, -4_000_003.0);
             let tint = 0xFF80_C040;
             let light = LightCoords::new(3, 15).unwrap();
-            let take_spans =
-                |game: &crate::game::ClientGame<'_>| std::mem::take(&mut *game.side.entity_spans.borrow_mut());
+            let take_spans = |game: &crate::game::ClientGame<'_>| {
+                std::mem::take(&mut *game.side.entity_spans.borrow_mut())
+            };
             let batch = |game: &mut crate::game::ClientGame<'_>| {
                 let mut draw = crate::world_geometry::WorldGeometry::default();
                 draw.reset(camera.to_array(), Mat4::IDENTITY, [0.0, 0.0]);
@@ -3034,7 +3036,7 @@ mod tests {
         use super::super::host::draw::GameBlockEntityDrawContext;
         use mod_api::BlockEntityDrawContext;
 
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_client_game(|game| {
             // The server fixture only measures fonts; this test needs drawable glyphs.
             game.gui.atlas = sunrise_client::hud::HudAtlas::build(
                 &sunrise_assets::resource_source::ResourceSource::directory(
@@ -3132,7 +3134,7 @@ mod tests {
         use super::super::host::draw::GameBlockEntityDrawContext;
         use mod_api::BlockEntityDrawContext;
         use sunrise_assets::resource_source::{Resource, ResourceSource};
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_client_game(|game| {
             let source = ResourceSource::indexed(std::collections::BTreeMap::from([(
                 "assets/minecraft/font/default.json".into(),
                 Resource::bytes(
@@ -3234,7 +3236,7 @@ mod tests {
         use super::super::host::draw::GameBlockEntityDrawContext;
         use mod_api::BlockEntityDrawContext;
 
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_client_game(|game| {
             // A server-side game holds only the font, so the sprite is given its place.
             game.gui
                 .atlas

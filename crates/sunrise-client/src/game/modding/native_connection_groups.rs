@@ -420,8 +420,8 @@ mod tests {
                 }],
                 ..Sources::default()
             };
-            game.side.tickets.0.update(Some(non_ticking.clone()));
-            assert!(!game.side.tickets.0.levels().block_ticking(0, 0));
+            game.test_update_tickets(Some(non_ticking.clone()));
+            assert!(!game.test_block_ticking(0, 0));
 
             let level = game.level("minecraft:overworld").unwrap();
             let stone = state(game, "minecraft:stone");
@@ -611,11 +611,11 @@ mod tests {
             );
 
             // A same-state transaction can also publish a new group without adding vanilla traffic.
-            game.side.tickets.0.update(Some(Sources {
+            game.test_update_tickets(Some(Sources {
                 forced: vec![(0, 0)],
                 ..Sources::default()
             }));
-            assert!(game.side.tickets.0.levels().block_ticking(0, 0));
+            assert!(game.test_block_ticking(0, 0));
             assert_eq!(level.connection_group(game, [7, 65, 7]), Ok(None));
             game.world.connection_group_log.as_mut().unwrap().clear();
             game.storage_scope(|game, _| {
@@ -639,7 +639,7 @@ mod tests {
                 game.world.connection_group_log.as_ref().unwrap(),
                 &[(7, 65, 7)].into_iter().collect()
             );
-            game.side.tickets.0.update(Some(non_ticking));
+            game.test_update_tickets(Some(non_ticking));
 
             // Cross-position cascade on held non-ticking column: `set_connection_group(torch)`
             // followed by breaking its support pops the torch, clears its group, and drops the
@@ -1102,7 +1102,10 @@ mod tests {
         );
     }
 
-    fn negotiate<S: crate::game::Side>(game: &Game<'_, S>, with_groups: bool) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
+    fn negotiate<S: crate::game::Side>(game: &Game<'_, S>, with_groups: bool)
+    where
+        for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host,
+    {
         let remote = game.remote.as_ref().unwrap();
         let transport = remote.session.payload_transport();
         let entries: Vec<_> = transport
@@ -1128,19 +1131,14 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn client_applies_connection_group_payloads_and_refuses_client_writes() {
-        with_game(|game| {
-            game.options.execution_role = ExecutionRole::Client;
-            game.options.dedicated = None;
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "ConnGroupsClient").unwrap();
             game.remote.as_mut().unwrap().logged_in = true;
             game.native_lifecycle.world_open_ready().unwrap();
             negotiate(game, true);
             let level = game.level("minecraft:overworld").unwrap();
-            assert_eq!(
-                level.set_connection_group(game, [15, 64, 2], Some(5)),
-                Err(LevelWriteError::Unavailable)
-            );
+            // Client writes are now refused at compile time (`ClientGame` is not a `ServerHost`).
             let sy = (64 - MIN_Y) >> 4;
             game.handle_packet(viewed_column(1, 0)).unwrap();
             game.world.dirty_sections.clear();
@@ -1339,7 +1337,9 @@ mod tests {
         };
         let mut scratch = MeshScratch::default();
         let sy = (79 - MIN_Y) >> 4;
-        let top_layer = |game: &crate::game::ClientGame<'_>, mesher: &mut Mesher<'_>, scratch: &mut MeshScratch| {
+        let top_layer = |game: &crate::game::ClientGame<'_>,
+                         mesher: &mut Mesher<'_>,
+                         scratch: &mut MeshScratch| {
             let mut region = [[None; 3]; 3];
             region[1][1] = game.world.chunks.get(&(0, 0)).map(Arc::as_ref);
             region[1][2] = game.world.chunks.get(&(1, 0)).map(Arc::as_ref);

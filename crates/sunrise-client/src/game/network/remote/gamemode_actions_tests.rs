@@ -23,7 +23,12 @@ use sunrise_protocol::packets::{
     play::{self, Clientbound as C, Serverbound as S},
 };
 
-pub(in crate::game) fn add_entity(game: &mut crate::game::ClientGame<'_>, id: i32, kind: &str, position: [f64; 3]) {
+pub(in crate::game) fn add_entity(
+    game: &mut crate::game::ClientGame<'_>,
+    id: i32,
+    kind: &str,
+    position: [f64; 3],
+) {
     let kind = game
         .remote
         .as_ref()
@@ -47,7 +52,10 @@ pub(in crate::game) fn add_entity(game: &mut crate::game::ClientGame<'_>, id: i3
     .unwrap();
 }
 
-pub(in crate::game) fn outgoing(game: &crate::game::ClientGame<'_>, reader: &mut ConnReader) -> Vec<S> {
+pub(in crate::game) fn outgoing(
+    game: &crate::game::ClientGame<'_>,
+    reader: &mut ConnReader,
+) -> Vec<S> {
     // Fence the click's outgoing packets without using a read timeout as evidence of no Attack.
     game.send(S::Pong(Ping { id: i32::MIN }));
     reader

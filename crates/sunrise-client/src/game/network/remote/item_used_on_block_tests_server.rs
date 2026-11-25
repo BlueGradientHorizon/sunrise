@@ -35,7 +35,7 @@ fn compass_criterion_sees_two_compasses_before_the_block_takes_one() {
 
                 ..Controls::default()
             };
-            assert!(use_block(game, false));
+            assert!(use_block(game));
 
             assert_eq!(game.held().map(|stack| stack.count), Some(1));
             assert!(game.adv.progress.has("test:sticks2", "seen"));
@@ -70,7 +70,7 @@ fn the_item_phase_criterion_sees_the_stack_from_before_the_block_phase() {
                 item_on_answer: Some(Answer::Consume),
                 ..Controls::default()
             };
-            assert!(use_block(game, false));
+            assert!(use_block(game));
             assert_eq!(
                 observer.0.lock().unwrap().steps,
                 [
@@ -113,7 +113,7 @@ fn tnt_reads_the_hand_the_block_phase_listener_left() {
                 take_in_block: true,
                 ..Controls::default()
             };
-            use_block(game, false);
+            use_block(game);
             assert!(game.held().is_none(), "the listener took the fire charge");
             assert!(game.tnts.is_empty(), "nothing primed");
             assert_eq!(game.world.block(0, 64, 0), tnt);

@@ -56,7 +56,9 @@ pub(in crate::game) mod tests {
     use sunrise_core::random::LegacyRandom;
 
     #[allow(unused_imports)]
-    pub(in crate::game) use crate::game::client_side::breezes_client::tests::game_with_breeze;
+    pub(in crate::game) use crate::game::client_side::breezes_client::tests::{
+        game_with_breeze, made_block_particles,
+    };
 
     /// A breeze standing on a fence rests its feet at 64 + 1.5, where its own
     /// cell is air: `Breeze.emitGroundParticles` asks `getBlockStateOn` for the
@@ -91,7 +93,7 @@ pub(in crate::game) mod tests {
         game.tick_breeze_effects();
 
         assert_eq!(
-            game.side.particles.0.made().get("block").copied().unwrap_or(0),
+            made_block_particles(&game),
             1,
             "vanilla emits one crumb of the fence the breeze stands on"
         );
@@ -133,9 +135,6 @@ pub(in crate::game) mod tests {
             level,
             "the crumb's constructor draws belong to the particle, not the level"
         );
-        assert_eq!(
-            game.side.particles.0.made().get("block").copied().unwrap_or(0),
-            1
-        );
+        assert_eq!(made_block_particles(&game), 1);
     }
 }

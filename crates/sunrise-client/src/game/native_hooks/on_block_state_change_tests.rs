@@ -1,7 +1,7 @@
 //! `on_block_state_change` heard by a block Part at the end of `Level.setBlock`: after the
 //! neighbours' shapes settled, where `block_changed` hears the write before them, and on a
 //! client for each block the server sends and each write of a piston's replay.
-use crate::game::native_entity_refs::tests::with_game;
+use crate::game::native_entity_refs::tests::{with_client_game, with_game};
 use crate::game::remote::RemoteDimensionEntry;
 use mod_api::{
     BlockChangedEvent, BlockPart, BlockState, BlockUpdateFlags, Hooks, LevelHost, LevelSide,
@@ -167,7 +167,6 @@ fn api(state: sunrise_world::registry::BlockStateId) -> BlockState {
 #[test]
 #[ignore = "daily"]
 fn a_client_hears_each_block_the_server_sends_and_each_write_of_a_piston_replay() {
-    use super::super::execution_role::ExecutionRole;
     use sunrise_client::level_loading::Reason;
     use sunrise_protocol::{
         connection::Pipe,
@@ -178,8 +177,7 @@ fn a_client_hears_each_block_the_server_sends_and_each_write_of_a_piston_replay(
     let mods: mod_api::Mods = vec![state_change_mod(&listener, &changed)].into();
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
-        with_game(|game| {
-            game.options.execution_role = ExecutionRole::Client;
+        with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "StateChangeTest").unwrap();
             let spawn = SpawnInfo {

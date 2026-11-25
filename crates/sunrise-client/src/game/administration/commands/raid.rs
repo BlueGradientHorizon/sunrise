@@ -155,7 +155,8 @@ pub(in crate::game) mod tests {
             game.ui.registries.permission = 4;
             game.side.chat_capture = Some(Vec::new());
             let (id, _) = game
-                .side.raiding
+                .side
+                .raiding
                 .0
                 .raids
                 .create_or_extend([0, 64, 0], 2, None, 3);

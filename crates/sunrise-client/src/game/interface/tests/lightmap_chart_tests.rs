@@ -16,36 +16,37 @@ fn f3_and_4(game: &mut crate::game::ClientGame<'_>) {
 #[test]
 #[ignore = "daily"]
 fn the_lightmap_readback_is_asked_for_only_while_f3_charts_the_lightmap() {
-    let mut resources = None;
-    let mut game = crate::game::game_tests::tests::server_game(&mut resources);
-    game.client.screen = Screen::Playing;
-    assert!(!game.debug_shows_lightmap(), "F3 closed");
-    f3_and_4(&mut game);
-    assert!(game.client.debug && game.client.debug_charts.lightmap);
-    assert!(game.debug_shows_lightmap(), "the chart is on screen");
-    // F1 hides the overlay, chart and all, with no screen open.
-    game.ui.hide_gui = true;
-    assert!(!game.debug_shows_lightmap(), "hidden by F1");
-    game.ui.hide_gui = false;
-    // F3 alone closes the overlay; the chart's switch stays, and comes back with it.
-    game.debug_key(KeyCode::F3, KeyAction::Press);
-    game.debug_key(KeyCode::F3, KeyAction::Release);
-    assert!(!game.client.debug);
-    assert!(!game.debug_shows_lightmap(), "F3 closed again");
-    // An always-on entry keeps the overlay drawn with F3 closed: no charts come with it.
-    game.debug_entries
-        .0
-        .set_status("fps", sunrise_client::debug_entries::Status::AlwaysOn);
-    assert!(game.debug_overlay_visible());
-    assert!(!game.debug_shows_lightmap(), "only always-on lines");
-    game.debug_key(KeyCode::F3, KeyAction::Press);
-    game.debug_key(KeyCode::F3, KeyAction::Release);
-    assert!(
-        game.debug_shows_lightmap(),
-        "F3 open again, still charting it"
-    );
-    // F3+4 again turns the chart off with the overlay left open.
-    f3_and_4(&mut game);
-    assert!(!game.client.debug_charts.lightmap);
-    assert!(!game.debug_shows_lightmap(), "another chart, or none");
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
+        game.side.screen = Screen::Playing;
+        assert!(!game.debug_shows_lightmap(), "F3 closed");
+        f3_and_4(game);
+        assert!(game.side.debug && game.side.debug_charts.lightmap);
+        assert!(game.debug_shows_lightmap(), "the chart is on screen");
+        // F1 hides the overlay, chart and all, with no screen open.
+        game.ui.hide_gui = true;
+        assert!(!game.debug_shows_lightmap(), "hidden by F1");
+        game.ui.hide_gui = false;
+        // F3 alone closes the overlay; the chart's switch stays, and comes back with it.
+        game.debug_key(KeyCode::F3, KeyAction::Press);
+        game.debug_key(KeyCode::F3, KeyAction::Release);
+        assert!(!game.side.debug);
+        assert!(!game.debug_shows_lightmap(), "F3 closed again");
+        // An always-on entry keeps the overlay drawn with F3 closed: no charts come with it.
+        game.side
+            .debug_entries
+            .0
+            .set_status("fps", sunrise_client::debug_entries::Status::AlwaysOn);
+        assert!(game.debug_overlay_visible());
+        assert!(!game.debug_shows_lightmap(), "only always-on lines");
+        game.debug_key(KeyCode::F3, KeyAction::Press);
+        game.debug_key(KeyCode::F3, KeyAction::Release);
+        assert!(
+            game.debug_shows_lightmap(),
+            "F3 open again, still charting it"
+        );
+        // F3+4 again turns the chart off with the overlay left open.
+        f3_and_4(game);
+        assert!(!game.side.debug_charts.lightmap);
+        assert!(!game.debug_shows_lightmap(), "another chart, or none");
+    });
 }

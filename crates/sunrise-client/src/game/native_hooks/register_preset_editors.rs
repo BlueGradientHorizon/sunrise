@@ -355,13 +355,14 @@ pub(in crate::game) mod tests {
             ];
             mod_platform::testing::with_mods(mods.into(), || {
                 with_client_game(|game| {
-                    sunrise_client::logging::init(&game.save.0.root, "Client thread");
+                    let saves = tempfile::tempdir().unwrap();
+                    sunrise_client::logging::init(saves.path(), "Client thread");
                     let mut editors = Vec::new();
                     crate::game::native_hooks::native_register_preset_editors(
                         &mod_api::RegistrationContext::new(),
                         &mut editors,
                     );
-                    let mut title = game.new_title(game.save.0.root.join("editor-saves"));
+                    let mut title = game.new_title(saves.path().join("editor-saves"));
                     title.set_preset_editor_factories(PresetEditorFactories::bind(editors));
                     title.set_preset_data_source(game.pack.data_changes.clone());
                     title.set_mode(Mode::Create {
@@ -389,7 +390,7 @@ pub(in crate::game) mod tests {
                         &mut |_, _| {},
                     );
                     assert!(!stock.vertices.is_empty());
-                    game.side.title.0 = Some(title);
+                    *game.test_title_mut() = Some(title);
                     game.side.screen = Screen::Playing;
                     let frame = game.hud(size);
                     let (prefix, later) = frame.vertices.split_at(stock.vertices.len());
@@ -487,7 +488,8 @@ pub(in crate::game) mod tests {
                         &mut editors,
                     );
                     assert_eq!(editors.len(), 1);
-                    let mut title = game.new_title(game.save.0.root.join("editor-saves"));
+                    let saves = tempfile::tempdir().unwrap();
+                    let mut title = game.new_title(saves.path().join("editor-saves"));
                     // Keep the data preset available when returning to Create World reloads its
                     // available presets, so the fixture reopens a freshly constructed editor.
                     let data = tempfile::tempdir().unwrap();
@@ -532,11 +534,11 @@ pub(in crate::game) mod tests {
                         title.preset_editor_session().unwrap().title(),
                         Some("Islands Editor")
                     );
-                    game.side.title.0 = Some(title);
+                    *game.test_title_mut() = Some(title);
                     game.side.screen = Screen::Playing;
                     game.settle_title_mode();
                     let mut batch = HudBatch::new([640, 480], game.settings.gui_scale_inputs());
-                    game.side.title.0.as_ref().unwrap().draw(
+                    game.test_title().unwrap().draw(
                         &game.gui.atlas,
                         &mut batch,
                         (0.0, 0.0),
@@ -660,7 +662,7 @@ pub(in crate::game) mod tests {
                     assert!(game.side.physical_keys.contains(&KeyCode::KeyQ));
                     game.control_command("key escape tap", &reply, &NoopLoop)
                         .unwrap();
-                    assert_eq!(game.side.title.0.as_ref().unwrap().mode.id(), "world_create");
+                    assert_eq!(game.test_title().unwrap().mode.id(), "world_create");
                     for line in ["key shift up", "key q up"] {
                         game.control_command(line, &reply, &NoopLoop).unwrap();
                     }
@@ -690,39 +692,44 @@ pub(in crate::game) mod tests {
                     const PRESET: &str = "world_preset_editor";
                     let open_editor = |game: &mut crate::game::ClientGame<'_>| {
                         let size = game.gui_size();
-                        let title = game.side.title.0.as_mut().unwrap();
+                        let title = game.test_title_mut().as_mut().unwrap();
                         title.focused_button = Some(26);
                         title.confirm_key_size(size);
                         game.settle_title_mode();
-                        assert_eq!(game.side.title.0.as_ref().unwrap().mode.id(), PRESET);
+                        assert_eq!(game.test_title().unwrap().mode.id(), PRESET);
                     };
-                    let button_event = |game: &mut crate::game::ClientGame<'_>, state, button, millis| {
-                        game.handle_window_event_inner(
-                            &NoopLoop,
-                            WindowEvent::MouseInput {
-                                device_id: DeviceId::dummy(),
-                                state,
-                                button,
-                            },
-                            None,
-                            millis,
-                        );
-                        std::mem::take(&mut mouse.lock().unwrap().events)
-                    };
+                    let button_event =
+                        |game: &mut crate::game::ClientGame<'_>, state, button, millis| {
+                            game.handle_window_event_inner(
+                                &NoopLoop,
+                                WindowEvent::MouseInput {
+                                    device_id: DeviceId::dummy(),
+                                    state,
+                                    button,
+                                },
+                                None,
+                                millis,
+                            );
+                            std::mem::take(&mut mouse.lock().unwrap().events)
+                        };
                     let press = |game: &mut crate::game::ClientGame<'_>, button, millis| {
                         button_event(game, ElementState::Pressed, button, millis)
                     };
-                    let editor_press =
-                        |game: &mut crate::game::ClientGame<'_>, button, millis, code, double, handled| {
-                            assert_eq!(
-                                press(game, button, millis),
-                                [
-                                    Pre(code, double),
-                                    Editor(code, double),
-                                    Post(PRESET, code, double, handled, true)
-                                ]
-                            );
-                        };
+                    let editor_press = |game: &mut crate::game::ClientGame<'_>,
+                                        button,
+                                        millis,
+                                        code,
+                                        double,
+                                        handled| {
+                        assert_eq!(
+                            press(game, button, millis),
+                            [
+                                Pre(code, double),
+                                Editor(code, double),
+                                Post(PRESET, code, double, handled, true)
+                            ]
+                        );
+                    };
                     let left = MouseButton::Left;
                     let right = MouseButton::Right;
                     let other = MouseButton::Other(300);
@@ -760,8 +767,11 @@ pub(in crate::game) mod tests {
                     // Done instead of moving from it to Cancel.
                     game.pad_clear_focus();
                     sunrise_client::widgets::end_frame(1);
-                    let renderer = game.side.renderer.0.as_ref().unwrap();
-                    let _ = game.hud_layers([renderer.config.width, renderer.config.height]);
+                    let size = {
+                        let renderer = game.test_renderer().unwrap();
+                        [renderer.config.width, renderer.config.height]
+                    };
+                    let _ = game.hud_layers(size);
                     sunrise_client::widgets::end_frame(2);
                     let (w, h) = game.gui_size();
                     let done = (w / 2.0 - 80.0, h - 18.0);
@@ -776,10 +786,13 @@ pub(in crate::game) mod tests {
                     game.side.cursor = done;
                     mouse.lock().unwrap().cancel_press = true;
                     assert_eq!(press(game, left, Some(2000)), [Pre(0, false)]);
-                    assert_eq!(game.side.title.0.as_ref().unwrap().mode.id(), PRESET);
+                    assert_eq!(game.test_title().unwrap().mode.id(), PRESET);
                     mouse.lock().unwrap().cancel_press = false;
                     assert_eq!(game.key_focus_key(&NoopLoop, KeyCode::Tab), Some(false));
-                    assert_eq!(game.side.pad.0.menu.focus.map(|t| t.rect), Some(target.rect));
+                    assert_eq!(
+                        game.test_pad().menu.focus.map(|t| t.rect),
+                        Some(target.rect)
+                    );
                     game.pad_clear_focus();
                     game.side.cursor = (20.0, 30.0);
                     editor_press(game, left, Some(2001), 0, true, true);
@@ -792,7 +805,7 @@ pub(in crate::game) mod tests {
                         press(game, left, Some(2251)),
                         [Pre(0, false), Post(PRESET, 0, false, true, false)]
                     );
-                    assert_eq!(game.side.title.0.as_ref().unwrap().mode.id(), "world_create");
+                    assert_eq!(game.test_title().unwrap().mode.id(), "world_create");
                     assert_eq!(
                         button_event(game, ElementState::Released, left, None),
                         [Release("world_create", 0, false)]
@@ -806,7 +819,7 @@ pub(in crate::game) mod tests {
                         press(game, left, Some(2270)),
                         [Pre(0, true), Post(PRESET, 0, true, true, false)]
                     );
-                    assert_eq!(game.side.title.0.as_ref().unwrap().mode.id(), "world_create");
+                    assert_eq!(game.test_title().unwrap().mode.id(), "world_create");
                 });
             },
         );

@@ -306,7 +306,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else if let Some(at) = at {
             let mut r = sunrise_client::random_source::create();
             let pitch = ((r.next_float() - r.next_float()) * 0.7 + 1.0) * 2.0;
-            self.side.audio
+            self.side
+                .audio
                 .0
                 .play("minecraft:entity.item.pickup", Some(at), 0.2, pitch);
         }

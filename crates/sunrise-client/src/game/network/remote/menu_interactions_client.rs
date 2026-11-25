@@ -919,7 +919,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(flags) = self.creative_drop_features() else {
             return false;
         };
-        if thrown.is_empty() || !self.side.creative_screen.0.catalog().item_enabled(thrown, flags) {
+        if thrown.is_empty()
+            || !self
+                .side
+                .creative_screen
+                .0
+                .catalog()
+                .item_enabled(thrown, flags)
+        {
             return false;
         }
         let Some(item) = self.to_network(&Some(thrown.clone())) else {

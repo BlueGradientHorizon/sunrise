@@ -15,7 +15,10 @@ fn resource(item: &str) -> ItemResource {
     ItemResource::of(&ItemStack::new(item, 1).try_into_api().unwrap())
 }
 
-fn composter<S: crate::game::Side>(game: &mut Game<'_, S>, level: i32) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
+fn composter<S: crate::game::Side>(game: &mut Game<'_, S>, level: i32)
+where
+    for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host,
+{
     let state = game
         .pack
         .assets
@@ -488,27 +491,6 @@ fn sided_composter_transactions_preserve_literal_chance_and_defer_all_effects() 
             })
         },
     );
-}
-
-#[test]
-#[ignore = "daily"]
-fn a_client_copy_never_answers_composter_items() {
-    crate::game::native_entity_refs::tests::with_client_game(|game| {
-        game.world
-            .chunks
-            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        composter(game, 0);
-        let epoch = game.native_lifecycle.epoch().unwrap();
-        let level = mod_api::LevelRef::new(epoch, game.dim.key());
-        for side in [None, Some(Direction::Up), Some(Direction::Down)] {
-            assert!(level.capability(game, &mod_api::ITEMS, POS, side).is_none());
-            assert!(
-                level
-                    .capability(game, &mod_api::STORAGE, POS, side)
-                    .is_none()
-            );
-        }
-    });
 }
 
 /// `ComposterBlock.addLayer` builds `BLOCK_INTERACT`: the clicking player is

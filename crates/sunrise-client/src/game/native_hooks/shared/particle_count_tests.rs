@@ -125,7 +125,11 @@ impl mod_api::Hooks for FrameMod {
 // The test consumer inspects the exact Frame passed to Renderer::render, without
 // comparing pixels or bypassing any GUI, model, hand, fog or extraction callbacks.
 pub(in crate::game) fn with_frame_scene(
-    test: impl FnOnce(&mut crate::game::ClientGame<'_>, &std::sync::Mutex<ClearAt>, &std::sync::atomic::AtomicUsize),
+    test: impl FnOnce(
+        &mut crate::game::ClientGame<'_>,
+        &std::sync::Mutex<ClearAt>,
+        &std::sync::atomic::AtomicUsize,
+    ),
 ) {
     let at = std::sync::Arc::new(std::sync::Mutex::new(ClearAt::Never));
     let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));

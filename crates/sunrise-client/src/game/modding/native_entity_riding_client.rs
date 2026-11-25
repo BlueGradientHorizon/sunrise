@@ -58,13 +58,13 @@ pub(in crate::game) mod tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_client_game(|game| {
+            super::super::native_entity_refs::tests::with_game(|game| {
                 let at = Vec3::new(0.5, 64.0, 0.5);
                 let cow = add_mob(game, 160, "minecraft:cow", at);
                 let vehicle = add_mob(game, 161, "minecraft:camel", at);
                 let holder = add_mob(game, 162, "minecraft:sheep", at);
                 assert!(cow.leash_to(game, holder));
-                game.side.audio.0.capture = Some(Vec::new());
+                game.start_audio_capture();
 
                 // A refused mount must not consume the leash.
                 assert!(cow.start_riding(game, cow, true).is_err());
@@ -84,7 +84,7 @@ pub(in crate::game) mod tests {
                 let seated = game.mob_object(160).unwrap().position;
                 take_one_lead(game, seated);
                 assert_eq!(*unleashed.lock().unwrap(), 1);
-                assert!(game.side.audio.0.capture.as_ref().unwrap().is_empty());
+                assert!(game.side.pending_sounds.is_empty());
             });
         });
     }
@@ -107,7 +107,7 @@ pub(in crate::game) mod tests {
                 let vehicle = add_mob(game, 161, "minecraft:camel", at);
                 let holder = add_mob(game, 162, "minecraft:sheep", at);
                 assert!(cow.leash_to(game, holder));
-                game.audio.0.capture = Some(Vec::new());
+                game.start_audio_capture();
 
                 game.mob_object_mut(160).unwrap().extra.boarding_cooldown = 1;
                 game.handle_mob_events(vec![MobEvent::StartRiding {
@@ -136,7 +136,7 @@ pub(in crate::game) mod tests {
                 );
                 take_one_lead(game, at);
                 assert_eq!(*unleashed.lock().unwrap(), 1);
-                assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
+                assert!(game.side.pending_sounds.is_empty());
             });
         });
     }

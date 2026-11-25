@@ -38,7 +38,3 @@ pub(in crate::game::client_side) use sunrise_gameplay::custom_spawner::{
 };
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_gameplay::village_siege::{SiegeLevel, VillageSiege};
-
-#[cfg(test)]
-#[path = "tests/bar_players_client.rs"]
-pub(in crate::game) mod bar_players_tests;

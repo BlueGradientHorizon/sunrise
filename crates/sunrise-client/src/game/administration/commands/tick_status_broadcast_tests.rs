@@ -58,7 +58,10 @@ fn admin_line(message: serde_json::Value) -> serde_json::Value {
 /// A LAN world the host opened, with one other operator (conn 7) connected.
 fn lan_game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> (crate::game::ServerGame<'a>, mpsc::Receiver<sunrise_client::lan::Out>) {
+) -> (
+    crate::game::ServerGame<'a>,
+    mpsc::Receiver<sunrise_client::lan::Out>,
+) {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);

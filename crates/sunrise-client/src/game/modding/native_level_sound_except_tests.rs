@@ -69,10 +69,7 @@ fn a_level_sound_leaves_out_the_player_asked() {
             Some(13)
         );
         assert!(play(game, None));
-        assert_eq!(
-            game.side.pending_native_sounds.last().unwrap().except,
-            None
-        );
+        assert_eq!(game.side.pending_native_sounds.last().unwrap().except, None);
         assert_eq!(queued(game), before + 2);
         let gone = mod_api::__private::game::player_ref(
             mod_api::EntityRef::new(
@@ -271,16 +268,7 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                     )
                     .unwrap(),
                 );
-                game.audio.0.set_listener(at, 0.0, 0.0);
                 let end_portal_spawn = "minecraft:block.end_portal.spawn";
-                let portal_plays = |game: &crate::game::ServerGame<'_>| {
-                    game.audio
-                        .0
-                        .heard
-                        .get(end_portal_spawn)
-                        .copied()
-                        .unwrap_or(0)
-                };
                 let burp = "minecraft:entity.player.burp";
                 let bell = "minecraft:block.bell.use";
                 let anvil = "minecraft:block.anvil.use";
@@ -332,9 +320,7 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                 let mut expected_level_random = game.world.random.clone();
 
                 // 1. Rolled-back transaction discards every deferred effect path (with
-                // global_sound_events = true) and leaves both RNG streams and End-portal playback count
-                // untouched.
-                let portal_before_abort = portal_plays(game);
+                // global_sound_events = true) and leaves both RNG streams untouched.
                 assert!(game.ui.rules.set("global_sound_events", Value::Bool(true)));
                 let rolled = game.storage_transaction(|game, _| {
                     assert!(game.entity_play_sound(entity13, burp, 1.0, 1.0));
@@ -366,7 +352,6 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                     assert!(game.side.lan_events.is_empty());
                     assert!(game.side.lan_global_events.is_empty());
                     assert!(game.side.lan_entity_events.is_empty());
-                    assert_eq!(portal_plays(game), portal_before_abort);
                     assert!(decode_packets(&rx12).is_empty());
                     assert!(decode_packets(&rx13).is_empty());
                     Err::<(), ()>(())
@@ -377,11 +362,6 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                 assert!(game.side.lan_events.is_empty());
                 assert!(game.side.lan_global_events.is_empty());
                 assert!(game.side.lan_entity_events.is_empty());
-                assert_eq!(
-                    portal_plays(game),
-                    portal_before_abort,
-                    "rolled-back global_level_event must not increase local End-portal playback count"
-                );
                 assert!(decode_packets(&rx12).is_empty());
                 assert!(decode_packets(&rx13).is_empty());
                 assert_eq!(
@@ -393,7 +373,6 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                 // 2. Nested savepoints (global_sound_events = true): aborted child drops its effects
                 // without advancing RNG; committed child waits for root commit, then publishes every
                 // effect directly in call order.
-                let portal_before_commit = portal_plays(game);
                 let committed = game.storage_transaction(|game, _| {
                     let aborted_child = game.storage_transaction(|game, _| {
                         assert!(game.entity_play_sound(entity13, anvil, 1.0, 1.0));
@@ -463,7 +442,6 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                     assert!(game.side.lan_events.is_empty());
                     assert!(game.side.lan_global_events.is_empty());
                     assert!(game.side.lan_entity_events.is_empty());
-                    assert_eq!(portal_plays(game), portal_before_commit);
                     assert!(decode_packets(&rx12).is_empty());
                     assert!(decode_packets(&rx13).is_empty());
                     Ok::<(), ()>(())
@@ -474,11 +452,6 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                 assert!(game.side.lan_events.is_empty());
                 assert!(game.side.lan_global_events.is_empty());
                 assert!(game.side.lan_entity_events.is_empty());
-                assert_eq!(
-                    portal_plays(game),
-                    portal_before_commit,
-                    "server-role global_level_event delivers packets rather than playing locally"
-                );
 
                 let packets12 = decode_packets(&rx12);
                 let packets13 = decode_packets(&rx13);
@@ -637,10 +610,7 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                 assert!(game.level_global_level_event(level, 1038, pos, 0));
                 assert_eq!(game.side.pending_native_sounds.len(), 2);
                 assert_eq!(game.side.pending_native_sounds[0].entity, None);
-                assert_eq!(
-                    game.side.pending_native_sounds[1].entity,
-                    Some(entity13_id)
-                );
+                assert_eq!(game.side.pending_native_sounds[1].entity, Some(entity13_id));
                 assert_eq!(game.side.pending_particles.len(), 1);
                 assert_eq!(game.side.lan_events.len(), 1);
                 assert_eq!(game.side.lan_global_events.len(), 1);
@@ -719,7 +689,6 @@ fn committed_effects_leave_unrelated_queues_intact_prevent_sound_recursion_and_k
             mod_platform::testing::with_mods(mods, || {
                 with_guests(|game| {
                     game.options.dedicated = Some(Vec::new());
-                    game.audio.0.capture = Some(Vec::new());
                     assert!(game.ui.rules.set("global_sound_events", Value::Bool(true)));
                     let (tx12, rx12) = mpsc::channel();
                     game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
@@ -1801,10 +1770,13 @@ fn cross_level_sound_listener_block_writes_journal_by_dimension_on_abort_commit_
                     assert_eq!(block_in(game, super::Dim::Overworld), gold);
                     assert_eq!(block_in(game, super::Dim::Nether), emerald);
 
-                    let defers_retirement_in = |game: &mut crate::game::ServerGame<'_>, dim: super::Dim| {
-                        game.with_effect_level(dim, |g| g.world.block_entities.defers_retirement())
+                    let defers_retirement_in =
+                        |game: &mut crate::game::ServerGame<'_>, dim: super::Dim| {
+                            game.with_effect_level(dim, |g| {
+                                g.world.block_entities.defers_retirement()
+                            })
                             .unwrap()
-                    };
+                        };
 
                     // 6. Abandoned raw Nether transaction during an Overworld transaction that
                     // ABORTS: the abandoned Nether frame must close in the Nether (restoring

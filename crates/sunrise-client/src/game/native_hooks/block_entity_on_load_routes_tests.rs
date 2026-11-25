@@ -149,7 +149,10 @@ mod tests {
             }
         }
     }
-    fn with_fixture(replace: bool, f: impl FnOnce(&mut crate::game::ServerGame<'_>, Log, Arc<AtomicBool>)) {
+    fn with_fixture(
+        replace: bool,
+        f: impl FnOnce(&mut crate::game::ServerGame<'_>, Log, Arc<AtomicBool>),
+    ) {
         with_fixture_role(
             replace,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
@@ -240,21 +243,6 @@ mod tests {
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let root = crate::game::mods::content_root(&base, &Default::default()).unwrap();
         with_game_role_client(root.prepared().to_path_buf(), role, |game| {
-            if game.is_logical_server() {
-                game.options.dedicated = Some(vec![]);
-                game.world
-                    .chunks
-                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-                let level = game.level("minecraft:overworld").unwrap();
-                let stone = game
-                    .pack
-                    .assets
-                    .registry
-                    .default_state("minecraft:stone")
-                    .unwrap();
-                game.level_set_block(level, [1, 63, 1], stone, BlockUpdateFlags::NONE)
-                    .unwrap();
-            }
             f(game, log, replace, payloads);
         });
     }
@@ -307,10 +295,11 @@ mod tests {
             let old = game.block_entity(level, [1, 64, 1]).unwrap();
             let generation = game.world.block_entities.generation(&(1, 64, 1)).unwrap();
             game.fire_pending_block_entity_loads();
-            let a = game.pack.assets.registry.default_state("test:a").unwrap();
             let b = game.pack.assets.registry.default_state("test:b").unwrap();
-            game.world.set(1, 64, 1, b).unwrap();
-            game.sync_block_entity((1, 64, 1), Some(a), b);
+            assert_eq!(
+                game.level_set_block(level, [1, 64, 1], b, BlockUpdateFlags::NONE),
+                Ok(true)
+            );
             let new = game.block_entity(level, [1, 64, 1]).unwrap();
             assert_ne!(old, new);
             assert_ne!(
@@ -487,10 +476,12 @@ mod tests {
         }
         with_fixture(false, |game, log, _| {
             place(game);
-            let a = game.pack.assets.registry.default_state("test:a").unwrap();
+            let level = game.level("minecraft:overworld").unwrap();
             let b = game.pack.assets.registry.default_state("test:b").unwrap();
-            game.world.set(1, 64, 1, b).unwrap();
-            game.sync_block_entity((1, 64, 1), Some(a), b);
+            assert_eq!(
+                game.level_set_block(level, [1, 64, 1], b, BlockUpdateFlags::NONE),
+                Ok(true)
+            );
             assert_eq!(game.world.block_entities.pending_on_load_len(), 2);
             game.fire_pending_block_entity_loads();
             assert_eq!(*log.lock().unwrap(), [("load", 7)]);

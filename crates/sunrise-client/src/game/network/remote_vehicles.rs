@@ -455,7 +455,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let index = std::collections::HashMap::new();
             if let Some(at) = self.passenger_riding_position(id, None, None, &index) {
                 let before = self
-                    .side.text_displays
+                    .side
+                    .text_displays
                     .0
                     .get(&(id as i32))
                     .map(|d| d.seat().1)
@@ -1131,7 +1132,7 @@ pub(in crate::game) mod tests {
         game.remote.as_mut().unwrap().joined = true;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 300.0, 0.5)).unwrap());
         let types = MobTypes::load(&root).unwrap();
-        for row in rows {
+        for row in &rows {
             let kind = row["kind"].as_str().unwrap();
             let t = std::sync::Arc::new(types.types[&format!("minecraft:{kind}")].clone());
             let mut m = Mob::new(7, t, Vec3::new(0.5, 300.0, 0.5), 0.0);
@@ -1183,28 +1184,84 @@ pub(in crate::game) mod tests {
                     packet => panic!("wrong movement packet: {packet:?}"),
                 }
             }
+        }
+        drop(game);
+        let settings = Settings::default();
+        let loaded = load_resources(
+            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+            Vec::new(),
+            None,
+            &root,
+            &settings,
+            std::time::Instant::now(),
+            false,
+            ExecutionRole::IntegratedServer,
+            &Progress::new(),
+            &mut |_, _| unreachable!("no menu handoff"),
+        )
+        .unwrap();
+        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+        options.resources = root.clone();
+        options.execution_role = ExecutionRole::IntegratedServer;
+        let mut server = crate::game::ServerGame::new(
+            &loaded.resources,
+            loaded.pack,
+            loaded.gui.unwrap(),
+            options,
+            settings,
+            None,
+        )
+        .unwrap();
+        server.player = Some(PlayerMotion::new(server.motion, Vec3::new(0.5, 300.0, 0.5)).unwrap());
+        for row in &rows {
+            let kind = row["kind"].as_str().unwrap();
+            let t = std::sync::Arc::new(types.types[&format!("minecraft:{kind}")].clone());
+            let mut m = Mob::new(7, t, Vec3::new(0.5, 300.0, 0.5), 0.0);
+            if row["saddled"].as_bool().unwrap() {
+                m.set_saddle(Some(ItemStack::new("minecraft:saddle", 1)));
+            }
+            let stick = if kind == "pig" {
+                "minecraft:carrot_on_a_stick"
+            } else {
+                "minecraft:warped_fungus_on_a_stick"
+            };
+            let wrong = if kind == "pig" {
+                "minecraft:warped_fungus_on_a_stick"
+            } else {
+                "minecraft:carrot_on_a_stick"
+            };
+            let hand = row["hand"].as_str().unwrap();
+            server.inventory[server.selected] = match hand {
+                "main" => Some(ItemStack::new(stick, 1)),
+                "wrong" => Some(ItemStack::new(wrong, 1)),
+                _ => None,
+            };
+            server.offhand = (hand == "off").then(|| ItemStack::new(stick, 1));
+            server.mobs.clear();
+            server.mobs.push(m);
+            server.riding = Some(7);
+            let controlled = row["controlled"].as_bool().unwrap();
             // The server reads the same held-item requirement, then waits for
             // this controlling client's MoveVehicle rather than traveling twice.
             if row["first"].as_bool().unwrap() {
-                assert!(game.tick_mount_riding(Keys::default()));
-                game.mobs[0].rider.as_mut().unwrap().client = true;
+                assert!(server.tick_mount_riding(Keys::default()));
+                server.mobs[0].rider.as_mut().unwrap().client = true;
             } else {
-                game.mobs[0].rider = None;
+                server.mobs[0].rider = None;
             }
             assert_eq!(
-                equine::moved_by_client(&game.mobs[0]),
+                equine::moved_by_client(&server.mobs[0]),
                 !row["server_simulates"].as_bool().unwrap(),
                 "{row}"
             );
             if controlled {
-                let mut server_mount = game.mobs[0].clone();
+                let mut server_mount = server.mobs[0].clone();
                 let before = server_mount.position;
                 let mut test_level = sunrise_client::health::TestLevel::new(0);
-                *test_level.random() = (*game.world.random).clone();
+                *test_level.random() = (*server.world.random).clone();
                 let mut events = Vec::new();
-                let side = game.client_mob_side();
                 server_mount.tick(
-                    &game.client_mob_world_base(&[], &side),
+                    &server.mob_world_base(&[]),
                     &mut test_level.level(),
                     &mut events,
                 );
@@ -1410,8 +1467,14 @@ mod plugin_seat_tests {
     #[test]
     #[ignore = "daily"]
     fn controlling_client_copies_sneak_press_and_release_into_rider() {
-        use sunrise_client::sprint::Keys;
-        crate::game::mounts::sneak_dismount_tests::with_horse(|game, horse, _, _| {
+        use sunrise_client::{items::ItemStack, mobs::Mob, sprint::Keys};
+        use sunrise_core::geometry::Vec3;
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
+            let kind = game.res.mob_types().get("minecraft:horse").unwrap().clone();
+            let mut horse_mob = Mob::new(7, kind, Vec3::new(8.5, 100.0, 8.5), 0.0);
+            horse_mob.set_saddle(Some(ItemStack::new("minecraft:saddle", 1)));
+            let horse = horse_mob.id;
+            game.mobs.push(horse_mob);
             game.riding = Some(horse);
             for shift in [true, false] {
                 let i = game.mobs.iter().position(|m| m.id == horse).unwrap();

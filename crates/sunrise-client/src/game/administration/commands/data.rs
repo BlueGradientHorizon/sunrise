@@ -1379,7 +1379,10 @@ pub(in crate::game) mod loot_table_tests {
     const TABLE: &str = "minecraft:chests/simple_dungeon";
 
     /// The chest as a chunk save writes it, and its slots when that save loads.
-    fn saved_and_reloaded(game: &crate::game::ServerGame<'_>, pos: (i32, i32, i32)) -> (Tag, Vec<Option<ItemStack>>) {
+    fn saved_and_reloaded(
+        game: &crate::game::ServerGame<'_>,
+        pos: (i32, i32, i32),
+    ) -> (Tag, Vec<Option<ItemStack>>) {
         let live = game.world.chunks.get(&(0, 0)).unwrap().clone();
         let chunk = game.with_entities([&live]).remove(0);
         let registry = game.pack.assets.registry;

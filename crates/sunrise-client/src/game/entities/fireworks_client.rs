@@ -121,7 +121,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             g(&mut self.world.random),
         ];
         let at = [r.position.x, r.position.y, r.position.z];
-        self.side.particles
+        self.side
+            .particles
             .0
             .add(&ParticleOptions::simple(ParticleType::Firework), at, v);
     }
@@ -191,5 +192,74 @@ pub(in crate::game) mod tests {
             "the run starts at the rocket's first vertex"
         );
         assert_eq!(marks.last(), Some(&(out.len() as u32, 0)));
+    }
+
+    pub(in crate::game) fn assert_client_silent_rocket_burst_without_blast_or_twinkle(
+        explosion: sunrise_client::particles::FireworkExplosion,
+    ) {
+        use sunrise_client::particles::ParticleLevel;
+        use sunrise_core::geometry::Vec3;
+        use sunrise_protocol::packets::play::{Clientbound as C, EntityEvent};
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
+            game.player = Some(
+                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(2.5, 200.0, 2.5))
+                    .unwrap(),
+            );
+            let (quiet_at, loud_at) = ([6.5, 201.5, 10.5], [12.5, 201.5, 10.5]);
+            let mut quiet = super::Rocket::remote(
+                101,
+                Vec3::new(quiet_at[0], quiet_at[1], quiet_at[2]),
+                Vec3::ZERO,
+            );
+            quiet.silent = true;
+            quiet.explosions = vec![explosion.clone()].into();
+            let mut loud = super::Rocket::remote(
+                102,
+                Vec3::new(loud_at[0], loud_at[1], loud_at[2]),
+                Vec3::ZERO,
+            );
+            loud.explosions = vec![explosion].into();
+            game.rockets.push(quiet);
+            game.rockets.push(loud);
+            for id in [101, 102] {
+                game.apply_packet(C::EntityEvent(EntityEvent {
+                    id,
+                    event: super::FIREWORK_EXPLODE_EVENT,
+                }))
+                .unwrap();
+            }
+            game.side.particles.0.sounds.clear();
+            for _ in 0..20 {
+                let level = ParticleLevel {
+                    world: &game.world,
+                    facts: game.res.facts(),
+                    collision: game.collision,
+                    player: None,
+                    cached_chunk: std::cell::Cell::new(None),
+                };
+                game.side.particles.0.tick(&level);
+            }
+            let bursts: Vec<(&str, [f64; 3])> = game
+                .side
+                .particles
+                .0
+                .sounds
+                .iter()
+                .filter(|s| s.0.starts_with("minecraft:entity.firework_rocket."))
+                .map(|s| (s.0, s.1))
+                .collect();
+            assert_eq!(
+                bursts,
+                vec![
+                    ("minecraft:entity.firework_rocket.blast", loud_at),
+                    ("minecraft:entity.firework_rocket.twinkle", loud_at),
+                ],
+                "only the loud rocket bangs and twinkles, both at its own position"
+            );
+            assert!(
+                !game.side.particles.0.is_empty(),
+                "the silent rocket still drew its sparks and flash"
+            );
+        });
     }
 }

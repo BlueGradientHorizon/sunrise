@@ -20,7 +20,9 @@ pub(in crate::game) const WIND_CHARGE_BURST: &str = "minecraft:entity.wind_charg
 /// set it; the default would discard a zombie as Peaceful does) with chunk
 /// (0, 0) loaded and a stone floor at y 63, which a dead mob falls onto so
 /// that its burst has ground under it. `None` without the prepared resources.
-pub(in crate::game) fn with_game<R>(f: impl FnOnce(&mut crate::game::ServerGame<'_>) -> R) -> Option<R> {
+pub(in crate::game) fn with_game<R>(
+    f: impl FnOnce(&mut crate::game::ServerGame<'_>) -> R,
+) -> Option<R> {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES")?);
     let settings = Settings::default();
     let loaded = load_resources(
@@ -51,6 +53,7 @@ pub(in crate::game) fn with_game<R>(f: impl FnOnce(&mut crate::game::ServerGame<
     )
     .unwrap();
     game.options.dedicated = Some(Vec::new());
+    game.side.audio_capture_active = true;
     game.build_registries();
     game.set_allow_commands(true);
     game.world.health_rules.difficulty = Difficulty::Normal;
@@ -62,8 +65,14 @@ pub(in crate::game) fn with_game<R>(f: impl FnOnce(&mut crate::game::ServerGame<
     Some(f(&mut game))
 }
 
-#[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::wind_client::wind_charged_tests::heard;
+/// How many times `sound` was queued as a server sound.
+pub(in crate::game) fn heard(game: &crate::game::ServerGame<'_>, sound: &str) -> u32 {
+    game.side
+        .pending_sounds
+        .iter()
+        .filter(|s| s.event == sound)
+        .count() as u32
+}
 
 /// An oak boat two blocks east of the burst's centre.
 pub(in crate::game) fn boat(game: &mut crate::game::ServerGame<'_>) -> u32 {
@@ -84,7 +93,10 @@ pub(in crate::game) fn boat_speed(game: &crate::game::ServerGame<'_>, id: u32) -
 /// A zombie at (4.5, 64, 4.5) with the Wind Charged effect, `Silent` or not,
 /// killed and ticked out: `LivingEntity.remove` with KILLED runs its effects
 /// after `LivingEntity.tickDeath`'s twenty ticks.
-pub(in crate::game) fn a_wind_charged_zombie_dies(game: &mut crate::game::ServerGame<'_>, silent: bool) {
+pub(in crate::game) fn a_wind_charged_zombie_dies(
+    game: &mut crate::game::ServerGame<'_>,
+    silent: bool,
+) {
     let nbt = if silent { "{Silent:1b}" } else { "{}" };
     game.summon_with_nbt("minecraft:zombie", [4.5, 64.0, 4.5], nbt)
         .unwrap()

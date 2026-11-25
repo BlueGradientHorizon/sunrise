@@ -153,22 +153,11 @@ pub(in crate::game) fn with_mod(test: impl FnOnce()) {
     mod_platform::testing::with_mods(mods, test);
 }
 
-/// A local game with a player, the inventory screen open, stone 3 on the cursor and nothing in
-/// slot 9 (the first slot of the main inventory, menu slot 9).
+/// A local game with a player, stone 3 on the cursor and nothing in slot 9 (the first slot of
+/// the main inventory, menu slot 9).
 pub(in crate::game) fn with_local(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
-    with_game(|game| {
-        let _serving = crate::game::integrated::tests::install_serving(game, false);
-        game.level.player_uuid = Some([0, 0, 0, 99]);
-        PLAYER.set(99);
-        let mut body = sunrise_client::motion::PlayerMotion::new(
-            game.motion,
-            sunrise_core::geometry::Vec3::new(0.0, 64.0, 0.0),
-        )
-        .unwrap();
-        body.entity_id = 99;
-        game.player = Some(body);
-        game.side.next_entity = 100;
-        game.client.screen = crate::game::Screen::Inventory;
+    with_guests(|game| {
+        PLAYER.set(12);
         reset_local(game);
         test(game);
     });
@@ -176,18 +165,102 @@ pub(in crate::game) fn with_local(test: impl FnOnce(&mut crate::game::ServerGame
 pub(in crate::game) fn reset_local(game: &mut crate::game::ServerGame<'_>) {
     game.inventory = vec![None; game.inventory.len()];
     game.carried = Some(ItemStack::new("minecraft:stone", 3));
+    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+        guest.inventory = vec![None; guest.inventory.len()];
+        guest.carried = Some(ItemStack::new("minecraft:stone", 3));
+        guest.menu = None;
+    });
 }
 pub(in crate::game) fn count(stack: &Option<ItemStack>) -> u32 {
     stack.as_ref().map_or(0, |s| s.count)
 }
 /// The click: pickup on the first main-inventory slot. What is left: (slot 9, cursor, slot 20).
-pub(in crate::game) fn click(game: &mut crate::game::ClientGame<'_>) -> (u32, u32, u32) {
-    assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+pub(in crate::game) fn click(game: &mut crate::game::ServerGame<'_>) -> (u32, u32, u32) {
+    use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
+    game.lan_guest_packet(
+        12,
+        Serverbound::ContainerClick(ContainerClick {
+            container: 0,
+            state: 0,
+            slot: 9,
+            button: 0,
+            input: sunrise_client::lan::menu::input::PICKUP,
+            changed: Vec::new(),
+            carried: None,
+        }),
+    );
+    let guest = &game.lan.as_ref().unwrap().hub.guests[0];
     (
-        count(&game.inventory[9]),
-        count(&game.carried),
-        count(&game.inventory[20]),
+        count(&guest.inventory[9]),
+        count(&guest.carried),
+        count(&guest.inventory[20]),
     )
+}
+pub(in crate::game) fn local_menu_ops(
+    game: &mut crate::game::ServerGame<'_>,
+    ops: &[(Option<usize>, i32, Input)],
+) -> bool {
+    use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
+    let inv = game.inventory.clone();
+    let carried = game.carried.clone();
+    let game_mode = if game.creative { 1 } else { 0 };
+    let container_pos = game.container;
+    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+        let len = guest.inventory.len().min(inv.len());
+        guest.inventory[..len].clone_from_slice(&inv[..len]);
+        guest.carried = carried;
+        guest.game_mode = game_mode;
+        if container_pos.is_none() {
+            guest.menu = None;
+        }
+    });
+    let container = match container_pos {
+        Some(pos) => {
+            game.open_block_menu(12, pos);
+            game.lan.as_ref().unwrap().hub.guests[0]
+                .menu
+                .as_ref()
+                .unwrap()
+                .window
+        }
+        None => 0,
+    };
+    for &(slot, button, input) in ops {
+        let input = match input {
+            Input::Pickup => sunrise_client::lan::menu::input::PICKUP,
+            Input::QuickMove => sunrise_client::lan::menu::input::QUICK_MOVE,
+            Input::Swap => sunrise_client::lan::menu::input::SWAP,
+            Input::Clone => sunrise_client::lan::menu::input::CLONE,
+            Input::Throw => sunrise_client::lan::menu::input::THROW,
+            Input::QuickCraft => sunrise_client::lan::menu::input::QUICK_CRAFT,
+            Input::PickupAll => sunrise_client::lan::menu::input::PICKUP_ALL,
+        };
+        let slot = match slot {
+            None => -999,
+            Some(s) if container != 0 && s >= 300 => (s - 300) as i32,
+            Some(s) => s as i32,
+        };
+        game.lan_guest_packet(
+            12,
+            Serverbound::ContainerClick(ContainerClick {
+                container,
+                state: 0,
+                slot: slot as i16,
+                button: button as i8,
+                input,
+                changed: Vec::new(),
+                carried: None,
+            }),
+        );
+    }
+    let (new_inv, new_carried) = {
+        let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+        (guest.inventory.clone(), guest.carried.clone())
+    };
+    let len = game.inventory.len().min(new_inv.len());
+    game.inventory[..len].clone_from_slice(&new_inv[..len]);
+    game.carried = new_carried;
+    true
 }
 
 #[test]
@@ -324,7 +397,8 @@ fn an_outer_abort_after_an_applied_click_restores_the_inventory() {
                 assert_eq!(click(game), (3, 0, 0));
                 ((), false)
             });
-            assert_eq!((count(&game.inventory[9]), count(&game.carried)), (0, 3));
+            let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+            assert_eq!((count(&guest.inventory[9]), count(&guest.carried)), (0, 3));
         });
     });
 }
@@ -426,7 +500,10 @@ pub(in crate::game) mod families {
         }
     }
 
-    fn cursor<S: crate::game::Side>(game: &Game<'_, S>) -> Option<(String, u32)> where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
+    fn cursor<S: crate::game::Side>(game: &Game<'_, S>) -> Option<(String, u32)>
+    where
+        for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host,
+    {
         let guest = &game.lan.as_ref().unwrap().hub.guests[0];
         guest
             .carried
@@ -450,8 +527,8 @@ pub(in crate::game) mod families {
     /// frozen cursor and the set cursor applies; then with a listener that only allows, the hook
     /// fires again and the plain click follows (`plain_cursor` is what it leaves on the cursor).
     fn family(
-        open: impl FnOnce(&mut crate::game::ClientGame<'_>),
-        click: impl Fn(&mut crate::game::ClientGame<'_>),
+        open: impl FnOnce(&mut crate::game::ServerGame<'_>),
+        click: impl Fn(&mut crate::game::ServerGame<'_>),
         plain_cursor: Option<(&str, u32)>,
     ) {
         with_mod(|| {
@@ -486,7 +563,10 @@ pub(in crate::game) mod families {
         });
     }
 
-    fn block<S: crate::game::Side>(game: &mut Game<'_, S>, name: &str, pos: (i32, i32, i32)) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
+    fn block<S: crate::game::Side>(game: &mut Game<'_, S>, name: &str, pos: (i32, i32, i32))
+    where
+        for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host,
+    {
         let state = game.pack.assets.registry.default_state(name).unwrap();
         game.world.set(pos.0, pos.1, pos.2, state).unwrap();
     }
@@ -1408,8 +1488,7 @@ pub(in crate::game) mod item_part_tests {
             with_local(|game| {
                 // 1. Unrelated items pay no part dispatch and run plain pickup.
                 set_part_script(PartScript::default());
-                game.inventory[9] = None;
-                game.carried = Some(ItemStack::new("minecraft:stone", 3));
+                reset_local(game);
                 assert_eq!(click(game), (3, 0, 0));
                 assert!(trace().is_empty());
 
@@ -1423,7 +1502,7 @@ pub(in crate::game) mod item_part_tests {
                 });
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));
                 game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
-                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert!(local_menu_ops(game, &[(Some(9), 0, Input::Pickup)]));
                 assert_eq!(
                     trace(),
                     [("stick", StackedOnOtherDirection::CarriedOnOther)]
@@ -1445,7 +1524,7 @@ pub(in crate::game) mod item_part_tests {
                 });
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));
                 game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
-                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert!(local_menu_ops(game, &[(Some(9), 0, Input::Pickup)]));
                 assert_eq!(
                     trace(),
                     [
@@ -1466,7 +1545,7 @@ pub(in crate::game) mod item_part_tests {
                 });
                 game.carried = Some(ItemStack::new("minecraft:bundle", 1));
                 game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
-                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert!(local_menu_ops(game, &[(Some(9), 0, Input::Pickup)]));
                 assert!(
                     trace().is_empty(),
                     "vanilla carried bundle must win before clicked ItemPart"
@@ -1483,7 +1562,7 @@ pub(in crate::game) mod item_part_tests {
                 });
                 game.carried = Some(ItemStack::new("minecraft:bundle", 1));
                 game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
-                assert!(game.menu_ops(&[(Some(9), 1, Input::Pickup)]));
+                assert!(local_menu_ops(game, &[(Some(9), 1, Input::Pickup)]));
                 assert_eq!(
                     trace(),
                     [("flint", StackedOnOtherDirection::OtherStackedOnMe)]
@@ -1501,7 +1580,7 @@ pub(in crate::game) mod item_part_tests {
                 });
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));
                 game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
-                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert!(local_menu_ops(game, &[(Some(9), 0, Input::Pickup)]));
                 assert_eq!(&*game.carried.as_ref().unwrap().item, "minecraft:stick");
                 assert_eq!(
                     &*game.inventory[9].as_ref().unwrap().item,
@@ -1527,7 +1606,7 @@ pub(in crate::game) mod item_part_tests {
                 });
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));
                 game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
-                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert!(local_menu_ops(game, &[(Some(9), 0, Input::Pickup)]));
                 assert_eq!(trace(), [("global", StackedOnOtherDirection::Event)]);
             });
         });
@@ -1674,11 +1753,14 @@ pub(in crate::game) mod item_part_tests {
                     set_clicked: Some(Some(("minecraft:diamond", 2))),
                     ..PartScript::default()
                 });
-                assert!(game.menu_ops(&[
-                    (None, 0, Input::QuickCraft),
-                    (Some(9), 1, Input::QuickCraft),
-                    (None, 2, Input::QuickCraft),
-                ]));
+                assert!(local_menu_ops(
+                    game,
+                    &[
+                        (None, 0, Input::QuickCraft),
+                        (Some(9), 1, Input::QuickCraft),
+                        (None, 2, Input::QuickCraft),
+                    ]
+                ));
                 assert_eq!(
                     trace(),
                     [("stick", StackedOnOtherDirection::CarriedOnOther)]
@@ -1699,11 +1781,14 @@ pub(in crate::game) mod item_part_tests {
                     set_clicked: Some(Some(("minecraft:emerald", 1))),
                     ..PartScript::default()
                 });
-                assert!(game.menu_ops(&[
-                    (None, 4, Input::QuickCraft),
-                    (Some(10), 5, Input::QuickCraft),
-                    (None, 6, Input::QuickCraft),
-                ]));
+                assert!(local_menu_ops(
+                    game,
+                    &[
+                        (None, 4, Input::QuickCraft),
+                        (Some(10), 5, Input::QuickCraft),
+                        (None, 6, Input::QuickCraft),
+                    ]
+                ));
                 assert_eq!(
                     trace(),
                     [("stick", StackedOnOtherDirection::CarriedOnOther)]
@@ -1723,12 +1808,15 @@ pub(in crate::game) mod item_part_tests {
                     handled: true,
                     ..PartScript::default()
                 });
-                assert!(game.menu_ops(&[
-                    (None, 0, Input::QuickCraft),
-                    (Some(11), 1, Input::QuickCraft),
-                    (Some(12), 1, Input::QuickCraft),
-                    (None, 2, Input::QuickCraft),
-                ]));
+                assert!(local_menu_ops(
+                    game,
+                    &[
+                        (None, 0, Input::QuickCraft),
+                        (Some(11), 1, Input::QuickCraft),
+                        (Some(12), 1, Input::QuickCraft),
+                        (None, 2, Input::QuickCraft),
+                    ]
+                ));
                 assert!(
                     trace().is_empty(),
                     "multi-slot drag must not dispatch Parts"
@@ -1745,11 +1833,14 @@ pub(in crate::game) mod item_part_tests {
                     handled: true,
                     ..PartScript::default()
                 });
-                assert!(game.menu_ops(&[
-                    (None, 8, Input::QuickCraft),
-                    (Some(13), 9, Input::QuickCraft),
-                    (None, 10, Input::QuickCraft),
-                ]));
+                assert!(local_menu_ops(
+                    game,
+                    &[
+                        (None, 8, Input::QuickCraft),
+                        (Some(13), 9, Input::QuickCraft),
+                        (None, 10, Input::QuickCraft),
+                    ]
+                ));
                 assert!(
                     trace().is_empty(),
                     "middle-button drag must not dispatch Parts"
@@ -2356,7 +2447,7 @@ pub(in crate::game) mod item_part_tests {
                     clicked_phase_set_clicked: Some(Some(("minecraft:flint", 5))),
                     ..PartScript::default()
                 });
-                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert!(local_menu_ops(game, &[(Some(9), 0, Input::Pickup)]));
                 assert_eq!(
                     trace(),
                     [
@@ -2395,7 +2486,7 @@ pub(in crate::game) mod item_part_tests {
                         write_scoreboard: true,
                         ..PartScript::default()
                     });
-                    assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                    assert!(local_menu_ops(game, &[(Some(9), 0, Input::Pickup)]));
                     assert_eq!(
                         game.carried.as_ref().map(|s| (&*s.item, s.count)),
                         Some(("minecraft:stick", 1))
@@ -2437,7 +2528,7 @@ pub(in crate::game) mod item_part_tests {
                     ..PartScript::default()
                 });
                 game.storage_scope(|game, _| {
-                    assert!(game.menu_ops(&[(Some(302), 0, Input::Pickup)]));
+                    assert!(local_menu_ops(game, &[(Some(302), 0, Input::Pickup)]));
                     assert_eq!(
                         game.carried.as_ref().map(|s| (&*s.item, s.count)),
                         Some(("minecraft:stick", 2))
@@ -2467,7 +2558,8 @@ pub(in crate::game) mod item_part_tests {
                     game.res.recipes().cooking_experience(recipe) > 0.0,
                     "expected positive smelting experience for {recipe}"
                 );
-                let seed_furnace = |game: &mut crate::game::ServerGame<'_>, pos: (i32, i32, i32)| {
+                let seed_furnace = |game: &mut crate::game::ServerGame<'_>,
+                                    pos: (i32, i32, i32)| {
                     let mut recipes_used = std::collections::HashMap::new();
                     recipes_used.insert(recipe.to_owned(), 10);
                     game.world.block_entities.insert(
@@ -2496,7 +2588,7 @@ pub(in crate::game) mod item_part_tests {
                     set_clicked: Some(None),
                     ..PartScript::default()
                 });
-                assert!(game.menu_ops(&[(Some(302), 0, Input::Pickup)]));
+                assert!(local_menu_ops(game, &[(Some(302), 0, Input::Pickup)]));
                 assert_eq!(
                     game.carried.as_ref().map(|s| (&*s.item, s.count)),
                     Some(("minecraft:stick", 2))
@@ -2526,7 +2618,7 @@ pub(in crate::game) mod item_part_tests {
                     set_clicked: Some(Some(("minecraft:iron_ingot", 2))),
                     ..PartScript::default()
                 });
-                assert!(game.menu_ops(&[(Some(302), 0, Input::Pickup)]));
+                assert!(local_menu_ops(game, &[(Some(302), 0, Input::Pickup)]));
                 assert_eq!(
                     game.world.block_entities.get(&pos).unwrap().slots()[2]
                         .as_ref()
@@ -2553,7 +2645,7 @@ pub(in crate::game) mod item_part_tests {
                     take_clicked: Some(4),
                     ..PartScript::default()
                 });
-                assert!(game.menu_ops(&[(Some(302), 0, Input::Pickup)]));
+                assert!(local_menu_ops(game, &[(Some(302), 0, Input::Pickup)]));
                 assert_eq!(
                     game.carried.as_ref().map(|s| (&*s.item, s.count)),
                     Some(("minecraft:stick", 5))
@@ -2580,7 +2672,7 @@ pub(in crate::game) mod item_part_tests {
                     take_clicked: Some(2),
                     ..PartScript::default()
                 });
-                assert!(game.menu_ops(&[(Some(302), 0, Input::Pickup)]));
+                assert!(local_menu_ops(game, &[(Some(302), 0, Input::Pickup)]));
                 assert_eq!(
                     game.world.block_entities.get(&pos).unwrap().slots()[2]
                         .as_ref()
@@ -2618,7 +2710,7 @@ pub(in crate::game) mod item_part_tests {
                     game.orbs.clear();
                     game.carried = Some(ItemStack::new("minecraft:stick", 1));
                     set_part_script(script);
-                    assert!(game.menu_ops(&[(Some(302), 0, Input::Pickup)]));
+                    assert!(local_menu_ops(game, &[(Some(302), 0, Input::Pickup)]));
                     assert_eq!(
                         game.world.block_entities.get(&pos).unwrap().slots()[2]
                             .as_ref()
@@ -2930,7 +3022,7 @@ pub(in crate::game) mod item_part_tests {
                     },
                 ] {
                     script(bad);
-                    assert!(game.menu_ops(&[(Some(302), 0, Input::Pickup)]));
+                    assert!(local_menu_ops(game, &[(Some(302), 0, Input::Pickup)]));
                     assert_eq!(
                         game.world.block_entities.get(&pos).unwrap().slots()[2]
                             .as_ref()
@@ -2948,7 +3040,7 @@ pub(in crate::game) mod item_part_tests {
                     take_clicked: Some(2),
                     ..Script::default()
                 });
-                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert!(local_menu_ops(game, &[(Some(9), 0, Input::Pickup)]));
                 assert_eq!(
                     game.inventory[9].as_ref().map(|s| (&*s.item, s.count)),
                     Some(("minecraft:flint", 4)),
@@ -3014,7 +3106,7 @@ pub(in crate::game) mod item_part_tests {
                 });
                 game.carried = Some(paper_with_bundle_contents());
                 game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
-                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert!(local_menu_ops(game, &[(Some(9), 0, Input::Pickup)]));
                 assert_eq!(
                     trace(),
                     [("flint", StackedOnOtherDirection::OtherStackedOnMe)],
@@ -3035,7 +3127,7 @@ pub(in crate::game) mod item_part_tests {
                 });
                 game.carried = Some(bundle_without_contents());
                 game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
-                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert!(local_menu_ops(game, &[(Some(9), 0, Input::Pickup)]));
                 assert_eq!(
                     trace(),
                     [("flint", StackedOnOtherDirection::OtherStackedOnMe)]
@@ -3055,7 +3147,7 @@ pub(in crate::game) mod item_part_tests {
                 set_part_script(PartScript::default());
                 game.carried = Some(stack_with_bundle_contents("minecraft:stick"));
                 game.inventory[9] = Some(stack_with_bundle_contents("minecraft:flint"));
-                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert!(local_menu_ops(game, &[(Some(9), 0, Input::Pickup)]));
                 assert_eq!(
                     trace(),
                     [
@@ -3081,7 +3173,7 @@ pub(in crate::game) mod item_part_tests {
                 set_part_script(PartScript::default());
                 game.carried = Some(ItemStack::new("minecraft:stone", 1));
                 game.inventory[9] = Some(stack_with_bundle_contents("minecraft:flint"));
-                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert!(local_menu_ops(game, &[(Some(9), 0, Input::Pickup)]));
                 assert_eq!(
                     trace(),
                     [("flint", StackedOnOtherDirection::OtherStackedOnMe)]
@@ -3105,7 +3197,7 @@ pub(in crate::game) mod item_part_tests {
                 });
                 game.carried = Some(stack_with_bundle_contents("minecraft:paper"));
                 game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
-                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert!(local_menu_ops(game, &[(Some(9), 0, Input::Pickup)]));
                 assert_eq!(
                     trace(),
                     [("flint", StackedOnOtherDirection::OtherStackedOnMe)],
@@ -3121,7 +3213,7 @@ pub(in crate::game) mod item_part_tests {
                 set_part_script(PartScript::default());
                 game.carried = Some(stack_with_bundle_contents("test:pouch"));
                 game.inventory[9] = Some(ItemStack::new("minecraft:stone", 1));
-                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert!(local_menu_ops(game, &[(Some(9), 0, Input::Pickup)]));
                 assert_eq!(
                     game.inventory[9].as_ref().map(|s| &*s.item),
                     Some("test:pouch")
@@ -3130,7 +3222,7 @@ pub(in crate::game) mod item_part_tests {
                     game.carried.as_ref().map(|s| &*s.item),
                     Some("minecraft:stone")
                 );
-                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert!(local_menu_ops(game, &[(Some(9), 0, Input::Pickup)]));
                 assert_eq!(game.carried.as_ref().map(|s| &*s.item), Some("test:pouch"));
                 assert_eq!(
                     game.inventory[9].as_ref().map(|s| &*s.item),
@@ -3140,7 +3232,7 @@ pub(in crate::game) mod item_part_tests {
                 // from `bundle_contents`.
                 game.inventory[9] = Some(stack_with_bundle_contents("test:pouch"));
                 game.carried = None;
-                assert!(game.menu_ops(&[(Some(9), 1, Input::Pickup)]));
+                assert!(local_menu_ops(game, &[(Some(9), 1, Input::Pickup)]));
                 assert_eq!(game.carried.as_ref().map(|s| &*s.item), Some("test:pouch"));
                 assert!(game.inventory[9].is_none());
 
@@ -3154,7 +3246,7 @@ pub(in crate::game) mod item_part_tests {
                 });
                 game.carried = Some(ItemStack::new("minecraft:red_bundle", 1));
                 game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
-                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert!(local_menu_ops(game, &[(Some(9), 0, Input::Pickup)]));
                 assert!(
                     trace().is_empty(),
                     "dyed vanilla BundleItem must still win before clicked ItemPart"

@@ -29,7 +29,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         {
             return None;
         }
-        self.side.title
+        self.side
+            .title
             .0
             .as_ref()
             .filter(|title| title.preset_editor_session().is_some())

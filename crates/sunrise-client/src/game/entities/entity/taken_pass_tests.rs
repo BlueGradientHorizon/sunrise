@@ -225,22 +225,33 @@ impl LifecycleFixture {
             assert_eq!(ids(game), parked_ids, "parked owner restore");
             game.enter_level(crate::game::Dim::Overworld).unwrap();
             assert_eq!(ids(game), active, "second active restore");
-            if let Some(remote) = self.remote {
-                (remote.prepare)(game);
-                (self.seed)(
-                    game,
-                    &[
-                        (301, [1.0, 80.0, 1.0]),
-                        (302, [17.0, 80.0, 1.0]),
-                        (303, [33.0, 80.0, 1.0]),
-                    ],
-                );
-                assert_eq!(ids(game), [301, 302, 303], "remote owner install");
-                (remote.apply)(game, 302, 303);
-                assert_eq!(ids(game), [301, 303], "remote update and removal");
+            if let Some(_remote) = self.remote {
+                // Client-side remote lifecycle steps run on a `ClientGame` via
+                // `run_remote_lifecycle` (see each caller).
             }
         });
     }
+}
+
+pub(in crate::game) fn run_remote_lifecycle(
+    seed: fn(&mut crate::game::ClientGame<'_>, &[(u32, [f64; 3])]),
+    ids: fn(&crate::game::ClientGame<'_>) -> Vec<u32>,
+    remote: RemoteLifecycle,
+) {
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
+        (remote.prepare)(game);
+        seed(
+            game,
+            &[
+                (301, [1.0, 80.0, 1.0]),
+                (302, [17.0, 80.0, 1.0]),
+                (303, [33.0, 80.0, 1.0]),
+            ],
+        );
+        assert_eq!(ids(game), [301, 302, 303], "remote owner install");
+        (remote.apply)(game, 302, 303);
+        assert_eq!(ids(game), [301, 303], "remote update and removal");
+    });
 }
 
 #[test]
@@ -282,9 +293,9 @@ fn lifecycle_fixture_walks_fangs_owners() {
 fn lifecycle_fixture_walks_other_owners() {
     LifecycleFixture {
         seed: |game, entries| {
-            game.others.0.clear();
+            game.side.others.0.clear();
             for &(id, at) in entries {
-                game.others.0.push(crate::game::commands::OtherEntity {
+                game.side.others.0.push(crate::game::commands::OtherEntity {
                     size_answer: None,
                     attachment_lifetime: Default::default(),
                     knot_check: None,
@@ -300,7 +311,7 @@ fn lifecycle_fixture_walks_other_owners() {
                 });
             }
         },
-        ids: |game| game.others.0.iter().map(|entity| entity.id).collect(),
+        ids: |game| game.side.others.0.iter().map(|entity| entity.id).collect(),
         target: crate::game::commands::Target::Other,
         unloads_with_chunk: true,
         remote: None,
@@ -309,7 +320,9 @@ fn lifecycle_fixture_walks_other_owners() {
 }
 
 /// Run each fixture's complete setup and actual action in both dimensions.
-pub(in crate::game) fn in_both_dimensions(mut test: impl FnMut(&mut crate::game::ServerGame<'_>, &PassBalance)) {
+pub(in crate::game) fn in_both_dimensions(
+    mut test: impl FnMut(&mut crate::game::ServerGame<'_>, &PassBalance),
+) {
     for dimension in [crate::game::Dim::Overworld, crate::game::Dim::Nether] {
         // with_game isolates the initial SaveDir; newly opened dimensions use
         // world_root instead. Keep that root alive until the Game is dropped.
@@ -528,7 +541,8 @@ fn data_merge_preserves_two_distinct_other_joins_for_every_runtime_kind() {
                 )));
             }
             assert_eq!(
-                game.side.others
+                game.side
+                    .others
                     .0
                     .iter()
                     .map(|e| (e.id, e.join))
@@ -537,7 +551,10 @@ fn data_merge_preserves_two_distinct_other_joins_for_every_runtime_kind() {
                 "{kind}"
             );
             for (id, join) in expected {
-                assert_eq!(game.side.others.0[game.side.others.0.locate(join).unwrap()].id, id);
+                assert_eq!(
+                    game.side.others.0[game.side.others.0.locate(join).unwrap()].id,
+                    id
+                );
             }
         }
     });

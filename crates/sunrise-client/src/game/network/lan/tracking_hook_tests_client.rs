@@ -56,18 +56,18 @@ fn a_stop_waiting_for_a_sound_is_heard_after_its_removal() {
         let fresh = game.dropped.last().unwrap().id;
         let index = game.dropped.iter().position(|d| d.id == near).unwrap();
         let _ = game.dropped.remove(index);
-        let sound = |entity: u32| sunrise_client::audio::CapturedSound {
+        let sound = |entity: u32| sunrise_client_core::sound_source::ServerSound {
             event: "minecraft:entity.item.pickup".into(),
+            source: 7,
             position: [8.5, 64.0, 8.5],
             volume: 1.0,
             pitch: 1.0,
-            source: 7,
+            seed: Some(0),
             entity: Some(entity),
             except_entity: None,
-            seed: 0,
-            particles_before: 0,
         };
-        game.audio.0.capture = Some(vec![sound(fresh), sound(near)]);
+        game.start_audio_capture();
+        game.side.pending_sounds = vec![sound(fresh), sound(near)];
         let told = tick_until_heard(game, heard);
         assert_eq!(
             told.iter().filter(|h| **h == Heard::Stop(near)).count(),

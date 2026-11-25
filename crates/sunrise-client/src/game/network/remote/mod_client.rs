@@ -574,7 +574,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             C::Sound(p) => self.apply_sound_packet(p),
             C::SoundEntity(p) => self.apply_sound_entity_packet(p),
             C::StopSound(p) => self
-                .side.audio
+                .side
+                .audio
                 .0
                 .stop_sounds(p.sound.as_deref(), p.source.map(|s| s as usize)),
             C::AddEntity(p) => self.apply_add_entity_packet(p),
@@ -1157,12 +1158,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     pub(in crate::game::client_side) fn remote_player_uuid(&self, id: u32) -> Option<u128> {
         let remote = self.remote.as_ref()?;
-        if self
-            .side
-            .player_model
-            .as_ref()
-            .is_some_and(|m| m.id == id)
-        {
+        if self.side.player_model.as_ref().is_some_and(|m| m.id == id) {
             Some(remote.profile)
         } else {
             remote.level_players.get(&(id as i32)).copied()
@@ -1350,7 +1346,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
 }
 
 /// The game as the tick's input sees it.
-pub(in crate::game) struct RemoteInputWorld<'g, 'a>(pub(in crate::game) &'g mut Game<'a, crate::game::client_side::ClientState>);
+pub(in crate::game) struct RemoteInputWorld<'g, 'a>(
+    pub(in crate::game) &'g mut Game<'a, crate::game::client_side::ClientState>,
+);
 
 pub(in crate::game) struct RemoteUseWorld<'g, 'a>(
     pub(in crate::game) &'g mut Game<'a, crate::game::client_side::ClientState>,
@@ -1374,6 +1372,22 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn test_remote_pick_click(&mut self) {
         use sunrise_client::interaction_input::InteractionWorld as _;
         RemoteInputWorld(self).pick();
+    }
+    pub(in crate::game) fn test_has_client_item_use(&self) -> bool {
+        self.side.client_item_use.0.is_some()
+    }
+    pub(in crate::game) fn test_audio_mut(&mut self) -> &mut crate::game::Audio {
+        &mut self.side.audio.0
+    }
+    pub(in crate::game) fn test_show_title_screen(&mut self) {
+        let saves = std::env::current_dir().unwrap_or_default().join("saves");
+        self.side.title.0 = Some(self.new_title(saves));
+    }
+    pub(in crate::game) fn test_hand_strength_ticker(&self) -> i32 {
+        self.side.hand_strength.ticker
+    }
+    pub(in crate::game) fn test_set_hand_strength_ticker(&mut self, ticker: i32) {
+        self.side.hand_strength.ticker = ticker;
     }
 }
 
@@ -1638,10 +1652,10 @@ pub(in crate::game) mod tests {
             point: [3.5, 64.875, 4.5],
             inside: false,
         };
-        let open = |game: &crate::game::ClientGame<'_>| {
+        fn open<S>(game: &crate::game::Game<'_, S>, x: i32, y: i32, z: i32) -> bool {
             let b = game.res.behaviours();
             b.table.bool(game.world.block(x, y, z), b.props.open)
-        };
+        }
         let blocks = mod_api::SoundSource::Blocks.index();
 
         crate::game::native_entity_refs::tests::with_game_role_client(
@@ -1672,7 +1686,10 @@ pub(in crate::game) mod tests {
                     let (answer, dry) = game.remote_block_reacts(&hit, None, true);
                     assert!(answer.consumes_action());
                     game.predict_use(&dry, 1);
-                    assert!(open(game), "the gate opens without a server round trip");
+                    assert!(
+                        open(game, x, y, z),
+                        "the gate opens without a server round trip"
+                    );
                     let capture = game.side.audio.0.capture.as_mut().unwrap();
                     assert_eq!(capture.len(), 1);
                     let predicted = capture.pop().unwrap();
@@ -1705,7 +1722,8 @@ pub(in crate::game) mod tests {
                     .unwrap();
                 rx
             });
-            let sounds = |game: &crate::game::ServerGame<'_>, rx: &std::sync::mpsc::Receiver<Out>| {
+            let sounds = |game: &crate::game::ServerGame<'_>,
+                          rx: &std::sync::mpsc::Receiver<Out>| {
                 let sync = game.lan.as_ref().unwrap().hub.sync_data();
                 rx.try_iter()
                     .flat_map(|out| match out {
@@ -1756,7 +1774,7 @@ pub(in crate::game) mod tests {
                     )
                     .unwrap()
                 );
-                assert!(open(game));
+                assert!(open(game, x, y, z));
                 game.lan_broadcast_effects();
                 assert!(sounds(game, &actor).is_empty(), "no echo to the clicker");
                 assert_eq!(sounds(game, &other), [(name.into(), blocks as i32, 1.0)]);
@@ -1764,7 +1782,7 @@ pub(in crate::game) mod tests {
 
             game.start_audio_capture();
             game.explosion_trigger_blocks(&mut [pos]).unwrap();
-            assert!(!open(game));
+            assert!(!open(game, x, y, z));
             game.lan_broadcast_effects();
             for listener in [&actor, &other] {
                 assert_eq!(
@@ -1783,7 +1801,7 @@ pub(in crate::game) mod tests {
                 b.set_block(level, ticks, BlockPos::new(x + 1, y, z), power, 3)
             }));
             game.server_process_level_events().unwrap();
-            assert!(open(game));
+            assert!(open(game, x, y, z));
             game.lan_broadcast_effects();
             for listener in [&actor, &other] {
                 assert_eq!(

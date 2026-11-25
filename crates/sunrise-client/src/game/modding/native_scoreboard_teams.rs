@@ -534,13 +534,17 @@ mod tests {
             assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].scoreboard, view);
 
             // The client's snapshot of the teams reads what the board holds.
-            let teams = game.client_teams().unwrap();
-            let sent = teams.iter().find(|t| t.name == "red").unwrap();
-            assert_eq!(sent.display_name, text("Reds"));
-            assert_eq!(sent.color, Some(TeamColor::Blue));
-            assert_eq!(sent.prefix, text("[R] "));
-            assert_eq!(sent.collision_rule, CollisionRule::PushOwnTeam);
-            assert_eq!(sent.members, ["offline"]);
+            let board_snapshot = game.score.board.clone();
+            crate::game::native_entity_refs::tests::with_client_game(|client| {
+                client.score.board = board_snapshot;
+                let teams = client.client_teams().unwrap();
+                let sent = teams.iter().find(|t| t.name == "red").unwrap();
+                assert_eq!(sent.display_name, text("Reds"));
+                assert_eq!(sent.color, Some(TeamColor::Blue));
+                assert_eq!(sent.prefix, text("[R] "));
+                assert_eq!(sent.collision_rule, CollisionRule::PushOwnTeam);
+                assert_eq!(sent.members, ["offline"]);
+            });
 
             // Saved, the file holds the team and its members.
             game.save_scoreboard();

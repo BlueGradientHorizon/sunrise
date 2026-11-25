@@ -152,7 +152,10 @@ pub(in crate::game) fn asked(count: u32) -> usize {
 
 /// Installs a special renderer for sticks in this game's item definitions. The fixture submits
 /// its own quad and needs no display transforms from a client-only model library.
-pub(in crate::game) fn install_special_stick<S: crate::game::Side>(game: &mut Game<'_, S>) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
+pub(in crate::game) fn install_special_stick<S: crate::game::Side>(game: &mut Game<'_, S>)
+where
+    for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host,
+{
     let factories = BTreeMap::from([(
         mod_api::Identifier::parse("test:stick").unwrap(),
         OwnedSpecialModelFactory::new(
@@ -190,7 +193,10 @@ pub(in crate::game) fn install_special_stick<S: crate::game::Side>(game: &mut Ga
 }
 
 /// A stick of `count` resolved as a frame resolves a held item (`ItemModelResolver.updateForTopItem`).
-pub(in crate::game) fn draw_stick(game: &crate::game::ClientGame<'_>, count: u32) -> ItemRenderState {
+pub(in crate::game) fn draw_stick(
+    game: &crate::game::ClientGame<'_>,
+    count: u32,
+) -> ItemRenderState {
     game.resolve_item(
         &sunrise_client::items::ItemStack::new("minecraft:stick", count),
         DisplayContext::ThirdPersonRightHand,
@@ -219,24 +225,23 @@ fn a_special_renderer_is_never_asked_inside_a_lifted_pass() {
 }
 
 fn a_special_renderer_is_never_asked_inside_a_lifted_pass_isolated() {
-    fn in_pass(_: &mut crate::game::ClientGame<'_>) {
+    fn in_pass(_: &mut crate::game::ServerGame<'_>) {
         assert!(
             !sunrise_client::join_seq::visibility::passes_settled(),
             "not inside a lifted pass"
         );
         *ASKED_IN_PASS.lock().unwrap() = Some(asked(COUNT));
     }
+    crate::game::native_entity_refs::tests::with_client_game(|client| {
+        install_special_stick(client);
+        let before = asked(COUNT);
+        draw_stick(client, COUNT);
+        assert_eq!(asked(COUNT), before + 1, "the frame's resolve didn't ask");
+    });
     crate::game::entity::taken_pass_tests::in_both_dimensions(|game, balance| {
         const ZOMBIE: u32 = 1_900_000_100;
         install_special_stick(game);
-        let before = asked(COUNT);
-        draw_stick(game, COUNT);
         let asked_by_the_frame = asked(COUNT);
-        assert_eq!(
-            asked_by_the_frame,
-            before + 1,
-            "the frame's resolve didn't ask"
-        );
         balance.drain_balanced();
         let kind = game
             .res

@@ -2162,7 +2162,6 @@ pub(in crate::game) use client_side::remote_projectiles;
 pub(in crate::game) use client_side::remote_removal;
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::remote_save_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::remote_stations;
 #[allow(unused_imports)]

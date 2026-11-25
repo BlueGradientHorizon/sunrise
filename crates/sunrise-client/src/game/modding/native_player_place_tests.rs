@@ -1,12 +1,14 @@
 //! `player.place_block` against real LAN guests, through the public player handle, with a
 //! literal test for each refusal.
 
-use super::native_entity_refs::tests::with_client_game;
 use super::native_guest_turn_tests::with_guests;
 use mod_api::{EntityRef, PlayerWorldRefusal as Refusal, WorldEpoch};
 
 /// The API's value for a block state of the world.
-fn api_state<S: crate::game::Side>(game: &super::Game<'_, S>, name: &str) -> mod_api::BlockState where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
+fn api_state<S: crate::game::Side>(game: &super::Game<'_, S>, name: &str) -> mod_api::BlockState
+where
+    for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host,
+{
     use super::api_values::TryIntoApi;
     game.pack
         .assets
@@ -136,21 +138,6 @@ fn a_level_not_in_place_is_other_level() {
         assert_eq!(
             b.place_block(game, overworld, [2, 70, 2], stone, true),
             Err(Refusal::OtherLevel)
-        );
-    });
-}
-
-/// On a client it is `Client`.
-#[test]
-#[ignore = "daily"]
-fn a_client_cannot_place_a_block_as_a_player() {
-    with_client_game(|game| {
-        let level = mod_api::LevelRef::new(WorldEpoch::new(0), game.dim.key());
-        let ghost = mod_api::__private::game::player_ref(EntityRef::new(WorldEpoch::new(0), 1), 1);
-        let stone = api_state(game, "minecraft:stone");
-        assert_eq!(
-            ghost.place_block(game, level, [2, 70, 2], stone, true),
-            Err(Refusal::Client)
         );
     });
 }

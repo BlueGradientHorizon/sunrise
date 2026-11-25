@@ -25,6 +25,28 @@ pub(in crate::game::client_side) use sunrise_client::chunk::Chunk;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::food::Difficulty;
 
+/// Count `Clientbound::Explode` packets carrying emitter particle id `particle_id`.
+fn gusts(rx: &std::sync::mpsc::Receiver<sunrise_client::lan::Out>, particle_id: i32) -> usize {
+    use sunrise_client::lan::Out;
+    use sunrise_protocol::{buf::Reader, packets::play};
+    let mut count = 0;
+    while let Ok(out) = rx.try_recv() {
+        let Out::Packet(body) = out else {
+            continue;
+        };
+        let mut r = Reader::new(&body);
+        let Ok(id) = r.varint() else {
+            continue;
+        };
+        if let Ok(play::Clientbound::Explode(p)) = play::Clientbound::decode(id, r.rest())
+            && p.particle.id == particle_id
+        {
+            count += 1;
+        }
+    }
+    count
+}
+
 /// `AbstractWindCharge.explode` hands `ServerLevel.explode` the charge itself
 /// as the source, so `playSound` is `!charge.isSilent()`: a `Silent` wind
 /// charge's burst is mute, its gust and its push stay. The sound is the wind
@@ -33,11 +55,19 @@ pub(in crate::game::client_side) use sunrise_world::food::Difficulty;
 #[ignore = "daily"]
 fn a_silent_wind_charge_bursts_without_a_sound() {
     let Some(outcome) = with_game(|game| {
+        let (hub, near, _far) = crate::game::lan_particles::tests::test_hub(
+            "WindChargeSilentTest",
+            vec![
+                "minecraft:gust_emitter_small".into(),
+                "minecraft:gust_emitter_large".into(),
+            ],
+            None,
+        );
+        game.lan = Some(crate::game::lan::LanHost::for_test(hub));
         let mut outcome = Vec::new();
         for silent in [false, true] {
             let boat = boat(game);
             let (charge, breeze) = (heard(game, WIND_CHARGE_BURST), heard(game, BREEZE_BURST));
-            game.particles.0.requested = Some(Vec::new());
             let nbt = if silent {
                 "{Silent:1b,Motion:[0.0,-1.0,0.0]}"
             } else {
@@ -49,20 +79,16 @@ fn a_silent_wind_charge_bursts_without_a_sound() {
             for _ in 0..40 {
                 game.tick_creatures().unwrap();
             }
-            let gust = game.particles.0.requested.take().unwrap_or_default();
             outcome.push((
                 silent,
                 heard(game, WIND_CHARGE_BURST) - charge,
                 heard(game, BREEZE_BURST) - breeze,
-                gust.iter()
-                    .filter(|(p, _, _)| {
-                        p.ty == sunrise_client::particles::ParticleType::GustEmitterSmall
-                    })
-                    .count(),
+                gusts(&near, 0),
                 boat_speed(game, boat) > 0.0,
             ));
             game.boats.clear();
         }
+        game.lan = None;
         outcome
     }) else {
         return;
@@ -87,26 +113,30 @@ fn a_silent_wind_charge_bursts_without_a_sound() {
 #[ignore = "daily"]
 fn a_wind_charged_mob_bursts_with_the_breezes_sound_unless_it_is_silent() {
     let Some(outcome) = with_game(|game| {
+        let (hub, near, _far) = crate::game::lan_particles::tests::test_hub(
+            "WindChargedMobTest",
+            vec![
+                "minecraft:gust_emitter_small".into(),
+                "minecraft:gust_emitter_large".into(),
+            ],
+            None,
+        );
+        game.lan = Some(crate::game::lan::LanHost::for_test(hub));
         let mut outcome = Vec::new();
         for silent in [false, true] {
             let boat = boat(game);
             let (breeze, charge) = (heard(game, BREEZE_BURST), heard(game, WIND_CHARGE_BURST));
-            game.particles.0.requested = Some(Vec::new());
             a_wind_charged_zombie_dies(game, silent);
-            let gust = game.particles.0.requested.take().unwrap_or_default();
             outcome.push((
                 silent,
                 heard(game, BREEZE_BURST) - breeze,
                 heard(game, WIND_CHARGE_BURST) - charge,
-                gust.iter()
-                    .filter(|(p, _, _)| {
-                        p.ty == sunrise_client::particles::ParticleType::GustEmitterLarge
-                    })
-                    .count(),
+                gusts(&near, 1),
                 boat_speed(game, boat) > 0.0,
             ));
             game.boats.clear();
         }
+        game.lan = None;
         outcome
     }) else {
         return;
@@ -120,9 +150,4 @@ fn a_wind_charged_mob_bursts_with_the_breezes_sound_unless_it_is_silent() {
             (true, 0, 0, 1, true),
         ]
     );
-}
-
-/// How many times `sound` was played as a positional sound.
-pub(in crate::game) fn heard(game: &crate::game::ClientGame<'_>, sound: &str) -> u32 {
-    game.side.audio.0.heard.get(sound).copied().unwrap_or(0)
 }

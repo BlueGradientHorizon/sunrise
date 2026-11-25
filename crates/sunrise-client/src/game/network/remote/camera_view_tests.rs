@@ -62,7 +62,12 @@ pub(in crate::game) fn with_spectator(test: impl FnOnce(&mut crate::game::Client
     });
 }
 
-pub(in crate::game) fn add(game: &mut crate::game::ClientGame<'_>, id: i32, kind: &str, position: [f64; 3]) {
+pub(in crate::game) fn add(
+    game: &mut crate::game::ClientGame<'_>,
+    id: i32,
+    kind: &str,
+    position: [f64; 3],
+) {
     let kind = registry_id(game, "minecraft:entity_type", kind);
     game.handle_packet(C::AddEntity(play::AddEntity {
         id,
@@ -78,7 +83,11 @@ pub(in crate::game) fn add(game: &mut crate::game::ClientGame<'_>, id: i32, kind
     .unwrap();
 }
 
-pub(in crate::game) fn registry_id(game: &crate::game::ClientGame<'_>, registry: &str, name: &str) -> i32 {
+pub(in crate::game) fn registry_id(
+    game: &crate::game::ClientGame<'_>,
+    registry: &str,
+    name: &str,
+) -> i32 {
     let remote = game.remote.as_ref().unwrap();
     remote.builtin.get(registry).unwrap().id(name).unwrap()
 }
@@ -122,7 +131,10 @@ pub(in crate::game) fn view(game: &crate::game::ClientGame<'_>) -> ViewEntity {
 
 /// The effects the client keeps for the entity `id` (a mob, another player or an armor stand),
 /// `None` when the level holds no such entity or it has none.
-pub(in crate::game) fn kept(game: &crate::game::ClientGame<'_>, id: i32) -> Option<Vec<(&'static str, i32)>> {
+pub(in crate::game) fn kept(
+    game: &crate::game::ClientGame<'_>,
+    id: i32,
+) -> Option<Vec<(&'static str, i32)>> {
     let id = id as u32;
     let list = match game.mobs.iter().find(|m| m.id == id) {
         Some(m) => &m.extra.client_effects.list,
@@ -225,7 +237,11 @@ fn other_entities_effects_go_with_the_entity() {
 }
 
 /// Puts `light` (`sky << 4 | block`) at one block, every other block of its section dark.
-pub(in crate::game) fn set_light(game: &mut crate::game::ClientGame<'_>, at: glam::IVec3, light: u8) {
+pub(in crate::game) fn set_light(
+    game: &mut crate::game::ClientGame<'_>,
+    at: glam::IVec3,
+    light: u8,
+) {
     let key = (at.x >> 4, at.z >> 4);
     let layout = game.world.layout();
     if game.world.chunks.get(&key).is_none() {
@@ -243,7 +259,11 @@ pub(in crate::game) fn set_light(game: &mut crate::game::ClientGame<'_>, at: gla
     section.light = sunrise_client::chunk::Light::from_slice(&all);
 }
 
-pub(in crate::game) fn ride(game: &mut crate::game::ClientGame<'_>, vehicle: i32, passengers: Vec<i32>) {
+pub(in crate::game) fn ride(
+    game: &mut crate::game::ClientGame<'_>,
+    vehicle: i32,
+    passengers: Vec<i32>,
+) {
     game.handle_packet(C::SetPassengers(play::SetPassengers {
         vehicle,
         passengers,
@@ -518,8 +538,9 @@ fn a_canceled_tick_counts_no_effect_down() {
             for id in [ZOMBIE, HUSK, TICKING] {
                 update(game, id, "minecraft:speed", 100, 0);
             }
-            let left =
-                |game: &crate::game::ClientGame<'_>| [ZOMBIE, HUSK, TICKING].map(|id| kept(game, id).unwrap()[0].1);
+            let left = |game: &crate::game::ClientGame<'_>| {
+                [ZOMBIE, HUSK, TICKING].map(|id| kept(game, id).unwrap()[0].1)
+            };
             take(&heard);
             game.tick_remote_entities(true);
             // The camera entity's tick was canceled from its own Pre event, the husk's from
@@ -540,7 +561,9 @@ pub(in crate::game) const FRAME_NAME: &str = "game::client_side::remote_client::
 pub(in crate::game) const FRAME_CASE: &str = "SUNRISE_CAMERA_VIEW_FRAME_CASE";
 
 /// What a game's frame gives the pack: its camera, its `eyePosition` and the view's light.
-pub(in crate::game) fn framed(game: &mut crate::game::ClientGame<'_>) -> (glam::DVec3, glam::DVec3, [i32; 2]) {
+pub(in crate::game) fn framed(
+    game: &mut crate::game::ClientGame<'_>,
+) -> (glam::DVec3, glam::DVec3, [i32; 2]) {
     let mut seen = None;
     game.render_with(|_, frame| {
         seen = Some((frame.camera, frame.eye, frame.pack.view.eye_light));

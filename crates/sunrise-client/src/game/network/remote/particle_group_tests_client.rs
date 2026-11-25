@@ -4,8 +4,7 @@ pub(in crate::game::client_side) use crate::game::remote::RemoteDimensionEntry;
 pub(in crate::game::client_side) use crate::game::remote::tests::particle_group_tests::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::{
-    execution_role::ExecutionRole, native_entity_refs::tests::with_game,
-    native_hooks::particle_count_tests::fill,
+    native_entity_refs::tests::with_client_game, native_hooks::particle_count_tests::fill,
 };
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::level_loading::Reason;
@@ -17,8 +16,7 @@ pub(in crate::game::client_side) use sunrise_protocol::{
 #[test]
 #[ignore = "daily"]
 fn connection_and_dimension_replacement_clear_every_particle_group() {
-    with_game(|game| {
-        game.options.execution_role = ExecutionRole::Client;
+    with_client_game(|game| {
         fill(game);
         // Include pending particles as well as live groups before replacing the connection.
         game.side.particles.0.elder_guardian();

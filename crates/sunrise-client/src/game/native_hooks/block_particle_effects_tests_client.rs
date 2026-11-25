@@ -13,7 +13,9 @@ pub(in crate::game::client_side) use crate::game::{
     Game,
     execution_role::ExecutionRole,
     native_client_session::tests::logged_client,
-    native_entity_refs::tests::{fixture_root, run_fresh_cases, with_game_role_and_facts, with_game_role_and_facts_client},
+    native_entity_refs::tests::{
+        fixture_root, run_fresh_cases, with_game_role_and_facts, with_game_role_and_facts_client,
+    },
 };
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use mod_api::{
@@ -240,7 +242,9 @@ fn hit_effect_replaces_the_crumb_but_not_the_sound_or_level_random() {
     });
 }
 
-pub(in crate::game::client_side) fn with_effects(test: impl FnOnce(&mut crate::game::ClientGame<'_>, &Calls)) {
+pub(in crate::game::client_side) fn with_effects(
+    test: impl FnOnce(&mut crate::game::ClientGame<'_>, &Calls),
+) {
     let calls = Calls::default();
     let mods = vec![ModEntry::new("debris", Box::new(Register(calls.clone())))];
     mod_platform::testing::with_mods(mods.into(), || {

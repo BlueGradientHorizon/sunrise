@@ -7,7 +7,10 @@ use mod_api::{EntityRef, PlayerRef, PlayerWorldRefusal as Refusal, WorldEpoch};
 use sunrise_protocol::packets::play::Clientbound as C;
 
 /// The API's value for a block state of the world.
-fn api_state<S: crate::game::Side>(game: &super::Game<'_, S>, name: &str) -> mod_api::BlockState where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
+fn api_state<S: crate::game::Side>(game: &super::Game<'_, S>, name: &str) -> mod_api::BlockState
+where
+    for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host,
+{
     use super::api_values::TryIntoApi;
     game.pack
         .assets
@@ -226,18 +229,12 @@ fn each_sees_refusal_has_its_own_name() {
     });
 }
 
-/// On a client all three answer `Client`.
+/// On a client `sees` answers `Client` (server writes are refused at compile time).
 #[test]
 #[ignore = "daily"]
 fn a_client_cannot_ack_show_or_ask_who_sees() {
     with_client_game(|game| {
         let ghost = mod_api::__private::game::player_ref(EntityRef::new(WorldEpoch::new(0), 1), 1);
-        let stone = api_state(game, "minecraft:stone");
-        assert_eq!(ghost.ack_block_changes(game, 1), Err(Refusal::Client));
-        assert_eq!(
-            ghost.show_block(game, [1, 70, 1], stone),
-            Err(Refusal::Client)
-        );
         assert_eq!(ghost.sees(game, ghost), Err(Refusal::Client));
     });
 }
@@ -321,7 +318,7 @@ fn player_support_uses_the_footprint_then_the_exact_feet_offset_on_both_sides() 
     use sunrise_core::geometry::Vec3;
     use sunrise_world::entity_move::MoverType::SelfMovement;
 
-    let setup = |game: &mut crate::game::ServerGame<'_>| {
+    fn setup<S>(game: &mut crate::game::Game<'_, S>) {
         game.streaming
             .insert_remote(&mut game.world, Chunk::empty(0, 0));
         let slab = game
@@ -331,13 +328,13 @@ fn player_support_uses_the_footprint_then_the_exact_feet_offset_on_both_sides() 
             .default_state("minecraft:stone_slab")
             .unwrap();
         game.world.set(0, 64, 0, slab).unwrap();
-    };
-    let land = |game: &mut crate::game::ServerGame<'_>| {
+    }
+    fn land<S: crate::game::Side>(game: &mut crate::game::Game<'_, S>) {
         // The player's centre is over air. Only the edge overlaps the slab.
         game.player.as_mut().unwrap().position = Vec3::new(1.125, 65.0, 0.5);
         game.move_local_player(SelfMovement, Vec3::new(0.0, -1.0, 0.0), false)
             .unwrap();
-    };
+    }
 
     with_guests(|game| {
         setup(game);

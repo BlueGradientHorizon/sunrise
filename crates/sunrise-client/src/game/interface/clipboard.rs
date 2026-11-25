@@ -74,8 +74,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if cfg!(target_os = "macos") {
             self.side.modifiers.super_key() || held([KeyCode::SuperLeft, KeyCode::SuperRight])
         } else {
-            self.side.modifiers.control_key()
-                || held([KeyCode::ControlLeft, KeyCode::ControlRight])
+            self.side.modifiers.control_key() || held([KeyCode::ControlLeft, KeyCode::ControlRight])
         }
     }
     /// Whether the held keys let a key's text through to the focused field
@@ -102,10 +101,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.mounted_widget_captures_input()
             || (self.side.screen == Screen::Chat && self.side.title.0.is_none())
             || self.side.sign_edit.is_some()
-            || matches!(
-                self.side.book,
-                Some(super::books::BookScreen::Edit { .. })
-            )
+            || matches!(self.side.book, Some(super::books::BookScreen::Edit { .. }))
             || (self.side.screen == Screen::Creative && self.side.creative_screen.0.tab().search)
             || self.recipe_search_focused()
             || self.station_typing()
@@ -183,7 +179,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         shortcut: EditShortcut,
     ) {
         if self
-            .side.creative_screen
+            .side
+            .creative_screen
             .0
             .search
             .shortcut(shortcut, &mut self.side.clipboard.0)
@@ -195,7 +192,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// before the caret (`EditBox.deleteWords(-1)`), otherwise one character.
     /// A selection is what it deletes, as in `EditBox.keyPressed`.
     pub(in crate::game::client_side) fn creative_search_backspace(&mut self, ctrl: bool) {
-        self.side.creative_screen
+        self.side
+            .creative_screen
             .0
             .search
             .key(KeyCode::Backspace, ctrl, false);
@@ -263,10 +261,9 @@ mod tests {
         let reads = Reads::default();
         let mods: mod_api::Mods = vec![ModEntry::new("paste", Box::new(Mod(reads.clone())))].into();
         with_mods(mods, || {
-            crate::game::native_entity_refs::tests::with_game(|game| {
-                game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
                 game.options.headless = true;
-                game.clipboard.0.set_text("pasted");
+                game.side.clipboard.0.set_text("pasted");
 
                 game.native_client_tick_pre();
                 game.native_render_gui_pre(&mut false);
@@ -291,7 +288,7 @@ mod tests {
                         ("tick", None, false),
                     ]
                 );
-                assert_eq!(game.clipboard.0.text(), "click");
+                assert_eq!(game.side.clipboard.0.text(), "click");
             });
         });
     }

@@ -727,7 +727,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &self,
     ) -> sunrise_client::health::Attack {
         let id = self
-            .side.combat
+            .side
+            .combat
             .0
             .blast_owner
             .as_ref()
@@ -1663,20 +1664,47 @@ pub(in crate::game) mod tests {
         run_portal_blast_sulfur_cube_uses_only_positive_cooldown();
     }
 
-    pub(in crate::game::server_side) fn particle_count(game: &crate::game::ClientGame<'_>) -> usize {
-        game.side.particles.0.requested.as_ref().unwrap().len()
+    pub(in crate::game::server_side) fn particle_count(
+        game: &crate::game::ServerGame<'_>,
+    ) -> usize {
+        game.side.pending_explosions.len()
+            + game
+                .side
+                .lan_events
+                .iter()
+                .filter(|e| matches!(e.kind, 2002 | 2007))
+                .count()
     }
 
-    pub(in crate::game::server_side) fn sound_count(game: &crate::game::ClientGame<'_>, event: &str) -> u32 {
-        game.side.audio.0.heard.get(event).copied().unwrap_or(0)
+    pub(in crate::game::server_side) fn sound_count(
+        game: &crate::game::ServerGame<'_>,
+        event: &str,
+    ) -> u32 {
+        let sounds = game
+            .side
+            .pending_sounds
+            .iter()
+            .filter(|s| s.event == event)
+            .count() as u32;
+        let level_events = if event == "minecraft:entity.splash_potion.break" {
+            game.side
+                .lan_events
+                .iter()
+                .filter(|e| matches!(e.kind, 1053 | 1054))
+                .count() as u32
+        } else {
+            0
+        };
+        sounds + level_events
     }
 
     pub(in crate::game) fn source_silence_game(
         resources: &mut Option<std::sync::Arc<crate::game::Resources>>,
-    ) -> Option<Box<crate::game::ClientGame<'_>>> {
+    ) -> Option<Box<crate::game::ServerGame<'_>>> {
         let mut game = server_game(resources)?;
-        // Observe the server's real emission requests without a camera or render tick.
-        game.particles.0.requested = Some(Vec::new());
+        // Observe the server's real sound, level-event, and explosion broadcasts without a client.
+        game.start_audio_capture();
+        game.side.lan_acting = Some(0);
         Some(game)
     }
 
@@ -1685,6 +1713,7 @@ pub(in crate::game) mod tests {
         use sunrise_client::nether_portal::PortalState;
         let mut resources = None;
         let mut game = server_game(&mut resources).expect("set SUNRISE_TEST_RESOURCES");
+        game.start_audio_capture();
         let portal = game
             .pack
             .assets
@@ -1720,7 +1749,7 @@ pub(in crate::game) mod tests {
                 },
             );
             // The actual level tick orders the portal pass before the mob pass.
-            game.audio.0.heard.clear();
+            game.side.pending_sounds.clear();
             game.handle_entity_portals();
             game.tick_creatures().unwrap();
             assert_eq!(
@@ -1729,12 +1758,7 @@ pub(in crate::game) mod tests {
                 "cooldown {cooldown}, Silent={silent}"
             );
             assert_eq!(
-                game.audio
-                    .0
-                    .heard
-                    .get("minecraft:entity.generic.explode")
-                    .copied()
-                    .unwrap_or(0),
+                sound_count(&game, "minecraft:entity.generic.explode"),
                 u32::from(!silent),
                 "cooldown {cooldown}, Silent={silent}"
             );
@@ -1959,7 +1983,7 @@ pub(in crate::game) mod tests {
                     .default_state("minecraft:glass")
                     .unwrap();
                 game.world.set(8, 64, 8, glass).unwrap();
-                game.side.audio.0.heard.clear();
+                game.side.pending_sounds.clear();
                 game.add_primed_tnt(BlockPos::new(8, 64, 8), 0.0, 1, None, None);
                 game.tnts[0].no_gravity = true;
                 game.tnts[0].velocity = Vec3::ZERO;
@@ -1983,7 +2007,7 @@ pub(in crate::game) mod tests {
                     u32::from(!silent),
                     "direct source Silent={silent}"
                 );
-                game.side.audio.0.heard.clear();
+                game.side.pending_sounds.clear();
                 game.server_explode(
                     [8.5, 64.0, 8.5],
                     0.0,
@@ -1992,8 +2016,8 @@ pub(in crate::game) mod tests {
                 )
                 .unwrap();
                 assert_eq!(
-                    game.side.audio.0.heard.get("minecraft:entity.generic.explode"),
-                    Some(&1),
+                    sound_count(&game, "minecraft:entity.generic.explode"),
+                    1,
                     "a source-free blast stays audible"
                 );
             }
@@ -2018,7 +2042,8 @@ pub(in crate::game) mod tests {
             for kind in ["splash_potion", "lingering_potion"] {
                 for potion in ["awkward", "swiftness", "healing"] {
                     for silent in [false, true] {
-                        game.side.audio.0.heard.clear();
+                        game.side.pending_sounds.clear();
+                        game.side.lan_events.clear();
                         let stack = ItemStack::new(&format!("minecraft:{kind}"), 1)
                             .with_potion(&format!("minecraft:{potion}"));
                         let mut projectile = Projectile::new(
@@ -2104,7 +2129,7 @@ pub(in crate::game) mod tests {
                 sunrise_client::mobs::hostile::creeper_tick(mob, &mut events);
                 assert!(mob.removed);
                 game.mobs.retain(|m| m.id != id);
-                game.side.audio.0.heard.clear();
+                game.side.pending_sounds.clear();
                 let particles = particle_count(&game);
                 game.handle_mob_events(events).unwrap();
                 assert!(particle_count(&game) > particles);
@@ -2147,7 +2172,8 @@ pub(in crate::game) mod tests {
                     game.add_projectile(shot);
                     let id = game.creatures.projectiles.last().unwrap().id;
                     set_silent(&mut game, id, silent);
-                    game.side.audio.0.heard.clear();
+                    game.side.pending_sounds.clear();
+                    game.side.lan_events.clear();
                     let particles = particle_count(&game);
                     let clouds = game.breath_clouds.len();
                     let xp: u32 = game.orbs.iter().map(|o| o.points() * o.count).sum();
@@ -2215,7 +2241,11 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) fn set_silent(game: &mut crate::game::ServerGame<'_>, id: u32, silent: bool) {
+    pub(in crate::game) fn set_silent(
+        game: &mut crate::game::ServerGame<'_>,
+        id: u32,
+        silent: bool,
+    ) {
         game.remember_tags(
             id,
             &sunrise_core::nbt::Tag::Compound(

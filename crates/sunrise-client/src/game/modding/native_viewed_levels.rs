@@ -98,8 +98,8 @@ mod tests {
         viewed_worlds::tests::{client, close, column, layered, open, run, spawn},
     };
     use mod_api::{
-        BlockFace, BlockState, BlockUpdateFlags, ClipBlock, ClipFluid, Host, LevelReadError,
-        LevelRef, LevelWriteError, LightLayer, WorldEpoch,
+        BlockFace, BlockState, ClipBlock, ClipFluid, Host, LevelReadError, LevelRef, LightLayer,
+        WorldEpoch,
     };
     use sunrise_protocol::packets::play::{self, Clientbound as C};
     use sunrise_world::registry::BlockStateId;
@@ -296,10 +296,7 @@ mod tests {
         let mut resources = None;
         let mut game = client(&mut resources);
         let (_, viewed) = viewing(&mut game);
-        assert_eq!(
-            viewed.set_block(&mut game, POCKET, api(1), BlockUpdateFlags::CLIENTS),
-            Err(LevelWriteError::Unavailable)
-        );
+        // `set_block` requires `ServerHost`, so writes are refused at compile time on a client.
         assert_eq!(state(&game, viewed, POCKET), Some(0));
         assert_eq!(viewed.fluid_state(&game, POCKET), None);
         assert_eq!(

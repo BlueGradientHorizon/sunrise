@@ -27,7 +27,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let world = if level.dimension() == self.dim.key() {
             &mut self.world
         } else {
-            self.side.levels.0.parked_world_mut_of(level.dimension_id())?
+            self.side
+                .levels
+                .0
+                .parked_world_mut_of(level.dimension_id())?
         };
         Some(&mut world.random)
     }

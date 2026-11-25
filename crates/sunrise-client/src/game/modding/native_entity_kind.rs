@@ -68,7 +68,12 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             Target::Painting(_) => "minecraft:painting",
             Target::Boat(id) => self.boats.iter().find(|b| b.id == id)?.entity_type_name(),
             Target::Cart(id) => self.carts.iter().find(|cart| cart.id == id)?.kind.id(),
-            Target::Other(id) => &crate::game::Side::others(&self.side)?.iter().find(|other| other.id == id)?.kind,
+            Target::Other(id) => {
+                &crate::game::Side::others(&self.side)?
+                    .iter()
+                    .find(|other| other.id == id)?
+                    .kind
+            }
             Target::Crystal(_) => "minecraft:end_crystal",
             Target::Dragon(_) | Target::DragonPart(_) => super::native_living_body::ENDER_DRAGON,
             Target::Tnt(_) => "minecraft:tnt",
@@ -153,13 +158,19 @@ mod tests {
     fn piston_reaction_and_hanging_class_follow_server_and_client_entities() {
         use mod_api::PushReaction::{IgnoreEntity, PushPull};
 
-        let read = |game: &crate::game::ServerGame<'_>, id| {
+        fn read<S: crate::game::Side>(
+            game: &crate::game::Game<'_, S>,
+            id: u32,
+        ) -> (mod_api::PushReaction, bool)
+        where
+            for<'a> crate::game::Game<'a, S>: mod_api::Host,
+        {
             let entity = game.entity(id).unwrap();
             (
                 entity.piston_push_reaction(game).unwrap().unwrap(),
                 entity.is_hanging(game).unwrap().unwrap(),
             )
-        };
+        }
         with_game(|game| {
             game.build_registries();
             let pig_ty = game.res.mob_types().get("minecraft:pig").unwrap().clone();

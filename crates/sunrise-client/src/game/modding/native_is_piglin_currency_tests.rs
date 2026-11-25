@@ -7,7 +7,9 @@
 //! `PiglinAi` flow by hand; the world is ticked for real. `admireGoldItem` sets `ADMIRING_ITEM`
 //! for `ADMIRE_DURATION` (119) ticks: `MemorySlot.tick` counts it down in the next 119 brain
 //! ticks, and clears it in the 120th, whose `StopHoldingItemIfNoLongerAdmiring` barters.
-use super::native_entity_refs::tests::{prepare_entity_ticking_neighborhood, with_game};
+use super::native_entity_refs::tests::{
+    prepare_entity_ticking_neighborhood, with_client_game, with_game,
+};
 use mod_api::{Hooks, Host, IsPiglinCurrencyEvent, ItemPart, Registrar, RegistrationContext};
 use std::sync::Arc;
 use sunrise_client::first_person::Hand;
@@ -102,7 +104,13 @@ fn step(game: &mut crate::game::ServerGame<'_>, ticks: usize) {
 
 /// An adult (or `baby`) piglin at `(x, 100, z)` that never zombifies, holding `main` in its main
 /// hand; its id.
-fn add_piglin(game: &mut crate::game::ServerGame<'_>, x: f64, z: f64, main: Option<&str>, baby: bool) -> u32 {
+fn add_piglin(
+    game: &mut crate::game::ServerGame<'_>,
+    x: f64,
+    z: f64,
+    main: Option<&str>,
+    baby: bool,
+) -> u32 {
     let before: Vec<u32> = game.mobs.iter().map(|m| m.id).collect();
     let baby = if baby { ",IsBaby:1b" } else { "" };
     let command = format!(
@@ -229,16 +237,6 @@ fn a_part_makes_a_coin_currency_and_refuses_the_gold_ingot_isolated() {
             assert_eq!(stored(mob(game, p), EMERALD), 0);
             assert_eq!(thrown(game), 0);
 
-            // The client's prediction: an adult that isn't admiring takes the coin, not a plain
-            // emerald; a baby takes neither.
-            let adult = add_piglin(game, -24.5, 24.5, None, false);
-            let baby = add_piglin(game, -20.5, 24.5, None, true);
-            game.inventory[game.selected] = Some(coins(1));
-            assert!(game.remote_mob_would_take(index(game, adult), Hand::Main));
-            assert!(!game.remote_mob_would_take(index(game, baby), Hand::Main));
-            game.inventory[game.selected] = Some(ItemStack::new(EMERALD, 1));
-            assert!(!game.remote_mob_would_take(index(game, adult), Hand::Main));
-
             // Refusing gold: a piglin with a golden sword doesn't take the ingot from the hand.
             let p = add_piglin(game, 24.5, 24.5, Some(GOLDEN_SWORD), false);
             assert!(!click(game, p, ItemStack::new(GOLD_INGOT, 1)));
@@ -266,6 +264,26 @@ fn a_part_makes_a_coin_currency_and_refuses_the_gold_ingot_isolated() {
             assert_eq!(kept[0].custom_data(), Some(&coin_data()));
             assert_eq!(thrown(game), 0);
         });
+        // The client's prediction: an adult that isn't admiring takes the coin, not a plain
+        // emerald; a baby takes neither.
+        with_client_game(|client| {
+            let kind = client
+                .res
+                .mob_types()
+                .get("minecraft:piglin")
+                .unwrap()
+                .clone();
+            let adult = Mob::new(101, kind.clone(), sunrise_core::geometry::Vec3::ZERO, 0.0);
+            let mut baby = Mob::new(102, kind, sunrise_core::geometry::Vec3::ZERO, 0.0);
+            baby.extra.age = -24000;
+            client.mobs.push(adult);
+            client.mobs.push(baby);
+            client.inventory[client.selected] = Some(coins(1));
+            assert!(client.remote_mob_would_take(0, Hand::Main));
+            assert!(!client.remote_mob_would_take(1, Hand::Main));
+            client.inventory[client.selected] = Some(ItemStack::new(EMERALD, 1));
+            assert!(!client.remote_mob_would_take(0, Hand::Main));
+        });
     });
 }
 
@@ -286,8 +304,6 @@ fn without_parts_only_the_gold_ingot_is_currency_isolated() {
         assert!(!click(game, p, coins(3)));
         assert_eq!(game.inventory[game.selected].as_ref().unwrap().count, 3);
         assert_eq!(off_hand(game, p), None);
-        game.inventory[game.selected] = Some(coins(1));
-        assert!(!game.remote_mob_would_take(index(game, p), Hand::Main));
 
         // A gold ingot is taken, and lost to a hit: an adult keeps nothing.
         let p = add_piglin(game, 24.5, -24.5, None, false);
@@ -327,6 +343,19 @@ fn without_parts_only_the_gold_ingot_is_currency_isolated() {
         hit(game, p);
         assert_eq!(off_hand(game, p), None);
         assert_eq!(mob(game, p).extra.main_hand_id(), Some(GOLD_INGOT));
+    });
+    with_client_game(|client| {
+        let kind = client
+            .res
+            .mob_types()
+            .get("minecraft:piglin")
+            .unwrap()
+            .clone();
+        client
+            .mobs
+            .push(Mob::new(101, kind, sunrise_core::geometry::Vec3::ZERO, 0.0));
+        client.inventory[client.selected] = Some(coins(1));
+        assert!(!client.remote_mob_would_take(0, Hand::Main));
     });
 }
 

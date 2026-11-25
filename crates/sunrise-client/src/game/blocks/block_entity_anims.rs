@@ -384,7 +384,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.be_anims.conduit_servers.remove(&pos);
             return;
         }
-        if !self.side.tickets.0.levels().block_ticking_at(pos[0], pos[2])
+        if !self
+            .side
+            .tickets
+            .0
+            .levels()
+            .block_ticking_at(pos[0], pos[2])
             || !self.border.contains(f64::from(pos[0]), f64::from(pos[2]))
         {
             return;
@@ -911,7 +916,7 @@ pub(in crate::game) mod conduit_target_tests {
         )
         .unwrap();
         game.build_registries();
-        
+
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -1020,14 +1025,13 @@ pub(in crate::game) mod conduit_target_tests {
         // server's tag through `handleBlockEntityData`.
         let mut client_resources = None;
         let mut client = client(&mut client_resources);
-        let watched = client
-            .spawn_mob(
-                "drowned",
-                [4.5, 100.0, 8.5],
-                false,
-                crate::game::creatures::SpawnSite::Plain,
-            )
-            .expect("a mob for the window");
+        let watched = 77_u32;
+        client.spawn_entity(
+            watched as i32,
+            "minecraft:drowned",
+            [4.5, 100.0, 8.5],
+            [0.0; 3],
+        );
         client.persist.uuids.insert(watched, uuid);
         let kind = client
             .remote
@@ -1042,7 +1046,7 @@ pub(in crate::game) mod conduit_target_tests {
             &tag,
         );
         let target = client
-            .conduit_target(CONDUIT)
+            .test_conduit_target(CONDUIT)
             .expect("the window sees the hunted mob");
         let (position, eye_y) = {
             let m = client.mobs.iter().find(|m| m.id == watched).unwrap();
@@ -1069,7 +1073,7 @@ pub(in crate::game) mod conduit_target_tests {
             &Tag::Compound(Default::default()),
         );
         assert!(
-            client.conduit_target(CONDUIT).is_none(),
+            client.test_conduit_target(CONDUIT).is_none(),
             "the target is dropped"
         );
     }

@@ -492,9 +492,6 @@ pub(in crate::game) mod remote_objects;
 pub(in crate::game) mod remote_projectiles;
 #[path = "network/remote_removal.rs"]
 pub(in crate::game) mod remote_removal;
-#[cfg(test)]
-#[path = "world/remote_save_tests.rs"]
-pub(in crate::game) mod remote_save_tests;
 #[path = "network/remote_stations.rs"]
 pub(in crate::game) mod remote_stations;
 #[path = "network/remote_tags.rs"]

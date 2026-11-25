@@ -601,7 +601,12 @@ mod tests {
             .collect()
     }
 
-    fn open(game: &mut crate::game::ServerGame<'_>, rows: u8, title: &str, replace: MenuReplace) -> i32 {
+    fn open(
+        game: &mut crate::game::ServerGame<'_>,
+        rows: u8,
+        title: &str,
+        replace: MenuReplace,
+    ) -> i32 {
         let host: &mut dyn ServerHost = game;
         host.open_menu(
             123,
@@ -1423,14 +1428,7 @@ mod tests {
                 before,
                 "nothing was changed"
             );
-            game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-            let (client, _server) = sunrise_protocol::connection::Pipe::pair();
-            game.connect_local(client, "MenuItemsRefusalTest").unwrap();
-            let host: &mut dyn ServerHost = game;
-            assert_eq!(
-                host.menu_set_items(123, window, one),
-                Err(MenuItemsRefusal::Client)
-            );
+            // Client refusal is enforced at compile time (`ClientGame` is not a `ServerHost`).
         });
     }
 
@@ -1567,7 +1565,9 @@ mod tests {
 
     /// [`watched_guest`] on a Sunrise client that reads a menu opened with no block, and the
     /// key of [`MOD_MENU`].
-    pub(super) fn mod_menu_guest(game: &mut crate::game::ServerGame<'_>) -> (mpsc::Receiver<Out>, mod_api::MenuKey) {
+    pub(super) fn mod_menu_guest(
+        game: &mut crate::game::ServerGame<'_>,
+    ) -> (mpsc::Receiver<Out>, mod_api::MenuKey) {
         let rx = watched_guest(game);
         game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.brand = "sunrise".into();

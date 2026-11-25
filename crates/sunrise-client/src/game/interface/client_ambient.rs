@@ -37,14 +37,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
             match event {
                 MobEvent::ParticleAt { kind, at, velocity } => {
                     if let Some(ty) = ParticleType::from_name(kind) {
-                        self.side.particles
+                        self.side
+                            .particles
                             .0
                             .add(&ParticleOptions::simple(ty), at, velocity);
                     }
                 }
                 MobEvent::Particles { kind, at, count: 0 } => {
                     if let Some(ty) = ParticleType::from_name(kind) {
-                        self.side.particles
+                        self.side
+                            .particles
                             .0
                             .add(&ParticleOptions::simple(ty), at, [0.0; 3]);
                     }
@@ -373,25 +375,7 @@ mod sprint_handle_tests {
     #[test]
     #[ignore = "daily"]
     fn client_entity_sprint_particles_use_the_local_block_and_reject_stale_handles() {
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
-            game.options.dedicated = None;
-            let root =
-                std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-            let client_resources = super::super::load_resources(
-                sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
-                Vec::new(),
-                None,
-                &root,
-                &super::super::Settings::default(),
-                std::time::Instant::now(),
-                false,
-                super::super::execution_role::ExecutionRole::Client,
-                &super::super::Progress::new(),
-                &mut |_, _| unreachable!(),
-            )
-            .unwrap();
-            game.pack = client_resources.pack;
+        super::super::native_entity_refs::tests::with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "SprintParticleTest").unwrap();
             let remote = game.remote.as_mut().unwrap();
@@ -414,18 +398,18 @@ mod sprint_handle_tests {
                 game.particle_sprite(stone, [0, 63, 0]).is_some(),
                 "stone sprite missing"
             );
-            game.particles.0.requested = Some(Vec::new());
+            game.side.particles.0.requested = Some(Vec::new());
             let entity = game.entity(7).unwrap();
             let host: &mut dyn ClientHost = game;
             assert!(entity.sprint_particles(host));
-            let requests = game.particles.0.requested.as_ref().unwrap();
+            let requests = game.side.particles.0.requested.as_ref().unwrap();
             assert_eq!(requests.len(), 1);
             assert_eq!(requests[0].1[1], 64.1);
             let stale = EntityRef::new(WorldEpoch::new(0), 7);
             assert!(!stale.sprint_particles(game));
             game.remote.as_mut().unwrap().logged_in = false;
             assert!(!entity.sprint_particles(game));
-            assert_eq!(game.particles.0.requested.as_ref().unwrap().len(), 1);
+            assert_eq!(game.side.particles.0.requested.as_ref().unwrap().len(), 1);
         });
     }
 }

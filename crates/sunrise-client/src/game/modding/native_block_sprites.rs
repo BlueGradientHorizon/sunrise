@@ -30,12 +30,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// model uses. API 380.
     pub(in crate::game) fn texture_sprites(&self, textures: &[&str]) -> Vec<Option<SpriteRef>> {
         let atlas = self
-            .side.stitching_block_atlas
+            .side
+            .stitching_block_atlas
             .0
             .as_ref()
             .unwrap_or(&self.pack.render);
         let split = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map_or(u32::MAX, |r| r.sprite_split());
@@ -123,7 +125,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// For a client mod: changes each time the resources load (a resource pack turned on or off can move every
     /// sprite): ask `block_sprites` again then. API 380.
     pub(in crate::game) fn block_sprites_version(&self) -> u64 {
-        self.side.stitching_block_atlas
+        self.side
+            .stitching_block_atlas
             .0
             .as_ref()
             .unwrap_or(&self.pack.render)
@@ -146,7 +149,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     fn native_sprite_lookup(&self) -> Lookup<'_> {
         // (no renderer, no arrays: every layer counts as array 0's)
         let split = self
-            .side.renderer
+            .side
+            .renderer
             .0
             .as_ref()
             .map_or(u32::MAX, |r| r.sprite_split());
@@ -360,7 +364,7 @@ mod texture_atlas_stitched_tests {
                 sunrise_client_render::mod_sprite_sources::register(sources),
                 ["marker:own"]
             );
-            super::super::native_entity_refs::tests::with_game_role(
+            super::super::native_entity_refs::tests::with_game_role_client(
                 root.path().to_owned(),
                 role,
                 |game| {
@@ -385,7 +389,7 @@ mod texture_atlas_stitched_tests {
                     game.spawn_pack_reload(super::super::packs::ReloadKind::Selection)
                         .unwrap();
                     let started = std::time::Instant::now();
-                    while game.pack_reload.0.is_some() {
+                    while game.side.pack_reload.0.is_some() {
                         assert!(
                             started.elapsed().as_secs() < 300,
                             "the reload never finished"

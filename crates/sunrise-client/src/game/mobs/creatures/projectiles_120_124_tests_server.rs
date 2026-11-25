@@ -95,7 +95,10 @@ pub(in crate::game::server_side) use sunrise_core::geometry::Vec3;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_core::random::{LegacyRandom, RandomSource};
 
-pub(in crate::game::server_side) fn alive_124(game: &crate::game::ServerGame<'_>, t: Target124) -> bool {
+pub(in crate::game::server_side) fn alive_124(
+    game: &crate::game::ServerGame<'_>,
+    t: Target124,
+) -> bool {
     match t {
         Target124::Boat(id) => game.boats.iter().any(|b| b.id == id),
         Target124::Cart(id) => game.carts.iter().any(|c| c.id == id),
@@ -366,4 +369,8 @@ pub(in crate::game) fn run_witness_firework_rocket_targets_124() {
         "gap #124 failures:\n{}",
         failures.join("\n")
     );
+}
+
+pub(in crate::game) fn clear_others(game: &mut crate::game::ServerGame<'_>) {
+    game.side.others.0.clear();
 }

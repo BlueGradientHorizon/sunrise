@@ -44,7 +44,10 @@ impl Hooks for MutatesQuery {
     }
 }
 
-fn water_column<S: crate::game::Side>(game: &mut Game<'_, S>) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
+fn water_column<S: crate::game::Side>(game: &mut Game<'_, S>)
+where
+    for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host,
+{
     let water = game
         .pack
         .assets

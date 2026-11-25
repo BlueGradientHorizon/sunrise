@@ -69,14 +69,12 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_client_reads_the_local_players_effect_blend_factors() {
-        use super::super::execution_role::ExecutionRole;
+        use super::super::native_entity_refs::tests::with_client_game;
         use sunrise_client::{effects::EffectInstance, motion::PlayerMotion};
         use sunrise_protocol::connection::Pipe;
         let close =
             |read: Option<f32>, expected: f32| read.is_some_and(|f| (f - expected).abs() < 1e-6);
-        with_game(|game| {
-            game.options.execution_role = ExecutionRole::Client;
-            game.options.dedicated = None;
+        with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "BlendReadTest").unwrap();
             let remote = game.remote.as_mut().unwrap();
@@ -100,7 +98,7 @@ pub(in crate::game) mod tests {
                 .effects
                 .list
                 .push(EffectInstance::new("darkness", 200, 0));
-            game.client.darkness_blend = (0.0, 0.0);
+            game.side.darkness_blend = (0.0, 0.0);
             // The same effect reads whole on the client: `getEffect`, `getActiveEffects`, `hasEffect`.
             let darkness = mod_platform::__private::part_tests::effect_key("minecraft:darkness");
             assert!(me.potion_affected(game, darkness));
@@ -142,7 +140,7 @@ pub(in crate::game) mod tests {
                 .effects
                 .list
                 .push(EffectInstance::new("nausea", 600, 0));
-            game.client.screen_fx.tick_spinning(Some(true));
+            game.side.screen_fx.tick_spinning(Some(true));
             assert!(close(
                 me.effect_blend_factor(
                     game,

@@ -19,7 +19,9 @@ pub(in crate::game) mod tests {
         packets::configuration::{RegistryTags, TagEntry, UpdateTags},
     };
 
-    fn client<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ClientGame<'a> {
+    fn client<'a>(
+        resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+    ) -> crate::game::ClientGame<'a> {
         let root = std::path::PathBuf::from(
             std::env::var_os("SUNRISE_TEST_RESOURCES")
                 .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),

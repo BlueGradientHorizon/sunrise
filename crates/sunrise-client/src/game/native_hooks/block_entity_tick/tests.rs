@@ -47,7 +47,10 @@ pub(in crate::game) fn row(kind: &str, value: i32) -> BlockEntity {
     )))
 }
 
-pub(in crate::game) fn place_subject(game: &mut crate::game::ServerGame<'_>, kind: &str) -> BlockEntityRef {
+pub(in crate::game) fn place_subject(
+    game: &mut crate::game::ServerGame<'_>,
+    kind: &str,
+) -> BlockEntityRef {
     game.world
         .chunks
         .insert(CHUNK, Arc::new(Chunk::empty(0, 0)));
@@ -1344,15 +1347,16 @@ fn chunk_save_reloads_reordered_slotless_items() {
         };
         let initial = Tag::List(vec![item(1), item(0)]);
         let reordered = Tag::List(vec![item(0), item(1)]);
-        let write_items = |game: &mut crate::game::ServerGame<'_>, subject: BlockEntityRef, items: Tag| {
-            let mut access = access(game, subject);
-            let mut scope = BlockEntityScope::new(&mut access);
-            assert_eq!(
-                scope.with_view(|mut view| view.set_nbt("Items".into(), Some(items))),
-                Some(true)
-            );
-            subject.set_changed(scope.host()).unwrap();
-        };
+        let write_items =
+            |game: &mut crate::game::ServerGame<'_>, subject: BlockEntityRef, items: Tag| {
+                let mut access = access(game, subject);
+                let mut scope = BlockEntityScope::new(&mut access);
+                assert_eq!(
+                    scope.with_view(|mut view| view.set_nbt("Items".into(), Some(items))),
+                    Some(true)
+                );
+                subject.set_changed(scope.host()).unwrap();
+            };
         let save_reload = |game: &crate::game::ServerGame<'_>| {
             let snapshots = game.with_entities([game.world.chunks.get(&CHUNK).unwrap()]);
             let registry = game.pack.assets.registry;

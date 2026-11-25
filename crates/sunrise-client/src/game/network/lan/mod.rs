@@ -1268,7 +1268,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.res.shared_items(),
         );
         encoder.tables = Some(
-            self.side.save
+            self.side
+                .save
                 .0
                 .tables
                 .get_or_init(|| Arc::new(sunrise_client::save::SaveTables::new(&self.pack.assets)))
@@ -1707,10 +1708,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .map(|(tag, _)| tag);
         let mut host = self.lan.take()?;
         let mut stored = None;
-        if let Some(i) =
-            host.hub.guests.iter().position(|g| {
-                g.uuid == uuid && g.placed && !self.side.crash_save.excludes(g.conn)
-            })
+        if let Some(i) = host
+            .hub
+            .guests
+            .iter()
+            .position(|g| g.uuid == uuid && g.placed && !self.side.crash_save.excludes(g.conn))
         {
             // The owner's map is the game's only during their own turn
             // (`guest_turn`); otherwise their record holds it, whoever acts.
@@ -6236,7 +6238,7 @@ pub(in crate::game) mod mob_pickup_sync_tests {
         );
         let item = game.dropped[0].clone();
         let rx = guest_at(&mut game, [8.5, 80.0, 8.5]);
-        game.add_pickup(Taken::Item(Box::new(item.clone())), Collector::Mob(mob));
+        game.server_mob_take_item(&item, mob);
         let sent = takes(&rx);
         assert!(
             sent.iter()

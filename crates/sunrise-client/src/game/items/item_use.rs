@@ -1141,6 +1141,24 @@ pub(in crate::game) mod interact_vibration_tests {
                     use_block(game, "minecraft:candle_cake"),
                     sunrise_world::level::InteractionResult::Success
                 );
+            })
+            .expect("SUNRISE_TEST_RESOURCES must name prepared resources");
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
+                let (client, _server) = sunrise_protocol::connection::Pipe::pair();
+                game.connect_local(client, "CakeClient").unwrap();
+                let remote = game.remote.as_mut().unwrap();
+                remote.logged_in = true;
+                remote.entity_id = 41;
+                let mut player = sunrise_client::motion::PlayerMotion::new(
+                    game.motion,
+                    sunrise_core::geometry::Vec3::new(0.5, 65.0, 0.5),
+                )
+                .unwrap();
+                player.entity_id = 41;
+                player.health.food.food = 10;
+                game.player = Some(player);
+                game.creative = false;
+                *game.held_mut() = Some(ItemStack::new("minecraft:rotten_flesh", 1));
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
@@ -1180,8 +1198,7 @@ pub(in crate::game) mod interact_vibration_tests {
                     7,
                     "client dry-level path asks the hook"
                 );
-            })
-            .expect("SUNRISE_TEST_RESOURCES must name prepared resources");
+            });
         });
         can_eat_player_on_client_and_without_eater();
     }
@@ -1222,13 +1239,10 @@ pub(in crate::game) mod interact_vibration_tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            with_game("minecraft:rotten_flesh", |game| {
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
                 let food = ItemStack::new("minecraft:rotten_flesh", 1);
-                game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
                 let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(client, "Eater").unwrap();
-                // Replace the server fixture's identity and the body removed on join.
-                game.side.lan_acting_uuid = None;
                 game.level.player_uuid = None;
                 let remote = game.remote.as_mut().unwrap();
                 remote.logged_in = true;
@@ -1248,8 +1262,7 @@ pub(in crate::game) mod interact_vibration_tests {
                 game.remote.as_mut().unwrap().logged_in = false;
                 assert!(!game.can_eat(Some(&food), false));
                 assert_eq!(calls.load(Ordering::Relaxed), 1, "no eater, no question");
-            })
-            .expect("SUNRISE_TEST_RESOURCES must name prepared resources");
+            });
         });
     }
 
@@ -1316,9 +1329,10 @@ pub(in crate::game) mod interact_vibration_tests {
                 .stage_world_tables(&stack, false, &root)
                 .unwrap()
                 .tables;
-            let items =
-                &mut std::sync::Arc::make_mut(&mut game.side.world_tables.0.as_mut().unwrap().items)
-                    .items;
+            let items = &mut std::sync::Arc::make_mut(
+                &mut game.side.world_tables.0.as_mut().unwrap().items,
+            )
+            .items;
             let mut info = items["minecraft:fishing_rod"].clone();
             info.id = std::sync::Arc::from("ruby:rod");
             info.template = Some(std::sync::Arc::from("minecraft:fishing_rod"));
@@ -1328,9 +1342,10 @@ pub(in crate::game) mod interact_vibration_tests {
             );
             items.insert(info.id.clone(), info);
 
-            let items =
-                &mut std::sync::Arc::make_mut(&mut game.side.world_tables.0.as_mut().unwrap().items)
-                    .items;
+            let items = &mut std::sync::Arc::make_mut(
+                &mut game.side.world_tables.0.as_mut().unwrap().items,
+            )
+            .items;
             let mut stick_info = items["minecraft:stick"].clone();
             stick_info.id = std::sync::Arc::from("ruby:stick");
             stick_info.template = Some(std::sync::Arc::from("minecraft:stick"));

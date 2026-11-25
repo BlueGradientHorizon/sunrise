@@ -10,7 +10,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let target = TrackingTarget::Entity(id);
         if self.side.particles.0.has_tracking_target(target) {
             let last_body = self.remote_entity_tracking_body(id);
-            self.side.particles
+            self.side
+                .particles
                 .0
                 .detach_tracking_target(target, || last_body);
         }
@@ -74,16 +75,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 [position.x, position.y, position.z]
             }
             "minecraft:fishing_bobber" => {
-                let hook = self
-                    .side
-                    .remote_hooks
-                    .iter()
-                    .find(|hook| hook.id == eid)?;
+                let hook = self.side.remote_hooks.iter().find(|hook| hook.id == eid)?;
                 let Vec3 { x, y, z } = hook.position;
                 [x, y, z]
             }
             _ => self
-                .side.text_displays
+                .side
+                .text_displays
                 .0
                 .get(&id)
                 .map(|display| display.position().to_array())

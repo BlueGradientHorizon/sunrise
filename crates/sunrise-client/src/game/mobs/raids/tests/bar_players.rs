@@ -10,8 +10,10 @@ use sunrise_client::chunk::Chunk;
 #[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
 
-#[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::raids_client::bar_players_tests::raid_bars;
+fn raid_bars(game: &crate::game::ServerGame<'_>) -> usize {
+    game.raid_bars_at(sunrise_client::lan::playerdata::ints_uuid([0, 0, 0, 1]))
+        .len()
+}
 
 #[test]
 #[ignore = "daily"]

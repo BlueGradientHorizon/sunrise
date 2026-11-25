@@ -33,7 +33,9 @@ pub(in crate::game::client_side) use sunrise_core::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::registry::BlockStateId;
 
-pub(in crate::game::client_side) fn level_random(game: &mut crate::game::ClientGame<'_>) -> LegacyRandom {
+pub(in crate::game::client_side) fn level_random(
+    game: &mut crate::game::ClientGame<'_>,
+) -> LegacyRandom {
     LegacyRandom::from(<(u64, Option<f64>)>::from(
         &*game.side.particles.0.level_random(),
     ))
@@ -185,7 +187,8 @@ fn the_part_runs_inside_its_pick_before_the_fluid_the_next_pick_and_the_rain() {
         game.side.particles.0.requested = Some(Vec::new());
         game.tick_particles();
         let log: Vec<(ParticleType, [i32; 3])> = game
-            .side.particles
+            .side
+            .particles
             .0
             .requested
             .take()

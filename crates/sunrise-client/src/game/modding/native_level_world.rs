@@ -101,9 +101,6 @@ impl LevelAccess for RainView<'_> {
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
-
-
-
     /// The sea level the game uses for the level (`Dim::sea_level`). None as the host call says.
     pub(in crate::game) fn level_sea_level(&self, level: LevelRef) -> Option<i32> {
         self.native_level_world(level)?;
@@ -972,7 +969,6 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn weather_read_resolves_levels_and_refuses_stale_or_unavailable_handles() {
-        use super::super::execution_role::ExecutionRole;
         use mod_api::{LevelRef, WorldEpoch};
 
         with_game(|game| {
@@ -990,7 +986,11 @@ mod tests {
             // The current world's dimension type, not its id alone, gates weather.
             game.world.shape.has_ceiling = true;
             assert_eq!(level.weather(game), Some((0.0, 0.0)));
-            game.options.execution_role = ExecutionRole::Client;
+        });
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let epoch = game.native_lifecycle.epoch().unwrap();
+            let level = LevelRef::new(epoch, mod_api::DimensionKey::OVERWORLD);
+            let stale = LevelRef::new(WorldEpoch::new(epoch.get() + 1), level.dimension());
             assert_eq!(level.weather(game), None, "no logged-in remote level");
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "WeatherTest").unwrap();
@@ -1006,9 +1006,7 @@ mod tests {
                 "client shows only its current level"
             );
             assert_eq!(stale.weather(game), None);
-            // Only the weather pair is a both-side read; the server queries keep their guard.
-            assert_eq!(game.level_is_raining(level), None);
-            assert_eq!(game.level_is_thundering(level), None);
+            // Server-only weather queries (`level_is_raining`/`level_is_thundering`) are refused at compile time on `ClientGame`.
         });
     }
 

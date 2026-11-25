@@ -86,7 +86,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let world = if level.dimension() == self.dim.key() {
             &mut self.world
         } else {
-            self.side.levels.0.parked_world_mut_of(level.dimension_id())?
+            self.side
+                .levels
+                .0
+                .parked_world_mut_of(level.dimension_id())?
         };
         world
             .water_tickets
@@ -185,7 +188,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .map(|(structure, position)| mod_api::StructureSearchResult::new(structure, position))
     }
 
-
     /// The authoritative server's `LevelReader.getBiome`, including parked levels.
     pub(in crate::game) fn level_biome_at(&self, level: LevelRef, pos: [i32; 3]) -> Option<String> {
         if !self.is_logical_server() {
@@ -193,13 +195,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         self.native_read_biome(level, pos)
     }
-
-
-
-
-
-
-
 
     /// The border of a resident server level, through the handle's lifetime check.
     pub(in crate::game) fn level_world_border(&self, level: LevelRef) -> Option<[f64; 4]> {
@@ -270,7 +265,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.streaming
                 .set_forced_loaded(&mut self.world, x, z, forced)
         } else {
-            self.side.levels
+            self.side
+                .levels
                 .0
                 .force_parked_chunk(chunk.level().dimension_id(), x, z, forced)
                 .unwrap_or(false)
@@ -501,7 +497,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         f: impl FnOnce(
             &sunrise_world::level::Signals<
                 '_,
-                super::native_level_signals::ReadLevel<'_, '_, crate::game::server_side::ServerState>,
+                super::native_level_signals::ReadLevel<
+                    '_,
+                    '_,
+                    crate::game::server_side::ServerState,
+                >,
             >,
         ) -> R,
     ) -> Option<R> {
@@ -703,7 +703,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.native_level_world(level).is_none() {
             return false;
         }
-        self.side.levels
+        self.side
+            .levels
             .0
             .request_save(super::Dim::from_id(level.dimension_id()));
         true
@@ -789,7 +790,8 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
         let streaming = if level.dimension() == self.native_level_key() {
             &self.streaming
         } else {
-            crate::game::Side::levels(&self.side).and_then(|l| l.parked_streaming_of(level.dimension_id()))?
+            crate::game::Side::levels(&self.side)
+                .and_then(|l| l.parked_streaming_of(level.dimension_id()))?
         };
         let [qx, qy, qz] = streaming.biome_zoom.quart_at_block(block_pos(pos));
         let chunk = world.chunks.get(&(qx >> 2, qz >> 2))?;
@@ -911,10 +913,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// The world a handle names for a read that works on both sides: the
     /// server's level, or on a client the one it shows (`Minecraft.level`, its
     /// copy of the server's). None for a stale handle or another dimension.
-    pub(in crate::game) fn native_level_read_world(
-        &self,
-        level: LevelRef,
-    ) -> Option<&World> {
+    pub(in crate::game) fn native_level_read_world(&self, level: LevelRef) -> Option<&World> {
         if self.is_logical_server() {
             return self.native_level_world(level);
         }
@@ -963,7 +962,8 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
         if level.dimension() == self.dim.key() {
             return Some(&self.streaming);
         }
-        crate::game::Side::levels(&self.side).and_then(|l| l.parked_streaming_of(level.dimension_id()))
+        crate::game::Side::levels(&self.side)
+            .and_then(|l| l.parked_streaming_of(level.dimension_id()))
     }
 
     /// Borrow the resident site without lending any writable host to discovery.
@@ -1158,7 +1158,7 @@ mod tests {
     use super::super::api_values::TryIntoApi;
     use super::super::{
         Dim,
-        native_entity_refs::tests::{run_fresh_cases, with_game},
+        native_entity_refs::tests::{run_fresh_cases, with_client_game, with_game},
     };
     use mod_api::{ChunkRef, LevelRef, LightLayer, WorldEpoch};
     use sunrise_core::position::BlockPos;
@@ -1624,7 +1624,6 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn height_reads_server_levels_and_the_joined_client_level() {
-        use super::super::execution_role::ExecutionRole;
         use mod_api::Host;
         use sunrise_client::chunk::LevelShape;
         use sunrise_protocol::connection::Pipe;
@@ -1638,11 +1637,13 @@ mod tests {
             assert_eq!(nether.height(game), Some((0, 256)));
             assert_eq!(overworld.height(game), Some((-64, 384)), "parked level");
             game.enter_level(Dim::Overworld).unwrap();
-
-            game.options.execution_role = ExecutionRole::Client;
-            game.options.dedicated = None;
+        });
+        with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "HeightReadTest").unwrap();
+            let epoch = game.native_lifecycle.epoch().unwrap();
+            let overworld = LevelRef::new(epoch, mod_api::DimensionKey::OVERWORLD);
+            let nether = LevelRef::new(epoch, mod_api::DimensionKey::NETHER);
             assert!(game.level("minecraft:overworld").is_none());
             assert_eq!(overworld.height(game), None, "not logged in");
             game.remote.as_mut().unwrap().logged_in = true;
@@ -2137,7 +2138,8 @@ mod tests {
             game.enter_level(other).unwrap();
             game.enter_level(back).unwrap();
             let mut expected = game
-                .side.levels
+                .side
+                .levels
                 .0
                 .parked_world_of(other.id())
                 .unwrap()
@@ -2148,7 +2150,8 @@ mod tests {
             let drawn = parked.with_random(&mut *host, |r| r.next_long()).unwrap();
             assert_eq!(drawn, expected.next_long());
             let mut after = game
-                .side.levels
+                .side
+                .levels
                 .0
                 .parked_world_of(other.id())
                 .unwrap()
@@ -2195,7 +2198,8 @@ mod tests {
             expected_active.next_gaussian();
             expected_parked.next_gaussian();
             game.world.random = LevelRandom::for_level(expected_active.clone());
-            game.side.levels
+            game.side
+                .levels
                 .0
                 .parked_world_mut_of(other.id())
                 .unwrap()
@@ -2203,7 +2207,15 @@ mod tests {
             let states = |game: &crate::game::ServerGame<'_>| {
                 [
                     level_random_state(&game.world.random),
-                    level_random_state(&game.side.levels.0.parked_world_of(other.id()).unwrap().random),
+                    level_random_state(
+                        &game
+                            .side
+                            .levels
+                            .0
+                            .parked_world_of(other.id())
+                            .unwrap()
+                            .random,
+                    ),
                 ]
             };
             let draw = |rng: &mut dyn mod_api::RandomSource| {
@@ -2580,7 +2592,8 @@ mod tests {
                     .as_deref(),
                 Some("7")
             );
-            game.side.save
+            game.side
+                .save
                 .0
                 .save(
                     &[game.world.chunks.get(&(0, 0)).unwrap().clone()],
@@ -2710,10 +2723,15 @@ mod tests {
             let vanilla = game.side.save.0.load_forced_chunks();
             assert!(vanilla.is_empty(), "vanilla's file has no mod ticket");
             // A new level starts with no live tickets; only the saved tickets carry over.
-            let reopen = |game: &mut crate::game::ServerGame<'_>, slot_of: fn(&str) -> Option<u32>| {
+            let reopen = |game: &mut crate::game::ServerGame<'_>,
+                          slot_of: fn(&str) -> Option<u32>| {
                 let terrain =
                     TestTerrain::new(game.pack.assets.registry, game.res.biomes()).unwrap();
-                game.streaming = Streaming::new(Arc::new(terrain), game.worker_context(), 1);
+                game.streaming = Streaming::new(
+                    Arc::new(terrain),
+                    game.pack.context_with(game.res.biomes().clone()),
+                    1,
+                );
                 game.streaming.mesh = false;
                 game.streaming.radius = 0;
                 game.streaming.load_forced(
@@ -2724,8 +2742,9 @@ mod tests {
             };
             reopen(game, known_slot);
             // Each ticket comes back under the controller that held it.
-            let listed =
-                |game: &crate::game::ServerGame<'_>, c| game.level_mod_forced_chunks(level, c).unwrap();
+            let listed = |game: &crate::game::ServerGame<'_>, c| {
+                game.level_mod_forced_chunks(level, c).unwrap()
+            };
             assert_eq!(listed(game, quarry()).len(), 2);
             assert_eq!(listed(game, drill), vec![(block, [-9, 4], false)]);
             assert!(game.streaming.forced.contains(&(-9, 4)));
@@ -2912,8 +2931,13 @@ mod tests {
                 let host: &mut dyn ServerHost = game;
                 assert_eq!(parked.load_chunk(host, [3, 3]), Ok(()));
                 assert_eq!(game.dim, back, "loading must not switch the acting level");
-                let parked_chunk =
-                    &game.side.levels.0.parked_world_of(other.id()).unwrap().chunks[&(3, 3)];
+                let parked_chunk = &game
+                    .side
+                    .levels
+                    .0
+                    .parked_world_of(other.id())
+                    .unwrap()
+                    .chunks[&(3, 3)];
                 assert!(parked_chunk.lit, "the parked level's chunk is lit too");
                 let heard = HEARD.with_borrow_mut(std::mem::take);
                 assert!(
@@ -3325,12 +3349,15 @@ mod tests {
 
 #[cfg(test)]
 pub(in crate::game) mod environment_read_tests {
-    use crate::game::{Dim, native_entity_refs::tests::with_game};
+    use crate::game::{
+        Dim,
+        native_entity_refs::tests::{with_client_game, with_game},
+    };
     use mod_api::{BiomeSearch, LevelRef, WorldEpoch};
     use std::sync::Arc;
     use sunrise_client::chunk::Chunk;
 
-    fn paint_biome(game: &mut crate::game::ServerGame<'_>, name: &str) {
+    fn paint_biome<S>(game: &mut crate::game::Game<'_, S>, name: &str) {
         let biome = world_biomes!(game).id(name);
         let mut chunk = Chunk::empty(0, 0);
         for y in 0..chunk.sections.len() as i32 * 4 {
@@ -3351,7 +3378,6 @@ pub(in crate::game) mod environment_read_tests {
 
     pub(in crate::game::server_side) fn run_biome_reads_follow_live_cells_parked_levels_and_client_login_without_loading()
      {
-        use crate::game::execution_role::ExecutionRole;
         use sunrise_protocol::connection::Pipe;
 
         with_game(|game| {
@@ -3381,11 +3407,14 @@ pub(in crate::game) mod environment_read_tests {
                 overworld.dimension(),
             );
             assert_eq!(stale.biome_at(game, [8, 64, 8]), None);
-
-            game.options.execution_role = ExecutionRole::Client;
-            game.options.dedicated = None;
+        });
+        with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "BiomeReadTest").unwrap();
+            let overworld = LevelRef::new(
+                game.native_lifecycle.epoch().unwrap(),
+                mod_api::DimensionKey::OVERWORLD,
+            );
             assert_eq!(
                 overworld.client_biome(game, [8, 64, 8]),
                 None,
@@ -3468,7 +3497,6 @@ pub(in crate::game) mod environment_read_tests {
 
     pub(in crate::game::server_side) fn run_sky_and_logical_height_read_the_named_dimension_and_client_state()
      {
-        use crate::game::execution_role::ExecutionRole;
         use sunrise_client::chunk::LevelShape;
         use sunrise_protocol::connection::Pipe;
 
@@ -3502,7 +3530,8 @@ pub(in crate::game) mod environment_read_tests {
             assert_eq!(nether.get_sky_darken(game), Some(11));
             assert_eq!(game.dim, Dim::Nether, "a read does not swap levels");
             let parked = game
-                .side.levels
+                .side
+                .levels
                 .0
                 .parked_world_of("minecraft:overworld")
                 .unwrap();
@@ -3525,11 +3554,13 @@ pub(in crate::game) mod environment_read_tests {
             );
             assert_eq!(stale.logical_height(game), None);
             assert_eq!(stale.get_sky_darken(game), None);
-
-            game.options.execution_role = ExecutionRole::Client;
-            game.options.dedicated = None;
+        });
+        with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "SkyReadTest").unwrap();
+            let epoch = game.native_lifecycle.epoch().unwrap();
+            let overworld = LevelRef::new(epoch, mod_api::DimensionKey::OVERWORLD);
+            let nether = LevelRef::new(epoch, mod_api::DimensionKey::NETHER);
             assert_eq!(overworld.logical_height(game), None, "not logged in");
             game.remote.as_mut().unwrap().logged_in = true;
             game.world.shape = LevelShape::new(-128, 512, 256, true, false).unwrap();

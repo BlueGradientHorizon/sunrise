@@ -46,7 +46,9 @@ fn framed_compass(id: u32, pos: [i32; 3], facing: u8, rotation: i8) -> ItemFrame
 
 /// A game with the client's item definitions and atlas: resolving a stack to
 /// its model needs both, and `server_game` loads neither.
-fn client_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
+fn client_game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> crate::game::ClientGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -67,14 +69,17 @@ fn client_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resourc
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = execution_role::ExecutionRole::Client;
     let res = &*resources.insert(loaded.resources);
-    crate::game::ServerGame::new(
+    crate::game::ClientGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
+        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
+            root,
+        )),
         None,
     )
     .unwrap()

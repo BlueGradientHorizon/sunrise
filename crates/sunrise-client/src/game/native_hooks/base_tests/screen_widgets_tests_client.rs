@@ -1361,7 +1361,10 @@ fn mounting_lifecycle_focus_remove_resize_and_close_dispose() {
             assert_eq!(failed_drops.load(Ordering::SeqCst), 1);
             game.screen_chars_typed(Some("r"));
             assert_eq!(game.mounted_focused_text_edit(None).unwrap().value, "r");
-            assert_ne!(game.side.screen_state.0.widgets.generation(), gen_before_resize);
+            assert_ne!(
+                game.side.screen_state.0.widgets.generation(),
+                gen_before_resize
+            );
             // Prior 3 live drop counters + 1 newly removed drop counter = 5 total drops.
             assert_eq!(drops.load(Ordering::SeqCst), 5);
             // Drag state cleared on rebuild; initial focus re-applied to the newly mounted text field.
@@ -2257,7 +2260,10 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             assert!(game.dialog_open());
             assert!(game.dialog_status()["screen"].is_null());
             assert_eq!(game.side.screen_state.0.screen_instance, instance);
-            assert_eq!(game.side.screen_state.0.widgets.focused_id(), Some(original));
+            assert_eq!(
+                game.side.screen_state.0.widgets.focused_id(),
+                Some(original)
+            );
             assert_eq!(take_log(&log), ["opening:dialog->dialog"]);
 
             veto_dialog.store(false, Ordering::SeqCst);

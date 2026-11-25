@@ -164,11 +164,17 @@ pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_sav
                         ))),
                     ));
                 }
-                game.side.save
+                game.side
+                    .save
                     .0
                     .save(&[Arc::new(chunk)], registry, game.res.biomes())
                     .unwrap();
-                let mut chunk = game.side.save.0.load(0, 0, registry, game.res.biomes()).unwrap();
+                let mut chunk = game
+                    .side
+                    .save
+                    .0
+                    .load(0, 0, registry, game.res.biomes())
+                    .unwrap();
                 game.world.install_chunk_block_entities(&mut chunk);
                 game.world.chunks.insert((0, 0), Arc::new(chunk));
                 assert!(game.streaming.set_forced(0, 0, true));
@@ -209,12 +215,18 @@ pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_sav
                 }
 
                 let capture = game.with_entities([&game.world.chunks[&(0, 0)]]);
-                game.side.save
+                game.side
+                    .save
                     .0
                     .save_later(&capture, registry, game.res.biomes())
                     .unwrap();
                 game.side.save.0.flush().unwrap();
-                let reloaded = game.side.save.0.load(0, 0, registry, game.res.biomes()).unwrap();
+                let reloaded = game
+                    .side
+                    .save
+                    .0
+                    .load(0, 0, registry, game.res.biomes())
+                    .unwrap();
                 for (x, items) in (1..=3).zip(&expected) {
                     let (_, BlockEntity::Mod(row)) = reloaded
                         .block_entities

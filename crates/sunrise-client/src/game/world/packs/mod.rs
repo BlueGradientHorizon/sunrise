@@ -298,7 +298,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn model_packs_are_vanilla(&self) -> bool {
         self.settings.sunrise.vanilla_models_with_server_packs(
             self.settings.resource_packs.iter().map(String::as_str),
-            self.side.server_packs
+            self.side
+                .server_packs
                 .0
                 .active
                 .iter()
@@ -313,7 +314,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .sunrise
             .leaf_culling_effective_with_server_packs(
                 self.settings.resource_packs.iter().map(String::as_str),
-                self.side.server_packs
+                self.side
+                    .server_packs
                     .0
                     .active
                     .iter()
@@ -420,7 +422,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // A selection reload, including startup rollback, needs tail-owned mob metadata.
         // An in-flight reload finishes first (vanilla's `pendingReload`).
         if kind == ReloadKind::Selection
-            && reload_waits(self.rest_loader.is_some(), self.side.pack_reload.0.is_some())
+            && reload_waits(
+                self.rest_loader.is_some(),
+                self.side.pack_reload.0.is_some(),
+            )
         {
             self.side.pending_pack_reload = true;
             return Ok(());
@@ -506,7 +511,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return None;
         };
         let actual = self
-            .side.pack_reload
+            .side
+            .pack_reload
             .0
             .as_ref()
             .map_or(1.0, |reload| reload.progress.fraction());
@@ -517,7 +523,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// applied on the render thread, and its outcome goes to whoever asked
     /// (`reloadResourcePacks`' callback, or `PackReloadConfig.Callbacks`).
     pub(in crate::game::client_side) fn drive_pack_reload(&mut self) {
-        let Some((kind, staged)) = self.side.pack_reload.0.as_mut().and_then(PackReload::finished)
+        let Some((kind, staged)) = self
+            .side
+            .pack_reload
+            .0
+            .as_mut()
+            .and_then(PackReload::finished)
         else {
             return;
         };
@@ -577,7 +588,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             renderer.release_surface();
         }
         let renderer = match self
-            .side.window
+            .side
+            .window
             .0
             .clone()
             .map(|window| {
@@ -593,7 +605,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     self.settings.vsync,
                     &self.settings.sunrise,
                     super::shader_packs::picked_pack_shape(&self.settings),
-                    self.side.renderer
+                    self.side
+                        .renderer
                         .0
                         .as_ref()
                         .map(|r| r.display_reading())
@@ -630,7 +643,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // in the listener order. All renderer and model validation is finished.
         self.apply_client_reload(client_applies, |game| {
             // Refresh modifiers from the newly staged packs, including removals.
-            game.side.creative_screen.0.set_pack_modifiers(tab_modifiers);
+            game.side
+                .creative_screen
+                .0
+                .set_pack_modifiers(tab_modifiers);
             game.refresh_creative_search_names();
             [
                 game.side.frame_model,
@@ -639,7 +655,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 game.side.glow_map_frame_model,
             ] = frame_models;
             game.side.waypoint_styles = waypoint_styles;
-            game.side.armor_stand_assets
+            game.side
+                .armor_stand_assets
                 .0
                 .apply_resources(armor_stand_assets);
             game.side.armor_stand_assets.0.extensions = item_extensions;
@@ -655,7 +672,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // The new atlas's skin and map slots are blank: players and maps
             // upload into it again instead of naming sprites it does not have.
             game.side.skin_slots.forget();
-            game.side.skin_downloads
+            game.side
+                .skin_downloads
                 .0
                 .borrow_mut()
                 .set_resource_root(game.pack.source.clone());
@@ -1093,11 +1111,10 @@ pub(in crate::game) mod tests {
             .into(),
             || {
                 let root = super::super::mods::content_root(&vanilla, &sources).unwrap();
-                super::super::native_entity_refs::tests::with_game_at(
+                super::super::native_entity_refs::tests::with_game_role_client(
                     root.prepared().to_path_buf(),
+                    super::super::execution_role::ExecutionRole::Client,
                     |game| {
-                        game.options.execution_role =
-                            super::super::execution_role::ExecutionRole::Client;
                         game.ui.vanilla_root = vanilla;
                         game.mods = sources;
                         game.settings.mods.enabled = enabled;
@@ -1105,7 +1122,7 @@ pub(in crate::game) mod tests {
                         // applying the staged textures (which would need a window/GPU).
                         let mut reload = |expected: Option<&str>| {
                             game.spawn_pack_reload(ReloadKind::Selection).unwrap();
-                            let mut pending = game.pack_reload.0.take().unwrap();
+                            let mut pending = game.side.pack_reload.0.take().unwrap();
                             let staged = pending.handle.take().unwrap().join().unwrap().unwrap();
                             let layers = &staged.pack.render.sprite_layers;
                             for id in ["reload_boundary:block/oil_0", "reload_boundary:block/oil_1"]

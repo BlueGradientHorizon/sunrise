@@ -36,8 +36,7 @@ fn bundle_completes_on_tick_200() {
                 ItemStack::new("minecraft:dirt", 1),
                 ItemStack::new("minecraft:stick", 1),
             ];
-            game.client.screen = Screen::Playing;
-            game.set_mapping_held("key.use", true);
+            game.server_set_acting_use(true);
             game.side.lan_acting = Some(1);
             EVENTS.with(|events| events.borrow_mut().clear());
             assert!(game.start_using_item());

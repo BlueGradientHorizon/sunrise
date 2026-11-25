@@ -9,7 +9,9 @@ use sunrise_client::mobs::{MobEvent, Species};
 use sunrise_client::motion::PlayerMotion;
 use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
+fn game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> crate::game::ServerGame<'a> {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);
@@ -20,7 +22,6 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
         .add_empty_chunk(ChunkPos::new(0, 0))
         .unwrap();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
-    game.client.screen = Screen::Playing;
     game.selected = 0;
     game.set_mode_id(0);
     game

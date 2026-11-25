@@ -172,17 +172,15 @@ pub(in crate::game) fn with_batch(
             let before = index.lock().unwrap().snapshot(&key);
             assert_eq!(before.len(), 2);
             observed.lock().unwrap().remove = remove.then_some(ids[1]);
-            game.audio.0.capture = Some(Vec::new());
+            game.start_audio_capture();
             game.tick_projectiles().unwrap();
             assert!(
-                game.audio
-                    .0
-                    .capture
-                    .as_ref()
-                    .unwrap()
+                game.side
+                    .pending_sounds
                     .iter()
                     .all(|sound| { sound.event != "minecraft:entity.arrow.hit" })
             );
+            game.stop_audio_capture();
             assert_eq!(index.lock().unwrap().snapshot(&key).len(), 2);
             for (id, original) in ids[..2].iter().zip(&bound.registrations) {
                 let i = game
@@ -366,10 +364,9 @@ pub(in crate::game) fn terminal_egg(action: Action, abort: bool) {
         let join = game.creatures.projectiles[0].join;
         let handle = game.entity(71).unwrap();
         game.native_joins_skip();
-        game.audio.0.capture = Some(Vec::new());
+        game.start_audio_capture();
         *game.world.random = LegacyRandom::new(4135);
         let random = game.world.random.state();
-        let particles = game.particles.0.len();
         game.tick_projectiles().unwrap();
         game.native_leaves_flush();
         {
@@ -382,7 +379,8 @@ pub(in crate::game) fn terminal_egg(action: Action, abort: bool) {
         assert_eq!(observed.lands.load(Ordering::Relaxed), 0);
         assert_eq!(observed.deaths.load(Ordering::Relaxed), 0);
         assert!(game.side.lan_entity_events.is_empty());
-        assert_eq!(game.particles.0.len(), particles);
+        assert!(game.side.pending_sounds.is_empty());
+        game.stop_audio_capture();
         assert_eq!(game.world.random.state(), random);
         assert!(game.mobs.is_empty());
         if abort {
@@ -468,7 +466,11 @@ fn two_discarded_eggs_leave_once_without_dying() {
     });
 }
 
-pub(in crate::game) fn shoot_arrow_at_wall(game: &mut crate::game::ServerGame<'_>, wall_x: i32, start_x: f64) {
+pub(in crate::game) fn shoot_arrow_at_wall(
+    game: &mut crate::game::ServerGame<'_>,
+    wall_x: i32,
+    start_x: f64,
+) {
     let stone = game
         .pack
         .assets

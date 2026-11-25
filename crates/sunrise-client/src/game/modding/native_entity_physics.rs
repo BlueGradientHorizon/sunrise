@@ -787,17 +787,4 @@ mod tests {
             );
         });
     }
-
-    #[test]
-    #[ignore = "daily"]
-    fn no_physics_write_is_refused_on_a_client() {
-        use super::super::native_entity_refs::tests::with_client_game;
-        use mod_api::WorldEpoch;
-
-        with_client_game(|game| {
-            let entity = EntityRef::new(WorldEpoch::new(0), 1);
-            assert!(!entity.set_no_physics(game, true));
-            assert!(!entity.set_no_physics(game, false));
-        });
-    }
 }

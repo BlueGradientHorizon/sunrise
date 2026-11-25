@@ -288,3 +288,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
     }
 }
+
+#[cfg(test)]
+impl Game<'_, crate::game::client_side::ClientState> {
+    pub(in crate::game) fn test_conduit_target(&self, pos: [i32; 3]) -> Option<ConduitTarget> {
+        self.client_conduit_target(pos)
+    }
+}

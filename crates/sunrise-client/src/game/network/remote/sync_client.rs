@@ -607,13 +607,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let air;
         let enabled = match &stack {
             Some(stack) => self
-                .side.creative_screen
+                .side
+                .creative_screen
                 .0
                 .catalog()
                 .item_enabled(stack, self.enabled_feature_ids()),
             None => {
                 air = ItemStack::new("minecraft:air", 0);
-                self.side.creative_screen
+                self.side
+                    .creative_screen
                     .0
                     .catalog()
                     .item_enabled(&air, self.enabled_feature_ids())

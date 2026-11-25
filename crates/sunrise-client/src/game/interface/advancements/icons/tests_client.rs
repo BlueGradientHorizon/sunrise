@@ -49,6 +49,8 @@ fn advancement_icons_reach_local_and_remote_ui_surfaces() {
     with_client_game(|game| {
         let tree = Tree::load(&fixture().join("data"));
         if case == "local" {
+            use crate::game::server_side::advancements::{Toast, text_of, toast_label};
+            use sunrise_client::text::Text;
             game.adv.tree = Arc::new(tree);
             game.adv.loaded = true;
             let tree = game.adv.tree.clone();
@@ -56,7 +58,18 @@ fn advancement_icons_reach_local_and_remote_ui_surfaces() {
                 game.adv
                     .progress
                     .grant(&a.id, "done", "2026-01-01 00:00:00 +0000");
-                game.award_definition(a);
+                if let Some(d) = a.display.as_ref().filter(|d| d.show_toast) {
+                    game.add_advancement_toast(Toast {
+                        icon: d.icon.clone(),
+                        frame: d.frame,
+                        title: Text::translate(toast_label(d.frame).0, &[]),
+                        description: Some(text_of(&d.title)),
+                        slide: Default::default(),
+                        recipes: Vec::new(),
+                        changed: false,
+                        last_changed: 0,
+                    });
+                }
             }
         } else {
             game.init_remote_for_replay().unwrap();

@@ -397,7 +397,13 @@ fn the_off_walk_movers_fire_too() {
             }
             game.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
             // The dragon: off the walk, moved by its own physics-less step.
-            game.spawn_remote_dragon(605, [5.0, 30.0, 5.0], 0.0);
+            let mut dragon = crate::game::dragon::Dragon::new(
+                sunrise_core::geometry::Vec3::new(5.0, 30.0, 5.0),
+                0.0,
+                605,
+            );
+            dragon.id = 605;
+            game.dragon.replace(dragon);
             let off_walk: std::collections::HashSet<u32> = game.entity_ids_off_walk().collect();
             let dragon_id = game.dragon.as_ref().unwrap().id;
             assert!(

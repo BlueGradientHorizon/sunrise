@@ -74,7 +74,6 @@ fn a_block_part_answers_fire_odds_for_one_face() {
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            game.sync_tick_chunks();
             game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
 
             let registry = game.pack.assets.registry;

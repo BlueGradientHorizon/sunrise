@@ -123,7 +123,8 @@ fn client_camera_entity_returns_to_player_after_removal() {
         );
         assert!(game.side.spectated_post_effect.is_none());
 
-        game.side.title.0 = Some(game.new_title(game.save.0.root.clone()));
+        game.side.title.0 =
+            Some(game.new_title(std::env::current_dir().unwrap_or_default().join("saves")));
         assert!(
             camera(game).is_none(),
             "the title screen has no camera entity"

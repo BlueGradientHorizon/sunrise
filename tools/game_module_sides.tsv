@@ -1001,7 +1001,6 @@ remote_mob_use_tests	game	touches neither ClientState nor ServerState fields	gam
 remote_objects	client	touches only ClientState fields	game/network/remote_objects.rs
 remote_projectiles	client	touches only client-owned fields	game/network/remote_projectiles.rs
 remote_removal	client	touches only ClientState fields	game/network/remote_removal.rs
-remote_save_tests	client	touches only ClientState fields	game/world/remote_save_tests.rs
 remote_server	server	hand-authored server role-split module	game/network/remote/mod_server.rs
 remote_stations	client	touches only client-owned fields	game/network/remote_stations.rs
 remote_tags	client	touches only client-owned fields (opposite-side functions moved to remote_tags_server)	game/network/remote_tags.rs

@@ -250,9 +250,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 #[cfg(test)]
 mod tests {
     use super::super::{
-        Dim,
-        native_entity_refs::tests::{run_fresh_cases, with_client_game},
-        native_guest_turn_tests::with_guests,
+        Dim, native_entity_refs::tests::run_fresh_cases, native_guest_turn_tests::with_guests,
     };
     use super::{Game, LevelRef};
     use mod_api::{__private::particle_named_key, ParticleOptions, WorldEpoch};
@@ -292,7 +290,7 @@ mod tests {
         if run_fresh_cases(
             "game::server_side::native_level_effects::tests::particle_batch_is_atomic_and_follows_level_delivery_order",
             CASE,
-            &["server", "client"],
+            &["server"],
         ) {
             return;
         }
@@ -303,16 +301,6 @@ mod tests {
                        positions: &[[f64; 3]]| {
             level.send_particles_batch(game, options, None, positions, SPREAD, SPEED, COUNT)
         };
-        if std::env::var(CASE).unwrap() == "client" {
-            with_client_game(|game| {
-                let epoch = game.native_lifecycle.epoch().unwrap();
-                let level = LevelRef::new(epoch, game.dim.key());
-                let heart = heart();
-                assert!(!send_at(game, level, &heart, &[A]));
-                assert!(!send_at(game, level, &heart, &[]));
-            });
-            return;
-        }
         with_guests(|game| {
             let (tx_near, near) = mpsc::channel();
             let (tx_far, far) = mpsc::channel();

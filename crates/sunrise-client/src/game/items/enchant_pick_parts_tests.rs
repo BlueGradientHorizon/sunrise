@@ -588,10 +588,10 @@ fn support_resolves_once_against_the_tags_published_by_world_open_and_play_packe
         }])),
     )]
     .into();
-    let supports = |game: &crate::game::ServerGame<'_>| {
+    fn supports<S: crate::game::Side>(game: &crate::game::Game<'_, S>) -> bool {
         game.item_enchantments()
             .can_enchant(game.items(), SHARPNESS, "minecraft:stick")
-    };
+    }
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             let scratch = tempfile::tempdir().unwrap();

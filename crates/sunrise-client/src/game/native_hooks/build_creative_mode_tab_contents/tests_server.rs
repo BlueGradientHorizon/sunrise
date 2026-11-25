@@ -40,7 +40,10 @@ pub(in crate::game::server_side) use crate::game::native_hooks::build_creative_m
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::native_hooks::build_creative_mode_tab_contents::tests::book_level;
 
-pub(in crate::game) fn install_dedicated_holders(game: &mut crate::game::ServerGame<'_>, max_level: i32) {
+pub(in crate::game) fn install_dedicated_holders(
+    game: &mut crate::game::ServerGame<'_>,
+    max_level: i32,
+) {
     let files = vec![(
         "enchantment/test:levels".into(),
         vec![definition(max_level).to_string().into_bytes()],

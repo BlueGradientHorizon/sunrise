@@ -4,7 +4,7 @@ pub(in crate::game::client_side) use crate::game::remote::tests::client_day_time
 #[test]
 #[ignore = "daily"]
 fn client_day_time_reads_overworld_clock_across_packets_and_levels() {
-    use crate::game::{execution_role::ExecutionRole, native_entity_refs::tests::with_game};
+    use crate::game::native_entity_refs::tests::with_client_game;
     use mod_api::LevelRef;
     use std::sync::Arc;
     use sunrise_protocol::{
@@ -12,8 +12,7 @@ fn client_day_time_reads_overworld_clock_across_packets_and_levels() {
         packets::play::{self, Clientbound as C},
     };
 
-    with_game(|game| {
-        game.options.execution_role = ExecutionRole::Client;
+    with_client_game(|game| {
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "ClockReadTest").unwrap();
         let mut registries = (*game.remote.as_ref().unwrap().registries).clone();

@@ -35,7 +35,6 @@ sunrise-client game::server_side::functions::tests::macro_lines_need_a_variable_
 sunrise-client game::server_side::lan_crafting::stonecutter_stat_tests::a_guest_stonecutter_take_counts_the_item_crafted lib daily resources
 sunrise-client game::server_side::leads::attach_tests::a_lead_attaches_within_the_species_own_snap_distance lib daily resources
 sunrise-client game::server_side::leads::attach_tests::a_player_lead_replaces_a_saved_holder_that_never_loaded lib daily resources
-sunrise-client game::server_side::level_particles::phantom_bite_tests::a_phantom_bite_level_event_plays_the_bite_at_0_3_volume lib daily resources
 sunrise-client game::server_side::levels::tests::each_level_keeps_its_own_world_border lib daily resources
 sunrise-client game::server_side::levels::tests::worldborder_add_extends_a_change_in_flight lib daily resources
 sunrise-client game::client_side::lightning::mob_conversion_state_tests::a_sheared_mooshroom_leaves_a_cow_that_keeps_its_state lib daily resources
@@ -69,3 +68,5 @@ sunrise-client game::client_side::stations::brewing_tick_tests::a_fuel_item_with
 sunrise-client game::server_side::stats::player_stat_award_tests::a_ground_jump_awards_the_jump_statistic lib daily resources
 sunrise-client game::server_side::stats::player_stat_award_tests::a_worn_out_helmet_awards_the_broken_statistic lib daily resources
 sunrise-client game::server_side::stats::player_stat_award_tests::sleeping_in_a_straw_bed_awards_its_own_statistic lib daily resources
+sunrise-client game::server_side::level_particles::phantom_bite_tests::a_phantom_bite_level_event_reaches_guests_as_level_event_1039 lib daily resources
+sunrise-client game::client_side::level_particles_client::phantom_bite_tests::a_phantom_bite_level_event_plays_the_bite_at_0_3_volume lib daily resources

@@ -187,6 +187,43 @@ impl Hooks for BounceProbe {
     }
 }
 
+fn client_item(
+    id: u32,
+    stack: ItemStack,
+    position: [f64; 3],
+    velocity: [f64; 3],
+    pickup_delay: i64,
+) -> ItemEntity {
+    let at = Vec3::new(position[0], position[1], position[2]);
+    ItemEntity {
+        size_answer: None,
+        attachment_lifetime: Default::default(),
+        rotation: [0.0, 0.0],
+        join: Default::default(),
+        health: 5,
+        fire_ticks: 0,
+        id,
+        stack,
+        thrower: None,
+        target: None,
+        position: at,
+        previous: at,
+        velocity: Vec3::new(velocity[0], velocity[1], velocity[2]),
+        ground: Default::default(),
+        fall_distance: 0.0,
+        age: 0,
+        pickup_delay,
+        bob_offset: 0.0,
+        ticks: 0,
+        needs_sync: false,
+        stuck: Vec3::ZERO,
+        was_touching_water: false,
+        no_gravity: false,
+        vertical_collision: false,
+        random: sunrise_core::random::LegacyRandom::new(0),
+    }
+}
+
 #[test]
 #[ignore = "daily"]
 fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
@@ -200,7 +237,16 @@ fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
             mod_platform::testing::with_mods(mods.clone(), || {
                 crate::game::api_values::install_parts(&mods).unwrap();
                 crate::game::native_hooks::install_block_contact_hooks();
-                let run = |game: &mut crate::game::ServerGame<'_>, client: bool| {
+                fn run<S: crate::game::Side>(
+                    game: &mut crate::game::Game<'_, S>,
+                    client: bool,
+                    part: &BounceProbe,
+                    mut make_item: impl FnMut(
+                        &mut crate::game::Game<'_, S>,
+                        [f64; 3],
+                        [f64; 3],
+                    ) -> ItemEntity,
+                ) {
                     let registry = game.pack.assets.registry;
                     let block = |name| registry.default_state(name).unwrap();
                     let glass = block("minecraft:glass");
@@ -288,13 +334,7 @@ fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
                         part.calls.lock().unwrap().clear();
                         part.bounced.lock().unwrap().clear();
                         game.persist.sync_body_position.clear();
-                        game.spawn_item(
-                            ItemStack::new("minecraft:iron_ingot", 1),
-                            [x, y, 4.5],
-                            [0.0, vy, 0.0],
-                            20,
-                        );
-                        let mut item = game.dropped[0].clone();
+                        let mut item = make_item(game, [x, y, 4.5], [0.0, vy, 0.0]);
                         let dim = game.dim.id();
                         let result =
                             sunrise_client::block_contact::in_level(game.tick, Some(dim), || {
@@ -341,9 +381,21 @@ fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
                             assert!(got.is_empty(), "unexpected query: {got:?}");
                         }
                     }
-                };
-                with_game(|game| run(game, false));
-                with_client_game(|game| run(game, true));
+                }
+                with_game(|game| {
+                    run(game, false, &part, |game, pos, vel| {
+                        game.spawn_item(ItemStack::new("minecraft:iron_ingot", 1), pos, vel, 20);
+                        game.dropped[0].clone()
+                    });
+                });
+                let mut next_id = 1_u32;
+                with_client_game(|game| {
+                    run(game, true, &part, |_game, pos, vel| {
+                        let id = next_id;
+                        next_id += 1;
+                        client_item(id, ItemStack::new("minecraft:iron_ingot", 1), pos, vel, 20)
+                    });
+                });
             });
         },
     );
@@ -601,7 +653,12 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
             mod_platform::testing::with_mods(mods.clone(), || {
                 crate::game::api_values::install_parts(&mods).unwrap();
                 crate::game::native_hooks::install_block_contact_hooks();
-                let run = |game: &mut crate::game::ServerGame<'_>, client: bool| {
+                fn run_common<S: crate::game::Side>(
+                    game: &mut crate::game::Game<'_, S>,
+                    client: bool,
+                    part: &StepProbe,
+                    mut spawn: impl FnMut(&mut crate::game::Game<'_, S>, u32, f64) -> ItemEntity,
+                ) {
                     let registry = game.pack.assets.registry;
                     let stone = registry.default_state("minecraft:stone").unwrap();
                     let web = registry.default_state("minecraft:cobweb").unwrap();
@@ -615,31 +672,22 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                     if !client {
                         game.world.set(4, 64, 4, web).unwrap();
                     }
-                    let spawn = |game: &mut crate::game::ServerGame<'_>, count, height| {
-                        game.dropped.clear();
-                        game.spawn_item(
-                            ItemStack::new("minecraft:iron_ingot", count),
-                            [4.5, height, 4.5],
-                            [0.0, -0.96, 0.0],
-                            20,
-                        );
-                        game.dropped[0].clone()
-                    };
-                    let tick = |game: &mut crate::game::ServerGame<'_>, item: &mut ItemEntity, escape| {
-                        sunrise_client::block_contact::in_level(
-                            sunrise_client::parallel::TickThread::mint(),
-                            Some("minecraft:overworld"),
-                            || {
-                                game.tick_item_with_block_contacts(
-                                    item,
-                                    escape,
-                                    &[],
-                                    client,
-                                    &mut |_| {},
-                                )
-                            },
-                        )
-                    };
+                    let tick =
+                        |game: &mut crate::game::Game<'_, S>, item: &mut ItemEntity, escape| {
+                            sunrise_client::block_contact::in_level(
+                                sunrise_client::parallel::TickThread::mint(),
+                                Some("minecraft:overworld"),
+                                || {
+                                    game.tick_item_with_block_contacts(
+                                        item,
+                                        escape,
+                                        &[],
+                                        client,
+                                        &mut |_| {},
+                                    )
+                                },
+                            )
+                        };
                     let clear_calls = || std::mem::take(&mut *part.calls.lock().unwrap());
                     let mut item = spawn(game, 2, 64.25);
                     assert_eq!(tick(game, &mut item, None), (true, false));
@@ -701,48 +749,80 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                     }
                     assert_eq!(player.velocity.x, 0.25);
                     assert_eq!(clear_calls(), [(client, 77, floor, true)]);
-
-                    if !client {
-                        game.side.tickets.0.update(Some(crate::ticket_levels::Sources {
+                }
+                with_game(|game| {
+                    run_common(game, false, &part, |game, count, height| {
+                        game.dropped.clear();
+                        game.spawn_item(
+                            ItemStack::new("minecraft:iron_ingot", count),
+                            [4.5, height, 4.5],
+                            [0.0, -0.96, 0.0],
+                            20,
+                        );
+                        game.dropped[0].clone()
+                    });
+                    let stone = game
+                        .pack
+                        .assets
+                        .registry
+                        .default_state("minecraft:stone")
+                        .unwrap();
+                    let floor = [4, 63, 4];
+                    let clear_calls = || std::mem::take(&mut *part.calls.lock().unwrap());
+                    game.side
+                        .tickets
+                        .0
+                        .update(Some(crate::ticket_levels::Sources {
                             forced: vec![(0, 0)],
                             ..Default::default()
                         }));
-                        let mut stand = sunrise_client::entities::ArmorStand::new(
-                            78,
-                            Vec3::new(4.5, 64.25, 4.5),
-                            0.0,
-                        );
-                        stand.velocity.y = -0.5;
-                        game.armor_stands.push(stand);
-                        game.tick_armor_stands().unwrap();
-                        assert_eq!(game.armor_stands[0].position.y, 64.0);
-                        assert_eq!(game.armor_stands[0].velocity.x, 0.5);
-                        assert_eq!(clear_calls(), [(false, 78, floor, false)]);
+                    let mut stand = sunrise_client::entities::ArmorStand::new(
+                        78,
+                        Vec3::new(4.5, 64.25, 4.5),
+                        0.0,
+                    );
+                    stand.velocity.y = -0.5;
+                    game.armor_stands.push(stand);
+                    game.tick_armor_stands().unwrap();
+                    assert_eq!(game.armor_stands[0].position.y, 64.0);
+                    assert_eq!(game.armor_stands[0].velocity.x, 0.5);
+                    assert_eq!(clear_calls(), [(false, 78, floor, false)]);
 
-                        use crate::game::native_entity_refs::tests::{
-                            bind_acting_guest, bind_local_player,
-                        };
-                        let seat = Vec3::new(8.5, 64.0, 4.5);
-                        game.world.set(8, 63, 4, stone).unwrap();
-                        game.player = Some(PlayerMotion::new(game.motion, seat).unwrap());
-                        bind_local_player(game, 80, 1);
-                        game.side.lan_acting = Some(2);
-                        game.side.lan_acting_name = Some("boat_step".into());
-                        bind_acting_guest(game);
-                        game.side.lan_acting = None;
-                        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                            guest.vehicle = Some(79);
-                        });
-                        let mut boat = crate::game::boats::Boat::new(79, "oak".into(), seat, 0.0);
-                        boat.ground.on_ground = true;
-                        game.boats.push(boat);
-                        game.tick_boats();
-                        assert_eq!(game.boats[0].fire_ticks, 40);
-                        assert_eq!(clear_calls(), [(false, 79, [8, 63, 4], false); 2]);
-                    }
-                };
-                with_game(|game| run(game, false));
-                with_client_game(|game| run(game, true));
+                    use crate::game::native_entity_refs::tests::{
+                        bind_acting_guest, bind_local_player,
+                    };
+                    let seat = Vec3::new(8.5, 64.0, 4.5);
+                    game.world.set(8, 63, 4, stone).unwrap();
+                    game.player = Some(PlayerMotion::new(game.motion, seat).unwrap());
+                    bind_local_player(game, 80, 1);
+                    game.side.lan_acting = Some(2);
+                    game.side.lan_acting_name = Some("boat_step".into());
+                    bind_acting_guest(game);
+                    game.side.lan_acting = None;
+                    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                        guest.vehicle = Some(79);
+                    });
+                    let mut boat = crate::game::boats::Boat::new(79, "oak".into(), seat, 0.0);
+                    boat.ground.on_ground = true;
+                    game.boats.push(boat);
+                    game.tick_boats();
+                    assert_eq!(game.boats[0].fire_ticks, 40);
+                    assert_eq!(clear_calls(), [(false, 79, [8, 63, 4], false); 2]);
+                });
+                let mut next_id = 1_u32;
+                with_client_game(|game| {
+                    run_common(game, true, &part, |_game, count, height| {
+                        let id = next_id;
+                        next_id += 1;
+                        client_item(
+                            id,
+                            ItemStack::new("minecraft:iron_ingot", count),
+                            [4.5, height, 4.5],
+                            [0.0, -0.96, 0.0],
+                            20,
+                        )
+                    });
+                });
             });
         },
     );
@@ -894,7 +974,40 @@ fn step_on_hurts_the_stepping_body_and_guards_its_block_writes() {
                     run(game, false, false);
                     run(game, false, true);
                 });
-                with_client_game(|game| run(game, true, false));
+                with_client_game(|game| {
+                    let stone = game
+                        .pack
+                        .assets
+                        .registry
+                        .default_state("minecraft:stone")
+                        .unwrap();
+                    game.world
+                        .chunks
+                        .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                    game.world.set(4, 63, 4, stone).unwrap();
+                    let mut item = client_item(
+                        1,
+                        ItemStack::new("minecraft:iron_ingot", 2),
+                        [4.5, 64.25, 4.5],
+                        [0.0, -0.96, 0.0],
+                        20,
+                    );
+                    let before = item.health;
+                    sunrise_client::block_contact::in_level(game.tick, Some(game.dim.id()), || {
+                        assert_eq!(
+                            game.tick_item_with_block_contacts(
+                                &mut item,
+                                None,
+                                &[],
+                                true,
+                                &mut |_| {}
+                            ),
+                            (true, false)
+                        );
+                    });
+                    assert_eq!(item.health, before);
+                    assert_eq!(game.world.block(4, 63, 4), stone);
+                });
                 assert_eq!(
                     *part.0.lock().unwrap(),
                     [[[4.375, 64.0, 4.375], [4.625, 64.25, 4.625]]; 4]
@@ -1222,8 +1335,9 @@ fn contact_hurt_uses_the_world_damage_type_tags_and_death_message() {
                     }
                     game.mobs.push(mob);
                 }
-                let health =
-                    |game: &crate::game::ServerGame<'_>, id| game.mobs.iter().find(|mob| mob.id == id).unwrap().health;
+                let health = |game: &crate::game::ServerGame<'_>, id| {
+                    game.mobs.iter().find(|mob| mob.id == id).unwrap().health
+                };
                 game.tick_mobs().unwrap();
                 assert_eq!(health(game, 71), 20.0, "hot floor is fire damage");
                 assert_eq!(health(game, 72), 0.0, "the same hit kills a non-immune pig");

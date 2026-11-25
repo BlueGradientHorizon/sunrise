@@ -133,7 +133,9 @@ pub(in crate::game) fn with_bound_menu_type(test: impl FnOnce()) {
 
 pub(in crate::game) const STONE: &str = "minecraft:stone";
 pub(in crate::game) const MENU: &str = "minecraft:generic_9x1";
-pub(in crate::game) fn geometry(game: &crate::game::ClientGame<'_>) -> ((f32, f32), Vec<(usize, [f32; 4])>) {
+pub(in crate::game) fn geometry(
+    game: &crate::game::ClientGame<'_>,
+) -> ((f32, f32), Vec<(usize, [f32; 4])>) {
     let batch = sunrise_client::hud::HudBatch::new([1280, 720], game.settings.gui_scale_inputs());
     let layout = game.built_container(&batch).expect("cached container");
     (layout.origin, layout.slots.clone())

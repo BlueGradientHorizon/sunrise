@@ -46,29 +46,18 @@ fn warning_dispatch_uses_neutral_at_tick_four() {
 
     const WARNING: &str = "minecraft:block.trial_spawner.about_to_spawn_item";
     let center = [6.5, 102.5, 4.5];
-    game.audio.0.capture = Some(Vec::new());
-    game.audio
-        .0
-        .play("minecraft:block.stone.break", Some(center), 1.0, 1.0);
-    game.audio.0.play_on(
-        6,
-        "minecraft:block.note_block.pling",
-        Some(center),
-        1.0,
-        1.0,
-    );
+    game.start_audio_capture();
+    game.server_play_sound("minecraft:block.stone.break", center, 1.0, 1.0);
+    game.server_play_sound_on(6, "minecraft:block.note_block.pling", center, 1.0, 1.0);
     assert_eq!(
-        game.audio
-            .0
-            .capture
-            .as_ref()
-            .unwrap()
+        game.side
+            .pending_sounds
             .iter()
             .map(|s| s.source)
             .collect::<Vec<_>>(),
         [4, 6]
     );
-    game.audio.0.capture.as_mut().unwrap().clear();
+    game.side.pending_sounds.clear();
     let (tag, _) = sunrise_core::nbt::parse_snbt(r#"{id:"minecraft:ominous_item_spawner",UUID:[I;128,0,0,1],Pos:[6.25d,102.75d,4.875d],item:{id:"minecraft:diamond",count:1},spawn_item_after_ticks:40L}"#).unwrap();
     game.load_ominous_item_spawner(tag);
     assert_eq!(game.ominous_spawners.len(), 1);
@@ -83,11 +72,8 @@ fn warning_dispatch_uses_neutral_at_tick_four() {
         game.tick_ominous_item_spawners();
         assert_eq!(game.ominous_spawners[0].tick_count, tick);
         let warning: Vec<_> = game
-            .audio
-            .0
-            .capture
-            .as_ref()
-            .unwrap()
+            .side
+            .pending_sounds
             .iter()
             .filter(|s| s.event == WARNING)
             .collect();
@@ -103,21 +89,13 @@ fn warning_dispatch_uses_neutral_at_tick_four() {
             );
         }
     }
-    game.audio
-        .0
-        .play("minecraft:block.stone.break", Some(center), 1.0, 1.0);
+    game.server_play_sound("minecraft:block.stone.break", center, 1.0, 1.0);
     assert_eq!(
-        game.audio
-            .0
-            .capture
-            .as_ref()
-            .unwrap()
-            .last()
-            .unwrap()
-            .source,
+        game.side.pending_sounds.last().unwrap().source,
         4,
         "the explicit warning source must not change later event-family inference"
     );
+    game.stop_audio_capture();
     drop(game);
     std::fs::remove_dir_all(scratch).unwrap();
 }
@@ -200,7 +178,7 @@ fn taken_spawner_tick_keeps_survivors_before_both_spawns() {
 fn lifecycle_spawner_commands_unload_park_and_remote_metadata() {
     use crate::game::{
         commands::Target,
-        entity::taken_pass_tests::{LifecycleFixture, RemoteLifecycle},
+        entity::taken_pass_tests::{LifecycleFixture, RemoteLifecycle, run_remote_lifecycle},
     };
     use sunrise_protocol::{
         connection::Pipe,
@@ -217,7 +195,18 @@ fn lifecycle_spawner_commands_unload_park_and_remote_metadata() {
         ids: |game| game.ominous_spawners.iter().map(|s| s.id).collect(),
         target: Target::Spawner,
         unloads_with_chunk: true,
-        remote: Some(RemoteLifecycle {
+        remote: None,
+    }
+    .run();
+    run_remote_lifecycle(
+        |game, entries| {
+            game.ominous_spawners.clear();
+            for &(id, at) in entries {
+                game.add_remote_ominous_item_spawner(id, at);
+            }
+        },
+        |game| game.ominous_spawners.iter().map(|s| s.id).collect(),
+        RemoteLifecycle {
             prepare: |game| {
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "Lifecycle").unwrap();
@@ -249,9 +238,8 @@ fn lifecycle_spawner_commands_unload_park_and_remote_metadata() {
                 assert_eq!(changed.item.count, 7);
                 game.remove_remote_object(remove);
             },
-        }),
-    }
-    .run();
+        },
+    );
 }
 
 #[test]

@@ -14,7 +14,9 @@ fn compute_sources_store_the_providers_value() {
     game.build_registries();
     game.set_allow_commands(true);
     let store = "h_compute:values";
-    let stored = |game: &crate::game::ServerGame<'_>, key: &str| game.score.storage.get(store).get(key).cloned();
+    let stored = |game: &crate::game::ServerGame<'_>, key: &str| {
+        game.score.storage.get(store).get(key).cloned()
+    };
 
     assert!(game.run_command(&format!("data merge storage {store} {{x:1}}")));
     assert!(game.run_command(&format!(

@@ -136,7 +136,11 @@ impl Hooks for Probe {
 
 /// Runs `test` on a client game with one probe mod; the probe's log and answer.
 pub(in crate::game) fn run(
-    test: impl FnOnce(&mut crate::game::ServerGame<'_>, &Arc<Mutex<Vec<String>>>, &Arc<Mutex<Option<ScreenOpening>>>),
+    test: impl FnOnce(
+        &mut crate::game::ClientGame<'_>,
+        &Arc<Mutex<Vec<String>>>,
+        &Arc<Mutex<Option<ScreenOpening>>>,
+    ),
 ) {
     let log = Arc::new(Mutex::new(Vec::new()));
     let answer = Arc::new(Mutex::new(None));
@@ -154,10 +158,12 @@ pub(in crate::game) fn run(
     with_game_of(mods, |game| test(game, &log, &answer));
 }
 /// A client game with a player, under `mods`.
-pub(in crate::game) fn with_game_of(mods: Arc<[ModEntry]>, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
+pub(in crate::game) fn with_game_of(
+    mods: Arc<[ModEntry]>,
+    test: impl FnOnce(&mut crate::game::ClientGame<'_>),
+) {
     with_mods(mods, || {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            game.options.execution_role = ExecutionRole::Client;
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             game.player = Some(
                 sunrise_client::motion::PlayerMotion::new(
                     game.motion,
@@ -287,7 +293,9 @@ fn title_hook_requests_one_orderly_quit() {
     let mods = vec![ModEntry::new("quit", Box::new(QuitProbe(log.clone())))].into();
     with_mods(mods, || {
         with_client_game(|game| {
-            game.side.title.0 = Some(game.new_title(game.save.0.root.clone()));
+            let saves = tempfile::tempdir().unwrap();
+            let title = game.new_title(saves.path().to_path_buf());
+            *game.test_title_mut() = Some(title);
             let event_loop = QuitLoop(Cell::new(0));
             let batch = HudBatch::scratch([854, 480]);
             let screen = game.title_screen_view(&batch).unwrap();
@@ -412,7 +420,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
     with_mods(mods, || {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             // 1) Refused when headless (`renderer.is_none()`).
-            assert!(game.side.renderer.0.is_none());
+            assert!(game.test_renderer().is_none());
             assert!(!game.mod_screen_open("mod_a"));
             assert_eq!(game.side.screen, Screen::Playing);
             assert!(take(&log).is_empty());
@@ -436,9 +444,10 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
                     .unwrap(),
             );
             game.options.offscreen = true;
-            game.side.window.0 = Some(window.clone());
-            game.side.renderer.0 = Some(game.new_renderer(window).unwrap());
-            game.side.title.0 = None;
+            *game.test_window_mut() = Some(window.clone());
+            let renderer = game.new_renderer(window).unwrap();
+            *game.test_renderer_mut() = Some(renderer);
+            *game.test_title_mut() = None;
             game.player = Some(
                 sunrise_client::motion::PlayerMotion::new(
                     game.motion,
@@ -675,7 +684,8 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
             game.remote = None;
             game.player = None;
             let saves = tempfile::tempdir().unwrap();
-            game.side.title.0 = Some(game.new_title(saves.path().to_path_buf()));
+            let title = game.new_title(saves.path().to_path_buf());
+            *game.test_title_mut() = Some(title);
             take(&log);
             assert!(game.mod_screen_open("mod_a"));
             assert_eq!(game.side.screen, Screen::Mod);

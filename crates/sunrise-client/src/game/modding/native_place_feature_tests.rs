@@ -1,7 +1,7 @@
 //! `level.place_feature` through the public handle: a tree placed as `/place feature` places it,
 //! a feature with no room, and a literal test for each refusal.
 
-use super::native_entity_refs::tests::{with_client_game, with_game};
+use super::native_entity_refs::tests::with_game;
 use mod_api::{LevelRef, PlaceFeatureRefusal, WorldEpoch};
 use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
@@ -125,20 +125,6 @@ fn stale_and_other_levels_are_refused_by_name() {
         assert_eq!(
             overworld.place_feature(game, "minecraft:oak", AT),
             Err(PlaceFeatureRefusal::NotInPlace)
-        );
-    });
-}
-
-/// On a client it is `Client`.
-#[test]
-#[ignore = "daily"]
-fn a_client_cannot_place_features() {
-    with_client_game(|game| {
-        ground(game, false);
-        let level = LevelRef::new(WorldEpoch::new(0), game.dim.key());
-        assert_eq!(
-            level.place_feature(game, "minecraft:oak", AT),
-            Err(PlaceFeatureRefusal::Client)
         );
     });
 }

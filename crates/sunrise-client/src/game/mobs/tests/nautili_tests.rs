@@ -10,7 +10,9 @@ use sunrise_client::mobs::Mob;
 use sunrise_client::motion::PlayerMotion;
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
+fn game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -51,7 +53,6 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
         .add_empty_chunk(ChunkPos::new(0, 0))
         .unwrap();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
-    game.client.screen = Screen::Playing;
     game.selected = 0;
     game.set_mode_id(0);
     game
@@ -123,7 +124,7 @@ fn a_tame_zombie_nautilus_at_full_health_falls_in_love() {
         game.mobs[0].extra.tame = true;
         game.mobs[0].extra.owner = Some([1, 2, 3, 4]);
         game.inventory[0] = Some(ItemStack::new("minecraft:cod", 2));
-        game.audio.0.capture = Some(Vec::new());
+        game.start_audio_capture();
         assert!(game.interact_entity(target(id)).unwrap(), "{kind}");
         assert_eq!(game.mobs[0].extra.in_love, 600, "{kind}");
         assert_eq!(game.mobs[0].extra.age, 0, "{kind}");
@@ -132,7 +133,8 @@ fn a_tame_zombie_nautilus_at_full_health_falls_in_love() {
             Some(1),
             "{kind}: the fish is eaten"
         );
-        let sounds = game.audio.0.capture.take().unwrap();
+        let sounds = std::mem::take(&mut game.side.pending_sounds);
+        game.stop_audio_capture();
         assert!(
             sounds.iter().any(|s| s.event == eat),
             "{kind}: it eats: {sounds:?}"

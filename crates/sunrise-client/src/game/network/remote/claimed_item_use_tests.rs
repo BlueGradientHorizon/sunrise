@@ -181,7 +181,7 @@ fn interception_does_not_send_item_use_or_release_packets() {
             game.queue_mapping_click(Button::Use.mapping());
             game.queue_mapping_click(Button::Use.mapping());
             game.remote_handle_input();
-            assert!(game.side.client_item_use.0.is_some());
+            assert!(game.test_has_client_item_use());
             assert!(game.using.is_none());
 
             game.use_delay = 0;
@@ -192,7 +192,7 @@ fn interception_does_not_send_item_use_or_release_packets() {
 
             game.set_mapping_held("key.use", false);
             game.remote_handle_input();
-            assert!(game.side.client_item_use.0.is_none());
+            assert!(!game.test_has_client_item_use());
             assert!(game.using.is_none());
             assert_eq!(
                 calls

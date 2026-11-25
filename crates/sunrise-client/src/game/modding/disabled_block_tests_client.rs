@@ -87,8 +87,8 @@ pub(in crate::game) mod tests {
                     .get_mut(&DISPENSER_SLOT)
                     .unwrap()
                     .slots_mut()[0] = Some(ItemStack::new("minecraft:stick", 65));
-                game.audio.0.capture = Some(Vec::new());
-                let particles = game.particles.0.len();
+                game.start_audio_capture();
+                let particles = game.side.pending_particles.len();
                 let notices = probe.dispenser_changes.load(Ordering::Relaxed);
                 for (enabled, count, writes) in [(false, 65, 0), (true, 64, 1)] {
                     assert!(mod_api::__private::set_mod_enabled("inert_test", enabled));
@@ -106,8 +106,8 @@ pub(in crate::game) mod tests {
                         notices + writes
                     );
                     assert!(game.dropped.is_empty());
-                    assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
-                    assert_eq!(game.particles.0.len(), particles);
+                    assert!(game.side.pending_sounds.is_empty());
+                    assert_eq!(game.side.pending_particles.len(), particles);
                 }
             },
         );
@@ -120,8 +120,8 @@ pub(in crate::game) mod tests {
             "rejected_dispense_reply_preserves_the_disabled_owners_fallback",
             |game, _, probe| {
                 let dispenser = place_dispenser(game);
-                game.audio.0.capture = Some(Vec::new());
-                let particles = game.particles.0.len();
+                game.start_audio_capture();
+                let particles = game.side.pending_particles.len();
                 for enabled in [false, true] {
                     assert!(mod_api::__private::set_mod_enabled("inert_test", enabled));
                     for (input, remaining, writes) in [(65, 65, 0), (4, 2, 1)] {
@@ -148,8 +148,8 @@ pub(in crate::game) mod tests {
                             game.dropped.is_empty(),
                             "vanilla must not run a second behaviour"
                         );
-                        assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
-                        assert_eq!(game.particles.0.len(), particles);
+                        assert!(game.side.pending_sounds.is_empty());
+                        assert_eq!(game.side.pending_particles.len(), particles);
                     }
                 }
                 assert_eq!(probe.earlier_dispenses.load(Ordering::Relaxed), 4);

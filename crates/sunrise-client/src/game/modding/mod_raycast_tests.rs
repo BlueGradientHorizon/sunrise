@@ -9,7 +9,7 @@ use std::sync::Arc;
 use sunrise_client::{audio::Audio, chunk::Chunk, motion::PlayerMotion, settings::Settings};
 use sunrise_core::geometry::Vec3;
 
-fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> crate::game::ServerGame<'a> {
+fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> crate::game::ClientGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -23,33 +23,41 @@ fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> crate::ga
         &settings,
         std::time::Instant::now(),
         false,
-        execution_role::ExecutionRole::IntegratedServer,
+        execution_role::ExecutionRole::Client,
         &Progress::new(),
         &mut |_, _| unreachable!(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = execution_role::ExecutionRole::Client;
     let res = &*resources.insert(loaded.resources);
-    let mut game = crate::game::ServerGame::new(
+    let mut game = crate::game::ClientGame::new(
         res,
         loaded.pack,
         loaded.gui.unwrap(),
         options,
         settings,
+        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
+            root.clone(),
+        )),
         None,
     )
     .unwrap();
-    game.build_registries();
-    game.set_allow_commands(true);
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-    game.block_ticks
-        .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
+    let stone = game
+        .pack
+        .assets
+        .registry
+        .default_state("minecraft:stone")
         .unwrap();
-    assert!(game.run_command("fill 0 99 0 15 99 15 stone"));
+    for x in 0..=15 {
+        for z in 0..=15 {
+            game.world.set(x, 99, z, stone).unwrap();
+        }
+    }
     game
 }
 
@@ -60,7 +68,7 @@ fn mod_raycasts_hit_loaded_blocks_only_with_far_terrain_on_or_off() {
     let mut game = game(&mut resources);
     // Looking straight down at the stone under the player.
     game.pitch = 90.0;
-    let at = |game: &mut crate::game::ServerGame<'_>, x: f64| {
+    let at = |game: &mut crate::game::ClientGame<'_>, x: f64| {
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(x, 100.0, 0.5)).unwrap());
     };
     at(&mut game, 0.5);
@@ -72,7 +80,7 @@ fn mod_raycasts_hit_loaded_blocks_only_with_far_terrain_on_or_off() {
     assert_eq!(game.raycast(8.0), Some(without.1.clone()));
     assert_eq!(game.raycast(1.0), None, "past the distance asked for");
     game.settings.sunrise.lod_distance = 256;
-    game.lod.0 = Some(sunrise_client::lod::Lod::new(
+    game.side.lod.0 = Some(sunrise_client::lod::Lod::new(
         game.streaming.lod_source(),
         game.worker_context(),
     ));

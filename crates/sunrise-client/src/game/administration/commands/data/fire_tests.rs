@@ -296,7 +296,8 @@ pub(in crate::game) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullet
 
         // Fresh vs already-ticked bullet in lava, plus shoot -> hurt -> discard -> entity_damage order and Silent:1b.
         crate::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
-        game.audio.0.capture = Some(Vec::new());
+        game.side.audio_capture_active = true;
+        game.side.pending_sounds.clear();
         let fresh = summon_target_at(
             game,
             "minecraft:shulker_bullet",
@@ -311,14 +312,9 @@ pub(in crate::game) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullet
                 .map(|(ev, ..)| ev)
                 .collect()
         });
-        let fresh_sounds: Vec<String> = game
-            .audio
-            .0
-            .capture
-            .take()
-            .unwrap()
+        let fresh_sounds: Vec<String> = std::mem::take(&mut game.side.pending_sounds)
             .into_iter()
-            .map(|s| s.event.to_string())
+            .map(|s| s.event)
             .collect();
         let shoot_pos = fresh_events
             .iter()
@@ -357,17 +353,12 @@ pub(in crate::game) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullet
         assert!(
             game.run_command("data merge entity 00000a7b-0000-0002-0000-000000000001 {Fire:40s}")
         );
-        game.audio.0.capture = Some(Vec::new());
+        game.side.pending_sounds.clear();
         tick_fire_entities(game);
         assert!(!target_exists(game, ticked));
-        let ticked_sounds: Vec<String> = game
-            .audio
-            .0
-            .capture
-            .take()
-            .unwrap()
+        let ticked_sounds: Vec<String> = std::mem::take(&mut game.side.pending_sounds)
             .into_iter()
-            .map(|s| s.event.to_string())
+            .map(|s| s.event)
             .collect();
         assert!(
             ticked_sounds
@@ -380,7 +371,7 @@ pub(in crate::game) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullet
         );
 
         // Silent:1b suppresses shulker_bullet.hurt on both fire and attack paths.
-        game.audio.0.capture = Some(Vec::new());
+        game.side.pending_sounds.clear();
         let silent_fire = summon_target_at(
             game,
             "minecraft:shulker_bullet",
@@ -390,11 +381,11 @@ pub(in crate::game) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullet
         tick_fire_entities(game);
         assert!(!target_exists(game, silent_fire));
         assert!(
-            game.audio.0.capture.take().unwrap().is_empty(),
+            std::mem::take(&mut game.side.pending_sounds).is_empty(),
             "Silent:1b bullet must not play hurt sound on fire death"
         );
 
-        game.audio.0.capture = Some(Vec::new());
+        game.side.pending_sounds.clear();
         let silent_attack = summon_target_at(
             game,
             "minecraft:shulker_bullet",
@@ -413,7 +404,7 @@ pub(in crate::game) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullet
         let _ = game.destroy_shulker_bullet(sa_idx);
         assert!(!target_exists(game, silent_attack));
         assert!(
-            game.audio.0.capture.take().unwrap().is_empty(),
+            std::mem::take(&mut game.side.pending_sounds).is_empty(),
             "Silent:1b bullet must not play hurt sound on attack path"
         );
         crate::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = None);
@@ -506,7 +497,8 @@ pub(in crate::game) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullet
                 .synced_fire
         );
         assert!(
-            game.side.others
+            game.side
+                .others
                 .0
                 .iter()
                 .find(|o| o.id == eid)
@@ -543,7 +535,8 @@ pub(in crate::game) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullet
         );
         assert!(
             !game
-                .side.others
+                .side
+                .others
                 .0
                 .iter()
                 .find(|o| o.id == eid)

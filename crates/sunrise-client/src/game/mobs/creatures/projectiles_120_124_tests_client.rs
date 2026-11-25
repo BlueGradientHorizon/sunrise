@@ -101,17 +101,15 @@ pub(in crate::game) fn step_recording(
     Vec<(&'static str, [f64; 3], Option<Who>)>,
     BTreeMap<String, usize>,
 ) {
-    game.audio.0.heard.clear();
+    game.start_audio_capture();
     super::super::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
     game.tick_server(false).unwrap();
     let events =
         super::super::sculk::TEST_POSTED_EVENTS.with(|e| e.borrow_mut().take().unwrap_or_default());
-    let sounds = game
-        .audio
-        .0
-        .heard
-        .iter()
-        .map(|(k, &v)| (k.clone(), v as usize))
-        .collect();
+    let mut sounds = BTreeMap::new();
+    for sound in std::mem::take(&mut game.side.pending_sounds) {
+        *sounds.entry(sound.event).or_insert(0) += 1;
+    }
+    game.stop_audio_capture();
     (events, sounds)
 }

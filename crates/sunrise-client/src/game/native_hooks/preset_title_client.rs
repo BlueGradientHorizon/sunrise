@@ -33,12 +33,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         else {
             return false;
         };
-        session.mouse_clicked(
-            self.side.cursor.0,
-            self.side.cursor.1,
-            button,
-            double_click,
-        )
+        session.mouse_clicked(self.side.cursor.0, self.side.cursor.1, button, double_click)
     }
     /// Forward printable characters to the open bound preset editor. Returns `true` if the editor
     /// consumed any character.

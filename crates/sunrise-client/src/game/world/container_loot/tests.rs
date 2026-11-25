@@ -1,6 +1,7 @@
 //! Production gameplay triggers, with one isolated game process per group of scenarios.
 use super::*;
 use crate::game::minecarts::{CartKind, Minecart};
+use mod_api::LevelRandomHost as _;
 use std::sync::{Arc, Mutex};
 use sunrise_client::{items::ItemStack, save::PendingContainerLoot};
 use sunrise_core::{geometry::Vec3, nbt::Tag, position::BlockPos};
@@ -16,6 +17,7 @@ fn level_container_reads_preserve_snapshot_and_unpack_comparator_once() {
         return;
     }
     mod_platform::testing::with_mods(Default::default(), || {
+        let mut snapshot = None;
         with_game(|game| {
             use mod_api::{LevelHost, LevelRandomHost};
             place(game, POS, TABLE, 37);
@@ -63,8 +65,11 @@ fn level_container_reads_preserve_snapshot_and_unpack_comparator_once() {
             );
             let chunk = game.world.chunks[&(0, 0)].clone();
             let chest = game.world.block_entities.remove(&POS).unwrap();
-            game.options.dedicated = None;
-            game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
+            snapshot = Some((chunk, chest));
+        });
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
+            use mod_api::LevelHost;
+            let (chunk, chest) = snapshot.take().unwrap();
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "ContainerReadTest").unwrap();
             game.remote.as_mut().unwrap().logged_in = true;
@@ -73,7 +78,8 @@ fn level_container_reads_preserve_snapshot_and_unpack_comparator_once() {
             let client_level = game.level(game.dim.id()).unwrap();
             let at = mod_api::BlockSide {
                 level: client_level,
-                ..at
+                pos: [8, 64, 8],
+                side: None,
             };
             let local_entity = game.block_entity(client_level, at.pos).unwrap();
             game.with_level(|_, level, _| {
@@ -879,7 +885,8 @@ fn explicit_seed_is_position_independent() {
             (6, -1),
             Arc::new(sunrise_client::chunk::Chunk::empty(6, -1)),
         );
-        let snapshot = |g: &crate::game::ServerGame<'_>, pos| g.world.block_entities[&pos].slots().to_vec();
+        let snapshot =
+            |g: &crate::game::ServerGame<'_>, pos| g.world.block_entities[&pos].slots().to_vec();
         let mut level_results = Vec::new();
         for seed in [1, 2, 1] {
             g.run_command("setblock 8 64 8 minecraft:air");

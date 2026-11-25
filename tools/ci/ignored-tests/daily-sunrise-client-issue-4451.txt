@@ -155,7 +155,6 @@ sunrise-client game::server_side::breezes_server::tests::the_ground_of_a_breeze_
 sunrise-client game::server_side::building_players::tests::for_player_keeps_the_outer_body_in_its_original_dimension lib daily resources
 sunrise-client game::bundle_use_tests::bundle_completes_on_tick_200 lib daily resources
 sunrise-client game::server_side::campfire::campfire_tests::a_sneak_keeps_the_food_and_placing_it_fires_item_used_on_block lib daily resources
-sunrise-client game::server_side::carrier_transfers::tests::a_client_mirror_transfer_refuses_without_touching_the_world lib daily resources
 sunrise-client game::server_side::carrier_transfers::tests::a_crash_after_a_finished_disassembly_recovers_clean lib daily resources
 sunrise-client game::server_side::carrier_transfers::tests::a_destination_with_a_block_entity_refuses lib daily resources
 sunrise-client game::server_side::carrier_transfers::tests::a_failed_commit_stops_the_session_until_recovery lib daily resources
@@ -343,7 +342,6 @@ sunrise-client game::server_side::commands::world_cmds::particle_command_tests::
 sunrise-client game::server_side::commands_server::world_cmds::vehicle_damage_command_tests::direct_guest_attributes_adopt_the_target_and_restore_the_issuer lib daily resources
 sunrise-client game::server_side::commands_server::world_cmds::vehicle_damage_command_tests::existing_attribute_operations_keep_their_exact_success_messages lib daily resources
 sunrise-client game::server_side::commands::world_cmds::vehicle_damage_command_tests::generic_commands_reach_actual_vehicle_damage_and_drop lib daily resources
-sunrise-client game::server_side::composter::capability_tests::a_client_copy_never_answers_composter_items lib daily resources
 sunrise-client game::server_side::composter::capability_tests::sided_composter_transactions_preserve_literal_chance_and_defer_all_effects lib daily resources
 sunrise-client game::server_side::consume::fox_consumption_hook_tests::fox_consumption_adapter_uses_full_host_and_preserves_listener_writes lib daily resources
 sunrise-client game::server_side::consume::fox_consumption_hook_tests::fox_tick_pauses_before_movement_and_next_actor_and_preserves_full_host_writes lib daily resources
@@ -1102,7 +1100,6 @@ sunrise-client game::native_block_states::tests::public_host_resolves_literal_bl
 sunrise-client game::native_block_use_criteria_tests::block_use_refusals_grant_nothing lib daily resources
 sunrise-client game::native_block_use_criteria_tests::default_block_use_awards_only_default lib daily resources
 sunrise-client game::native_block_use_criteria_tests::item_block_use_distinguishes_snapshots lib daily resources
-sunrise-client game::native_block_use_criteria_tests::remote_block_use_refuses lib daily resources
 sunrise-client game::server_side::native_book_apply::tests::actual_game_stage_refuses_nested_frame_and_mutated_actor lib daily resources
 sunrise-client game::server_side::native_boss_bar_refs::tests::generated_text_crossings_refuse_too_deep_before_boss_bar_writes lib daily resources
 sunrise-client game::server_side::native_boss_bar_refs::tests::handles_create_update_list_and_go_stale_like_bossbar_commands lib daily resources
@@ -1305,7 +1302,6 @@ sunrise-client game::server_side::native_entity_state::tests::portal_cooldown_wr
 sunrise-client game::server_side::native_entity_state::tests::portal_cooldown_write_is_refused_for_a_non_portal_projectile lib daily resources
 sunrise-client game::server_side::native_entity_state::tests::portal_cooldown_write_is_refused_for_a_player lib daily resources
 sunrise-client game::server_side::native_entity_state::tests::portal_cooldown_write_is_refused_for_an_acting_guest lib daily resources
-sunrise-client game::server_side::native_entity_state::tests::portal_cooldown_write_is_refused_on_a_client lib daily resources
 sunrise-client game::server_side::native_entity_state::tests::portal_cooldown_write_reaches_an_arrow lib daily resources
 sunrise-client game::server_side::native_entity_state::tests::portal_cooldown_write_reaches_an_item lib daily resources
 sunrise-client game::server_side::native_entity_state::tests::secondary_use_reads_reachable_client_handles_and_keeps_server_flags lib daily resources
@@ -2308,7 +2304,6 @@ sunrise-client game::client_side::remote_projectiles::nested_spawn_tests::remote
 sunrise-client game::client_side::remote_removal::tests::add_entity_replaces_falling_block_without_removing_other_ids lib daily resources
 sunrise-client game::client_side::remote_removal::tests::remove_entities_detaches_only_removed_vehicles lib daily resources
 sunrise-client game::client_side::remote_removal::tests::remove_entities_filters_mixed_entity_lists lib daily resources
-sunrise-client game::client_side::remote_save_tests::remote_save_with_a_held_lease_is_still_a_silent_noop lib daily resources
 sunrise-client game::client_side::remote_tags::tests::a_client_notice_reads_each_applied_set_of_server_tags lib daily resources
 sunrise-client game::client_side::remote_tags::tests::remote_enchant_snapshot_follows_tag_rebinding_and_tags_updated_callbacks lib daily resources
 sunrise-client game::client_side::remote_tags::tests::remote_tag_packets_rebuild_vanilla_enchant_providers_and_transmitters_without_mods lib daily resources

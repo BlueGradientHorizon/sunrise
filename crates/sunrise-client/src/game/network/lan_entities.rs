@@ -1334,7 +1334,8 @@ mod tests {
             pending!(game.crystals);
             pending!(game.ominous_spawners);
             pending!(game.breath_clouds);
-            game.spawn_remote_bolt(0, [1.0, 70.0, 1.0]);
+            game.bolts
+                .push(crate::game::lightning::Bolt::new(0, [1.0, 70.0, 1.0], true).0);
             game.potions.add_remote_thrown(
                 0,
                 "minecraft:splash_potion",

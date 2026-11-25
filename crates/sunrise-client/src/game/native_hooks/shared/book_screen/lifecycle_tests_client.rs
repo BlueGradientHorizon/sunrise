@@ -373,14 +373,15 @@ fn a_missing_recipe_book_factory_keeps_the_current_window() {
                             "bound:menu".into(),
                         ]),
                     );
-                let open = |game: &mut crate::game::ClientGame<'_>, container, menu, title: &str| {
-                    game.handle_packet(Clientbound::OpenScreen(OpenScreen {
-                        container,
-                        menu,
-                        title: sunrise_core::nbt::Tag::String(title.into()),
-                    }))
-                    .unwrap();
-                };
+                let open =
+                    |game: &mut crate::game::ClientGame<'_>, container, menu, title: &str| {
+                        game.handle_packet(Clientbound::OpenScreen(OpenScreen {
+                            container,
+                            menu,
+                            title: sunrise_core::nbt::Tag::String(title.into()),
+                        }))
+                        .unwrap();
+                    };
                 open(game, 4, 0, "Chest");
                 game.remote_menu_state(4, 15);
                 let key = game.container.expect("chest backing");
@@ -550,7 +551,12 @@ fn a_registered_recipe_book_screen_opens_for_a_blockless_menu() {
                         data: Vec::new(),
                     }),
                 ));
-                let screen = game.side.mod_screen.0.as_ref().expect("bound screen stages");
+                let screen = game
+                    .side
+                    .mod_screen
+                    .0
+                    .as_ref()
+                    .expect("bound screen stages");
                 assert_eq!(
                     screen.layout().recipe_book.as_ref().unwrap().as_str(),
                     "bound:book"
@@ -910,7 +916,12 @@ fn entering_inventory_requests_catalogue_for_preinstalled_bound_screen() {
                 game.side.screen = Screen::Playing;
                 game.container = Some(key);
                 assert!(game.open_native_screen(key, None, 3, None));
-                let staged = game.side.mod_screen.0.as_ref().expect("bound screen staged");
+                let staged = game
+                    .side
+                    .mod_screen
+                    .0
+                    .as_ref()
+                    .expect("bound screen staged");
                 assert_eq!(staged.menu.block, None);
                 let nonce = staged.layout_revision;
 

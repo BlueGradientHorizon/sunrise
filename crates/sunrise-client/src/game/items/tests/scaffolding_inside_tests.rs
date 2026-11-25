@@ -16,3 +16,7 @@ pub(in crate::game) fn name(game: &crate::game::ServerGame<'_>, pos: [i32; 3]) -
     let state = game.world.block(pos[0], pos[1], pos[2]);
     game.res.facts().get(state).name.to_string()
 }
+
+pub(in crate::game) fn set_sneak(game: &mut crate::game::ServerGame<'_>, held: bool) {
+    game.server_set_acting_sneak(held);
+}

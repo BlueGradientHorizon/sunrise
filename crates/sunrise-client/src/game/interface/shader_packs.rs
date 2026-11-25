@@ -378,8 +378,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
         }
         // A pack whose pipelines were building runs once they are built, or is turned off.
-        if let Some((dimension, name, started, report)) =
-            self.side.renderer.0.as_mut().and_then(|r| r.poll_shader_pack())
+        if let Some((dimension, name, started, report)) = self
+            .side
+            .renderer
+            .0
+            .as_mut()
+            .and_then(|r| r.poll_shader_pack())
         {
             match report {
                 Ok(Some((programs, notes))) => {
@@ -1608,7 +1612,10 @@ pub(in crate::game) mod player_status_tests {
 
     /// The window's player standing at (0.5, 64, 0.5) on the empty chunks around it
     /// (`EntityFluidInteraction.update` needs the chunks around the box loaded as well).
-    pub(in crate::game) fn stand_player<S: crate::game::Side>(game: &mut Game<'_, S>) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
+    pub(in crate::game) fn stand_player<S: crate::game::Side>(game: &mut Game<'_, S>)
+    where
+        for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host,
+    {
         for chunk in [(-1, -1), (-1, 0), (0, -1), (0, 0)] {
             game.world
                 .chunks
@@ -1621,7 +1628,12 @@ pub(in crate::game) mod player_status_tests {
     /// blocks, (0, 64, 0) and (0, 65, 0): the eight corners of the quart around (block - 2),
     /// (-1, 15, -1), which reach into the three neighbouring chunks. Then rain starts (`true`)
     /// or stops.
-    pub(in crate::game) fn rain_on_the_player<S: crate::game::Side>(game: &mut Game<'_, S>, raining: bool) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
+    pub(in crate::game) fn rain_on_the_player<S: crate::game::Side>(
+        game: &mut Game<'_, S>,
+        raining: bool,
+    ) where
+        for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host,
+    {
         let plains = game.res.biomes().id("minecraft:plains");
         let bottom = game.world.bottom_y() >> 2;
         for x in [-1, 0] {
@@ -1729,102 +1741,101 @@ pub(in crate::game) mod player_status_tests {
     #[test]
     #[ignore = "daily"]
     fn pack_status_starts_over_with_a_new_local_player() {
-        use crate::game::game_tests::tests::server_game;
+        use crate::game::native_entity_refs::tests::with_client_game;
         use sunrise_protocol::{
             entity_data::{Value, serializer},
             packets::play::{self, Clientbound as C},
         };
-        let mut resources = None;
-        let mut game = server_game(&mut resources);
-        game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-        let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
-        game.connect_local(pipe, "Steve").unwrap();
-        let spawn = || play::SpawnInfo {
-            dimension_type: 0,
-            dimension: "minecraft:overworld".into(),
-            seed: 1,
-            game_type: 0,
-            previous_game_type: None,
-            debug: false,
-            flat: false,
-            last_death: None,
-            portal_cooldown: 0,
-            sea_level: 63,
-        };
-        let login = |game: &mut crate::game::ServerGame<'_>| {
-            game.handle_packet(C::Login(play::Login {
-                player_id: 7,
-                hardcore: false,
-                levels: vec!["minecraft:overworld".into()],
-                max_players: 20,
-                chunk_radius: 8,
-                simulation_distance: 8,
-                reduced_debug_info: false,
-                show_death_screen: true,
-                limited_crafting: false,
-                spawn: spawn(),
-                online_mode: false,
-                enforces_secure_chat: false,
-            }))
-            .unwrap();
-        };
-        let mut teleport = 0;
-        let mut place = |game: &mut crate::game::ServerGame<'_>| {
-            teleport += 1;
-            game.handle_packet(C::PlayerPosition(play::PlayerPosition {
-                teleport,
-                position: [0.5, 65.0, 0.5],
-                delta: [0.0; 3],
-                yaw: 0.0,
-                pitch: 0.0,
-                relatives: 0,
-            }))
-            .unwrap();
-        };
-        let glow = |game: &mut crate::game::ServerGame<'_>| {
-            game.handle_packet(C::SetEntityData(play::SetEntityData {
-                id: 7,
-                values: vec![(0, serializer::BYTE, Value::Byte(0x40))],
-            }))
-            .unwrap();
-        };
-        let respawn = |game: &mut crate::game::ServerGame<'_>, keep| {
-            game.handle_packet(C::Respawn(play::Respawn {
-                spawn: spawn(),
-                keep,
-            }))
-            .unwrap();
-        };
-        login(&mut game);
-        place(&mut game);
-        let status = game.pack_player_status();
-        assert!(status.alive && !status.glowing, "{status:?}");
-        glow(&mut game);
-        assert!(game.pack_player_status().glowing, "flag 6");
+        with_client_game(|game| {
+            let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
+            game.connect_local(pipe, "Steve").unwrap();
+            let spawn = || play::SpawnInfo {
+                dimension_type: 0,
+                dimension: "minecraft:overworld".into(),
+                seed: 1,
+                game_type: 0,
+                previous_game_type: None,
+                debug: false,
+                flat: false,
+                last_death: None,
+                portal_cooldown: 0,
+                sea_level: 63,
+            };
+            let login = |game: &mut crate::game::ClientGame<'_>| {
+                game.handle_packet(C::Login(play::Login {
+                    player_id: 7,
+                    hardcore: false,
+                    levels: vec!["minecraft:overworld".into()],
+                    max_players: 20,
+                    chunk_radius: 8,
+                    simulation_distance: 8,
+                    reduced_debug_info: false,
+                    show_death_screen: true,
+                    limited_crafting: false,
+                    spawn: spawn(),
+                    online_mode: false,
+                    enforces_secure_chat: false,
+                }))
+                .unwrap();
+            };
+            let mut teleport = 0;
+            let mut place = |game: &mut crate::game::ClientGame<'_>| {
+                teleport += 1;
+                game.handle_packet(C::PlayerPosition(play::PlayerPosition {
+                    teleport,
+                    position: [0.5, 65.0, 0.5],
+                    delta: [0.0; 3],
+                    yaw: 0.0,
+                    pitch: 0.0,
+                    relatives: 0,
+                }))
+                .unwrap();
+            };
+            let glow = |game: &mut crate::game::ClientGame<'_>| {
+                game.handle_packet(C::SetEntityData(play::SetEntityData {
+                    id: 7,
+                    values: vec![(0, serializer::BYTE, Value::Byte(0x40))],
+                }))
+                .unwrap();
+            };
+            let respawn = |game: &mut crate::game::ClientGame<'_>, keep| {
+                game.handle_packet(C::Respawn(play::Respawn {
+                    spawn: spawn(),
+                    keep,
+                }))
+                .unwrap();
+            };
+            login(game);
+            place(game);
+            let status = game.pack_player_status();
+            assert!(status.alive && !status.glowing, "{status:?}");
+            glow(game);
+            assert!(game.pack_player_status().glowing, "flag 6");
 
-        respawn(&mut game, 2);
-        place(&mut game);
-        assert!(
-            game.pack_player_status().glowing,
-            "KEEP_ENTITY_DATA keeps flag 6"
-        );
+            respawn(game, 2);
+            place(game);
+            assert!(
+                game.pack_player_status().glowing,
+                "KEEP_ENTITY_DATA keeps flag 6"
+            );
 
-        game.handle_packet(C::SetHealth(play::SetHealth {
-            health: 0.0,
-            food: 20,
-            saturation: 5.0,
-        }))
-        .unwrap();
-        assert!(!game.pack_player_status().alive, "dead");
-        respawn(&mut game, 0);
-        place(&mut game);
-        let status = game.pack_player_status();
-        assert!(!status.glowing, "a respawn without the data resets flag 6");
-        assert!(status.alive, "the new player is alive");
+            game.handle_packet(C::SetHealth(play::SetHealth {
+                health: 0.0,
+                food: 20,
+                saturation: 5.0,
+            }))
+            .unwrap();
+            assert!(!game.pack_player_status().alive, "dead");
+            respawn(game, 0);
+            place(game);
+            let status = game.pack_player_status();
+            assert!(!status.glowing, "a respawn without the data resets flag 6");
+            assert!(status.alive, "the new player is alive");
 
-        glow(&mut game);
-        login(&mut game);
-        place(&mut game);
-        assert!(!game.pack_player_status().glowing, "a login resets flag 6");
+            glow(game);
+            login(game);
+            place(game);
+            assert!(!game.pack_player_status().glowing, "a login resets flag 6");
+        });
     }
 }

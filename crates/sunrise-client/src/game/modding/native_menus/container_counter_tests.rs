@@ -53,7 +53,9 @@ fn the_container_counter_is_the_last_window_and_advances_as_an_open_does() {
             with_game(|game| {
                 let rx = watched_guest(game);
                 let player = game.player(123).unwrap();
-                let counter = |game: &crate::game::ServerGame<'_>| player.container_counter(game as &dyn Host);
+                let counter = |game: &crate::game::ServerGame<'_>| {
+                    player.container_counter(game as &dyn Host)
+                };
                 assert_eq!(counter(game), Some(0), "no menu has opened yet");
                 let first = open(game);
                 assert_eq!((first, counter(game)), (1, Some(1)));

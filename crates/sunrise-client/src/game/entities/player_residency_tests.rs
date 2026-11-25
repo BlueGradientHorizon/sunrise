@@ -244,10 +244,11 @@ fn production_login_and_local_body_constructor_admit_profile_and_real_loan() {
         connection::Pipe,
         packets::play::{self, Clientbound as C},
     };
+    let mut profile = 0_u128;
     crate::game::native_entity_refs::tests::with_client_game(|game| {
         let (pipe, _server) = Pipe::pair();
         game.connect_local(pipe, "SourceProfile").unwrap();
-        let profile = game.remote.as_ref().unwrap().profile();
+        profile = game.remote.as_ref().unwrap().profile();
         game.handle_packet(C::Login(play::Login {
             player_id: 7,
             hardcore: false,
@@ -292,7 +293,26 @@ fn production_login_and_local_body_constructor_admit_profile_and_real_loan() {
             panic!("actual local constructor was not admitted");
         };
         assert_eq!(location.source, Source::LocalPlayer);
-        let expected = sunrise_client::lan::playerdata::uuid_ints(profile);
+        game.remove_local_player_body();
+        assert_eq!(game.server_resident_entity(7), EntityLookup::Missing);
+    });
+    let expected = sunrise_client::lan::playerdata::uuid_ints(profile);
+    crate::game::native_entity_refs::tests::with_game(|game| {
+        let mut player =
+            sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 65.0, 0.5))
+                .unwrap();
+        player.entity_id = 7;
+        game.player = Some(player);
+        game.level.player_uuid = Some(expected);
+        game.bind_local_player_residency();
+        let EntityLookup::Found {
+            location,
+            value: Target::Player,
+        } = game.server_resident_entity(7)
+        else {
+            panic!("actual local constructor was not admitted");
+        };
+        assert_eq!(location.source, Source::LocalPlayer);
         assert_eq!(game.uuid_for(7), expected);
         let settings = crate::game::lan::LanSettings {
             port: 0,
@@ -317,8 +337,8 @@ fn production_login_and_local_body_constructor_admit_profile_and_real_loan() {
             seed: 0,
             max_players: 2,
             integrated: true,
-            levels: game.server.level_shapes,
-            level_seeds: game.levels.0.runtime.seeds(),
+            levels: game.side.level_shapes,
+            level_seeds: game.side.levels.0.runtime.seeds(),
         };
         game.lan_host(settings, net, config).unwrap();
         let motion = sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
@@ -347,7 +367,7 @@ fn production_login_and_local_body_constructor_admit_profile_and_real_loan() {
             }
         ));
         assert_eq!(game.uuid_for(7), expected);
-        game.remove_local_player_body();
+        game.side_remove_local_player_body();
         assert_eq!(game.server_resident_entity(7), EntityLookup::Missing);
     });
 }
@@ -487,11 +507,16 @@ fn dragon_part_registrations_retire_on_replacement_command_and_chunk_unload() {
         copy_on_death: false,
         sync: false,
     };
+    let install_dragon = |game: &mut crate::game::ServerGame<'_>, id: u32| {
+        let mut dragon = crate::game::dragon::Dragon::new(Vec3::new(1.0, 80.0, 1.0), 0.0, 0);
+        dragon.id = id;
+        game.replace_resident_dragon(dragon);
+    };
     for operation in 0..3 {
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.native_level_opened(game.dim);
-            game.spawn_remote_dragon(420, [1.0, 80.0, 1.0], 0.0);
+            install_dragon(game, 420);
             for id in 421..=428 {
                 VALUE
                     .set(game, mod_api::Holder::Entity(id), id as i32)
@@ -504,7 +529,7 @@ fn dragon_part_registrations_retire_on_replacement_command_and_chunk_unload() {
             // Keeping the maps and snapshot alive must not keep registrations alive.
             let maps = game.entity_attachments.clone();
             match operation {
-                0 => game.spawn_remote_dragon(840, [1.0, 80.0, 1.0], 0.0),
+                0 => install_dragon(game, 840),
                 1 => {
                     game.kill_target(Target::Dragon(420));
                 }
@@ -532,7 +557,7 @@ fn dragon_part_registrations_retire_on_replacement_command_and_chunk_unload() {
                 VALUE.set(game, mod_api::Holder::Entity(841), 17).unwrap();
                 assert_eq!(index.lock().unwrap().snapshot(&key).len(), 1);
             } else {
-                game.spawn_remote_dragon(420, [1.0, 80.0, 1.0], 0.0);
+                install_dragon(game, 420);
                 assert_eq!(
                     VALUE.get_existing(game, mod_api::Holder::Entity(421)),
                     Ok(None)

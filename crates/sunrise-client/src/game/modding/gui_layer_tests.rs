@@ -290,7 +290,7 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
         game.side.title.0 = None;
         game.side.screen = super::Screen::Playing;
         game.ui.hide_gui = false;
-        game.set_mode_id(0);
+        game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
         let mut player = PlayerMotion::new(game.motion, Vec3::new(2.0, 64.0, 2.0)).unwrap();
         player.set_health(12.0, false).unwrap();
         player
@@ -312,7 +312,11 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
             (true, true, false),
             (true, false, true),
         ] {
-            game.set_mode_id(if creative { 1 } else { 0 });
+            game.set_local_mode(if creative {
+                sunrise_client::command::args::GameMode::Creative
+            } else {
+                sunrise_client::command::args::GameMode::Survival
+            });
             game.ui.hide_gui = hidden;
             if under_water && !game.player.as_ref().unwrap().is_eye_in_fluid(WATER) {
                 let water = game
@@ -967,11 +971,7 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
                 sunrise_client::command::args::GameMode::Survival
             };
             // A client of a server takes its mode from the server: only its local mode changes.
-            if game.remote.is_some() {
-                game.set_local_mode(mode);
-            } else {
-                game.set_mode(mode);
-            }
+            game.set_local_mode(mode);
             game.ui.hide_gui = frame.variant == Variant::Hidden;
             game.settings.attack_indicator = match frame.variant {
                 Variant::Off => 0,
@@ -1182,7 +1182,8 @@ fn f1_hides_vanilla_paint_without_skipping_the_hud_walk() {
             mods::register_gui_layers(ExecutionRole::Client);
             let size = [640, 480];
             let screen_events = ["screen pre", "screen background", "screen post"];
-            game.side.title.0 = Some(game.new_title(game.save.0.root.clone()));
+            let saves = tempfile::tempdir().unwrap();
+            game.side.title.0 = Some(game.new_title(saves.path().to_path_buf()));
             game.open_options(true);
             game.hud_layers(size);
             assert_eq!(take(), screen_events, "title Options has no HUD walk");

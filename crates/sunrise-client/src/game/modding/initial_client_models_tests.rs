@@ -43,7 +43,8 @@ fn title_ticks_join_world_resources_without_the_desktop_model_publication() {
             // The scoped mod fixture has its own key table, independent of startup's.
             mod_api::__private::resolve_items(["minecraft:stone"]).unwrap();
             // Alternate window frontends need not have run publish_initial_client_models.
-            game.side.title.0 = Some(game.new_title(game.save.0.root.clone()));
+            let saves = tempfile::tempdir().unwrap();
+            game.test_open_title(saves.path().to_path_buf());
             assert!(game.rest_loader.is_some());
             game.client_tick_steps(0, None).unwrap();
             assert!(game.rest_loader.is_some(), "an empty frame need not wait");

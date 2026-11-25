@@ -267,11 +267,10 @@ fn state_for_placement_distinguishes_player_and_dispenser_sources() {
                         .unwrap()
                         .unwrap();
                     assert_eq!(left.count, 1);
+                });
 
-                    // Client placement prediction also reports `Player`.
-                    game.options.execution_role =
-                        crate::game::execution_role::ExecutionRole::Client;
-                    game.options.dedicated = None;
+                // Client placement prediction also reports `Player`.
+                crate::game::native_entity_refs::tests::with_client_game(|game| {
                     let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
                     game.connect_local(pipe, "SourceClient").unwrap();
                     let remote = game.remote.as_mut().unwrap();
@@ -281,7 +280,12 @@ fn state_for_placement_distinguishes_player_and_dispenser_sources() {
                     game.world
                         .chunks
                         .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-                    game.sync_tick_chunks();
+                    let stone = game
+                        .pack
+                        .assets
+                        .registry
+                        .default_state("minecraft:stone")
+                        .unwrap();
                     game.world.set(6, 63, 4, stone).unwrap();
                     game.yaw = 90.0;
                     game.pitch = -20.0;
@@ -295,46 +299,46 @@ fn state_for_placement_distinguishes_player_and_dispenser_sources() {
                         game.remote_can_place(&client_hit, &ItemStack::new("minecraft:stone", 1))
                             .is_some()
                     );
-
-                    let seen = spy.0.lock().unwrap();
-                    assert_eq!(
-                        seen.as_slice(),
-                        &[
-                            (
-                                true,
-                                BlockPos::new(4, 64, 4),
-                                PlacementSource::Player {
-                                    yaw: 0.0,
-                                    pitch: 15.0,
-                                    sneaking: false,
-                                },
-                            ),
-                            (
-                                true,
-                                BlockPos::new(8, 64, 5),
-                                PlacementSource::Directional {
-                                    direction: Direction::South,
-                                },
-                            ),
-                            (
-                                true,
-                                BlockPos::new(10, 65, 4),
-                                PlacementSource::Directional {
-                                    direction: Direction::Up,
-                                },
-                            ),
-                            (
-                                false,
-                                BlockPos::new(6, 64, 4),
-                                PlacementSource::Player {
-                                    yaw: 90.0,
-                                    pitch: -20.0,
-                                    sneaking: false,
-                                },
-                            ),
-                        ]
-                    );
                 });
+
+                let seen = spy.0.lock().unwrap();
+                assert_eq!(
+                    seen.as_slice(),
+                    &[
+                        (
+                            true,
+                            BlockPos::new(4, 64, 4),
+                            PlacementSource::Player {
+                                yaw: 0.0,
+                                pitch: 15.0,
+                                sneaking: false,
+                            },
+                        ),
+                        (
+                            true,
+                            BlockPos::new(8, 64, 5),
+                            PlacementSource::Directional {
+                                direction: Direction::South,
+                            },
+                        ),
+                        (
+                            true,
+                            BlockPos::new(10, 65, 4),
+                            PlacementSource::Directional {
+                                direction: Direction::Up,
+                            },
+                        ),
+                        (
+                            false,
+                            BlockPos::new(6, 64, 4),
+                            PlacementSource::Player {
+                                yaw: 90.0,
+                                pitch: -20.0,
+                                sneaking: false,
+                            },
+                        ),
+                    ]
+                );
             });
         },
     );

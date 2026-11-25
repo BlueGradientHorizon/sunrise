@@ -3,7 +3,13 @@ use sunrise_client::scoreboard::comp_text;
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::packets::play::{Clientbound, SetPlayerTeam, TeamParameters};
 
-fn send_team(game: &mut crate::game::ClientGame<'_>, name: &str, method: i8, display: Option<&str>, players: &[&str]) {
+fn send_team(
+    game: &mut crate::game::ClientGame<'_>,
+    name: &str,
+    method: i8,
+    display: Option<&str>,
+    players: &[&str],
+) {
     let packet = Clientbound::SetPlayerTeam(SetPlayerTeam {
         name: name.into(),
         method,

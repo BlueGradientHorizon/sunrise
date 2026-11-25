@@ -736,9 +736,32 @@ fn dragon_part_constructor_first_read_indexes_payload_and_same_id_replacement_re
     use mod_api::AttachmentQueries;
     observe(|calls| {
         with_game(|game| {
+            let remove_dragon = |game: &mut crate::game::ServerGame<'_>, id: u32| {
+                if game.dragon.as_ref().is_some_and(|d| d.id == id) {
+                    for part in 0..8 {
+                        game.forget_entity(id + 1 + part);
+                    }
+                    game.forget_entity(id);
+                    game.dragon.discard();
+                }
+            };
+            let spawn_dragon =
+                |game: &mut crate::game::ServerGame<'_>, id: u32, position: [f64; 3], yaw: f32| {
+                    let at =
+                        sunrise_core::geometry::Vec3::new(position[0], position[1], position[2]);
+                    let mut d = crate::game::dragon::Dragon::new(at, yaw, i64::from(id));
+                    d.id = id;
+                    d.phase = crate::game::dragon::Phase::from_id(10);
+                    d.join = sunrise_client::join_seq::JoinSeq::next();
+                    if let Some(old) = game.dragon.as_ref().map(|d| d.id) {
+                        remove_dragon(game, old);
+                    }
+                    game.dragon.replace(d);
+                    game.place_dragon_parts();
+                };
             game.options.dedicated = Some(Vec::new());
             game.native_level_opened(Dim::Overworld);
-            game.spawn_remote_dragon(420, [1.0, 80.0, 1.0], 0.0);
+            spawn_dragon(game, 420, [1.0, 80.0, 1.0], 0.0);
             let holder = Holder::Entity(421);
             // Only an inspection outside dispatch: the constructor listener
             // performs the store, and there is no subsequent explicit store.
@@ -770,7 +793,7 @@ fn dragon_part_constructor_first_read_indexes_payload_and_same_id_replacement_re
                 1
             );
 
-            game.spawn_remote_dragon(420, [1.0, 80.0, 1.0], 0.0);
+            spawn_dragon(game, 420, [1.0, 80.0, 1.0], 0.0);
             assert!(!game.entity_attachments.contains_key(&421));
             assert!(!game.entity_initialization.initialized.contains(&holder));
             assert!(
@@ -795,11 +818,11 @@ fn dragon_part_constructor_first_read_indexes_payload_and_same_id_replacement_re
             let mut rows = batch.iter();
             assert!(rows.try_next().unwrap().is_some());
             assert!(rows.try_next().unwrap().is_none());
-            game.remove_remote_dragon(420);
+            remove_dragon(game, 420);
             // No prune pass between removal and network-ID reuse.
             assert!(!game.entity_attachments.contains_key(&421));
             assert!(!game.entity_initialization.initialized.contains(&holder));
-            game.spawn_remote_dragon(420, [1.0, 80.0, 1.0], 0.0);
+            spawn_dragon(game, 420, [1.0, 80.0, 1.0], 0.0);
             assert!(!game.entity_attachments.contains_key(&421));
             assert!(
                 game.query(&VALUE)

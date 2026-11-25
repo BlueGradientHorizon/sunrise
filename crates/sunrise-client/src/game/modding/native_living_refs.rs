@@ -385,9 +385,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         )
     }
 
-
-
-
     /// Adds an attribute modifier (`AttributeInstance.addTransientModifier`
     /// or `addPermanentModifier`). A permanent one is saved with the entity;
     /// a transient one lasts until it unloads. It goes where `/attribute`
@@ -503,10 +500,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .and_then(|t| self.write_attribute(t, name, write))
             .unwrap_or(false)
     }
-
-
-
-
 
     /// `Entity.canUsePortal`: the decision the game's own portal trip runs —
     /// a player's (alive, nobody's passenger, not asleep: the engine's own
@@ -709,7 +702,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let credit = match self.native_living_target(living)? {
             Target::Player => self.side.combat.0.player_credit(self.world.game_time),
             Target::Guest(conn) => self
-                .side.guest_combat
+                .side
+                .guest_combat
                 .0
                 .get(&conn)
                 .and_then(|combat| combat.player_credit(self.world.game_time)),
@@ -733,12 +727,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn living_last_attacker(&self, living: LivingRef) -> Option<EntityRef> {
         match self.native_living_target(living)? {
             Target::Player => self
-                .side.combat
+                .side
+                .combat
                 .0
                 .kill_credit(self.world.game_time)
                 .and_then(|id| self.credited_entity(id)),
             Target::Guest(conn) => self
-                .side.guest_combat
+                .side
+                .guest_combat
                 .0
                 .get(&conn)?
                 .kill_credit(self.world.game_time)
@@ -869,7 +865,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         super::native_living_body::body_equipment(body, slot)
     }
-
 
     /// Damage an equipped stack without an equip/unequip notification.
     pub(in crate::game) fn living_hurt_and_break(
@@ -1637,8 +1632,6 @@ pub(in crate::game) mod tests {
         use sunrise_core::random::RandomSource;
         super::super::native_entity_refs::tests::with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            game.audio.0.engine.loaded = true;
-            game.audio.0.engine.registry.add_file("minecraft", br#"{"entity.item.break":{"sounds":["test/item"]},"block.anvil.break":{"sounds":["test/anvil"]}}"#, &|_, _| true);
             let source = sunrise_client::health::NO_ATTACK.player_source("minecraft:generic", 0);
             let mut armor: [Option<ItemStack>; 4] = std::array::from_fn(|_| None);
             for (i, name) in ["minecraft:diamond_helmet", "minecraft:diamond_chestplate"]
@@ -1660,10 +1653,6 @@ pub(in crate::game) mod tests {
             for guest in [false, true] {
                 game.armor = armor.clone();
                 game.side.lan_acting = guest.then_some(1);
-                game.audio.0.capture = Some(Vec::new());
-                game.audio.0.record_heard = true;
-                game.audio.0.engine.notifications.clear();
-                game.audio.0.heard.clear();
                 game.side.guest_equipment_breaks.clear();
                 let random = game.world.random.clone();
                 // Player.hurtArmor supplies FEET, LEGS, CHEST, HEAD;
@@ -1690,47 +1679,19 @@ pub(in crate::game) mod tests {
                 }
                 let expected_armor = game.armor.clone();
                 let expected_events = game.side.guest_equipment_breaks.clone();
-                let expected_sounds = game.audio.0.heard.clone();
-                let expected_sound_order: Vec<_> = game
-                    .audio
-                    .0
-                    .engine
-                    .notifications
-                    .iter()
-                    .map(|event| event.identifier.clone())
-                    .collect();
                 let expected_random = game.world.random.next_float();
                 assert_eq!(broken, [1, 0]);
                 if guest {
                     assert_eq!(expected_events, [50, 49]);
                 } else {
-                    assert_eq!(expected_sounds.get("minecraft:entity.item.break"), Some(&1));
-                    assert_eq!(expected_sounds.get("minecraft:block.anvil.break"), Some(&1));
-                    assert_eq!(
-                        expected_sound_order,
-                        ["minecraft:block.anvil.break", "minecraft:entity.item.break"]
-                    );
+                    assert!(expected_events.is_empty());
                 }
                 game.armor = armor.clone();
                 game.side.guest_equipment_breaks.clear();
-                game.audio.0.capture = Some(Vec::new());
-                game.audio.0.heard.clear();
-                game.audio.0.engine.notifications.clear();
                 game.world.random = random;
                 game.hurt_armor(&source, 4.0);
                 assert_eq!(game.armor, expected_armor);
                 assert_eq!(game.side.guest_equipment_breaks, expected_events);
-                assert_eq!(game.audio.0.heard, expected_sounds);
-                assert_eq!(
-                    game.audio
-                        .0
-                        .engine
-                        .notifications
-                        .iter()
-                        .map(|event| event.identifier.clone())
-                        .collect::<Vec<_>>(),
-                    expected_sound_order
-                );
                 assert_eq!(game.world.random.next_float(), expected_random);
             }
         });
@@ -2054,7 +2015,9 @@ pub(in crate::game) mod tests {
 
     /// A pig hurt by a zombie of [`ZOMBIE_UUID`] in the Overworld, with the
     /// Nether's spawn chunk forced loaded so it stays parked beside it.
-    pub(in crate::game::server_side) fn hurt_pig(game: &mut crate::game::ServerGame<'_>) -> (u32, u32) {
+    pub(in crate::game::server_side) fn hurt_pig(
+        game: &mut crate::game::ServerGame<'_>,
+    ) -> (u32, u32) {
         use crate::game::Dim;
         use std::sync::Arc;
         game.side.world_root = game.side.save.0.root.clone();
@@ -2077,7 +2040,10 @@ pub(in crate::game) mod tests {
         (pig, zombie)
     }
 
-    pub(in crate::game::server_side) fn send_to_the_nether(game: &mut crate::game::ServerGame<'_>, mob: u32) {
+    pub(in crate::game::server_side) fn send_to_the_nether(
+        game: &mut crate::game::ServerGame<'_>,
+        mob: u32,
+    ) {
         use crate::game::{Dim, vehicle_teleport::TeleportMotion};
         assert!(
             game.teleport_vehicle_across(
@@ -2608,15 +2574,16 @@ pub(in crate::game) mod tests {
         use sunrise_client::mobs::gear;
         use sunrise_core::geometry::Vec3;
         super::super::native_entity_refs::tests::with_game(|game| {
-            let expect_slot = |game: &crate::game::ServerGame<'_>, living, slot, expected: Option<&ItemStack>| {
-                assert_eq!(
-                    game.living_equipment_stack(living, slot)
-                        .map(|stack| stack.project())
-                        .as_deref(),
-                    expected,
-                    "{slot:?}"
-                );
-            };
+            let expect_slot =
+                |game: &crate::game::ServerGame<'_>, living, slot, expected: Option<&ItemStack>| {
+                    assert_eq!(
+                        game.living_equipment_stack(living, slot)
+                            .map(|stack| stack.project())
+                            .as_deref(),
+                        expected,
+                        "{slot:?}"
+                    );
+                };
             for (id, kind) in [
                 (12, "minecraft:zombie"),
                 (13, "minecraft:horse"),

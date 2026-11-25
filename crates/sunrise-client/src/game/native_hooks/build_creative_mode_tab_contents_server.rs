@@ -55,6 +55,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_creative_catalog(&self) -> &Arc<Catalog> {
         &self.side.creative_catalog.0
     }
+
+    #[cfg(test)]
+    pub(in crate::game) fn test_set_creative_catalog(&mut self, catalog: Arc<Catalog>) {
+        self.side.creative_catalog.0 = catalog;
+    }
 }
 
 #[cfg(test)]

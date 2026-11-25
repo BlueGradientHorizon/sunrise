@@ -405,7 +405,7 @@ fn default_fixture(name: &str, test: impl FnOnce(&mut crate::game::ServerGame<'_
     });
 }
 
-fn place(game: &mut crate::game::ServerGame<'_>, pos: Pos, block: &str) {
+fn place<S>(game: &mut crate::game::Game<'_, S>, pos: Pos, block: &str) {
     let state = game.pack.assets.registry.default_state(block).unwrap();
     game.world.set(pos.0, pos.1, pos.2, state).unwrap();
 }
@@ -415,7 +415,7 @@ fn place(game: &mut crate::game::ServerGame<'_>, pos: Pos, block: &str) {
 fn item_capability_presence_does_not_open_loot_or_load_chunks() {
     use crate::game::{
         execution_role::ExecutionRole,
-        native_entity_refs::tests::{fixture_root, with_game_role},
+        native_entity_refs::tests::{fixture_root, with_game_role, with_game_role_client},
         spill,
     };
     use sunrise_core::nbt::Tag;
@@ -428,93 +428,110 @@ fn item_capability_presence_does_not_open_loot_or_load_chunks() {
         return;
     }
     let client = std::env::var("SUNRISE_ITEM_PRESENCE_CHILD").unwrap() == "client";
-    let role = if client {
-        ExecutionRole::Client
-    } else {
-        ExecutionRole::IntegratedServer
-    };
-    with_game_role(fixture_root(), role, |game| {
-        if client {
+    macro_rules! check_presence {
+        ($game:expr, $is_server:expr) => {{
+            let game = &mut *$game;
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            let chest = [1, 64, 0];
+            let pot = [4, 64, 0];
+            let composter = [5, 64, 0];
+            place(game, (1, 64, 0), "minecraft:chest");
+            game.world
+                .block_entities
+                .insert((1, 64, 0), BlockEntity::Chest(vec![None; 27]));
+            place(game, (1, 65, 0), "minecraft:stone");
+            place(game, (3, 64, 0), "minecraft:campfire");
+            game.world
+                .block_entities
+                .insert((3, 64, 0), BlockEntity::Campfire(Box::default()));
+            place(game, (4, 64, 0), "minecraft:decorated_pot");
+            place(game, (5, 64, 0), "minecraft:composter");
+            let pending = Tag::compound([
+                ("id", Tag::String("minecraft:decorated_pot".into())),
+                ("x", Tag::Int(pot[0])),
+                ("y", Tag::Int(pot[1])),
+                ("z", Tag::Int(pot[2])),
+                (
+                    "LootTable",
+                    Tag::String("minecraft:chests/simple_dungeon".into()),
+                ),
+            ]);
+            spill::put_saved_entity(&mut game.world, pot, pending.clone());
+            game.world.block_log = Some(Vec::new());
+            let before = (
+                game.world.modified.clone(),
+                game.world.random.state(),
+                game.world.chunks.len(),
+            );
+            let cases = [
+                (chest, None, Some(true)),
+                ([1, 65, 0], None, Some(false)),
+                ([3, 64, 0], None, Some(false)),
+                (pot, None, Some(true)),
+                (composter, None, Some(false)),
+                (composter, Some(Direction::North), Some(false)),
+                (composter, Some(Direction::Up), Some(true)),
+                (composter, Some(Direction::Down), Some(true)),
+                ([16, 64, 0], None, None),
+                ([0, game.world.top_y(), 0], None, None),
+            ];
+            for (pos, side, expected) in cases {
+                game.with_level(|_, world, ticks| {
+                    assert_eq!(
+                        world.view(ticks).has_item_capability(pos, side),
+                        expected,
+                        "{pos:?} {side:?}"
+                    );
+                });
+            }
+            (pot, pending, before, cases)
+        }};
+    }
+    if client {
+        with_game_role_client(fixture_root(), ExecutionRole::Client, |game| {
             let (pipe, _peer) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(pipe, "StorageContents").unwrap();
             game.remote.as_mut().unwrap().logged_in = true;
-        } else {
+            let (pot, pending, before, _) = check_presence!(game, false);
+            assert_eq!(spill::saved_entity(&game.world, pot), Some(pending));
+            assert_eq!(
+                (
+                    game.world.modified.clone(),
+                    game.world.random.state(),
+                    game.world.chunks.len()
+                ),
+                before
+            );
+            assert!(game.world.block_log.as_ref().unwrap().is_empty());
+        });
+    } else {
+        with_game_role(fixture_root(), ExecutionRole::IntegratedServer, |game| {
             game.options.dedicated = Some(Vec::new());
-        }
-        game.world
-            .chunks
-            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        game.sync_tick_chunks();
-        let chest = [1, 64, 0];
-        let pot = [4, 64, 0];
-        let composter = [5, 64, 0];
-        place(game, (1, 64, 0), "minecraft:chest");
-        game.world
-            .block_entities
-            .insert((1, 64, 0), BlockEntity::Chest(vec![None; 27]));
-        place(game, (1, 65, 0), "minecraft:stone");
-        place(game, (3, 64, 0), "minecraft:campfire");
-        game.world
-            .block_entities
-            .insert((3, 64, 0), BlockEntity::Campfire(Box::default()));
-        place(game, (4, 64, 0), "minecraft:decorated_pot");
-        place(game, (5, 64, 0), "minecraft:composter");
-        let pending = Tag::compound([
-            ("id", Tag::String("minecraft:decorated_pot".into())),
-            ("x", Tag::Int(pot[0])),
-            ("y", Tag::Int(pot[1])),
-            ("z", Tag::Int(pot[2])),
-            (
-                "LootTable",
-                Tag::String("minecraft:chests/simple_dungeon".into()),
-            ),
-        ]);
-        spill::put_saved_entity(&mut game.world, pot, pending.clone());
-        game.world.block_log = Some(Vec::new());
-        let before = (
-            game.world.modified.clone(),
-            game.world.random.state(),
-            game.world.chunks.len(),
-        );
-        let level = game.level(game.dim.id()).unwrap();
-        for (pos, side, expected) in [
-            (chest, None, Some(true)),
-            ([1, 65, 0], None, Some(false)),
-            ([3, 64, 0], None, Some(false)),
-            (pot, None, Some(true)),
-            (composter, None, Some(false)),
-            (composter, Some(Direction::North), Some(false)),
-            (composter, Some(Direction::Up), Some(true)),
-            (composter, Some(Direction::Down), Some(true)),
-            ([16, 64, 0], None, None),
-            ([0, game.world.top_y(), 0], None, None),
-        ] {
-            game.with_level(|_, world, ticks| {
-                assert_eq!(
-                    world.view(ticks).has_item_capability(pos, side),
-                    expected,
-                    "{pos:?} {side:?}"
-                );
-            });
-            if !client {
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            game.sync_tick_chunks();
+            let (pot, pending, before, cases) = check_presence!(game, true);
+            let level = game.level(game.dim.id()).unwrap();
+            for (pos, side, expected) in cases {
                 assert_eq!(
                     level.capability(game, &ITEMS, pos, side).is_some(),
                     expected == Some(true)
                 );
             }
-        }
-        assert_eq!(spill::saved_entity(&game.world, pot), Some(pending));
-        assert_eq!(
-            (
-                game.world.modified.clone(),
-                game.world.random.state(),
-                game.world.chunks.len()
-            ),
-            before
-        );
-        assert!(game.world.block_log.as_ref().unwrap().is_empty());
+            assert_eq!(spill::saved_entity(&game.world, pot), Some(pending));
+            assert_eq!(
+                (
+                    game.world.modified.clone(),
+                    game.world.random.state(),
+                    game.world.chunks.len()
+                ),
+                before
+            );
+            assert!(game.world.block_log.as_ref().unwrap().is_empty());
 
-        if !client {
             // The real handler uses the saved slot; aborting a parent also restores a
             // newly created tag written by its committed child.
             let empty_pot = [6, 64, 0];
@@ -545,8 +562,8 @@ fn item_capability_presence_does_not_open_loot_or_load_chunks() {
             })
             .unwrap();
             assert_eq!(cap.amount(game, 0), 1);
-        }
-    });
+        });
+    }
 }
 
 #[test]
@@ -692,11 +709,6 @@ fn block_capabilities_contain_panics_under_the_provider_owner() {
     }
 
     let client = std::env::var(FLAG).unwrap() == "client";
-    let role = if client {
-        ExecutionRole::Client
-    } else {
-        ExecutionRole::IntegratedServer
-    };
     let calls: Calls = Arc::default();
     let mods: Mods = [("bad_provider", true), ("healthy_provider", false)]
         .into_iter()
@@ -713,43 +725,56 @@ fn block_capabilities_contain_panics_under_the_provider_owner() {
         .into();
     let exercise = move || {
         mod_platform::testing::with_mods(mods, || {
-            with_game_role(fixture_root(), role, |game| {
-                if client {
-                    let (pipe, _peer) = sunrise_protocol::connection::Pipe::pair();
-                    game.connect_local(pipe, "ProviderOwner").unwrap();
-                    game.remote.as_mut().unwrap().logged_in = true;
-                } else {
-                    game.options.dedicated = Some(Vec::new());
-                }
-                game.world
-                    .chunks
-                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-                place(game, (1, 64, 0), "minecraft:barrel");
-                place(game, (2, 64, 0), "minecraft:chest");
+            macro_rules! check_discovery {
+                ($game:expr) => {{
+                    let game = &mut *$game;
+                    game.world
+                        .chunks
+                        .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                    place(game, (1, 64, 0), "minecraft:barrel");
+                    place(game, (2, 64, 0), "minecraft:chest");
 
-                let outer = current_native_mod();
-                let query = mod_api::__private::enter("querying_mod", "test");
-                let bad = Some("bad_provider");
-                let healthy = Some("healthy_provider");
-                game.with_level(|_, world, ticks| {
-                    let view = world.view(ticks);
-                    assert_eq!(view.has_item_capability(DISCOVERY, None), Some(true));
-                    assert_eq!(view.has_item_capability(DISCOVERY, None), Some(true));
-                    assert_eq!(view.has_item_capability(CONSTRUCTION, None), Some(true));
-                });
-                assert_eq!(current_native_mod(), Some("querying_mod"));
-                assert_eq!(
-                    std::mem::take(&mut *calls.lock().unwrap()),
-                    [
-                        ("discover barrel", bad),
-                        ("discover barrel", healthy),
-                        ("discover barrel", healthy),
-                        ("discover chest", bad),
-                    ],
-                    "discovery poisons only one registration; presence never constructs",
+                    let outer = current_native_mod();
+                    let query = mod_api::__private::enter("querying_mod", "test");
+                    let bad = Some("bad_provider");
+                    let healthy = Some("healthy_provider");
+                    game.with_level(|_, world, ticks| {
+                        let view = world.view(ticks);
+                        assert_eq!(view.has_item_capability(DISCOVERY, None), Some(true));
+                        assert_eq!(view.has_item_capability(DISCOVERY, None), Some(true));
+                        assert_eq!(view.has_item_capability(CONSTRUCTION, None), Some(true));
+                    });
+                    assert_eq!(current_native_mod(), Some("querying_mod"));
+                    assert_eq!(
+                        std::mem::take(&mut *calls.lock().unwrap()),
+                        [
+                            ("discover barrel", bad),
+                            ("discover barrel", healthy),
+                            ("discover barrel", healthy),
+                            ("discover chest", bad),
+                        ],
+                        "discovery poisons only one registration; presence never constructs",
+                    );
+                    (outer, query, bad, healthy)
+                }};
+            }
+            if client {
+                crate::game::native_entity_refs::tests::with_game_role_client(
+                    fixture_root(),
+                    ExecutionRole::Client,
+                    |game| {
+                        let (pipe, _peer) = sunrise_protocol::connection::Pipe::pair();
+                        game.connect_local(pipe, "ProviderOwner").unwrap();
+                        game.remote.as_mut().unwrap().logged_in = true;
+                        let (outer, query, _, _) = check_discovery!(game);
+                        drop(query);
+                        assert_eq!(current_native_mod(), outer);
+                    },
                 );
-
-                if !client {
+            } else {
+                with_game_role(fixture_root(), ExecutionRole::IntegratedServer, |game| {
+                    game.options.dedicated = Some(Vec::new());
+                    let (outer, query, bad, healthy) = check_discovery!(game);
                     let level = game.level(game.dim.id()).unwrap();
                     for pos in [CONSTRUCTION, CONSTRUCTION, DISCOVERY] {
                         let capability = level.capability(game, &ITEMS, pos, None).unwrap();
@@ -769,10 +794,10 @@ fn block_capabilities_contain_panics_under_the_provider_owner() {
                             ("construct", healthy),
                         ],
                     );
-                }
-                drop(query);
-                assert_eq!(current_native_mod(), outer);
-            });
+                    drop(query);
+                    assert_eq!(current_native_mod(), outer);
+                });
+            }
         })
     };
     // This fixture has a fresh process. An uncontained panic on either game's thread
@@ -1510,7 +1535,8 @@ fn extract_notifications_cross_signal_each_tick_and_comparator_ticks_every_secon
                     }
                 }
             }
-            game.side.tickets
+            game.side
+                .tickets
                 .0
                 .update(Some(sunrise_client::ticket_levels::Sources {
                     forced: vec![(0, 0)],

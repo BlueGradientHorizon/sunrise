@@ -62,7 +62,11 @@ fn join(game: &mut crate::game::ServerGame<'_>, conn: u32, loaded: bool) -> mpsc
     rx
 }
 
-fn packet_tick(game: &mut crate::game::ServerGame<'_>, conn: u32, packets: impl IntoIterator<Item = S>) {
+fn packet_tick(
+    game: &mut crate::game::ServerGame<'_>,
+    conn: u32,
+    packets: impl IntoIterator<Item = S>,
+) {
     let back = game.dim;
     let level = Dim::from_id(&guest(game, conn).dimension);
     game.enter_level(level).unwrap();
@@ -292,7 +296,11 @@ fn interact(game: &mut crate::game::ServerGame<'_>, rows: &mut Map<String, Value
     }
 }
 
-fn spectate(game: &mut crate::game::ServerGame<'_>, rx: &mpsc::Receiver<Out>, rows: &mut Map<String, Value>) {
+fn spectate(
+    game: &mut crate::game::ServerGame<'_>,
+    rx: &mpsc::Receiver<Out>,
+    rows: &mut Map<String, Value>,
+) {
     let shoot = |uuid| S::TeleportToEntity(play::TeleportToEntity { uuid });
     let _peer = join(game, 2, true);
     let host = game.lan.as_mut().unwrap();

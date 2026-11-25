@@ -3,7 +3,7 @@ use super::*;
 #[allow(unused_imports)]
 use crate::game::{
     Audio, Game, Options, Progress, Screen, Settings, execution_role::ExecutionRole,
-    load_resources, native_entity_refs::tests::with_game,
+    load_resources, native_entity_refs::tests::with_client_game,
 };
 #[allow(unused_imports)]
 use sunrise_protocol::connection::{Connection, Pipe};
@@ -13,8 +13,7 @@ use sunrise_protocol::connection::{Connection, Pipe};
 #[test]
 #[ignore = "daily"]
 fn a_mod_chat_line_shows_locally_and_sends_nothing() {
-    with_game(|game| {
-        game.options.execution_role = ExecutionRole::Client;
+    with_client_game(|game| {
         let (client, server) = Pipe::pair();
         game.connect_local(client, "ChatLineTest").unwrap();
         // Whatever connecting wrote is not this line's; drain it until the

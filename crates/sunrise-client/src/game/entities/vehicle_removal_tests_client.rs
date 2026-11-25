@@ -83,6 +83,7 @@ fn wind_charged_mob_removal_cannot_reenter_through_its_own_burst() {
         game.native_joins_flush(false, 0);
         assert!(game.try_mount_mob(72, 71));
 
+        game.start_audio_capture();
         finish_death_on_next_tick(game, 71);
         game.native_leaves_flush();
 
@@ -91,8 +92,13 @@ fn wind_charged_mob_removal_cannot_reenter_through_its_own_burst() {
         assert_eq!(events.bursts.load(Ordering::Relaxed), 1);
         assert_eq!(events.leaves.load(Ordering::Relaxed), 1);
         assert_eq!(
-            game.audio.0.heard.get("minecraft:entity.breeze.wind_burst"),
-            Some(&1)
+            game.side
+                .pending_sounds
+                .iter()
+                .filter(|s| s.event == "minecraft:entity.breeze.wind_burst")
+                .count(),
+            1
         );
+        game.stop_audio_capture();
     });
 }

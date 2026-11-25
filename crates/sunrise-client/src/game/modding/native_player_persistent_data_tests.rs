@@ -80,7 +80,7 @@ fn persistent_data_is_kept_in_the_players_record() {
 #[ignore = "daily"]
 fn each_persistent_data_refusal_has_its_own_name_and_writes_nothing() {
     with_guests(|game| {
-        use PlayerPersistentDataError::{Client, InvalidNbt, Stale, TooDeep};
+        use PlayerPersistentDataError::{InvalidNbt, Stale, TooDeep};
         let b = game.players().server_players()[1];
         let key = JavaString::from("kept");
         b.set_persistent_data_key(game, &key, Some(&nested(510)))
@@ -154,12 +154,7 @@ fn each_persistent_data_refusal_has_its_own_name_and_writes_nothing() {
         game.lan.as_mut().unwrap().hub.guests.remove(index);
         assert_eq!(b.set_persistent_data_key(game, &key, None), Err(Stale));
         assert_eq!(b.persistent_data(game), None);
-        game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-        let (client, _server) = sunrise_protocol::connection::Pipe::pair();
-        game.connect_local(client, "PlayerPersistentDataRefusalTest")
-            .unwrap();
-        assert_eq!(b.set_persistent_data_key(game, &key, None), Err(Client));
-        assert_eq!(b.persistent_data(game), None);
+        // Client refusal is enforced at compile time (`ClientGame` lacks server player persistent-data ops).
     });
 }
 

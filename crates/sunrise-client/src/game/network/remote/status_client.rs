@@ -176,7 +176,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 || !self.gui.atlas.sprites.contains_key(OFFLINE)
             {
                 // Kept for `again`, which finds no download or disk file for this cape.
-                self.side.skin_downloads
+                self.side
+                    .skin_downloads
                     .0
                     .borrow_mut()
                     .remember_image(OFFLINE, rgba);

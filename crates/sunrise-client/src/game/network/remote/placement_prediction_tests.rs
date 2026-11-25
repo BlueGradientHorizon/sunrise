@@ -2,7 +2,8 @@
 use super::*;
 #[allow(unused_imports)]
 use crate::game::{
-    native_connection_groups::ReceivedGroup, native_entity_refs::tests::{with_game_role, with_game_role_client},
+    native_connection_groups::ReceivedGroup,
+    native_entity_refs::tests::{with_game_role, with_game_role_client},
 };
 #[allow(unused_imports)]
 use mod_api::{
@@ -76,7 +77,10 @@ impl Hooks for PlaceMod {
 
 /// `test` on a survival-mode client game with `mods`' parts, connected to a server and with
 /// chunk (0, 0) loaded and empty.
-pub(in crate::game) fn on_a_client(mods: mod_api::Mods, test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
+pub(in crate::game) fn on_a_client(
+    mods: mod_api::Mods,
+    test: impl FnOnce(&mut crate::game::ClientGame<'_>),
+) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
@@ -89,7 +93,6 @@ pub(in crate::game) fn on_a_client(mods: mod_api::Mods, test: impl FnOnce(&mut c
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-                game.sync_tick_chunks();
                 game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
                 test(game);
             },
@@ -253,7 +256,10 @@ fn placement_and_prediction_choose_from_their_local_item_providers() {
         .unwrap();
     };
     let server_state = std::cell::Cell::new(None);
-    let setup = |game: &mut crate::game::ServerGame<'_>, lit: bool| {
+    fn setup<S>(
+        game: &mut crate::game::Game<'_, S>,
+        lit: bool,
+    ) -> sunrise_world::registry::BlockStateId {
         let registry = game.pack.assets.registry;
         let state = registry
             .resolve(&sunrise_world::chunk::BlockState {
@@ -277,7 +283,7 @@ fn placement_and_prediction_choose_from_their_local_item_providers() {
             sunrise_client::containers::BlockEntity::Campfire(Box::default()),
         );
         state
-    };
+    }
     mod_platform::testing::with_mods(mods(), || {
         with_game_role(root, ExecutionRole::IntegratedServer, |game| {
             resolve_kinds();
@@ -514,8 +520,9 @@ fn a_neighbour_s_survival_part_reads_the_prediction_s_blocks() {
     )]
     .into();
     on_a_client(mods, |game| {
-        let state =
-            |game: &crate::game::ClientGame<'_>, name: &str| game.pack.assets.registry.default_state(name).unwrap();
+        let state = |game: &crate::game::ClientGame<'_>, name: &str| {
+            game.pack.assets.registry.default_state(name).unwrap()
+        };
         for x in [0, 1] {
             game.world
                 .set(x, 64, 0, state(game, "minecraft:stone"))
@@ -636,7 +643,6 @@ fn a_denied_break_restores_wall_sign_text_and_synced_attachments() {
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        game.sync_tick_chunks();
 
         let registry = game.pack.assets.registry;
         let support = registry.default_state("minecraft:cobblestone").unwrap();

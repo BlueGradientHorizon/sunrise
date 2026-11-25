@@ -25,7 +25,10 @@ mod tick_target_millis_tests {
         }
     }
 
-    fn with_timer(answer: fn(f32) -> f32, check: impl FnOnce(&mut crate::game::ServerGame<'_>)) -> Vec<f32> {
+    fn with_timer(
+        answer: fn(f32) -> f32,
+        check: impl FnOnce(&mut crate::game::ClientGame<'_>),
+    ) -> Vec<f32> {
         let seen = Arc::default();
         let mods: mod_api::Mods = vec![ModEntry::new(
             "timer",
@@ -33,8 +36,7 @@ mod tick_target_millis_tests {
         )]
         .into();
         with_mods(mods, || {
-            crate::game::native_entity_refs::tests::with_game(|game| {
-                game.options.execution_role = super::ExecutionRole::Client;
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
                 check(game);
             });
         });
@@ -47,8 +49,7 @@ mod tick_target_millis_tests {
     #[test]
     #[ignore = "daily"]
     fn a_client_mod_sets_how_long_a_client_tick_lasts() {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            game.options.execution_role = super::ExecutionRole::Client;
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             assert_eq!(game.tick_target_millis(), 50.0);
         });
         let seen = with_timer(

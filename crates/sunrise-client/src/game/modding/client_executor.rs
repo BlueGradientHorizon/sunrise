@@ -8,7 +8,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if !self.native_window() {
             return None;
         }
-        self.side.client_tasks.0.executor(crash::current_native_mod()?)
+        self.side
+            .client_tasks
+            .0
+            .executor(crash::current_native_mod()?)
     }
 
     pub(in crate::game::client_side) fn close_client_tasks(&mut self) {
@@ -162,7 +165,8 @@ mod tests {
     #[ignore = "daily"]
     fn title_quit_discards_pending_and_late_client_tasks() {
         with_client_game(|game| {
-            game.side.title.0 = Some(game.new_title(game.save.0.root.clone()));
+            let saves = tempfile::tempdir().unwrap();
+            game.side.title.0 = Some(game.new_title(saves.path().to_path_buf()));
             let executor = executor(game, "producer");
             let (pending, pending_calls) = mpsc::channel();
             executor.execute(Box::new(move |_| pending.send(()).unwrap()));
@@ -204,7 +208,8 @@ mod tests {
                 game.side.audio.0.backend_live_for_bench();
                 let stream = |owner| {
                     Arc::new(AudioStreamRef::new(
-                        game.side.audio
+                        game.side
+                            .audio
                             .0
                             .open_stream(
                                 owner,

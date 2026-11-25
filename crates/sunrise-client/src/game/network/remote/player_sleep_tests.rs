@@ -4,7 +4,7 @@
 #[test]
 #[ignore = "daily"]
 fn client_sleep_metadata_and_tick_preserve_shape_and_authoritative_positions() {
-    use crate::game::{execution_role::ExecutionRole, native_entity_refs::tests::with_game};
+    use crate::game::native_entity_refs::tests::with_client_game;
     use sunrise_client::{chunk::Chunk, mobs::Mob, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::{
@@ -14,7 +14,7 @@ fn client_sleep_metadata_and_tick_preserve_shape_and_authoritative_positions() {
         packets::play::{self, Clientbound as C},
     };
 
-    let deliver = |game: &mut crate::game::ServerGame<'_>, packet: C| {
+    let deliver = |game: &mut crate::game::ClientGame<'_>, packet: C| {
         let body = packet.encode();
         let mut reader = Reader::new(&body);
         let id = reader.varint().unwrap();
@@ -45,8 +45,7 @@ fn client_sleep_metadata_and_tick_preserve_shape_and_authoritative_positions() {
         })
     };
 
-    with_game(|game| {
-        game.options.execution_role = ExecutionRole::Client;
+    with_client_game(|game| {
         let (client, server) = Pipe::pair();
         game.connect_local(client, "sleep-client").unwrap();
         let remote = game.remote.as_mut().unwrap();

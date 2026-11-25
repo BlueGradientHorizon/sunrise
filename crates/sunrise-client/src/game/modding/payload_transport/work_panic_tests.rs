@@ -145,20 +145,22 @@ fn a_handled_child_abort_rolls_back_work_but_still_reports_the_panicking_owner()
             ));
 
             // The client drains the shared queue, not the server action that aborted.
-            game.options.dedicated = None;
-            game.test_add_hook_panic_toasts();
-            assert_eq!(game.client.toast_manager.queued.len(), 1);
-            let Some(Toast::Diagnostic { toast, .. }) = game.client.toast_manager.queued.front()
-            else {
-                panic!("expected exactly one shared panic toast");
-            };
-            assert_eq!(
-                toast.message.as_ref().unwrap().component(),
-                serde_json::json!({
-                    "translate": "sunrise.mods.hook_panic.description",
-                    "with": [{"text": "work_probe"}, {"text": "payload work"}],
-                })
-            );
+            crate::game::native_entity_refs::tests::with_client_game(|client| {
+                client.test_add_hook_panic_toasts();
+                assert_eq!(client.side.toast_manager.queued.len(), 1);
+                let Some(Toast::Diagnostic { toast, .. }) =
+                    client.side.toast_manager.queued.front()
+                else {
+                    panic!("expected exactly one shared panic toast");
+                };
+                assert_eq!(
+                    toast.message.as_ref().unwrap().component(),
+                    serde_json::json!({
+                        "translate": "sunrise.mods.hook_panic.description",
+                        "with": [{"text": "work_probe"}, {"text": "payload work"}],
+                    })
+                );
+            });
         });
     });
 }

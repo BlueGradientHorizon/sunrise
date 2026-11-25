@@ -47,8 +47,6 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
         remote.backlog = backlog;
     }
-
-    
 }
 
 #[cfg(test)]

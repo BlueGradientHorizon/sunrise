@@ -123,22 +123,18 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn falling_tick_preserves_its_owner_on_success_and_collision_error() {
-        bound_falling_case(false, |game, _| {
-            assert!(game.spawn_remote_projectile(
-                "minecraft:falling_block",
-                &sunrise_protocol::packets::play::AddEntity {
-                    id: 72,
-                    uuid: 72,
-                    kind: 0,
-                    position: [4.5, 70.0, 0.5],
-                    velocity: [0.0; 3],
-                    pitch: 0,
-                    yaw: 0,
-                    head_yaw: 0,
-                    data: game.falling[0].state.0 as i32
-                },
-                (0.0, 0.0),
-            ));
+        bound_falling_server(|game, _| {
+            let at = Vec3::new(4.5, 70.0, 0.5);
+            let second = FallingBlock {
+                attachment_lifetime: Default::default(),
+                join: Default::default(),
+                id: 72,
+                start_pos: BlockPos::new(4, 70, 0),
+                position: at,
+                previous: at,
+                ..game.falling[0].clone()
+            };
+            game.falling.push(second);
             let expected: Vec<_> = game.falling.iter().map(|f| (f.id, f.join)).collect();
             game.tick_one_falling(0, &[]).unwrap();
             assert_eq!(
@@ -178,7 +174,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn falling_client_tick_commits_state_without_detaching_its_owner() {
-        bound_falling_case(true, |game, _| {
+        bound_falling_client(|game, _| {
             game.remote_projectile_data(
                 71,
                 &[(
@@ -202,7 +198,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn falling_parked_swap_preserves_state_and_owner_until_discard() {
-        bound_falling_case(false, |game, index| {
+        bound_falling_server(|game, index| {
             let home = game.dim;
             game.tick_one_falling(0, &[]).unwrap();
             let position = game.falling[0].position;
@@ -242,21 +238,35 @@ mod tests {
                     .default_state("minecraft:sand")
                     .unwrap();
                 for &(id, at) in entries {
-                    assert!(game.spawn_remote_projectile(
-                        "minecraft:falling_block",
-                        &sunrise_protocol::packets::play::AddEntity {
-                            id: id as i32,
-                            uuid: u128::from(id),
-                            kind: 0,
-                            position: at,
-                            velocity: [0.0; 3],
-                            pitch: 0,
-                            yaw: 0,
-                            head_yaw: 0,
-                            data: state.0 as i32
-                        },
-                        (0.0, 0.0),
-                    ));
+                    let pos = Vec3::new(at[0], at[1], at[2]);
+                    game.falling.push(FallingBlock {
+                        size_answer: None,
+                        ground: Default::default(),
+                        fire_ticks: 0,
+                        sync_velocity: false,
+                        attachment_lifetime: Default::default(),
+                        rotation: [0.0; 2],
+                        join: Default::default(),
+                        id,
+                        state,
+                        blocks_building: true,
+                        start_pos: BlockPos::new(
+                            at[0].floor() as i32,
+                            at[1].floor() as i32,
+                            at[2].floor() as i32,
+                        ),
+                        position: pos,
+                        previous: pos,
+                        velocity: Vec3::ZERO,
+                        age: 0,
+                        no_gravity: false,
+                        portal: Default::default(),
+                        drop_item: false,
+                        fall_distance: 0.0,
+                        stuck: Vec3::ZERO,
+                        damage: Default::default(),
+                        saved: None,
+                    });
                 }
             },
             ids: |game| game.falling.iter().map(|f| f.id).collect(),
@@ -276,75 +286,94 @@ mod tests {
         });
     }
 
-    fn bound_falling_case(
-        client: bool,
-        exercise: impl FnOnce(&mut Game<'_>, &Arc<Mutex<AttachmentIndex<mod_api::EntityRef>>>),
+    fn run_bound_falling<S>(
+        game: &mut crate::game::Game<'_, S>,
+        exercise: impl FnOnce(
+            &mut crate::game::Game<'_, S>,
+            &Arc<Mutex<AttachmentIndex<mod_api::EntityRef>>>,
+        ),
+        clear: impl FnOnce(&mut crate::game::Game<'_, S>),
     ) {
-        let test = |game: &mut crate::game::ClientGame<'_>| {
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-            let state = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:sand")
-                .unwrap();
-            let at = Vec3::new(0.5, 70.0, 0.5);
-            game.falling.push(FallingBlock {
-                size_answer: None,
-                ground: Default::default(),
-                fire_ticks: 0,
-                sync_velocity: false,
-                attachment_lifetime: Default::default(),
-                rotation: [0.0; 2],
-                join: Default::default(),
-                id: 71,
-                state,
-                blocks_building: true,
-                start_pos: BlockPos::new(0, 70, 0),
-                position: at,
-                previous: at,
-                velocity: Vec3::ZERO,
-                age: 0,
-                no_gravity: false,
-                portal: Default::default(),
-                drop_item: false,
-                fall_distance: 0.0,
-                stuck: Vec3::ZERO,
-                damage: Default::default(),
-                saved: None,
-            });
-            let id = game.falling[0].id;
-            let holder = mod_api::EntityRef::new(game.native_lifecycle.epoch().unwrap(), id);
-            let index = Arc::new(Mutex::new(AttachmentIndex::default()));
-            let mut values = Attachments::default();
-            VALUE.set(&mut values, Holder::Entity(id), 10).unwrap();
-            let original = game.falling.update(0, |f| {
-                f.attachment_lifetime().bind(&mut values, &index, holder);
-                f.attachment_lifetime().registration().unwrap()
-            });
-            let key = ("test".into(), "falling_lifetime".into());
-            let before = index.lock().unwrap().snapshot(&key);
-            assert_eq!(before.len(), 1);
-            exercise(game, &index);
-            let current = game
-                .falling
-                .update(0, |f| f.attachment_lifetime().registration().unwrap());
-            assert!(original.same_registration(&current));
-            assert_eq!(index.lock().unwrap().snapshot(&key).len(), 1);
-            assert_eq!(VALUE.get(&mut values, Holder::Entity(id)), Ok(10));
-            // Exercise the production clear before any fixture cleanup can mask it.
-            game.clear_remote_projectiles();
-            assert!(game.falling.is_empty());
-            assert!(index.lock().unwrap().snapshot(&key).is_empty());
-            assert_eq!(before[0].entry.read(&VALUE), Ok(&10));
-        };
-        if client {
-            super::super::native_entity_refs::tests::with_client_game(test);
-        } else {
-            super::super::native_entity_refs::tests::with_game(test);
-        }
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+        let state = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:sand")
+            .unwrap();
+        let at = Vec3::new(0.5, 70.0, 0.5);
+        game.falling.push(FallingBlock {
+            size_answer: None,
+            ground: Default::default(),
+            fire_ticks: 0,
+            sync_velocity: false,
+            attachment_lifetime: Default::default(),
+            rotation: [0.0; 2],
+            join: Default::default(),
+            id: 71,
+            state,
+            blocks_building: true,
+            start_pos: BlockPos::new(0, 70, 0),
+            position: at,
+            previous: at,
+            velocity: Vec3::ZERO,
+            age: 0,
+            no_gravity: false,
+            portal: Default::default(),
+            drop_item: false,
+            fall_distance: 0.0,
+            stuck: Vec3::ZERO,
+            damage: Default::default(),
+            saved: None,
+        });
+        let id = game.falling[0].id;
+        let holder = mod_api::EntityRef::new(game.native_lifecycle.epoch().unwrap(), id);
+        let index = Arc::new(Mutex::new(AttachmentIndex::default()));
+        let mut values = Attachments::default();
+        VALUE.set(&mut values, Holder::Entity(id), 10).unwrap();
+        let original = game.falling.update(0, |f| {
+            f.attachment_lifetime().bind(&mut values, &index, holder);
+            f.attachment_lifetime().registration().unwrap()
+        });
+        let key = ("test".into(), "falling_lifetime".into());
+        let before = index.lock().unwrap().snapshot(&key);
+        assert_eq!(before.len(), 1);
+        exercise(game, &index);
+        let current = game
+            .falling
+            .update(0, |f| f.attachment_lifetime().registration().unwrap());
+        assert!(original.same_registration(&current));
+        assert_eq!(index.lock().unwrap().snapshot(&key).len(), 1);
+        assert_eq!(VALUE.get(&mut values, Holder::Entity(id)), Ok(10));
+        // Exercise the production clear before any fixture cleanup can mask it.
+        clear(game);
+        assert!(game.falling.is_empty());
+        assert!(index.lock().unwrap().snapshot(&key).is_empty());
+        assert_eq!(before[0].entry.read(&VALUE), Ok(&10));
+    }
+
+    fn bound_falling_client(
+        exercise: impl FnOnce(
+            &mut crate::game::ClientGame<'_>,
+            &Arc<Mutex<AttachmentIndex<mod_api::EntityRef>>>,
+        ),
+    ) {
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            run_bound_falling(game, exercise, |game| game.clear_remote_projectiles());
+        });
+    }
+
+    fn bound_falling_server(
+        exercise: impl FnOnce(
+            &mut crate::game::ServerGame<'_>,
+            &Arc<Mutex<AttachmentIndex<mod_api::EntityRef>>>,
+        ),
+    ) {
+        super::super::native_entity_refs::tests::with_game(|game| {
+            run_bound_falling(game, exercise, |game| game.falling.clear());
+        });
     }
 
     #[test]

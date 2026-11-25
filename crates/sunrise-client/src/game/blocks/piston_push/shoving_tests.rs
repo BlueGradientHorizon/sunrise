@@ -12,7 +12,10 @@ const PLAYER: u32 = 42;
 const CONN: u32 = 1;
 const PIG_Y: f64 = 73.0;
 
-fn empty_chunk<S: crate::game::Side>(game: &mut Game<'_, S>) where for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host {
+fn empty_chunk<S: crate::game::Side>(game: &mut Game<'_, S>)
+where
+    for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host,
+{
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -175,7 +178,6 @@ fn a_predicted_collider_shove_passes_the_server_move_check() {
                         .set_read_timeout(Some(std::time::Duration::from_secs(5)))
                         .unwrap();
                     finish_login(game, &mut wire);
-                    game.side.title.0 = None;
                     game.side.screen = crate::game::Screen::Playing;
                     empty_chunk(game);
                     let mut player = PlayerMotion::new(game.motion, from).unwrap();
@@ -242,7 +244,7 @@ fn a_predicted_collider_shove_passes_the_server_move_check() {
                 game.side.lan_acting_name = Some("pushed-player".into());
                 bind_acting_guest(game);
                 // The packet belongs to the hub guest, not a second local body.
-                game.remove_local_player_body();
+                game.side_remove_local_player_body();
                 game.side.lan_acting = None;
                 let hub = &mut game.lan.as_mut().unwrap().hub;
                 hub.update_guest(CONN, |g| {

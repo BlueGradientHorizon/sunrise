@@ -2266,13 +2266,8 @@ pub(in crate::game) mod tests {
                 r#"{Pos:[0d,80d,0d],Duration:200,WaitTime:0,Radius:3f,custom_particle:{type:"test:measured",measure:257,ignored:42}}"#,
             ).unwrap();
             let id = game.load_potion_cloud(&tag).unwrap();
-            game.particles.0.created_requests = Some(Vec::new());
             game.tick_potion_clouds();
             assert_eq!(game.breath_clouds[0].age, 1);
-            assert!(
-                game.particles.0.created_requests.take().unwrap().is_empty(),
-                "a server tick must not submit client particles"
-            );
 
             let mut states = sunrise_client::lan::entity::States::default();
             game.lan_object_states(&mut states, false, 0);
@@ -2844,24 +2839,25 @@ pub(in crate::game) mod mob_absorption_max_tests {
                 "effect give @e[tag=h203_b20_upgrade,limit=1] minecraft:absorption 100 1"
             ));
             let mut failures = Vec::new();
-            let mut expect =
-                |game: &mut crate::game::ServerGame<'_>, phase: &str, rows: [(&str, i32, f32, i32); 5]| {
-                    for (name, n, amount, max) in rows {
-                        let i = pig(game, n);
-                        if game.mobs[i].absorption != amount {
-                            failures.push(format!(
-                                "{phase} {name}: amount {}, expected {amount}",
-                                game.mobs[i].absorption
-                            ));
-                        }
-                        let got = max_absorption(game, &format!("h203_{name}"));
-                        if got != max {
-                            failures.push(format!(
-                                "{phase} {name}: max_absorption {got}, expected {max}"
-                            ));
-                        }
+            let mut expect = |game: &mut crate::game::ServerGame<'_>,
+                              phase: &str,
+                              rows: [(&str, i32, f32, i32); 5]| {
+                for (name, n, amount, max) in rows {
+                    let i = pig(game, n);
+                    if game.mobs[i].absorption != amount {
+                        failures.push(format!(
+                            "{phase} {name}: amount {}, expected {amount}",
+                            game.mobs[i].absorption
+                        ));
                     }
-                };
+                    let got = max_absorption(game, &format!("h203_{name}"));
+                    if got != max {
+                        failures.push(format!(
+                            "{phase} {name}: max_absorption {got}, expected {max}"
+                        ));
+                    }
+                }
+            };
             expect(
                 game,
                 "added",

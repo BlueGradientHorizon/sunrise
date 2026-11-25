@@ -46,8 +46,7 @@ fn local_mob_events_play_without_entering_the_shared_capture() {
         MobEvent::Sound("entity.zombie.hurt", [5.0, 100.0, 6.0], 1.0, 0.9),
     ])
     .unwrap();
-    // Server role queues shared sounds and skips client-only LocalSound without touching local audio.
-    assert!(game.audio.0.heard.is_empty());
+    // Server role queues shared sounds and skips client-only LocalSound.
     let shared = std::mem::take(&mut game.side.pending_sounds);
     game.stop_audio_capture();
     assert_eq!(shared.len(), 2, "LocalSound must not become a shared sound");
@@ -72,18 +71,19 @@ fn local_mob_events_play_without_entering_the_shared_capture() {
         ([5.0, 100.0, 6.0], 1.0, 0.9, 5)
     );
     // Client role plays LocalSound locally without entering shared capture.
-    game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-    game.audio.0.capture = Some(Vec::new());
-    let mut events = vec![MobEvent::LocalSound(
-        "entity.breeze.whirl",
-        [3.0, 100.0, 4.0],
-        0.8,
-        0.7,
-    )];
-    game.handle_client_mob_events(&mut events);
-    assert_eq!(
-        game.audio.0.heard.get("minecraft:entity.breeze.whirl"),
-        Some(&1)
-    );
-    assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
+        game.side.audio.0.capture = Some(Vec::new());
+        let mut events = vec![MobEvent::LocalSound(
+            "entity.breeze.whirl",
+            [3.0, 100.0, 4.0],
+            0.8,
+            0.7,
+        )];
+        game.handle_client_mob_events(&mut events);
+        assert_eq!(
+            game.side.audio.0.heard.get("minecraft:entity.breeze.whirl"),
+            Some(&1)
+        );
+        assert!(game.side.audio.0.capture.as_ref().unwrap().is_empty());
+    });
 }

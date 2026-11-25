@@ -132,22 +132,22 @@ pub(in crate::game) mod tests {
         fn resolved<K>(ids: &[&str], resolve: impl Fn(&str) -> Option<K>) -> TagMembers<K> {
             TagMembers::Members(ids.iter().map(|id| resolve(id).unwrap()).collect())
         }
-        let check_host = |game: &crate::game::ServerGame<'_>, keep: usize| {
+        let check_host = |game: &dyn mod_api::Tags, keep: usize| {
             let probe = key("tag_reload:probe");
             assert_eq!(
-                mod_api::Tags::items(game, probe),
+                game.items(probe),
                 resolved(&members[0].1[..keep], mod_api::__private::item_key)
             );
             assert_eq!(
-                mod_api::Tags::blocks(game, probe),
+                game.blocks(probe),
                 resolved(&members[1].1[..keep], mod_api::__private::block_key)
             );
             assert_eq!(
-                mod_api::Tags::fluids(game, probe),
+                game.fluids(probe),
                 resolved(&members[2].1[..keep], mod_api::__private::fluid_key)
             );
             assert_eq!(
-                mod_api::Tags::items(game, key("tag_reload:old")),
+                game.items(key("tag_reload:old")),
                 if keep == 0 {
                     TagMembers::Missing
                 } else {

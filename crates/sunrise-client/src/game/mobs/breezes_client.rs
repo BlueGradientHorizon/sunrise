@@ -141,4 +141,14 @@ pub(in crate::game) mod tests {
         game.mobs.push(Mob::new(13001, kind, feet, 0.0));
         game
     }
+
+    pub(in crate::game) fn made_block_particles(game: &crate::game::ClientGame<'_>) -> u64 {
+        game.side
+            .particles
+            .0
+            .made()
+            .get("block")
+            .copied()
+            .unwrap_or(0)
+    }
 }
