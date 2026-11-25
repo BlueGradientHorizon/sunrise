@@ -35,6 +35,10 @@ if ! command -v rustup > /dev/null; then
   curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
 fi
 path "${CARGO_HOME:-$HOME/.cargo}/bin"
+# `python`, which the workflows call, is python3 on this image.
+mkdir -p "$tools/python-shim"
+ln -sf "$(command -v python3)" "$tools/python-shim/python"
+path "$tools/python-shim"
 rustup toolchain install "$(cat "$shims/../rust-version")" --profile minimal --component llvm-tools --target "$target"
 rustup default "$(cat "$shims/../rust-version")"
 

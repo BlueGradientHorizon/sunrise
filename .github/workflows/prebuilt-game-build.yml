@@ -16,7 +16,7 @@ on:
         type: boolean
         default: false
       dev:
-        description: A Dev release's build (nightly-build.yml kind dev), whose macOS leg BLACKSMITH_DEV_MACOS may move
+        description: A Dev release's build (nightly-build.yml kind dev), whose macOS leg BLACKSMITH_DEV_MACOS may move and whose legs DEV_ON_DYNA=on cross-builds on Dyna's runners
         type: boolean
         default: false
     outputs:
@@ -80,12 +80,21 @@ jobs:
     # BLACKSMITH_DEV_MACOS=on (the owner's switch; unset or anything else is off) puts a Dev release's macOS leg alone
     # back on Blacksmith while BLACKSMITH stays off: the leg the whole Dev release waits for (88m36 on GitHub's
     # macos-15 on 2026-11-25).
+    # DEV_ON_DYNA=on (the owner's switch; unset or anything else is off) builds a Dev release's four legs on Dyna's Linux
+    # runners instead (docs/release-flow.md): Linux against glibc 2.35 with zig, the windows-gnu and macOS legs
+    # cross-compiled (tools/ci/cross/). `cross-check` below runs what needs the leg's own platform, on GitHub's runner.
     runs-on: >-
-      ${{ (vars.BLACKSMITH != 'off' || (inputs.dev && matrix.name == 'macos' && vars.BLACKSMITH_DEV_MACOS == 'on'))
+      ${{ inputs.dev && vars.DEV_ON_DYNA == 'on' && 'dyna-large' ||
+      (vars.BLACKSMITH != 'off' || (inputs.dev && matrix.name == 'macos' && vars.BLACKSMITH_DEV_MACOS == 'on'))
       && matrix.blacksmith || matrix.os }}
     # Hosted macOS runner speed varies: 41 to 90+ minutes observed. Windows without its build cache (the first run after
     # a lock or toolchain change saves it) takes over 85 minutes in "Build and collect" alone.
     timeout-minutes: ${{ (matrix.os == 'macos-15' && 120) || (matrix.os == 'windows-latest' && 180) || 90 }}
+    env:
+      # `on` when this Dev leg is cross-built on Dyna's runner, empty otherwise.
+      CROSS: ${{ inputs.dev && vars.DEV_ON_DYNA == 'on' && 'on' || '' }}
+      # tools/prebuilt_game.py builds for this target, not the computer's (a cross build); empty on a hosted runner.
+      SUNRISE_PREBUILT_TARGET: ${{ inputs.dev && vars.DEV_ON_DYNA == 'on' && matrix.target || '' }}
     defaults:
       run:
         shell: bash
@@ -99,22 +108,50 @@ jobs:
         run: |
           echo "version=$(cat tools/ci/rust-version)" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@master
+        if: env.CROSS != 'on'
         with:
           toolchain: ${{ steps.rust.outputs.version }}-${{ matrix.target }}
           components: ${{ matrix.linkage && 'clippy' || '' }}
       - uses: actions/setup-python@v5
+        if: env.CROSS != 'on'
         with:
           python-version: '3.12'
+      # The Apple SDK, placed once by hand in this repository's /keep on the runner host and never in the image, an
+      # artifact, a cache or a log. A missing or different archive stops the job and names the file.
+      - name: Apple SDK from /keep
+        if: env.CROSS == 'on' && matrix.name == 'macos'
+        env:
+          APPLE_SDK: MacOSX15.5.sdk
+          APPLE_SDK_SHA256: 60b9c5dc87ab7bf226eb0041d0b8e7b9f383b57e1cba56100fa1eebdbf9e995c
+        run: |
+          set -euo pipefail
+          archive="$DYNA_CI_KEEP/apple-sdk/$APPLE_SDK.tar.xz"
+          if [ ! -f "$archive" ]; then
+            echo "::error::$archive is missing: the Apple SDK is placed there by hand (sha256 $APPLE_SDK_SHA256)"
+            exit 1
+          fi
+          if ! echo "$APPLE_SDK_SHA256  $archive" | sha256sum -c --status -; then
+            echo "::error::$archive does not have sha256 $APPLE_SDK_SHA256"
+            exit 1
+          fi
+          tar --warning=no-unknown-keyword -C "$RUNNER_TEMP" -xf "$archive"
+          echo "SDKROOT=$RUNNER_TEMP/$APPLE_SDK" >> "$GITHUB_ENV"
+          echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> "$GITHUB_ENV"
+      - name: Cross-compiling tools for ${{ matrix.target }}
+        if: env.CROSS == 'on'
+        run: >-
+          tools/ci/cross/setup.sh ${{ matrix.name == 'windows' && 'x86_64-pc-windows-gnu' || matrix.target }}
       # Saved by main's runs only, which every branch restores from: a branch's copy (about 700 MB a leg) serves no
       # other ref and pushed main's out of the repository's 10 GB, so main's daily legs found no cache at all.
       - uses: Swatinem/rust-cache@v2
+        if: env.CROSS != 'on'
         with:
           shared-key: prebuilt-${{ matrix.name }}
           # Not a Dev build's: saving took 3m56 at the end of the Windows leg the Dev build of 2026-11-25 waited for,
           # and the daily run's legs save the same keys.
           save-if: ${{ github.ref == 'refs/heads/main' && !inputs.dev }}
       - name: ALSA and udev headers
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && env.CROSS != 'on'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev
       - name: Build and collect
         run: python tools/prebuilt_game.py build prebuilt ${{ matrix.server && '--server' || '' }}
@@ -130,11 +167,14 @@ jobs:
       # Two starter mods, the second calling the first through its library as a mod calls a declared dependency
       # (on windows-gnu through the first's import library); `start` then loads both.
       - name: Two starter mods and the game executable build against the archive alone
+        # A cross-built macOS or Windows leg runs this in cross-check, on that platform.
+        if: ${{ env.CROSS != 'on' || !contains(fromJSON('["macos", "windows"]'), matrix.name) }}
         run: python tools/prebuilt_game.py smoke prebuilt
       # Runs what smoke built, installed as the launcher installs it, with no game data: it loads the game's
       # libraries and sets up the mods' runtime, and must stop cleanly at the missing prepared files. A crash
       # there (two allocators, #3877) fails this OS's leg, so its archive never publishes.
       - name: The game executable starts and loads the game's libraries
+        if: ${{ env.CROSS != 'on' || !contains(fromJSON('["macos", "windows"]'), matrix.name) }}
         timeout-minutes: 10
         run: python tools/prebuilt_game.py start prebuilt
       # Warns past 80% of Windows' 65,535 exported names per DLL and fails past 90%.
@@ -145,7 +185,7 @@ jobs:
       # (an emptied check folder without its mark: E_SCRATCH), and its builds made the cache larger for nothing.
       - name: Two mod libraries share the game's exact Rust state
         id: linkage
-        if: matrix.linkage
+        if: ${{ matrix.linkage && (env.CROSS != 'on' || !contains(fromJSON('["macos", "windows"]'), matrix.name)) }}
         run: python tools/native_dylib_probe.py --sdk prebuilt --output "$RUNNER_TEMP/native-dylib-probe"
       # The archive is the SDK's api-source.tar.xz: sdk-publish.yml's index takes it from here rather than building
       # the same bytes again (same commit, same bytes: tools/sdk_api_source.py).
@@ -170,7 +210,7 @@ jobs:
       # Build a native mod library on macOS against the SDK just built, using the release's
       # own `cargo sunrise-mod native-build` tool.
       - name: A native mod builds through the shipped route
-        if: matrix.name == 'macos'
+        if: matrix.name == 'macos' && env.CROSS != 'on'
         run: python tools/ci/native_build_route.py --sdk prebuilt --tool target/release/cargo-sunrise-mod --work "$RUNNER_TEMP/native-route"
       # The mod tool builds a native mod whose build script compiles a C file with `cc`, against this leg's own SDK laid out
       # as a signed release folder (the Linux legs' run of the same test is book-quickstart.yml's). `cc` must find the
@@ -199,6 +239,19 @@ jobs:
         run: >-
           cargo test --locked -p cargo-sunrise-mod --test build_errors --
           --ignored --exact a_native_mod_compiles_its_c_source_with_cc_from_its_build_script
+      # What cross-check runs on the leg's own platform: the build folder and the mod tool, in one tar (an artifact
+      # keeps no file modes). The SDK folder holds only what the leg built; nothing of the Apple SDK or Microsoft's.
+      - name: The leg's build for its platform's check
+        if: env.CROSS == 'on' && contains(fromJSON('["macos", "windows"]'), matrix.name)
+        run: tar czf "$RUNNER_TEMP/sdk-check.tar.gz" prebuilt target/${{ matrix.target }}/release/cargo-sunrise-mod*
+      - uses: actions/upload-artifact@v4
+        if: env.CROSS == 'on' && contains(fromJSON('["macos", "windows"]'), matrix.name)
+        with:
+          name: sdk-check-${{ matrix.name }}
+          path: ${{ runner.temp }}/sdk-check.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
       - name: Asset sizes
         run: (cd dist && du -h *) | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
@@ -230,3 +283,52 @@ jobs:
           if-no-files-found: error
           retention-days: 1
           overwrite: true
+
+  # The checks that run the programs of a cross-built macOS or Windows leg, on GitHub's runner of that platform, from the
+  # build folder the leg uploaded: nothing is rebuilt. `needs.sdk` is red when one fails, so no SDK publishes.
+  cross-check:
+    needs: [fresh, build]
+    if: ${{ !cancelled() && needs.fresh.outputs.needed == 'true' && inputs.dev && vars.DEV_ON_DYNA == 'on' }}
+    name: check ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: macos, os: macos-15, target: aarch64-apple-darwin}
+          - {name: windows, os: windows-latest, target: x86_64-pc-windows-gnu, linkage: true}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.commit }}
+      - name: The launcher's pinned Rust
+        id: rust
+        run: echo "version=$(cat tools/ci/rust-version)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.rust.outputs.version }}-${{ matrix.target }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-check-${{ matrix.name }}
+          path: ${{ runner.temp }}/check
+      - name: Unpack the leg's build folder and mod tool, unchanged
+        run: tar xzf "$RUNNER_TEMP/check/sdk-check.tar.gz"
+      - name: Two starter mods and the game executable build against the archive alone
+        run: python tools/prebuilt_game.py smoke prebuilt
+      - name: The game executable starts and loads the game's libraries
+        timeout-minutes: 10
+        run: python tools/prebuilt_game.py start prebuilt
+      - name: Two mod libraries share the game's exact Rust state
+        if: matrix.linkage
+        run: python tools/native_dylib_probe.py --sdk prebuilt --output "$RUNNER_TEMP/native-dylib-probe"
+      - name: A native mod builds through the shipped route
+        if: matrix.name == 'macos'
+        run: python tools/ci/native_build_route.py --sdk prebuilt --tool target/${{ matrix.target }}/release/cargo-sunrise-mod --work "$RUNNER_TEMP/native-route"
