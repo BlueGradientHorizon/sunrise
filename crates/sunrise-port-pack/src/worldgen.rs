@@ -92,9 +92,6 @@ pub struct Upgrade {
     /// Processors written in Java carried as data the game runs
     /// ([`crate::processors`]), by type.
     pub processors_carried: BTreeMap<String, usize>,
-    /// Rule tests written in Java carried as the game's own
-    /// ([`crate::processors::rule_tests`]), by type.
-    pub rule_tests_carried: BTreeMap<String, usize>,
     /// Entries added to other structure sets and template pools
     /// (`sunrise:add_to`), by the set or pool they join.
     pub added_to: BTreeMap<String, usize>,
@@ -125,6 +122,7 @@ pub fn upgrade(
     let dropped = crate::processors::each_list(kind, v, &mut |list| {
         drop_java_processors(list, &mut report.processors_dropped)
     });
+    crate::processors::report_unsupported_rule_tests(kind, v, &mut report.unsupported);
     upgrade_types(kind, v, report, set_tags) || states || features || dropped || renamed
 }
 

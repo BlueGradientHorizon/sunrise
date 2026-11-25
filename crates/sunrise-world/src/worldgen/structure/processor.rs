@@ -61,7 +61,7 @@ impl<R: RandomSource> ProcessorRandom for R {
 }
 
 #[derive(Clone, Debug)]
-enum PosRule {
+pub enum PosRule {
     Always,
     Linear {
         min_chance: f32,
@@ -70,6 +70,7 @@ enum PosRule {
         max_dist: i32,
         axis: Option<usize>,
     },
+    Mod(Arc<dyn crate::worldgen::mod_rule_tests::ModPosRuleTest>),
 }
 #[derive(Clone, Debug)]
 enum Modifier {
@@ -82,14 +83,26 @@ impl PosRule {
     /// A rule's `position_predicate` (always true when missing). Types are
     /// identifiers: `"always_true"` is `minecraft:always_true`, as vanilla
     /// reads it.
-    fn decode(value: Option<&Value>) -> Result<Self, DecodeError> {
+    pub fn decode(value: Option<&Value>) -> Result<Self, DecodeError> {
+        Self::decode_inner(value, 0, &mut 65536)
+    }
+    pub(crate) fn decode_inner(
+        value: Option<&Value>,
+        depth: usize,
+        remaining: &mut usize,
+    ) -> Result<Self, DecodeError> {
         let Some(p) = value else {
             return Ok(Self::Always);
         };
+        if depth > 128 || *remaining == 0 {
+            return Err(DecodeError::Field("position rule test depth or node count"));
+        }
+        *remaining -= 1;
         let kind = p["predicate_type"]
             .as_str()
-            .unwrap_or("minecraft:always_true");
-        Ok(match super::super::tags::identifier(kind)?.as_str() {
+            .ok_or(DecodeError::Field("predicate_type"))?;
+        let canonical = super::super::tags::identifier(kind)?;
+        Ok(match canonical.as_str() {
             "minecraft:always_true" => Self::Always,
             kind @ ("minecraft:linear_pos" | "minecraft:axis_aligned_linear_pos") => Self::Linear {
                 min_chance: p.get("min_chance").and_then(Value::as_f64).unwrap_or(0.) as f32,
@@ -104,13 +117,33 @@ impl PosRule {
                     }
                 }),
             },
-            _ => return Err(DecodeError::Field("position predicate")),
+            other => {
+                if let Some(ty) = crate::worldgen::mod_rule_tests::mod_pos_rule_test_type(other) {
+                    let scope = crate::worldgen::mod_rule_tests::PosRuleTestDecodeScope::new(
+                        depth, *remaining,
+                    );
+                    let decoded = ty.decode(p, &scope).map(Self::Mod).map_err(|e| {
+                        DecodeError::Registry(format!("position rule test {other}: {e}"))
+                    })?;
+                    *remaining = scope.remaining();
+                    return Ok(decoded);
+                }
+                return Err(DecodeError::Registry(format!(
+                    "unknown position rule test type {other} (field predicate_type)"
+                )));
+            }
         })
     }
-    /// PosRuleTest.test for a block at `world`, in a piece placed at `reference`.
-    fn test(&self, world: [i32; 3], reference: [i32; 3], random: &mut impl RandomSource) -> bool {
-        match *self {
-            Self::Always => true,
+    /// `PosRuleTest.test(inTemplatePos, worldPos, worldReference, random)`.
+    pub fn test(
+        &self,
+        in_template: [i32; 3],
+        world: [i32; 3],
+        reference: [i32; 3],
+        random: &mut impl RandomSource,
+    ) -> Result<bool, String> {
+        match self {
+            Self::Always => Ok(true),
             Self::Linear {
                 min_chance,
                 max_chance,
@@ -120,10 +153,20 @@ impl PosRule {
             } => {
                 let dist = match axis {
                     None => (0..3).map(|i| (world[i] - reference[i]).abs()).sum::<i32>(),
-                    Some(a) => ((world[a] - reference[a]) as f32).abs() as i32,
+                    Some(a) => ((world[*a] - reference[*a]) as f32).abs() as i32,
                 };
-                random.next_float()
-                    <= clamped_chance(min_chance, max_chance, min_dist, max_dist, dist)
+                Ok(random.next_float()
+                    <= clamped_chance(*min_chance, *max_chance, *min_dist, *max_dist, dist))
+            }
+            Self::Mod(test) => {
+                let mut rng = crate::worldgen::mod_random::EngineRandom(random);
+                test.test(
+                    &crate::worldgen::mod_rule_tests::PosRuleTestRunContext,
+                    in_template,
+                    world,
+                    reference,
+                    &mut rng,
+                )
             }
         }
     }
@@ -169,12 +212,16 @@ impl Modifier {
 }
 impl Modifier {
     /// RuleBlockEntityModifier.apply: the block entity the output gets.
-    fn apply(&self, nbt: Option<&Compound>, random: &mut impl ProcessorRandom) -> Option<Compound> {
+    fn apply(
+        &self,
+        nbt: Option<Box<Compound>>,
+        random: &mut impl ProcessorRandom,
+    ) -> Option<Box<Compound>> {
         match self {
-            Self::Passthrough => nbt.cloned(),
-            Self::Clear => Some(Compound::new()),
+            Self::Passthrough => nbt,
+            Self::Clear => Some(Box::new(Compound::new())),
             Self::AppendLoot(table) => {
-                let mut nbt = nbt.cloned().unwrap_or_default();
+                let mut nbt = nbt.unwrap_or_default();
                 nbt.insert("LootTable".into(), Tag::String(table.as_str().into()));
                 nbt.insert("LootTableSeed".into(), Tag::Long(random.long()));
                 Some(nbt)
@@ -184,8 +231,8 @@ impl Modifier {
     }
 }
 /// A block entity with `data` merged in (AppendStatic).
-fn append_static(nbt: Option<&Compound>, data: &Compound) -> Compound {
-    let mut nbt = nbt.cloned().unwrap_or_default();
+fn append_static(nbt: Option<Box<Compound>>, data: &Compound) -> Box<Compound> {
+    let mut nbt = nbt.unwrap_or_default();
     merge(&mut nbt, data);
     nbt
 }
@@ -358,15 +405,33 @@ impl Processor {
                     .as_array()
                     .ok_or(DecodeError::Field("rules"))?
                     .iter()
-                    .map(|rule| {
-                        let test = |key| RuleTest::from_json(&rule[key].to_string(), bindings);
-                        let position = PosRule::decode(rule.get("position_predicate"))?;
-                        let modifier = Modifier::decode(rule.get("block_entity_modifier"))?;
+                    .enumerate()
+                    .map(|(index, rule)| {
+                        let test = |key| {
+                            RuleTest::from_json(&rule[key].to_string(), bindings).map_err(|e| {
+                                DecodeError::Registry(format!("rule[{index}] field {key}: {e}"))
+                            })
+                        };
+                        let position =
+                            PosRule::decode(rule.get("position_predicate")).map_err(|e| {
+                                DecodeError::Registry(format!(
+                                    "rule[{index}] field position_predicate: {e}"
+                                ))
+                            })?;
+                        let modifier = Modifier::decode(rule.get("block_entity_modifier"))
+                            .map_err(|e| {
+                                DecodeError::Registry(format!(
+                                    "rule[{index}] field block_entity_modifier: {e}"
+                                ))
+                            })?;
+                        let output = state(&rule["output_state"]).map_err(|e| {
+                            DecodeError::Registry(format!("rule[{index}] field output_state: {e}"))
+                        })?;
                         Ok(Rule {
                             input: test("input_predicate")?,
                             location: test("location_predicate")?,
                             position,
-                            output: state(&rule["output_state"])?,
+                            output,
                             modifier,
                         })
                     })
@@ -392,6 +457,26 @@ impl Processor {
     }
 }
 impl ProcessorList {
+    /// Data-pack relative path of a named processor list.
+    pub fn file_path(id: &str) -> String {
+        match id.split_once(':') {
+            Some((ns, path)) => format!("data/{ns}/worldgen/processor_list/{path}.json"),
+            None => format!("data/minecraft/worldgen/processor_list/{id}.json"),
+        }
+    }
+    /// Decode a named processor list, wrapping errors with its id and data-pack file path.
+    pub fn decode_named(
+        name: &str,
+        json: &str,
+        resources: &StructureResources,
+        bindings: &FeatureBlockBindings<'_>,
+    ) -> Result<Self, DecodeError> {
+        let id = super::super::tags::identifier(name)?;
+        Self::decode(json, resources, bindings).map_err(|e| {
+            let file = Self::file_path(&id);
+            DecodeError::Registry(format!("processor list {id} ({file}): {e}"))
+        })
+    }
     /// A processor list holder: a registry name, `{"processors": [...]}` or a list.
     pub fn decode(
         json: &str,
@@ -424,30 +509,44 @@ impl ProcessorList {
         bindings: &FeatureBlockBindings<'_>,
     ) -> Result<Self, DecodeError> {
         let owned;
-        let value = match value {
+        let named = match value {
             Value::String(name) => {
                 let name = super::super::tags::identifier(name)?;
                 let raw = resources.processor_lists.get(&name).ok_or_else(|| {
-                    DecodeError::Registry(format!("unknown processor list {name}"))
+                    let file = Self::file_path(&name);
+                    DecodeError::Registry(format!("unknown processor list {name} ({file})"))
                 })?;
-                owned = serde_json::from_str::<Value>(raw)?;
-                &owned
+                owned = serde_json::from_str::<Value>(raw).map_err(|e| {
+                    let file = Self::file_path(&name);
+                    DecodeError::Registry(format!("processor list {name} ({file}): {e}"))
+                })?;
+                Some((name, &owned))
             }
-            other => other,
+            _ => None,
         };
-        let list = match value {
+        let target = named.as_ref().map_or(value, |(_, v)| *v);
+        let list = match target {
             Value::Array(a) => a.as_slice(),
-            Value::Object(_) => value["processors"]
+            Value::Object(_) => target["processors"]
                 .as_array()
                 .map(Vec::as_slice)
                 .unwrap_or(&[]),
             _ => return Err(DecodeError::Field("processor list")),
         };
-        Ok(Self(
-            list.iter()
-                .map(|p| Processor::decode(p, resources, bindings))
-                .collect::<Result<_, _>>()?,
-        ))
+        let processors = list
+            .iter()
+            .map(|p| Processor::decode(p, resources, bindings))
+            .collect::<Result<Vec<_>, _>>();
+        match (processors, named) {
+            (Ok(processors), _) => Ok(Self(processors)),
+            (Err(e), Some((name, _))) => {
+                let file = Self::file_path(&name);
+                Err(DecodeError::Registry(format!(
+                    "processor list {name} ({file}): {e}"
+                )))
+            }
+            (Err(e), None) => Err(e),
+        }
     }
 }
 
@@ -635,24 +734,32 @@ pub(super) fn process_block<W: PlacementContext>(
                 info.pos[2],
             )));
             for rule in rules {
-                if !rule.input.test(info.state, info.pos, &mut random) {
+                if !rule
+                    .input
+                    .test(info.state, info.pos, &mut random)
+                    .map_err(PlacementQueryError::Failed)?
+                {
                     continue;
                 }
                 let located = world.block_state(info.pos)?;
-                if !rule.location.test(located, info.pos, &mut random) {
+                if !rule
+                    .location
+                    .test(located, info.pos, &mut random)
+                    .map_err(PlacementQueryError::Failed)?
+                {
                     continue;
                 }
-                let position_ok = rule.position.test(info.pos, reference, &mut random);
+                let position_ok = rule
+                    .position
+                    .test(relative, info.pos, reference, &mut random)
+                    .map_err(PlacementQueryError::Failed)?;
                 if !position_ok {
                     continue;
                 }
                 return Ok(Some(BlockInfo {
                     pos: info.pos,
                     state: rule.output,
-                    nbt: rule
-                        .modifier
-                        .apply(info.nbt.as_deref(), &mut random)
-                        .map(Box::new),
+                    nbt: rule.modifier.apply(info.nbt, &mut random),
                 }));
             }
             Some(info)
@@ -791,7 +898,9 @@ fn process_infos<W: FeatureWorld + PlacementContext>(
         }
         if let Some(value) = current {
             processed.push(value);
-            original.push(info.clone());
+            if whole {
+                original.push(info.clone());
+            }
         }
     }
     for &processor in &processors {
@@ -1254,7 +1363,7 @@ mod tests {
     #[test]
     fn block_entity_edits_merge_deep_and_drop_keys() {
         let nbt = |v: Value| match json_to_nbt(&v) {
-            Tag::Compound(c) => c,
+            Tag::Compound(c) => Box::new(c),
             _ => unreachable!(),
         };
         let vault = nbt(json!({"id": "minecraft:vault",
@@ -1266,7 +1375,7 @@ mod tests {
         else {
             panic!("append_static")
         };
-        let merged = append_static(Some(&vault), &data);
+        let merged = append_static(Some(vault.clone()), &data);
         assert_eq!(
             merged,
             nbt(json!({"id": "minecraft:vault",

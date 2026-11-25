@@ -1671,6 +1671,31 @@ mod text_capture_tests {
         });
     }
 
+    /// `Text::translate_with_fallback` (#5389): a language without the key formats the fallback
+    /// with the arguments, and one with the key uses its own template.
+    #[test]
+    fn a_mods_translation_with_a_fallback_formats_it_where_the_key_is_missing() {
+        let text = mod_api::Text::translate_with_fallback(
+            "item.container.item_count",
+            "%s x %s",
+            vec![mod_api::Text::literal("Stone"), mod_api::Text::literal("3")],
+        );
+        let missing = sunrise_client_core::lang::Language::of("en_us", []);
+        sunrise_client_core::lang::scoped(missing, || {
+            assert_eq!(text.try_into_engine(&()).unwrap().plain(), "Stone x 3");
+        });
+        let present = sunrise_client_core::lang::Language::of(
+            "en_us",
+            [("item.container.item_count".into(), "%s, %s of them".into())],
+        );
+        sunrise_client_core::lang::scoped(present, || {
+            assert_eq!(
+                text.try_into_engine(&()).unwrap().plain(),
+                "Stone, 3 of them"
+            );
+        });
+    }
+
     #[test]
     fn native_translation_fallback_survives_noop_owned_round_trip() {
         let language = sunrise_client_core::lang::Language::of(
