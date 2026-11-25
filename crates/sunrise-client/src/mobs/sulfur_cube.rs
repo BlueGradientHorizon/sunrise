@@ -350,12 +350,24 @@ pub fn install(archetypes: Vec<Arc<Archetype>>) {
     *TABLE.write().unwrap_or_else(PoisonError::into_inner) = Some(Arc::new(archetypes));
 }
 
+#[cfg(test)]
+thread_local! {
+    /// The table a unit fixture published for its own test thread, read before [`TABLE`].
+    static TEST_TABLE: std::cell::RefCell<Option<Arc<Vec<Arc<Archetype>>>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
 fn installed() -> Option<Arc<Vec<Arc<Archetype>>>> {
+    #[cfg(test)]
+    if let Some(table) = TEST_TABLE.with(|t| t.borrow().clone()) {
+        return Some(table);
+    }
     TABLE.read().unwrap_or_else(PoisonError::into_inner).clone()
 }
 
-/// The archetypes the unit fixtures run on, published once per process (no fixture changes
-/// them afterwards): the explosive and hot bodies, and two of the physics-only ones.
+/// The archetypes the unit fixtures run on, published for the calling test's thread only (the
+/// process-wide [`TABLE`] is left alone): the explosive and hot bodies, and two of the
+/// physics-only ones.
 #[cfg(test)]
 fn test_archetype_items() {
     use serde_json::json;
@@ -434,9 +446,8 @@ fn test_archetype_items() {
             HashSet::from(["minecraft:magma_block".to_owned()]),
         ),
     ]);
-    if installed().is_none() {
-        install(build(&entries, &tags));
-    }
+    let built = Arc::new(build(&entries, &tags));
+    TEST_TABLE.with(|t| *t.borrow_mut() = Some(built));
 }
 /// `matchingArchetypes`: the last one wins (as `collectEquipmentChanges`
 /// leaves it), buoyancy if any.
@@ -712,6 +723,14 @@ pub(crate) mod adopt_body_tests {
         ] {
             assert_eq!(value(&mut m, attribute), default, "{attribute}");
         }
+    }
+
+    #[test]
+    fn the_fixture_table_is_visible_to_its_own_thread_only() {
+        test_archetype_items();
+        assert!(archetype_of("minecraft:tnt").is_some());
+        let elsewhere = std::thread::spawn(|| archetype_of("minecraft:tnt").is_some());
+        assert!(!elsewhere.join().unwrap());
     }
 
     #[test]
