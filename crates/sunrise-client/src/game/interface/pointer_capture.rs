@@ -270,6 +270,20 @@ impl Game<'_> {
     pub(super) fn mod_screen_grabs_pointer(&self) -> bool {
         self.screen_grab && self.captured && self.screen == Screen::Mod
     }
+    /// The device's motion with the pointer grabbed (`MouseHandler.onMove`, applied once per
+    /// frame): a grabbing mod screen's `screen_pointer_motion`, otherwise the camera's.
+    pub(in crate::game) fn grabbed_pointer_motion(&mut self, [x, y]: [f64; 2]) {
+        self.note_input(
+            input_trace::InputOrigin::User,
+            input_trace::TraceKind::Motion { x, y },
+        );
+        if self.mod_screen_grabs_pointer() {
+            self.screen_pointer_motion([x, y]);
+        } else {
+            self.mouse.on_move(0.0, 0.0, x, y, true, true);
+        }
+        self.last_input = Instant::now();
+    }
     /// Whether the open screen is the calling mod's own (`mod_api::content::crash::current_native_mod`).
     fn calling_mod_owns_screen(&self) -> bool {
         mod_api::content::crash::current_native_mod()

@@ -16,6 +16,9 @@ pub trait Hooks {
     /// position, a controller's or the keyboard focus's pointer, and a screen that holds
     /// the pointer grab (`ScreensClientHost::set_pointer_grab`: its motion is `screen_pointer_motion`)
     /// fire nothing. With no listener nothing is built.
+    #[notes = r#"## Screen hover moves
+
+`screen_mouse_moved_pre(screen, delta, modifiers, canceled)` is vanilla's `Screen.mouseMoved`: it fires for every real nonzero pointer movement over the open screen, whether or not a button is held, before `screen_mouse_dragged_pre` of the same move. screen.mouse is the new GUI position; delta is movement in GUI pixels. Cancel keeps the new cursor position and skips the rest of the move (the drag hook and drag handlers). A controller's pointer and a screen holding the pointer grab fire nothing; with no listener nothing is built."#]
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_screen_mouse_moved_pre",
         receiver = "read",

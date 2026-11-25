@@ -12921,11 +12921,21 @@ impl Game<'_> {
                             // up as vanilla's do; their pending clicks stay.
                             self.mod_keys.set_all_up();
                             self.capture(false);
+                        } else if self.screen_grab {
+                            // A mod screen's grab goes with the focus under a control
+                            // connection too; the game's own grab stays as it was.
+                            self.capture(false);
                         }
                         self.regrab_on_refocus = held;
                     }
                 }
                 WindowEvent::CursorMoved { .. } => {
+                    // A screen holding the pointer grab hears only `screen_pointer_motion`:
+                    // where the system merely confines the hidden cursor (Windows, X11), its
+                    // moves leave the screen's cursor and drags alone.
+                    if self.mod_screen_grabs_pointer() {
+                        return Ok(());
+                    }
                     if let (Some(r), Some(sample)) = (&self.renderer, cursor_sample) {
                         let size = [r.config.width, r.config.height];
                         let projection = self.pointer_projection(size);

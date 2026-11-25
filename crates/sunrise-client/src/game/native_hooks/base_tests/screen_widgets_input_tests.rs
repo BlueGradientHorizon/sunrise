@@ -286,6 +286,18 @@ fn with_input_game(test: impl FnOnce(&mut Game<'_>, WindowId, &Mutex<State>)) {
     });
 }
 
+/// [`with_input_game`] with `caller` as the calling mod, as a hook's host call has it, so
+/// `set_pointer_grab` answers for that mod.
+fn with_input_game_as(
+    caller: &'static str,
+    test: impl FnOnce(&mut Game<'_>, WindowId, &Mutex<State>),
+) {
+    with_input_game(|game, id, state| {
+        let _scope = mod_api::__private::enter(caller, "test");
+        test(game, id, state);
+    });
+}
+
 fn take(state: &Mutex<State>) -> Vec<Seen> {
     std::mem::take(&mut state.lock().unwrap().seen)
 }
@@ -704,13 +716,12 @@ fn hover_moves_fire_before_drag_and_a_screen_grab_ends_with_the_screen() {
     ) {
         return;
     }
-    with_input_game(|game, id, state| {
+    with_input_game_as("input_route", |game, id, state| {
         state.lock().unwrap().record_pointer = true;
         // No screen: nothing fires.
         move_mouse(game, id, 20.0, 20.0);
         assert!(take(state).is_empty());
         assert!(game.mod_screen_open("input_route"));
-        let _scope = mod_api::__private::enter("input_route", "test");
 
         // A hover move, then a held-button move: the moved hook comes first both times.
         move_mouse(game, id, 300.0, 100.0);
@@ -753,17 +764,29 @@ fn hover_moves_fire_before_drag_and_a_screen_grab_ends_with_the_screen() {
         assert!(game.pointer_grabbed(), "reported at once");
         game.apply_pointer_grab_request();
         assert!(game.captured && game.mod_screen_grabs_pointer() && game.pointer_grabbed());
-        game.screen_pointer_motion([3.5, -2.0]);
-        game.screen_pointer_motion([0.0, 0.0]);
+        let turn = game.mouse.accumulated();
+        game.grabbed_pointer_motion([3.5, -2.0]);
+        game.grabbed_pointer_motion([0.0, 0.0]);
         assert_eq!(
             take(state),
             [Seen::Motion("input_route".into(), [3.5, -2.0])]
         );
+        assert_eq!(game.mouse.accumulated(), turn, "the camera does not turn");
+        // A confined (not locked) cursor still moves: neither hover nor drag, and the
+        // screen's cursor stays where the grab put it.
+        let held = game.cursor();
         move_mouse(game, id, 340.0, 140.0);
+        send_mouse_button(game, id, MouseButton::Left, true);
+        take(state);
+        move_mouse(game, id, 350.0, 150.0);
+        send_mouse_button(game, id, MouseButton::Left, false);
         assert!(
-            take(state).is_empty(),
-            "the grab's own cursor moves are not hover"
+            !take(state)
+                .iter()
+                .any(|seen| matches!(seen, Seen::Moved(..) | Seen::DragPre(..))),
+            "the grab's cursor moves are neither hover nor drag"
         );
+        assert_eq!(game.cursor(), held);
         // Focus loss releases it, and refocus does not take it back on a screen.
         send(game, id, WindowEvent::Focused(false));
         assert!(!game.captured && !game.screen_grab && !game.pointer_grabbed());
@@ -779,6 +802,14 @@ fn hover_moves_fire_before_drag_and_a_screen_grab_ends_with_the_screen() {
         assert!(!game.captured && !game.screen_grab);
         game.screen_pointer_motion([1.0, 1.0]);
         assert!(take(state).is_empty(), "motion is the grab's");
+        // Switching the mod off releases it at the next event.
+        assert!(game.set_pointer_grab(true));
+        game.apply_pointer_grab_request();
+        assert!(game.screen_grab);
+        assert!(mod_api::__private::set_mod_enabled("input_route", false));
+        game.apply_pointer_grab_request();
+        assert!(!game.captured && !game.screen_grab);
+        assert!(mod_api::__private::set_mod_enabled("input_route", true));
         // Closing the screen releases it.
         assert!(game.set_pointer_grab(true));
         game.apply_pointer_grab_request();
@@ -801,9 +832,8 @@ fn a_pointer_grab_is_refused_on_another_mods_screen() {
     ) {
         return;
     }
-    with_input_game(|game, _, _| {
+    with_input_game_as("someone_else", |game, _, _| {
         assert!(game.mod_screen_open("input_route"));
-        let _scope = mod_api::__private::enter("someone_else", "test");
         assert!(!game.set_pointer_grab(true));
         assert!(!game.pointer_grabbed());
         game.apply_pointer_grab_request();
@@ -821,9 +851,8 @@ fn a_pointer_grab_is_refused_with_no_screen_open() {
     ) {
         return;
     }
-    with_input_game(|game, _, _| {
+    with_input_game_as("input_route", |game, _, _| {
         assert_eq!(game.mod_screen(), None);
-        let _scope = mod_api::__private::enter("input_route", "test");
         assert!(!game.set_pointer_grab(true));
         assert!(!game.pointer_grabbed());
         game.apply_pointer_grab_request();
@@ -841,10 +870,9 @@ fn a_pointer_grab_is_refused_while_the_window_is_unfocused() {
     ) {
         return;
     }
-    with_input_game(|game, id, _| {
+    with_input_game_as("input_route", |game, id, _| {
         assert!(game.mod_screen_open("input_route"));
         send(game, id, WindowEvent::Focused(false));
-        let _scope = mod_api::__private::enter("input_route", "test");
         assert!(!game.set_pointer_grab(true));
         assert!(!game.pointer_grabbed());
         game.apply_pointer_grab_request();

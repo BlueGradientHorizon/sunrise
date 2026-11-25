@@ -542,7 +542,8 @@ fn main() {
     @unittest.skipUnless(shutil.which("rustc"), "requires Rust")
     def test_native_mouse_turns_only_during_active_gameplay(self):
         source = "".join((ROOT / "crates/sunrise-client/src" / path).read_text(encoding="utf-8")
-                          for path in ("game/runtime/window_handler.rs", "game.rs"))
+                          for path in ("game/runtime/window_handler.rs", "game.rs",
+                                       "game/interface/pointer_capture.rs"))
         fixture = r'''
 use std::time::Instant;
 #[path = "MOUSE_PATH"] mod mouse;
@@ -611,7 +612,8 @@ fn main() {
 }
 '''
         fixture = fixture.replace("MOUSE_PATH", (ROOT / "crates/sunrise-client-input/src/mouse.rs").as_posix())
-        fixture = fixture.replace("METHOD", method(source, "device_event"))
+        fixture = fixture.replace(
+            "METHOD", method(source, "device_event") + "\n" + method(source, "grabbed_pointer_motion"))
         self.run_fixture(fixture, "native-mouse")
 
     def run_fixture(self, fixture, name):

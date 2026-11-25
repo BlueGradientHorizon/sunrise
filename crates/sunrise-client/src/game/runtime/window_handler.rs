@@ -563,24 +563,13 @@ impl ApplicationHandler for Game<'_> {
             && (self.screen == Screen::Playing || self.mod_screen_grabs_pointer())
             && let DeviceEvent::MouseMotion { delta: (x, y) } = event
         {
-            let screen_grab = self.mod_screen_grabs_pointer();
-            if !screen_grab && self.pad_radial_captures() {
+            if !self.mod_screen_grabs_pointer() && self.pad_radial_captures() {
                 return;
             }
             if x != 0.0 || y != 0.0 {
                 self.pad_yield_input(event_loop);
             }
-            // MouseHandler.onMove with the pointer grabbed; applied once per frame.
-            self.note_input(
-                input_trace::InputOrigin::User,
-                input_trace::TraceKind::Motion { x, y },
-            );
-            if screen_grab {
-                self.screen_pointer_motion([x, y]);
-            } else {
-                self.mouse.on_move(0.0, 0.0, x, y, true, true);
-            }
-            self.last_input = Instant::now();
+            self.grabbed_pointer_motion([x, y]);
         }
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {

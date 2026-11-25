@@ -11,7 +11,11 @@ pub trait Hooks {
     /// cursor's movement in GUI pixels and does not fire while the grab holds.
     /// Fires only while that screen holds the grab, for the real pointer: a controller
     /// sends no motion, and a zero delta is not reported. Not cancellable.
+    #[notes = r#"## Screen pointer grab
+
+`ScreensClientHost::set_pointer_grab(grab)` takes or gives back the pointer for the calling mod's own open screen, and `ScreensClientHost::pointer_grabbed()` reports it; `screen_pointer_motion(screen, delta)` then reports the device's raw relative motion, unscaled, in the device's units, instead of the camera or `screen_mouse_moved_pre`. The grab ends when the screen closes by any route, when the window loses focus (it is not taken back on refocus), or when the mod unloads; Escape reaches the screen like any key. `set_pointer_grab` returns false and changes nothing for another mod's screen, with no screen open, and (for a grab) with an unfocused window."#]
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_screen_pointer_motion",
         receiver = "read",
         dispatch = "flat",
         side = "client",
