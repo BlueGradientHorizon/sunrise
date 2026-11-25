@@ -342,9 +342,12 @@ impl Store {
         for command in commands {
             match command {
                 Command::Create { handle, size, rgba } => {
-                    // The sides were checked against the device's limit when the call was made; a
-                    // failure the device still reports is logged and leaves no texture, so a later
-                    // draw shows the missing texture.
+                    // The sides were checked against the device's limit when the call was made. A
+                    // failure the device still reports is logged and leaves no GPU texture, while the
+                    // client table keeps the id: it draws vanilla's missing texture
+                    // (`prepare_dynamic` draws it for a handle with no view), as an id released after
+                    // its draw was submitted does (`TextureManager.release`). A later
+                    // `update_dynamic_texture` of a different size creates it again.
                     let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
                     let out_of_memory = device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
                     let texture = device.create_texture(&wgpu::TextureDescriptor {

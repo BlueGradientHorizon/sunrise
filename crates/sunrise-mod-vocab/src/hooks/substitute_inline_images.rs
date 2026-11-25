@@ -20,6 +20,7 @@ pub trait Hooks {
         receiver = "read",
         dispatch = "api_carrier",
         side = "client",
+        version = 2,
         contract = "collect",
         out = "images",
         answered_by = "mod",

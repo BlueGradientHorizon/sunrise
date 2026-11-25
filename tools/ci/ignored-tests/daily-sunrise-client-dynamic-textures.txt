@@ -1,6 +1,0 @@
-# A client mod's dynamic texture as a GPU texture of its own, drawn through GuiCanvas::texture on the real HUD pipeline, with a region update read back (#4982).
-sunrise-client game::native_dynamic_textures_tests::a_dynamic_texture_draws_through_the_gui_texture_path_and_takes_a_region_update lib daily resources # SUNRISE_TEST_RESOURCES and software Vulkan required.
-# The mean frame time of a screen drawing 100 small dynamic textures, printed for the PR's before and after.
-sunrise-client game::native_dynamic_textures_tests::a_screen_of_100_small_dynamic_textures_frame_time lib daily resources # SUNRISE_TEST_RESOURCES and software Vulkan required.
-# A dynamic texture released after its draw was submitted draws vanilla's missing texture.
-sunrise-client game::native_dynamic_textures_tests::a_texture_released_after_its_draw_was_submitted_draws_the_missing_texture lib daily resources # SUNRISE_TEST_RESOURCES and software Vulkan required.

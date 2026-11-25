@@ -177,41 +177,41 @@ fn a_foreign_id_is_not_owned_before_the_resource_stack_is_asked() {
     });
 }
 
-/// The cost of a screen drawing 100 small dynamic textures (point 6 of the ruling): the mean
-/// time of a frame of `FRAMES`, the first of which makes the textures, printed for the PR's
-/// before and after.
+/// A create the device refuses (a side one texel past its limit, which a table bound to a larger
+/// `max_side` lets through) leaves the id in the client table with no GPU texture: it draws
+/// vanilla's missing texture, and a later update of another size creates it again.
 #[test]
 #[ignore = "daily"]
-fn a_screen_of_100_small_dynamic_textures_frame_time() {
-    const FRAMES: usize = 30;
+fn a_create_the_device_refuses_draws_the_missing_texture() {
     let mods = vec![ModEntry::new("api-only", Box::new(ApiOnly))];
     with_mods(mods.into(), || {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             let _event_loop = attach_renderer(game);
-            let ids: Vec<Identifier> = (0..100)
-                .map(|i| Identifier::parse(&format!("api-only:dynamic/{i}")).unwrap())
-                .collect();
-            for (i, id) in ids.iter().enumerate() {
-                let rgba = [i as u8, 255 - i as u8, 128, 255].repeat(16 * 16);
-                as_mod("api-only", || {
-                    game.create_dynamic_texture(id, 16, 16, &rgba)
-                })
+            let renderer = game.renderer.as_ref().unwrap();
+            let (store, limit) = (renderer.hud.dynamic().id(), renderer.max_texture_side());
+            let id = Identifier::parse("api-only:dynamic/too-wide").unwrap();
+            let wide = limit + 1;
+            // The table believes the device is larger than it is; the frame's own bind
+            // reads the real limit again, after this create is queued.
+            game.dynamic_textures.bind(store, wide);
+            game.dynamic_textures
+                .create("api-only", &id, [wide, 1], &GREEN.repeat(wide as usize))
                 .unwrap();
-            }
-            let draws: Vec<_> = ids
-                .iter()
-                .enumerate()
-                .map(|(i, id)| {
-                    let (x, y) = ((i % 10) as f32 * 12.0, (i / 10) as f32 * 12.0);
-                    (id, [x, y, 10.0, 10.0], [16, 16])
-                })
-                .collect();
-            let batches: Vec<HudBatch> = (0..FRAMES).map(|_| frame(game, &draws)).collect();
-            let refs: Vec<&HudBatch> = batches.iter().collect();
-            let start = std::time::Instant::now();
-            render_hud_frames(&refs, &game.gui.atlas, SIZE).expect("software Vulkan draw");
-            let mean = start.elapsed() / FRAMES as u32;
-            println!("100 dynamic textures: mean frame time {mean:?} over {FRAMES} frames");
+            let refused = frame(game, &[(&id, [16.0, 16.0, 32.0, 32.0], [wide as i32, 1])]);
+            let frames = render_hud_frames(&[&refused], &game.gui.atlas, SIZE)
+                .expect("software Vulkan draw");
+            // `generateMissingImage`: black top left, magenta top right.
+            assert_eq!(pixel(&frames[0], 20, 20), BLACK);
+            assert_eq!(pixel(&frames[0], 44, 20), [248, 0, 248, 255]);
+            // A different size creates it again, and the texture then draws.
+            as_mod("api-only", || {
+                game.update_dynamic_texture(&id, 4, 4, &GREEN.repeat(16))
+            })
+            .unwrap();
+            let made = frame(game, &[(&id, [16.0, 16.0, 32.0, 32.0], [4, 4])]);
+            let frames =
+                render_hud_frames(&[&made], &game.gui.atlas, SIZE).expect("software Vulkan draw");
+            assert_eq!(pixel(&frames[0], 20, 20), GREEN);
         });
     });
 }

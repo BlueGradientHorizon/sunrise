@@ -173,7 +173,7 @@ pub trait ClientRenderClientHost {
     /// or whose entry its definition removed (a server's metrics-only atlas lacks them all). The atlas names its
     /// sprites by GUI id, the id its definition lists them under: `minecraft:container/slot` (also given as
     /// `container/slot`), a mod's `mymod:panel`; a sprite a registered sprite source made in `gui.json` is found
-    /// by the id it named, and a live texture (`create_dynamic_texture`) by its own.
+    /// by the id it named; a client mod's dynamic texture is not a GUI sprite (draw it with `GuiCanvas::texture`).
     fn gui_sprite(&self, sprite: &Identifier) -> Option<AtlasRegion>;
     /// Side: client.
     /// Published asset/data read: available in Setup, Reloading and World.
