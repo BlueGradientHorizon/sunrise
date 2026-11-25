@@ -1814,8 +1814,7 @@ impl Game<'_> {
             .collect()
     }
     /// The local player's fishing hook: its position and whether a fish is biting
-    /// (`nibble > 0` -- the server's DATA_BITING on a server, the local bite timer in a
-    /// single-player world). None when no hook is out.
+    /// (`nibble > 0`, the server's DATA_BITING). None when no hook is out.
     pub(in crate::game) fn local_fishing_hook(&self) -> Option<(Vec3, bool)> {
         let hook = self.hook.as_ref()?;
         Some((hook.position, hook.nibble > 0))

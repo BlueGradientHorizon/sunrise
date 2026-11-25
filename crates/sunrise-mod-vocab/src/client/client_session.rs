@@ -270,8 +270,7 @@ impl ClientPlayerSkin {
 pub struct ClientFishingHook {
     /// The bobber's position, as the client tracks it.
     pub position: Vec3,
-    /// A fish is biting (`FishingHook.catchingFish`): the server's DATA_BITING on a
-    /// server, the local bite timer in a single-player world.
+    /// A fish is biting (`FishingHook.biting`): the server's DATA_BITING.
     pub biting: bool,
 }
 
