@@ -55,8 +55,6 @@ pub(super) struct StartupMenu {
     pub reload_packs: bool,
     /// A committed client pack selection, independent of other reload requests.
     pub(super) pack_selection_revision: u64,
-    /// Browse mods' worker (`mod_browser`).
-    mod_jobs: super::mod_browser::Jobs,
     perf: sunrise_client::telemetry::Session,
 }
 
@@ -154,7 +152,6 @@ impl StartupMenu {
         }
         game.pending_entry = self.pending.take();
         game.perf = std::mem::take(&mut self.perf);
-        game.mod_jobs = std::mem::take(&mut self.mod_jobs);
         game.cursor = self.cursor;
         if self.key_focus.is_none() {
             game.window_cursor = Some(self.pointer);
@@ -497,23 +494,7 @@ impl Loading {
                 }
             }
         }
-        self.drive_menu_mod_browser();
         self.restart_menu_resources()
-    }
-    /// The startup menu's Browse mods, as `Game::drive_mod_browser`.
-    fn drive_menu_mod_browser(&mut self) {
-        let menu = &mut self.menu;
-        let (installed, changed) = menu.mod_jobs.poll(
-            &mut menu.options.mod_browser,
-            &mut self.settings.mods,
-            false,
-        );
-        if changed {
-            menu.options.layout_changed();
-        }
-        if installed {
-            self.settings.save(&Game::options_path());
-        }
     }
     pub(super) fn apply_menu_settings(&mut self) {
         if let Some(renderer) = &mut self.renderer {
@@ -711,15 +692,6 @@ impl Loading {
                     let _ = std::fs::create_dir_all(&dir);
                     packs::open_folder(&dir);
                 }
-                Event::BrowseMods => {
-                    let ui = &mut self.menu.options.mod_browser;
-                    self.menu.mod_jobs.browse(ui, Game::game_dir());
-                }
-                Event::InstallMod(id) => {
-                    let ui = &mut self.menu.options.mod_browser;
-                    self.menu.mod_jobs.install(ui, Game::game_dir(), id);
-                }
-                Event::OpenModPage(url) => packs::open_uri(&url),
                 // The startup menu has no screen stack for ConfirmLinkScreen; the link opens
                 // directly, as the menu's other links do.
                 Event::OpenLink(url) => packs::open_uri(&url),

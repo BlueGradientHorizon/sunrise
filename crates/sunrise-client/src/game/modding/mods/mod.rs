@@ -2325,11 +2325,10 @@ impl Game<'_> {
             .clone()
             .unwrap_or_else(|| self.settings.mods.enabled.clone())
     }
-    /// The player turned content mods on or off (Options > Mods, or an
-    /// install from Browse Mods): those with only assets and data apply now,
+    /// The player turned content mods on or off in Options > Mods: those with only assets and data apply now,
     /// through the resource reload and then the
     /// server's data reload (`mods_reloaded`); those that add blocks, items or
-    /// worldgen wait for a restart, and the Mods page says so.
+    /// worldgen wait for a restart.
     pub(super) fn switch_mods(&mut self) {
         let Some(applied) = self.mods.applied.clone() else {
             return;
@@ -2342,13 +2341,11 @@ impl Game<'_> {
         let content = &self.mods.content_ids;
         let mut next = wanted.clone();
 
-        let mut waiting = Vec::new();
         for id in applied.symmetric_difference(&wanted) {
             if !content.contains(id) || self.mods.live_ids.contains(id) {
                 continue;
             }
             log::info!("Sunrise: mod {id} needs a restart to switch");
-            waiting.push(id.clone());
             if applied.contains(id) {
                 next.insert(id.clone());
             } else {
@@ -2360,12 +2357,7 @@ impl Game<'_> {
             .reconcile_code_switches(&self.settings.mods.disabled);
         for id in host_waiting {
             log::info!("Sunrise: serving host mod {id} needs a restart to switch");
-            if !waiting.contains(&id) {
-                waiting.push(id);
-            }
         }
-        self.ui.options.mods_note = (!waiting.is_empty())
-            .then(|| lang::tr("sunrise.mods.switch.restart", &[&waiting.join(", ")]));
         let changed = applied
             .symmetric_difference(&next)
             .any(|id| content.contains(id));
