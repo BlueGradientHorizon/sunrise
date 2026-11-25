@@ -1356,6 +1356,9 @@ mod native_harvest_queries;
 #[path = "game/modding/native_held_out_tests.rs"]
 mod native_held_out_tests;
 #[cfg(test)]
+#[path = "game/modding/native_heal_motion_view_tests.rs"]
+mod native_heal_motion_view_tests;
+#[cfg(test)]
 #[path = "game/modding/native_hit_attempt_tests.rs"]
 mod native_hit_attempt_tests;
 #[cfg(test)]
