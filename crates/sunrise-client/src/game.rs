@@ -12373,7 +12373,11 @@ impl Game<'_> {
                 self.render_snapshot.set(None);
                 rendered
             }
-            None => Err("renderer".into()),
+            None => {
+                self.pack_frame_state.set(None);
+                self.pack_frame_slots.borrow_mut().clear();
+                Err("renderer".into())
+            }
         };
         drop(frame);
         self.renderer = renderer_slot;

@@ -455,13 +455,26 @@ impl Dynamic {
         self.registries.is_empty()
     }
     /// The synchronized dimension type `id` as the JSON a data pack writes it, with its name:
-    /// what `DimensionFacts::patched` reads. None without data. A byte is a flag (every one the
-    /// type has is), and a number with no fraction is an integer, as Sunrise's server sends a
-    /// pack's JSON numbers as doubles.
+    /// what `DimensionFacts::patched` reads. None without data. The four codec flags accept any
+    /// numeric tag (matching `Dynamic::dimension`), other bytes are flags, and a number with no
+    /// fraction is an integer, as Sunrise's server sends a pack's JSON numbers as doubles.
     pub fn dimension_json(&self, id: i32) -> Option<(String, serde_json::Value)> {
         let name = self.name("minecraft:dimension_type", id)?.to_owned();
         let tag = self.data("minecraft:dimension_type", id)?;
-        Some((name, tag_json(tag)))
+        let mut json = tag_json(tag);
+        if let (Tag::Compound(map), serde_json::Value::Object(obj)) = (tag, &mut json) {
+            for key in [
+                "has_skylight",
+                "has_ceiling",
+                "has_fixed_time",
+                "has_ender_dragon_fight",
+            ] {
+                if let Some(flag) = map.get(&JavaString::from(key)).and_then(flag_value) {
+                    obj.insert(key.to_owned(), serde_json::Value::Bool(flag));
+                }
+            }
+        }
+        Some((name, json))
     }
     /// The dimension type's vertical range and sky light, from its
     /// synchronized data or the vanilla defaults for known names.
@@ -954,6 +967,24 @@ mod tests {
         assert_eq!(facts.sky_light_level, 4.0);
         assert_eq!(facts.height.height, 128);
         assert!(Dynamic::default().dimension_json(0).is_none());
+        // Non-byte numeric flags (e.g. Double) normalize to JSON booleans, matching `dimension`.
+        d.add(RegistryData {
+            registry: "minecraft:dimension_type".into(),
+            entries: vec![RegistryEntry {
+                id: "mymod:double_flags".into(),
+                data: Some(Tag::compound([
+                    ("has_skylight", Tag::Double(1.0f64.to_bits())),
+                    ("has_ceiling", Tag::Int(0)),
+                    ("has_fixed_time", Tag::Double(1e-50f64.to_bits())),
+                    ("has_ender_dragon_fight", Tag::Short(1)),
+                ])),
+            }],
+        });
+        let (_, json) = d.dimension_json(0).unwrap();
+        assert_eq!(json["has_skylight"], true);
+        assert_eq!(json["has_ceiling"], false);
+        assert_eq!(json["has_fixed_time"], true);
+        assert_eq!(json["has_ender_dragon_fight"], true);
     }
 
     #[test]
