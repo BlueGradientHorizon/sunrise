@@ -873,7 +873,7 @@ pub(in crate::game::server_side) fn part_snapshot(
 
 /// The handle of the loaded block entity at `pos`, without loading a chunk or taking one
 /// temporarily absent from the resident table.
-pub(in crate::game::server_side) fn world_block_entity(
+pub(in crate::game) fn world_block_entity(
     world: &World,
     level: LevelRef,
     pos: [i32; 3],
@@ -883,7 +883,7 @@ pub(in crate::game::server_side) fn world_block_entity(
 }
 
 /// Construct a handle after the caller has checked that the entry is resident.
-pub(in crate::game::server_side) fn block_entity_handle(
+pub(in crate::game) fn block_entity_handle(
     world: &World,
     level: LevelRef,
     pos: [i32; 3],
@@ -896,7 +896,7 @@ pub(in crate::game::server_side) fn block_entity_handle(
 }
 
 /// Read a resident entity's saved data after the caller has resolved its level to `world`.
-pub(in crate::game::server_side) fn world_block_entity_data(
+pub(in crate::game) fn world_block_entity_data(
     world: &World,
     registry: &sunrise_world::registry::BlockRegistry,
     items: &crate::items::Items,

@@ -148,10 +148,25 @@ fn enabled(required: Option<&Vec<String>>, features: &[String]) -> bool {
     required.is_none_or(|required| required.iter().all(|flag| features.contains(flag)))
 }
 
+/// Shared item feature-flag table extracted from [`Catalog`] so servers can check
+/// `ItemStack.isItemEnabled` without holding the client's creative screen.
+#[derive(Clone, Default)]
+pub struct ItemFeatureRequirements(Arc<HashMap<String, Vec<String>>>);
+
+impl ItemFeatureRequirements {
+    pub fn item_enabled(&self, stack: &ItemStack, features: &[String]) -> bool {
+        enabled(self.0.get(&*stack.item), features)
+    }
+}
+
 impl Catalog {
     /// `ItemStack.isItemEnabled`: the item's required feature flags from the prepared registry.
     pub fn item_enabled(&self, stack: &ItemStack, features: &[String]) -> bool {
         enabled(self.item_features.get(&*stack.item), features)
+    }
+
+    pub fn item_features(&self) -> ItemFeatureRequirements {
+        ItemFeatureRequirements(Arc::new(self.item_features.clone()))
     }
 
     pub fn parse(json: &serde_json::Value) -> Result<Self, String> {

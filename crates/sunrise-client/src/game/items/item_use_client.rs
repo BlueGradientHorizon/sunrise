@@ -84,7 +84,7 @@ impl Game<'_> {
         stack: &ItemStack,
         info: &ItemInfo,
     ) {
-        self.apply_use_cooldown(stack);
+        self.client_apply_use_cooldown(stack);
         let mut result = self.finish_result(stack, info);
         let hand = hand_of(Some((slot, 0))).unwrap_or(self.hand);
         self.native_living_entity_use_item_finish(stack, None, hand, 0, &mut result);
@@ -99,6 +99,28 @@ impl Game<'_> {
         *self.stack_in_mut(slot) = result.filter(|s| s.count > 0);
         self.remote_synced_since(&before);
     }
+    /// Client-side `UseCooldown.apply`: updates local cooldowns until server sync confirms or clears.
+    pub(in crate::game) fn client_apply_use_cooldown(&mut self, stack: &ItemStack) {
+        let default = self
+            .res
+            .items()
+            .get(&stack.item)
+            .and_then(|i| i.use_cooldown.clone());
+        let Some(component) = sunrise_client::cooldowns::component(stack, default.as_ref()) else {
+            return;
+        };
+        let group = sunrise_client::cooldowns::group(stack, default.as_ref());
+        self.cooldowns.add(group, component.ticks());
+    }
+    pub(in crate::game) fn client_consume_held_slot(&mut self, amount: u32) {
+        let cell = self.held_mut();
+        if let Some(stack) = cell.as_mut() {
+            stack.count = stack.count.saturating_sub(amount);
+            if stack.count == 0 {
+                *cell = None;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -109,13 +131,65 @@ pub(in crate::game) mod tests {
         start_of, tick_left, ticks_left, use_counter_leaving, use_pose,
     };
     #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::item_use::tests::stand_in_first_person;
-    #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::item_use::tests::*;
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use sunrise_client::first_person::ItemPose;
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use sunrise_core::use_animation::UseAnimation;
+
+    pub(in crate::game) fn stand_in_first_person(game: &mut crate::game::Game<'_>) {
+        game.player = Some(
+            sunrise_client::motion::PlayerMotion::new(
+                game.motion,
+                sunrise_core::geometry::Vec3::ZERO,
+            )
+            .unwrap(),
+        );
+        game.tick_player_model();
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn default_first_person_arm_obeys_its_own_sleeve_option() {
+        use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
+        use sunrise_client::options_file::V;
+
+        if run_fresh_cases(
+            "game::client_side::item_use_client::tests::default_first_person_arm_obeys_its_own_sleeve_option",
+            "SUNRISE_HAND_SLEEVE_CASE",
+            &["left-hidden"],
+        ) {
+            return;
+        }
+        with_client_game(|game| {
+            stand_in_first_person(game);
+            game.settings.main_hand_left = true;
+            let left = game.hand_geometry(0.0).0;
+            game.settings.main_hand_left = false;
+            let right = game.hand_geometry(0.0).0;
+
+            game.settings
+                .file
+                .set("modelPart_left_sleeve", V::Bool(false));
+            game.tick_player_model();
+            let right_hidden_left = game.hand_geometry(0.0).0;
+            game.settings.main_hand_left = true;
+            let left_hidden_left = game.hand_geometry(0.0).0;
+
+            assert_eq!(
+                (left.len(), right.len(), left_hidden_left.len()),
+                (48, 48, 24)
+            );
+            assert_eq!(
+                bytemuck::cast_slice::<_, u8>(&left[..24]),
+                bytemuck::cast_slice::<_, u8>(&left_hidden_left)
+            );
+            assert_eq!(
+                bytemuck::cast_slice::<_, u8>(&right),
+                bytemuck::cast_slice::<_, u8>(&right_hidden_left)
+            );
+        });
+    }
 
     /// `render_hand` draws in a hand that holds an item, where `render_arm`
     /// never fires. What the mod drew is in the hand's vertices, in a run of

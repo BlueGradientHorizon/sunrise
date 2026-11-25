@@ -101,42 +101,8 @@ pub(in crate::game) struct Catcher {
     pub(in crate::game) uuid: Option<[i32; 4]>,
 }
 impl Game<'_> {
-    /// The trident stack's maximum damage component, else its item's default.
-    pub(in crate::game) fn trident_max_damage(&self, stack: &ItemStack) -> u32 {
-        stack
-            .data()
-            .and_then(|data| match data.other("minecraft:max_damage") {
-                Some(sunrise_core::nbt::Tag::Int(value)) => u32::try_from(*value).ok(),
-                _ => None,
-            })
-            .unwrap_or_else(|| self.items().get(&stack.item).map_or(250, |i| i.max_damage))
-    }
-    /// `TridentItem.use`: start the throw unless one more use would break it.
-    /// Returns false for `InteractionResult.FAIL` (about to break, or Riptide
-    /// while dry) so callers neither dip the hand nor consume the click.
-    pub(in crate::game) fn use_trident(&mut self, stack: &ItemStack) -> bool {
-        if &*stack.item != "minecraft:trident" {
-            return false;
-        }
-        let max = self.trident_max_damage(stack);
-        let riptide = stack.enchantment_level("minecraft:riptide") > 0;
-        if stack.damage >= max.saturating_sub(1) || (riptide && !self.in_water_or_rain()) {
-            return false;
-        }
-        self.start_using_item();
-        true
-    }
-    pub(in crate::game) fn in_water_or_rain(&mut self) -> bool {
-        let Some(p) = &self.player else { return false };
-        let (x, y, z) = (
-            p.position.x.floor() as i32,
-            p.position.y.floor() as i32,
-            p.position.z.floor() as i32,
-        );
-        let water = self.res.facts().get(self.world.block(x, y, z)).fluid
-            == sunrise_client::blocks::Fluid::Water;
-        let (at, top) = (p.position, p.bounds().max_position().y);
-        water || self.in_rain(at, top)
+    pub(in crate::game) fn server_in_rain(&mut self, at: Vec3, top: f64) -> bool {
+        self.in_rain(at, top)
     }
     /// The `summon_entity` and `play_sound` effects of `channeling.json`: in a
     /// thunderstorm (`weather_check`) a spot that sees the sky (`can_see_sky`)
@@ -242,17 +208,10 @@ impl Game<'_> {
             .player
             .as_ref()
             .map(|p| [p.position.x, p.position.y, p.position.z]);
-        // Counted (on the server) before the throw or the spin.
-        if self.is_logical_server() {
-            self.award_stat("used", "minecraft:trident", 1);
-        }
+        // Counted on the server before the throw or the spin.
+        self.award_stat("used", "minecraft:trident", 1);
         if riptide > 0 {
-            // `hurtWithoutBreaking` and the sound belong to the server; a server's
-            // client only launches.
-            let server_client = !self.is_logical_server();
-            if !server_client {
-                self.hurt_held_without_breaking(1);
-            }
+            self.hurt_held_without_breaking(1);
             // trident_spin_attack_strength: 1.5 + 0.75 per level above the first.
             let spin_stack = self.held().cloned();
             let strength = 1.5 + 0.75 * (riptide as f32 - 1.0);
@@ -314,32 +273,26 @@ impl Game<'_> {
                     });
                 }
             }
-            if !server_client {
-                let sound = format!("minecraft:item.trident.riptide_{}", riptide.min(3));
-                // level.playSound(null, player, sound, PLAYERS, 1, 1).
-                match (self.server.lan_acting_entity, at) {
-                    (Some(player), Some(at)) => {
-                        let sound =
-                            LevelSound::new(&sound, at, 1.0, 1.0).in_source(SoundSource::Players);
-                        self.play_bound_sound(sound, player, None);
-                    }
-                    _ => {
-                        if let Some(at) = at {
-                            self.server_play_sound(&sound, at, 1.0, 1.0);
-                        }
-                    }
+            let sound = format!("minecraft:item.trident.riptide_{}", riptide.min(3));
+            // level.playSound(null, player, sound, PLAYERS, 1, 1).
+            match (self.server.lan_acting_entity, at) {
+                (Some(player), Some(at)) => {
+                    let sound =
+                        LevelSound::new(&sound, at, 1.0, 1.0).in_source(SoundSource::Players);
+                    self.play_bound_sound(sound, player, None);
                 }
-                if let (Some(player), Some(name)) = (
-                    self.server.lan_acting_uuid,
-                    self.server.lan_acting_name.clone(),
-                ) {
-                    self.native_player_riptide(player, &name);
+                _ => {
+                    if let Some(at) = at {
+                        self.server_play_sound(&sound, at, 1.0, 1.0);
+                    }
                 }
             }
-            return;
-        }
-        // The server throws the trident.
-        if !self.is_logical_server() {
+            if let (Some(player), Some(name)) = (
+                self.server.lan_acting_uuid,
+                self.server.lan_acting_name.clone(),
+            ) {
+                self.native_player_riptide(player, &name);
+            }
             return;
         }
         // hurtWithoutBreaking (Unbreaking applies), then the thrown copy.

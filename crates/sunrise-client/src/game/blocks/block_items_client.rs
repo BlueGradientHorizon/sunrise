@@ -25,6 +25,16 @@ pub(in crate::game::client_side) use sunrise_world::{
 };
 
 impl Game<'_> {
+    /// Client arm of [`Game::side_encode_live_block_entity`].
+    pub(in crate::game) fn client_encode_live_block_entity(
+        &self,
+        key: (i32, i32, i32),
+        entity: &BlockEntity,
+        block: &str,
+    ) -> Tag {
+        save::block_entity_encode::encode(key, entity, block, self.res.items())
+    }
+
     /// `BlockItem.updateBlockEntityComponents` on a client's level, for the
     /// block it predicts at `pos`: the block entity takes the stack's
     /// components but not its `block_entity_data` (`updateCustomBlockEntityTag`
@@ -40,6 +50,8 @@ impl Game<'_> {
                 .data_mut()
                 .set_other(block_entity_item::BLOCK_ENTITY_DATA, None);
         }
-        self.apply_placed_item(pos, &stack, false);
+        if self.apply_placed_item_common(pos, &stack, false).is_some() {
+            self.side_update_spawner_display((pos[0], pos[1], pos[2]));
+        }
     }
 }

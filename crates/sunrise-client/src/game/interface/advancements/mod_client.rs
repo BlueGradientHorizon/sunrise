@@ -280,20 +280,45 @@ impl Game<'_> {
                 .push_back(super::toast_manager::Toast::Advancement(toast));
         }
     }
-    /// `AdvancementRewards.grant`'s pickup: volume 0.2 at the player's feet,
-    /// pitch `(nextFloat - nextFloat) * 0.7 + 1`, times 2. `playSound(null, …)`
-    /// so the player hears it. The draws are the player's own random
-    /// (`player.getRandom()`), which no level draw shares.
-    pub(in crate::game) fn advancement_pickup_sound(&mut self) {
-        let Some(p) = self.player.as_ref() else {
-            return;
-        };
-        let at = [p.position.x, p.position.y, p.position.z];
-        let mut random = sunrise_client::random_source::entity();
-        let pitch = ((random.next_float() - random.next_float()) * 0.7 + 1.0) * 2.0;
-        self.audio
-            .0
-            .play("minecraft:entity.item.pickup", Some(at), 0.2, pitch);
+    /// Convert the admitted packet's network icon, components and requirements
+    /// into the definition used by the screen and toast.
+    pub(in crate::game) fn remote_advancement(
+        &self,
+        a: sunrise_protocol::packets::play::Advancement,
+    ) -> adv::Advancement {
+        use sunrise_client::scoreboard::tag_to_json;
+        let display = a.display.map(|d| adv::Display {
+            icon: self.remote_advancement_icon(d.icon),
+            title: tag_to_json(&d.title),
+            description: tag_to_json(&d.description),
+            frame: match d.frame {
+                1 => Frame::Challenge,
+                2 => Frame::Goal,
+                _ => Frame::Task,
+            },
+            background: d.background,
+            show_toast: d.show_toast,
+            announce: false,
+            hidden: d.hidden,
+        });
+        let mut criteria: Vec<adv::Criterion> = Vec::new();
+        for name in a.requirements.iter().flatten() {
+            if !criteria.iter().any(|c| &c.name == name) {
+                criteria.push(adv::Criterion {
+                    name: name.clone(),
+                    trigger: String::new(),
+                    conditions: Value::Null.into(),
+                });
+            }
+        }
+        adv::Advancement {
+            id: a.id,
+            parent: a.parent,
+            display,
+            criteria,
+            requirements: a.requirements,
+            rewards: Default::default(),
+        }
     }
 }
 

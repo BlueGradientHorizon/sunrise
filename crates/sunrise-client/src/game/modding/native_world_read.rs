@@ -13,7 +13,7 @@ use sunrise_world::{
 };
 
 /// Shared by the level handle and the restricted block-hook view.
-pub(in crate::game::server_side) fn block_face_sturdy(
+pub(in crate::game) fn block_face_sturdy(
     world: &World,
     b: &Behaviours,
     binding: &sunrise_world::block_collision::BlockCollisionRegistry<'_>,
@@ -59,7 +59,7 @@ pub(in crate::game::server_side) fn block_face_sturdy(
 }
 
 /// Read the published sky light without requiring a block or a resident column.
-pub(in crate::game::server_side) fn can_see_sky(world: &World, pos: [i32; 3]) -> bool {
+pub(in crate::game) fn can_see_sky(world: &World, pos: [i32; 3]) -> bool {
     world.shape.sky_light
         && super::native_level_refs::world_brightness(world, mod_api::LightLayer::Sky, pos) >= 15
 }
@@ -126,7 +126,7 @@ pub(in crate::game) fn block_in_tag(block: BlockKey, tag: &str) -> Option<bool> 
 }
 
 /// `BlockState.getFluidState`. None for an id no state has.
-pub(in crate::game::server_side) fn state_fluid(
+pub(in crate::game) fn state_fluid(
     behaviours: &Behaviours,
     registry: &BlockRegistry,
     state: BlockStateId,
@@ -149,7 +149,7 @@ pub(in crate::game) fn api_fluid_state(state: EngineFluidState) -> Option<FluidS
 }
 
 /// `FluidState.is(TagKey)` over the merged fluid tags. The empty fluid is in none.
-pub(in crate::game::server_side) fn fluid_in_tag(items: &Items, fluid: &str, tag: &str) -> bool {
+pub(in crate::game) fn fluid_in_tag(items: &Items, fluid: &str, tag: &str) -> bool {
     items.fluid_in_tag(
         &sunrise_client::command::args::normalized(tag),
         &sunrise_client::command::args::normalized(fluid),

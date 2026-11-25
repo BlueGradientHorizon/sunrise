@@ -17,16 +17,12 @@ pub(in crate::game) struct Seat {
     pub position: Vec3,
     pub height: f64,
     pub width: f32,
-    attachment: [f64; 3],
-    yaw: f32,
+    pub(in crate::game) attachment: [f64; 3],
+    pub(in crate::game) yaw: f32,
 }
 
 impl Seat {
-    pub(in crate::game::server_side) fn general(
-        type_slot: usize,
-        position: Vec3,
-        yaw: f32,
-    ) -> Self {
+    pub(in crate::game) fn general(type_slot: usize, position: Vec3, yaw: f32) -> Self {
         let catalog = super::general::general_type_catalog();
         let (width, height) = catalog.dimensions(type_slot);
         Self {
@@ -48,7 +44,7 @@ impl Seat {
         self.passenger_position(PLAYER_VEHICLE_ATTACHMENT)
     }
 
-    pub(in crate::game::server_side) fn position_mob(&self, mob: &mut sunrise_client::mobs::Mob) {
+    pub(in crate::game) fn position_mob(&self, mob: &mut sunrise_client::mobs::Mob) {
         let offset = sunrise_client::mobs::riders::vehicle_attachment(mob, self.width);
         sunrise_client::mobs::living::teleports::snap_to(mob, self.passenger_position(offset));
         mob.velocity = Vec3::ZERO;
@@ -141,16 +137,7 @@ impl Game<'_> {
         })
     }
 
-    pub(in crate::game) fn general_seat(&self, id: u32, previous: bool) -> Option<Seat> {
-        if let Some(remote) = &self.remote {
-            let row = remote.general.rows.get(&(id as i32))?;
-            let ([x, y, z], [yaw, _]) = if previous {
-                (row.previous, row.previous_rotation)
-            } else {
-                (row.position, row.rotation)
-            };
-            return Some(Seat::general(row.type_slot, Vec3::new(x, y, z), yaw));
-        }
+    pub(in crate::game) fn general_seat(&self, id: u32, _previous: bool) -> Option<Seat> {
         let row = self.general_row(id)?;
         Some(Seat::general(row.type_slot, row.position, row.rotation[0]))
     }

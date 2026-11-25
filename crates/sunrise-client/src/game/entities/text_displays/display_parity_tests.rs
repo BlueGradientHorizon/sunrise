@@ -1361,10 +1361,32 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
             .show(&[(23, 0, Value::Id(stone.0 as i32))], None);
         game.tick_text_displays(game.clock.runs_normally());
         let mob_start = game.mobs.len();
-        assert!(
-            game.spawn_mob_raw("minecraft:zombie", [0.5, 65.5, 3.5], true)
-                .is_some()
-        );
+        let zombie_kind = game
+            .remote
+            .as_ref()
+            .unwrap()
+            .registries
+            .as_ref()
+            .unwrap()
+            .builtin
+            .get("minecraft:entity_type")
+            .unwrap()
+            .id("minecraft:zombie")
+            .unwrap();
+        game.handle_packet(sunrise_protocol::packets::play::Clientbound::AddEntity(
+            sunrise_protocol::packets::play::AddEntity {
+                id: 7003,
+                uuid: 7003,
+                kind: zombie_kind,
+                position: [0.5, 65.5, 3.5],
+                velocity: [0.0; 3],
+                pitch: 0,
+                yaw: 0,
+                head_yaw: 0,
+                data: 0,
+            },
+        ))
+        .unwrap();
         let mob_range = mob_start..game.mobs.len();
 
         let (mut normal, mut see_through, mut blocks, mut mob_verts) =

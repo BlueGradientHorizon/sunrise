@@ -35,7 +35,12 @@ impl Game<'_> {
         alpha: f64,
         out: &mut Vec<sunrise_client_render::render_geometry::Vertex>,
     ) {
-        let Some(model) = self.fangs.model.as_ref() else {
+        let Some(model) = self.fangs.model.as_ref().or(self
+            .client
+            .entity_models
+            .evoker_fangs
+            .as_ref())
+        else {
             return;
         };
         let Some(r) = self
@@ -97,34 +102,6 @@ impl Game<'_> {
                 out,
             );
         }
-    }
-    pub(in crate::game) fn insert_fangs(
-        &mut self,
-        id: u32,
-        at: [f64; 3],
-        yaw: f32,
-        delay: i32,
-        owner: u32,
-    ) {
-        if self.fangs.model.is_none() {
-            self.fangs.model = self.client.entity_models.evoker_fangs.clone();
-        }
-        self.fangs.list.push(Fangs {
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
-            id,
-            pos: at,
-            motion: Vec3::ZERO,
-            yaw,
-            warmup: delay,
-            life: 22,
-            owner,
-            started: false,
-            fire_ticks: 0,
-            synced_fire: false,
-            has_visual_fire: false,
-            random: sunrise_client::mobs::entity_random(id, Vec3::new(at[0], at[1], at[2])),
-        });
     }
     /// `EvokerFangs.handleEntityEvent`: only event 4 starts a client attack.
     /// `playLocalSound` at `nextFloat() * 0.2 + 0.85`. The fangs this client

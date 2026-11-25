@@ -57,60 +57,6 @@ pub(in crate::game) fn attackable(p: &Projectile) -> bool {
 }
 
 impl Game<'_> {
-    /// Whether `kind` belongs to `#minecraft:redirectable_projectile`, reading the server's synced
-    /// entity-type tags on a remote client when present, else the loaded entity tags.
-    pub(in crate::game::server_side) fn is_redirectable_projectile_type(&self, kind: &str) -> bool {
-        if let Some(remote) = &self.remote
-            && let Some(tags) = remote.registries.tags.get("minecraft:entity_type")
-            && let Some(ids) = remote.builtin.get("minecraft:entity_type")
-        {
-            return tags
-                .get("minecraft:redirectable_projectile")
-                .is_some_and(|members| ids.id(kind).is_some_and(|id| members.contains(&id)));
-        }
-        if let Some(members) = self
-            .items()
-            .entity_type_tags
-            .members()
-            .get("minecraft:redirectable_projectile")
-        {
-            return members.contains(kind);
-        }
-        matches!(
-            kind,
-            "minecraft:fireball" | "minecraft:wind_charge" | "minecraft:breeze_wind_charge"
-        )
-    }
-
-    /// `Projectile.isPickable` (with `ShulkerBullet` and `AbstractArrow` overrides).
-    pub(in crate::game) fn projectile_is_pickable(&self, p: &Projectile) -> bool {
-        if matches!(p.kind, ProjectileKind::ShulkerBullet { .. }) {
-            return true;
-        }
-        if p.is_arrow() && p.stuck {
-            return false;
-        }
-        self.is_redirectable_projectile_type(p.entity_type())
-    }
-
-    /// `Projectile.getPickRadius`: `this.isPickable() ? 1.0F : 0.0F`.
-    pub(in crate::game) fn projectile_pick_radius(&self, p: &Projectile) -> f64 {
-        if self.projectile_is_pickable(p) {
-            PICK_RADIUS
-        } else {
-            0.0
-        }
-    }
-
-    /// `AbstractArrow.isPickable` for `ThrownTrident`.
-    pub(in crate::game) fn trident_is_pickable(&self, t: &super::trident::ThrownTrident) -> bool {
-        !t.in_ground && self.is_redirectable_projectile_type("minecraft:trident")
-    }
-
-    /// `Projectile.isPickable` for `FireworkRocketEntity`.
-    pub(in crate::game) fn rocket_is_pickable(&self) -> bool {
-        self.is_redirectable_projectile_type("minecraft:firework_rocket")
-    }
     /// The pickable projectile under the crosshair within entity reach.
     pub(in crate::game::server_side) fn redirectable_hit(&self) -> Option<(usize, f64)> {
         let (eye, dir) = self.aim()?;

@@ -30,6 +30,20 @@ use sunrise_core::position::BlockPos;
 #[allow(unused_imports)]
 use sunrise_mod_runtime::attachments::Holder;
 
+/// Takes the commit it pushed, and any a listener's left, off the stack when it ends, however
+/// it ends.
+struct Telling<'a, 'g> {
+    game: &'a mut Game<'g>,
+    /// The stack's length before the commit was pushed: its place.
+    frame: usize,
+}
+
+impl Drop for Telling<'_, '_> {
+    fn drop(&mut self) {
+        self.game.transactions.committing.truncate(self.frame);
+    }
+}
+
 impl Game<'_> {
     /// Abort any storage transactions left open above `depth` (for example when a
     /// an engine decision unwinds before it can close its savepoint).
@@ -1639,7 +1653,7 @@ impl Game<'_> {
             .cloning_guest(uuid)
             .or_else(|| {
                 let host = self.lan.as_ref()?;
-                if self.server.entity_initialization.active == Some(Holder::Player(uuid)) {
+                if self.entity_initialization.active == Some(Holder::Player(uuid)) {
                     host.hub.guests.iter().find(|guest| guest.uuid == uuid)
                 } else {
                     host.hub.holder_guest(uuid, self.dim.id())
@@ -1928,9 +1942,33 @@ impl Game<'_> {
         };
         let frame = self.transactions.committing.len();
         self.transactions.committing.push(commit);
-        let telling = entities::Telling { game: self, frame };
+        let telling = Telling { game: self, frame };
         effects(telling.game);
         telling.game.tell_commit(frame);
+    }
+
+    /// Entity `id` is leaving this level with `map` inside a transaction: its index rows stay
+    /// until the root closes, so a snapshot inside the action sees no gap.
+    pub(in crate::game) fn defer_departure(
+        &mut self,
+        id: u32,
+        map: Option<&mut sunrise_mod_runtime::attachments::Attachments>,
+    ) {
+        use crate::game::entity_residency::SlotAccess;
+        let lifetime = std::num::NonZeroU32::new(id)
+            .map(|id| self.with_resident_slot(&self.dim.key(), id, std::mem::take))
+            .and_then(|access| match access {
+                SlotAccess::Done(lifetime) => Some(lifetime),
+                _ => None,
+            })
+            .unwrap_or_default();
+        let registration = map.and_then(|map| map.take_index_binding());
+        if let Some(level) = self.transactions.last_mut() {
+            level.departed.push(entities::Departure {
+                lifetime,
+                registration,
+            });
+        }
     }
     /// The step `next` of the queue of the commit at `frame`, with the entities never to join. The
     /// removals of a step are taken when `run`, so they run once.

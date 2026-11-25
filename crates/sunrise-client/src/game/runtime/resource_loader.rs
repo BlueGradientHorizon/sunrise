@@ -23,6 +23,7 @@ pub(in crate::game) struct GameCpuResources {
     pub(in crate::game) bee_stinger_model: Option<sunrise_client::mobs::Part>,
     pub(in crate::game) trident_model: Option<sunrise_client::mobs::Part>,
     pub(in crate::game) entity_models: EntityModels,
+    pub(in crate::game) item_features: sunrise_items::creative_catalog::ItemFeatureRequirements,
     pub(in crate::game) creative_screen: Creative,
 }
 
@@ -83,6 +84,7 @@ impl GameCpuResources {
             bee_stinger_model: self.bee_stinger_model.clone(),
             trident_model: self.trident_model.clone(),
             entity_models: self.entity_models.clone(),
+            item_features: self.item_features.clone(),
             creative_screen: self.creative_screen.clone_for_tests(),
         }
     }
@@ -265,6 +267,9 @@ impl GameCpuResources {
             map_frame_model,
             glow_map_frame_model,
         ] = frames;
+        let creative_screen =
+            creative_screen.map_err(|error| -> Box<dyn std::error::Error> { error.into() })?;
+        let item_features = creative_screen.catalog().item_features();
         Ok(Self {
             painting_variants,
             frame_model,
@@ -282,8 +287,8 @@ impl GameCpuResources {
             bee_stinger_model: model("minecraft:bee_stinger#main"),
             trident_model: model("minecraft:trident#main"),
             entity_models: EntityModels::load(document),
-            creative_screen: creative_screen
-                .map_err(|error| -> Box<dyn std::error::Error> { error.into() })?,
+            item_features,
+            creative_screen,
         })
     }
 }

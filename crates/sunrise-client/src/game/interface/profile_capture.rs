@@ -1033,6 +1033,32 @@ impl Game<'_> {
         }
     }
 
+    /// Client-visible entity count across common entity families (excludes server-only `others`).
+    fn client_perf_entity_count(&self) -> usize {
+        self.dropped.len()
+            + self.orbs.len()
+            + self.carts.len()
+            + self.boats.len()
+            + self.falling.len()
+            + self.paintings.len()
+            + self.item_frames.len()
+            + self.armor_stands.len()
+            + self.tridents.len()
+            + self.rockets.len()
+            + self.tnts.len()
+            + self.crystals.len()
+            + self.resident_entities.knots.len()
+            + self.ominous_spawners.len()
+            + self.cushions.len()
+            + self.breath_clouds.len()
+            + self.bolts.len()
+            + self.fangs.perf_count()
+            + usize::from(self.dragon.as_ref().is_some())
+            + self.mobs.len()
+            + self.creatures.projectiles.len()
+            + self.resident_entities.general.rows.len()
+    }
+
     /// One rendered frame: `wall_ms` long, `cpu_ms` of it the CPU's own work.
     pub(in crate::game::client_side) fn record_perf_frame(
         &mut self,
@@ -1059,7 +1085,7 @@ impl Game<'_> {
             .and_then(|r| r.session.counters.lock().unwrap().clone());
         self.profile.perf.set_connection(connection);
         let (wanted, renderer) = (self.profile.gpu, self.renderer.0.as_ref());
-        let entities = self.perf_entity_count() as u32;
+        let entities = self.client_perf_entity_count() as u32;
         let memory = &mut self.profile.memory;
         self.profile.perf.frame_with_gpu(
             t,

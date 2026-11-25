@@ -166,27 +166,6 @@ pub(in crate::game) fn open_hash_order(keys: &[i16]) -> Vec<i16> {
     zero.then_some(0).into_iter().chain(rest).collect()
 }
 
-impl Game<'_> {
-    /// A headless command oracle has a real connection but no movement tick.
-    /// Acknowledge loaded terrain without predicting or sending movement.
-    pub(in crate::game) fn poll_stationary_client(&mut self) -> Result<()> {
-        self.poll_remote()?;
-        let loaded = self.player.as_ref().is_some_and(|p| {
-            self.streaming.is_lit(
-                (p.position.x.floor() as i32) >> 4,
-                (p.position.z.floor() as i32) >> 4,
-            )
-        });
-        if loaded && self.remote.as_ref().is_some_and(|r| !r.loaded_sent) {
-            self.send(S::PlayerLoaded(Empty));
-            let r = self.remote.as_mut().unwrap();
-            r.loaded_sent = true;
-            r.level_load.finish();
-        }
-        Ok(())
-    }
-}
-
 /// Map a menu slot to Sunrise's inventory screen slot ids.
 pub(in crate::game) fn inventory_screen_slot(menu: &str, slot: i32) -> Option<usize> {
     crate::game::inventory_screen_slot_with_type(menu, slot, || {

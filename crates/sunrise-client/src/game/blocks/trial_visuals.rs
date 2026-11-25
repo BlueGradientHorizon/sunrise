@@ -3,7 +3,7 @@
 //! the ambient sound) and `VaultBlockEntity.Client.tick` (idle smoke and
 //! flames, the connection particles towards the player, the ambient sound).
 //! Every draw comes from the client level's random.
-use super::{Game, vault::TakenVault};
+use super::Game;
 use sunrise_client::{
     containers::BlockEntity,
     mobs::trial_spawner::TrialState,
@@ -171,10 +171,31 @@ impl Game<'_> {
             self.particle(T::Smoke, at, v);
         }
     }
+    fn trial_spawner_block_at(&self, key: Pos) -> Option<(TrialState, bool)> {
+        let block = self
+            .pack
+            .assets
+            .registry
+            .state(self.world.block(key.0, key.1, key.2))?;
+        if sunrise_client::block_entity_types::factory_block(&block.name)
+            != "minecraft:trial_spawner"
+        {
+            return None;
+        }
+        let state = block
+            .properties
+            .get("trial_spawner_state")
+            .and_then(|s| TrialState::from_name(s))
+            .unwrap_or_default();
+        Some((
+            state,
+            block.properties.get("ominous").is_some_and(|v| v == "true"),
+        ))
+    }
     /// `TrialSpawner.tickClient`: the state's particles, the spin of the
     /// mob shown inside and the ambient sound.
     pub(in crate::game) fn client_tick_trial_spawner(&mut self, key: Pos) {
-        let Some((state, ominous)) = self.trial_spawner_block(key) else {
+        let Some((state, ominous)) = self.trial_spawner_block_at(key) else {
             return;
         };
         let pos = [key.0, key.1, key.2];
@@ -234,20 +255,19 @@ impl Game<'_> {
     }
     /// `VaultBlockEntity.Client.tick`.
     pub(in crate::game) fn client_tick_vault(&mut self, key: Pos) {
-        let Some(TakenVault {
-            lease,
-            mut vault,
-            ominous,
-            ..
-        }) = self.take_vault(key)
-        else {
+        let state = self.world.block(key.0, key.1, key.2);
+        let Some(block) = self.pack.assets.registry.state(state) else {
+            return;
+        };
+        if sunrise_client::block_entity_types::factory_block(&block.name) != "minecraft:vault" {
+            return;
+        }
+        let ominous = block.properties.get("ominous").is_some_and(|v| v == "true");
+        let Some(BlockEntity::Vault(vault)) = self.world.block_entities.get_mut(&key) else {
             return;
         };
         vault.update_display_item_spin();
         let shows = vault.display_item.is_some();
-        self.world
-            .block_entities
-            .put(lease, BlockEntity::Vault(vault));
         let pos = [key.0, key.1, key.2];
         if self.world.game_time % 20 == 0 {
             self.vault_connection_particles(pos);
@@ -287,10 +307,13 @@ impl Game<'_> {
         let Some(BlockEntity::Vault(vault)) = self.world.block_entities.get(&key) else {
             return;
         };
-        let me = self.level.player_uuid.unwrap_or_default();
+        let me = self
+            .remote
+            .as_ref()
+            .map(|r| sunrise_client::lan::playerdata::uuid_ints(r.profile))
+            .or(self.level.player_uuid)
+            .unwrap_or_default();
         let range = vault.connected_particles_range;
-        // VaultSharedData.getConnectedPlayers, each through getPlayerByUUID: the
-        // host and the guests, with their position and height.
         let mut players = Vec::new();
         for uuid in &vault.connected_players {
             if *uuid == me {
@@ -298,8 +321,13 @@ impl Game<'_> {
                     let at = [p.position.x, p.position.y, p.position.z];
                     players.push((at, p.dimensions.height));
                 }
-            } else if let Some(g) = self.lan_present().into_iter().find(|g| g.uuid == *uuid) {
-                players.push((g.position, g.height));
+            } else if let Some(remote) = self.remote.as_ref()
+                && let Some(&id) = remote
+                    .level_uuids
+                    .get(&sunrise_client::lan::playerdata::ints_uuid(*uuid))
+                && let Some(m) = self.mobs.iter().find(|m| m.id == id as u32 && !m.removed)
+            {
+                players.push(([m.position.x, m.position.y, m.position.z], m.height()));
             }
         }
         if players.is_empty() {

@@ -35,9 +35,6 @@ pub(in crate::game::client_side) use sunrise_gameplay::leash_knot::{
 };
 
 impl Game<'_> {
-    pub(in crate::game) fn lead_sound(&mut self, sound: &str, at: [f64; 3]) {
-        self.server_play_sound(&format!("minecraft:item.lead.{sound}"), at, 1.0, 1.0);
-    }
     /// `LeashFeatureRenderer` for every lead and `LeashKnotRenderer` for the knots.
     pub(in crate::game::client_side) fn leash_geometry(
         &self,

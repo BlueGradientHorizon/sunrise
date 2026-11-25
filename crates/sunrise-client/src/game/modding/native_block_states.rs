@@ -126,10 +126,8 @@ impl Game<'_> {
 
     pub(in crate::game) fn crafting_remainder(&self, stack: &ItemStack) -> Option<ItemStack> {
         let mut remainder = self.item_crafting_remainder(stack);
-        if !self.options.execution_role.is_client()
-            && mod_api::__private::item_listens(mod_api::HookId::CraftingRemainder, &stack.item)
-        {
-            self.native_crafting_remainder(stack, &mut remainder);
+        if mod_api::__private::item_listens(mod_api::HookId::CraftingRemainder, &stack.item) {
+            self.side_crafting_remainder_hook(stack, &mut remainder);
         }
         remainder.filter(|value| value.count > 0)
     }

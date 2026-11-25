@@ -1001,7 +1001,13 @@ impl Game<'_> {
         self.world.block_entities.insert(key, new);
         self.world.set_block_lock(key, &tag);
         self.notify_block_entity_load_additional(key);
-        self.update_spawner_display(key);
+        // Tag-only /setblock or /fill edits must still notify clients of spawner display changes.
+        if matches!(
+            self.world.block_entities.get(&key),
+            Some(BlockEntity::Spawner(_) | BlockEntity::TrialSpawner(_))
+        ) {
+            self.mark_block_entity_updated(key);
+        }
         self.command_block_loaded(key, was_auto);
         self.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
         true
@@ -1055,7 +1061,6 @@ impl Game<'_> {
                     }
                     self.world.set_block_lock(key, &tag);
                     self.notify_block_entity_load_additional(key);
-                    self.update_spawner_display(key);
                     self.command_block_loaded(key, was_auto);
                     // BlockDataAccessor.setData: setChanged and sendBlockUpdated(3),
                     // even when the block state itself stays the same.

@@ -159,12 +159,12 @@ impl Game<'_> {
                     .is_ok_and(|(pattern, _)| {
                         sunrise_client::nbt_path::compare_nbt(
                             &pattern,
-                            self.block_entity_nbt(pos).as_ref(),
+                            self.side_block_entity_nbt(pos).as_ref(),
                         )
                     }),
                 Some(pattern @ Tag::Compound(_)) => sunrise_client::nbt_path::compare_nbt(
                     pattern,
-                    self.block_entity_nbt(pos).as_ref(),
+                    self.side_block_entity_nbt(pos).as_ref(),
                 ),
                 Some(_) => false,
             };
@@ -218,5 +218,13 @@ impl Game<'_> {
                 "minecraft:can_place_on",
                 relative(pos, face.opposite()),
             )
+    }
+    /// `Entity.doWaterSplashEffect` for a dropped item: server plays sound, client adds particles.
+    pub(crate) fn apply_item_splash(&mut self, splash: sunrise_client::entities::ItemSplash) {
+        self.side_apply_item_splash(splash);
+    }
+    /// `Level.getMinY`: the current dimension type's minimum y.
+    pub(in crate::game) fn level_min_y(&self) -> i32 {
+        self.side_level_min_y()
     }
 }

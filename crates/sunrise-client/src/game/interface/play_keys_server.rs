@@ -32,8 +32,6 @@ impl Game<'_> {
         } else {
             std::mem::swap(&mut self.offhand, &mut self.inventory[self.selected]);
         }
-        self.hand_stack_replaced(self.selected);
-        self.hand_stack_replaced(shield::OFFHAND_SLOT);
         let (offhand, main) = (self.offhand.clone(), self.inventory[self.selected].clone());
         let (old_main, old_off) = match &heard {
             Some((old_main, old_off)) => (old_main.as_ref(), old_off.as_ref()),
@@ -146,5 +144,47 @@ pub(in crate::game) mod swap_hands_tests {
                 Some("minecraft:torch")
             );
         });
+    }
+
+    /// The server's own swap contract: a cancel keeps both hands, and a listener's stack lands in the off hand.
+    #[test]
+    #[ignore = "daily"]
+    fn the_own_player_swap_asks_the_listener_for_each_hand() {
+        let (cancel, calls) = (
+            Arc::new(AtomicBool::new(true)),
+            Arc::new(AtomicUsize::new(0)),
+        );
+        let torch = Torch(Arc::clone(&cancel), Arc::clone(&calls));
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new("torch", Box::new(torch))].into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                let selected = game.selected;
+                game.inventory[selected] = Some(ItemStack::new("minecraft:diamond_sword", 1));
+                game.offhand = None;
+                game.set_mode_id(3);
+                game.own_swap_hands();
+                assert_eq!(calls.load(Ordering::SeqCst), 0);
+                assert_eq!(
+                    game.inventory[selected].as_ref().map(|s| &*s.item),
+                    Some("minecraft:diamond_sword")
+                );
+                assert!(game.offhand.is_none());
+                game.set_mode_id(0);
+                game.own_swap_hands();
+                assert_eq!(
+                    game.inventory[selected].as_ref().map(|s| &*s.item),
+                    Some("minecraft:diamond_sword")
+                );
+                assert!(game.offhand.is_none());
+                cancel.store(false, Ordering::SeqCst);
+                game.own_swap_hands();
+                assert!(game.inventory[selected].is_none());
+                assert_eq!(
+                    game.offhand.as_ref().map(|s| &*s.item),
+                    Some("minecraft:torch")
+                );
+            });
+        });
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
     }
 }

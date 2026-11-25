@@ -3,7 +3,7 @@ pub(in crate::game::client_side) use super::{
     Game, Hit, InteractTarget, Keys, entity_culling::default_range,
 };
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::cushions::PlacementWorld;
+pub(in crate::game::client_side) use crate::game::entity_common::PlacementWorld;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::cushions::aabb;
 #[allow(unused_imports)]
@@ -83,46 +83,6 @@ impl Game<'_> {
                 out,
             );
             self.finish_entity_occlusion(culling, c, out, entity_start);
-        }
-    }
-    /// `BlockBehaviour.Properties.isSuffocating` of a state: the block's
-    /// explicit predicate, else `causes_suffocation` with a full collision
-    /// shape.
-    pub(in crate::game) fn state_suffocating(
-        &self,
-        state: sunrise_world::registry::BlockStateId,
-    ) -> bool {
-        let facts = self.res.facts().get(state);
-        let name = facts.name.as_ref();
-        // Blocks' explicit predicates, then the default causes_suffocation/full-shape rule.
-        match name {
-            "minecraft:dirt_path"
-            | "minecraft:farmland"
-            | "minecraft:mud"
-            | "minecraft:soul_sand" => true,
-            "minecraft:piston" | "minecraft:sticky_piston" => self
-                .pack
-                .assets
-                .registry
-                .state(state)
-                .is_some_and(|s| s.properties.get("extended").is_some_and(|p| p == "false")),
-            "minecraft:mangrove_roots" | "minecraft:moving_piston" => false,
-            _ if name.ends_with("_leaves")
-                || name.ends_with("glass")
-                || name.ends_with("copper_grate") =>
-            {
-                false
-            }
-            // ShulkerBoxBlock: suffocating while closed; a box seen open
-            // here is rare enough to count as closed.
-            _ if name.ends_with("shulker_box") => true,
-            _ => {
-                facts.full_collision
-                    && self
-                        .res
-                        .items()
-                        .block_in_tag("minecraft:causes_suffocation", name)
-            }
         }
     }
     /// `BlockState.isViewBlocking(level, pos, nearPlaneBox)`: stairs and

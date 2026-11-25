@@ -128,6 +128,50 @@ impl Game<'_> {
         self.entity_powder_snow_particles(r.previous, r.position, r.bounds(), r.velocity, false);
         (old_rotation, hit)
     }
+    pub(in crate::game) fn new_rocket(
+        &mut self,
+        at: Vec3,
+        stack: &ItemStack,
+        attached: bool,
+        own: &mut sunrise_core::random::LegacyRandom,
+    ) -> Rocket {
+        let (flight, explosions) = fireworks_of(stack);
+        let id = self.take_entity_id();
+        self.persist
+            .uuids
+            .insert(id, sunrise_client::save::insecure_uuid(own));
+        let (velocity, lifetime) = rocket_draws(own, flight);
+        Rocket {
+            size_answer: None,
+            attachment_lifetime: Default::default(),
+            rotation: [0.0, 0.0],
+            join: Default::default(),
+            id,
+            position: at,
+            previous: at,
+            velocity,
+            life: 0,
+            lifetime,
+            explosions: explosions.into(),
+            attached,
+            guest: None,
+            owner: None,
+            owner_uuid: None,
+            left_owner: false,
+            last_deflected_by: None,
+            attached_to: None,
+            angled: false,
+            item: Arc::new(stack.clone()),
+            random: own.clone(),
+            ground: Default::default(),
+            has_been_shot: false,
+            silent: false,
+            fall_distance: 0.0,
+            stuck: Vec3::ZERO,
+            was_touching_water: false,
+            first_tick: true,
+        }
+    }
     /// `FireworkRocketItem.use` while gliding: drop the player's leads, then a
     /// rocket attached to the player.
     pub(in crate::game) fn boost_firework(&mut self, stack: &ItemStack) -> bool {
@@ -642,7 +686,7 @@ impl Game<'_> {
             &mut push,
         );
         for splash in splashes {
-            self.apply_item_splash(splash);
+            self.server_apply_item_splash(splash);
         }
         let at = [r.position.x, r.position.y, r.position.z];
         self.projectile_own_event("minecraft:splash", r.owner, r.guest, at, None);
@@ -880,3 +924,7 @@ impl Rocket {
 #[cfg(test)]
 #[path = "fireworks/hit_attempt_tests_server.rs"]
 pub(in crate::game) mod hit_attempt_tests;
+
+#[cfg(test)]
+#[path = "tests/fireworks_events_tests_client.rs"]
+pub(in crate::game) mod events_tests;

@@ -1,11 +1,11 @@
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::Game;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::powder_snow::HeldSlot;
+pub(in crate::game::server_side) use crate::game::powder_snow::*;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::powder_snow::added;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::powder_snow::*;
+pub(in crate::game::server_side) use crate::game::powder_snow::{
+    HeldSlot, added, extinguish_pitch,
+};
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_client::{
     Result, cauldron, items::ItemStack, mobs::Who,
@@ -14,6 +14,21 @@ pub(in crate::game::server_side) use sunrise_client::{
 pub(in crate::game::server_side) use sunrise_core::{position::BlockPos, random::RandomSource};
 
 impl Game<'_> {
+    /// Entity.playEntityOnFireExtinguishedSound
+    pub(in crate::game) fn extinguish_sound(&mut self, at: [f64; 3]) {
+        let pitch = extinguish_pitch(&mut self.server.effect_rng);
+        self.server_play_sound("minecraft:entity.generic.extinguish_fire", at, 0.7, pitch);
+    }
+    /// `PowderSnowBlock.entityInside` (runBefore EXTINGUISH) for a burning player.
+    pub(in crate::game) fn powder_snow_melt(&mut self, pos: BlockPos) {
+        let at = [pos.x, pos.y, pos.z];
+        if !self.is_powder_snow(at) || !self.may_interact_at(pos) {
+            return;
+        }
+        self.with_level(|b, level, ticks| b.destroy_block(level, ticks, pos, false));
+        let _ = self.server_process_level_events();
+        self.world.modified.insert((at[0] >> 4, at[2] >> 4));
+    }
     /// `BucketItem.use` with an empty bucket on powder snow:
     /// `PowderSnowBlock.pickupBlock` (air, level event 2001), the used
     /// statistic, the fill sound, FLUID_PICKUP, `ItemUtils.createFilledResult`

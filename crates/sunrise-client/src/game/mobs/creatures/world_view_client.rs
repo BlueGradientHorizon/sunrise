@@ -9,7 +9,7 @@ use sunrise_core::geometry::{Aabb, Vec3};
 static EMPTY_LID_OPENERS: OnceLock<HashMap<(i32, i32, i32), i32>> = OnceLock::new();
 
 impl Game<'_> {
-    pub(in crate::game::client_side) fn client_player_view(&self) -> Option<PlayerView> {
+    pub(in crate::game) fn client_player_view(&self) -> Option<PlayerView> {
         let p = self.player.as_ref()?;
         let w = f64::from(p.dimensions.width) / 2.0;
         let bounds = Aabb::new(
@@ -95,7 +95,55 @@ impl Game<'_> {
         })
     }
 
-    pub(in crate::game) fn client_mob_world_base<'s>(&'s self, others: &'s [Seen]) -> MobWorld<'s> {
+    pub(in crate::game) fn client_mob_side(&self) -> crate::game::native_surface::GameSide<'_> {
+        use sunrise_items::equipment::{BODY, SADDLE};
+        let level = self.native_lifecycle.epoch().and_then(|epoch| {
+            let key = self.dim.key();
+            mod_api::__private::dimension_id(key)?;
+            Some(mod_api::LevelRef::with_generation(epoch, key, 0))
+        });
+        crate::game::native_surface::GameSide {
+            dim: self.dim,
+            level,
+            facts: self.res.facts(),
+            biomes: match &self.world_biomes {
+                Some(b) => b,
+                None => self.res.biomes(),
+            },
+            behaviours: self.res.behaviours(),
+            features: match &self.remote {
+                Some(remote) => &remote.features,
+                None => crate::game::tables::default_client_features(),
+            },
+            items: self.res.items(),
+            damage_types: &self.health_resources.damage,
+            player_equipment: [
+                self.inventory[self.selected].as_ref(),
+                self.offhand.as_ref(),
+                self.armor[3].as_ref(),
+                self.armor[2].as_ref(),
+                self.armor[1].as_ref(),
+                self.armor[0].as_ref(),
+                self.equipment.get(BODY),
+                self.equipment.get(SADDLE),
+            ],
+            hit_borrows: crate::game::native_surface::HitBorrows {
+                living_types: self.res.living_type_keys(),
+                attributes: &self.motion.attributes,
+                player_effects: &self.potions.effects,
+                player_uuid: None,
+                player_attachments: &self.player_state.attachments,
+                entity_attachments: &*self.entity_attachments,
+            },
+            tag_items: self.remote.as_ref().and_then(|remote| remote.tags.as_ref()),
+        }
+    }
+
+    pub(in crate::game) fn client_mob_world_base<'s>(
+        &'s self,
+        others: &'s [Seen],
+        side: &'s dyn sunrise_client::motion::SideLevel,
+    ) -> MobWorld<'s> {
         let at = self
             .player
             .as_ref()
@@ -103,10 +151,12 @@ impl Game<'_> {
         self.mob_world_base_with(
             others,
             MobWorldSideParams {
+                side,
                 trading_players: None,
                 player: self.client_player_view(),
                 player_identity: None,
                 leash_boats: &[],
+                teams: Arc::new(self.client_mob_teams()),
                 lid_openers: EMPTY_LID_OPENERS.get_or_init(HashMap::new),
                 mod_effects: None,
                 mob_hooks: None,

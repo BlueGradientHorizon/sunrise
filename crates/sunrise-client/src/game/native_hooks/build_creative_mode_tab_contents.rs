@@ -91,22 +91,12 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn creative_holders(&self) -> Option<Holders> {
-        if self.is_logical_server() {
-            self.registry_sync().map(|sync| sync.creative_holders())
-        } else {
-            self.remote.as_ref().map(|remote| {
-                sunrise_client::creative::live_holders(&remote.builtin, &remote.registries)
-            })
-        }
-    }
-
     pub(in crate::game) fn creative_tab_entries(
         &self,
         edit: CreativeTabEdit,
         list: CreativeTabList,
     ) -> Result<Vec<ItemStack>, CreativeTabEditError> {
-        self.edit_creative(edit, |contents, _| Ok(list_items(contents, list).clone()))
+        self.side_creative_tab_entries(edit, list)
     }
 
     pub(in crate::game) fn creative_tab_change(
@@ -114,79 +104,7 @@ impl Game<'_> {
         edit: CreativeTabEdit,
         change: CreativeTabChange,
     ) -> Result<(), CreativeTabEditError> {
-        match change {
-            CreativeTabChange::Insert {
-                placement,
-                stack,
-                visibility,
-            } => self.creative_tab_insert(edit, placement, stack, visibility),
-            CreativeTabChange::Remove { stack, visibility } => {
-                self.creative_tab_remove(edit, &stack, visibility)
-            }
-        }
-    }
-
-    pub(in crate::game) fn creative_tab_insert(
-        &self,
-        edit: CreativeTabEdit,
-        placement: CreativeTabPlacement,
-        stack: mod_api::ItemStack,
-        visibility: CreativeTabVisibility,
-    ) -> Result<(), CreativeTabEditError> {
-        self.edit_creative(edit, |contents, items| {
-            if stack.count() != 1 {
-                return Err(CreativeTabEditError::Count);
-            }
-            let mut stack = stack.try_into_engine(items)?;
-            normalize_components(&mut stack, items);
-            let (anchor, after) = match &placement {
-                CreativeTabPlacement::Before(anchor) => {
-                    (Some(comparison_key(stack_value(anchor)?, items)?), false)
-                }
-                CreativeTabPlacement::After(anchor) => {
-                    (Some(comparison_key(stack_value(anchor)?, items)?), true)
-                }
-                _ => (None, false),
-            };
-            for list in target_lists(visibility) {
-                let entries = list_items(contents, *list);
-                if entries
-                    .iter()
-                    .any(|entry| entry.same_item_same_components(&stack))
-                {
-                    return Err(CreativeTabEditError::Duplicate(*list));
-                }
-                let index = match &anchor {
-                    Some(anchor) => {
-                        entries
-                            .iter()
-                            .position(|entry| entry.same_item_same_components(anchor))
-                            .ok_or(CreativeTabEditError::MissingAnchor(*list))?
-                            + usize::from(after)
-                    }
-                    None if matches!(placement, CreativeTabPlacement::First) => 0,
-                    None => entries.len(),
-                };
-                entries.insert(index, stack.clone());
-            }
-            Ok(())
-        })
-    }
-
-    pub(in crate::game) fn creative_tab_remove(
-        &self,
-        edit: CreativeTabEdit,
-        stack: &mod_api::ItemStack,
-        visibility: CreativeTabVisibility,
-    ) -> Result<(), CreativeTabEditError> {
-        self.edit_creative(edit, |contents, items| {
-            let stack = comparison_key(stack_value(stack)?, items)?;
-            for list in target_lists(visibility) {
-                list_items(contents, *list)
-                    .retain(|entry| !entry.same_item_same_components(&stack));
-            }
-            Ok(())
-        })
+        self.side_creative_tab_change(edit, change)
     }
 }
 

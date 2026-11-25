@@ -1,32 +1,32 @@
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use super::Game;
+pub(in crate::game::server_side) use super::Game;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::fireworks::events_tests::start_events;
+pub(in crate::game::server_side) use crate::game::fireworks::events_tests::start_events;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::fireworks::events_tests::stop_events;
+pub(in crate::game::server_side) use crate::game::fireworks::events_tests::stop_events;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::fireworks::events_tests::take_explosions;
+pub(in crate::game::server_side) use crate::game::fireworks::events_tests::take_explosions;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::fireworks::events_tests::twinkling;
+pub(in crate::game::server_side) use crate::game::fireworks::events_tests::twinkling;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::fireworks::events_tests::with_game;
+pub(in crate::game::server_side) use crate::game::fireworks::events_tests::with_game;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::fireworks::events_tests::*;
+pub(in crate::game::server_side) use crate::game::fireworks::events_tests::*;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::{
+pub(in crate::game::server_side) use crate::game::{
     Audio, Options, Progress, Settings, load_resources,
 };
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::Arc;
+pub(in crate::game::server_side) use std::sync::Arc;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
+pub(in crate::game::server_side) use sunrise_client::{
     chunk::Chunk,
     items::ItemStack,
     mobs::Who,
     particles::{FireworkExplosion, FireworkShape, ParticleLevel},
 };
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{
+pub(in crate::game::server_side) use sunrise_core::{
     geometry::Vec3, position::ChunkPos, random::LegacyRandom,
 };
 
@@ -154,7 +154,7 @@ fn a_silent_rocket_bursts_without_blast_or_twinkle() {
     });
 }
 
-pub(in crate::game::client_side) fn tick_particles(game: &mut Game<'_>) {
+pub(in crate::game::server_side) fn tick_particles(game: &mut Game<'_>) {
     let level = ParticleLevel {
         world: &game.world,
         facts: game.res.facts(),

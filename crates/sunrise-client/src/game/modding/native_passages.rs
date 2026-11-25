@@ -278,55 +278,161 @@ impl Game<'_> {
         }
     }
 
-    /// A `sunrise:passage_sync` payload the server sent the window. Each passage is checked
-    /// as the server checks a registration, and kept only for a chunk the window holds and
-    /// within a level's 256; the refused ones are logged and returned with their number.
-    pub(in crate::game) fn remote_passage_sync(&mut self, data: &[u8]) -> Vec<(u64, HeldRefusal)> {
-        let message = match sunrise_protocol::passage_sync::decode(data) {
-            Ok(message) => message,
-            Err(e) => {
-                log::debug!("Sunrise: a bad passage sync: {e}");
-                return Vec::new();
-            }
+    /// A guest's crossing that passed the hub's move check (`Hub::passage_leg`), decided
+    /// from the `from` it names (`decide_passage_cross`).
+    pub(in crate::game) fn guest_passage_cross(&mut self, conn: u32, data: &[u8]) {
+        use sunrise_client::lan::hub::passage_cross::crossing_source;
+        use sunrise_protocol::passage_sync::decode_cross;
+
+        let Ok(cross) = decode_cross(data) else {
+            return;
         };
-        let mut refused = Vec::new();
-        match message {
-            Message::Add(forms) => {
-                for f in forms {
-                    if let Err(why) = self.hold_passage(&f) {
-                        log::debug!("Sunrise: passage {} not kept: {why:?}", f.id);
-                        refused.push((f.id, why));
-                    }
-                }
-            }
-            Message::Remove(ids) => {
-                for id in ids {
-                    self.passages.held.remove(&PassageId::from_raw(id));
-                }
-            }
-            Message::Refused { id, reason } => self.remote_passage_refused(id, reason),
+        let id = PassageId::from_raw(cross.id);
+        let Some(gi) = self
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guests.iter().position(|g| g.conn == conn))
+        else {
+            return;
+        };
+        let from = crossing_source(cross.from);
+        let decided = self.decide_passage_cross(gi, id, from);
+        let host = self.lan.as_mut().expect("the guest was found in the hub");
+        match decided {
+            Ok((p, to)) => host
+                .hub
+                .follow_passage(gi, to, passage_yaw_turn(&p), |v| passage_turned(&p, v)),
+            Err(why) => host.hub.refuse_passage(gi, cross.id, why),
         }
-        refused
     }
 
-    pub(in crate::game::server_side) fn hold_passage(
+    fn decide_passage_cross(
         &mut self,
-        f: &PassageForm,
-    ) -> Result<(), HeldRefusal> {
-        let p = passage(f);
-        check(&p).map_err(HeldRefusal::Bad)?;
-        let [x, z] = p.chunk();
-        if !self.world.chunks.contains_key(&(x, z)) {
-            return Err(HeldRefusal::ChunkNotHeld);
+        gi: usize,
+        id: PassageId,
+        from: [f64; 3],
+    ) -> Result<(Passage, [f64; 3]), mod_api::PassageCrossRefusal> {
+        use mod_api::PassageCrossRefusal as Refusal;
+        self.check_passage_cross(gi, id, from)?;
+        let host = self.lan.as_ref().expect("checked");
+        let g = &host.hub.guests[gi];
+        let epoch = self
+            .native_lifecycle
+            .epoch()
+            .ok_or(Refusal::UnknownPassage)?;
+        let player = mod_api::__private::game::player_ref(
+            mod_api::EntityRef::new(epoch, g.entity_id as u32),
+            g.uuid,
+        );
+        let mut cancel = false;
+        let at = Vec3::new(from[0], from[1], from[2]);
+        self.native_player_passage_cross(player, id, at, &mut cancel);
+        if cancel {
+            return Err(Refusal::Vetoed);
         }
-        let held = &mut self.passages.held;
-        let id = PassageId::from_raw(f.id);
-        if !held.contains_key(&id) && held.len() >= MAX_PER_LEVEL as usize {
-            return Err(HeldRefusal::Full);
+        let p = self.check_passage_cross(gi, id, from)?;
+        let to = passage_carried(&p, from);
+        if !self.guest_holds_chunk(gi, passage_chunk_of(to)) {
+            return Err(Refusal::FarEndNotTracked);
         }
-        held.insert(id, p);
-        Ok(())
+        Ok((p, to))
     }
+
+    fn check_passage_cross(
+        &self,
+        gi: usize,
+        id: PassageId,
+        from: [f64; 3],
+    ) -> Result<Passage, mod_api::PassageCrossRefusal> {
+        use mod_api::PassageCrossRefusal as Refusal;
+        use sunrise_client::lan::hub::passage_cross::REACH;
+        let host = self.lan.as_ref().ok_or(Refusal::UnknownPassage)?;
+        let g = &host.hub.guests[gi];
+        if let Some(why) = host.hub.passage_refusal(gi) {
+            return Err(why);
+        }
+        if g.position != from {
+            return Err(Refusal::MoveRefused);
+        }
+        let level = self.level(&g.dimension).ok_or(Refusal::UnknownPassage)?;
+        let p = self
+            .passages
+            .find(level.dimension(), id)
+            .ok_or(Refusal::UnknownPassage)?;
+        if p.destination_level.is_some() {
+            return Err(Refusal::FarLevel);
+        }
+        if !passage_within_reach(&p, from) {
+            return Err(Refusal::TooFar { limit: REACH });
+        }
+        let [cx, cz] = p.chunk();
+        if !self.guest_holds_chunk(gi, (cx, cz)) {
+            return Err(Refusal::NearEndNotTracked);
+        }
+        let d = p.destination;
+        if !self.guest_holds_chunk(gi, passage_chunk_of([d.x, d.y, d.z])) {
+            return Err(Refusal::FarEndNotTracked);
+        }
+        Ok(p)
+    }
+
+    fn guest_holds_chunk(&self, gi: usize, chunk: (i32, i32)) -> bool {
+        let Some(host) = self.lan.as_ref() else {
+            return false;
+        };
+        let g = &host.hub.guests[gi];
+        g.tracks_chunk(&g.dimension, chunk)
+            && g.dimension == self.dim.id()
+            && self.world.chunks.contains_key(&chunk)
+    }
+}
+
+pub(in crate::game) fn passage_carried(p: &Passage, point: [f64; 3]) -> [f64; 3] {
+    let o = p.origin;
+    let d = p.turned(Vec3::new(point[0] - o.x, point[1] - o.y, point[2] - o.z));
+    [
+        p.destination.x + d.x,
+        p.destination.y + d.y,
+        p.destination.z + d.z,
+    ]
+}
+
+pub(in crate::game) fn passage_turned(p: &Passage, [x, y, z]: [f64; 3]) -> [f64; 3] {
+    let v = p.turned(Vec3::new(x, y, z));
+    [v.x, v.y, v.z]
+}
+
+pub(in crate::game) fn passage_yaw_turn(p: &Passage) -> f32 {
+    match p.turn {
+        PassageTurn::Clockwise90 => 90.0,
+        PassageTurn::Clockwise180 => 180.0,
+        PassageTurn::Counterclockwise90 => -90.0,
+        _ => 0.0,
+    }
+}
+
+pub(in crate::game) fn passage_within_reach(p: &Passage, point: [f64; 3]) -> bool {
+    let o = p.origin;
+    let d = [point[0] - o.x, point[1] - o.y, point[2] - o.z];
+    let dot = |a: Vec3| d[0] * a.x + d[1] * a.y + d[2] * a.z;
+    let w = dot(p.axis_w).clamp(-p.width / 2.0, p.width / 2.0);
+    let h = dot(p.axis_h).clamp(-p.height / 2.0, p.height / 2.0);
+    let nearest = [0, 1, 2].map(|k| {
+        let (aw, ah) = (
+            [p.axis_w.x, p.axis_w.y, p.axis_w.z],
+            [p.axis_h.x, p.axis_h.y, p.axis_h.z],
+        );
+        d[k] - aw[k] * w - ah[k] * h
+    });
+    let reach = f64::from(sunrise_client::lan::hub::passage_cross::REACH);
+    nearest.iter().map(|v| v * v).sum::<f64>() <= reach * reach
+}
+
+fn passage_chunk_of(point: [f64; 3]) -> (i32, i32) {
+    (
+        (point[0].floor() as i32) >> 4,
+        (point[2].floor() as i32) >> 4,
+    )
 }
 
 /// The refusal for a passage that is not a rectangle the engine can carry a player through.

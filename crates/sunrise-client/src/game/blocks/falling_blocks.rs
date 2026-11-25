@@ -221,7 +221,7 @@ impl Game<'_> {
                 sunrise_client::motion::BodyCollision {
                     footprint: (f.position, f.bounds()),
                     movement: (wanted, movement),
-                    authoritative: !self.options.execution_role.is_client(),
+                    authoritative: true,
                     context,
                     subject: Some(collisions::PowderSnowSubject {
                         fall_distance: f.fall_distance,
@@ -233,7 +233,7 @@ impl Game<'_> {
             );
         }
         let effect = body.legacy_contact(f.position, &f.ground);
-        if !self.options.execution_role.is_client() && f.ground.on_ground {
+        if f.ground.on_ground {
             self.falling_block_impact(f);
             if f.fall_distance > 0.0 {
                 self.post_landing_event(f.position, f.bounds(), false);
@@ -329,7 +329,7 @@ impl Game<'_> {
         f.fire_ticks = fire;
         // lavaHurt runs on the server alone; `isInvulnerableToBase` reads the
         // saved `Invulnerable`.
-        if in_lava && self.is_logical_server() {
+        if in_lava {
             let vanilla = self.saved_refuses_damage(f.id, "minecraft:lava", false);
             if !self.refuses_lava_hurt(f.id, "minecraft:falling_block", vanilla) {
                 f.sync_velocity = true;
@@ -353,17 +353,14 @@ impl Game<'_> {
         }
         let y = next.y.floor() as i32;
         let outside = y <= self.world.bottom_y() || y >= self.world.top_y();
-        if !self.options.execution_role.is_client()
-            && !f.ground.on_ground
-            && (f.age > 100 && outside || f.age > 600)
-        {
+        if !f.ground.on_ground && (f.age > 100 && outside || f.age > 600) {
             return Ok(if f.drop_item && entity_drops {
                 FallStep::Dropped(next)
             } else {
                 FallStep::Gone
             });
         }
-        if !self.options.execution_role.is_client() && f.ground.on_ground {
+        if f.ground.on_ground {
             let pos = [
                 f.position.x.floor() as i32,
                 f.position.y.floor() as i32,

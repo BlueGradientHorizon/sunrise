@@ -292,7 +292,8 @@ impl Game<'_> {
         if own == Some(owner) {
             let mut hook = Hook::remote(id, at, uuid);
             hook.velocity = velocity;
-            self.install_fishing_hook(hook);
+            self.hook.discard();
+            self.hook.replace(hook);
         } else {
             push_remote_hook(
                 &mut self.client.remote_hooks,
@@ -347,6 +348,108 @@ impl Game<'_> {
             h.lerp.moved(h.position.subtract(before));
         }
         self.client.remote_hooks = hooks;
+    }
+    /// FishingHookRenderer: each line, 16 black `lines` segments sagging
+    /// from a quarter block above the hook to the rod in its owner's hand,
+    /// `width` pixels wide (`Window.getAppropriateLineWidth`).
+    pub(in crate::game) fn fishing_line(&self, alpha: f64, size: [u32; 2]) -> Vec<Line> {
+        let own = self.hook_position(alpha).zip(self.rod_hand_position(alpha));
+        let width = sunrise_client::gfx::outline_width(size[0]);
+        let mut lines = Vec::new();
+        for (hook, hand) in own.into_iter().chain(self.remote_hook_ends(alpha)) {
+            let offset = (hand - (hook + glam::DVec3::new(0.0, 0.25, 0.0))).as_vec3();
+            let point = |a: f32| {
+                let y = offset.y * (a * a + a) * 0.5 + 0.25;
+                hook + glam::Vec3::new(offset.x * a, y, offset.z * a).as_dvec3()
+            };
+            lines.extend((0..16).map(|i| Line {
+                start: point(i as f32 / 16.0).to_array(),
+                end: point((i + 1) as f32 / 16.0).to_array(),
+                color: 0xFF00_0000,
+                width,
+            }));
+        }
+        lines
+    }
+    /// Client-side bobber collision response without server tables or sound/event writes.
+    pub(in crate::game) fn client_move_bobber_response(
+        &mut self,
+        id: u32,
+        position: Vec3,
+        ground: &mut sunrise_world::ground_support::GroundState,
+        wanted: Vec3,
+        moved: Vec3,
+        velocity: &mut Vec3,
+    ) {
+        use sunrise_items::equipment::{BODY, SADDLE};
+        let level = self.native_client_level();
+        let side = crate::game::native_surface::GameSide {
+            dim: self.dim,
+            level,
+            facts: self.res.facts(),
+            biomes: self.res.biomes(),
+            behaviours: self.res.behaviours(),
+            features: match &self.remote {
+                Some(remote) => &remote.features,
+                None => crate::game::tables::default_client_features(),
+            },
+            items: self.res.items(),
+            damage_types: &self.health_resources.damage,
+            player_equipment: [
+                self.inventory[self.selected].as_ref(),
+                self.offhand.as_ref(),
+                self.armor[3].as_ref(),
+                self.armor[2].as_ref(),
+                self.armor[1].as_ref(),
+                self.armor[0].as_ref(),
+                self.equipment.get(BODY),
+                self.equipment.get(SADDLE),
+            ],
+            hit_borrows: crate::game::native_surface::HitBorrows {
+                living_types: self.res.living_type_keys(),
+                attributes: &self.motion.attributes,
+                player_effects: &self.potions.effects,
+                player_uuid: None,
+                player_attachments: &self.player_state.attachments,
+                entity_attachments: &*self.entity_attachments,
+            },
+            tag_items: self.remote.as_ref().and_then(|remote| remote.tags.as_ref()),
+        };
+        let motion = sunrise_client::motion::BodyMotion {
+            world: &self.world,
+            collision: self.collision,
+            facts: self.res.facts(),
+            blocks: Some(&self.res.motion().blocks),
+            context: &self.loop_context,
+            side: Some(&side),
+        };
+        motion.record_move(
+            sunrise_client::motion::BodyCollision {
+                footprint: (position, bounds(position)),
+                movement: (wanted, moved),
+                authoritative: false,
+                context: sunrise_client::motion::BodyMotion::entity_context(id, position),
+                subject: None,
+            },
+            ground,
+        );
+        let effect = motion.legacy_contact(position, ground);
+        let entity = (id, "minecraft:fishing_bobber");
+        let response = motion.restitute(
+            entity,
+            sunrise_client::motion::BodyMove {
+                wanted,
+                moved,
+                effect,
+            },
+            f64::from(0.03_f32),
+            0.98_f32,
+            *velocity,
+            0.0,
+        );
+        *velocity = response.velocity;
+        motion.apply_block_speed(position, velocity);
+        motion.step_on(entity, (position, bounds(position)), ground, velocity);
     }
 }
 

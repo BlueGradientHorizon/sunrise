@@ -233,24 +233,14 @@ impl Game<'_> {
             self.open_quick_actions();
         }
         while self.consume_mapping_click("key.swapOffhand") {
-            if !self.own_player_is_spectator() {
-                if self.remote.is_some() {
-                    self.remote_swap_hands();
-                } else {
-                    self.own_swap_hands();
-                }
+            if !self.own_player_is_spectator() && self.remote.is_some() {
+                self.remote_swap_hands();
             }
         }
         while self.consume_mapping_click("key.drop") {
-            if !self.own_player_is_spectator() {
-                if self.remote.is_some() {
-                    let all = self.has_control_down() || self.input_takes_stack_drop();
-                    self.remote_drop(all);
-                } else {
-                    let all =
-                        drop_whole_stack(self.client.modifiers) || self.input_takes_stack_drop();
-                    self.drop_held_item(all);
-                }
+            if !self.own_player_is_spectator() && self.remote.is_some() {
+                let all = self.has_control_down() || self.input_takes_stack_drop();
+                self.remote_drop(all);
             }
         }
     }
@@ -309,49 +299,6 @@ pub(in crate::game) mod swap_hands_tests {
             *event.to_off_hand = Some(mod_api::ItemStack::new(torch, 1).unwrap());
             Flow::Continue
         }
-    }
-
-    /// The window's own swap contract: a cancel
-    /// keeps both hands, and a listener's stack lands in the off hand.
-    #[test]
-    #[ignore = "daily"]
-    fn the_own_player_swap_asks_the_listener_for_each_hand() {
-        let (cancel, calls) = (
-            Arc::new(AtomicBool::new(true)),
-            Arc::new(AtomicUsize::new(0)),
-        );
-        let torch = Torch(Arc::clone(&cancel), Arc::clone(&calls));
-        let mods: mod_api::Mods = vec![mod_api::ModEntry::new("torch", Box::new(torch))].into();
-        mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
-                let selected = game.selected;
-                game.inventory[selected] = Some(ItemStack::new("minecraft:diamond_sword", 1));
-                game.offhand = None;
-                game.set_mode_id(3);
-                game.own_swap_hands();
-                assert_eq!(calls.load(Ordering::SeqCst), 0);
-                assert_eq!(
-                    game.inventory[selected].as_ref().map(|s| &*s.item),
-                    Some("minecraft:diamond_sword")
-                );
-                assert!(game.offhand.is_none());
-                game.set_mode_id(0);
-                game.own_swap_hands();
-                assert_eq!(
-                    game.inventory[selected].as_ref().map(|s| &*s.item),
-                    Some("minecraft:diamond_sword")
-                );
-                assert!(game.offhand.is_none());
-                cancel.store(false, Ordering::SeqCst);
-                game.own_swap_hands();
-                assert!(game.inventory[selected].is_none());
-                assert_eq!(
-                    game.offhand.as_ref().map(|s| &*s.item),
-                    Some("minecraft:torch")
-                );
-            });
-        });
-        assert_eq!(calls.load(Ordering::SeqCst), 2);
     }
 }
 

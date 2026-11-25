@@ -204,7 +204,6 @@ pub(in crate::game::client_side) fn closed_screen()
 
 impl Game<'_> {
     pub(in crate::game::client_side) fn open_advancements(&mut self, from_pause: bool) {
-        self.load_advancements();
         self.adv_ui.0 = AdvUi {
             cache: self.adv_ui.0.cache.take(),
             tab: self.adv.selected_tab.clone(),

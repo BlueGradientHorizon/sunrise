@@ -26,6 +26,8 @@ use super::Game;
 #[allow(unused_imports)]
 use super::entity::{Entity as _, with_entity, with_entity_mut};
 #[allow(unused_imports)]
+use crate::game::entity_sizes_common::synced_pose;
+#[allow(unused_imports)]
 use mod_api::{EntityRef, Pose};
 #[allow(unused_imports)]
 use sunrise_client::mobs::Mob;
@@ -34,49 +36,7 @@ use sunrise_client::pose::{Dimensions, SizeAnswer};
 #[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Vec3};
 
-/// The pose a client sizes its copy of a server mob by: `Entity.getPose`, the synched
-/// `DATA_POSE` (a player's as the server sent it, not the one its client tick derives), never a
-/// villager's bed position, which moves it without sizing it.
-pub(in crate::game::server_side) fn synced_pose(m: &Mob) -> Pose {
-    match &*m.kind.id {
-        "minecraft:player" => Pose::from_id(i32::from(m.extra.synced_pose)),
-        "minecraft:mannequin" => m.extra.avatar_pose.into(),
-        _ => Pose::from_id(i32::from(m.extra.pose)),
-    }
-}
-
 impl Game<'_> {
-    /// Ask `entity_size` for an entity whose vanilla size in `pose` is `vanilla`, unless
-    /// `previous` was already asked for both. `None`: nothing to ask, keep `previous`.
-    pub(in crate::game::server_side) fn ask_entity_size(
-        &self,
-        id: u32,
-        pose: Pose,
-        vanilla: [f32; 3],
-        previous: Option<SizeAnswer>,
-    ) -> Option<SizeAnswer> {
-        if previous.is_some_and(|answer| answer.asked(pose, vanilla)) {
-            return None;
-        }
-        let entity = EntityRef::new(self.native_lifecycle.epoch()?, id);
-        // `getOldSize`: the size it had (the last answer's, or vanilla's on the first ask).
-        let old = previous.map_or(vanilla, |answer| answer.effective());
-        let mut size = vanilla;
-        self.native_entity_size(entity, pose, old, &mut size);
-        // Bound mod answers once, before collision/pathfinding consume them. 32 blocks
-        // exceeds even the dragon's natural width (16), while capping a path node's
-        // bounding-box scan at 33^3 cells and keeping integer extents representable.
-        // Invalid answers retain vanilla size, just like non-finite answers.
-        let usable = size
-            .iter()
-            .all(|v| v.is_finite() && *v >= 0.0 && *v <= 32.0);
-        Some(SizeAnswer {
-            pose,
-            vanilla,
-            size: (usable && size != vanilla).then_some(size),
-        })
-    }
-
     /// The server's mobs whose pose or size changed since they were last asked.
     pub(in crate::game) fn native_mob_sizes(&mut self) {
         if !mod_api::__private::listened(mod_api::HookId::EntitySize) {
@@ -95,9 +55,7 @@ impl Game<'_> {
     }
 
     /// The server's entities other than mobs whose vanilla size changed since they were last
-    /// asked, or that were never asked (the constructor's call), standing: those of the shared
-    /// entity lists that keep an answer (`Entity::vanilla_dimensions`), then displays, markers
-    /// and interactions (`OtherEntity::vanilla_dimensions`), then end crystals.
+    /// asked, or that were never asked (the constructor's call), standing.
     pub(in crate::game) fn native_entity_sizes(&mut self) {
         if !mod_api::__private::listened(mod_api::HookId::EntitySize) {
             return;
@@ -134,209 +92,6 @@ impl Game<'_> {
             if let Some(answer) = self.ask_entity_size(id, Pose::Standing, vanilla, previous) {
                 self.crystals.update(i, |c| c.size_answer = Some(answer));
             }
-        }
-    }
-
-    /// What the client copy `id`'s size refresh computes now: its pose and vanilla size, with
-    /// the answer it holds. `pose` is a synched pose just received, for a copy that keeps no pose
-    /// of its own (anything but a mob).
-    pub(in crate::game::server_side) fn client_copy_size(
-        &mut self,
-        id: u32,
-        pose: Option<Pose>,
-    ) -> Option<(Pose, [f32; 3], Option<SizeAnswer>)> {
-        if let Some(i) = self.mob_index.find(&self.mobs, id) {
-            let m = &self.mobs[i];
-            let pose = synced_pose(m);
-            return Some((pose, m.vanilla_dims_in(pose), m.size_answer));
-        }
-        let remote = self.remote.as_ref()?;
-        let previous = remote.entities.get(&(id as i32))?.size_answer;
-        let (kind, _) = remote.tracked_entity(id as i32)?;
-        let pose = pose
-            .or(previous.map(|answer| answer.pose))
-            .unwrap_or(Pose::Standing);
-        Some((pose, self.client_object_dimensions(id, kind)?, previous))
-    }
-
-    pub(in crate::game::server_side) fn set_client_copy_size(
-        &mut self,
-        id: u32,
-        answer: SizeAnswer,
-    ) {
-        if let Some(m) = self.mob_index.get_mut(&mut self.mobs, id) {
-            m.size_answer = Some(answer);
-        } else if let Some(row) = self
-            .remote
-            .as_mut()
-            .and_then(|remote| remote.entities.get_mut(&(id as i32)))
-        {
-            row.size_answer = Some(answer);
-        }
-    }
-
-    /// `refreshDimensions` on a client's copy `id` of a server entity: ask `entity_size` when its
-    /// pose or vanilla size changed since it was last asked. A mob's client tick calls it, as
-    /// `LivingEntity.refreshDirtyAttributes` applies a new `minecraft:scale` there and a shulker
-    /// moves its lid there; `pose` as for [`Self::client_copy_size`].
-    pub(in crate::game) fn native_client_copy_size(&mut self, id: u32, pose: Option<Pose>) {
-        if !mod_api::__private::listened(mod_api::HookId::EntitySize) {
-            return;
-        }
-        if let Some((pose, vanilla, previous)) = self.client_copy_size(id, pose)
-            && let Some(answer) = self.ask_entity_size(id, pose, vanilla, previous)
-        {
-            self.set_client_copy_size(id, answer);
-        }
-    }
-
-    /// `EntityEvent.Size` from the constructor of a client's copy `id` of type `kind`, before
-    /// `entity_constructing` and before the copy joins the level: its type's size
-    /// (`EntityType.getDimensions`) standing. Keep it with [`Self::native_constructed_size`]
-    /// once the copy exists.
-    pub(in crate::game) fn native_constructing_size(
-        &self,
-        id: u32,
-        kind: &str,
-    ) -> Option<SizeAnswer> {
-        if !mod_api::__private::listened(mod_api::HookId::EntitySize) {
-            return None;
-        }
-        let vanilla =
-            super::entity_type_rows::entity_type_rows(&self.options.resources).dimensions(kind)?;
-        self.ask_entity_size(id, Pose::Standing, vanilla, None)
-    }
-
-    /// Keep the constructor's answer on the copy it was asked for, now that it exists.
-    pub(in crate::game) fn native_constructed_size(&mut self, id: u32, answer: Option<SizeAnswer>) {
-        if let Some(answer) = answer {
-            self.set_client_copy_size(id, answer);
-        }
-    }
-
-    /// The pose and vanilla size of the client copy `id` before a synched value lands, to tell
-    /// after it whether the value refreshed its dimensions; none without a listener.
-    pub(in crate::game) fn synched_size_key(&mut self, id: u32) -> Option<(Pose, [f32; 3])> {
-        if !mod_api::__private::listened(mod_api::HookId::EntitySize) {
-            return None;
-        }
-        self.client_copy_size(id, None)
-            .map(|(pose, vanilla, _)| (pose, vanilla))
-    }
-
-    /// After a synched value `(index, value)` landed on the client copy `id`:
-    /// `Entity.onSyncedDataUpdated` refreshes the dimensions for `DATA_POSE` (index 6) and for
-    /// the values a kind's size follows, so ask when the pose or the vanilla size moved from
-    /// `before` ([`Self::synched_size_key`]). A new `minecraft:scale` waits for the copy's tick.
-    pub(in crate::game) fn native_synched_size(
-        &mut self,
-        id: u32,
-        before: Option<(Pose, [f32; 3])>,
-        index: u8,
-        value: &sunrise_protocol::entity_data::Value,
-    ) {
-        let Some(before) = before else {
-            return;
-        };
-        let pose = match (index, value) {
-            // `Pose.STREAM_CODEC`: an unknown id is standing, as `from_id` reads it.
-            (6, sunrise_protocol::entity_data::Value::Id(pose)) => Some(Pose::from_id(*pose)),
-            _ => None,
-        };
-        if self
-            .client_copy_size(id, pose)
-            .is_some_and(|(pose, vanilla, _)| (pose, vanilla) != before)
-        {
-            self.native_client_copy_size(id, pose);
-        }
-    }
-
-    /// A body's pose or size changed since it was last asked: ask, and size it by the answer.
-    pub(in crate::game::server_side) fn ask_body_size(
-        &self,
-        id: u32,
-        body: &sunrise_client::motion::PlayerMotion,
-    ) -> Option<SizeAnswer> {
-        let vanilla = body.pose.dimensions(body.scale).to_array();
-        body.pose_fit_sizes
-            .iter()
-            .flatten()
-            .copied()
-            .find(|answer| answer.asked(body.pose.into(), vanilla))
-            .or_else(|| self.ask_entity_size(id, body.pose.into(), vanilla, body.size_answer))
-    }
-
-    /// Snapshot only the three candidate boxes the shared pose fit test asks about.
-    pub(in crate::game::server_side) fn body_fit_sizes(
-        &self,
-        id: u32,
-        body: &sunrise_client::motion::PlayerMotion,
-        previous: Option<SizeAnswer>,
-    ) -> [Option<SizeAnswer>; 3] {
-        if !mod_api::__private::listened(mod_api::HookId::EntitySize) {
-            return [None; 3];
-        }
-        let Ok(scale) = body.attributes.computed_value_of("minecraft:scale") else {
-            return [None; 3];
-        };
-        use sunrise_client::pose::Pose as MotionPose;
-        [
-            MotionPose::Standing,
-            MotionPose::Crouching,
-            MotionPose::Swimming,
-        ]
-        .map(|pose| {
-            let vanilla = pose.dimensions(scale as f32).to_array();
-            self.ask_entity_size(id, pose.into(), vanilla, previous)
-                .or_else(|| previous.filter(|answer| answer.asked(pose.into(), vanilla)))
-        })
-    }
-
-    /// Resolve candidate sizes with the read Host before borrowing the body for motion.
-    pub(in crate::game) fn native_local_player_fit_sizes(&mut self) {
-        if !mod_api::__private::listened(mod_api::HookId::EntitySize) {
-            return;
-        }
-        let Some(id) = self.remote.as_ref().map(|remote| remote.entity_id as u32) else {
-            return;
-        };
-        let Some(answers) = self
-            .player
-            .as_ref()
-            .map(|body| self.body_fit_sizes(id, body, body.size_answer))
-        else {
-            return;
-        };
-        if let Some(body) = self.player.as_mut() {
-            body.pose_fit_sizes = answers;
-        }
-    }
-
-    pub(in crate::game::server_side) fn apply_body_size(
-        body: &mut sunrise_client::motion::PlayerMotion,
-        answer: SizeAnswer,
-    ) {
-        body.size_answer = Some(answer);
-        body.dimensions = Dimensions::from_array(answer.effective());
-    }
-
-    /// The client's own body, after its tick (`LocalPlayer.tick` set its pose).
-    pub(in crate::game) fn native_local_player_size(&mut self) {
-        if !mod_api::__private::listened(mod_api::HookId::EntitySize) {
-            return;
-        }
-        let Some(id) = self.remote.as_ref().map(|remote| remote.entity_id as u32) else {
-            return;
-        };
-        let Some(answer) = self
-            .player
-            .as_ref()
-            .and_then(|body| self.ask_body_size(id, body))
-        else {
-            return;
-        };
-        if let Some(body) = self.player.as_mut() {
-            Self::apply_body_size(body, answer);
         }
     }
 

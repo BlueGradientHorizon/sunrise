@@ -503,15 +503,6 @@ impl Game<'_> {
         }
         pushes
     }
-    /// Copies the shulker box lids into the world, where the collision queries
-    /// read them (`SceneCollisions::shulker_collision_state`), as
-    /// `sync_moving_pistons` does for pistons.
-    pub(in crate::game) fn sync_shulkers(&mut self) {
-        self.world.shulkers.clear();
-        self.world
-            .shulkers
-            .extend(self.be_anims.shulkers.iter().map(|(p, s)| (*p, s.clone())));
-    }
     /// Single-position read without copying the pending-entity set.
     pub(in crate::game) fn block_ticking_at(&self, x: i32, z: i32) -> bool {
         block_ticking_at(&self.tickets.0.levels(), &self.world.entities_pending, x, z)
@@ -715,7 +706,7 @@ pub(in crate::game) mod add_blocks_tests {
                     .join(format!("sunrise-add-blocks-{}-{case}", std::process::id()));
                 std::fs::create_dir_all(&scratch).unwrap();
                 let mut child = std::process::Command::new(std::env::current_exe().unwrap());
-                child.args(["--ignored", "--exact", "game::block_entity_ticks::add_blocks_tests::vanilla_template_membership_creates_ticks_and_saves", "--nocapture"])
+                child.args(["--ignored", "--exact", "game::server_side::block_entity_ticks::add_blocks_tests::vanilla_template_membership_creates_ticks_and_saves", "--nocapture"])
                     .current_dir(&scratch).env(FLAG, case).env("SUNRISE_NO_AUDIO", "1").env("SUNRISE_LAUNCHER_NO_SELF_UPDATE", "1");
                 for key in [
                     "SUNRISE_HOME",
@@ -1014,7 +1005,7 @@ pub(in crate::game) mod furnace_changed_tests {
     #[ignore = "daily"]
     fn a_refuel_while_lit_marks_the_chunk() {
         if run_fresh_cases(
-            "game::block_entity_ticks::furnace_changed_tests::a_refuel_while_lit_marks_the_chunk",
+            "game::server_side::block_entity_ticks::furnace_changed_tests::a_refuel_while_lit_marks_the_chunk",
             "SUNRISE_FURNACE_CHANGED_CASE",
             &["refuel"],
         ) {
@@ -1083,7 +1074,7 @@ pub(in crate::game) mod furnace_changed_tests {
     #[ignore = "daily"]
     fn a_nonpositive_fuel_does_not_mark_or_notify_before_a_real_ignition() {
         if run_fresh_cases(
-            "game::block_entity_ticks::furnace_changed_tests::a_nonpositive_fuel_does_not_mark_or_notify_before_a_real_ignition",
+            "game::server_side::block_entity_ticks::furnace_changed_tests::a_nonpositive_fuel_does_not_mark_or_notify_before_a_real_ignition",
             "SUNRISE_FURNACE_CHANGED_CASE",
             &["nonpositive"],
         ) {
@@ -1162,7 +1153,7 @@ pub(in crate::game) mod furnace_changed_tests {
         use sunrise_client::item_data::parse_stack;
 
         if run_fresh_cases(
-            "game::block_entity_ticks::furnace_changed_tests::a_world_pack_supplies_and_replaces_furnace_providers",
+            "game::server_side::block_entity_ticks::furnace_changed_tests::a_world_pack_supplies_and_replaces_furnace_providers",
             "SUNRISE_WORLD_FURNACE_PROVIDERS",
             &["enabled"],
         ) {
@@ -1469,7 +1460,7 @@ pub(in crate::game) mod slot_mutation_tests {
     #[ignore = "daily"]
     fn an_added_entity_ticks_from_the_next_pass() {
         crate::game::in_own_process(
-            "game::block_entity_ticks::slot_mutation_tests::an_added_entity_ticks_from_the_next_pass",
+            "game::server_side::block_entity_ticks::slot_mutation_tests::an_added_entity_ticks_from_the_next_pass",
             || {
                 with_blocks(
                     &[(A, "minecraft:spawner"), (B, "minecraft:spawner")],
@@ -1751,7 +1742,7 @@ pub(in crate::game) mod own_block_entity_tests {
     fn each_slot_counts_only_its_own_mods_block_entities() {
         // The content root freezes the process's block entity types.
         if run_fresh_cases(
-            "game::block_entity_ticks::own_block_entity_tests::each_slot_counts_only_its_own_mods_block_entities",
+            "game::server_side::block_entity_ticks::own_block_entity_tests::each_slot_counts_only_its_own_mods_block_entities",
             "SUNRISE_OWN_BLOCK_ENTITIES_CHILD",
             &["run"],
         ) {
@@ -1798,7 +1789,7 @@ pub(in crate::game) mod own_block_entity_tests {
     fn a_mods_block_entity_on_a_vanilla_block_is_only_its_own_mods() {
         // The content root freezes the process's block entity types.
         if run_fresh_cases(
-            "game::block_entity_ticks::own_block_entity_tests::a_mods_block_entity_on_a_vanilla_block_is_only_its_own_mods",
+            "game::server_side::block_entity_ticks::own_block_entity_tests::a_mods_block_entity_on_a_vanilla_block_is_only_its_own_mods",
             "SUNRISE_OWN_BLOCK_ENTITIES_CHILD",
             &["run"],
         ) {
@@ -1916,7 +1907,7 @@ pub(in crate::game) mod own_block_entity_tests {
     fn an_entity_replaced_by_another_mods_type_does_not_tick_as_the_old_one() {
         // The content root freezes the process's block entity types.
         if run_fresh_cases(
-            "game::block_entity_ticks::own_block_entity_tests::an_entity_replaced_by_another_mods_type_does_not_tick_as_the_old_one",
+            "game::server_side::block_entity_ticks::own_block_entity_tests::an_entity_replaced_by_another_mods_type_does_not_tick_as_the_old_one",
             "SUNRISE_OWN_BLOCK_ENTITIES_CHILD",
             &["run"],
         ) {

@@ -497,55 +497,6 @@ impl Game<'_> {
         self.sync_score_registries();
         true
     }
-
-    /// What this client has been sent of the scoreboard; None outside a logged-in client world.
-    /// A text the API cannot hold refuses the whole snapshot by name.
-    pub(in crate::game) fn client_scoreboard(
-        &self,
-    ) -> Result<Option<ClientScoreboard>, TextFormError> {
-        if self.native_session().is_none() {
-            return Ok(None);
-        }
-        let board = &self.score.board;
-        let mut objectives = Vec::new();
-        for o in &board.objectives {
-            let slots = DisplaySlot::all()
-                .filter(|slot| board.display.get(&slot.name()) == Some(&o.name))
-                .collect();
-            let mut scores = Vec::new();
-            for entry in board.list_scores(&o.name) {
-                scores.push(ClientScore::new(
-                    entry.owner,
-                    entry.value,
-                    entry
-                        .display
-                        .as_ref()
-                        .map(|d| api_text(&comp_text(d)))
-                        .transpose()?,
-                    entry
-                        .number_format
-                        .as_ref()
-                        .map(api_number_format)
-                        .transpose()?,
-                ));
-            }
-            objectives.push(ClientObjective::new(
-                o.name.clone(),
-                api_text(&o.display_text())?,
-                api_render_type(o.render_type),
-                o.number_format
-                    .as_ref()
-                    .map(api_number_format)
-                    .transpose()?,
-                slots,
-                scores,
-            ));
-        }
-        Ok(Some(ClientScoreboard::new(
-            objectives,
-            self.client_teams()?,
-        )))
-    }
 }
 
 #[cfg(test)]

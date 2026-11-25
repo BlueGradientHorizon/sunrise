@@ -74,6 +74,9 @@ pub(in crate::game) struct Rope {
 }
 
 impl Game<'_> {
+    pub(in crate::game::server_side) fn lead_sound(&mut self, sound: &str, at: [f64; 3]) {
+        self.server_play_sound(&format!("minecraft:item.lead.{sound}"), at, 1.0, 1.0);
+    }
     /// The fences the live leads of the level in place hang on, mobs first,
     /// each once.
     pub(in crate::game::server_side) fn lead_fences(&self) -> Vec<[i32; 3]> {

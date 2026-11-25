@@ -120,7 +120,7 @@ impl Game<'_> {
             Species::Sheep if !act => {
                 item == "minecraft:shears" || self.sheep_would_take_dye(i, hand)
             }
-            Species::Sheep => item == "minecraft:shears" || self.interact_sheep_dye(i, hand, true),
+            Species::Sheep => item == "minecraft:shears" || self.client_interact_sheep_dye(i, hand),
             // SnowGolem.mobInteract: shears take the pumpkin off.
             Species::SnowGolem => item == "minecraft:shears" && !m.extra.sheared,
             // AbstractNautilus.mobInteract: an untamed adult only answers its

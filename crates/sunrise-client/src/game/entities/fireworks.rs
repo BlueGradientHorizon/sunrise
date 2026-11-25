@@ -419,52 +419,6 @@ impl Game<'_> {
     /// A rocket built from `own`, the rocket's own random (`Entity.random`): the
     /// UUID, the motion and the lifetime draw from it in that order, and a rocket
     /// that is then shot (`Projectile.shoot`) goes on drawing from the same one.
-    pub(in crate::game) fn new_rocket(
-        &mut self,
-        at: Vec3,
-        stack: &ItemStack,
-        attached: bool,
-        own: &mut sunrise_core::random::LegacyRandom,
-    ) -> Rocket {
-        let (flight, explosions) = fireworks_of(stack);
-        // Entity.<init>: the id comes from the one counter at construction, the UUID
-        // from the random's first two longs.
-        let id = self.take_entity_id();
-        self.persist
-            .uuids
-            .insert(id, sunrise_client::save::insecure_uuid(own));
-        let (velocity, lifetime) = rocket_draws(own, flight);
-        Rocket {
-            size_answer: None,
-            attachment_lifetime: Default::default(),
-            rotation: [0.0, 0.0],
-            join: Default::default(),
-            id,
-            position: at,
-            previous: at,
-            velocity,
-            life: 0,
-            lifetime,
-            explosions: explosions.into(),
-            attached,
-            guest: None,
-            owner: None,
-            owner_uuid: None,
-            left_owner: false,
-            last_deflected_by: None,
-            attached_to: None,
-            angled: false,
-            item: Arc::new(stack.clone()),
-            random: own.clone(),
-            ground: Default::default(),
-            has_been_shot: false,
-            silent: false,
-            fall_distance: 0.0,
-            stuck: Vec3::ZERO,
-            was_touching_water: false,
-            first_tick: true,
-        }
-    }
     /// `Entity.getHandHoldingItemAngle(Items.FIREWORK_ROCKET)` for the local
     /// player: half a block out towards the hand holding the rocket while
     /// gliding, zero otherwise. A rocket only in the offhand is in the arm

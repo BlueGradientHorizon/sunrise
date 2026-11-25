@@ -26,89 +26,6 @@ pub(in crate::game) fn faces_camera(corners: &[glam::DVec3; 4], normal: glam::DV
 }
 
 impl Game<'_> {
-    /// `HangingEntity.survives`: no block collision in the box, solid blocks
-    /// (or diodes) behind it and no conflicting hanging entity overlapping it.
-    pub(in crate::game::server_side) fn painting_survives(&self, p: &Painting) -> bool {
-        let (lo, hi) = p.bounds();
-        let bounds = Aabb::new(
-            Vec3::new(lo[0], lo[1], lo[2]),
-            Vec3::new(hi[0], hi[1], hi[2]),
-        );
-        let mut scene = sunrise_client::collisions::SceneCollisions {
-            world: &self.world,
-            binding: self.collision,
-            subject: None,
-        };
-        if !scene.unobstructed(bounds).unwrap_or(false) {
-            return false;
-        }
-        // calculateSupportBox: moved half a block into the wall, deflated.
-        let s = p.step().map(f64::from);
-        let (slo, shi) = (
-            std::array::from_fn::<f64, 3, _>(|i| lo[i] - s[i] * 0.5 + 1.0e-7),
-            std::array::from_fn::<f64, 3, _>(|i| hi[i] - s[i] * 0.5 - 1.0e-7),
-        );
-        for x in slo[0].floor() as i32..=shi[0].floor() as i32 {
-            for y in slo[1].floor() as i32..=shi[1].floor() as i32 {
-                for z in slo[2].floor() as i32..=shi[2].floor() as i32 {
-                    let f = self.res.facts().get(self.world.block(x, y, z));
-                    if !(f.legacy_solid || f.has_class("DiodeBlock")) {
-                        return false;
-                    }
-                }
-            }
-        }
-        painting_coexists(p, &self.paintings, &self.item_frames)
-    }
-    /// `HangingEntityItem.useOn` on a client level: SUCCESS once
-    /// `Painting.create` finds a surviving variant (and the stack's
-    /// `painting/variant`, if any, also survives). The random pick and
-    /// spawn are the server's.
-    pub(in crate::game) fn painting_fits(&self, hit: &Hit, stack: &ItemStack) -> bool {
-        if &*stack.item != "minecraft:painting" {
-            return false;
-        }
-        let Some(facing) = painting_facing(hit.face) else {
-            return false;
-        };
-        let pos = [
-            hit.pos[0] + hit.face[0],
-            hit.pos[1],
-            hit.pos[2] + hit.face[2],
-        ];
-        let mut candidate = Painting {
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
-            id: self.server.next_entity.wrapping_add(1),
-            pos,
-            facing,
-            variant: Arc::from(""),
-            asset: None,
-            width: 1,
-            height: 1,
-            check_interval: 0,
-            ticks: 0,
-        };
-        let mut any = false;
-        for id in &self.painting_variants.placeable {
-            let Some(v) = self.painting_variants.get(id) else {
-                continue;
-            };
-            (candidate.width, candidate.height) = (v.width, v.height);
-            if self.painting_survives(&candidate) {
-                any = true;
-                break;
-            }
-        }
-        if !any {
-            return false;
-        }
-        if let Some(v) = self.painting_variants.of_stack(stack).cloned() {
-            (candidate.variant, candidate.width, candidate.height) = (v.id, v.width, v.height);
-            return self.painting_survives(&candidate);
-        }
-        true
-    }
     /// `HangingEntityItem.useOn` for a painting against `hit`'s face.
     pub(in crate::game::server_side) fn place_painting(
         &mut self,
@@ -271,6 +188,32 @@ impl Game<'_> {
         };
         self.drop_painting(p, at, false);
         true
+    }
+    /// `Painting.dropItem`: break sound, then item unless drops off or creative.
+    pub(in crate::game) fn drop_painting(&mut self, p: Painting, at: [f64; 3], creative: bool) {
+        if !self
+            .ui
+            .rules
+            .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS)
+        {
+            return;
+        }
+        self.server_play_sound("minecraft:entity.painting.break", at, 1.0, 1.0);
+        if creative {
+            return;
+        }
+        let stack = ItemStack {
+            item: Arc::from("minecraft:painting"),
+            count: 1,
+            damage: 0,
+            extra: None,
+        };
+        self.spawn_item(
+            stack,
+            super::frames::hanging_drop_position(at, p.step()),
+            [0.0; 3],
+            10,
+        );
     }
     /// The removal `kill` and `discard` share: the mod hook, the entity, its
     /// chunk's save mark and the centre of its box.

@@ -41,36 +41,32 @@ impl Game<'_> {
     /// The content tables the world plays with: its data packs' over the
     /// game's own when it has packs, `Resources.rest`'s own otherwise.
     pub(in crate::game) fn items(&self) -> &Items {
-        world_items!(self)
+        self.server_items
+            .as_deref()
+            .or_else(|| self.side_world_tables().map(|t| t.items.as_ref()))
+            .unwrap_or_else(|| self.res.items())
     }
 
     /// The level's suffocation rules, for its mobs and its players.
     pub(in crate::game) fn level_suffocation(
         &self,
     ) -> &sunrise_world::suffocation::SuffocationRegistry<'static> {
-        level_suffocation_of(&self.world_tables.0, &self.res)
+        self.side_world_tables()
+            .map_or_else(|| self.res.suffocation(), |t| &t.suffocation)
     }
 
     pub(in crate::game) fn recipes(&self) -> &Recipes {
-        if self.is_logical_server() {
-            match &self.world_tables.0 {
-                Some(t) => &t.recipes,
-                None => self.res.recipes(),
-            }
-        } else {
-            self.synced_recipes().unwrap_or_else(|| self.res.recipes())
-        }
+        self.side_recipes()
     }
 
     pub(in crate::game) fn active_providers(&self) -> &Providers {
-        self.world_tables
-            .0
-            .as_ref()
+        self.side_world_tables()
             .map_or_else(|| self.res.providers(), |t| &t.providers)
     }
 
     pub(in crate::game) fn stations(&self) -> &sunrise_client::stations::StationData {
-        world_stations!(self)
+        self.side_world_tables()
+            .map_or_else(|| self.res.stations(), |t| &t.stations)
     }
 }
 

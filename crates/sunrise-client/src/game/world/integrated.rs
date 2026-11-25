@@ -563,6 +563,7 @@ impl Game<'_> {
     ) -> Result<()> {
         let mut next = Instant::now();
         let mut was_paused = false;
+        let mut smoothed_tick_ms = 0.0f32;
         let mut failure = None;
         while !flags.stop.load(Ordering::Relaxed) {
             self.run_tasks();
@@ -601,15 +602,16 @@ impl Game<'_> {
                         // MinecraftServer.tickServer's tick times, for /tick query.
                         self.clock.record(started.elapsed());
                         // Parallel Tick's Auto decides here, between ticks, how the next one runs.
+                        let elapsed_ms = started.elapsed().as_secs_f32() * 1000.0;
                         let on_cpu = sunrise_client::spans::thread_cpu().zip(cpu);
                         sunrise_client::parallel::after_tick(
-                            started.elapsed().as_secs_f32() * 1000.0,
+                            elapsed_ms,
                             on_cpu.map(|(end, start)| (end - start).as_secs_f32() * 1000.0),
                         );
-                        flags.smoothed_tick_ms.store(
-                            self.integrated_tick_loop_client(started).to_bits(),
-                            Ordering::Relaxed,
-                        );
+                        smoothed_tick_ms = smoothed_tick_ms * 0.8 + elapsed_ms * 0.2;
+                        flags
+                            .smoothed_tick_ms
+                            .store(smoothed_tick_ms.to_bits(), Ordering::Relaxed);
                         if let (Some(terrain), Ok(mut terrains)) =
                             (self.end.locator(), flags.terrain.lock())
                         {
@@ -949,6 +951,42 @@ impl Game<'_> {
         (out, outcome)
     }
 
+    /// Run `f` inside the placed single-player owner guest's turn and dimension.
+    pub(in crate::game::server_side) fn in_owner_guest_turn<T>(
+        &mut self,
+        f: impl FnOnce(&mut Self) -> T,
+    ) -> std::result::Result<T, String> {
+        let owner = self
+            .serving
+            .as_ref()
+            .ok_or_else(|| "no integrated server owner".to_owned())?
+            .owner;
+        let host = self
+            .lan
+            .as_ref()
+            .ok_or_else(|| "no active integrated server host".to_owned())?;
+        let guest = host
+            .hub
+            .guests
+            .iter()
+            .find(|g| g.uuid == owner && g.placed)
+            .ok_or_else(|| "owner player is not present in the world".to_owned())?;
+        let conn = guest.conn;
+        let (back, theirs) = (self.dim, super::Dim::from_id(&guest.dimension));
+        if theirs != back {
+            self.enter_level(theirs).map_err(|e| e.to_string())?;
+        }
+        let out = self
+            .with_guest_swap(conn, back, f)
+            .ok_or_else(|| "owner player guest turn unavailable".to_owned());
+        if theirs != back
+            && let Err(e) = self.enter_level(back)
+        {
+            log::error!("could not reopen {}: {e}", back.id());
+        }
+        out
+    }
+
     /// Run `f` with the owner's level in place (the server holds one per
     /// dimension), then put back the level that was.
     pub(in crate::game::server_side) fn in_owner_level<T>(
@@ -1228,81 +1266,37 @@ pub(in crate::game) enum ComponentHarness {
         std::path::PathBuf,
         Arc<Mutex<Vec<(usize, serde_json::Value)>>>,
     ),
-    /// Server-role particle refusal checks for `SUNRISE_NATIVE_CLIENT_PARTICLES_FIXTURE`.
-    NativeClientParticlesRefusal,
 }
 
-impl Game<'_> {
-    pub(in crate::game) fn run_component_harness(&self, fixture: ComponentHarness) -> Result<()> {
-        let (res, pack, settings) = (self.res.clone(), self.pack.clone(), self.settings.clone());
-        let mut options = self.options.clone();
-        options.execution_role = ExecutionRole::IntegratedServer;
-        options.dedicated = Some(Vec::new());
-        let result = std::thread::Builder::new()
-            .name(sunrise_client::crash::INTEGRATED_SERVER_THREAD.into())
-            .stack_size(server_thread_stack())
-            .spawn(move || {
-                let run = || -> Result<()> {
-                    let (dedicated_pack, dedicated_settings) = match &fixture {
-                        ComponentHarness::NativeClientParticlesRefusal => {
-                            (Some(pack.clone()), Some(settings.clone()))
-                        }
-                        _ => (None, None),
-                    };
-                    let mut dedicated_options = options.clone();
-                    dedicated_options.execution_role = ExecutionRole::DedicatedServer;
-                    let mut server = server_game(&res, pack, options, settings)?;
-                    match fixture {
-                        ComponentHarness::Dispenser(spec) => server.dispense_fixture(&spec),
-                        ComponentHarness::Sculk(spec) => server.sculk_fixture(&spec),
-                        ComponentHarness::HotPaths(output) => server.hot_paths(&output),
-                        ComponentHarness::BoatAuthorityAttacks(dir, out) => {
-                            server.run_boat_authority_attacks(&dir, &out)
-                        }
-                        ComponentHarness::NativeClientParticlesRefusal => {
-                            use crate::game::api_values::TryIntoApi;
-                            use mod_api::ClientHost;
-                            let at = [0.0, 100.0, 0.0];
-                            let smoke = sunrise_client::particles::ParticleOptions::simple(
-                                sunrise_client::particles::ParticleType::Smoke,
-                            );
-                            let api_smoke = smoke
-                                .try_into_api()
-                                .map_err(|_| "failed to convert smoke particle options")?;
-                            let check = |game: &mut Game<'_>| -> Result<()> {
-                                game.particles.0.requested = Some(Vec::new());
-                                game.player = Some(sunrise_client::motion::PlayerMotion::new(
-                                    game.motion,
-                                    sunrise_core::geometry::Vec3::new(0.0, 100.0, 0.0),
-                                )?);
-                                let host: &mut dyn ClientHost = game;
-                                assert!(
-                                    !host.add_particle(&api_smoke, at, [0.0; 3]),
-                                    "servers cannot spawn client particles"
-                                );
-                                assert!(
-                                    game.particles.0.requested.take().unwrap().is_empty(),
-                                    "server refusal must not touch particle queue"
-                                );
-                                Ok(())
-                            };
-                            check(&mut server)?;
-                            let mut dedicated = server_game(
-                                &res,
-                                dedicated_pack.unwrap(),
-                                dedicated_options,
-                                dedicated_settings.unwrap(),
-                            )?;
-                            check(&mut dedicated)
-                        }
+pub(in crate::game) fn run_component_harness_on_server(
+    res: Arc<Resources>,
+    pack: PackResources,
+    mut options: Options,
+    settings: Settings,
+    fixture: ComponentHarness,
+) -> Result<()> {
+    options.execution_role = ExecutionRole::IntegratedServer;
+    options.dedicated = Some(Vec::new());
+    let result = std::thread::Builder::new()
+        .name(sunrise_client::crash::INTEGRATED_SERVER_THREAD.into())
+        .stack_size(server_thread_stack())
+        .spawn(move || {
+            let run = || -> Result<()> {
+                let mut server = server_game(&res, pack, options, settings)?;
+                match fixture {
+                    ComponentHarness::Dispenser(spec) => server.dispense_fixture(&spec),
+                    ComponentHarness::Sculk(spec) => server.sculk_fixture(&spec),
+                    ComponentHarness::HotPaths(output) => server.hot_paths(&output),
+                    ComponentHarness::BoatAuthorityAttacks(dir, out) => {
+                        server.run_boat_authority_attacks(&dir, &out)
                     }
-                };
-                run().map_err(|e| e.to_string())
-            })?
-            .join()
-            .map_err(|_| "the component harness server panicked")?;
-        result.map_err(Into::into)
-    }
+                }
+            };
+            run().map_err(|e| e.to_string())
+        })?
+        .join()
+        .map_err(|_| "the component harness server panicked")?;
+    result.map_err(Into::into)
 }
 
 pub(in crate::game::server_side) fn server_game(
@@ -1324,31 +1318,6 @@ pub(in crate::game::server_side) fn server_game(
 /// player data (vanilla always authenticates LAN guests, so there it can't happen).
 pub(in crate::game::server_side) fn refused(owner: bool, published: bool, memory: bool) -> bool {
     if owner { !memory } else { !published }
-}
-
-impl Game<'_> {
-    /// The server thread has already delivered its report: written to disk, or printed
-    /// when it couldn't be written. The flag is set either way, since a dead server must
-    /// not keep the game open. Join through the normal halt path, so a tick-loop crash
-    /// finishes the server's own stop and save first, then exit without returning an
-    /// error that would create another report. A panic inside a posted task happens
-    /// outside the tick loop's catch, so the join doesn't promise a save there.
-    pub(in crate::game) fn exit_after_server_crash(&mut self) {
-        if !sunrise_client::crash::server_crashed() {
-            return;
-        }
-        // A crash while the world is still loading leaves the server in `integrated_starting`.
-        let starting = self
-            .integrated_starting
-            .take()
-            .map(|starting| starting.handle);
-        for mut server in self.integrated.take().into_iter().chain(starting) {
-            if let Err(error) = server.halt() {
-                log::error!("Sunrise: crashed integrated server: {error}");
-            }
-        }
-        std::process::exit(101);
-    }
 }
 
 #[cfg(test)]

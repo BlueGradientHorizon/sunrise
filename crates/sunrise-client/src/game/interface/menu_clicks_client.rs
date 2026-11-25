@@ -4,6 +4,65 @@ pub(in crate::game::client_side) use super::*;
 pub(in crate::game::client_side) use crate::game::menu_clicks::*;
 
 impl Game<'_> {
+    /// `quickMoveStack` of the open plain menu for a shift-click.
+    #[allow(dead_code)]
+    pub(in crate::game) fn inventory_quick_move(&mut self, slot: usize) -> bool {
+        self.click_open_inventory(Some(slot), 0, sunrise_client::menu::Input::QuickMove)
+    }
+    /// The open menu as the verified engine (`sunrise_client::menu`): the
+    /// game's slots are copied in, `run` acts on it, and the slots, carried
+    /// stack, menu data and drops are copied back when it returns Some(true)
+    /// (Some(false): handled, nothing kept; None: not handled). False when the
+    /// open screen is not one the engine models or `run` did not handle it.
+    pub(in crate::game) fn menu_session(
+        &mut self,
+        run: impl FnOnce(
+            &mut sunrise_client::menu::Menu,
+            &sunrise_client::menu::Env,
+            &dyn Fn(usize) -> Option<usize>,
+        ) -> Option<bool>,
+    ) -> bool {
+        self.menu_session_with_game(|_, menu, env, to_menu| run(menu, env, to_menu))
+    }
+    /// A sound a menu click made the player play (a bundle's insert or
+    /// remove): `Entity.playSound` at the player.
+    pub(in crate::game) fn player_menu_sound(&mut self, sound: &str) {
+        if self.player.is_none() {
+            return;
+        }
+        let (volume, pitch) = if sound == sunrise_client::bundle::INSERT_FAIL {
+            (1.0, 1.0)
+        } else {
+            (0.8, 0.8 + self.world.random.next_float() * 0.4)
+        };
+        self.play_client_player_sound(sound, volume, pitch);
+    }
+    pub(in crate::game) fn creative_throw_carrying(&mut self, slot: usize, button: i32) {
+        let Some(old) = self
+            .slot_mut(slot)
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .cloned()
+        else {
+            return;
+        };
+        let count = if button == 0 {
+            1
+        } else if self.creative_inventory_open() {
+            let max = self.items().get(&old.item).map_or(64, |i| i.max_stack);
+            old.count.min(max)
+        } else {
+            old.count
+        };
+        let left = old.count - count;
+        *self.slot_mut(slot) = (left > 0).then(|| ItemStack {
+            count: left,
+            ..old.clone()
+        });
+        self.apply_equipment();
+        self.creative_screen_drop(ItemStack { count, ..old });
+        self.send_creative_slots();
+    }
     /// Like `menu_session_with_game` for a server's open anvil menu, releasing `Env` between
     /// steps so `run` can dispatch live `anvil_update` hooks at every `AnvilMenu.createResult`
     /// without re-running `station_changed` once at the end.
@@ -600,67 +659,27 @@ impl Game<'_> {
             _ => None,
         };
         // The merchant's session, lent to the menu for this click.
-        let mut session = self
+        let session = self
             .station
             .as_ref()
             .and_then(|s| s.merchant.as_ref())
-            .map(|m| (m.session.clone(), m.mob));
-        if let Some((s, mob)) = session.as_mut() {
-            Self::merchant_sync_in(s, mob.and_then(|id| self.mobs.iter().find(|m| m.id == id)));
-        }
-        // Crafting and cartography read and derive the level's maps on the server.
-        let level_maps = (matches!(kind, Kind::Cartography | Kind::Crafting | Kind::Inventory)
-            && self.is_logical_server())
-        .then(|| {
-            before
-                .iter()
-                .flatten()
-                .chain(self.inventory.iter().flatten())
-                .chain(self.carried.iter())
-                .cloned()
-                .collect::<Vec<_>>()
-        })
-        .filter(|held| {
-            kind == Kind::Cartography
-                || held
-                    .iter()
-                    .filter_map(maps::map_id)
-                    .any(|id| self.map(id).is_some())
-        })
-        .map(|held| self.level_maps(&held));
-        let next_map = if merchant_open { self.peek_map_id() } else { 0 };
-        let tag = |t: &str| self.structure_tag(t);
-        let maps = trading::GameMaps {
-            terrain: self.end.locator(),
-            structure_tag: &tag,
-            made: Default::default(),
-            next_id: std::cell::Cell::new(next_map),
-        };
-        let trade_env = sunrise_client::merchant::TradeEnv {
-            trades: &self.stations().trades,
-            enchantments: self.item_enchantments(),
-            maps: Some(&maps),
-        };
+            .map(|m| m.session.clone());
         let menu_can_equip = self.menu_can_equip();
         let env = Env {
             enchantments: self.item_enchantments(),
-            trade: Some(&trade_env),
-            maps: level_maps.as_ref().map(|m| m as _),
+            trade: None,
+            maps: None,
             can_equip: Some(&menu_can_equip),
             ..self.menu_env()
         };
         menu.creative = creative;
         // A client predicts with the server's crafting result, never its own.
-        menu.on_client = !self.is_logical_server();
+        menu.on_client = true;
         menu.selected = self.selected;
         menu.levels = self.experience.level;
         if anvil_open {
             // The rename box as AnvilScreen.onNameChanged gives it to the menu.
-            menu.anvil.name = if !self.is_logical_server() {
-                self.station.as_ref().and_then(|s| s.anvil_sent.clone())
-            } else {
-                self.station.as_ref().map(|s| self.anvil_item_name(s))
-            };
+            menu.anvil.name = self.station.as_ref().and_then(|s| s.anvil_sent.clone());
         }
         for (i, stack) in before.iter().enumerate() {
             menu.set_slot(&env, i, stack.clone());
@@ -687,7 +706,7 @@ impl Game<'_> {
         // A server's client menu never works out its crafting result (`on_client`): the crafting
         // menus' result slot (InventoryMenu's and CraftingMenu's slot 0, which `game_of` doesn't
         // map) holds what the server's ContainerSetSlot put there. Another menu's slot 0 is its own.
-        if matches!(kind, Kind::Inventory | Kind::Crafting) && !self.is_logical_server() {
+        if matches!(kind, Kind::Inventory | Kind::Crafting) {
             menu.set_slot(&env, 0, self.craft_result());
         }
         if kind == Kind::Loom
@@ -735,9 +754,9 @@ impl Game<'_> {
         menu.drops.clear();
         if kind == Kind::Merchant {
             // Attached after the slots were set: setting them is not a click.
-            menu.merchant = session.map(|(s, _)| s);
+            menu.merchant = session;
         }
-        if anvil_open && !self.is_logical_server() {
+        if anvil_open {
             // The AnvilScreen listens while the click is predicted (its slotChanged).
             menu.anvil.seen_input = before[0].clone();
             menu.anvil.screen = true;
@@ -746,7 +765,6 @@ impl Game<'_> {
         // Clear any createResult flag raised while populating the menu before the click.
         let _ = menu.anvil_created();
         let outcome = run(self, &mut menu, &env, &to_menu);
-        let made = maps.made.take();
         // Any creative-screen drop sent live inside `run` already updated `menu`'s
         // throttler; keep `self.drop_spam_throttler` in step even if a later click failed.
         if self.remote.is_some()
@@ -761,33 +779,21 @@ impl Game<'_> {
             Some(true) => {}
         }
         // On a client the clicks only predict: the server drops, crafts and makes maps itself.
-        let predicting = !self.is_logical_server();
-        if !predicting {
-            self.register_exploration_maps(made);
-            for (item, count) in std::mem::take(&mut menu.crafted_counts) {
-                self.side_award_stat("crafted", &item, count);
-            }
-        }
-        if let Some(s) = menu.merchant.take() {
-            self.merchant_sync_out(s);
+        if let Some(s) = menu.merchant.take()
+            && let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut())
+        {
+            m.session = s;
         }
         let after: Vec<Option<ItemStack>> = (0..total).map(|i| menu.slot(i).cloned()).collect();
         let carried = menu.carried.take();
         let dropped = std::mem::take(&mut menu.dropped);
-        let sounds = std::mem::take(&mut menu.sounds);
         // A bundle's sounds are the player's own (`Entity.playSound`): the
         // client plays them as it clicks, predicting or not.
         for sound in std::mem::take(&mut menu.player_sounds) {
             self.player_menu_sound(sound);
         }
-        let crafted = std::mem::take(&mut menu.crafted);
-        let brewed = std::mem::take(&mut menu.brewed);
-        let brewed_potion_takes = std::mem::take(&mut menu.brewed_potion_takes);
         let item_crafted = std::mem::take(&mut menu.item_crafted);
         for (_, stack, _) in &item_crafted {
-            if !predicting {
-                self.side_award_stat("crafted", &stack.item, stack.count as i32);
-            }
             self.tutorial_get_item(Some(stack));
         }
         for (i, stack) in after.into_iter().enumerate() {
@@ -804,21 +810,7 @@ impl Game<'_> {
         if !offhand_mapped {
             self.offhand = menu.player_item(40).cloned();
         }
-        if !predicting {
-            if !brewed_potion_takes.is_empty() {
-                let (player, entity_id) = (self.native_acting_id(), self.own_entity_id());
-                for stack in &brewed_potion_takes {
-                    self.native_player_brewed_potion(player, entity_id, stack);
-                }
-            }
-            for stack in dropped {
-                self.player_drop(stack);
-            }
-            self.award_crafted(&crafted);
-            for stack in &brewed {
-                self.trigger_brewed_potion(stack);
-            }
-        } else if self.client.screen == Screen::Creative {
+        if self.client.screen == Screen::Creative {
             // `Player.drop` swings even when the creative packet is suppressed. Creative-screen
             // THROW packets already went out live inside `click_with_creative_drop`, before the
             // changed-slot sync.
@@ -831,15 +823,7 @@ impl Game<'_> {
                 s.loom.selected = usize::try_from(menu.data[0]).ok();
                 s.loom.patterns = std::mem::take(&mut menu.loom_patterns);
             }
-            // A server's loom plays its own sounds (the client's menu has no level).
-            for sound in sounds.into_iter().filter(|_| !predicting) {
-                self.station_sound(sound);
-            }
             self.loom_screen_changed();
-        } else if kind == Kind::Cartography {
-            for sound in sounds.into_iter().filter(|_| !predicting) {
-                self.station_sound(sound);
-            }
         } else if kind == Kind::Stonecutter {
             let input_changed = before[0] != menu.slot(0).cloned();
             if let Some(s) = self.station.as_mut() {
@@ -849,16 +833,8 @@ impl Game<'_> {
                     s.stonecutter_changed();
                 }
             }
-            for sound in sounds.into_iter().filter(|_| !predicting) {
-                self.station_sound(sound);
-            }
         }
-        if let Some(amount) = menu.ground.take().filter(|_| !predicting)
-            && let Some(pos) = self.station.as_ref().map(|s| s.pos)
-        {
-            self.grindstone_taken(pos, amount);
-        }
-        if kind == Kind::Anvil && predicting {
+        if kind == Kind::Anvil {
             // The names AnvilScreen.onNameChanged sent while the click ran go out before it.
             for name in std::mem::take(&mut menu.anvil.renamed) {
                 if let Some(s) = self.station.as_mut() {
@@ -871,7 +847,7 @@ impl Game<'_> {
         }
         if kind == Kind::Anvil || kind == Kind::Smithing {
             let anvil_created = menu.anvil_created();
-            self.combiner_session_end(&menu, anvil_created, predicting);
+            self.combiner_session_end(&menu, anvil_created, true);
         }
         if kind == Kind::Enchanting && (menu.enchant_changed || before[0] != menu.slot(0).cloned())
         {
@@ -882,9 +858,6 @@ impl Game<'_> {
             self.apply_crafter_slot_states(&menu);
         }
         self.apply_equipment();
-        if let Some(maps) = level_maps {
-            self.register_made_maps(maps);
-        }
         true
     }
     /// A screen closed or lost its pointer: discard the unfinished click gesture.

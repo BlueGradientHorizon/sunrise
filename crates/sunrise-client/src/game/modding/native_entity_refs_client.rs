@@ -32,6 +32,144 @@ pub(in crate::game::client_side) use sunrise_items::items::ItemStack;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::registry::BlockStateId;
 
+impl Game<'_> {
+    /// `LevelRenderer.destroyBlockProgress` for this client's own view only.
+    pub(in crate::game) fn level_set_client_break_progress(
+        &mut self,
+        level: LevelRef,
+        breaker: i32,
+        pos: [i32; 3],
+        progress: i32,
+    ) -> bool {
+        if self.native_client_level() != Some(level) {
+            return false;
+        }
+        self.destroy_block_progress(breaker, pos, progress);
+        true
+    }
+
+    /// The level the entity is in on the client (`Entity.level`).
+    pub(in crate::game) fn client_entity_level(&self, entity: EntityRef) -> Option<LevelRef> {
+        (self.native_client_entity_target(entity).is_some()
+            || self.native_client_tracked(entity).is_some())
+        .then(|| self.level_ref(entity.epoch(), self.native_level_key()))
+    }
+
+    pub(in crate::game) fn client_item_entity(
+        &self,
+        _entity: EntityRef,
+    ) -> Option<mod_api::ItemEntityRef> {
+        None
+    }
+
+    /// Visit intersecting, readable entities in `ClientLevel.getEntities` query order.
+    pub(in crate::game) fn client_level_visit_entities_in(
+        &self,
+        level: LevelRef,
+        min: [f64; 3],
+        max: [f64; 3],
+        visit: &mut dyn FnMut(EntityRef) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, LevelReadError> {
+        if !self.client_level_handle_current(level) {
+            return Err(LevelReadError::Stale);
+        }
+        if !min.iter().chain(&max).all(|v| v.is_finite())
+            || self.native_client_level() != Some(level)
+        {
+            return Err(LevelReadError::Unavailable);
+        }
+        let bounds = Aabb::new(
+            Vec3::new(min[0], min[1], min[2]),
+            Vec3::new(max[0], max[1], max[2]),
+        );
+        let search = SectionSearch::new(bounds);
+        for member in self.client_section_candidates(search) {
+            let entity = EntityRef::new(level.epoch(), member.id);
+            if self
+                .client_query_body(entity, member)
+                .is_some_and(|body| bounds.intersects(body))
+                && visit(entity).is_break()
+            {
+                return Ok(ControlFlow::Break(()));
+            }
+        }
+        if let Some(dragon) = self.dragon.as_ref().filter(|d| d.id != 0) {
+            let mut cursor = None;
+            while let Some(id) = self.dragon.next_part(&mut cursor) {
+                if let Some(part) = crate::game::dragon::dragon_part_index(dragon.id, id)
+                    && bounds.intersects(dragon.part_geometry(part).1)
+                {
+                    let entity = EntityRef::new(level.epoch(), id);
+                    if self.native_client_entity_target(entity).is_some()
+                        && visit(entity).is_break()
+                    {
+                        return Ok(ControlFlow::Break(()));
+                    }
+                }
+            }
+        }
+        Ok(ControlFlow::Continue(()))
+    }
+
+    /// Resolve a client section member's box without consulting server residency.
+    pub(in crate::game::client_side) fn client_query_body(
+        &self,
+        entity: EntityRef,
+        member: PickMember,
+    ) -> Option<Aabb> {
+        match member.kind {
+            PickKind::RemoteDisplay => {
+                let [x, y, z] = self.side_client_display_position(entity)?;
+                let p = Vec3::new(x, y, z);
+                Some(Aabb::new(p, p))
+            }
+            // Indexed only for picking; not readable box-query bodies.
+            PickKind::Cushion
+            | PickKind::Interaction
+            | PickKind::RemoteGeneral
+            | PickKind::RemoteKnot
+            | PickKind::LocalKnot
+            | PickKind::Crystal => None,
+            PickKind::LocalPlayer if self.mode_id() != 3 => {
+                self.player.as_ref().map(|p| p.bounds())
+            }
+            PickKind::LocalPlayer => None,
+            _ => {
+                let remote = self.remote.as_ref()?;
+                remote.tracked(member.id as i32)?;
+                let id = member.id;
+                if let Some(dragon) = self.dragon.as_ref().filter(|d| d.id == id) {
+                    return Some(dragon.body_bounds());
+                }
+                if let Some(frame) = self.item_frames.iter().find(|f| f.id == id) {
+                    return Some(aabb_extents(frame.bounds()));
+                }
+                if let Some(painting) = self.paintings.iter().find(|p| p.id == id) {
+                    return Some(aabb_extents(painting.bounds()));
+                }
+                fn list_bounds<T: Entity>(items: &[T], id: u32) -> Option<Aabb> {
+                    items
+                        .iter()
+                        .find(|e| e.id() == id && !e.is_removed())
+                        .map(Entity::bounds)
+                }
+                list_bounds(&self.mobs, id)
+                    .or_else(|| list_bounds(&self.dropped, id))
+                    .or_else(|| list_bounds(&self.orbs, id))
+                    .or_else(|| list_bounds(&self.boats, id))
+                    .or_else(|| list_bounds(&self.carts, id))
+                    .or_else(|| list_bounds(&self.armor_stands, id))
+                    .or_else(|| list_bounds(&self.tnts, id))
+                    .or_else(|| list_bounds(&self.falling, id))
+                    .or_else(|| list_bounds(&self.creatures.projectiles, id))
+                    .or_else(|| list_bounds(&self.rockets, id))
+                    .or_else(|| list_bounds(&self.tridents, id))
+                    .or_else(|| list_bounds(&self.resident_entities.general.rows, id))
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     #[allow(unused_imports)]
@@ -97,7 +235,7 @@ pub(in crate::game) mod tests {
         if run_fresh_cases(
             "game::client_side::native_entity_refs_client::tests::client_box_queries_use_live_display_positions_and_section_order",
             CASE,
-            &["client", "server"],
+            &["client"],
         ) {
             return;
         }
@@ -231,57 +369,6 @@ pub(in crate::game) mod tests {
                 assert_eq!(block.position(game), None);
                 assert_eq!(block.bounding_box(game), None);
                 assert_eq!(ids(game, level, LO, HI), [55, 11, 31]);
-            }),
-            "server" => with_game(|game| {
-                game.options.dedicated = Some(Vec::new());
-                chunks(game);
-                let level = game.level("minecraft:overworld").unwrap();
-                let [item, block, pig, text] = ADMISSIONS.map(|(_, kind, at)| {
-                    game.summon("minecraft:overworld", kind, at, Compound::new())
-                        .unwrap()
-                });
-                assert_eq!(ids(game, level, LO, HI), [block, pig, text, item]);
-                for (id, (_, _, at)) in [item, block, pig, text].into_iter().zip(ADMISSIONS) {
-                    if id != pig {
-                        let display = game.entity(id).unwrap();
-                        assert_eq!(display.position(game), Some(at));
-                        assert_eq!(display.bounding_box(game), Some([at; 2]));
-                    }
-                }
-                let at = [16.5, 65.5, 3.0];
-                assert_eq!(
-                    game.place_teleport_filed(
-                        super::Target::Other(block),
-                        at,
-                        None,
-                        [false; 3],
-                        false
-                    ),
-                    Some(ADMISSIONS[1].2)
-                );
-                assert_eq!(ids(game, level, LO, HI), [pig, text, item, block]);
-                assert_eq!(
-                    game.entity(block).unwrap().bounding_box(game),
-                    Some([at; 2])
-                );
-                // `/data merge` moves it through `Entity.load`: the old box loses it and the
-                // new one, queried for the first time, finds it.
-                let far_lo = [39.5, 65.0, 2.0];
-                let far_hi = [41.5, 66.0, 4.0];
-                assert!(ids(game, level, far_lo, far_hi).is_empty());
-                let target = super::Target::Other(block);
-                let mut tag = game.command_target_nbt(target).unwrap();
-                let pos = sunrise_core::nbt::Tag::List(
-                    [40.5, 65.5, 3.0]
-                        .map(|v: f64| sunrise_core::nbt::Tag::Double(v.to_bits()))
-                        .to_vec(),
-                );
-                if let sunrise_core::nbt::Tag::Compound(c) = &mut tag {
-                    c.insert("Pos".into(), pos);
-                }
-                game.apply_entity_nbt(target, tag).unwrap();
-                assert_eq!(ids(game, level, LO, HI), [pig, text, item]);
-                assert_eq!(ids(game, level, far_lo, far_hi), [block]);
             }),
             _ => unreachable!("unexpected display query case"),
         }

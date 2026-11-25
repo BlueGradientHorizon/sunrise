@@ -297,26 +297,175 @@ impl RenderEntityBounds for Cushion {
 }
 
 impl Game<'_> {
-    /// `Block.fallOn` effects for bodies whose `causeFallDamage` does nothing.
-    pub(in crate::game) fn nonliving_fall_on(
-        &mut self,
-        id: u32,
-        feet: Vec3,
-        contact: sunrise_client::motion::BodyContact,
+    /// The entities of the families `entity_geometry` draws in one ordered pass, as runs in the
+    /// order they joined the level.
+    pub(in crate::game) fn ordered_draw_runs(
+        &self,
+        draw_general: bool,
+        draw_crystals: bool,
+        runs: &mut Vec<DrawRun>,
     ) {
-        // FarmlandBlock draws the level's float before checking LivingEntity.
-        match &*self.res.facts().get(contact.state).name {
-            "minecraft:farmland" => {
-                self.world.random.next_float();
-            }
-            "minecraft:honey_block" => {
-                let at = [feet.x, feet.y, feet.z];
-                if !self.entity_silent(id) {
-                    self.server_play_sound("minecraft:block.honey_block.slide", at, 1.0, 1.0);
+        let local_player = self
+            .player_model_shown()
+            .then(|| self.resident_entities.local_player.join());
+        draw_runs(
+            crate::game::entity::entity_lists_of!(self),
+            DrawExtras {
+                local_player,
+                dragon: self.dragon.as_ref().map(|dragon| dragon.join),
+                crystals: if draw_crystals { &self.crystals } else { &[] },
+                general: self
+                    .remote
+                    .as_ref()
+                    .filter(|_| draw_general)
+                    .map(|r| &r.general),
+            },
+            runs,
+        );
+    }
+
+    pub(in crate::game) fn client_player_equipped(
+        &mut self,
+        _slot: usize,
+        _new: Option<&sunrise_client::items::ItemStack>,
+    ) {
+    }
+
+    pub(in crate::game) fn client_finish_body_restitution(
+        &mut self,
+        _entity: (u32, &str),
+        _feet: Vec3,
+        response: sunrise_client::motion::BodyRestitution,
+    ) -> Vec3 {
+        response.velocity
+    }
+
+    pub(in crate::game) fn client_body_step_on(
+        &mut self,
+        entity: (u32, &str),
+        footprint: (Vec3, Aabb),
+        ground: &sunrise_world::ground_support::GroundState,
+        velocity: &mut Vec3,
+    ) -> Vec<mod_api::EntityWrite> {
+        let side = game_side!(self);
+        self.body_motion(&side)
+            .step_on(entity, footprint, ground, velocity);
+        Vec::new()
+    }
+
+    pub(in crate::game) fn client_item_fall_on(&mut self, _id: u32, _on: BlockPos, _distance: f64) {
+    }
+
+    pub(in crate::game) fn client_item_post_move_contacts(
+        &mut self,
+        item: &mut ItemEntity,
+        _client: bool,
+    ) -> bool {
+        let _ = self.client_body_step_on(
+            (item.id, "minecraft:item"),
+            (item.position, item.bounds()),
+            &item.ground,
+            &mut item.velocity,
+        );
+        true
+    }
+
+    pub(in crate::game) fn client_boat_collision_root(
+        &self,
+        id: u32,
+        _target: super::commands::Target,
+    ) -> Option<u32> {
+        self.remote
+            .as_ref()
+            .and_then(|r| super::remote_vehicles::passenger_root(&r.passenger_vehicles, id).ok())
+    }
+
+    pub(in crate::game) fn client_vehicle_solids(
+        &self,
+        mover: super::collision_source::Mover<'_>,
+        solids: &sunrise_client::entity_solids::Solids,
+        each: &mut dyn FnMut(&sunrise_client::entity_solids::Candidate, Option<usize>),
+    ) {
+        use super::{
+            collision_source::{Mover, boat, cart, cart_reach, player},
+            commands::Target,
+        };
+        use sunrise_client::entity_solids::{Candidate, SolidKind};
+        match mover {
+            Mover::Cart(c) => {
+                for o in self
+                    .carts
+                    .iter()
+                    .filter(|o| o.id != c.id)
+                    .map(|c| cart(self, c))
+                    .chain(self.boats.iter().map(|b| boat(self, b)))
+                {
+                    if solids.accepts(&o, || None) {
+                        each(&o, None);
+                    }
                 }
-                self.lan_entity_event(id as i32, 54, at);
+                let reach = cart_reach(c);
+                for (j, m) in self.mobs.iter().enumerate() {
+                    if m.bounds().intersects(reach) {
+                        let cand = m.solid_candidate();
+                        if solids.accepts(&cand, || None) {
+                            each(&cand, Some(j));
+                        }
+                    }
+                }
+                if self.riding != Some(c.id)
+                    && let Some(p) = self.player.as_ref()
+                    && !self.spectator()
+                {
+                    let p = player(p.bounds());
+                    if solids.accepts(&p, || None) {
+                        each(&p, None);
+                    }
+                }
             }
-            _ => {}
+            Mover::Boat { id, area } => {
+                for (j, m) in self.mobs.iter().enumerate() {
+                    if !m.removed && m.bounds().intersects(area) {
+                        let cand = m.solid_candidate();
+                        if solids.accepts(&cand, || {
+                            self.client_boat_collision_root(m.id, Target::Mob(m.id))
+                        }) {
+                            each(&cand, Some(j));
+                        }
+                    }
+                }
+                for (c, target) in self
+                    .boats
+                    .iter()
+                    .map(|b| (boat(self, b), Target::Boat(b.id)))
+                    .chain(
+                        self.carts
+                            .iter()
+                            .map(|c| (cart(self, c), Target::Cart(c.id))),
+                    )
+                {
+                    if solids.accepts(&c, || self.client_boat_collision_root(c.id, target)) {
+                        each(&c, None);
+                    }
+                }
+                if self.riding != Some(id)
+                    && let Some(p) = self.player.as_ref()
+                    && !self.spectator()
+                    && !p.health.dead_or_dying()
+                {
+                    let pid = self
+                        .remote
+                        .as_ref()
+                        .map_or(p.entity_id as u32, |r| r.entity_id as u32);
+                    let cand = Candidate::fixed(SolidKind::Player, pid, p.bounds());
+                    if solids.accepts(&cand, || {
+                        self.client_boat_collision_root(pid, Target::Player)
+                    }) {
+                        each(&cand, None);
+                    }
+                }
+            }
+            Mover::Player | Mover::PlayerAt { .. } | Mover::Passive => {}
         }
     }
 }

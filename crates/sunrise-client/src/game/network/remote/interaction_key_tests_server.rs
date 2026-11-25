@@ -44,7 +44,7 @@ fn interaction_key_literal_matrix_preserves_actions_and_swing_independently() {
             )]
             .into();
             mod_platform::testing::with_mods(mods, || {
-                with_interaction_game(true, |game| {
+                with_interaction_client_game(|game| {
                     let stone = game
                         .pack
                         .assets
@@ -118,7 +118,7 @@ fn interaction_key_literal_matrix_preserves_actions_and_swing_independently() {
 fn no_interaction_listener_attack_mining_offhand_and_pick() {
     for path in 0..4 {
         mod_platform::testing::with_mods(Vec::new().into(), || {
-            with_interaction_game(true, |game| {
+            with_interaction_client_game(|game| {
                 let stone = game
                     .pack
                     .assets
@@ -174,7 +174,7 @@ fn no_interaction_listener_attack_mining_offhand_and_pick() {
 #[ignore = "daily"]
 fn no_listener_preserves_natural_swing_and_unsuccessful_use_stays_quiet() {
     mod_platform::testing::with_mods(Vec::new().into(), || {
-        with_interaction_game(true, |game| {
+        with_interaction_client_game(|game| {
             let stone = game
                 .pack
                 .assets
@@ -212,7 +212,7 @@ fn no_listener_preserves_natural_swing_and_unsuccessful_use_stays_quiet() {
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        with_interaction_game(true, |game| {
+        with_interaction_client_game(|game| {
             game.inventory[game.selected] = None;
             game.offhand = None;
             game.set_test_forced_hit(None);
@@ -239,7 +239,7 @@ fn pick_keeps_packet_veto_and_never_swings() {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            with_interaction_game(true, |game| {
+            with_interaction_client_game(|game| {
                 let stone = game
                     .pack
                     .assets
@@ -274,7 +274,7 @@ fn silent_policy_does_not_leak_into_next_ordinary_use() {
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        with_interaction_game(true, |game| {
+        with_interaction_client_game(|game| {
             let stone = game
                 .pack
                 .assets

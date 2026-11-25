@@ -13,7 +13,7 @@ fn entity_pass_falls_through_but_success_stops_the_apple() {
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
         for (entity, expected) in [("minecraft:zombie", 1), ("minecraft:villager", 0)] {
-            with_interaction_game(true, |game| {
+            with_interaction_client_game(|game| {
                 game.inventory[game.selected] = Some(ItemStack::new("minecraft:apple", 1));
                 game.offhand = None;
                 game.spawn_entity(42, entity, [0.5, 64.0, 5.5], [0.0; 3]);
@@ -60,7 +60,7 @@ fn air_use_fires_once_and_passing_hands_fire_in_main_off_order() {
     .into();
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
-        with_interaction_game(true, |game| {
+        with_interaction_client_game(|game| {
             game.inventory[game.selected] = Some(ItemStack::new("minecraft:apple", 1));
             assert!(!game.remote_use_targets_entity());
             assert!(game.pick().is_none());

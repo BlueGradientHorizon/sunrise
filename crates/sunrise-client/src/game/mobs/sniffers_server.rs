@@ -11,6 +11,23 @@ pub(in crate::game::server_side) use sunrise_client::{
 pub(in crate::game::server_side) use sunrise_core::{geometry::Vec3, random::RandomSource};
 
 impl Game<'_> {
+    /// A snifflet where the egg was.
+    pub(in crate::game) fn hatch_sniffer(&mut self, pos: [i32; 3]) {
+        let at = [
+            f64::from(pos[0]) + 0.5,
+            f64::from(pos[1]) + 0.5,
+            f64::from(pos[2]) + 0.5,
+        ];
+        if let Some(id) = self.spawn_mob_raw("minecraft:sniffer", at, true)
+            && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id)
+        {
+            m.extra.age = sniffer::BABY_START_AGE;
+            let yaw = self.world.random.next_float() * 360.0 - 180.0;
+            m.yaw = yaw;
+            m.body_yaw = yaw;
+            m.head_yaw = yaw;
+        }
+    }
     /// The egg item at the parent (`Sniffer.spawnChildFromBreeding`; the
     /// brain already played the plop and dropped the experience).
     pub(in crate::game) fn lay_sniffer_egg(&mut self, parent: &Mob) {

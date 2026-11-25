@@ -210,7 +210,7 @@ impl Game<'_> {
     ) -> Result<&mut mod_api::Attachments, mod_api::AttachmentError> {
         use mod_api::AttachmentError;
         if let mod_api::Holder::Entity(id) = holder {
-            if self.server.entity_initialization.active != Some(holder) {
+            if self.entity_initialization.active != Some(holder) {
                 use super::entity_residency::SlotAccess;
                 use sunrise_client::join_seq::residency::Kind;
                 let id = std::num::NonZeroU32::new(id).ok_or(AttachmentError::MissingHolder)?;
@@ -251,7 +251,7 @@ impl Game<'_> {
                     }
                 }
             }
-            if self.server.entity_initialization.active != Some(holder)
+            if self.entity_initialization.active != Some(holder)
                 && !self.attachment_entity_exists(id)
             {
                 return Err(AttachmentError::MissingHolder);
@@ -272,7 +272,7 @@ impl Game<'_> {
                 return Err(AttachmentError::MissingHolder);
             }
             if access == AttachmentAccess::Store
-                && self.server.entity_initialization.active != Some(holder)
+                && self.entity_initialization.active != Some(holder)
             {
                 self.entity_attachments.entry(id).or_default();
                 self.bind_resident_entity_attachments(id)?;
@@ -281,7 +281,7 @@ impl Game<'_> {
         }
         if let mod_api::Holder::Player(uuid) = holder {
             let cloning = self.cloning_guest(uuid).map(|guest| guest.conn);
-            if self.server.entity_initialization.active != Some(holder)
+            if self.entity_initialization.active != Some(holder)
                 && cloning.is_none()
                 && self.server.lan_acting_uuid != Some(uuid)
                 && self
@@ -304,7 +304,7 @@ impl Game<'_> {
             let conn = cloning
                 .or_else(|| {
                     let host = self.lan.as_ref()?;
-                    let guest = if self.server.entity_initialization.active == Some(holder) {
+                    let guest = if self.entity_initialization.active == Some(holder) {
                         host.hub.guests.iter().find(|guest| guest.uuid == uuid)
                     } else {
                         host.hub.holder_guest(uuid, self.dim.id())
@@ -736,24 +736,6 @@ impl mod_api::LevelHost for super::GameLevel<'_> {
     }
     fn enabled_features(&self) -> mod_api::FeatureFlags {
         mod_api::FeatureFlags::new(self.enabled_features.clone())
-    }
-}
-
-impl mod_api::AttachmentHost for Game<'_> {
-    fn validate_attachment(
-        &self,
-        namespace: &str,
-        name: &str,
-        sync: bool,
-    ) -> Result<(), mod_api::AttachmentError> {
-        mod_api::__private::validate_attachment_use(namespace, name, sync)
-    }
-    fn attachments(
-        &mut self,
-        holder: mod_api::Holder,
-        access: AttachmentAccess,
-    ) -> Result<&mut mod_api::Attachments, mod_api::AttachmentError> {
-        self.attachment_map(holder, access)
     }
 }
 
@@ -1737,12 +1719,12 @@ mod attachment_membership_tests {
             check(game);
             game.enter_level(crate::game::Dim::Overworld).unwrap();
             let holder = mod_api::Holder::Entity(999);
-            game.server.entity_initialization.active = Some(holder);
+            game.entity_initialization.active = Some(holder);
             assert!(
                 game.attachment_slot(holder, AttachmentAccess::Existing)
                     .is_ok()
             );
-            game.server.entity_initialization.active = None;
+            game.entity_initialization.active = None;
             assert!(
                 game.attachment_slot(holder, AttachmentAccess::Existing)
                     .is_err()

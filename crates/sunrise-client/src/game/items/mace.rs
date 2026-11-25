@@ -174,28 +174,6 @@ pub(in crate::game) fn stack_smash_damage(
 }
 
 impl Game<'_> {
-    /// The weapon's source override, item override, then the actor's ordinary melee source.
-    pub(in crate::game) fn stack_melee_damage_type(
-        &self,
-        stack: Option<&ItemStack>,
-        (fall, flying): (f64, bool),
-        player: bool,
-    ) -> String {
-        if let Some(value) =
-            stack.and_then(|s| self.item_combat_component(s, "minecraft:damage_type"))
-            && let Some(id) = value.as_str()
-        {
-            return sunrise_core::identifier::Identifier::parse(id)
-                .map_or_else(|_| id.to_owned(), |id| id.to_string());
-        }
-        if stack.is_some_and(|s| &*s.item == "minecraft:mace") && can_smash(fall, flying) {
-            "minecraft:mace_smash".into()
-        } else if player {
-            "minecraft:player_attack".into()
-        } else {
-            "minecraft:mob_attack".into()
-        }
-    }
     pub(in crate::game::server_side) fn holds_mace(&self) -> bool {
         self.inventory[self.selected]
             .as_ref()

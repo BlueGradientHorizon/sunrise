@@ -46,4 +46,29 @@ impl Game<'_> {
             .map(|(i, m)| (i, m.bounds()))
             .collect()
     }
+    /// `Player.cannotAttackWithItem` for the held item: a spear needs its
+    /// `minimum_attack_charge` of 1, counting `tolerance` ticks more than the
+    /// `ticker` ticks charged.
+    pub(in crate::game) fn cannot_attack_with_item(&self, ticker: i32, tolerance: i32) -> bool {
+        self.held().is_some_and(|s| Kinetic::of(&s.item).is_some())
+            && (ticker + tolerance) as f32 / delay(self.main_hand_attack_speed()) < 1.0
+    }
+    /// `LivingEntity.onKineticHit` for `entity`: the hit feels (the spear
+    /// moves back, `kinetic_hit_ticks`) and sounds, at most once every ten
+    /// ticks.
+    pub(in crate::game) fn kinetic_hit_feedback(
+        &mut self,
+        entity: i32,
+        _kinetic: &Kinetic,
+        _at: [f64; 3],
+    ) {
+        let now = self.world.game_time;
+        if self
+            .kinetic_feedback
+            .get(&entity)
+            .is_none_or(|&t| now - t > HIT_FEEDBACK_TICKS)
+        {
+            self.kinetic_feedback.insert(entity, now);
+        }
+    }
 }

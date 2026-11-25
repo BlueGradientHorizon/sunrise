@@ -130,58 +130,12 @@ pub(in crate::game) struct ClientPickEntityAccess<'g, 'w> {
 
 impl mod_api::EntityClientAccess for ClientPickEntityAccess<'_, '_> {
     fn route_kind(&self) -> Option<mod_api::EntityTypeKey> {
-        match self.game.native_entity_read_target(self.subject) {
-            Some(target) => self.game.native_entity_kind_key(target),
-            None => mod_api::__private::resolved_entity_type_key(
-                self.game.native_client_tracked(self.subject)?.0,
-            ),
-        }
+        self.game.client_pick_route_kind(self.subject)
     }
 
     fn with_view(&mut self, call: &mut dyn FnMut(mod_api::EntityClientView<'_>)) {
-        let target = self.game.native_entity_read_target(self.subject);
-        let (kind, position, rotation) = match target {
-            Some(target) => {
-                let Some(position) = self.game.target_position(target) else {
-                    return;
-                };
-                (
-                    self.game.native_entity_kind_key(target),
-                    position,
-                    self.game.target_rotation(target),
-                )
-            }
-            None => {
-                let Some((name, position)) = self.game.native_client_tracked(self.subject) else {
-                    return;
-                };
-                (
-                    mod_api::__private::resolved_entity_type_key(name),
-                    position,
-                    [0.0, 0.0],
-                )
-            }
-        };
-        let uuid = self.game.remote.as_ref().and_then(|r| {
-            let id = i32::try_from(self.subject.id()).ok()?;
-            self.game
-                .known_resident_entity_uuid_at(self.game.native_level_key(), self.subject.id())
-                .map(sunrise_client::lan::playerdata::ints_uuid)
-                .or_else(|| r.level_player(id).map(|(uuid, _)| uuid))
-                .or_else(|| {
-                    self.game
-                        .persist
-                        .uuids
-                        .get(&self.subject.id())
-                        .copied()
-                        .map(sunrise_client::lan::playerdata::ints_uuid)
-                })
-        });
-        let data = ResidentClientPickEntity {
-            kind,
-            position,
-            rotation,
-            uuid,
+        let Some(data) = self.game.client_pick_entity_view(self.subject) else {
+            return;
         };
         call(mod_api::EntityClientView::new(self.subject, &data));
     }

@@ -139,6 +139,9 @@ impl Game<'_> {
     pub(in crate::game) fn synced_recipes(&self) -> Option<&sunrise_client::crafting::Recipes> {
         self.recipe_tables.synced.as_ref()
     }
+    pub(in crate::game) fn client_recipes(&self) -> &Recipes {
+        self.synced_recipes().unwrap_or_else(|| self.res.recipes())
+    }
     pub(in crate::game) fn worker_context(&self) -> Arc<WorkerContext> {
         self.pack.context_with(self.mesh_biomes().clone())
     }

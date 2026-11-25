@@ -58,7 +58,7 @@ impl Game<'_> {
                     // advancement of whoever threw it.
                     self.mob_item_pickup_trigger(i, &before);
                     let e = self.remove_dropped(j);
-                    self.add_pickup(Taken::Item(Box::new(e.clone())), Collector::Mob(id));
+                    self.server_mob_take_item(&e, id);
                     panda::hold(&mut self.mobs[i], &e.stack.item, e.stack.count, true);
                 }
             }

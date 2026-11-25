@@ -977,6 +977,16 @@ impl Game<'_> {
         );
         pierce.floor().clamp(0.0, 127.0) as u8
     }
+    /// `SpyglassItem.use`: the sound, then start scoping (a mod's `Start`
+    /// may refuse that, not the sound).
+    pub(in crate::game) fn use_spyglass(&mut self) {
+        if let Some(p) = self.player.as_ref() {
+            let at = [p.position.x, p.position.y, p.position.z];
+            self.server_play_sound("minecraft:item.spyglass.use", at, 1.0, 1.0);
+        }
+        self.award_stat("used", "minecraft:spyglass", 1);
+        self.start_using_item();
+    }
 }
 
 #[cfg(test)]

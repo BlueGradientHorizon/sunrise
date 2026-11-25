@@ -154,9 +154,6 @@ impl Game<'_> {
     /// Returns false for stale, untracked, server-side, or unsupported entities.
     pub(in crate::game) fn entity_sprint_particles(&mut self, entity: EntityRef) -> bool {
         use super::commands::Target;
-        if self.is_logical_server() {
-            return false;
-        }
         let Some(target) = self.native_client_entity_target(entity) else {
             return false;
         };

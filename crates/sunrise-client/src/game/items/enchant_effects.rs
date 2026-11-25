@@ -144,35 +144,6 @@ pub(in crate::game::server_side) fn refuse_xp_repair_ratio(item: &str, ratio: f3
 }
 
 impl Game<'_> {
-    /// `Attributes.MINING_EFFICIENCY` (efficiency), which `Player.getDestroySpeed`
-    /// adds to a tool speed above 1: 0 without a player or attribute.
-    pub(in crate::game) fn mining_efficiency(&mut self) -> f32 {
-        self.player
-            .as_mut()
-            .and_then(|player| player.attribute("minecraft:mining_efficiency").ok())
-            .unwrap_or(0.0) as f32
-    }
-    /// `Player.getDestroySpeed`'s final `Attributes.BLOCK_BREAK_SPEED` factor:
-    /// 1.0 by default, so a missing player or attribute changes nothing.
-    pub(in crate::game) fn block_break_speed(&mut self) -> f32 {
-        block_break_speed_factor(
-            self.player
-                .as_mut()
-                .and_then(|p| p.attribute("minecraft:block_break_speed").ok()),
-        )
-    }
-    /// `Attributes.SUBMERGED_MINING_SPEED` (0.2, raised by aqua affinity).
-    pub(in crate::game) fn submerged_mining_speed(&self) -> f32 {
-        let mut total = 0.0;
-        for stack in self.armor.iter().flatten() {
-            for (attr, _, amount, op) in self.stations().enchantments.attributes(stack) {
-                if attr == "minecraft:submerged_mining_speed" && op == "add_multiplied_total" {
-                    total += amount;
-                }
-            }
-        }
-        (0.2 * (1.0 + total)) as f32
-    }
     /// The wear `ItemStack.hurtAndBreak` goes on to apply for `amount` points
     /// on the stack `wearer` wears or uses: what Unbreaking leaves
     /// (`EnchantmentHelper.processDurabilityChange`), then what the item's
@@ -406,18 +377,6 @@ impl Game<'_> {
         use sunrise_core::geometry::trig;
         let yaw = f64::from(self.yaw * trig::DEG_TO_RAD);
         (f64::from(trig::sin(yaw)), -f64::from(trig::cos(yaw)))
-    }
-    /// The attacker's side of `causeExtraKnockback` as the attacking client
-    /// sees it after a hit on a mob: the server's player stops sprinting, and
-    /// its flag reaches the client. (The server's 0.6 speed cut never does:
-    /// the client's own `Player.attack` simulates no hurt on a mob, so it
-    /// skips the knockback. A hit on another player, a boat, a minecart, an
-    /// End crystal or a shulker bullet does simulate one:
-    /// `remote_attacker_knockback`.)
-    pub(in crate::game::server_side) fn stop_sprint_after_extra_knockback(&mut self) {
-        if let Some(p) = self.player.as_mut() {
-            let _ = p.set_sprinting(false);
-        }
     }
     /// `EnchantmentHelper.doPostAttackEffectsWithItemSource` after a successful
     /// melee hit (`Player.itemAttackInteraction`, the sweep's

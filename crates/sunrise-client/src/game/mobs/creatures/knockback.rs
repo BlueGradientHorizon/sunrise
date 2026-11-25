@@ -1,43 +1,5 @@
 #[allow(unused_imports)]
 use super::*;
-#[allow(unused_imports)]
-use mod_api::KnockbackEntry;
-
-impl Game<'_> {
-    /// `LivingEntity.knockback` on the player: pushed `power` away from the
-    /// direction (`xd`, `zd`), less its knockback resistance, and up only from
-    /// the ground.
-    /// The native knockback hook runs before resistance is applied, with
-    /// `source`, the hit's. This short entry enters `knock_back_player_full` once.
-    /// Both entries are native internals points. API access refuses `HurtSource` and
-    /// `Attack`, which have no point mirrors.
-    pub(in crate::game) fn knock_back_player(
-        &mut self,
-        power: f64,
-        xd: f64,
-        zd: f64,
-        source: HurtSource<'_>,
-        attack: &Attack,
-        _damage: f32,
-    ) {
-        self.knock_back_player_entry(power, xd, zd, source, attack, KnockbackEntry::Short);
-    }
-
-    /// Full living knockback entry. Effect pushes enter here directly.
-    /// Damage and the effect flag are carried even though vanilla players do not use them.
-    pub(in crate::game) fn knock_back_player_full(
-        &mut self,
-        power: f64,
-        xd: f64,
-        zd: f64,
-        source: HurtSource<'_>,
-        attack: &Attack,
-        _damage: f32,
-        _comes_from_effect: bool,
-    ) {
-        self.knock_back_player_entry(power, xd, zd, source, attack, KnockbackEntry::Full);
-    }
-}
 
 /// Apply the full entry's physical push.
 pub(in crate::game) fn apply_player_knockback(

@@ -128,7 +128,7 @@ mod tests {
             assert_eq!(Arc::strong_count(&captured), 2);
 
             let (reply, completion) = std::sync::mpsc::channel();
-            game.begin_control_save(false, reply).unwrap();
+            game.test_seed_pending_server_save(reply);
             assert!(!game.pending_save.0.as_ref().unwrap().quit);
             game.options.headless = true;
             game.handle_window_event(

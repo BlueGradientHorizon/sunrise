@@ -47,6 +47,24 @@ pub(in crate::game::server_side) use sunrise_items::creative_catalog::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_items::items::Items;
 
+impl Game<'_> {
+    pub(in crate::game) fn server_creative_tab_entries(
+        &self,
+        _edit: CreativeTabEdit,
+        _list: CreativeTabList,
+    ) -> Result<Vec<ItemStack>, CreativeTabEditError> {
+        Err(CreativeTabEditError::Stale)
+    }
+
+    pub(in crate::game) fn server_creative_tab_change(
+        &self,
+        _edit: CreativeTabEdit,
+        _change: CreativeTabChange,
+    ) -> Result<(), CreativeTabEditError> {
+        Err(CreativeTabEditError::Stale)
+    }
+}
+
 #[cfg(test)]
 #[path = "build_creative_mode_tab_contents/tests_server.rs"]
 pub(in crate::game) mod tests;

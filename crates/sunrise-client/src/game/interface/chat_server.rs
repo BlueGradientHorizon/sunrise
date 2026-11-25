@@ -246,6 +246,26 @@ impl Game<'_> {
         self.ui.registries.random_sequences = self.server.rand_sequences.ids();
         &mut self.ui.registries
     }
+    pub(in crate::game) fn server_block_entity_nbt(
+        &self,
+        pos: [i32; 3],
+    ) -> Option<sunrise_core::nbt::Tag> {
+        self.block_entity_nbt(pos)
+    }
+    pub(in crate::game) fn server_send_chat_command(&mut self, _command: &str) {
+        debug_assert!(false, "server never sends client chat commands");
+    }
+    pub(in crate::game) fn server_apply_item_splash(
+        &mut self,
+        splash: sunrise_client::entities::ItemSplash,
+    ) {
+        if let sunrise_client::entities::ItemSplash::Sound { at, volume, pitch } = splash {
+            self.server_play_sound("minecraft:entity.generic.splash", at, volume, pitch);
+        }
+    }
+    pub(in crate::game) fn server_level_min_y(&self) -> i32 {
+        self.world.shape.min_y
+    }
 }
 
 #[cfg(test)]

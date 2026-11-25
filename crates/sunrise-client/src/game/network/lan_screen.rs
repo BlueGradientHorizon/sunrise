@@ -775,9 +775,7 @@ impl Game<'_> {
             return;
         }
         for (name, value) in changes {
-            if self.ui.rules.set(&name, value) {
-                self.game_rule_changed(&name, value, None);
-            }
+            self.ui.rules.set(&name, value);
             self.client_system_message(Text::tr("commands.gamerule.set", &[&name, &value]));
         }
         self.sync_rules();
@@ -1729,21 +1727,29 @@ impl Game<'_> {
             // The server applies them; the window tells what came of
             // Open to LAN (ShareToLanScreen's messages).
             let (b, w) = (*before, *wanted);
-            server.ask(|done| super::owner_link::OwnerRequest::ApplyWorldOptions {
-                before: b,
-                wanted: w,
-                done,
-            });
-            if w.lan != b.lan || (w.lan && w.port != b.port) {
-                let message = match (w.lan, self.lan_port()) {
-                    (true, Some(port)) => Text::translate(
-                        "menu.multiplayerOptions.publish.started.lan",
-                        &[Text::literal(port.to_string())],
-                    ),
-                    (true, None) => Text::translate("commands.publish.failed", &[]),
-                    (false, _) => Text::translate("menu.multiplayerOptions.publish.stopped", &[]),
-                };
-                self.send_publish_message(message);
+            if let Some((closed, published_port)) =
+                server.ask(|done| super::owner_link::OwnerRequest::ApplyWorldOptions {
+                    before: b,
+                    wanted: w,
+                    done,
+                })
+            {
+                if closed {
+                    self.friends_lan_closed();
+                }
+                if w.lan != b.lan || (w.lan && w.port != b.port) {
+                    let message = match (w.lan, published_port) {
+                        (true, Some(port)) => Text::translate(
+                            "menu.multiplayerOptions.publish.started.lan",
+                            &[Text::literal(port.to_string())],
+                        ),
+                        (true, None) => Text::translate("commands.publish.failed", &[]),
+                        (false, _) => {
+                            Text::translate("menu.multiplayerOptions.publish.stopped", &[])
+                        }
+                    };
+                    self.send_publish_message(message);
+                }
             }
         }
     }

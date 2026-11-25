@@ -148,33 +148,11 @@ impl Drop for TooltipBuildGuard {
     }
 }
 
-/// The book above the enchanting table's offers: `EnchantmentScreen`'s
-/// `time`, `flip`, `oFlip`, `flipT`, `flipA`, `open`, `oOpen` and `last`.
-pub(in crate::game) struct EnchantBook {
-    pub(in crate::game) time: i32,
-    pub(in crate::game) flip: f32,
-    pub(in crate::game) o_flip: f32,
-    pub(in crate::game) flip_t: f32,
-    pub(in crate::game) flip_a: f32,
-    pub(in crate::game) open: f32,
-    pub(in crate::game) o_open: f32,
-    pub(in crate::game) last: Option<ItemStack>,
-    pub(in crate::game) random: LegacyRandom,
-}
+pub(in crate::game) use crate::game::stations_common::{
+    CyclingSlot, EMPTY_TEMPLATE_ICONS, EnchantBook, INPUT, Kind, RESULT, Station,
+};
+
 impl EnchantBook {
-    pub(in crate::game::client_side) fn new(random: LegacyRandom) -> Self {
-        Self {
-            time: 0,
-            flip: 0.0,
-            o_flip: 0.0,
-            flip_t: 0.0,
-            flip_a: 0.0,
-            open: 0.0,
-            o_open: 0.0,
-            last: None,
-            random,
-        }
-    }
     /// `EnchantmentScreen.tickBook`: a new item in the enchanting slot picks a
     /// new page to turn to; the book opens while any offer has a cost.
     pub(in crate::game::client_side) fn tick(
@@ -211,49 +189,7 @@ impl EnchantBook {
     }
 }
 
-/// Slot ids of the open station: inputs from 600, the result at 650.
-pub(in crate::game) const INPUT: usize = 600;
-pub(in crate::game) const RESULT: usize = 650;
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(in crate::game) enum Kind {
-    Enchanting,
-    Anvil,
-    Grindstone,
-    Smithing,
-    Stonecutter,
-    /// Villager trading (game/items/trading.rs).
-    Merchant,
-    /// The beacon menu (game/blocks/beacon.rs).
-    Beacon,
-    /// The cartography table (game/blocks/cartography.rs).
-    Cartography,
-    /// The loom (game/blocks/loom.rs).
-    Loom,
-}
 impl Kind {
-    pub(in crate::game) fn from_block(name: &str) -> Option<Self> {
-        Some(match name {
-            "minecraft:enchanting_table" => Self::Enchanting,
-            "minecraft:anvil" | "minecraft:chipped_anvil" | "minecraft:damaged_anvil" => {
-                Self::Anvil
-            }
-            "minecraft:grindstone" => Self::Grindstone,
-            "minecraft:smithing_table" => Self::Smithing,
-            "minecraft:stonecutter" => Self::Stonecutter,
-            "minecraft:beacon" => Self::Beacon,
-            "minecraft:cartography_table" => Self::Cartography,
-            "minecraft:loom" => Self::Loom,
-            _ => return None,
-        })
-    }
-    pub(in crate::game) fn inputs(self) -> usize {
-        match self {
-            Self::Smithing | Self::Loom => 3,
-            Self::Stonecutter | Self::Beacon => 1,
-            _ => 2,
-        }
-    }
     pub(in crate::game::client_side) fn texture(self) -> &'static str {
         match self {
             Self::Enchanting => "gui/container/enchanting_table",
@@ -265,19 +201,6 @@ impl Kind {
             Self::Beacon => "gui/container/beacon",
             Self::Cartography => "gui/container/cartography_table",
             Self::Loom => "gui/container/loom",
-        }
-    }
-    pub(in crate::game::client_side) fn title_key(self) -> &'static str {
-        match self {
-            Self::Enchanting => "container.enchant",
-            Self::Anvil => "container.repair",
-            Self::Grindstone => "container.grindstone_title",
-            Self::Smithing => "container.upgrade",
-            Self::Stonecutter => "container.stonecutter",
-            Self::Merchant => "merchant.trades",
-            Self::Beacon => "container.beacon",
-            Self::Cartography => "container.cartography_table",
-            Self::Loom => "container.loom",
         }
     }
     /// (titleLabelX, titleLabelY).
@@ -304,10 +227,6 @@ impl Kind {
         };
         table[i.min(table.len() - 1)]
     }
-    /// Whether the menu has a result slot after its inputs.
-    pub(in crate::game) fn has_result(self) -> bool {
-        self.result_pos().is_some()
-    }
     pub(in crate::game::client_side) fn result_pos(self) -> Option<(f32, f32)> {
         match self {
             Self::Enchanting => None,
@@ -323,20 +242,7 @@ impl Kind {
     }
 }
 
-/// `CyclingSlotBackground`: the icons an empty slot cycles through, one every
-/// 30 ticks, the next fading in over 4 (`CyclingSlotBackground.tick` in
-/// `advance`, `CyclingSlotBackground.extractRenderState` in `shown`).
-#[derive(Default)]
-pub(in crate::game) struct CyclingSlot {
-    pub(in crate::game) icons: Vec<&'static str>,
-    pub(in crate::game) tick: u32,
-    pub(in crate::game) index: usize,
-    /// The client tick it was last advanced to.
-    pub(in crate::game) at: Option<u64>,
-}
 impl CyclingSlot {
-    pub(in crate::game) const CHANGE_TICKS: u32 = 30;
-    pub(in crate::game) const FADE_TICKS: f32 = 4.0;
     /// `CyclingSlotBackground.tick(newIcons)` for each client tick since the last call.
     pub(in crate::game::client_side) fn advance(&mut self, now: u64, icons: &[&'static str]) {
         let ticks = self.at.map_or(0, |at| now.saturating_sub(at).min(600));
@@ -376,82 +282,8 @@ impl CyclingSlot {
         shown
     }
 }
-/// `SmithingScreen`'s `EMPTY_SLOT_SMITHING_TEMPLATES`.
-pub(in crate::game) const EMPTY_TEMPLATE_ICONS: [&str; 2] = [
-    "smithing_template_armor_trim",
-    "smithing_template_netherite_upgrade",
-];
 
-pub(in crate::game) struct Station {
-    pub(in crate::game) kind: Kind,
-    pub(in crate::game) pos: [i32; 3],
-    pub(in crate::game) inputs: Vec<Option<ItemStack>>,
-    pub(in crate::game) result: Option<ItemStack>,
-    pub(in crate::game) offers: EnchantOffers,
-    pub(in crate::game) bookcases: i32,
-    pub(in crate::game) anvil: AnvilResult,
-    /// Anvil rename box text (`AnvilMenu.itemName`).
-    pub(in crate::game) name: String,
-    /// The box itself (`AnvilScreen`'s `EditBox` of 50, unbordered).
-    pub(in crate::game) rename: sunrise_client::ui::EditBox,
-    /// Stonecutter: the menu's recipe list (sunrise_client::menu), its
-    /// `selectedRecipeIndex` and the screen's first shown index.
-    pub(in crate::game) stone: sunrise_client::menu::Stonecutter,
-    pub(in crate::game) selected: Option<usize>,
-    pub(in crate::game) start: usize,
-    /// Stonecutter: the screen's `scrollOffs` (0 to 1) and `scrolling`, the
-    /// scroller held by the mouse.
-    pub(in crate::game) scroll: f32,
-    pub(in crate::game) scrolling: bool,
-    /// Anvil: the input the rename box was last filled from.
-    pub(in crate::game) anvil_last: Option<ItemStack>,
-    /// Anvil on a server: the name last sent (the client menu's `itemName`).
-    pub(in crate::game) anvil_sent: Option<String>,
-    pub(in crate::game) last_sound: u64,
-    /// Villager trading state.
-    pub(in crate::game) merchant: Option<Box<super::trading::MerchantState>>,
-    /// Beacon menu: the selected primary and secondary power (EFFECTS index).
-    pub(in crate::game) beacon: [Option<usize>; 2],
-    /// A server's beacon menu: the pyramid's levels (its data slot 0).
-    pub(in crate::game) beacon_levels: Option<i32>,
-    /// The loom's patterns, selection and scroller (game/blocks/loom.rs).
-    pub(in crate::game) loom: super::loom::LoomState,
-    /// The smithing table's three `CyclingSlotBackground`s: the template, base and additions slots.
-    pub(in crate::game) cycling: [CyclingSlot; 3],
-    /// The enchanting table's book (`EnchantmentScreen`'s flip and open state).
-    pub(in crate::game) book: EnchantBook,
-}
 impl Station {
-    pub(in crate::game) fn new(kind: Kind, pos: [i32; 3]) -> Self {
-        Self {
-            kind,
-            pos,
-            inputs: vec![None; kind.inputs()],
-            result: None,
-            offers: EnchantOffers::default(),
-            bookcases: 0,
-            anvil: AnvilResult::default(),
-            name: String::new(),
-            rename: anvil::rename_box(),
-            stone: Default::default(),
-            selected: None,
-            start: 0,
-            scroll: 0.0,
-            scrolling: false,
-            anvil_last: None,
-            anvil_sent: None,
-            last_sound: 0,
-            merchant: None,
-            beacon: [None; 2],
-            beacon_levels: None,
-            loom: Default::default(),
-            cycling: Default::default(),
-            book: EnchantBook::new(random_source::create()),
-        }
-    }
-    pub(in crate::game) fn new_kind(kind: Kind, pos: [i32; 3]) -> Self {
-        Self::new(kind, pos)
-    }
     /// `StonecutterScreen.containerChanged`: a changed input puts the list back at the top.
     pub(in crate::game::client_side) fn stonecutter_changed(&mut self) {
         self.start = 0;
@@ -679,22 +511,6 @@ impl Game<'_> {
             _ => &mut self.scratch_slot,
         }
     }
-    /// The anvil name the menu works with (`AnvilScreen.onNameChanged`).
-    pub(in crate::game) fn anvil_item_name(&self, s: &Station) -> String {
-        match &s.inputs[0] {
-            Some(input)
-                if input.custom_name().is_none()
-                    && s.name
-                        == sunrise_client::lang::returned_to_server(|| {
-                            self.stack_hover_name_text(input).plain()
-                        }) =>
-            {
-                String::new()
-            }
-            Some(_) => s.name.clone(),
-            None => String::new(),
-        }
-    }
     /// Apply the client anvil hook after vanilla `createResult`.
     pub(in crate::game::client_side) fn update_anvil_answer(
         &mut self,
@@ -715,8 +531,9 @@ impl Game<'_> {
         let (player, entity_id) = (self.own_uuid(), self.own_entity_id());
         self.api_anvil_update(player, entity_id, s.pos, inputs, &mut s.anvil);
     }
-    /// `slotsChanged` / `createResult` for the open station.
-    pub(in crate::game) fn station_changed(&mut self) {
+    /// Client arm of [`Game::side_station_changed`]: enchanting only clears
+    /// offers without an enchantable item; anvil runs the client preview hook.
+    pub(in crate::game) fn client_station_changed(&mut self) {
         let Some(mut s) = self.station.take() else {
             return;
         };
@@ -729,23 +546,13 @@ impl Game<'_> {
         match s.kind {
             // A server's table: its data slots carry the offers, and its
             // client menu only clears them without an enchantable item.
-            Kind::Enchanting if self.remote.is_some() => {
+            Kind::Enchanting => {
                 let enchantable = s.inputs[0]
                     .as_ref()
                     .is_some_and(|i| stations::is_enchantable(&enchantments, i));
                 if !enchantable {
                     s.offers = Default::default();
                 }
-            }
-            Kind::Enchanting => {
-                s.bookcases = self.count_bookshelves(s.pos);
-                s.offers = stations::enchant_offers(
-                    &enchantments,
-                    items,
-                    self.level.xp_seed,
-                    s.bookcases,
-                    s.inputs[0].as_ref(),
-                );
             }
             Kind::Anvil => {
                 let name = self.anvil_item_name(&s);
@@ -801,11 +608,15 @@ impl Game<'_> {
         }
         self.station = Some(s);
     }
-    pub(in crate::game) fn max_stack(&self, stack: &ItemStack) -> u32 {
-        self.res
-            .items()
-            .get(&stack.item)
-            .map_or(64, |i| i.max_stack)
+    /// Client arm of [`Game::side_combiner_take_effects`]: the server owns
+    /// smithing sounds, XP levels, and anvil wear.
+    pub(in crate::game) fn client_combiner_take_effects(
+        &mut self,
+        _kind: Kind,
+        _pos: [i32; 3],
+        _level_change: i32,
+    ) -> bool {
+        false
     }
     /// `Slot.mayPlace` and `getMaxStackSize` for station slots.
     pub(in crate::game::client_side) fn slot_rules(
@@ -999,78 +810,11 @@ impl Game<'_> {
         if !menu.combined || predicting {
             return;
         }
-        if kind == Kind::Smithing {
-            self.server_level_event_at(1044, pos, 0);
-            return;
-        }
-        self.give_levels(menu.level_change);
-        if self.anvil_used(pos, self.creative) {
+        if self.side_combiner_take_effects(kind, pos, menu.level_change) {
             self.close_station_client();
             self.set_screen(Screen::Playing);
             self.capture(true);
         }
-    }
-    /// `AnvilMenu.onTake`'s level part: out of creative a 12% chance
-    /// (`AnvilBlock.damage`) to wear the anvil a stage, or break a damaged one
-    /// (level event 1029); otherwise level event 1030. True when it broke.
-    pub(in crate::game) fn anvil_used(&mut self, pos: [i32; 3], creative: bool) -> bool {
-        let state = self.world.block(pos[0], pos[1], pos[2]);
-        let name = self.res.facts().get(state).name.clone();
-        let anvil = matches!(
-            &*name,
-            "minecraft:anvil" | "minecraft:chipped_anvil" | "minecraft:damaged_anvil"
-        );
-        if !creative && anvil && self.world.random.next_float() < 0.12 {
-            match &*name {
-                "minecraft:anvil" => {
-                    let _ = self.set_state_named(pos, "minecraft:chipped_anvil", &["facing"]);
-                    self.native_anvil_damaged(self.dim.id(), pos, &name, "minecraft:chipped_anvil");
-                }
-                "minecraft:chipped_anvil" => {
-                    let _ = self.set_state_named(pos, "minecraft:damaged_anvil", &["facing"]);
-                    self.native_anvil_damaged(self.dim.id(), pos, &name, "minecraft:damaged_anvil");
-                }
-                _ => {
-                    let _ = self.world.set(pos[0], pos[1], pos[2], self.world.air);
-                    self.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
-                    self.native_anvil_damaged(self.dim.id(), pos, &name, "minecraft:air");
-                    self.server_level_event_at(1029, pos, 0);
-                    return true;
-                }
-            }
-        }
-        self.server_level_event_at(1030, pos, 0);
-        false
-    }
-    /// The grindstone result's `onTake` with a level (`amount`: the menu's
-    /// `getExperienceAmount` sum): the orbs at the block's centre
-    /// (`ExperienceOrb.award`), then level event 1042, the grindstone's sound
-    /// for everyone around.
-    pub(in crate::game::client_side) fn grindstone_taken(&mut self, pos: [i32; 3], amount: i32) {
-        let xp = stations::grindstone_xp_roll(amount, &mut self.world.random);
-        self.grindstone_award(pos, xp);
-    }
-    /// The rest of `onTake` with the experience `xp` decided: the orbs and
-    /// level event 1042.
-    pub(in crate::game::client_side) fn grindstone_award(&mut self, pos: [i32; 3], xp: u32) {
-        if xp > 0 {
-            self.spawn_orbs(pos.map(|v| f64::from(v) + 0.5), xp);
-        }
-        self.after_commit(super::transactions::After::GrindstoneEvent(pos));
-    }
-    pub(in crate::game) fn give_or_drop(&mut self, stack: ItemStack) {
-        if let Some(rest) = self.add_stack_to_inventory(stack)
-            && let Some(eye) = self.eye_position()
-        {
-            // Inventory.placeItemBackInInventory: `player.drop(stack, false)`.
-            self.throw_from_eyes(rest, eye, false, false);
-        }
-    }
-    /// `Player.giveExperienceLevels`, and the level change reported to the mods.
-    pub(in crate::game) fn give_levels(&mut self, levels: i32) {
-        let old_level = self.experience.level;
-        self.add_experience_levels(levels);
-        self.native_player_level_changed(old_level);
     }
     /// Whether the result slot may be taken (`mayPickup`).
     pub(in crate::game::client_side) fn may_take_result(&self) -> bool {
@@ -1300,7 +1044,15 @@ impl Game<'_> {
     }
     /// `StonecutterScreen.mouseScrolled`.
     pub(in crate::game::client_side) fn station_scroll(&mut self, d: f32) -> bool {
-        let mut handled = self.merchant_scroll(d);
+        let mut handled = if let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut())
+            && m.session.offers.len() > 7
+        {
+            let max = m.session.offers.len() - 7;
+            m.scroll = ((m.scroll as f64 - f64::from(d)) as i32).clamp(0, max as i32) as usize;
+            true
+        } else {
+            false
+        };
         handled |= self.loom_scroll(d);
         let Some(s) = self.station.as_mut() else {
             return handled;

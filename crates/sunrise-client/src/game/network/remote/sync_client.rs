@@ -114,11 +114,9 @@ impl Game<'_> {
             return Vec3::ZERO;
         }
         let bounds = p.bounds();
-        let teams = self.mob_teams();
         // `Entity.getTeam` is `Scoreboard.getPlayersTeam(getScoreboardName())`:
         // a player's score holder is its profile name, every other entity's
-        // its UUID text. `mob_teams` keys by UUID and names the local player
-        // `PLAYER_NAME`, which misses a server's teams for players.
+        // its UUID text.
         let board = &self.score.board;
         let player_team = board.players_team(&r.profile_name);
         let mut push = Vec3::ZERO;
@@ -139,8 +137,10 @@ impl Game<'_> {
                 .level_players
                 .get(&(m.id as i32))
                 .and_then(|uuid| r.tab_players.get(uuid));
-            let mob_team =
-                listed.map_or_else(|| teams.of(Who::Mob(m.id)), |t| board.players_team(&t.name));
+            let mob_team = listed.map_or_else(
+                || self.client_mob_team_of(m),
+                |t| board.players_team(&t.name),
+            );
             if r.remote_player_info_game_mode(m.id as i32) == Some(SPECTATOR)
                 || !sunrise_client::scoreboard::pushable_by(mob_team, player_team, true)
             {
@@ -396,10 +396,7 @@ impl Game<'_> {
         }
         // Vehicles, projectiles and other simulated objects may have moved
         // since the last tracking packet.
-        if let Some(position) = self
-            .level_entity(id)
-            .and_then(|target| self.target_position(target))
-        {
+        if let Some(position) = self.remote_simulated_entity_position(id) {
             state.position = position;
         }
         Some(state)
@@ -653,5 +650,31 @@ impl Game<'_> {
         for (slot, stack) in changed {
             self.send_creative_item_add(slot, stack);
         }
+    }
+
+    pub(in crate::game) fn remote_tab_players(
+        &mut self,
+    ) -> Option<(Vec<TabPlayer>, bool, Vec<u128>)> {
+        self.update_remote_skins();
+        self.publish_tab_object_skins();
+        let r = self.remote.as_ref()?;
+        let players: Vec<_> = r
+            .listed
+            .iter()
+            .filter_map(|u| {
+                let mut player = r.tab_players.get(u)?.clone();
+                player.skin = r.player_info_skin(*u).to_owned();
+                Some(player)
+            })
+            .collect();
+        let upside_down = players
+            .iter()
+            .filter(|p| {
+                (p.name == "Dinnerbone" || p.name == "Grumm")
+                    && (p.uuid == r.profile || r.level_players.values().any(|u| *u == p.uuid))
+            })
+            .map(|p| p.uuid)
+            .collect();
+        Some((players, r.online_mode, upside_down))
     }
 }

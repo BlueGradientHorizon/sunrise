@@ -1,7 +1,5 @@
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::menus::*;
 
 impl Game<'_> {
     /// `ContainerEntity.isChestVehicleStillValid`: the chest minecart or chest

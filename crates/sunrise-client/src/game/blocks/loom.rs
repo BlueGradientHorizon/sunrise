@@ -68,25 +68,6 @@ impl Game<'_> {
         }
         l.last_inputs = inputs;
     }
-    /// A sound the loom or stonecutter menu played: the result's once per
-    /// tick (`lastSoundTime`).
-    pub(in crate::game::client_side) fn station_sound(&mut self, sound: &str) {
-        let ticks = self.ticks;
-        let Some(s) = self.station.as_mut() else {
-            return;
-        };
-        if s.last_sound == ticks {
-            return;
-        }
-        s.last_sound = ticks;
-        let pos = s.pos;
-        let at = [
-            f64::from(pos[0]) + 0.5,
-            f64::from(pos[1]) + 0.5,
-            f64::from(pos[2]) + 0.5,
-        ];
-        self.server_play_sound(sound, at, 1.0, 1.0);
-    }
     /// `LoomScreen.mouseClicked` on a pattern button: `clickMenuButton`, and
     /// the select sound when the menu took it.
     fn loom_button(&mut self, index: usize) -> bool {

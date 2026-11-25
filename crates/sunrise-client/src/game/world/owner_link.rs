@@ -56,7 +56,7 @@ pub(in crate::game) enum OwnerRequest {
     ApplyWorldOptions {
         before: Snapshot,
         wanted: Snapshot,
-        done: Reply<()>,
+        done: Reply<(bool, Option<u16>)>,
     },
     /// Far terrain for a client in `dim`.
     LodSource(
@@ -141,6 +141,30 @@ pub(in crate::game) enum ControlRequest {
         saved: Sender<Result<(), String>>,
         copied: Receiver<()>,
     },
+    /// Owner's server-side shield disable cooldown ticks.
+    ShieldCooldown(Reply<Result<u32, String>>),
+    /// `sculk` control command, executed in the owner guest's turn.
+    Sculk {
+        words: Vec<String>,
+        reply: Reply<Result<Value, String>>,
+    },
+    /// `dragon-hurt` control test hook, crediting the owner guest.
+    DragonHurt {
+        amount: f32,
+        reply: Reply<Result<(), String>>,
+    },
+    /// Server-side `fishing` and `fight` fields for `sunrise-ctl status`.
+    StatusExtras(Reply<Result<(Option<Value>, Value), String>>),
+    /// `xp` station control command; returns resulting experience level.
+    GiveLevels {
+        levels: i32,
+        reply: Reply<Result<i32, String>>,
+    },
+    /// `effect` / `effect clear` station control command.
+    StationEffect {
+        effect: Option<sunrise_client::effects::EffectInstance>,
+        reply: Reply<Result<(), String>>,
+    },
 }
 
 impl Game<'_> {
@@ -172,8 +196,8 @@ impl Game<'_> {
                 wanted,
                 done,
             } => {
-                self.apply_world_options_server(&before, &wanted);
-                let _ = done.send(());
+                let outcome = self.apply_world_options_server(&before, &wanted);
+                let _ = done.send(outcome);
             }
             OwnerRequest::LodSource(dim, reply) => {
                 let _ = reply.send(self.lod_source_in(dim));
@@ -270,6 +294,52 @@ impl Game<'_> {
                 let _ = saved.send(self.save_game().map_err(|e| e.to_string()));
                 let _ = copied.recv();
             }
+            ControlRequest::ShieldCooldown(reply) => {
+                let out = self.in_owner_guest_turn(|g| g.shield_cooldown());
+                let _ = reply.send(out);
+            }
+            ControlRequest::Sculk { words, reply } => {
+                let words: Vec<&str> = words.iter().map(String::as_str).collect();
+                let out = self
+                    .in_owner_guest_turn(|g| g.sculk_command(&words).map_err(|e| e.to_string()))
+                    .and_then(|res| res);
+                let _ = reply.send(out);
+            }
+            ControlRequest::DragonHurt { amount, reply } => {
+                let out = self.in_owner_guest_turn(|g| {
+                    let _ = g.hit_special(
+                        super::dragon::SPECIAL,
+                        amount,
+                        true,
+                        sunrise_client::mobs::DamageKind::PlayerAttack,
+                        None,
+                    );
+                });
+                let _ = reply.send(out);
+            }
+            ControlRequest::StatusExtras(reply) => {
+                let out = self.in_owner_guest_turn(|g| (g.hook_status(), g.dragon_status()));
+                let _ = reply.send(out);
+            }
+            ControlRequest::GiveLevels { levels, reply } => {
+                let out = self.in_owner_guest_turn(|g| {
+                    g.give_levels(levels);
+                    g.experience.level
+                });
+                let _ = reply.send(out);
+            }
+            ControlRequest::StationEffect { effect, reply } => {
+                let out = self.in_owner_guest_turn(|g| match effect {
+                    None => g.remove_player_effects(None),
+                    Some(inst) => g.apply_player_effect(inst),
+                });
+                if out.is_ok()
+                    && let Some(host) = self.lan.as_mut()
+                {
+                    host.hub.sync_all_effects();
+                }
+                let _ = reply.send(out);
+            }
         }
     }
 
@@ -292,7 +362,7 @@ impl Game<'_> {
         &mut self,
         before: &Snapshot,
         wanted: &Snapshot,
-    ) {
+    ) -> (bool, Option<u16>) {
         if wanted.difficulty != before.difficulty {
             let name = sunrise_client::title::DIFFICULTIES[usize::from(wanted.difficulty) & 3];
             self.as_console(|g| g.run_command(&format!("difficulty {name}")));
@@ -310,12 +380,13 @@ impl Game<'_> {
             self.set_allow_commands(wanted.cheats);
             self.owner_allow_commands(wanted.cheats);
         }
+        let mut closed = false;
         let settings_changed =
             wanted.guest_commands != before.guest_commands || wanted.force != before.force;
         if wanted.lan != before.lan || (wanted.lan && wanted.port != before.port) {
-            self.lan_close(before.lan);
+            closed = self.unpublish();
             if wanted.lan {
-                let _ = self.lan_open(LanSettings {
+                let _ = self.publish(LanSettings {
                     port: wanted.port,
                     guest_commands: wanted.guest_commands,
                     force_game_mode: wanted.force,
@@ -324,5 +395,6 @@ impl Game<'_> {
         } else if settings_changed {
             self.lan_apply_settings(wanted.guest_commands, wanted.force);
         }
+        (closed, self.published_port())
     }
 }

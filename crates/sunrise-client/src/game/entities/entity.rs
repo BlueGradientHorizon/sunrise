@@ -51,6 +51,9 @@ use sunrise_world::{
     ground_support::GroundState, level::data::PushReaction, move_gate::MoveGate, piston_push,
 };
 
+#[allow(unused_imports)]
+pub(in crate::game) use super::pick_entity_server::visit_server_section_members;
+
 /// Assign a stored owner's delayed id at its existing allocation point.
 /// Kinds without a lifetime slot pass None; a bound owner must keep its id.
 pub(in crate::game::server_side) fn assign_stored_id(
@@ -748,8 +751,31 @@ pub(in crate::game) fn apply_contact_writes(
 }
 
 impl Game<'_> {
+    /// `Block.fallOn` effects for bodies whose `causeFallDamage` does nothing.
+    pub(in crate::game) fn nonliving_fall_on(
+        &mut self,
+        id: u32,
+        feet: Vec3,
+        contact: sunrise_client::motion::BodyContact,
+    ) {
+        // FarmlandBlock draws the level's float before checking LivingEntity.
+        match &*self.res.facts().get(contact.state).name {
+            "minecraft:farmland" => {
+                self.world.random.next_float();
+            }
+            "minecraft:honey_block" => {
+                let at = [feet.x, feet.y, feet.z];
+                if !self.entity_silent(id) {
+                    self.server_play_sound("minecraft:block.honey_block.slide", at, 1.0, 1.0);
+                }
+                self.lan_entity_event(id as i32, 54, at);
+            }
+            _ => {}
+        }
+    }
+
     /// Finish a body bounce before the caller changes the live entity's delta movement.
-    pub(in crate::game::server_side) fn finish_body_restitution(
+    pub(in crate::game) fn finish_body_restitution(
         &mut self,
         (id, kind): (u32, &str),
         feet: Vec3,
@@ -758,11 +784,6 @@ impl Game<'_> {
         let Some(bounce) = response.bounce else {
             return response.velocity;
         };
-        // ShelfMushroomBlock calls ClientLevel.playSound with a null player, and
-        // ClientLevel.gameEvent does nothing. The authoritative level sends both.
-        if self.options.execution_role.is_client() || self.remote.is_some() {
-            return response.velocity;
-        }
         if !matches!(kind, "minecraft:item" | "minecraft:tnt")
             && self.motion.landing.has_shelf_bounce(bounce.state)
         {
@@ -800,6 +821,70 @@ impl Game<'_> {
         self.post_game_event("minecraft:bounce", [feet.x, feet.y, feet.z], context);
         self.persist.sync_body_position.insert(id);
         movement
+    }
+
+    pub(in crate::game) fn server_finish_body_restitution(
+        &mut self,
+        entity: (u32, &str),
+        feet: Vec3,
+        response: sunrise_client::motion::BodyRestitution,
+    ) -> Vec3 {
+        self.finish_body_restitution(entity, feet, response)
+    }
+
+    pub(in crate::game) fn server_body_step_on(
+        &mut self,
+        entity: (u32, &str),
+        footprint: (Vec3, Aabb),
+        ground: &sunrise_world::ground_support::GroundState,
+        velocity: &mut Vec3,
+    ) -> Vec<mod_api::EntityWrite> {
+        use sunrise_client::block_contact::{StepLevel, step_listens, step_on};
+        let side = game_side!(self);
+        let motion = self.body_motion(&side);
+        let Some(step) = motion.step_contact(entity, footprint, ground, velocity) else {
+            return Vec::new();
+        };
+        if !step_listens(step.contact.state) {
+            return Vec::new();
+        }
+        let mut level = sunrise_client::health::DamageLevel::of(
+            &mut self.world,
+            self.pack.assets.registry,
+            Some(world_items!(self)),
+            Some(&self.pack.block_registries),
+            &self.damage_hooks,
+        );
+        step_on(StepLevel::Server(&mut level), step, velocity)
+    }
+
+    pub(in crate::game) fn server_item_fall_on(&mut self, id: u32, on: BlockPos, distance: f64) {
+        self.item_fall_on(id, on, distance);
+    }
+
+    pub(in crate::game) fn server_item_post_move_contacts(
+        &mut self,
+        item: &mut ItemEntity,
+        client: bool,
+    ) -> bool {
+        for write in self.server_body_step_on(
+            (item.id, "minecraft:item"),
+            (item.position, item.bounds()),
+            &item.ground,
+            &mut item.velocity,
+        ) {
+            self.apply_item_write(item, write);
+            if item.health <= 0 {
+                return false;
+            }
+        }
+        if !client {
+            self.sweep_item_inside(item);
+            if item.health <= 0 {
+                return false;
+            }
+        }
+        true
     }
 }
 
@@ -1012,163 +1097,6 @@ impl Game<'_> {
         lent.give_back(&mut self.world);
         effects.absorb_step(staged);
         sunrise_client::block_contact::inside_written(state, at, writes);
-    }
-
-    pub(in crate::game) fn body_motion<'a>(
-        &'a self,
-        side: &'a dyn sunrise_client::motion::SideLevel,
-    ) -> sunrise_client::motion::BodyMotion<'a> {
-        sunrise_client::motion::BodyMotion {
-            world: &self.world,
-            collision: self.collision,
-            facts: self.res.facts(),
-            blocks: Some(&self.res.motion().blocks),
-            context: &self.loop_context,
-            side: Some(side),
-        }
-    }
-
-    /// Step on the retained block before the simulating body's inside scan.
-    /// Client copies edit motion only; the server hands the writes to the body owner.
-    pub(in crate::game) fn body_step_on(
-        &mut self,
-        entity: (u32, &str),
-        footprint: (Vec3, Aabb),
-        ground: &sunrise_world::ground_support::GroundState,
-        velocity: &mut Vec3,
-    ) -> Vec<mod_api::EntityWrite> {
-        use sunrise_client::block_contact::{StepLevel, step_listens, step_on};
-        let side = game_side!(self);
-        let motion = self.body_motion(&side);
-        if self.options.execution_role.is_client() || self.remote.is_some() {
-            motion.step_on(entity, footprint, ground, velocity);
-            return Vec::new();
-        }
-        let Some(step) = motion.step_contact(entity, footprint, ground, velocity) else {
-            return Vec::new();
-        };
-        if !step_listens(step.contact.state) {
-            return Vec::new();
-        }
-        let mut level = sunrise_client::health::DamageLevel::of(
-            &mut self.world,
-            self.pack.assets.registry,
-            Some(world_items!(self)),
-            Some(&self.pack.block_registries),
-            &self.damage_hooks,
-        );
-        step_on(StepLevel::Server(&mut level), step, velocity)
-    }
-
-    pub(in crate::game) fn tick_item_with_block_contacts(
-        &mut self,
-        item: &mut ItemEntity,
-        escape_speed: Option<f32>,
-        entity_boxes: &[Aabb],
-        client: bool,
-        splash: &mut impl FnMut(sunrise_client::entities::ItemSplash),
-    ) -> (bool, bool) {
-        let no_physics = escape_speed.is_some();
-        // Entity.baseTick splashes before moving, except on the first tick, at
-        // the motion before the currents push it.
-        let before = item.velocity;
-        let heights =
-            item.push_by_fluid(&self.world, &self.res.motion().fluids, &self.loop_context);
-        item.water_entry(heights.0 > 0.0, item.ticks == 0, before, splash);
-        item.lava_fall(heights.1 > 0.0);
-        let mut step = item.tick_move_before_block_effects(
-            &self.world,
-            self.res.facts(),
-            self.collision,
-            no_physics,
-            escape_speed,
-            heights,
-            entity_boxes,
-            Some(self.border.geometry()),
-            Some(&self.res.motion().blocks),
-            &self.loop_context,
-        );
-        item.check_fall(&mut step, |fall, from, moved| {
-            self.vehicle_fall_reset(fall, from, moved)
-        });
-        if !client && let Some((on, distance)) = step.landed() {
-            self.item_fall_on(item.id, on, distance);
-        }
-        if let Some(response) = item.move_restitution(self.body_motion(&game_side!(self)), step) {
-            item.velocity =
-                self.finish_body_restitution((item.id, "minecraft:item"), item.position, response);
-        }
-        if let Some(pos) = step.vertical_contact {
-            let state = self.world.block(pos.x, pos.y, pos.z);
-            let position = item.position;
-            let mut discarded = false;
-            if crate::game::api_values::block_state::block_listens(
-                mod_api::HookId::ItemAfterVerticalCollision,
-                state,
-            ) {
-                let mut stack = Some(item.stack.clone());
-                self.native_item_after_vertical_collision(
-                    crate::game::native_hooks::ItemAfterVerticalCollisionCall {
-                        dimension: self.dim.id(),
-                        client,
-                        entity: item.id,
-                        state,
-                        block_pos: [pos.x, pos.y, pos.z],
-                        item_pos: [position.x, position.y, position.z],
-                        stack: &mut stack,
-                        discard: &mut discarded,
-                    },
-                );
-                match stack {
-                    Some(stack) => item.stack = stack,
-                    None => discarded = true,
-                }
-            }
-            if discarded || item.stack.count == 0 {
-                return (false, true);
-            }
-        }
-        if !no_physics {
-            item.apply_move_speed(self.body_motion(&game_side!(self)), step);
-            for write in self.body_step_on(
-                (item.id, "minecraft:item"),
-                (item.position, item.bounds()),
-                &item.ground,
-                &mut item.velocity,
-            ) {
-                self.apply_item_write(item, write);
-                if item.health <= 0 {
-                    return (false, true);
-                }
-            }
-            if !client {
-                self.sweep_item_inside(item);
-                if item.health <= 0 {
-                    return (false, true);
-                }
-            }
-        }
-        item.finish_move_block_effects(&self.world, self.res.facts(), step);
-        item.push_by_bubble_column(
-            &self.world,
-            self.pack.assets.registry,
-            self.res.facts(),
-            self.collision,
-        );
-        let alive = item.tick_settle(
-            &self.world,
-            self.pack.assets.registry,
-            self.res.facts(),
-            step,
-            &self.loop_context,
-            self,
-        );
-        // ItemEntity.tick refreshes immersion and splashes on water entry.
-        let before = item.velocity;
-        let (water, _) =
-            item.push_by_fluid(&self.world, &self.res.motion().fluids, &self.loop_context);
-        item.water_entry(water > 0.0, false, before, splash);
-        (alive, false)
     }
 }
 
@@ -1457,7 +1385,7 @@ pub(in crate::game) struct DrawExtras<'a> {
 
 /// The drawn entities as runs in the order they joined the level. Keep the next draw-only
 /// entity cached, so the existing body walk only compares its join with that one head.
-pub(in crate::game::server_side) fn draw_runs(
+pub(in crate::game) fn draw_runs(
     lists: EntityLists<'_>,
     mut extra: DrawExtras<'_>,
     runs: &mut Vec<DrawRun>,
@@ -1529,46 +1457,6 @@ pub(in crate::game::server_side) fn draw_runs(
     while let Some((_, family, index)) = pending {
         push(family, index);
         pending = next_extra();
-    }
-}
-
-impl Game<'_> {
-    /// The entities of the families `entity_geometry` draws in one ordered pass, as runs in the
-    /// order they joined the level (`EntityLookup.byId`, which
-    /// `LevelExtractor.extractVisibleEntities` follows), whatever their family.
-    ///
-    /// The window sees a client level, including when the server is integrated. Its packet
-    /// handlers append freshly joined bodies without reordering survivors. A dropped item
-    /// reserves its sequence at AddEntity and takes that slot when its stack arrives. Client
-    /// ticks restore lifted rows before nested spawns and put a lent mount back at its old
-    /// index. Respawn either keeps the lists or clears them for a new level. The server's
-    /// save loads, level swaps, and tick-specific list reorders never feed this merge; they
-    /// publish to the window through packets.
-    pub(in crate::game) fn ordered_draw_runs(
-        &self,
-        draw_general: bool,
-        draw_crystals: bool,
-        runs: &mut Vec<DrawRun>,
-    ) {
-        // A first-person body can draw into the shadow pass only.
-        let local_player = self
-            .player_model_shown()
-            .then(|| self.resident_entities.local_player.join());
-        draw_runs(
-            entity_lists_of!(self),
-            DrawExtras {
-                local_player,
-                dragon: self.dragon.as_ref().map(|dragon| dragon.join),
-                crystals: if draw_crystals { &self.crystals } else { &[] },
-                // Pending snapshots do not change the IndexMap's order or the spawn stamp.
-                general: self
-                    .remote
-                    .as_ref()
-                    .filter(|_| draw_general)
-                    .map(|r| &r.general),
-            },
-            runs,
-        );
     }
 }
 

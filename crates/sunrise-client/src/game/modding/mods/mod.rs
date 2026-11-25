@@ -2167,6 +2167,26 @@ impl Game<'_> {
         }
     }
 
+    pub(in crate::game) fn install_loop_context(&mut self, context: PreparedLoopContext) {
+        self.protect_condition_root();
+        self.loop_context = context.game;
+        self.refresh_recipe_property_context();
+        self.setting_overrides.borrow_mut().clear();
+        self.side_set_audio_loop_context(context.audio);
+        if let Some(worldgen) = context.worldgen {
+            sunrise_world::native_worldgen_hooks::publish_context(Arc::new(worldgen));
+        }
+    }
+
+    /// Apply the player's switches at the canonical native dispatch boundary.
+    pub(in crate::game) fn sync_native_switches(&self) {
+        let (effective, _) = self
+            .mods
+            .reconcile_code_switches(&self.settings.mods.disabled);
+        self.side_retire_disabled_instance_groups(&effective);
+        self.mods.apply_code_switches(&effective);
+    }
+
     /// Stage a fresh root when admission changes or registered conditions need reevaluation.
     /// The caller publishes it after every server reload listener prepared.
     pub(in crate::game) fn stage_enabled_inventory(

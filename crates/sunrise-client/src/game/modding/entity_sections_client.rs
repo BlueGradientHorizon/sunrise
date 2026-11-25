@@ -38,6 +38,18 @@ pub(in crate::game::client_side) use std::collections::HashMap;
 pub(in crate::game::client_side) use std::collections::hash_map::Entry;
 
 impl Game<'_> {
+    pub(in crate::game) fn client_pick_section_move(&mut self, id: u32, to: [f64; 3]) {
+        self.pick_section_move(id, to);
+    }
+
+    pub(in crate::game) fn client_pick_section_sync_moved_id(&mut self, id: u32) {
+        self.pick_section_sync_moved_id(id);
+    }
+
+    pub(in crate::game) fn client_pick_section_remove(&mut self, id: u32) {
+        self.pick_section_remove(id);
+    }
+
     /// A client's entities after its tick: each one where its interpolation or its own move
     /// put it (its live position, not the packet's), and this window's player.
     pub(in crate::game) fn client_entity_sections_stepped(&mut self) {

@@ -27,7 +27,7 @@ impl Game<'_> {
     ) -> Option<f32> {
         let def = mod_api::__private::effect_index(effect)
             .and_then(sunrise_client_core::potions::effect_by_index)?;
-        let Target::Player = self.native_living_read_target(living)? else {
+        let Target::Player = self.native_client_entity_target(living.entity())? else {
             return None;
         };
         let Some(e) = self.potions.effects.get_registered(def.index) else {

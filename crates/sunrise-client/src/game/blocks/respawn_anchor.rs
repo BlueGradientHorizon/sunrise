@@ -133,18 +133,6 @@ pub(in crate::game) enum AnchorUse {
 }
 
 impl Game<'_> {
-    pub(in crate::game::server_side) fn is_anchor(&self, state: BlockStateId) -> bool {
-        &*self.res.facts().get(state).name == "minecraft:respawn_anchor"
-    }
-    pub(in crate::game::server_side) fn anchor_charges(&self, state: BlockStateId) -> i32 {
-        self.pack
-            .assets
-            .registry
-            .state(state)
-            .and_then(|s| s.properties.get("charges"))
-            .and_then(|c| c.parse().ok())
-            .unwrap_or(0)
-    }
     pub(in crate::game::server_side) fn anchor_with_charges(
         &self,
         state: BlockStateId,
@@ -158,15 +146,6 @@ impl Game<'_> {
     /// (only the Nether's dimension type sets it).
     pub(in crate::game::server_side) fn anchor_works(&self) -> bool {
         self.dimension_type().respawn_anchor_works
-    }
-    /// `RespawnAnchorBlock.useItemOn`'s test: `held` is glowstone
-    /// (`isRespawnFuel`) and the block at `pos` is an anchor that takes another
-    /// charge (`canBeCharged`).
-    pub(in crate::game) fn anchor_takes(&self, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
-        let state = self.world.block(pos[0], pos[1], pos[2]);
-        held.is_some_and(|s| &*s.item == "minecraft:glowstone")
-            && self.is_anchor(state)
-            && self.anchor_charges(state) < 4
     }
     /// `RespawnAnchorBlock.useItemOn` with `held` in the hand that acts.
     pub(in crate::game::server_side) fn use_respawn_anchor(
@@ -502,9 +481,6 @@ impl Game<'_> {
         self.stand_up_level()
             .bed_stand_up(StandUpType::PLAYER, pos, forward, yaw)
     }
-    pub(in crate::game::server_side) fn is_bed(&self, state: BlockStateId) -> bool {
-        self.res.facts().get(state).name.ends_with("_bed")
-    }
     /// `LivingEntity.stopSleeping`: when the block at `head` is still a bed,
     /// stand at `AbstractBedBlock.findStandUpPosition` (else 0.1 above the
     /// block over the head), turned toward the bed's bottom centre with a
@@ -519,15 +495,6 @@ impl Game<'_> {
             .bed_stand_up(head, facing, yaw)
             .unwrap_or_else(|| stand_up_fallback(head));
         Some((stand, look_at_yaw(stand, head)))
-    }
-    /// The bed's `facing`, as a step.
-    pub(in crate::game::server_side) fn bed_forward(&self, state: BlockStateId) -> [i32; 3] {
-        let facing = self.pack.assets.registry.state(state);
-        bed_forward(
-            facing
-                .and_then(|s| s.properties.get("facing"))
-                .map(String::as_str),
-        )
     }
     /// `BedRule.canSetSpawn` of the bed's rule attribute (`bed_rule`,
     /// `straw_bed_rule`): only the Overworld's beds set the spawn, straw

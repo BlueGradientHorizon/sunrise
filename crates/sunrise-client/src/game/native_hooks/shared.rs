@@ -178,20 +178,6 @@ pub(in crate::game) struct OpenNativeMenu {
     pub(in crate::game) data: Vec<i32>,
 }
 
-#[cfg(test)]
-pub(in crate::game) fn seed_native_menu(game: &mut Game<'_>, window: i32, name: &str) -> u64 {
-    if game.remote.is_none() {
-        let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
-        game.connect_local(pipe, "Native screen fixture").unwrap();
-    }
-    if game.remote.as_ref().unwrap().menu.as_ref().is_some() {
-        game.remote_close_local();
-    }
-    let menu = &mut game.remote.as_mut().unwrap().menu;
-    menu.set(Some((window, name.to_owned())));
-    menu.generation
-}
-
 /// Where a mod moved the open screen's slots after it opened, over the
 /// positions its `MenuScreenLayout` declared. Interior state, as the screen callbacks that
 /// move slots hold `&self`. A move is pending until the layout build commits
@@ -536,33 +522,6 @@ pub(in crate::game) enum ScreenMousePre {
     NotFired,
     Canceled,
     Passed(ScreenMousePost),
-}
-
-/// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
-    pub(in crate::game) fn observe_client_packet(
-        &mut self,
-        packet: &sunrise_protocol::packets::play::Clientbound,
-    ) {
-        if !mod_api::__private::listened(mod_api::HookId::ClientPacket) {
-            return;
-        }
-        let view = client_packet_view(packet);
-        self.native_client_packet(&view);
-    }
-    /// Whether a mod cancelled `packet` on its way to the server (`client_packet_send`).
-    /// Builds the packet's view only when a mod listens.
-    pub(in crate::game) fn client_packet_send_canceled(
-        &self,
-        packet: &sunrise_protocol::packets::play::Serverbound,
-    ) -> bool {
-        if !mod_api::__private::listened(mod_api::HookId::ClientPacketSend) {
-            return false;
-        }
-        let mut canceled = false;
-        self.native_client_packet_send(&serverbound_packet_view(packet), &mut canceled);
-        canceled
-    }
 }
 
 /// `native_living_use_totem` for the damage code: whether it
@@ -1097,111 +1056,6 @@ pub(in crate::game) struct BonemealAsk {
 
 /// Where the game calls the hook points.
 impl Game<'_> {
-    pub(in crate::game) fn placement_canceled(
-        &mut self,
-        placer: Option<EntityRef>,
-        pos: BlockPos,
-        state: BlockStateId,
-        placed_against: BlockStateId,
-        extra: impl IntoIterator<Item = (BlockPos, BlockStateId)>,
-    ) -> bool {
-        let mut extra = extra.into_iter();
-        let placement = if let Some(first) = extra.next() {
-            let Some(writes) = std::iter::once((pos, state))
-                .chain(std::iter::once(first))
-                .chain(extra)
-                .map(|(at, state)| Some(BlockPlacement::new(at, state.try_into_api().ok()?)))
-                .collect()
-            else {
-                return false;
-            };
-            Placement::Multi(writes)
-        } else {
-            Placement::Single
-        };
-        let mut canceled = false;
-        self.native_entity_place(placer, pos, state, placed_against, placement, &mut canceled);
-        canceled
-    }
-    /// Let `entity_place` veto exactly the decision the world will apply. If the
-    /// callback changed the inputs, do not choose another target behind its back.
-    pub(in crate::game) fn place_item_block(
-        &mut self,
-        ctx: &PlaceContext,
-        by_player: bool,
-        stack: &ItemStack,
-    ) -> crate::Result<Option<sunrise_world::level::AppliedPlacement>> {
-        let registry = self.pack.assets.registry;
-        let game_master = ctx.can_use_game_master_blocks;
-        let stack_state =
-            |state| crate::game::block_items::item_block_state(registry, state, stack, game_master);
-        let has_part =
-            mod_api::__private::item_listens(mod_api::HookId::PlacementContext, &stack.item);
-        let placer = (has_part && by_player)
-            .then(|| self.placement_placer())
-            .flatten();
-        let Some((decision, preview)) = self.with_level(|b, level, ticks| {
-            b.decide_placement(level, ticks, ctx, stack_state, |level, context| {
-                has_part
-                    .then(|| level.rewrite_placement_context(stack, context, placer))
-                    .flatten()
-            })
-        }) else {
-            return Ok(None);
-        };
-        let veto = mod_api::__private::listened(mod_api::HookId::EntityPlace);
-        if veto {
-            let against_pos = decision.placed_against_pos();
-            let block = |game: &Game<'_>, pos: BlockPos| game.world.block(pos.x, pos.y, pos.z);
-            let against = block(self, against_pos);
-            let target_before = block(self, preview.pos);
-            // One proposed state per affected cell. A companion at the pre-clear
-            // position supersedes the intermediate air or water write.
-            let extra = preview.companion.into_iter().chain(
-                preview
-                    .pre_clear
-                    .filter(|(pos, _)| preview.companion.is_none_or(|(at, _)| at != *pos)),
-            );
-            let hand = if by_player {
-                self.held().cloned()
-            } else {
-                None
-            };
-            let placer = by_player
-                .then(|| self.native_clicker().1.cast_unsigned())
-                .and_then(|entity| self.entity(entity));
-            // The block revision and journal epoch cover supporting blocks and
-            // block-entity shapes without tracing ordinary reads.
-            let level = (self.dim, self.world.revision, self.transactions.writes());
-            if self.placement_canceled(placer, preview.pos, preview.state, against, extra)
-                || level != (self.dim, self.world.revision, self.transactions.writes())
-                || block(self, preview.pos) != target_before
-                || block(self, against_pos) != against
-                || (by_player && self.held() != hand.as_ref())
-            {
-                return Ok(None);
-            }
-        }
-        let Some(placed) = self
-            .with_level(|b, level, ticks| b.apply_placement(level, ticks, decision, stack_state))
-        else {
-            return Ok(None);
-        };
-        if placed.matches_candidate {
-            let pos = placed.context.pos;
-            let target = [pos.x, pos.y, pos.z];
-            self.apply_block_item_data(target, placed.state, stack, game_master);
-            self.with_level(|b, level, ticks| b.placement_set_placed_by(level, ticks, &placed));
-            let placer = by_player.then(|| self.native_acting_player()).flatten();
-            self.set_placed_by(target, placer, Some(stack))?;
-            self.block_item_placed(stack, placer, &placed.context);
-            if by_player {
-                self.trigger_block("minecraft:placed_block", target, stack);
-            }
-        }
-        self.with_level(|b, level, ticks| b.report_placement(level, ticks, &placed));
-        Ok(Some(placed))
-    }
     /// The chosen phase's broadcast event, before its scoped behaviour.
     pub(in crate::game) fn use_item_on_block(
         &mut self,
@@ -1225,77 +1079,23 @@ impl Game<'_> {
             && let Some(stack) = stack
         {
             self.with_hand(hand, |game| {
-                if game.is_logical_server() {
-                    game.award_stat("used", &stack.item, 1);
-                }
-                game.apply_after_use_components(stack);
+                game.side_award_stat("used", &stack.item, 1);
+                game.side_apply_after_use_components(stack);
             });
         }
         Some(result)
     }
-    /// `GameRuleChangedEvent` once the server set the rule `name` to `value`
-    /// (`GameRules.set` with a server).
-    pub(in crate::game) fn game_rule_changed(
-        &mut self,
-        name: &str,
-        value: GameRuleValue,
-        actor: Option<&GameRuleActor<'_>>,
-    ) {
-        if mod_api::__private::listened(mod_api::HookId::GameRuleChanged) {
-            self.native_game_rule_changed(name, value, actor);
-        }
-    }
 
     /// Tells the mods of the chunks that came into this level.
     pub(in crate::game) fn native_chunks_loaded(&mut self) {
-        self.fire_pending_block_entity_data_loads();
-        let loaded = std::mem::take(&mut self.world.loaded_chunks);
-        if !self.is_logical_server() {
-            return;
-        }
-        let dimension = self.dim.id();
-        for (x, z, new) in loaded {
-            self.native_chunk_load(dimension, [x, z], new);
-        }
+        self.side_chunks_loaded();
     }
     /// Tells the mods of the chunks leaving this level, after their last save.
     pub(in crate::game) fn native_chunks_unloaded(
         &mut self,
         unloaded: &[std::sync::Arc<sunrise_client::chunk::Chunk>],
     ) {
-        if !self.is_logical_server() {
-            return;
-        }
-        let dimension = self.dim.id();
-        for chunk in unloaded {
-            self.native_chunk_and_block_entities_unload(dimension, [chunk.x, chunk.z]);
-        }
-    }
-    /// The players still here leave with the server (`PlayerList.removeAll`):
-    /// the mods hear it once, whichever path closes it.
-    pub(in crate::game) fn native_players_leaving(&mut self) {
-        let Some(host) = self.lan.as_mut() else {
-            return;
-        };
-        if std::mem::replace(&mut host.players_told_left, true) {
-            return;
-        }
-        let players: Vec<(u128, String)> = host
-            .hub
-            .guests
-            .iter()
-            .filter(|g| g.placed && g.participates_online())
-            .map(|g| (g.uuid, g.name.clone()))
-            .collect();
-        for (player, name) in players {
-            self.native_player_logged_out(player, &name);
-        }
-    }
-    /// The acting player's blow killed mob `index`.
-    pub(in crate::game) fn native_kill_event(&mut self, index: usize) {
-        let (entity, kind) = (self.mobs[index].id, mob_kind(&self.mobs[index]));
-        let player = self.native_acting_id();
-        self.native_mob_killed(player, entity, &kind);
+        self.side_chunks_unloaded(unloaded);
     }
     /// `EntityBlock.newBlockEntity` of block `name`: Sunrise's own, else a
     /// native mod's, made as a write of the level creates it

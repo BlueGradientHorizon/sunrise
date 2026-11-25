@@ -10,60 +10,7 @@ use mod_api::{BlockEntityClientScope, BlockEntityScope, BlockEntitySideScope};
 impl Game<'_> {
     /// Drain attachment notices before either logical side runs block entity tickers.
     pub(in crate::game) fn fire_pending_block_entity_loads(&mut self) {
-        self.fire_pending_block_entity_data_loads();
-        if !self.world.block_entities.has_pending_on_load() {
-            return;
-        }
-        let server = self.is_logical_server();
-        let level = if server {
-            self.level(self.dim.id())
-        } else {
-            self.native_client_level()
-        };
-        let Some(level) = level else { return };
-        let mut remaining = self.world.block_entities.pending_on_load_len();
-        while let Some((pos, generation)) = self
-            .world
-            .block_entities
-            .next_on_load_in_batch(&mut remaining)
-        {
-            if !mod_api::__private::has_part_hook(mod_api::HookId::BlockEntityOnLoad) {
-                continue;
-            }
-            let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get(&pos) else {
-                continue;
-            };
-            let Some(id) = mod_api::__private::block_entity_type_key(entity.id()) else {
-                continue;
-            };
-            let subject = mod_api::__private::game::block_entity_ref(
-                level,
-                [pos.0, pos.1, pos.2],
-                generation,
-            );
-            if server {
-                let mut access = ResidentBlockEntityAccess::on_load(self, subject);
-                crate::game::native_hooks::native_block_entity_on_load(
-                    mod_api::__private::BlockEntityOnLoadCall {
-                        id,
-                        subject: BlockEntitySideScope::Server(BlockEntityScope::new(&mut access)),
-                    },
-                );
-            } else {
-                let mut access = ClientBlockEntityAccess {
-                    game: self,
-                    subject,
-                };
-                crate::game::native_hooks::native_block_entity_on_load(
-                    mod_api::__private::BlockEntityOnLoadCall {
-                        id,
-                        subject: BlockEntitySideScope::Client(BlockEntityClientScope::new(
-                            &mut access,
-                        )),
-                    },
-                );
-            }
-        }
+        self.side_fire_pending_block_entity_loads();
     }
 }
 

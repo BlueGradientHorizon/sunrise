@@ -1362,7 +1362,7 @@ impl Game<'_> {
         if equip.is_some_and(|equip| !equip.is_empty()) {
             crate::game::living_attributes::collect_equipment(
                 &self.motion.attributes,
-                world_items!(self),
+                self.items(),
                 &mut mob,
             );
         }

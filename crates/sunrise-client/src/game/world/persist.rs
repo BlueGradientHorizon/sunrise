@@ -2068,9 +2068,6 @@ impl Game<'_> {
     pub(in crate::game) fn state_from_nbt(&self, tag: &Tag) -> Option<BlockStateId> {
         entity_nbt::state_from_nbt(self.pack.assets.registry, tag)
     }
-    pub(in crate::game) fn state_to_nbt(&self, state: BlockStateId) -> Tag {
-        entity_nbt::state_to_nbt(self.pack.assets.registry, state)
-    }
     /// World-save snapshots, optionally removing the entities as their chunks unload.
     pub(in crate::game) fn entity_chunks(
         &mut self,

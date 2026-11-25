@@ -1,8 +1,7 @@
 //! `LivingEntity.isBlocking` for native mods through a `LivingRef`: a player or a mob holding up
 //! an item that blocks attacks, past the item's block delay.
-use super::{Game, commands::Target, native_living_refs::hand_slot, shield::block_delay_passed};
-use mod_api::LivingRef;
-use sunrise_client::mobs::spear_use;
+use super::{Game, shield::block_delay_passed};
+use mod_api::{EquipmentSlot, LivingRef, client::first_person::Hand};
 
 impl Game<'_> {
     /// `LivingEntity.isBlocking` (`getItemBlockingWith` is not null): the entity uses an item
@@ -10,21 +9,16 @@ impl Game<'_> {
     /// False while it uses nothing or another item. None for armor stands, the dragon and a
     /// stale handle.
     pub(in crate::game) fn living_is_blocking(&self, living: LivingRef) -> Option<bool> {
-        // How long the item in use has been used: a player's and a guest's use counts up from 0,
-        // a mob's counter from 1.
-        let target = self.native_living_read_target(living)?;
-        let ticks = match target {
-            Target::Player => self.using.map(|(_, ticks)| ticks),
-            Target::Guest(conn) => self.lan.as_ref()?.play.get(&conn)?.using().map(|(_, t)| t),
-            Target::Mob(id) => {
-                let mob = self.mobs.iter().find(|m| m.id == id)?;
-                spear_use::is_using_item(mob).then(|| mob.extra.using_item.unsigned_abs() - 1)
-            }
-            _ => return None,
-        };
+        let ticks = self.side_living_use_ticks(living)?;
         let blocking = ticks.is_some_and(|ticks| {
-            self.living_used_item_hand(living)
-                .and_then(|hand| self.equipment_stack_for(target, hand_slot(hand)))
+            self.side_living_used_item_hand(living)
+                .and_then(|hand| {
+                    let slot = match hand {
+                        Hand::Main => EquipmentSlot::MainHand,
+                        Hand::Off => EquipmentSlot::OffHand,
+                    };
+                    self.living_equipment_stack(living, slot)
+                })
                 .is_some_and(|stack| {
                     self.blocks_attacks(&stack.project())
                         .is_some_and(|component| block_delay_passed(&component, ticks))

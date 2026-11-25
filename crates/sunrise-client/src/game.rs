@@ -208,8 +208,8 @@ pub(in crate::game) use server_side::attachment_index;
 #[cfg(test)]
 #[path = "game/modding/attachment_instruction_bench.rs"]
 mod attachment_instruction_bench;
-#[path = "game/modding/attachment_sync.rs"]
-mod attachment_sync;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::attachment_sync;
 #[path = "game/world/autosave.rs"]
 mod autosave;
 #[cfg(test)]
@@ -246,8 +246,8 @@ pub(in crate::game) use server_side::block_entity_part_state_tests;
 #[cfg(test)]
 #[path = "game/blocks/block_entity_reach_draw_tests.rs"]
 pub(in crate::game) mod block_entity_reach_draw_tests;
-#[path = "game/blocks/block_entity_ticks.rs"]
-mod block_entity_ticks;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::block_entity_ticks;
 #[path = "game/blocks/block_items.rs"]
 mod block_items;
 #[path = "game/modding/block_notifications.rs"]
@@ -255,11 +255,11 @@ mod block_notifications;
 #[cfg(test)]
 #[path = "game/blocks/block_part_tool_tests.rs"]
 mod block_part_tool_tests;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::block_particles;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::block_screen_effect_draw_tests;
-#[path = "game/blocks/block_particles.rs"]
-pub(in crate::game) mod block_particles;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::block_ticks;
 #[allow(unused_imports)]
@@ -338,7 +338,7 @@ mod cauldrons;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::chat;
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::chiseled_bookshelf;
+pub(in crate::game) use server_side::chiseled_bookshelf;
 #[path = "game/world/class_tags.rs"]
 mod class_tags;
 #[cfg(test)]
@@ -438,8 +438,8 @@ pub(in crate::game) use server_side::container_loot;
 #[cfg(test)]
 #[path = "game/mobs/conversion_place_tests.rs"]
 mod conversion_place_tests;
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::copper_golems;
+#[path = "game/mobs/copper_golems.rs"]
+pub(in crate::game) mod copper_golems;
 #[cfg(test)]
 #[path = "game/runtime/core_tests.rs"]
 mod core_tests;
@@ -472,11 +472,11 @@ pub(in crate::game) use server_side::crossbow;
 #[path = "game/entities/cushion_refind_tests.rs"]
 mod cushion_refind_tests;
 #[allow(unused_imports)]
-pub(crate) use server_side::cushions;
-#[path = "game/interface/custom_arm_pose.rs"]
-mod custom_arm_pose;
+pub(in crate::game) use client_side::custom_arm_pose;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::custom_sky;
+#[allow(unused_imports)]
+pub(crate) use server_side::cushions;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::custom_spawner_level;
 #[allow(unused_imports)]
@@ -524,8 +524,8 @@ pub(in crate::game) use client_side::dialogs;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::disabled_block_tests;
-#[path = "game/blocks/dispense_bucket.rs"]
-mod dispense_bucket;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::dispense_bucket;
 #[cfg(test)]
 #[path = "game/blocks/dispense_container_tests.rs"]
 mod dispense_container_tests;
@@ -575,8 +575,10 @@ pub(in crate::game) use server_side::enchant_effects;
 pub(in crate::game) use server_side::enchant_pick_parts_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::end;
-#[path = "game/mobs/enderman.rs"]
-mod enderman;
+#[path = "game/world/end_common.rs"]
+pub(in crate::game) mod end_common;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::enderman;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::enderman_hurt_teleport_tests;
@@ -712,7 +714,7 @@ pub(in crate::game) use client_side::gamemode_switcher;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::general_draw;
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::ghasts;
+pub(in crate::game) use server_side::ghasts;
 #[path = "game/modding/fluid_interactions.rs"]
 pub(in crate::game) mod fluid_interactions;
 #[allow(unused_imports)]
@@ -949,14 +951,12 @@ pub(in crate::game) use server_side::lan_menus;
 pub(in crate::game) use server_side::lan_menus_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::lan_mobs;
-#[path = "game/network/lan_mount_menu.rs"]
-mod lan_mount_menu;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::lan_mount_menu;
 #[path = "game/administration/lan_op.rs"]
 mod lan_op;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::lan_screen;
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::lan_stations;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::lan_particles;
 #[allow(unused_imports)]
@@ -965,8 +965,10 @@ pub(in crate::game) use server_side::lan_pickup;
 pub(in crate::game) use server_side::lan_pvp;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::lan_quiet;
-#[path = "game/network/lan_trade_decisions.rs"]
-pub(in crate::game) mod lan_trade_decisions;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::lan_stations;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::lan_trade_decisions;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::lan_trade_decisions_tests;
@@ -1018,8 +1020,8 @@ pub(in crate::game) use client_side::loading_window;
 pub(in crate::game) use server_side::living_attributes;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::llamas;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::load_conditions;
+#[path = "game/modding/load_conditions.rs"]
+pub(in crate::game) mod load_conditions;
 #[path = "game/blocks/location_world.rs"]
 mod location_world;
 #[allow(unused_imports)]
@@ -1055,8 +1057,8 @@ pub(in crate::game) use server_side::memory;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::mending_pick_tests;
-#[path = "game/entities/minecart_moves.rs"]
-pub(in crate::game) mod minecart_moves;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::minecart_moves;
 #[path = "game/entities/minecarts.rs"]
 mod minecarts;
 #[allow(unused_imports)]
@@ -1129,9 +1131,9 @@ pub(in crate::game) use client_side::narrator;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::native_audio_streams;
 #[allow(unused_imports)]
+pub(in crate::game) use client_side::native_biome_colors;
+#[allow(unused_imports)]
 pub(in crate::game) use server_side::native_ai_pause;
-#[path = "game/modding/native_biome_colors.rs"]
-mod native_biome_colors;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_biome_keys;
 #[cfg(test)]
@@ -1161,8 +1163,8 @@ mod native_block_entity_transform_tests;
 mod native_block_extra_models;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::native_block_sprites;
-#[allow(unused_imports)]
-pub(crate) use server_side::native_block_sounds;
+#[path = "game/modding/native_block_sounds.rs"]
+pub(crate) mod native_block_sounds;
 #[path = "game/modding/native_block_states.rs"]
 mod native_block_states;
 #[path = "game/modding/native_block_tables.rs"]
@@ -1203,8 +1205,8 @@ pub(in crate::game) use server_side::native_bots;
 mod native_capability_cache_tests;
 #[path = "game/modding/native_cauldron_contents.rs"]
 mod native_cauldron_contents;
-#[path = "game/modding/native_chat_recipients.rs"]
-mod native_chat_recipients;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_chat_recipients;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_chat_recipients_tests;
@@ -1212,8 +1214,8 @@ pub(in crate::game) use server_side::native_chat_recipients_tests;
 pub(in crate::game) use server_side::native_chunk_areas;
 #[path = "game/modding/native_chunk_generator.rs"]
 mod native_chunk_generator;
-#[path = "game/modding/native_chunk_queries.rs"]
-mod native_chunk_queries;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_chunk_queries;
 #[cfg(test)]
 #[path = "game/modding/native_chunk_relight_tests.rs"]
 mod native_chunk_relight_tests;
@@ -1243,10 +1245,10 @@ pub(crate) mod native_collision_shape;
 #[cfg(test)]
 #[path = "game/modding/native_command_completion_tests.rs"]
 mod native_command_completion_tests;
-#[path = "game/modding/native_command_reads.rs"]
-mod native_command_reads;
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::native_components;
+pub(in crate::game) use server_side::native_command_reads;
+#[path = "game/modding/native_components.rs"]
+pub(in crate::game) mod native_components;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_config_files;
 #[path = "game/modding/native_configs.rs"]
@@ -1280,8 +1282,8 @@ mod native_datafix;
 mod native_datafix_tests;
 #[path = "game/modding/native_datapack_refs.rs"]
 mod native_datapack_refs;
-#[path = "game/modding/native_death_weapon.rs"]
-mod native_death_weapon;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_death_weapon;
 #[path = "game/modding/native_dimensions.rs"]
 mod native_dimensions;
 #[allow(unused_imports)]
@@ -1301,8 +1303,6 @@ mod native_dynamic_textures_tests;
 #[path = "game/modding/native_effect_category.rs"]
 mod native_effect_category;
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::native_entity_extinguish;
-#[allow(unused_imports)]
 pub(in crate::game) use client_side::native_entity_layers;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_entities;
@@ -1310,6 +1310,8 @@ pub(in crate::game) use server_side::native_entities;
 pub(in crate::game) use server_side::native_entity_commands;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_entity_data;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_entity_extinguish;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_entity_extinguish_tests;
@@ -1517,8 +1519,8 @@ pub(in crate::game) use server_side::native_level_placement_tests;
 pub(in crate::game) use server_side::native_level_players;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_level_refs;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::native_level_signals;
+#[path = "game/modding/native_level_signals.rs"]
+pub(in crate::game) mod native_level_signals;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_level_sound_except_tests;
@@ -1526,8 +1528,8 @@ pub(in crate::game) use server_side::native_level_sound_except_tests;
 pub(in crate::game) use server_side::native_level_spawning;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_level_ticking;
-#[path = "game/modding/native_level_weather.rs"]
-pub(in crate::game) mod native_level_weather;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_level_weather;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_level_world;
 #[allow(unused_imports)]
@@ -1537,8 +1539,8 @@ pub(in crate::game) use server_side::native_lifecycle;
 mod native_live_holder_tests;
 #[path = "game/modding/native_living_absorption.rs"]
 mod native_living_absorption;
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::native_living_blocking;
+#[path = "game/modding/native_living_blocking.rs"]
+pub(in crate::game) mod native_living_blocking;
 #[path = "game/modding/native_living_body.rs"]
 pub(in crate::game) mod native_living_body;
 #[allow(unused_imports)]
@@ -1588,8 +1590,8 @@ pub(in crate::game) use server_side::native_merchant_refs;
 pub(in crate::game) use server_side::native_minecart_refs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_mob_goals;
-#[path = "game/modding/native_mob_navigation.rs"]
-pub(in crate::game) mod native_mob_navigation;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_mob_navigation;
 #[cfg(test)]
 #[path = "game/modding/native_mob_navigation_flags_tests.rs"]
 mod native_mob_navigation_flags_tests;
@@ -1652,8 +1654,8 @@ mod native_place_feature_tests;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_placement_state_tests;
-#[path = "game/modding/native_player_attack.rs"]
-mod native_player_attack;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_player_attack;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_player_break;
 #[allow(unused_imports)]
@@ -1695,8 +1697,8 @@ pub(in crate::game) use server_side::native_player_persistent_data;
 #[cfg(test)]
 #[path = "game/modding/native_player_persistent_data_tests.rs"]
 mod native_player_persistent_data_tests;
-#[path = "game/modding/native_player_place.rs"]
-mod native_player_place;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_player_place;
 #[cfg(test)]
 #[path = "game/modding/native_player_place_tests.rs"]
 mod native_player_place_tests;
@@ -1719,10 +1721,12 @@ pub(in crate::game) use server_side::native_player_visibility;
 pub(in crate::game) use server_side::native_player_visibility_tests;
 #[path = "game/modding/native_pool_elements.rs"]
 mod native_pool_elements;
-#[path = "game/modding/native_portal_destination.rs"]
-mod native_portal_destination;
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::native_profiles;
+pub(in crate::game) use client_side::native_recipes;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_portal_destination;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_profiles;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_projectile_launch;
 #[cfg(test)]
@@ -1736,10 +1740,8 @@ pub(in crate::game) use server_side::native_projectiles;
 pub(in crate::game) use server_side::native_quick_move;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_raid_refs;
-#[path = "game/modding/native_recipe_sync.rs"]
-mod native_recipe_sync;
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::native_recipes;
+pub(in crate::game) use server_side::native_recipe_sync;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_recipe_sync_tests;
@@ -1781,11 +1783,11 @@ pub(in crate::game) use client_side::native_scene_live;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::native_scene_live_tests;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::native_scoreboard;
-#[path = "game/modding/native_scoreboard_teams.rs"]
-mod native_scoreboard_teams;
-#[allow(unused_imports)]
 pub(in crate::game) use client_side::native_section_visibility;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_scoreboard;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_scoreboard_teams;
 #[path = "game/modding/native_server.rs"]
 mod native_server;
 #[allow(unused_imports)]
@@ -1832,8 +1834,8 @@ pub(in crate::game) use server_side::native_structures;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_success_broadcast_tests;
-#[allow(unused_imports)]
-pub(crate) use server_side::native_surface;
+#[path = "game/modding/native_surface.rs"]
+pub(crate) mod native_surface;
 #[path = "game/modding/native_tags.rs"]
 mod native_tags;
 #[allow(unused_imports)]
@@ -1846,8 +1848,8 @@ mod native_text_legacy;
 mod native_text_nbt;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_tick_time;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::native_ticks;
+#[path = "game/modding/native_ticks.rs"]
+pub(in crate::game) mod native_ticks;
 #[cfg(test)]
 #[path = "game/modding/native_tnt_renderers_tests.rs"]
 mod native_tnt_renderers_tests;
@@ -1942,8 +1944,8 @@ mod part_admission;
 mod part_admission_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::particle_culling;
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::payload_transport;
+#[path = "game/modding/payload_transport.rs"]
+pub(in crate::game) mod payload_transport;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::perf_link;
 #[allow(unused_imports)]
@@ -2030,8 +2032,8 @@ pub(in crate::game) use server_side::player_spawn;
 mod portal_ticking_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::potions;
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::powder_snow;
+#[path = "game/blocks/powder_snow.rs"]
+pub(in crate::game) mod powder_snow;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::profile_capture;
 #[allow(unused_imports)]
@@ -2234,15 +2236,13 @@ mod setblock_order_tests;
 pub(in crate::game) use client_side::shader_pack_switch_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::shader_packs;
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::shear_refind_tests;
-#[path = "game/mobs/sheep_dye.rs"]
-mod sheep_dye;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::shelf;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::sign_edit;
+#[cfg(test)]
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::shear_refind_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::shield;
 #[allow(unused_imports)]
@@ -2285,8 +2285,8 @@ pub(in crate::game) use server_side::spawner;
 pub(in crate::game) mod spear;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::stack_attribute_tooltip;
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::stacked_on_other;
+#[path = "game/modding/stacked_on_other.rs"]
+pub(in crate::game) mod stacked_on_other;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::spear_players;
 #[allow(unused_imports)]
@@ -2374,10 +2374,6 @@ pub(in crate::game) use client_side::sync_background_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::test_block_edit;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::table_enchant;
-#[path = "game/administration/test_blocks.rs"]
-mod test_blocks;
-#[allow(unused_imports)]
 pub(in crate::game) use client_side::test_instance_edit;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::text_displays;
@@ -2388,6 +2384,10 @@ pub(in crate::game) use client_side::text_expression_tests;
 pub(in crate::game) use client_side::tick_script;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::titles;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::table_enchant;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::test_blocks;
 #[path = "game/administration/test_entities.rs"]
 pub(in crate::game) mod test_entities;
 #[path = "game/interface/toast_manager.rs"]
@@ -2600,11 +2600,6 @@ pub(in crate::game) mod world_entry;
 #[cfg(test)]
 #[path = "game/interface/world_fluid_tests.rs"]
 mod world_fluid_tests;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::world_fluids;
-#[cfg(test)]
-#[path = "game/blocks/world_fluids_tests.rs"]
-mod world_fluids_tests;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::world_name_tag_tests;
@@ -2614,6 +2609,8 @@ pub(in crate::game) use client_side::world_rest;
 pub(in crate::game) use client_side::world_session;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::world_update;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::world_fluids;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::world_loading;
 #[cfg(test)]
@@ -2631,6 +2628,62 @@ pub(in crate::game) use server_side::xp_repair_ratio_tests;
 pub(in crate::game) use server_side::zombie_reinforcements;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::zombie_villagers;
+#[path = "game/modding/api_values_common.rs"]
+pub(in crate::game) mod api_values_common;
+#[path = "game/blocks/beacon_common.rs"]
+pub(in crate::game) mod beacon_common;
+#[path = "game/mobs/beehives_common.rs"]
+pub(in crate::game) mod beehives_common;
+#[path = "game/blocks/block_edits_common.rs"]
+pub(in crate::game) mod block_edits_common;
+#[path = "game/blocks/block_props.rs"]
+pub(in crate::game) mod block_props;
+#[path = "game/entities/boats_common.rs"]
+pub(in crate::game) mod boats_common;
+#[path = "game/blocks/bookshelves_common.rs"]
+pub(in crate::game) mod bookshelves_common;
+#[path = "game/mobs/dragon_common.rs"]
+pub(in crate::game) mod dragon_common;
+#[path = "game/entities/entity_common.rs"]
+pub(in crate::game) mod entity_common;
+#[path = "game/modding/entity_initialization_common.rs"]
+pub(in crate::game) mod entity_initialization_common;
+#[path = "game/modding/entity_sizes_common.rs"]
+pub(in crate::game) mod entity_sizes_common;
+#[path = "game/mobs/fangs_common.rs"]
+pub(in crate::game) mod fangs_common;
+#[path = "game/blocks/jukebox_common.rs"]
+pub(in crate::game) mod jukebox_common;
+#[path = "game/modding/mod_api_host_common.rs"]
+pub(in crate::game) mod mod_api_host_common;
+#[path = "game/mobs/mounts_common.rs"]
+pub(in crate::game) mod mounts_common;
+#[path = "game/modding/native_bots_common.rs"]
+pub(in crate::game) mod native_bots_common;
+#[path = "game/modding/native_harvest_queries_common.rs"]
+pub(in crate::game) mod native_harvest_queries_common;
+#[path = "game/modding/native_lifecycle_common.rs"]
+pub(in crate::game) mod native_lifecycle_common;
+#[path = "game/modding/native_menu_refs_common.rs"]
+pub(in crate::game) mod native_menu_refs_common;
+#[path = "game/mobs/ominous_item_spawner/common.rs"]
+pub(in crate::game) mod ominous_item_spawner_common;
+#[path = "game/modding/pack_finders/common.rs"]
+pub(in crate::game) mod pack_finders_common;
+#[path = "game/entities/passengers_common.rs"]
+pub(in crate::game) mod passengers_common;
+#[path = "game/entities/pick_entity_common.rs"]
+pub(in crate::game) mod pick_entity_common;
+#[path = "game/mobs/piglins_common.rs"]
+pub(in crate::game) mod piglins_common;
+#[path = "game/blocks/potent_sulfur_common.rs"]
+pub(in crate::game) mod potent_sulfur_common;
+#[path = "game/blocks/shelf_common.rs"]
+pub(in crate::game) mod shelf_common;
+#[path = "game/blocks/stations_common.rs"]
+pub(in crate::game) mod stations_common;
+#[path = "game/world/storage_common.rs"]
+pub(in crate::game) mod storage_common;
 #[allow(unused_imports)]
 use sunrise_client_gameplay::frame_autotune;
 #[allow(unused_imports)]
@@ -2650,13 +2703,14 @@ pub(crate) use hit::Hit;
 #[allow(unused_imports)]
 use loading_window::{
     build_renderer, loading_frame, loading_renderer, prepare_renderer_textures, start_client_game,
-    start_dedicated_game,
 };
 #[allow(unused_imports)]
 use resource_loader::{
     EntityModels, GameCpuResources, Loaded, LoaderMsg, PendingWorldEntry, WorldRestLoader,
     run_loading, write_report,
 };
+#[allow(unused_imports)]
+use server_side::loading_server::start_dedicated_game;
 #[allow(unused_imports)]
 use server_state::ServerState;
 #[allow(unused_imports)]
@@ -2942,7 +2996,7 @@ struct InteractTarget {
 }
 
 /// The client world as seen by the vanilla block-behaviour library.
-struct GameLevel<'w> {
+pub(in crate::game) struct GameLevel<'w> {
     cake_probe: bool,
     cake_requested: std::cell::Cell<bool>,
     cake_answer: Option<bool>,
@@ -3071,7 +3125,7 @@ struct GameLevel<'w> {
     /// while a mod's machine breaks a block (`native_machine_destroy_block`).
     drop_into: Option<Vec<ItemStack>>,
 }
-struct PlayerCollision {
+pub(in crate::game) struct PlayerCollision {
     y: f64,
     descending: bool,
     fall_distance: f64,
@@ -3616,7 +3670,7 @@ struct Game<'a> {
     /// Open container block entity, if any.
     container: Option<(i32, i32, i32)>,
     /// Open workstation menu (enchanting table, anvil, ...).
-    station: Option<stations::Station>,
+    station: Option<stations_common::Station>,
     /// Status effects and thrown potions (game/items/potions.rs).
     potions: potions::PotionState,
     scratch_slot: Option<ItemStack>,
@@ -3799,8 +3853,11 @@ struct Game<'a> {
     trial_spawner_tick_positions: Vec<sunrise_client::block_entities::Pos>,
     /// The `[[native.loop]]` slots' state, per published loop (`published_loops.rs`).
     loop_states: published_loops::LoopStates,
+    item_features: sunrise_items::creative_catalog::ItemFeatureRequirements,
     creative_screen: client_side::ClientOnly<Creative>,
     creative_contents: client_side::ClientOnly<native_hooks::CreativeCache>,
+    entity_initialization: entity_initialization::EntityInitialization,
+    kinetic_feedback: HashMap<i32, i64>,
     control: Option<sunrise_client::control::Server>,
     /// This play session's frame and tick times, for opt-in performance statistics.
     perf: sunrise_client::telemetry::Session,
@@ -4562,18 +4619,6 @@ impl Game<'_> {
         player.freeze_immune = freeze_immune;
         player.fluids.fast_lava = fast_lava;
     }
-    /// The block entity at `pos` saved with its id and position
-    /// (`saveWithFullMetadata`), or the saved one Sunrise keeps as loaded:
-    /// what a broken block's loot sees as `LootContextParams.BLOCK_ENTITY`.
-    fn loot_block_entity(&self, pos: [i32; 3], block: &str) -> Option<sunrise_core::nbt::Tag> {
-        let key = (pos[0], pos[1], pos[2]);
-        match self.world.block_entities.get(&key) {
-            Some(entity) => {
-                Some(self.encode_live_block_entity(key, entity, block, self.res.items()))
-            }
-            None => spill::saved_entity(&self.world, pos),
-        }
-    }
     /// Where a loot roll at `origin` happens, for a mod's own loot kinds:
     /// the block entity it may copy from, and this level as
     /// `LootContext.getLevel` gives it (`Level.isRaining`: rain above 0.2;
@@ -4609,45 +4654,6 @@ impl Game<'_> {
             }),
         }
     }
-    /// `Block.getDrops` for a block a player breaks: the block's loot table
-    /// with the player as `this`, drawing from its server random sequence
-    /// (`LootContext.Builder.create`), else the level random. The roll's
-    /// origin is the block's centre and `pending` retains its block entity.
-    fn block_loot_at(
-        &mut self,
-        pos: [i32; 3],
-        state: BlockStateId,
-        held: Option<&ItemStack>,
-    ) -> Vec<ItemStack> {
-        let dynamic = self.pending.dynamic(pos);
-        let place = self.loot_place_at(pos.map(|v| f64::from(v) + 0.5), None);
-        let (_, entity) = self.native_clicker();
-        let mut drops = sunrise_world::loot::with_native_loot_place(place, || {
-            let roll = sunrise_client::items::BlockLootRoll {
-                held,
-                dynamic: &dynamic,
-                breaker: true,
-                ..Default::default()
-            };
-            self.roll_block_loot(pos, state, Some(entity as u32), roll)
-        });
-        let player = self.native_acting_id();
-        self.native_block_loot(pos, state, Some(player), held, None, &mut drops);
-        drops
-    }
-    /// `Player.drop`: the statistics and a thrown item entity in front of the player.
-    pub(super) fn player_drop(&mut self, thrown: ItemStack) -> Option<u32> {
-        let eye = self.eye_position()?;
-        // LivingEntity.drop: every drop swings the main hand, a menu's
-        // THROW and a creative tab's drop included.
-        self.swing_hand(Hand::Main, SwingAnimation::DEFAULT);
-        // ServerPlayer.drop: the drop statistics, only when an item entity came of it.
-        let (item, count) = (thrown.item.clone(), thrown.count as i32);
-        let dropped = self.throw_from_eyes(thrown, eye, false, true)?;
-        self.side_award_stat("dropped", &item, count);
-        self.side_award_custom_stat("drop", 1);
-        Some(dropped)
-    }
     /// `Player.drop(stack, false, thrown_from_hand)`: the stack thrown from the eyes along the
     /// view, the main hand swinging for every drop (`LivingEntity.drop`; `PREDICTED` only keeps
     /// the swing from being sent back to the player who made it). `thrown_from_hand` names the
@@ -4658,12 +4664,7 @@ impl Game<'_> {
         stack: ItemStack,
         thrown_from_hand: bool,
     ) -> Option<u32> {
-        if stack.count == 0 {
-            return None;
-        }
-        self.swing_hand(Hand::Main, SwingAnimation::DEFAULT);
-        let eye = self.eye_position()?;
-        self.throw_from_eyes(stack, eye, false, thrown_from_hand)
+        self.side_drop_stack_from_eyes(stack, thrown_from_hand)
     }
     /// The item entities `tick_dropped_items` took out, back in the level,
     /// before those its hooks spawned meanwhile (`addFreshEntity` appends).
@@ -4680,12 +4681,8 @@ impl Game<'_> {
         f: impl FnOnce(&Behaviours, &mut GameLevel<'_>, &mut Ticks) -> R,
     ) -> R {
         self.ensure_stateful_entity_table();
-        let result = self.with_level_access(false, f);
-        self.flush_spill();
-        if self.is_logical_server() && self.lan.is_some() {
-            self.flush_lan_particles();
-            self.flush_native_sounds();
-        }
+        let result = self.side_with_level_access(false, f);
+        self.side_after_with_level();
         result
     }
 
@@ -4694,7 +4691,7 @@ impl Game<'_> {
         &mut self,
         f: impl FnOnce(&Behaviours, &GameLevel<'_>, &Ticks) -> R,
     ) -> R {
-        self.with_level_access(true, |behaviours, level, ticks| f(behaviours, level, ticks))
+        self.side_with_level_access(true, |behaviours, level, ticks| f(behaviours, level, ticks))
     }
 
     pub(super) fn native_block_ignite_allowed(
@@ -4736,52 +4733,7 @@ impl Game<'_> {
         flags: i32,
         create_entity: bool,
     ) -> bool {
-        let [x, y, z] = pos;
-        let at = BlockPos::new(x, y, z);
-        let previous = self.world.block(x, y, z);
-        let b = self.res.behaviours();
-        if self.remote.is_some()
-            || flags & level_flags::UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS != 0
-            || b.block(previous) == b.block(state)
-            || b.keeps_block_entity(previous, state)
-            || !(self.res.facts().get(previous).block_entity
-                || self.world.block_entities.stateful_entity(previous.0)
-                || self.world.block_entities.get(&(x, y, z)).is_some())
-        {
-            return self.with_level(|b, level, ticks| {
-                let changed = b.set_block(level, ticks, at, state, flags);
-                if create_entity {
-                    level.finish_native_block(pos, previous, state, changed);
-                }
-                changed
-            });
-        }
-        self.ensure_stateful_entity_table();
-        let Some((write, removal, spawns, orbs)) =
-            self.with_level_access(false, |b, level, ticks| {
-                let write = b.begin_block_write(level, ticks, at, state, flags)?;
-                let spawn_start = level.spill.spawns.len();
-                let orb_start = level.spill.orbs.len();
-                let removal = write
-                    .effectful_removal()
-                    .map(|old| level.pre_remove_entity(at, old, true));
-                let spawns = level.spill.spawns.split_off(spawn_start);
-                let orbs = level.spill.orbs.split_off(orb_start);
-                Some((write, removal, spawns, orbs))
-            })
-        else {
-            return false;
-        };
-        self.publish_removal_spawns(spawns, orbs);
-        self.with_level(|b, level, ticks| {
-            let removal_updates =
-                removal.map(|removal| level.finish_remove_entity(at, previous, removal));
-            let changed = b.finish_block_write(level, ticks, write, removal_updates);
-            if create_entity {
-                level.finish_native_block(pos, previous, state, changed);
-            }
-            changed
-        })
+        self.side_set_block_live(pos, state, flags, create_entity)
     }
     fn attack_block(&mut self, pos: [i32; 3]) -> Result<()> {
         let note = self.with_level(|b, level, ticks| {
@@ -4816,7 +4768,7 @@ impl Game<'_> {
     /// with neither a server nor a player (the headless fixtures) ticks
     /// everywhere.
     fn update_chunk_tickets(&mut self) {
-        self.rebuild_chunk_tickets(true);
+        self.side_update_chunk_tickets();
     }
 
     /// Copies the moving-piston block entities into the world, where the
@@ -4855,7 +4807,7 @@ impl Game<'_> {
             };
             if *pending
                 .entry(section)
-                .or_insert_with(|| self.section_mesh_pending_in(section))
+                .or_insert_with(|| self.side_section_mesh_pending_in(section))
             {
                 drawn.insert(pos);
                 fallback.push((pos, piston));
@@ -5084,60 +5036,10 @@ impl Game<'_> {
         from: BlockStateId,
         to: BlockStateId,
     ) -> bool {
-        if !mod_api::__private::listened(mod_api::HookId::EntityChangeBlockPre) {
-            return false;
-        }
-        let mut cancel = false;
-        self.native_entity_change_block_pre(native_hooks::EntityChangeBlockPreCall {
-            player,
-            entity: None,
-            kind: "minecraft:player",
-            pos: [position.x, position.y, position.z],
-            from,
-            to,
-            cancel: &mut cancel,
-        });
-        cancel
+        self.side_landing_change_cancelled(player, position, from, to)
     }
     fn tick(&mut self) -> Result<()> {
-        let client_level = !self.is_logical_server() && self.remote.is_some();
-        // Held through the carry too: a carried body's move asks the parts as its own does.
-        let _parts = client_level.then(|| self.collision_parts()).flatten();
-        // A client's tick of the level it shows holds the colliders as it began, then carries
-        // its own player with the one it stands on; a server's level tick holds its own scope.
-        let _scope = client_level.then(|| {
-            sunrise_client_render::moving_colliders::Scope::enter_level(
-                self.collider_level(),
-                self.placed_moving_colliders(),
-            )
-        });
-        self.tick_body()
-    }
-    fn tick_body(&mut self) -> Result<()> {
-        match (self.is_logical_server(), self.remote.is_some()) {
-            (false, true) => {
-                self.expire_client_cracks();
-                if self.agent.hold_server {
-                    return Ok(());
-                }
-                self.abort_open_transactions();
-                self.update_interaction_ranges();
-                self.tick_client_lead()?;
-                self.with_residency_tick(Self::tick_remote)
-            }
-            (false, false) => {
-                // A client with no remote runs only client-side work and never ticks a level.
-                self.expire_client_cracks();
-                if self.agent.hold_server {
-                    return Ok(());
-                }
-                self.abort_open_transactions();
-                self.update_interaction_ranges();
-                self.tick_client_lead()
-            }
-            (true, false) => self.tick_server_first(),
-            (true, true) => Err("server-role game cannot tick a remote connection".into()),
-        }
+        self.side_tick()
     }
     #[cfg(test)]
     fn hud(&mut self, size: [u32; 2]) -> HudBatch {
@@ -5164,10 +5066,6 @@ impl Game<'_> {
     pub(super) const MOTION_MOVING_BLOCK: u64 = 6 << 32;
     /// The local player's flame vertices are tracked separately from the body run.
     const MOTION_OWN_PLAYER_FIRE: u64 = crate::game::MOTION_OWN_PLAYER | 1;
-    /// The reach of the block entity a block state holds (see [`Self::block_entity_reach_entry`]).
-    pub(super) fn block_entity_reach(&self, state: u32) -> Reach {
-        self.block_entity_reach_entry(state).0
-    }
 
     /// The orb's sprite and the camera's axes, once a frame however many runs of orbs draw.
     pub(super) fn orb_frame(&self) -> OrbFrame {
@@ -5190,143 +5088,6 @@ impl Game<'_> {
             forward,
             right,
             up,
-        }
-    }
-
-    pub(super) fn orb_geometry<'a>(
-        &self,
-        camera: glam::DVec3,
-        frame: &OrbFrame,
-        orbs: impl Iterator<Item = (&'a sunrise_client::entities::ExperienceOrb, [f64; 3], f32)>,
-        orb_view: Option<&sunrise_client::gfx::JoinedFrusta>,
-        out: &mut Vec<Vertex>,
-    ) {
-        let OrbFrame {
-            sprite,
-            forward,
-            right,
-            up,
-        } = *frame;
-        for (o, at, partial) in orbs {
-            let p = glam::DVec3::new(at[0], at[1] + 0.1, at[2]) - camera;
-            let c = p.as_vec3();
-            if orb_view
-                .is_some_and(|view| forward.dot(c) < 0.0 && !entity_culling::orb_in_view(view, c))
-            {
-                continue;
-            }
-            if let Some(resolved) = native_entity_renderers::experience_orb_renderer() {
-                let entity: mod_api::EntityRenderState =
-                    mod_api::__private::built::EntityRenderState {
-                        id: o.id,
-                        partial,
-                        age: o.age as f32 + partial,
-                        yaw: o.rotation[0],
-                        pitch: o.rotation[1],
-                        living: None,
-                        tnt_fuse: None,
-                        orb_value: Some(o.value),
-                        painting: None,
-                        item_frame: None,
-                        attachments: None,
-                    }
-                    .into();
-                let light = self.world.light(
-                    o.position.x.floor() as i32,
-                    o.light_probe_y().floor() as i32,
-                    o.position.z.floor() as i32,
-                );
-                let packed = o.render_light(i32::from(light));
-                let block = [
-                    o.position.x.floor() as i32,
-                    o.light_probe_y().floor() as i32,
-                    o.position.z.floor() as i32,
-                ];
-                if self.mod_entity_renderer_geometry(
-                    &resolved,
-                    &entity,
-                    "minecraft:experience_orb",
-                    glam::DVec3::from_array(at) - camera,
-                    Some(glam::DVec3::from_array(at)),
-                    block,
-                    packed,
-                    out,
-                ) {
-                    continue;
-                }
-            }
-            let Some(r) = sprite else {
-                continue;
-            };
-            let icon = o.icon();
-            let (du, dv) = ((r.u1 - r.u0) / 4.0, (r.v1 - r.v0) / 4.0);
-            let (u0, v0) = (r.u0 + (icon % 4) as f32 * du, r.v0 + (icon / 4) as f32 * dv);
-            let t = (o.age as f32 + partial) / 2.0;
-            let red = ((t.sin() + 1.0) * 0.5 * 255.0) as u32;
-            let blue = (((t + 4.188_79).sin() + 1.0) * 0.1 * 255.0) as u32;
-            let color = 0x8000_0000 | blue << 16 | 255 << 8 | red;
-            // `ExperienceOrbRenderer.getBlockLightLevel` (the block light
-            // plus 7, clamped) at the block the orb's eye is in.
-            let light = self.world.light(
-                o.position.x.floor() as i32,
-                o.light_probe_y().floor() as i32,
-                o.position.z.floor() as i32,
-            );
-            let packed = o.render_light(i32::from(light));
-            // `ExperienceOrbRenderer.submit`: the quad runs from
-            // (-0.5, -0.25) to (0.5, 0.75) and is scaled by 0.3, so the
-            // sprite hangs a quarter of its height below the orb's centre.
-            let s = sunrise_client::entities::ORB_QUAD_SCALE;
-            for (k, uv) in sunrise_client::entities::ORB_QUAD.iter().zip([
-                [u0, v0 + dv],
-                [u0 + du, v0 + dv],
-                [u0 + du, v0],
-                [u0, v0],
-            ]) {
-                let v = c + right * (k[0] * s) + up * (k[1] * s);
-                out.push(Vertex {
-                    normal: [0; 4],
-                    pos: v.to_array(),
-                    uv,
-                    // ExperienceOrbRenderer: `RenderTypes.entityTranslucent`; in HDR
-                    // output the orbs shine (entity.wgsl fs_hdr_mark).
-                    layer: sunrise_client::gfx::OIT_ENTITY
-                        | u32::from(sunrise_client::mesher::VERY_BRIGHT) << 16,
-                    color,
-                    light: packed,
-
-                    glint_uv: [0.0, 0.0],
-                });
-            }
-        }
-    }
-
-    /// `ServerLevel.destroyBlockProgress`: breaker `breaker`'s crack on `pos`
-    /// (0..=9, anything else takes it away), for every player within 64 blocks.
-    pub(super) fn server_destroy_block_progress(
-        &mut self,
-        breaker: i32,
-        pos: [i32; 3],
-        progress: i32,
-    ) {
-        self.destroy_block_progress(breaker, pos, progress);
-        if let Some(host) = self.lan.as_ref() {
-            host.hub.broadcast_near(
-                [f64::from(pos[0]), f64::from(pos[1]), f64::from(pos[2])],
-                64.0,
-                &sunrise_protocol::packets::play::Clientbound::BlockDestruction(
-                    sunrise_protocol::packets::play::BlockDestruction {
-                        id: breaker,
-                        pos,
-                        progress: if (0..10).contains(&progress) {
-                            progress as u8
-                        } else {
-                            255
-                        },
-                    },
-                ),
-                None,
-            );
         }
     }
 
@@ -5373,88 +5134,6 @@ impl Game<'_> {
         // `setCanceled` skips later mods and keeps the current `sweeping`.
         self.native_sweep_attack(target, vanilla, &mut sweeping, &mut canceled);
         sweeping
-    }
-    /// `Player.attack`'s `isSweepAttack`, decided before the hit as vanilla does
-    /// (`crit`: the hit on a living target is critical): where the sweep plays,
-    /// none without one. Reads the charge, so before the hit resets it.
-    pub(super) fn sweep_before_hit(&mut self, target: &str, crit: bool) -> Option<[f64; 3]> {
-        let scale = self.attack_strength_scale();
-        self.sweep_attack_position(scale, crit, target)
-    }
-    /// `Player.attack`'s sounds when a vehicle takes the hit (it always does, and
-    /// can't be hit critically): knockback when sprinting at full strength, then
-    /// strong or weak, or the `sweep` decided before the hit around the vehicle's
-    /// box `area`. Before the hit resets the charge (`Player.onAttack`).
-    pub(super) fn vehicle_attack_sounds(
-        &mut self,
-        area: Aabb,
-        sweep: Option<[f64; 3]>,
-        magic: Option<i32>,
-    ) {
-        self.attack_effects(area, sweep, None, false, mace::Spared::Nothing, magic);
-    }
-    /// A mob explosion (`ServerLevel.explode` with `ExplosionInteraction.MOB`:
-    /// blocks are kept without mobGriefing, else the mob_explosion_drop_decay
-    /// rule picks decay). Mods are asked through `can_entity_grief` for
-    /// `source`, the exploding entity (the rule alone without one).
-    fn explode_with(
-        &mut self,
-        source: Option<u32>,
-        center: [f64; 3],
-        radius: f32,
-        fire: bool,
-        blast: explosion::ExplosionSource,
-    ) -> Result<()> {
-        let interaction = if !self.can_entity_grief(source) {
-            explosion::BlockInteraction::Keep
-        } else {
-            self.destroy_type(sunrise_client::gamerules::vanilla::MOB_EXPLOSION_DROP_DECAY)
-        };
-        self.server_explode_from(center, radius, interaction, fire, blast)
-    }
-    /// Copies of a save batch carrying its live block entities and save data.
-    fn with_entities<'a>(
-        &self,
-        chunks: impl IntoIterator<Item = &'a Arc<sunrise_client::chunk::Chunk>>,
-    ) -> Vec<Arc<sunrise_client::chunk::Chunk>> {
-        sunrise_client::save::chunks_with_block_entities(
-            chunks,
-            &self.world.block_entities,
-            &self.world.block_names,
-        )
-        .into_iter()
-        .map(|mut c| {
-            self.attach_save_data(&mut c);
-            if mod_api::__private::has_part_hook(mod_api::HookId::BlockEntitySaveAdditional) {
-                let edits: std::collections::BTreeMap<_, _> = c
-                    .block_entities
-                    .iter()
-                    .filter_map(|(pos, entity)| {
-                        let BlockEntity::Mod(entity) = entity else {
-                            return None;
-                        };
-                        if !matches!(
-                            self.world.block_entities.get(pos),
-                            Some(BlockEntity::Mod(_))
-                        ) {
-                            return None;
-                        }
-                        let registry = self.pack.assets.registry;
-                        let block = registry
-                            .state(c.block(pos.0 & 15, pos.1, pos.2 & 15))
-                            .map_or("", |state| state.name.as_str());
-                        self.capture_block_entity_payload(*pos, block, entity, self.res.items())
-                            .map(|edited| (*pos, edited))
-                    })
-                    .collect();
-                if !edits.is_empty() {
-                    Arc::make_mut(c.saved.get_or_insert_with(Default::default))
-                        .block_entity_save_edits = Some(Arc::new(edits));
-                }
-            }
-            Arc::new(c)
-        })
-        .collect()
     }
     /// Voxel traversal that also stops at fluid source blocks (bucket pick).
     fn pick_fluid(&self) -> Option<Hit> {
@@ -5684,49 +5363,6 @@ impl Game<'_> {
         }
         None
     }
-    /// `BlockTransformer.transformBlock`'s `COPPER_CHEST` extra: a double
-    /// chest's other half hears a block change and gets the same particle.
-    fn transform_copper_chest_neighbour(
-        &mut self,
-        pos: [i32; 3],
-        old: BlockStateId,
-        particle: &str,
-    ) {
-        let old = self.pack.assets.registry.state(old).cloned();
-        let Some(old) = old else { return };
-        if !old.name.ends_with("copper_chest") {
-            return;
-        }
-        let kind = old
-            .properties
-            .get("type")
-            .map(String::as_str)
-            .unwrap_or("single");
-        let Some(facing) = old.properties.get("facing").map(String::as_str) else {
-            return;
-        };
-        // `ChestBlock.getConnectedDirection`: LEFT is facing.getClockWise().
-        let (dx, dz) = match (kind, facing) {
-            ("left", "north") => (1, 0),
-            ("left", "south") => (-1, 0),
-            ("left", "west") => (0, -1),
-            ("left", "east") => (0, 1),
-            ("right", "north") => (-1, 0),
-            ("right", "south") => (1, 0),
-            ("right", "west") => (0, 1),
-            ("right", "east") => (0, -1),
-            _ => return,
-        };
-        let neighbour = [pos[0] + dx, pos[1], pos[2] + dz];
-        let state = self.world.block(neighbour[0], neighbour[1], neighbour[2]);
-        self.side_post_block_game_event(
-            "minecraft:block_change",
-            neighbour,
-            self.side_sculk_actor(),
-            Some(state),
-        );
-        self.transform_particle(particle, neighbour);
-    }
     fn set_state_named(&mut self, pos: [i32; 3], name: &str, keep: &[&str]) -> Result<bool> {
         let registry = &self.pack.assets.registry;
         let old = self.world.block(pos[0], pos[1], pos[2]);
@@ -5760,52 +5396,84 @@ impl Game<'_> {
         let state = self.with_level(|b, level, ticks| b.fire_state_for(level, ticks, pos));
         self.level_set(target, state)
     }
-    /// `Player.getVehicle().getBoundingBox()` for the local player's vehicle
-    /// (`riding`): a mob, one of `object_target`'s kinds (boat, cart, armour
-    /// stand, item frame, painting) or a tracked special — the same chain
-    /// `guest_target_box` resolves a guest's vehicle through.
-    fn riding_box(&self) -> Option<Aabb> {
-        let id = self.riding?;
-        if let Some(m) = self.mobs.iter().find(|m| m.id == id) {
-            return Some(m.bounds());
-        }
-        if let Some((lo, hi, _)) = self.object_target(id as i32) {
-            return Some(Aabb::new(
-                Vec3::new(lo[0], lo[1], lo[2]),
-                Vec3::new(hi[0], hi[1], hi[2]),
-            ));
-        }
-        self.tracked_special_box(id as i32)
-    }
     /// `Player.giveExperiencePoints`: `add_experience_levels` runs once for each
     /// level gained or lost, and the mods hear of the level change once.
     pub(super) fn give_experience_points(&mut self, points: i32) {
-        let Some(points) = self.xp_change(points) else {
-            return;
-        };
-        let old_level = self.experience.level;
-        self.experience.add_points(points);
-        while self.experience.progress < 0.0 {
-            let xp = &self.experience;
-            let lost = xp.progress * sunrise_client::entities::Experience::needed(xp.level) as f32;
-            let had_level = xp.level > 0;
-            self.add_experience_levels(-1);
-            let xp = &mut self.experience;
-            xp.progress = if had_level {
-                1.0 + lost / sunrise_client::entities::Experience::needed(xp.level) as f32
-            } else {
-                0.0
-            };
+        self.side_give_experience_points(points);
+    }
+
+    pub(in crate::game) fn bed_facing(&self, head: [i32; 3]) -> i32 {
+        let state = self.world.block(head[0], head[1], head[2]);
+        let facing = self
+            .pack
+            .assets
+            .registry
+            .state(state)
+            .and_then(|s| s.properties.get("facing"))
+            .map(String::as_str);
+        sunrise_client::mobs::villager::bed_facing_code(facing)
+    }
+
+    /// Clear all entity collections shared by server and client games.
+    pub(in crate::game) fn clear_shared_entities(&mut self) {
+        self.mobs.clear();
+        self.dropped.clear();
+        self.orbs.clear();
+        self.creatures.projectiles.clear();
+        self.falling.clear();
+        self.tnts.clear();
+        self.boats.clear();
+        self.carts.clear();
+        self.armor_stands.clear();
+        self.cushions.clear();
+        self.item_frames.clear();
+        self.paintings.clear();
+        self.dragon.discard();
+        self.crystals.clear();
+        self.breath_clouds.clear();
+        self.tridents.clear();
+        self.rockets.clear();
+        self.bolts.clear();
+        self.ominous_spawners.clear();
+        self.fangs.list.clear();
+        self.potions.clear_thrown();
+        self.potions.clouds.clear();
+        self.end.clear_remote_eyes();
+        self.riding = None;
+        self.persist = Default::default();
+        self.entity_attachments.clear();
+    }
+
+    /// The non-air blocks of a box in this world, with counts per block.
+    pub(in crate::game) fn blocks_json(&self, lo: [i32; 3], hi: [i32; 3]) -> serde_json::Value {
+        let mut list = Vec::new();
+        let mut census: std::collections::BTreeMap<String, u32> = std::collections::BTreeMap::new();
+        for y in lo[1]..=hi[1] {
+            for z in lo[2]..=hi[2] {
+                for x in lo[0]..=hi[0] {
+                    let state = self.world.block(x, y, z);
+                    if self.res.facts().is_air(state) {
+                        continue;
+                    }
+                    let name = self.res.facts().get(state).name.to_string();
+                    *census.entry(name).or_insert(0) += 1;
+                    list.push(serde_json::json!([x, y, z, self.state_string(state)]));
+                }
+            }
         }
-        while self.experience.progress >= 1.0 {
-            let xp = &mut self.experience;
-            xp.progress =
-                (xp.progress - 1.0) * sunrise_client::entities::Experience::needed(xp.level) as f32;
-            self.add_experience_levels(1);
-            let xp = &mut self.experience;
-            xp.progress /= sunrise_client::entities::Experience::needed(xp.level) as f32;
+        serde_json::json!({ "from": lo, "to": hi, "counts": census, "blocks": list })
+    }
+
+    pub(in crate::game) fn state_string(&self, state: BlockStateId) -> String {
+        self.block_state_string(state).unwrap_or_else(|| "?".into())
+    }
+
+    pub(in crate::game) fn vanilla_root(&self) -> PathBuf {
+        if self.ui.vanilla_root.as_os_str().is_empty() {
+            self.options.resources.clone()
+        } else {
+            self.ui.vanilla_root.clone()
         }
-        self.native_player_level_changed(old_level);
     }
 }
 
@@ -5842,6 +5510,7 @@ struct ConstructPrep {
     save: Arc<SaveDir>,
     painting_variants: paintings::PaintingVariants,
     armor_stand_assets: armor_stands::ArmorStandAssets,
+    item_features: sunrise_items::creative_catalog::ItemFeatureRequirements,
     creative_screen: Creative,
     client_prepared: Box<client_state::ClientCpuResources>,
     world: World,
@@ -5973,6 +5642,7 @@ struct WrappedPrepInit {
     audio: client_side::ClientShared<Audio>,
     particles: client_side::ClientShared<sunrise_client::particles::ParticleEngine>,
     armor_stand_assets: client_side::ClientOnly<armor_stands::ArmorStandAssets>,
+    item_features: sunrise_items::creative_catalog::ItemFeatureRequirements,
     creative_screen: client_side::ClientOnly<Creative>,
     skin_downloads: client_side::ClientOnly<RefCell<sunrise_client::skins::Downloader>>,
     skin_profiles: RefCell<sunrise_client::skins::Resolver>,
@@ -6129,6 +5799,7 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             audio: client_side::ClientShared::new(prep.audio),
             particles: client_side::ClientShared::new(prep.particles),
             armor_stand_assets: client_side::ClientOnly::new(prep.armor_stand_assets),
+            item_features: prep.item_features,
             creative_screen: client_side::ClientOnly::new(prep.creative_screen),
             skin_downloads: client_side::ClientOnly::new(effects.skin_downloads),
             skin_profiles: effects.skin_profiles,
@@ -6315,8 +5986,11 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             spawner_tick_positions: Vec::new(),
             trial_spawner_tick_positions: Vec::new(),
             loop_states: Default::default(),
+            item_features: wp.item_features,
             creative_screen: wp.creative_screen,
             creative_contents: wc.creative_contents,
+            entity_initialization: Default::default(),
+            kinetic_feedback: HashMap::new(),
             control: None,
             perf: Default::default(),
             pending_screenshot: wc.pending_screenshot,
@@ -6537,6 +6211,7 @@ impl<'a> Game<'a> {
             bee_stinger_model,
             trident_model,
             entity_models,
+            item_features,
             creative_screen,
         } = prepared;
         let client_prepared = Box::new(client_state::ClientCpuResources {
@@ -6560,6 +6235,7 @@ impl<'a> Game<'a> {
             save,
             painting_variants,
             armor_stand_assets,
+            item_features,
             creative_screen,
             client_prepared,
             world,
@@ -6659,7 +6335,7 @@ impl<'a> Game<'a> {
         let ws = ConstructInit::<true>::build_wrapped_server();
         let wr = ConstructInit::<true>::build_wrapped_renderer();
         let mut game = ConstructInit::<true>::assemble_game(res, wp, wc, ws, wr);
-        game.reset_entity_residency();
+        game.side_reset_entity_residency();
         game
     }
 }

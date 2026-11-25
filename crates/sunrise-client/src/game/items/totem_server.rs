@@ -23,6 +23,35 @@ pub(in crate::game::server_side) use sunrise_client::{
 };
 
 impl Game<'_> {
+    /// The `death_effects` of the stack's `minecraft:death_protection`.
+    pub(in crate::game) fn death_effects(
+        &self,
+        s: &ItemStack,
+    ) -> Vec<sunrise_client::items::ConsumeEffect> {
+        s.death_protection(self.items().get(&s.item))
+            .unwrap_or_default()
+            .to_vec()
+    }
+    /// Whether either hand holds a death-protection item, for the next hurt:
+    /// the window's player once a tick, a server's player for each of its
+    /// turns.
+    pub(in crate::game) fn update_totem_ready(&mut self) {
+        let ready = self.held().is_some_and(|s| self.has_death_protection(s))
+            || self
+                .offhand
+                .as_ref()
+                .is_some_and(|s| self.has_death_protection(s));
+        let off = !self.held().is_some_and(|s| self.has_death_protection(s));
+        if let Some(p) = self.player.as_mut() {
+            p.health.totem_ready = ready;
+            p.health.totem_off_hand = off;
+        }
+    }
+    /// Finish a hit before its caller can hurt the acting player again. Protection and
+    /// `ServerPlayer.die` both run on the current body, not its between-turn projection.
+    pub(in crate::game) fn finish_guest_damage(&mut self) {
+        let _ = self.finish_guest_damage_before_resume();
+    }
     /// The server's half once a totem fired: use it up (main hand first),
     /// count it, set health to 1, then clear and apply its effects. Returns
     /// the player's body with the protector copy the activation animation shows.

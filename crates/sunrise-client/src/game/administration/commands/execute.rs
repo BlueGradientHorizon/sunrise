@@ -127,10 +127,48 @@ impl Game<'_> {
             cart: None,
         }
     }
+    /// Server-side `Entity.getEyeHeight`: reads server guest state, entity tables, and saved interaction height.
+    pub(in crate::game) fn server_target_eye_height(&self, t: Target) -> f64 {
+        match t {
+            Target::Player => self
+                .player
+                .as_ref()
+                .map_or(1.62, |p| f64::from(p.dimensions.eye_height)),
+            Target::Guest(conn) => self.command_guest(conn).map_or(1.62, |g| g.eye_height()),
+            Target::Mob(id) => self
+                .mobs
+                .iter()
+                .find(|m| m.id == id)
+                .map_or(0.0, |m| m.eye_y() - m.position.y),
+            // ArmorStand.getDefaultDimensions: a marker's are empty, a small
+            // stand's are BABY_DIMENSIONS, whose eye height is 0.9875F.
+            Target::Stand(id) => match self.armor_stands.iter().find(|a| a.id == id) {
+                Some(a) if a.marker => 0.0,
+                Some(a) if a.small => f64::from(0.9875f32),
+                _ => self.type_eye_height(&self.target_type(t)),
+            },
+            Target::Other(id) => self
+                .others
+                .0
+                .iter()
+                .find(|o| o.id == id)
+                .and_then(|o| o.interaction)
+                .map_or_else(
+                    || self.type_eye_height(&self.target_type(t)),
+                    |i| f64::from(i.height * 0.85),
+                ),
+            // Entity.getEyeHeight: the type's dimensions.
+            _ => self.type_eye_height(&self.target_type(t)),
+        }
+    }
     /// EntityAnchorArgument.Anchor.apply.
     pub(in crate::game::server_side) fn anchor_position(&self, s: &Source) -> [f64; 3] {
         match s.entity {
-            Some(t) if s.eyes => [s.pos[0], s.pos[1] + self.target_eye_height(t), s.pos[2]],
+            Some(t) if s.eyes => [
+                s.pos[0],
+                s.pos[1] + self.server_target_eye_height(t),
+                s.pos[2],
+            ],
             _ => s.pos,
         }
     }
@@ -265,7 +303,7 @@ impl Game<'_> {
                     .filter_map(|t| {
                         let p = self.target_position(t)?;
                         let y = if eyes {
-                            p[1] + self.target_eye_height(t)
+                            p[1] + self.server_target_eye_height(t)
                         } else {
                             p[1]
                         };

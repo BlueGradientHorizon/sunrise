@@ -276,27 +276,6 @@ impl Game<'_> {
         };
         let at = [m.position.x, m.position.y, m.position.z];
         self.lan_entity_event(id as i32, event, at);
-        self.entity_event_particles(id, event);
-    }
-    /// `handleEntityEvent(event)`'s particles about mob `id`
-    /// (`Villager`, `TamableAnimal`, `AbstractHorse`, `Animal`, `Allay`).
-    pub(in crate::game) fn entity_event_particles(&mut self, id: u32, event: i8) {
-        let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
-            return;
-        };
-        if let Some((kind, burst)) =
-            sunrise_client::particles::entity_event_burst(&m.kind.id, event as u8)
-        {
-            self.particles_around_mob(id, kind, burst);
-        }
-    }
-    /// `particles::around_self` about mob `id`.
-    pub(in crate::game) fn particles_around_mob(
-        &mut self,
-        _id: u32,
-        _kind: &'static str,
-        _burst: sunrise_client::particles::Burst,
-    ) {
     }
 
     /// `NearestItemSensor.doTick` for the villagers whose sensor is due: the
@@ -463,10 +442,7 @@ impl Game<'_> {
                 let rest = villager::ext_mut(&mut self.mobs[i]).add_item(stack, max);
                 if rest.as_ref().is_none_or(|r| r.count < before.stack.count) {
                     let id = self.mobs[i].id;
-                    self.add_pickup(
-                        super::pickups::Taken::Item(Box::new(before)),
-                        super::pickups::Collector::Mob(id),
-                    );
+                    self.server_mob_take_item(&before, id);
                 }
                 match rest {
                     None => {

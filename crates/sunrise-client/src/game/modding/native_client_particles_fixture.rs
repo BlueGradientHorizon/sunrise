@@ -46,9 +46,6 @@ impl Game<'_> {
         self.player = None;
         assert!(!add(self, &smoke, at, [0.0; 3]), "menu has no client level");
         self.player = Some(PlayerMotion::new(self.motion, Vec3::new(0.0, 100.0, 0.0))?);
-        self.run_component_harness(
-            crate::game::integrated::ComponentHarness::NativeClientParticlesRefusal,
-        )?;
         let encoded = [f64::from(0xff12ab), 7.0, -2.0];
         let mut custom = ParticleOptions::named("fixture:encoded");
         custom.color = [0.1, 0.2, 0.3, 0.4];

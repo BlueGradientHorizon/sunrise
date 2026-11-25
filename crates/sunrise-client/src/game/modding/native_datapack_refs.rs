@@ -11,15 +11,7 @@ impl Game<'_> {
         &self,
         level: LevelRef,
     ) -> Option<std::sync::Arc<mod_api::DatapackRegistrySet>> {
-        if self.is_logical_server() {
-            self.native_level_world(level)?;
-            self.mods.datapack_registries.clone()
-        } else {
-            if !self.level_handle_current(level) || level.dimension() != self.native_level_key() {
-                return None;
-            }
-            sunrise_client::datapack_net::received()
-        }
+        self.side_level_datapack_set(level)
     }
 
     /// The entry ids of a mod's datapack registry as the world last loaded it.

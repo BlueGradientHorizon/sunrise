@@ -3,8 +3,6 @@ pub(in crate::game::server_side) use super::{Game, Mining, minecarts::CartKind};
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::hand::BreakSpeedDispatch;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::hand::GameHands;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::hand::HarvestDispatch;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::hand::OFFHAND;

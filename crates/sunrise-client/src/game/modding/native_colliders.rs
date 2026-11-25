@@ -304,99 +304,64 @@ impl Game<'_> {
         }
     }
 
-    /// Where the collider entity `id` is, in the level in place: the server's entity, or a
-    /// client's copy of what its server shows it.
+    /// Where the collider entity `id` is, in the server level in place.
     pub(in crate::game) fn collider_origin(&self, id: u32) -> Option<Vec3> {
-        let at = if self.is_logical_server() {
-            self.target_position(self.level_entity(id as i32)?)?
-        } else {
-            let epoch = self.native_lifecycle.epoch()?;
-            self.native_client_tracked(EntityRef::new(epoch, id))?.1
-        };
+        let at = self.target_position(self.level_entity(id as i32)?)?;
         Some(Vec3::new(at[0], at[1], at[2]))
     }
 
-    /// Every entity in the vehicle stack the entity `id` is in: its root vehicle and each
-    /// passenger at any depth, `id` and the vehicles under it included
-    /// (`Entity.isPassengerOfSameVehicle`). On a client, the riding graph its server told.
+    /// Every entity in the vehicle stack the entity `id` is in on the server.
     pub(in crate::game::server_side) fn vehicle_stack(&self, id: u32) -> Vec<u32> {
-        if self.is_logical_server() {
-            let Some(epoch) = self.native_lifecycle.epoch() else {
-                return vec![id];
-            };
-            let entity = EntityRef::new(epoch, id);
-            let root = self.entity_root_vehicle(entity).unwrap_or(entity);
-            let mut stack = vec![root.id()];
-            stack.extend(
-                self.entity_indirect_passengers(root)
-                    .unwrap_or_default()
-                    .iter()
-                    .map(|rider| rider.id()),
-            );
-            if !stack.contains(&id) {
-                stack.push(id);
-            }
-            return stack;
-        }
-        let Some(remote) = &self.remote else {
+        let Some(epoch) = self.native_lifecycle.epoch() else {
             return vec![id];
         };
-        stack_in_graph(&remote.passenger_vehicles, id)
+        let entity = EntityRef::new(epoch, id);
+        let root = self.entity_root_vehicle(entity).unwrap_or(entity);
+        let mut stack = vec![root.id()];
+        stack.extend(
+            self.entity_indirect_passengers(root)
+                .unwrap_or_default()
+                .iter()
+                .map(|rider| rider.id()),
+        );
+        if !stack.contains(&id) {
+            stack.push(id);
+        }
+        stack
     }
 
-    /// The frame the collider of entity `id` has now: where its entity stands and its rotation.
+    /// The frame the collider of entity `id` has now on the server.
     pub(in crate::game) fn collider_now_frame(
         &self,
         id: u32,
     ) -> Option<sunrise_core::geometry::oriented::Frame> {
-        let state = if self.is_logical_server() {
-            self.entity_attachments.collider(id).map(|e| &e.state)?
-        } else {
-            self.remote.as_ref()?.colliders.get(&id)?
-        };
+        let state = self.entity_attachments.collider(id).map(|e| &e.state)?;
         Some(state.frame(self.collider_origin(id)?))
     }
 
-    /// Calls `f` with each collider of the level in place, in an order that is the same from
-    /// one call to the next while none is added or removed; stops and answers false when `f`
-    /// does.
+    /// Calls `f` with each collider of the server level in place.
     pub(in crate::game::server_side) fn each_collider(
         &self,
         mut f: impl FnMut(u32, &ColliderState) -> bool,
     ) -> bool {
-        if self.is_logical_server() {
-            for id in self.entity_attachments.colliders_in(self.dim) {
-                if let Some(entry) = self.entity_attachments.collider(id)
-                    && !f(id, &entry.state)
-                {
-                    return false;
-                }
-            }
-        } else if let Some(remote) = &self.remote {
-            for (&id, state) in &remote.colliders {
-                if !f(id, state) {
-                    return false;
-                }
+        for id in self.entity_attachments.colliders_in(self.dim) {
+            if let Some(entry) = self.entity_attachments.collider(id)
+                && !f(id, &entry.state)
+            {
+                return false;
             }
         }
         true
     }
 
-    /// Whether the entity `id` is in no vehicle stack but its own: it rides nothing and
-    /// nothing rides it. Asked without building the stack.
+    /// Whether the entity `id` is in no vehicle stack but its own.
     pub(in crate::game::server_side) fn is_alone(&self, id: u32) -> bool {
-        if self.is_logical_server() {
-            let Some(epoch) = self.native_lifecycle.epoch() else {
-                return true;
-            };
-            let entity = EntityRef::new(epoch, id);
-            self.entity_is_passenger(entity) == Some(false)
-                && self.entity_is_vehicle(entity) == Some(false)
-        } else {
-            self.remote
-                .as_ref()
-                .is_none_or(|r| r.passenger_vehicle(id).is_none() && !r.has_passengers(id))
-        }
+        let Some(epoch) = self.native_lifecycle.epoch() else {
+            return true;
+        };
+        let entity = EntityRef::new(epoch, id);
+        self.entity_is_passenger(entity) == Some(false)
+            && self.entity_is_vehicle(entity) == Some(false)
     }
 
     /// Whether `kept` is still the vehicle stack of the entity `id`.
@@ -412,12 +377,7 @@ impl Game<'_> {
         }
     }
 
-    /// The colliders of the level in place, where they stand now, for the movers of its tick
-    /// (`sunrise_client_render::moving_colliders::in_level`): a collider is solid at the
-    /// position it had when its level's tick began, and moves after it. A level with none
-    /// answers an empty one and pays nothing more. The level's placement is kept while no
-    /// collider, place or vehicle stack of it changed; a tick where none did builds nothing
-    /// (a collider that rides, or is ridden, has its stack worked out each tick).
+    /// The colliders of the server level in place, where they stand now.
     pub(in crate::game) fn placed_moving_colliders(
         &mut self,
     ) -> sunrise_client_render::moving_colliders::Prepared {
@@ -490,19 +450,12 @@ impl Game<'_> {
         self.collider_histories.0.get(&self.dim).cloned()
     }
 
-    /// The level in place, including the world lifetime and runtime level generation.
+    /// The server level in place, including the world lifetime and runtime level generation.
     pub(in crate::game) fn collider_level(&self) -> Option<mod_api::LevelRef> {
-        if self.is_logical_server() {
-            Some(self.level_ref(self.native_lifecycle.epoch()?, self.dim.key()))
-        } else {
-            self.native_client_level()
-        }
+        Some(self.level_ref(self.native_lifecycle.epoch()?, self.dim.key()))
     }
 
-    /// Runs `f` with this level's moving colliders and history. If the level already
-    /// has a snapshot, keep it. Otherwise use its own shapes and history, not those
-    /// of a caller ticking another level; a client calling between ticks scopes its
-    /// collision parts too. Nothing is recorded in the history here.
+    /// Runs `f` with this server level's moving colliders and history.
     pub(in crate::game) fn in_this_levels_colliders<R>(
         &mut self,
         f: impl FnOnce(&mut Self) -> R,
@@ -514,28 +467,18 @@ impl Game<'_> {
             return f(self);
         }
         let placed = self.placed_moving_colliders();
-        let history = self
-            .is_logical_server()
-            .then(|| self.collider_histories.0.get(&self.dim).cloned())
-            .flatten();
-        let _parts = (!self.is_logical_server())
-            .then(|| self.collision_parts())
-            .flatten();
+        let history = self.collider_histories.0.get(&self.dim).cloned();
         let _history = HistoryScope::replace(history);
         let _scope = Scope::enter_level(level, placed);
         f(self)
     }
 
-    /// Records the level's colliders as its tick begins into the level's history and answers it,
-    /// for a server; a client keeps none. A level with no collider keeps nothing.
+    /// Records the level's colliders as its tick begins into the level's history and answers it.
     pub(in crate::game::server_side) fn collider_history(
         &mut self,
         placed: &sunrise_client_render::moving_colliders::Prepared,
     ) -> Option<std::rc::Rc<std::cell::RefCell<sunrise_client_render::moving_colliders::History>>>
     {
-        if !self.is_logical_server() {
-            return None;
-        }
         let level = self.dim;
         if placed.is_empty() {
             self.collider_histories.0.remove(&level);

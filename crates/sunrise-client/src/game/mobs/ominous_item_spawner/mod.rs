@@ -190,35 +190,6 @@ impl Game<'_> {
             sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
         );
     }
-    /// `handleAddEntity` for a spawner a server sent: its item comes with the
-    /// entity data (`ItemStack.EMPTY` until then, which draws nothing).
-    pub(in crate::game) fn add_remote_ominous_item_spawner(&mut self, id: u32, position: [f64; 3]) {
-        self.ominous_spawners.push(OminousItemSpawner {
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
-            id,
-            item: ItemStack::new("minecraft:air", 1),
-            position,
-            spawn_item_after: 0,
-            tick_count: 0,
-            fire_ticks: 0,
-            synced_fire: false,
-            has_visual_fire: false,
-            uuid: [0; 4],
-            raw: None,
-        });
-    }
-    /// `OminousItemSpawner.tick` on a client: `tickCount` and `tickClient`,
-    /// the particles every 5 game ticks; only the server spawns the item.
-    pub(in crate::game) fn tick_remote_ominous_item_spawners(&mut self) {
-        let at: Vec<[f64; 3]> = self.ominous_spawners.iter().map(|s| s.position).collect();
-        self.ominous_spawners.for_each_mut(|s| s.tick_count += 1);
-        if self.world.game_time % 5 == 0 {
-            for position in at {
-                self.ominous_spawner_particles(position);
-            }
-        }
-    }
     /// `spawnItem`: a projectile shot down, or an item entity; level event
     /// 3021 and the entity_place game event.
     pub(in crate::game::server_side) fn spawn_ominous_item(&mut self, s: &OminousItemSpawner) {

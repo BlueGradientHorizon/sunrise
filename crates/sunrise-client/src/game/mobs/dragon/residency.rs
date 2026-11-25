@@ -67,11 +67,6 @@ impl Game<'_> {
         &self,
         id: u32,
     ) -> Option<(&Dragon, usize)> {
-        if !self.is_logical_server() {
-            let dragon = self.dragon.as_ref()?;
-            let part = dragon_part_index(dragon.id, id)?;
-            return Some((dragon, part));
-        }
         use sunrise_client::join_seq::residency::{Source, table::EntityLookup};
         let EntityLookup::Found {
             location,
@@ -89,6 +84,10 @@ impl Game<'_> {
         Some((self.dragon.as_ref()?, usize::from(offset)))
     }
 
+    pub(in crate::game) fn server_resident_dragon_part_index(&self, id: u32) -> Option<usize> {
+        self.resident_dragon_part_source(id).map(|(_, part)| part)
+    }
+
     pub(in crate::game::server_side) fn assign_resident_crystal_ids(&mut self) {
         crate::game::entity_residency::assign_resident_ids!(
             self.crystals,
@@ -96,26 +95,5 @@ impl Game<'_> {
             &mut self.server.next_entity,
             None
         );
-    }
-}
-
-impl Game<'_> {
-    /// The box of the dragon part or end crystal guests know as entity `id`
-    /// (`EnderDragonPart`s follow the dragon's id for its tracking lifetime).
-    pub(in crate::game) fn tracked_special_box(&self, id: i32) -> Option<Aabb> {
-        let uid = id as u32;
-        if let Some(d) = self
-            .dragon
-            .as_ref()
-            .filter(|d| d.id != 0 || self.remote.is_some())
-            && let Some(part) = dragon_part_index(d.id, uid)
-        {
-            return Some(d.part_box(part));
-        }
-        let id = u32::try_from(id).ok().filter(|&id| id != 0)?;
-        self.crystals
-            .iter()
-            .find(|c| c.id == id)
-            .map(Crystal::bounds)
     }
 }

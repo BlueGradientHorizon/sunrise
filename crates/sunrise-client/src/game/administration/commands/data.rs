@@ -513,7 +513,6 @@ impl Game<'_> {
         self.load_block_name(key, &new, tag);
         self.world.block_entities.insert(key, new);
         self.world.set_block_lock(key, tag);
-        self.update_spawner_display(key);
         true
     }
     /// What `BlockDataAccessor.setData` tells the world after a load: `setChanged` and

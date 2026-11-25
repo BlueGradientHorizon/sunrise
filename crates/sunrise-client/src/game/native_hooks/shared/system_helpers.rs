@@ -20,7 +20,21 @@ impl Game<'_> {
         world: &sunrise_client::world::World,
         pos: [i32; 3],
     ) -> Vec<[f64; 6]> {
-        self.block_collision_shape_in(world, pos)
+        let state = world.block(pos[0], pos[1], pos[2]);
+        let binding = self.collision;
+        let mut scene = sunrise_client::collisions::SceneCollisions {
+            world,
+            binding,
+            subject: None,
+        };
+        binding
+            .collision_shape_with_context(
+                &mut scene,
+                state,
+                BlockPos::new(pos[0], pos[1], pos[2]),
+                &sunrise_world::collision_context::CollisionContext::empty(false),
+            )
+            .unwrap_or_else(|_| sunrise_core::geometry::VoxelShape::empty())
             .boxes()
             .iter()
             .map(|bounds| {
@@ -42,15 +56,6 @@ impl Game<'_> {
             dimension: self.dim.id(),
         })
     }
-    /// The frame counter: frames in the last second, the slowest frame and
-    /// the 1% low of the last 5 seconds, in frames per second.
-    pub(in crate::game) fn native_frame_rate(&self) -> (u32, u32, u32) {
-        self.frame_reading()
-    }
-    /// Attack and use clicks in the last second.
-    pub(in crate::game) fn native_clicks(&mut self) -> (u32, u32) {
-        self.click_reading()
-    }
     /// A native mod's own folder: `sunrise-mods/.sunrise-mod-data/<id>/`. Not created here.
     pub(in crate::game) fn native_data_dir(&self, mod_id: &str) -> PathBuf {
         crate::game::mod_data_root().join(mod_id)
@@ -60,15 +65,6 @@ impl Game<'_> {
     /// has no player of its own, and is always in its world.
     pub(in crate::game) fn outside_world(&self) -> bool {
         self.player.is_none() && self.options.execution_role.is_client()
-    }
-    /// Every item and recipe the game knows, made once (the same for every
-    /// call); none outside a world. They are the window's own (the content
-    /// mods' and vanilla's), with the server's recipes of the types a mod had
-    /// it send (`native_datapack_sync`) in their place; made again when those
-    /// arrive (`native_recipes_received`).
-    pub(in crate::game) fn native_recipes(&mut self) -> Option<Arc<NativeRecipes>> {
-        self.player.as_ref()?;
-        self.made_recipes()
     }
 }
 

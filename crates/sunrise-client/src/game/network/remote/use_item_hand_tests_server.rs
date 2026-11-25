@@ -20,7 +20,7 @@ fn identical_instant_stacks_report_the_selected_interaction_hand() {
     .into();
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
-        with_interaction_game(false, |game| {
+        with_interaction_server_game(|game| {
             game.inventory[game.selected] = Some(ItemStack::new("minecraft:stick", 1));
             game.offhand = Some(ItemStack::new("minecraft:stick", 1));
             for hand in [Hand::Main, Hand::Off] {
@@ -56,7 +56,7 @@ fn the_item_event_names_the_guest_who_clicked_not_the_host() {
     let (observer, mods) = item_observer();
     mod_platform::testing::with_mods(mods, || {
         // The fixture's guest has connection 12: UUID 12 and entity id 12.
-        with_interaction_game(false, |game| {
+        with_interaction_server_game(|game| {
             game.offhand = Some(ItemStack::new("minecraft:stick", 1));
             for hand in [Hand::Main, Hand::Off] {
                 game.server.guest_use = Some(super::super::super::GuestUse::Item(hand));

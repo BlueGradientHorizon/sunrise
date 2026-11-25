@@ -1720,7 +1720,7 @@ impl Game<'_> {
         // `display_index`, borrowed by field beside the book.
         let index = match &self.recipe_tables.synced_index {
             Some(index) => index,
-            None => &world_stations!(self).recipe_index,
+            None => &self.res.stations().recipe_index,
         };
         if p.replace {
             ui.client.clear();

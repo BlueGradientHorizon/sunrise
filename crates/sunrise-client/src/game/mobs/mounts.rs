@@ -113,17 +113,14 @@ pub(in crate::game::server_side) fn dismounts_underwater(
 
 /// `EntityAttachments.transformPoint`: `Vec3.yRot(-yRot * (float) (Math.PI / 180.0))`,
 /// an attachment point turned with the vehicle.
-pub(in crate::game::server_side) fn turned(a: [f64; 3], yaw: f32) -> Vec3 {
+pub(in crate::game) fn turned(a: [f64; 3], yaw: f32) -> Vec3 {
     Vec3::new(a[0], a[1], a[2]).rotate_y(-yaw * (std::f64::consts::PI / 180.0) as f32)
 }
 
 /// `Entity.getPassengerRidingPosition` for a player on `m`: the vehicle's
 /// attachment point, turned with it, less the player's own vehicle attachment
 /// (`Avatar.DEFAULT_VEHICLE_ATTACHMENT`, a `Vec3(0.0, 0.6, 0.0)` of doubles).
-pub(in crate::game::server_side) fn seat_of(
-    m: &sunrise_client::mobs::Mob,
-    attachment: [f64; 3],
-) -> Vec3 {
+pub(in crate::game) fn seat_of(m: &sunrise_client::mobs::Mob, attachment: [f64; 3]) -> Vec3 {
     let at = turned(attachment, m.yaw);
     Vec3::new(
         m.position.x + at.x,
@@ -133,10 +130,6 @@ pub(in crate::game::server_side) fn seat_of(
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn mount_index(&self) -> Option<usize> {
-        let id = self.riding?;
-        self.mobs.iter().position(|m| m.id == id)
-    }
     /// `FoodOnAStickItem.use` while riding: boost the mount, wear the stick.
     pub(in crate::game) fn use_steering_stick(&mut self, item: &str) -> bool {
         let (species, wear) = match item {
@@ -540,40 +533,6 @@ impl Game<'_> {
         self.consume_held();
         true
     }
-    /// `LocalPlayer.aiStep`'s riding jump: the bar charges while jump is
-    /// held; on release, the jump's strength (0 when there is none).
-    pub(in crate::game) fn charge_mount_jump(&mut self, i: usize, keys: Keys) -> f32 {
-        let saddled = self.mobs[i].extra.saddled() && Self::jumps(self.mobs[i].species());
-        let mut jump = 0.0;
-        if saddled {
-            let st = &mut self.mount;
-            if st.jump_ticks < 0 {
-                st.jump_ticks += 1;
-                if st.jump_ticks == 0 {
-                    st.jump_scale = 0.0;
-                }
-            }
-            if st.was_jumping && !keys.jump {
-                st.jump_ticks = -10;
-                let amount = (st.jump_scale * 100.0).floor() as i32;
-                // PlayerRideableJumping.getPlayerJumpPendingScale, the scale a
-                // guest's START_RIDING_JUMP carries as `data`.
-                jump = equine::jump_pending_scale(amount);
-            } else if !st.was_jumping && keys.jump {
-                st.jump_ticks = 0;
-                st.jump_scale = 0.0;
-            } else if st.was_jumping {
-                st.jump_ticks += 1;
-                st.jump_scale = if st.jump_ticks < 10 {
-                    st.jump_ticks as f32 * 0.1
-                } else {
-                    0.8 + 2.0 / (st.jump_ticks - 9) as f32 * 0.1
-                };
-            }
-            st.was_jumping = keys.jump;
-        }
-        jump
-    }
     /// Whether the rider's eyes are in water (`Entity.updateFluidOnEyes` then `isEyeInFluid(WATER)`),
     /// and not in a bubble column, as `LivingEntity.baseTick` asks before it lets a rider stay.
     pub(in crate::game::server_side) fn rider_eyes_in_water(&self) -> bool {
@@ -679,51 +638,8 @@ impl Game<'_> {
             .position(|&(_, id, player)| player && Some(id) == own)
             .unwrap_or(0)
     }
-    /// `positionRider`: the player sits on the mount after it moves.
-    pub(in crate::game) fn position_rider(&mut self) {
-        let Some(i) = self.mount_index() else {
-            return;
-        };
-        let m = &self.mobs[i];
-        // `Entity.getPassengerRidingPosition`: the vehicle type's own passenger
-        // attachment (`EntityAttachments`, `getClamped(PASSENGER, 0, yRot)`),
-        // turned with the vehicle, less the player's own vehicle attachment
-        // (`Avatar.DEFAULT_VEHICLE_ATTACHMENT`).
-        let mut at = if sunrise_client::mobs::camel::is_camel(m.species()) {
-            // Camel.getPassengerAttachmentPoint: the driver half a block
-            // forward, at the body anchor (lower while sitting), turned with
-            // the camel. Its point already carries the camel's own scale.
-            seat_of(m, sunrise_client::mobs::camel::passenger_attachment(m))
-        } else {
-            seat_of(m, sunrise_client::mobs::riders::type_attachment(m))
-        };
-        if m.species() == Species::HappyGhast {
-            // The attachment of the player's place in `getPassengers`, in the ghast's own dimensions.
-            let seat = self
-                .remote
-                .as_ref()
-                .map_or_else(|| self.own_passenger_index(m.id), |r| r.passenger_index);
-            at = seat_of(
-                m,
-                sunrise_client::mobs::riders::passenger_attachment_at(m, seat),
-            );
-        }
-        // AbstractHorse.getPassengerAttachmentPoint: the rider slides back and
-        // up while the horse rears.
-        let rear = turned(equine::rear_offset(m), m.yaw);
-        at = Vec3::new(at.x + rear.x, at.y + rear.y, at.z + rear.z);
-        // The tick a rider takes its seat is a teleport (`Entity.moveTo`), which
-        // sets the old position too: the camera must not sweep from where the
-        // player stood to the seat. The ticks after it move with the mount and
-        // are interpolated as usual.
-        let first = self.posed_rider != self.riding;
-        self.posed_rider = self.riding;
-        if let Some(p) = self.player.as_mut() {
-            self.previous_position = if first { at } else { p.position };
-            p.position = at;
-            p.velocity = Vec3::ZERO;
-            p.fall_distance = 0.0;
-        }
+    pub(in crate::game) fn server_own_passenger_index(&self, vehicle: u32) -> usize {
+        self.own_passenger_index(vehicle)
     }
     /// `removePassenger` + `getDismountLocationForPassenger`: where the mount
     /// lets the rider out.
@@ -1042,28 +958,6 @@ impl Game<'_> {
         if self.server.lan_acting.is_some() {
             self.finish_guest_damage();
         }
-    }
-    /// `PlayerRideableJumping`: horses, camels and nautili (the dash).
-    pub(in crate::game::server_side) fn jumps(species: Species) -> bool {
-        equine::is_equine(species) || sunrise_client::mobs::nautilus::is_nautilus(species)
-    }
-    /// `LocalPlayer.jumpableVehicle`: the vehicle the player controls (`getControlledVehicle`:
-    /// the player is its first passenger and it is saddled, `AbstractHorse` and
-    /// `AbstractNautilus.getControllingPassenger`) when it can jump now
-    /// (`PlayerRideableJumping.canJump`: saddled, and a camel neither sitting nor getting up or
-    /// down; a pig or a strider never jumps), by its entity id. Unlike the ridden movement's
-    /// `drives`, it does not ask whether the mount is alive: vanilla doesn't. The HUD's jump
-    /// bar and `ClientViewClientHost::jumpable_vehicle` both read this decision.
-    pub(in crate::game) fn jumpable_mount(&self) -> Option<u32> {
-        if !self.remote.as_ref().is_some_and(|r| r.first_passenger) {
-            return None;
-        }
-        let mount = &self.mobs[self.mount_index()?];
-        let can_jump = Self::jumps(mount.species())
-            && mount.extra.saddled()
-            && !(matches!(mount.species(), Species::Camel | Species::CamelHusk)
-                && sunrise_client::mobs::camel::refuse_to_move(mount));
-        can_jump.then_some(mount.id)
     }
 }
 

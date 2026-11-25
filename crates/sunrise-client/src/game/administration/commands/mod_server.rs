@@ -1027,7 +1027,11 @@ impl Game<'_> {
                 // EntityAnchorArgument.Anchor.apply: the feet, or the eyes.
                 let eyes = matches!(ctx.get("facingAnchor"), Some(Arg::Anchor(true)));
                 facing_entity = Some((e, eyes));
-                let eye_height = if eyes { self.target_eye_height(e) } else { 0.0 };
+                let eye_height = if eyes {
+                    self.server_target_eye_height(e)
+                } else {
+                    0.0
+                };
                 self.target_position(e)
                     .map(|p| [p[0], p[1] + eye_height, p[2]])
             }
@@ -1039,7 +1043,7 @@ impl Game<'_> {
         let look_at = |this: &Self, t: Target, at: [f64; 3]| {
             let f = facing?;
             let eye = if anchored_eyes {
-                at[1] + this.target_eye_height(t)
+                at[1] + this.server_target_eye_height(t)
             } else {
                 at[1]
             };

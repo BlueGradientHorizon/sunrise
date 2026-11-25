@@ -121,4 +121,14 @@ impl Game<'_> {
             _ => false,
         }
     }
+
+    /// Copies the shulker box lids into the world, where the collision queries
+    /// read them (`SceneCollisions::shulker_collision_state`), as
+    /// `sync_moving_pistons` does for pistons.
+    pub(in crate::game) fn sync_shulkers(&mut self) {
+        self.world.shulkers.clear();
+        self.world
+            .shulkers
+            .extend(self.be_anims.shulkers.iter().map(|(p, s)| (*p, s.clone())));
+    }
 }

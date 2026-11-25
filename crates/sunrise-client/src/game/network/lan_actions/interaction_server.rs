@@ -1,9 +1,91 @@
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::interaction::*;
 
 impl Game<'_> {
+    pub(in crate::game) fn guest_drop_carried(&mut self, gi: usize) {
+        let carried = self.with_own_record(gi, |host, _| {
+            let conn = host.hub.guests[gi].conn;
+            let mut stacks = host.hub.take_closed_menu_cursors(conn).collect::<Vec<_>>();
+            let (to_return, to_drop) = host.hub.take_closed_processing_inputs(conn);
+            stacks.extend(to_return);
+            stacks.extend(to_drop);
+            host.hub
+                .guests
+                .update(gi, |g| stacks.extend(g.take_menu_cursors()));
+            Some(stacks)
+        });
+        if let Some(carried) = carried.filter(|stacks| !stacks.is_empty()) {
+            self.drop_guest_items(gi, carried);
+        }
+    }
+
+    pub(in crate::game) fn drop_guest_items(&mut self, gi: usize, stacks: Vec<ItemStack>) {
+        let Some(host) = self.lan.as_ref() else {
+            return;
+        };
+        let g = &host.hub.guests[gi];
+        let eye = [
+            g.position[0],
+            g.position[1] + g.eye_height() - f64::from(0.3f32),
+            g.position[2],
+        ];
+        let (yaw, pitch) = (g.yaw, g.pitch);
+        let mut r = sunrise_client::random_source::entity(); // the guest's Entity.random
+        for stack in stacks {
+            let v = sunrise_client::entities::drop_motion(&mut r, yaw, pitch, false);
+            self.spawn_item(stack, eye, v, 40);
+        }
+    }
+
+    /// Server-side box and interaction origin of a non-mob object or general row.
+    pub(in crate::game) fn server_object_target(
+        &self,
+        id: i32,
+    ) -> Option<([f64; 3], [f64; 3], [f64; 3])> {
+        use crate::game::server_side::lan_vehicles::corners;
+        let at = |v: Vec3| [v.x, v.y, v.z];
+        let centre = |p: [i32; 3]| p.map(|v| f64::from(v) + 0.5);
+        let id = u32::try_from(id).ok()?;
+        if let Some(b) = self.boats.iter().find(|b| b.id == id) {
+            let (lo, hi) = corners(b.bounds());
+            return Some((lo, hi, at(b.position)));
+        }
+        if let Some(c) = self.carts.iter().find(|c| c.id == id) {
+            let (lo, hi) = corners(c.bounds());
+            return Some((lo, hi, at(c.position)));
+        }
+        if let Some(a) = self.armor_stands.iter().find(|a| a.id == id) {
+            let (lo, hi) = corners(a.bounds());
+            return Some((lo, hi, at(a.position)));
+        }
+        if let Some(c) = self.cushions.iter().find(|c| c.id == id) {
+            let (lo, hi) = corners(Aabb::new(
+                Vec3::new(c.position.x - 0.5, c.position.y, c.position.z - 0.5),
+                Vec3::new(c.position.x + 0.5, c.position.y + 0.25, c.position.z + 0.5),
+            ));
+            return Some((lo, hi, at(c.position)));
+        }
+        if let Some(f) = self.item_frames.iter().find(|f| f.id == id) {
+            let (lo, hi) = f.bounds();
+            return Some((lo, hi, centre(f.pos)));
+        }
+        if let Some(p) = self.paintings.iter().find(|p| p.id == id) {
+            let (lo, hi) = p.bounds();
+            return Some((lo, hi, centre(p.pos)));
+        }
+        if let Some(t) = self.tnts.iter().find(|t| t.id == id) {
+            let (lo, hi) = corners(t.bounds());
+            return Some((lo, hi, at(t.position)));
+        }
+        if let Some(f) = self.falling.iter().find(|f| f.id == id) {
+            let (lo, hi) = corners(f.bounds());
+            return Some((lo, hi, at(f.position)));
+        }
+        let row = self.general_row(id)?;
+        let (lo, hi) = corners(crate::game::entity::Entity::bounds(row));
+        Some((lo, hi, at(row.position)))
+    }
+
     /// Whether a block outline occludes the straight line from `eye` to `point`.
     pub(in crate::game::server_side) fn block_between(
         &self,
@@ -358,7 +440,7 @@ impl Game<'_> {
         if let Some(m) = self.mobs.iter().find(|m| m.id as i32 == id) {
             return Some(m.bounds());
         }
-        if let Some((lo, hi, _)) = self.object_target(id) {
+        if let Some((lo, hi, _)) = self.server_object_target(id) {
             return Some(Aabb::new(
                 Vec3::new(lo[0], lo[1], lo[2]),
                 Vec3::new(hi[0], hi[1], hi[2]),
@@ -428,7 +510,10 @@ impl Game<'_> {
         let Some(held) = held.filter(|s| s.count != 0 && s.item.as_ref() != "minecraft:air") else {
             return Ok(false);
         };
-        if !self.creative_item_enabled(held, self.enabled_feature_ids()) {
+        if !self
+            .item_features
+            .item_enabled(held, self.enabled_feature_ids())
+        {
             return Ok(false);
         }
         let (spectator, spawn_egg) = (g.spectator(), held.item.ends_with("_spawn_egg"));
@@ -679,7 +764,7 @@ impl Game<'_> {
             [g.position[0], g.position[1] + g.eye_height(), g.position[2]]
         };
         let object = || {
-            let (lo, hi, origin) = self.object_target(id)?;
+            let (lo, hi, origin) = self.server_object_target(id)?;
             let middle = [0, 1, 2].map(|k| (lo[k] + hi[k]) / 2.0);
             let Some(l) = location else {
                 // A boat's mobs sit over its middle: aim low at its near
@@ -710,7 +795,7 @@ impl Game<'_> {
         });
         let centre = match mob_box {
             Some((lo, hi)) => visible_aim_point(eye, lo, hi, |p| self.block_between(eye, p)),
-            None if self.object_target(id).is_some() => object()?,
+            None if self.server_object_target(id).is_some() => object()?,
             // A dragon part or an end crystal (game/mobs/dragon.rs).
             None => {
                 let b = self.tracked_special_box(id)?;

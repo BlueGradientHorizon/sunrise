@@ -1,10 +1,21 @@
 //! `Game` as the `MobLevel` mob families run on: each service forwards to the game's own method.
-use super::{
-    Game,
-    pickups::{Collector, Taken},
-};
+use super::Game;
 use sunrise_client::entities::ItemEntity;
 use sunrise_gameplay::mob_level::{MobLevel, MobParts};
+
+impl Game<'_> {
+    /// Notify tracking clients of a server-side mob item pickup without client particle bookkeeping.
+    pub(in crate::game) fn server_mob_take_item(&mut self, item: &ItemEntity, collector: u32) {
+        if let Some(host) = &self.lan {
+            host.hub.take_item(
+                item.id as i32,
+                collector as i32,
+                item.stack.count as i32,
+                [item.position.x, item.position.y, item.position.z],
+            );
+        }
+    }
+}
 
 impl MobLevel for Game<'_> {
     fn parts(&mut self) -> MobParts<'_> {
@@ -47,7 +58,7 @@ impl MobLevel for Game<'_> {
         self.mob_item_pickup_trigger(mob_index, item);
     }
     fn take(&mut self, collector: u32, item: ItemEntity) {
-        self.add_pickup(Taken::Item(Box::new(item)), Collector::Mob(collector));
+        self.server_mob_take_item(&item, collector);
     }
     fn discard_item(&mut self, index: usize) -> ItemEntity {
         self.remove_dropped(index)

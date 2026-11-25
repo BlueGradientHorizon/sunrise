@@ -65,6 +65,21 @@ impl Game<'_> {
             None => false,
         })
     }
+    pub(in crate::game) fn vanilla_key_mapping_binding(
+        &self,
+        mapping: VanillaKeyMappingRef,
+    ) -> Result<&str, MappingError> {
+        let slot = self.vanilla_mapping_slot(mapping)?;
+        Ok(self.settings.keys.binding_at(slot))
+    }
+    pub(in crate::game) fn vanilla_key_mapping_translated_key_message(
+        &self,
+        mapping: VanillaKeyMappingRef,
+    ) -> Result<Text, MappingError> {
+        Ok(keybinds::display_name(
+            self.vanilla_key_mapping_binding(mapping)?,
+        ))
+    }
     /// Validate an API mapping handle before using it to index the current bindings.
     pub(in crate::game) fn vanilla_mapping_slot(
         &self,

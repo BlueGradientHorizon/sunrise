@@ -1,53 +1,158 @@
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::api_values::{TryIntoApi, TryIntoEngine};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::smithing_icons::smithing_slot_icons;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Game, Screen};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::stations::CyclingSlot;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::stations::EMPTY_TEMPLATE_ICONS;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::stations::EnchantBook;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::stations::EngineTooltipLines;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::stations::GREY;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::stations::IN_TOOLTIP_BUILD;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::stations::INPUT;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::stations::Kind;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::stations::RESULT;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::stations::Station;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::stations::TooltipBuildGuard;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::stations::WORDS;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::stations::*;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use mod_api::TooltipElement;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use std::cell::Cell;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    block_entity_item, brewing,
-    containers::BlockEntity,
-    hud::{HudBatch, rgba},
-    items::ItemStack,
-    random_source,
-    stations::{self, AnvilResult, EnchantOffers},
-    text::Text,
-};
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_core::random::{LegacyRandom, RandomSource};
+//! Server-side workstation logic (opening/closing stations, anvil/grindstone/smithing
+//! side effects, experience levels, and brewing stand server ticking).
+use super::Game;
+use crate::game::stations_common::{Kind, Station};
+use sunrise_client::{brewing, containers::BlockEntity, items::ItemStack, stations};
 
 impl Game<'_> {
+    /// Server arm of [`Game::side_station_changed`].
+    pub(in crate::game) fn server_station_changed(&mut self) {
+        let Some(mut s) = self.station.take() else {
+            return;
+        };
+        let creative = self.creative;
+        let (enchantments, data) = (
+            std::sync::Arc::clone(self.item_enchantments()),
+            self.stations(),
+        );
+        let items = self.items();
+        match s.kind {
+            Kind::Enchanting => {
+                s.bookcases = self.count_bookshelves(s.pos);
+                s.offers = stations::enchant_offers(
+                    &enchantments,
+                    items,
+                    self.level.xp_seed,
+                    s.bookcases,
+                    s.inputs[0].as_ref(),
+                );
+            }
+            Kind::Anvil => {
+                let name = self.anvil_item_name(&s);
+                let hover = s.inputs[0]
+                    .as_ref()
+                    .map(|i| {
+                        sunrise_client::lang::returned_to_server(|| {
+                            self.stack_hover_name_text(i).plain()
+                        })
+                    })
+                    .unwrap_or_default();
+                s.anvil = stations::anvil_result(
+                    &enchantments,
+                    items,
+                    s.inputs[0].as_ref(),
+                    s.inputs[1].as_ref(),
+                    Some(&name),
+                    &hover,
+                    creative,
+                );
+                s.result = s.anvil.result.clone();
+            }
+            Kind::Grindstone => {
+                s.result = stations::grindstone_result(
+                    &self.loop_context,
+                    &enchantments,
+                    items,
+                    s.inputs[0].as_ref(),
+                    s.inputs[1].as_ref(),
+                );
+            }
+            Kind::Smithing => {
+                s.result = data.recipes.smithing_result(
+                    &self.loop_context,
+                    &data.enchantments,
+                    s.inputs[0].as_ref(),
+                    s.inputs[1].as_ref(),
+                    s.inputs[2].as_ref(),
+                );
+            }
+            Kind::Merchant | Kind::Beacon | Kind::Cartography | Kind::Loom | Kind::Stonecutter => {}
+        }
+        self.station = Some(s);
+    }
+
+    /// Server arm of [`Game::side_combiner_take_effects`].
+    pub(in crate::game) fn server_combiner_take_effects(
+        &mut self,
+        kind: Kind,
+        pos: [i32; 3],
+        level_change: i32,
+    ) -> bool {
+        if kind == Kind::Smithing {
+            self.server_level_event_at(1044, pos, 0);
+            return false;
+        }
+        self.give_levels(level_change);
+        self.anvil_used(pos, self.creative)
+    }
+
+    /// `AnvilMenu.onTake`'s level part: out of creative a 12% chance
+    /// (`AnvilBlock.damage`) to wear the anvil a stage, or break a damaged one
+    /// (level event 1029); otherwise level event 1030. True when it broke.
+    pub(in crate::game) fn anvil_used(&mut self, pos: [i32; 3], creative: bool) -> bool {
+        let state = self.world.block(pos[0], pos[1], pos[2]);
+        let name = self.res.facts().get(state).name.clone();
+        let anvil = matches!(
+            &*name,
+            "minecraft:anvil" | "minecraft:chipped_anvil" | "minecraft:damaged_anvil"
+        );
+        if !creative && anvil && self.world.random.next_float() < 0.12 {
+            match &*name {
+                "minecraft:anvil" => {
+                    let _ = self.set_state_named(pos, "minecraft:chipped_anvil", &["facing"]);
+                    self.native_anvil_damaged(self.dim.id(), pos, &name, "minecraft:chipped_anvil");
+                }
+                "minecraft:chipped_anvil" => {
+                    let _ = self.set_state_named(pos, "minecraft:damaged_anvil", &["facing"]);
+                    self.native_anvil_damaged(self.dim.id(), pos, &name, "minecraft:damaged_anvil");
+                }
+                _ => {
+                    let _ = self.world.set(pos[0], pos[1], pos[2], self.world.air);
+                    self.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+                    self.native_anvil_damaged(self.dim.id(), pos, &name, "minecraft:air");
+                    self.server_level_event_at(1029, pos, 0);
+                    return true;
+                }
+            }
+        }
+        self.server_level_event_at(1030, pos, 0);
+        false
+    }
+
+    /// The grindstone result's `onTake` with a level (`amount`: the menu's
+    /// `getExperienceAmount` sum): the orbs at the block's centre
+    /// (`ExperienceOrb.award`), then level event 1042, the grindstone's sound
+    /// for everyone around.
+    pub(in crate::game) fn grindstone_taken(&mut self, pos: [i32; 3], amount: i32) {
+        let xp = stations::grindstone_xp_roll(amount, &mut self.world.random);
+        self.grindstone_award(pos, xp);
+    }
+
+    /// The rest of `onTake` with the experience `xp` decided: the orbs and
+    /// level event 1042.
+    pub(in crate::game) fn grindstone_award(&mut self, pos: [i32; 3], xp: u32) {
+        if xp > 0 {
+            self.spawn_orbs(pos.map(|v| f64::from(v) + 0.5), xp);
+        }
+        self.after_commit(super::transactions::After::GrindstoneEvent(pos));
+    }
+
+    pub(in crate::game) fn give_or_drop(&mut self, stack: ItemStack) {
+        if let Some(rest) = self.add_stack_to_inventory(stack)
+            && let Some(eye) = self.eye_position()
+        {
+            // Inventory.placeItemBackInInventory: `player.drop(stack, false)`.
+            self.throw_from_eyes(rest, eye, false, false);
+        }
+    }
+
+    /// `Player.giveExperienceLevels`, and the level change reported to the mods.
+    pub(in crate::game) fn give_levels(&mut self, levels: i32) {
+        let old_level = self.experience.level;
+        self.add_experience_levels(levels);
+        self.native_player_level_changed(old_level);
+    }
+
     /// `ServerPlayer.giveExperienceLevels`: the mods of a server player may change
     /// or cancel the levels, and every fifth level gained plays the level-up sound
     /// (at most every 100 ticks).
@@ -72,6 +177,7 @@ impl Game<'_> {
         let level = self.experience.level;
         self.play_level_up(levels, level);
     }
+
     /// `AbstractContainerMenu.clearContainer`: inputs go back to the player.
     pub(in crate::game) fn close_station_server(&mut self) {
         assert!(
@@ -82,12 +188,9 @@ impl Game<'_> {
             .station
             .as_ref()
             .is_some_and(|s| s.kind == Kind::Merchant)
+            && let Some(stack) = self.carried.take()
         {
-            // MerchantMenu.removed: the carried stack and the payment go back.
-            self.menu_session(|menu, env, _| {
-                menu.merchant_close(env);
-                Some(true)
-            });
+            self.give_or_drop(stack);
         }
         let Some(mut station) = self.station.take() else {
             return;
@@ -99,6 +202,7 @@ impl Game<'_> {
             self.give_or_drop(stack);
         }
     }
+
     /// `Player.onEnchantmentPerformed`: the cost leaves the level directly, not
     /// through `giveExperienceLevels`, and the mods hear of the level change.
     pub(in crate::game) fn enchantment_performed(&mut self, cost: i32) {
@@ -106,6 +210,7 @@ impl Game<'_> {
         self.experience.add_levels(-cost);
         self.native_player_level_changed(old_level);
     }
+
     /// Opens a workstation menu for the block; false when it is not one.
     pub(in crate::game) fn open_station(&mut self, pos: [i32; 3], name: &str) -> bool {
         let Some(kind) = Kind::from_block(name) else {
@@ -138,6 +243,7 @@ impl Game<'_> {
         }
         true
     }
+
     pub(in crate::game::server_side) fn play_at(
         &mut self,
         sound: &str,
@@ -152,6 +258,7 @@ impl Game<'_> {
         ];
         self.server_play_sound(sound, at, volume, pitch);
     }
+
     /// `Player.giveExperienceLevels`: all players near its feet hear the sound.
     pub(in crate::game::server_side) fn play_level_up(&mut self, amount: i32, level: i32) {
         if let Some(volume) = self.server.level_up_sound.give_levels(amount, level) {
@@ -164,6 +271,7 @@ impl Game<'_> {
             }
         }
     }
+
     /// `BrewingStandBlockEntity.serverTick` of the brewing stand at `pos`, in
     /// its place among the level's block entity tickers.
     pub(in crate::game) fn tick_brewing_stand(

@@ -302,62 +302,6 @@ impl ArmorStandAssets {
 }
 impl Game<'_> {
     /// `ArmorStandItem.useOn`.
-    /// `ArmorStandItem.useOn` up to its `FAIL`s, which a client checks too:
-    /// not on a bottom face, and nothing in the new stand's box. The block it
-    /// stands in and the stand.
-    pub(in crate::game) fn armor_stand_spawn(
-        &self,
-        hit: &super::Hit,
-        stack: &ItemStack,
-    ) -> Option<([i32; 3], ArmorStand)> {
-        if hit.face == [0, -1, 0] {
-            return None;
-        }
-        // BlockPlaceContext: a replaceable clicked block is replaced.
-        let clicked = self
-            .res
-            .facts()
-            .get(self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]));
-        let pos = if clicked.replaceable {
-            hit.pos
-        } else {
-            std::array::from_fn(|i| hit.pos[i] + hit.face[i])
-        };
-        let foot = Vec3::new(
-            f64::from(pos[0]) + 0.5,
-            f64::from(pos[1]),
-            f64::from(pos[2]) + 0.5,
-        );
-        let yaw =
-            (((self.yaw - 180.0 + 180.0).rem_euclid(360.0) - 180.0 + 22.5) / 45.0).floor() * 45.0;
-        let mut stand = ArmorStand::new(self.server.next_entity + 1, foot, yaw);
-        // Entity.applyImplicitComponents: a name from an anvil names the stand.
-        if let Some(name) = stack.custom_name() {
-            stand.custom_name = Some(sunrise_client::text::Text::literal(name));
-        }
-        let b = stand.bounds();
-        // Touching the floor is not a collision.
-        let (lo, hi) = (b.min_position(), b.max_position());
-        let e = 1.0e-7;
-        let bounds = Aabb::new(
-            Vec3::new(lo.x + e, lo.y + e, lo.z + e),
-            Vec3::new(hi.x - e, hi.y - e, hi.z - e),
-        );
-        let mut scene = sunrise_client::collisions::SceneCollisions {
-            world: &self.world,
-            binding: self.collision,
-            subject: None,
-        };
-        if !scene.unobstructed(bounds).unwrap_or(false)
-            || self
-                .armor_stands
-                .iter()
-                .any(|o| overlaps(o.bounds(), bounds))
-        {
-            return None;
-        }
-        Some((pos, stand))
-    }
     pub(in crate::game::server_side) fn place_armor_stand(
         &mut self,
         hit: &super::Hit,
@@ -369,6 +313,7 @@ impl Game<'_> {
         let Some((pos, mut stand)) = self.armor_stand_spawn(hit, stack) else {
             return false;
         };
+        stand.id = self.server.next_entity + 1;
         // EntityType.create(.., tryMoveDown, movedUp): the new stand falls onto what is under it,
         // up to two blocks (a bottom slab, the block under replaced grass).
         let drop = self.drop_offset_from(0.5, 1.975, (pos[0], pos[1], pos[2]), true);
@@ -1571,52 +1516,121 @@ impl Game<'_> {
             );
         }
     }
-    /// `ArmorStandArmorModel.setupAnim`: humanoid preparation and posing first,
-    /// then saved rotations. Position writes at the humanoid seam survive.
-    pub(in crate::game) fn setup_armor_stand_pose(
-        &self,
-        a: &ArmorStand,
-        partial: f32,
-        poses: &mut Poses,
-    ) {
-        use sunrise_client::mobs::anim::{self, ArmPose};
-        let state = anim::State {
-            pos: 0.0,
-            speed: 0.0,
-            age: self.world.game_time as f32 + partial,
-            y_rot: 0.0,
-            x_rot: a.pitch,
-            swing: 0.0,
-            baby: a.small,
-            partial,
-            observer: None,
-        };
-        let mut humanoid = anim::Hum::new(ArmPose::Empty, ArmPose::Empty);
-        humanoid.passenger = a.vehicle.is_some();
-        anim::humanoid_with_setup(poses, &state, &humanoid, |poses| {
-            if !mod_api::__private::listened(mod_api::HookId::HumanoidSetupAnim) {
-                return;
+    /// `ArmorStand.brokenByAnything`, then `kill`.
+    pub(in crate::game) fn break_armor_stand_by_anything(
+        &mut self,
+        i: usize,
+        damage_type: &str,
+        causing: u32,
+    ) -> bool {
+        let a = self.armor_stands[i].clone();
+        let id = a.id;
+        let at = a.position.components();
+        let removed = self.remove_armor_stand_after(id, |game| {
+            game.server_play_sound("minecraft:entity.armor_stand.break", at, 1.0, 1.0);
+            game.armor_stand_death_drops(&a, damage_type, causing);
+            let (pos, drops) = broken_armor_stand_equipment(a);
+            for stack in drops {
+                game.pop_resource(pos, stack);
             }
-            use super::api_values::TryIntoApi;
-            let stacks = [0, 1].map(|slot| {
-                a.equipment[slot]
-                    .as_ref()
-                    .and_then(|stack| stack.try_into_api().ok())
-            });
-            let view = mod_api::HumanoidRenderState {
-                main_hand: stacks[0].as_ref(),
-                off_hand: stacks[1].as_ref(),
-                main_arm_left: false,
-                is_using_item: false,
-                use_hand: None,
-                ticks_using_item: 0,
-                use_animation: mod_api::UseAnimation::None,
-                main_arm_pose: mod_api::ArmPose::Empty,
-                off_arm_pose: mod_api::ArmPose::Empty,
-            };
-            self.setup_humanoid_parts(a.id, TYPE_ID, &view, partial, poses);
+            game.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
         });
-        apply_pose(poses, &a.pose);
+        if removed {
+            let source = self
+                .level_entity(causing as i32)
+                .or(Some(super::commands::Target::Stand(id)));
+            self.entity_killed_event_by(at, source);
+        }
+        removed
+    }
+    /// The end of `ArmorStand.hurtServer` for `#can_break_armor_stand` or `#always_kills_armor_stands`.
+    pub(in crate::game) fn break_armor_stand_by_hit(
+        &mut self,
+        i: usize,
+        creative: bool,
+        always_kills: bool,
+        by: Option<super::commands::Target>,
+        damage_type: &str,
+        causing_id: u32,
+    ) -> bool {
+        let time = self.world.game_time;
+        let at = self.armor_stands[i].position;
+        let at = [at.x, at.y, at.z];
+        if creative {
+            let id = self.armor_stands[i].id;
+            let (width, height) = stand_box(&self.armor_stands[i]);
+            if !self.remove_armor_stand_after(id, |game| {
+                game.server_play_sound("minecraft:entity.armor_stand.break", at, 1.0, 1.0);
+                game.show_breaking_particles(at, f64::from(width), f64::from(height));
+            }) {
+                return false;
+            }
+            self.stand_game_event("minecraft:entity_die", at, by);
+            return true;
+        }
+        if time - self.armor_stands[i].last_hit > 5 && !always_kills {
+            self.server_play_sound("minecraft:entity.armor_stand.hit", at, 0.3, 1.0);
+            self.stand_game_event("minecraft:entity_damage", at, by);
+            self.armor_stands[i].last_hit = time;
+            return true;
+        }
+        let a = self.armor_stands[i].clone();
+        let removed = self.remove_armor_stand_after(a.id, |game| {
+            let (width, height) = stand_box(&a);
+            let center = [at[0], at[1] + if a.small { 0.4875 } else { 0.9875 }, at[2]];
+            let mut stand = ItemStack::new("minecraft:armor_stand", 1);
+            if let Some(name) = &a.custom_name {
+                stand
+                    .data_mut()
+                    .set_loot_name("minecraft:custom_name", &name.component());
+            }
+            game.spawn_item(stand, center, [0.0; 3], 10);
+            game.server_play_sound("minecraft:entity.armor_stand.break", at, 1.0, 1.0);
+            game.armor_stand_death_drops(&a, damage_type, causing_id);
+            for stack in a.equipment.into_iter().flatten() {
+                let r = &mut game.world.random;
+                let v = [
+                    f64::from(r.next_float()) * 0.2 - 0.1,
+                    0.2,
+                    f64::from(r.next_float()) * 0.2 - 0.1,
+                ];
+                game.spawn_item(stack, center, v, 10);
+            }
+            game.show_breaking_particles(at, f64::from(width), f64::from(height));
+        });
+        if removed {
+            self.stand_game_event("minecraft:entity_die", at, by);
+        }
+        removed
+    }
+    /// `ArmorStand.showBreakingParticles`: ten oak plank crumbs sent via `server_level_particles`.
+    pub(in crate::game::server_side) fn show_breaking_particles(
+        &mut self,
+        at: [f64; 3],
+        width: f64,
+        height: f64,
+    ) {
+        let Some(state) = self
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:oak_planks")
+        else {
+            return;
+        };
+        let centre = [at[0], at[1] + height * (2.0 / 3.0), at[2]];
+        let spread = [width / 4.0, height / 4.0, width / 4.0];
+        self.server_level_particles(
+            &crate::lan::server_effects::ServerParticle::block(
+                sunrise_client::particles::ParticleType::Block,
+                state,
+            ),
+            centre,
+            spread,
+            0.05,
+            10,
+            false,
+        );
     }
 }
 /// The stand's slot (`ArmorStand::SLOTS` order) for an item whose
@@ -1634,7 +1648,7 @@ pub(in crate::game) fn preview_slot(equip: Option<&str>) -> usize {
 }
 /// The `Pose` rotations on the parts of an armor stand model or its armor
 /// (`ArmorStandArmorModel.setupAnim`); the body also turns the sticks.
-pub(in crate::game::server_side) fn apply_pose(poses: &mut Poses, pose: &[[f32; 3]; 6]) {
+pub(in crate::game) fn apply_pose(poses: &mut Poses, pose: &[[f32; 3]; 6]) {
     let parts: [&[&str]; 6] = [
         &["head"],
         &[
@@ -1659,7 +1673,7 @@ pub(in crate::game::server_side) fn apply_pose(poses: &mut Poses, pose: &[[f32; 
         }
     }
 }
-pub(in crate::game::server_side) fn overlaps(a: Aabb, b: Aabb) -> bool {
+pub(in crate::game) fn overlaps(a: Aabb, b: Aabb) -> bool {
     let (a0, a1, b0, b1) = (
         a.min_position(),
         a.max_position(),
@@ -1683,7 +1697,7 @@ pub(in crate::game) struct ArmorSwap {
 /// (`copy` instead of `copyAndClear`). From a larger stack one item is worn
 /// (`consumeAndReturn`, which takes none in creative) and the worn piece goes
 /// to the inventory.
-pub(in crate::game::server_side) fn swap_with_equipment_slot(
+pub(in crate::game) fn swap_with_equipment_slot(
     stack: &ItemStack,
     current: Option<ItemStack>,
     creative: bool,
@@ -1781,32 +1795,19 @@ impl Game<'_> {
         }) {
             return true;
         }
-        // Counted on the server only, before the swap.
-        if self.remote.is_none() {
-            self.award_stat("used", &stack.item, 1);
-        }
+        self.award_stat("used", &stack.item, 1);
         let swap = swap_with_equipment_slot(stack, current, self.creative);
         self.armor[index] = Some(swap.worn.clone());
-        // Player.setItemSlot: onEquipItem plays the equip sound.
         self.player_equipped(slot, Some(&swap.worn));
         *self.held_mut() = swap.hand;
-        // Inventory.add, else Player.drop (in creative a full inventory
-        // takes it anyway: hasInfiniteMaterials empties the stack).
         if let Some(old) = swap.to_inventory
             && let Some(rest) = self.add_stack_to_inventory(old)
             && !self.creative
-            // Player.drop is the server's on a client: it spawns the item.
-            && self.remote.is_none()
             && let Some(eye) = self.eye_position()
         {
-            // Player.drop(stack, false): thrown from the eyes, no thrower.
             self.throw_from_eyes(rest, eye, false, false);
         }
-        // The attribute modifiers of a worn piece come from the server's
-        // ClientboundUpdateAttributesPacket on a client.
-        if self.remote.is_none() {
-            self.apply_equipment();
-        }
+        self.apply_equipment();
         self.swing_arm();
         true
     }

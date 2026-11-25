@@ -73,7 +73,7 @@ impl Game<'_> {
             * glam::Mat4::from_scale(glam::Vec3::splat(0.38))
             * glam::Mat4::from_translation(glam::Vec3::new(-0.5, -0.5, 0.0))
             * glam::Mat4::from_scale(glam::Vec3::splat(0.0078125));
-        let has_data = self.map(id).is_some();
+        let has_data = self.maps.data.contains_key(&id);
         let background = if has_data {
             "map/map_background_checkerboard"
         } else {
@@ -102,9 +102,66 @@ impl Game<'_> {
             self.map_vertices(id, false, m, light, out);
         }
     }
+    /// `ClientboundMapItemDataPacket.handle`: the server's colours and
+    /// decorations for a map (one carried or framed on a server).
+    pub(in crate::game) fn remote_map_item_data(
+        &mut self,
+        p: &sunrise_protocol::packets::play::MapItemData,
+    ) {
+        let decorations = p.decorations.as_ref().map(|list| {
+            let types = self
+                .remote
+                .as_ref()
+                .and_then(|r| r.builtin.get("minecraft:map_decoration_type"));
+            list.iter()
+                .filter_map(|d| {
+                    Some(Decoration {
+                        sprite: decoration_sprite(types?.name(d.kind)?)?,
+                        x: d.x,
+                        y: d.y,
+                        rot: (d.rot & 15) as u8,
+                        name: d
+                            .name
+                            .as_ref()
+                            .map(|t| sunrise_client::entity_nbt::name_text(t).plain()),
+                        key: Key::Remote,
+                    })
+                })
+                .collect()
+        });
+        let dimension = self.dim.id();
+        let map = self
+            .maps
+            .data
+            .entry(p.map_id)
+            .or_insert_with(|| MapData::fresh(0.0, 0.0, p.scale.max(0) as u8, dimension));
+        map.locked = p.locked;
+        if let Some(decorations) = decorations {
+            map.decorations = decorations;
+        }
+        let Some(patch) = &p.patch else {
+            map.dirty = false;
+            return;
+        };
+        for x in 0..patch.width {
+            for y in 0..patch.height {
+                let Some(&color) = patch.colors.get((x + y * patch.width) as usize) else {
+                    continue;
+                };
+                let (px, py) = (patch.start_x + x, patch.start_y + y);
+                if (0..128).contains(&px) && (0..128).contains(&py) {
+                    map.update_color(px, py, color);
+                }
+            }
+        }
+        // The server owns a remote map: only the texture has to change.
+        map.dirty = false;
+    }
     /// The atlas slot showing map `id`, its texture uploaded when it changed.
     pub(in crate::game) fn map_texture(&mut self, id: i32) -> Option<Rect> {
-        self.map(id)?;
+        if !self.maps.data.contains_key(&id) {
+            return None;
+        }
         let slot = match self.maps.slots.show(&id) {
             Some(slot) => slot,
             None => {

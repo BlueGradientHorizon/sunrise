@@ -21,13 +21,6 @@ impl Game<'_> {
             .and_then(|p| p.attribute("minecraft:attack_damage").ok())
             .unwrap_or(1.0) as f32
     }
-    /// `Minecraft.startAttack` on an entity: main-hand `attack_range` gate.
-    pub(in crate::game) fn held_range_allows(&self, distance: f64) -> bool {
-        let range = self
-            .held()
-            .and_then(|stack| self.attack_range_component(stack));
-        range.is_none_or(|r| attack_range_contains(&r, distance, self.own_player_is_creative()))
-    }
     /// `LivingEntity.updateFallFlying`: the glide's wear. `Util.getRandom`
     /// picks one of the gliders that will not break (from the entity's own
     /// random), and

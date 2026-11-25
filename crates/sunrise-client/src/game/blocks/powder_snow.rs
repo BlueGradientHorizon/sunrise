@@ -5,33 +5,16 @@
 #[allow(unused_imports)]
 use super::Game;
 #[allow(unused_imports)]
-use sunrise_client::{Result, cauldron, items::ItemStack, mobs::Who};
+use sunrise_client::{cauldron, items::ItemStack};
 #[allow(unused_imports)]
-use sunrise_core::{position::BlockPos, random::RandomSource};
+use sunrise_core::random::RandomSource;
 
 /// The two ordered float draws of `Entity.playEntityOnFireExtinguishedSound`.
-pub(in crate::game::client_side) fn extinguish_pitch(random: &mut impl RandomSource) -> f32 {
+pub(in crate::game) fn extinguish_pitch(random: &mut impl RandomSource) -> f32 {
     1.6 + (random.next_float() - random.next_float()) * 0.4
 }
 
 impl Game<'_> {
-    /// Entity.playEntityOnFireExtinguishedSound
-    pub(in crate::game) fn extinguish_sound(&mut self, at: [f64; 3]) {
-        let pitch = extinguish_pitch(&mut self.server.effect_rng);
-        self.server_play_sound("minecraft:entity.generic.extinguish_fire", at, 0.7, pitch);
-    }
-    /// `PowderSnowBlock.entityInside` (runBefore EXTINGUISH) for a burning
-    /// player: `Level.destroyBlock(pos, false)`, which needs `mayInteract`.
-    /// A client of a remote server leaves it to the server.
-    pub(in crate::game) fn powder_snow_melt(&mut self, pos: BlockPos) {
-        let at = [pos.x, pos.y, pos.z];
-        if !self.is_logical_server() || !self.is_powder_snow(at) || !self.may_interact_at(pos) {
-            return;
-        }
-        self.with_level(|b, level, ticks| b.destroy_block(level, ticks, pos, false));
-        let _ = self.server_process_level_events();
-        self.world.modified.insert((at[0] >> 4, at[2] >> 4));
-    }
     /// Whether the block at `pos` is powder snow.
     pub(in crate::game) fn is_powder_snow(&self, pos: [i32; 3]) -> bool {
         &*self
@@ -125,8 +108,7 @@ pub(in crate::game) mod tests {
         for creative in [false, true] {
             let (mut inventory, mut offhand) = (room_for_three(), None);
             let mut arrows = ItemStack::new("minecraft:arrow", 5);
-            let left =
-                super::super::inventory_add(&mut inventory, &mut offhand, 0, 64, &mut arrows);
+            let left = crate::game::inventory_add(&mut inventory, &mut offhand, 0, 64, &mut arrows);
             let rest = left.then(|| arrows.clone());
             assert_eq!(inventory[0].as_ref().map(|s| s.count), Some(64));
             let added = super::added(&mut arrows, rest, creative);

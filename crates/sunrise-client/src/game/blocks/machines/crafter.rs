@@ -61,12 +61,6 @@ impl Game<'_> {
         });
         let _ = self.server_process_level_events();
     }
-    pub(in crate::game) fn crafter_at(&self, pos: Pos) -> Option<&Crafter> {
-        match self.world.block_entities.get(&pos)? {
-            BlockEntity::Crafter(c) => Some(c),
-            _ => None,
-        }
-    }
     /// `CrafterBlockEntity.serverTick` of the crafter at `pos`, and the
     /// powered flag following the block state.
     pub(in crate::game) fn tick_crafter(&mut self, pos: Pos) {

@@ -26,7 +26,7 @@ impl Game<'_> {
         step: Option<SwimEntry>,
     ) -> Option<(SwimEntry, bool)> {
         let step = step?;
-        self.ask_swim_eligibility(SwimmingCheck::Entry)
+        self.side_ask_swim_eligibility(SwimmingCheck::Entry)
             .map(|answer| (step, answer))
     }
 
@@ -68,7 +68,8 @@ impl Game<'_> {
                         .player
                         .as_ref()
                         .is_some_and(|p| p.fluid_height(sunrise_client::motion::WATER) > 0.0)
-                        && game.ask_swim_eligibility(SwimmingCheck::ShallowWater) == Some(false))
+                        && game.side_ask_swim_eligibility(SwimmingCheck::ShallowWater)
+                            == Some(false))
             },
             |game, value| {
                 game.player

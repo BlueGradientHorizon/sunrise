@@ -12,27 +12,6 @@ use sunrise_client::{
 
 #[allow(dead_code)]
 impl Game<'_> {
-    /// Sets a block in the current authoritative level through `Level.setBlock`.
-    /// Returns false for another dimension, an invalid state, or no change.
-    /// `flags` selects vanilla's neighbour, shape and client updates. A block
-    /// entity block gets its block entity.
-    pub(in crate::game) fn native_set_block(
-        &mut self,
-        dimension: &str,
-        pos: [i32; 3],
-        state: BlockStateId,
-        flags: i32,
-    ) -> bool {
-        if (self.serving.is_none() && self.options.dedicated.is_none())
-            || dimension != self.dim.id()
-            || self.pack.assets.registry.state(state).is_none()
-        {
-            return false;
-        }
-        let changed = self.set_block_live(pos, state, flags, true);
-        let _ = self.server_process_level_events();
-        changed
-    }
     /// The item entities of the server level `dimension` whose box meets
     /// the box `min`..`max`, in the level's order: vanilla's
     /// `Level.getEntitiesOfClass(ItemEntity.class, box, ENTITY_STILL_ALIVE)`, as a

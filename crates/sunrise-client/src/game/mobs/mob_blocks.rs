@@ -282,6 +282,51 @@ impl Game<'_> {
         let t = antenna_block_matrix(head, flowerbeds);
         self.block_layer_vertices(state, 42, t, light, out);
     }
+    /// The swallowed block replaces the opaque core and precedes the shell.
+    pub(in crate::game) fn sulfur_cube_body_geometry(
+        &self,
+        mob: &Mob,
+        alpha: f32,
+        base: glam::Mat4,
+        light: u32,
+        out: &mut Vec<Vertex>,
+    ) {
+        let Some(item) = mob.extra.body_id() else {
+            return;
+        };
+        if super::armor_stands::skull_kind(item).is_some() {
+            return;
+        }
+        let Some(state) = self.items().get(item).and_then(|item| item.block) else {
+            return;
+        };
+        let start = out.len();
+        let transform = base
+            * glam::Mat4::from_scale(glam::Vec3::new(1.0, -1.0, -1.0))
+            * glam::Mat4::from_scale(glam::Vec3::splat(if mob.is_baby() { 0.5 } else { 1.0 }))
+            * glam::Mat4::from_translation(glam::Vec3::new(-0.5, -0.518, -0.5));
+        let emission = self.res.facts().get(state).emission;
+        let block_l = (light >> 8 & 0xFF).max(u32::from(emission) * 16);
+        let lit = (light & 0xFF) | block_l << 8;
+        self.block_model_vertices(state, 42, transform, lit, true, out);
+        let fuse_ticks = sunrise_client::mobs::sulfur_cube::fuse(mob);
+        let fuse = if fuse_ticks >= 0 {
+            fuse_ticks as f32 - alpha + 1.0
+        } else {
+            0.0
+        };
+        let hurt = mob.hurt_time > 0 || mob.death_time > 0;
+        let overlay = if fuse > 0.0 && (fuse / 5.0) as i32 % 2 == 0 {
+            sunrise_client::overlay::living(1.0, false)
+        } else {
+            sunrise_client::overlay::living(0.0, hurt)
+        };
+        if overlay != 0 {
+            for vertex in &mut out[start..] {
+                vertex.layer = overlay;
+            }
+        }
+    }
     /// `IronGolemFlowerLayer`: the poppy in the right arm while the golem
     /// offers it (`getOfferFlowerTick() > 0`), drawn with `NO_OVERLAY`.
     fn golem_flower_geometry(

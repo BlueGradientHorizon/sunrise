@@ -136,7 +136,7 @@ impl sunrise_client::motion::SideLevel for Game<'_> {
     }
 
     fn living_target_alive(&self, id: u32) -> bool {
-        self.last_hurt_target_alive(id)
+        self.side_living_target_alive(id)
     }
 
     fn damage_types(&self) -> &sunrise_world::damage_source::Catalog {
@@ -371,8 +371,8 @@ impl Game<'_> {
         state: BlockStateId,
         entity: Option<(u32, &str)>,
     ) -> Result<Option<f32>, LevelReadError> {
-        let world = self.native_level_read_world(level).ok_or_else(|| {
-            if self.level_handle_current(level) {
+        let world = self.native_level_view_world(level).ok_or_else(|| {
+            if self.side_level_handle_current(level) {
                 LevelReadError::Unavailable
             } else {
                 LevelReadError::Stale
@@ -398,7 +398,7 @@ impl Game<'_> {
 
     /// The friction of `state` at `pos` under the boat `b` (`AbstractBoat.getGroundFriction`,
     /// `Leashable.angularFriction`), from `own`, the block's value.
-    pub(in crate::game::server_side) fn boat_friction(
+    pub(in crate::game) fn boat_friction(
         &self,
         b: &Boat,
         pos: BlockPos,

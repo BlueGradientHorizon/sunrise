@@ -527,9 +527,6 @@ impl Game<'_> {
                 // NetherPortalBlock.entityInside on the client's own level:
                 // the portal overlay and its trigger sound (the server moves
                 // the player).
-                sunrise_client::motion::MotionEvent::PowderSnowMelt { pos } => {
-                    self.powder_snow_melt(pos);
-                }
                 sunrise_client::motion::MotionEvent::InsidePortal { .. } => {
                     self.client_inside_nether_portal();
                 }
@@ -801,7 +798,8 @@ impl Game<'_> {
             )
         };
         let thundering = {
-            let w = self.client_mob_world_base(&[]);
+            let side = self.client_mob_side();
+            let w = self.client_mob_world_base(&[], &side);
             let players = self.remote.as_ref().map(|r| &r.level_players);
             fluids.clear();
             fluids.extend(self.mobs.iter().map(|m| {

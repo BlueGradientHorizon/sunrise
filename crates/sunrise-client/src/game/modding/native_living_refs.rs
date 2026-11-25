@@ -336,36 +336,44 @@ impl Game<'_> {
         )
     }
 
-    /// The entity as a living entity (vanilla's `LivingEntity`: a mob, a
-    /// player, an armor stand or the dragon), or None for another kind or a
-    /// stale handle.
-    ///
-    /// On a client, only the local player is one: the client keeps the others'
-    /// equipment, effects and health only as far as it draws them. API 382.
-    pub(in crate::game) fn living(&self, entity: EntityRef) -> Option<LivingRef> {
-        let living = LivingRef::new(entity);
-        self.native_living_read_target(living).map(|_| living)
+    /// Server arm for living handle resolution.
+    pub(in crate::game) fn server_living_read_target(&self, living: LivingRef) -> Option<Target> {
+        self.native_living_target(living)
     }
-    /// What a living handle names for a read that works on both sides: the
-    /// server's entity, or on a client the local player (`Minecraft.player`),
-    /// whose state is the client's copy of what the server sent.
-    pub(in crate::game) fn native_living_read_target(&self, living: LivingRef) -> Option<Target> {
-        if self.is_logical_server() {
-            return self.native_living_target(living);
-        }
-        match self.native_client_entity_target(living.entity())? {
-            Target::Player => Some(Target::Player),
+
+    /// Server arm for whether a remembered hurt target is still alive (`native_surface`).
+    pub(in crate::game) fn server_living_target_alive(&self, id: u32) -> bool {
+        self.last_hurt_target_alive(id)
+    }
+
+    /// Server arm for how long `living` has been using its active item (`native_living_blocking`).
+    pub(in crate::game) fn server_living_use_ticks(
+        &self,
+        living: LivingRef,
+    ) -> Option<Option<u32>> {
+        match self.server_living_read_target(living)? {
+            Target::Player => Some(self.using.map(|(_, ticks)| ticks)),
+            Target::Guest(conn) => {
+                Some(self.lan.as_ref()?.play.get(&conn)?.using().map(|(_, t)| t))
+            }
+            Target::Mob(id) => {
+                let mob = self.mobs.iter().find(|m| m.id == id)?;
+                Some(
+                    sunrise_client::mobs::spear_use::is_using_item(mob)
+                        .then(|| mob.extra.using_item.unsigned_abs() - 1),
+                )
+            }
             _ => None,
         }
     }
-    /// The effective value of an attribute on a living entity
-    /// (`AttributeMap.getValue`). None for an unknown or absent attribute, an
-    /// unavailable entity, a stale handle, or on a client for any entity but
-    /// the local player, whose copy of the synced instances it reads. A mob,
-    /// an armor stand and the dragon answer from their live attribute map: the
-    /// type's defaults, the saved `attributes`, and the modifiers of what they
-    /// wear or hold.
-    pub(in crate::game) fn living_attribute_value(
+
+    /// Server arm for `LivingEntity.getUsedItemHand` (`native_living_blocking`).
+    pub(in crate::game) fn server_living_used_item_hand(&self, living: LivingRef) -> Option<Hand> {
+        self.living_used_item_hand(living)
+    }
+
+    /// Server arm for `AttributeMap.getValue`.
+    pub(in crate::game) fn server_living_attribute_value(
         &self,
         living: LivingRef,
         id: &str,
@@ -996,13 +1004,13 @@ impl Game<'_> {
         }
     }
 
-    /// Resolve one live equipment slot without taking a copy or reading any other slot.
-    pub(in crate::game) fn living_equipment_stack(
+    /// Server arm for resolving one live equipment slot without copying.
+    pub(in crate::game) fn server_living_equipment_stack(
         &self,
         living: LivingRef,
         slot: EquipmentSlot,
     ) -> Option<EquipmentRead<'_>> {
-        self.equipment_stack_for(self.native_living_read_target(living)?, slot)
+        self.equipment_stack_for(self.server_living_read_target(living)?, slot)
     }
 
     /// Read one equipment slot of an already resolved target.

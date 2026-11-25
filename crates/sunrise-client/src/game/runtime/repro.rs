@@ -571,7 +571,7 @@ impl Game<'_> {
                 Some(server) => {
                     server.ask(|reply| OwnerRequest::Control(ControlRequest::WorldRoot(reply)))
                 }
-                None => self.start_recording_world_root_server(),
+                None => None,
             }
         } else {
             None
@@ -622,12 +622,7 @@ impl Game<'_> {
                 drop(copied);
                 result.map_err(|e| format!("copying the world: {e}"))?;
             } else {
-                if !self.is_logical_server() {
-                    return Err("cannot save world without an integrated server".into());
-                }
-                self.save_game_with(true)?;
-                copy_tree(root, &dir.join("world"))
-                    .map_err(|e| format!("copying the world: {e}"))?;
+                return Err("cannot save world without an integrated server".into());
             }
         }
 

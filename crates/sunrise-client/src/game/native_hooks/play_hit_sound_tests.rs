@@ -107,15 +107,11 @@ fn play_hit_sound_helper_and_eight_mining_ticks() {
                 }
                 for state in [stone, glass] {
                     game.world.set(5, 63, 4, state).unwrap();
-                    game.clicks = Default::default();
-                    game.clicks.destroying.active = true;
-                    game.clicks.destroying.item = game.main_hand_key();
-                    game.clicks.destroying.pos = [5, 63, 4];
                     game.audio.0.capture = Some(Vec::new());
                     hits.lock().unwrap().clear();
                     let mut played = Vec::new();
                     for tick in 1..=8 {
-                        game.tick_local_hand().unwrap();
+                        game.breaking_block_effects([5, 63, 4], [-1, 0, 0], tick % 4 == 1);
                         for sound in game.audio.0.capture.as_mut().unwrap().drain(..) {
                             played.push((
                                 tick,

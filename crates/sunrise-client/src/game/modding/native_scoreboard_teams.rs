@@ -333,28 +333,6 @@ impl Game<'_> {
         self.sync_score_registries();
         true
     }
-
-    /// Every team this client was sent. A text the API cannot hold refuses the snapshot by name.
-    pub(super) fn client_teams(&self) -> Result<Vec<ClientTeam>, TextFormError> {
-        self.score
-            .board
-            .teams
-            .iter()
-            .map(|t| {
-                let mut team = ClientTeam::new(t.name.clone());
-                team.display_name = api_comp(&t.display_name)?;
-                team.color = api_color(t);
-                team.prefix = api_comp(&t.prefix)?;
-                team.suffix = api_comp(&t.suffix)?;
-                team.friendly_fire = t.allow_friendly_fire;
-                team.see_friendly_invisibles = t.see_friendly_invisibles;
-                team.name_tag_visibility = api_visibility(t.nametag_visibility);
-                team.collision_rule = api_collision_rule(t.collision_rule);
-                team.members = t.players.iter().cloned().collect();
-                Ok(team)
-            })
-            .collect()
-    }
 }
 
 #[cfg(test)]

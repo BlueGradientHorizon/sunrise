@@ -188,6 +188,23 @@ impl Game<'_> {
         let entity = self.lan.as_ref()?.hub.guest(conn)?.entity_id;
         Some(EntityRef::new(epoch, u32::try_from(entity).ok()?))
     }
+
+    /// Keep guest `conn`'s inventory, armor, off hand, equipment and cursor (and their crafting
+    /// grid, ender chest and mod menu storage), as they are, in the open transaction.
+    pub(in crate::game) fn journal_guest_click(&mut self, conn: u32) {
+        let Some(uuid) = self
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+            .map(|g| g.uuid)
+        else {
+            return;
+        };
+        self.native_as_player(uuid, |game| game.journal_player(uuid));
+        if let Some(player) = self.player(uuid) {
+            self.journal_menus(player);
+        }
+    }
 }
 
 impl Game<'_> {

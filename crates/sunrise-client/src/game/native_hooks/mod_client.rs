@@ -299,9 +299,6 @@ pub(in crate::game::client_side) use crate::game::native_hooks::shake_pose;
 pub(in crate::game::client_side) use crate::game::native_hooks::OpenNativeScreen;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::native_hooks::OpenNativeMenu;
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::seed_native_menu;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::native_hooks::SlotMoves;
 #[allow(unused_imports)]
@@ -400,8 +397,14 @@ pub(in crate::game) mod base;
 #[path = "block_entity_client_tick_client.rs"]
 pub(in crate::game) mod block_entity_client_tick;
 
+#[path = "block_entity_on_load_client.rs"]
+pub(in crate::game) mod block_entity_on_load;
+
 #[path = "build_creative_mode_tab_contents_client.rs"]
 pub(in crate::game) mod build_creative_mode_tab_contents;
+
+#[path = "can_start_swimming_client.rs"]
+pub(in crate::game) mod can_start_swimming;
 
 #[path = "camera_read_client.rs"]
 pub(in crate::game) mod camera_read;
@@ -424,11 +427,17 @@ pub(in crate::game) mod client_options;
 #[path = "client_pick_client.rs"]
 pub(in crate::game) mod client_pick;
 
+#[path = "creative_tabs_read_client.rs"]
+pub(in crate::game) mod creative_tabs_read;
+
 #[path = "customize_boss_event_progress_client.rs"]
 pub(in crate::game) mod customize_boss_event_progress;
 
 #[path = "customize_chat_overlay_client.rs"]
 pub(in crate::game) mod customize_chat_overlay;
+
+#[path = "fluid_draw_client.rs"]
+pub(in crate::game) mod fluid_draw;
 
 #[path = "gui_ticks_client.rs"]
 pub(in crate::game) mod gui_ticks;
@@ -441,6 +450,9 @@ pub(in crate::game) mod menu_extra_data;
 
 #[path = "muffle_sounds_client.rs"]
 pub(in crate::game) mod muffle_sounds;
+
+#[path = "panel_recipes_client.rs"]
+pub(in crate::game) mod panel_recipes;
 
 #[path = "play_hit_sound_client.rs"]
 pub(in crate::game) mod play_hit_sound;
@@ -475,6 +487,9 @@ pub(in crate::game) mod screen_transparent_background;
 #[path = "substitute_inline_images_client.rs"]
 pub(in crate::game) mod substitute_inline_images;
 
+#[path = "use_item_hand_client.rs"]
+pub(in crate::game) mod use_item_hand;
+
 #[path = "shared/book_screen_client.rs"]
 pub(in crate::game) mod book_screen;
 
@@ -484,7 +499,62 @@ pub(in crate::game) mod system_helpers;
 #[path = "shared/world_helpers_client.rs"]
 pub(in crate::game) mod world_helpers;
 
+#[cfg(test)]
+pub(in crate::game) fn seed_native_menu(game: &mut Game<'_>, window: i32, name: &str) -> u64 {
+    if game.remote.is_none() {
+        let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
+        game.connect_local(pipe, "Native screen fixture").unwrap();
+    }
+    if game.remote.as_ref().unwrap().menu.as_ref().is_some() {
+        game.remote_close_local();
+    }
+    let menu = &mut game.remote.as_mut().unwrap().menu;
+    menu.set(Some((window, name.to_owned())));
+    menu.generation
+}
+
 impl Game<'_> {
+    pub(in crate::game) fn client_acting_id(&mut self) -> u128 {
+        self.own_uuid()
+    }
+    pub(in crate::game) fn client_clicker(&mut self) -> (u128, i32) {
+        (self.own_uuid(), self.own_entity_id())
+    }
+    pub(in crate::game) fn client_acting_or_local_player(&self) -> Option<PlayerRef> {
+        self.local_player()
+    }
+    pub(in crate::game) fn client_chunks_loaded(&mut self) {
+        self.world.loaded_chunks.clear();
+    }
+    pub(in crate::game) fn client_chunks_unloaded(
+        &mut self,
+        _unloaded: &[std::sync::Arc<sunrise_client::chunk::Chunk>],
+    ) {
+    }
+    pub(in crate::game) fn client_apply_after_use_components(&mut self, _stack: &ItemStack) {}
+    pub(in crate::game) fn observe_client_packet(
+        &mut self,
+        packet: &sunrise_protocol::packets::play::Clientbound,
+    ) {
+        if !mod_api::__private::listened(mod_api::HookId::ClientPacket) {
+            return;
+        }
+        let view = client_packet_view(packet);
+        self.native_client_packet(&view);
+    }
+    /// Whether a mod cancelled `packet` on its way to the server (`client_packet_send`).
+    /// Builds the packet's view only when a mod listens.
+    pub(in crate::game) fn client_packet_send_canceled(
+        &self,
+        packet: &sunrise_protocol::packets::play::Serverbound,
+    ) -> bool {
+        if !mod_api::__private::listened(mod_api::HookId::ClientPacketSend) {
+            return false;
+        }
+        let mut canceled = false;
+        self.native_client_packet_send(&serverbound_packet_view(packet), &mut canceled);
+        canceled
+    }
     /// The staged or shown native screen belonging to this opening, not a
     /// prior opening of the same numeric window id.
     pub(in crate::game) fn active_native_screen(&self) -> Option<&OpenNativeScreen> {
@@ -687,7 +757,7 @@ impl Game<'_> {
         self.build_screen();
         let observed = self.observed_now();
         self.screen_state.0.observed = observed.clone();
-        if !self.options.execution_role.is_client() || self.lan_guest_acting() {
+        if !self.options.execution_role.is_client() {
             return;
         }
         if let Some(obs) = observed {
@@ -794,17 +864,6 @@ impl Game<'_> {
         self.native_screen_tooltip_lines(batch, slot, &mut lines);
         self.draw_tooltip_lines(batch, &lines, self.client.cursor.0, self.client.cursor.1);
     }
-    /// The living entity an effect decision names: `Some(id)` a mob's
-    /// `Entity.getId`, `None` the acting player. `None` when no native
-    /// world runs, and the decision falls back to vanilla's.
-    pub(in crate::game) fn effect_living_ref(&self, entity: Option<i32>) -> Option<LivingRef> {
-        let epoch = self.native_lifecycle.epoch()?;
-        let id = match entity {
-            Some(id) => id as u32,
-            None => self.own_entity_id() as u32,
-        };
-        Some(LivingRef::new(EntityRef::new(epoch, id)))
-    }
     pub(in crate::game) fn headless_screen_snapshot(&self) -> Option<ObservedScreen> {
         if self.renderer.0.is_some() || self.remote_loading() {
             return None;
@@ -840,8 +899,7 @@ impl Game<'_> {
     /// dialog or a prompt, with neither the title nor a player, with a
     /// world loading, or on a guest's behalf.
     pub(in crate::game::client_side) fn mod_screen_blocked(&self) -> bool {
-        self.lan_guest_acting()
-            || (self.player.is_none() && self.title.0.is_none())
+        (self.player.is_none() && self.title.0.is_none())
             || self.screen_over_playing()
             || self.remote_loading()
     }
@@ -1116,7 +1174,6 @@ impl Game<'_> {
             self.screen_state.0.observed = current.clone();
             if let Some(new) = &current
                 && self.options.execution_role.is_client()
-                && !self.lan_guest_acting()
             {
                 self.init_screen_widgets(&new.view());
             }
@@ -1478,9 +1535,7 @@ impl Game<'_> {
         title_available: bool,
     ) -> ScreenDecision {
         let blocked = if clears_overlays {
-            self.lan_guest_acting()
-                || (self.player.is_none() && !title_available)
-                || self.remote_loading()
+            (self.player.is_none() && !title_available) || self.remote_loading()
         } else {
             self.mod_screen_blocked()
         };
@@ -1536,7 +1591,6 @@ impl Game<'_> {
         (mod_api::__private::listened(mod_api::HookId::ScreenOpening)
             || mod_api::__private::listened(mod_api::HookId::ScreenClosing))
             && self.options.execution_role.is_client()
-            && !self.lan_guest_acting()
             && !self.screen_state.0.replacing
     }
     /// A screen the native mods' input hooks are for is open: the window has a
@@ -1818,7 +1872,6 @@ impl Game<'_> {
         let heard = self.screen_hooks_heard();
         let gated = heard
             || (self.options.execution_role.is_client()
-                && !self.lan_guest_acting()
                 && !self.screen_state.0.replacing
                 && mod_api::__private::listened(mod_api::HookId::ScreenInitPost));
         let Some(title) = self.title.0.as_mut() else {
@@ -2393,10 +2446,6 @@ pub(in crate::game) mod block_entity_client_tick_tests;
 #[cfg(test)]
 #[path = "block_particle_effects_tests_client.rs"]
 pub(in crate::game) mod block_particle_effects_tests;
-
-#[cfg(test)]
-#[path = "on_chunk_unloaded_tests_client.rs"]
-pub(in crate::game) mod on_chunk_unloaded_tests;
 
 #[cfg(test)]
 #[path = "shared/particle_count_tests_client.rs"]

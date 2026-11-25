@@ -78,39 +78,22 @@ impl Game<'_> {
             t => Body::Other(t),
         })
     }
-    /// `isSecondaryUseActive`: the local client's live semantic sneak state (not the
-    /// physical key binding or last tick's crouching pose); the server's shift-key flag.
-    /// False for non-player entities, None for a stale or unreachable handle.
-    pub(in crate::game) fn entity_is_shift_key_down(&self, entity: EntityRef) -> Option<bool> {
-        if !self.is_logical_server() {
-            return Some(match self.native_client_entity_target(entity)? {
-                Target::Player => self.held_mapping(sunrise_client::actions::Action::Sneak),
-                _ => false,
-            });
-        }
+    pub(in crate::game) fn server_entity_is_shift_key_down(
+        &self,
+        entity: EntityRef,
+    ) -> Option<bool> {
         Some(match self.native_entity_body(entity)? {
             Body::Player(p) => p.shift_key_down,
             _ => false,
         })
     }
-    /// `LivingEntity.getMainArm`: `Avatar`'s `DATA_PLAYER_MAIN_HAND` (a server sets it from the
-    /// player's `ClientInformation`; a client's own player draws with its Main Hand option, and
-    /// another player is a mob that keeps what the server sent), `Mob`'s left-handed flag and
-    /// `ArmorStand`'s right arm. The dragon's left-handed draw is not kept, so it reads right.
-    /// The mob read uses its resident row without a separate pass over the mob list.
-    pub(in crate::game) fn entity_main_arm(&self, entity: EntityRef) -> Option<mod_api::MainHand> {
-        let (target, location) = if self.is_logical_server() {
-            self.native_entity_target_with_location(entity)?
-        } else {
-            let target = self.native_client_entity_target(entity)?;
-            let location = match (target, self.server_resident_entity(entity.id())) {
-                (Target::Mob(_), EntityLookup::Found { location, .. }) => Some(location),
-                _ => None,
-            };
-            (target, location)
-        };
+
+    pub(in crate::game) fn server_entity_main_arm(
+        &self,
+        entity: EntityRef,
+    ) -> Option<mod_api::MainHand> {
+        let (target, location) = self.native_entity_target_with_location(entity)?;
         let left = match target {
-            Target::Player if !self.is_logical_server() => self.settings.main_hand_left,
             Target::Player => return self.guest_main_arm(self.server.lan_acting?),
             Target::Guest(conn) => return self.guest_main_arm(conn),
             Target::Mob(_) => self.mobs[self.mobs.locate(location?.join)?].main_arm_left(),
@@ -326,22 +309,6 @@ impl Game<'_> {
     ) -> bool {
         self.native_entity_target(entity)
             .is_some_and(|target| self.set_fire_immunity_for(target, immune))
-    }
-
-    pub(in crate::game) fn entity_set_client_fire_immunity(
-        &mut self,
-        entity: EntityRef,
-        immune: bool,
-    ) -> bool {
-        if let Some(target) = self.native_client_entity_target(entity) {
-            return self.set_fire_immunity_for(target, immune);
-        }
-        if self.client_tracked_player_fire_immunity(entity).is_none() {
-            return false;
-        }
-        self.remote
-            .as_mut()
-            .is_some_and(|remote| remote.set_tracked_fire_immunity(entity.id() as i32, immune))
     }
 
     fn set_fire_immunity_for(&mut self, target: Target, immune: bool) -> bool {

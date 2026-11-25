@@ -19,7 +19,7 @@ use sunrise_core::geometry::{Aabb, Vec3};
 pub(in crate::game) const BOARDING_COOLDOWN: i32 = 60;
 /// `Player.DEFAULT_VEHICLE_ATTACHMENT`: how far below the seat a player's
 /// feet are.
-const PLAYER_RIDING_OFFSET: f64 = 0.6;
+pub(in crate::game) const PLAYER_RIDING_OFFSET: f64 = 0.6;
 
 /// How many box queries the walk over every mob answers, once a write to the mob list has
 /// made the grid stale, before a new grid is built: about what building one costs (with
@@ -277,13 +277,13 @@ impl Game<'_> {
     }
     /// `AbstractBoat.canAddPassenger`: a seat is free and the boat is not
     /// under water.
-    pub(in crate::game) fn boat_has_room(&self, i: usize) -> bool {
+    pub(in crate::game) fn server_boat_has_room(&self, i: usize) -> bool {
         let b = &self.boats[i];
         self.seated_passenger_count(b.id) < b.max_passengers() && !b.under_water()
     }
     /// Where the player in boat `i` sits: in the middle alone, in front of a
     /// mob.
-    pub(in crate::game) fn player_boat_seat(&self, i: usize) -> Vec3 {
+    pub(in crate::game) fn server_player_boat_seat(&self, i: usize) -> Vec3 {
         let b = &self.boats[i];
         let players = self.boat_players(b.id);
         // The seated list, with the rider counted before its own link exists.
@@ -330,22 +330,6 @@ impl Game<'_> {
             }
         }
         out
-    }
-    /// What boat `b` may run into this tick.
-    pub(in crate::game::server_side) fn boat_move_obstacles(&self, b: &Boat) -> Vec<Aabb> {
-        let reach = b.velocity.length() + 1.0;
-        self.entity_collisions(Mover::Boat {
-            id: b.id,
-            area: b.bounds().inflate(Vec3::new(reach, reach, reach)),
-        })
-    }
-    /// `noEntityCollision(boat, box)` for a new boat (`BoatItem.use`).
-    pub(in crate::game::server_side) fn boat_entity_collision(&self, bb: Aabb) -> bool {
-        // EntityGetter.getEntityCollisions: the box grown by 1e-7.
-        let area = bb.inflate(Vec3::new(1.0e-7, 1.0e-7, 1.0e-7));
-        !self
-            .entity_collisions(Mover::Boat { id: u32::MAX, area })
-            .is_empty()
     }
 
     /// The end of `AbstractBoat.tick` on the server for boat `i`: each
@@ -554,83 +538,7 @@ impl Game<'_> {
     /// in its seat facing the way the boat does, an animal in a full boat
     /// sideways, its head kept within its reach of its body.
     pub(in crate::game) fn seat_boat_mobs(&mut self, riding: &super::passengers::Riders) {
-        for i in 0..self.boats.len() {
-            let id = self.boats[i].id;
-            // `boat_mobs`, from the riders found in one pass.
-            let mobs: Vec<usize> = riding
-                .get(&id)
-                .into_iter()
-                .flatten()
-                .copied()
-                .filter(|&j| !self.mobs[j].removed && self.mobs[j].alive())
-                .collect();
-            if mobs.is_empty() {
-                continue;
-            }
-            let order = self.passenger_order(id);
-            let count = order.len();
-            let b = &self.boats[i];
-            let full = count == b.max_passengers();
-            let delta = b.delta_rotation;
-            let boat_box = b.bounds();
-            let ridden = sunrise_client::motion::RiddenBoat {
-                under_water: b.under_water(),
-                max_y: boat_box.max_position().y,
-            };
-            let seats: Vec<_> = mobs
-                .iter()
-                .enumerate()
-                .map(|(n, &j)| {
-                    let m = &self.mobs[j];
-                    let animal = is_animal(m.species());
-                    // Another player's too, on a server's client.
-                    // AbstractBoat's box is 1.375 wide.
-                    let offset = riders::vehicle_attachment(m, 1.375);
-                    let index = order.iter().position(|&rider| rider == m.id).unwrap_or(n);
-                    // calculatePassengerBodyYRot.
-                    let turn = match (animal && full, m.id.is_multiple_of(2)) {
-                        (false, _) => 0.0,
-                        (true, true) => 90.0,
-                        (true, false) => 270.0,
-                    };
-                    let turns = !self.items().entity_type_tags.has_bit(
-                        m.kind.flags.entity_tag_slot,
-                        sunrise_client::items::EntityTypeTags::CAN_TURN_IN_BOATS,
-                    );
-                    (
-                        j,
-                        offset,
-                        b.seat(index, count, animal, offset, false),
-                        b.seat(index, count, animal, offset, true),
-                        turns.then_some((b.yaw + turn, b.previous_yaw + turn)),
-                    )
-                })
-                .collect();
-            for (j, offset, at, previous, facing) in seats {
-                let m = &mut self.mobs[j];
-                m.seated(id, offset, boat_box);
-                m.fluids.boat = Some((id, ridden));
-                sunrise_client::mobs::living::teleports::set_pos(m, at);
-                m.previous = previous;
-                m.velocity = Vec3::ZERO;
-                m.fall_distance = 0.0;
-                m.ground.on_ground = false;
-                m.extra.passenger = true;
-                m.ai.nav.stop();
-                let Some((body, previous_body)) = facing else {
-                    continue;
-                };
-                m.head_yaw += delta;
-                m.body_yaw = body;
-                m.previous_body_yaw = previous_body;
-                m.yaw = body;
-                m.previous_yaw = previous_body;
-                // Mob.clampHeadRotationToBody.
-                let limit = m.kind.max_head_y_rot;
-                let d = wrap_degrees(body - m.head_yaw);
-                m.head_yaw += d - d.clamp(-limit, limit);
-            }
-        }
+        self.seat_boat_mobs_with_order(riding, |game, id| game.passenger_order(id));
     }
     /// `Entity.setRemoved` for a killed boat or cart; false on a reentrant
     /// removal of the same object while its dismount callbacks are running.

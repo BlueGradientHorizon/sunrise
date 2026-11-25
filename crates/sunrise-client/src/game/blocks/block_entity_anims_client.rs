@@ -156,6 +156,33 @@ impl Game<'_> {
             }
         }
     }
+    /// Client conduit target resolution from `BlockEntity::Conduit(uuid)` + remote UUID table.
+    fn client_conduit_target(&self, pos: [i32; 3]) -> Option<ConduitTarget> {
+        let id = match self.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
+            Some(BlockEntity::Conduit(Some(uuid))) => {
+                let u = sunrise_client::lan::playerdata::ints_uuid(*uuid);
+                self.remote
+                    .as_ref()
+                    .and_then(|r| r.level_uuids.get(&u).copied())
+                    .map(|id| id as u32)
+                    .or_else(|| {
+                        self.persist
+                            .uuids
+                            .iter()
+                            .find(|&(_, v)| v == uuid)
+                            .map(|(&id, _)| id)
+                    })?
+            }
+            _ => self.be_anims.conduit_servers.get(&pos)?.target?,
+        };
+        let m = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
+        Some(ConduitTarget {
+            position: [m.position.x, m.position.y, m.position.z],
+            eye_y: m.eye_y(),
+            width: m.width(),
+            height: m.height(),
+        })
+    }
     /// The client ticker of the animated block entity at `pos` (`ClientLevel.tickBlockEntities`),
     /// in the ticker list's order with every other client ticker.
     pub(in crate::game) fn tick_block_entity_anim(
@@ -222,7 +249,7 @@ impl Game<'_> {
                             .cloned()
                             .unwrap_or_default()
                     });
-                    let target = self.conduit_target(pos);
+                    let target = self.client_conduit_target(pos);
                     let world = &self.world;
                     let facts = self.res.facts();
                     let registry = self.pack.assets.registry;

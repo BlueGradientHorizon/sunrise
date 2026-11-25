@@ -577,12 +577,7 @@ impl Game<'_> {
                 .iter()
                 .find(|c| c.id == id)
                 .map(|c| [c.position.x, c.position.y, c.position.z]),
-            Target::Other(id) => self
-                .others
-                .0
-                .iter()
-                .find(|o| o.id == id)
-                .map(|o| [o.position.x, o.position.y, o.position.z]),
+            Target::Other(_) => self.native_client_tracked(entity).map(|(_, pos)| pos),
             Target::Crystal(id) => self
                 .crystals
                 .iter()

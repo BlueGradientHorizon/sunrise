@@ -102,7 +102,14 @@ impl Game<'_> {
             _ => Direction::East,
         };
         let pos = BlockPos::new(hit.pos[0], hit.pos[1], hit.pos[2]);
-        let (ask, held) = self.held_bonemeal(pos, stack);
+        let mut held = stack.clone();
+        let ask = self.bonemeal(pos, true, &mut held);
+        if held != *stack {
+            if self.creative {
+                held.count = stack.count;
+            }
+            *self.held_mut() = (held.count > 0).then(|| held.clone());
+        }
         let used = self.with_level(|b, level, ticks| {
             b.use_bone_meal(level, ticks, pos, face, ask.crop, ask.check)
         });

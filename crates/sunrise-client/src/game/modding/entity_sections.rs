@@ -379,7 +379,7 @@ impl Game<'_> {
         from: Option<[f64; 3]>,
         to: [f64; 3],
     ) {
-        self.pick_section_move(id, to);
+        self.side_pick_section_move(id, to);
         if let Some(from) = from {
             self.entity_section_entered(id, from, to);
         }
@@ -393,7 +393,7 @@ impl Game<'_> {
 
     /// Entity `id`'s position was written: it is wherever it is now (any kind, either side).
     pub(in crate::game) fn entity_section_moved_id(&mut self, id: u32) {
-        self.pick_section_sync_moved_id(id);
+        self.side_pick_section_sync_moved_id(id);
         let Some(scope) = self.entity_section_scope() else {
             return;
         };
@@ -407,7 +407,7 @@ impl Game<'_> {
 
     /// Entity `id` is gone, or replaced under the same id: it starts over untold.
     pub(in crate::game) fn entity_section_forget(&mut self, id: u32) {
-        self.pick_section_remove(id);
+        self.side_pick_section_remove(id);
         self.native_lifecycle.entity_sections.forget(id);
         self.native_lifecycle
             .entity_sections
@@ -476,7 +476,7 @@ impl Game<'_> {
     /// or while a rider is carried by a vehicle teleport. File and tell it at this write.
     pub(in crate::game) fn entity_section_step(&mut self, id: u32, from: [f64; 3], to: [f64; 3]) {
         if crossed(from, to) {
-            self.pick_section_move(id, to);
+            self.side_pick_section_move(id, to);
         }
         self.entity_section_entered(id, from, to);
         if id != 0
@@ -512,24 +512,6 @@ impl Game<'_> {
                 .filed
                 .contains_key(&id)
         })
-    }
-
-    /// `Entity.teleport` placed as `/tp` places it ([`Game::place_teleport_in_level`]), then filed
-    /// and told as one position update (`/tp`, a mob's ender pearl). Its old position, as the
-    /// placement returns it.
-    pub(in crate::game) fn place_teleport_filed(
-        &mut self,
-        t: super::commands::Target,
-        pos: [f64; 3],
-        rotation: Option<[f32; 2]>,
-        relative: [bool; 3],
-        turn_riders: bool,
-    ) -> Option<[f64; 3]> {
-        let from = self.place_teleport_in_level(t, pos, rotation, relative, turn_riders);
-        if let (Some(entity), Some(to)) = (self.network_entity_id(t), self.target_position(t)) {
-            self.entity_section_moved(entity as u32, from, to);
-        }
-        from
     }
 
     /// An entity joined (`addEntity`): filed untold where it is now, which a join listener may

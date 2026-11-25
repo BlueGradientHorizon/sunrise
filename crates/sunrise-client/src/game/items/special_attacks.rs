@@ -17,17 +17,6 @@ impl Game<'_> {
             self.attacker_slowdown();
         }
     }
-    /// What `causeExtraKnockback` does to the attacker once its knockback is
-    /// above 0: the horizontal motion times 0.6 (the vertical kept), and the
-    /// sprint stopped. The server's hit and a server's client's simulated one
-    /// decide the knockback each their own way.
-    pub(in crate::game) fn attacker_slowdown(&mut self) {
-        if let Some(player) = self.player.as_mut() {
-            player.velocity.x *= sunrise_client::attack_strength::ATTACKER_SLOWDOWN;
-            player.velocity.z *= sunrise_client::attack_strength::ATTACKER_SLOWDOWN;
-        }
-        self.stop_sprint_after_extra_knockback();
-    }
 
     pub(in crate::game::server_side) fn attack_dragon(&mut self) -> bool {
         let Some((id, d)) = self.dragon_hit() else {

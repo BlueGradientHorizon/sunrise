@@ -4,15 +4,15 @@ pub(in crate::game::server_side) use super::{
     stations::{Kind as StationKind, Station},
 };
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::lan_stations::GuestLectern;
+pub(in crate::game::server_side) use crate::game::server_side::lan_stations::GuestLectern;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::lan_stations::GuestStation;
+pub(in crate::game::server_side) use crate::game::server_side::lan_stations::GuestStation;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::lan_stations::menu_of;
+pub(in crate::game::server_side) use crate::game::server_side::lan_stations::menu_of;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::lan_stations::station_inputs;
+pub(in crate::game::server_side) use crate::game::server_side::lan_stations::station_inputs;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::lan_stations::*;
+pub(in crate::game::server_side) use crate::game::server_side::lan_stations::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::{api_values::TryIntoApi, transactions::After};
 #[allow(unused_imports)]

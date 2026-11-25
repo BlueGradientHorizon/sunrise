@@ -20,17 +20,6 @@ impl Game<'_> {
             _ => DamageKind::Thrown,
         }
     }
-    pub(in crate::game) fn projectile_attack(&self, shot: &Projectile) -> Attack {
-        let mut attack = match shot.owner {
-            Some(Who::Player) => self
-                .player_entity_id_by_connection(shot.guest)
-                .map_or_else(Attack::default, |entity| self.attack_of(entity)),
-            Some(Who::Mob(entity)) => self.attack_of(entity as i32),
-            None => Attack::default(),
-        };
-        Self::set_projectile_attack(&mut attack, shot);
-        attack
-    }
     /// The actual direct projectile's family and saved weapon, also for explicit damage sources.
     pub(in crate::game) fn set_projectile_attack(attack: &mut Attack, shot: &Projectile) {
         attack.projectile = Some(shot.id as i32);
@@ -67,68 +56,6 @@ impl Game<'_> {
         {
             attack.projectile_weapon = weapon.cloned();
         }
-    }
-    /// What an arrow or a thrown trident hits an entity of type `victim`
-    /// for (`AbstractArrow.onHitEntity`, `ThrownTrident.onHitEntity`): a
-    /// trident's 8 through `EnchantmentHelper.modifyDamage` of the trident
-    /// (Impaling's `minecraft:damage` on `#sensitive_to_impaling`).
-    pub(in crate::game) fn shot_damage(
-        &mut self,
-        shot: &mut Projectile,
-        victim: Option<&str>,
-        who: Who,
-    ) -> f32 {
-        let base = self.shot_damage_base(shot, victim, who);
-        if matches!(shot.kind, ProjectileKind::Trident) {
-            base as f32
-        } else {
-            shot.arrow_damage_with_base(base) + shot.bonus.damage
-        }
-    }
-    pub(in crate::game) fn drop_death_loot(
-        &mut self,
-        m: &mut Mob,
-        player_uuid: Option<u128>,
-        player_killed: bool,
-        killer: sunrise_world::loot::LootEntity,
-        consumed: bool,
-        pos: [f64; 3],
-        source: Option<(&'static str, u32)>,
-    ) {
-        let orbs = self.drop_death_loot_items(
-            m,
-            player_uuid,
-            player_killed,
-            killer,
-            consumed,
-            pos,
-            source,
-        );
-        if let Some(amount) = orbs {
-            self.spawn_orbs(pos, amount as u32);
-        }
-    }
-
-    /// `LivingEntity.dropExperience` for a dying mob: the reward (drawn from
-    /// the mob's random after its loot rolls), heard by the mods
-    /// (`living_experience_drop`). The orbs to spawn; none when the mob drops
-    /// no experience or a sculk catalyst took it.
-    pub(in crate::game) fn death_experience(
-        &mut self,
-        m: &mut Mob,
-        player_uuid: Option<u128>,
-        player_killed: bool,
-        consumed: bool,
-    ) -> Option<i32> {
-        let mob_drops = self
-            .ui
-            .rules
-            .bool_at(sunrise_client::gamerules::vanilla::MOB_DROPS);
-        let experience =
-            sunrise_client::mobs::drops::experience_reward(m, player_killed, mob_drops);
-        let reward = experience.filter(|_| !consumed)?;
-        let kind = crate::game::native_hooks::mob_kind(m);
-        Some(self.living_experience_drop(m.id, &kind, player_uuid, reward))
     }
 }
 

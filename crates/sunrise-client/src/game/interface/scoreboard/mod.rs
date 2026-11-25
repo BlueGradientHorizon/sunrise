@@ -84,7 +84,7 @@ pub(in crate::game::server_side) fn in_range(v: i32, (lo, hi): IntRange) -> bool
 
 /// `TamableAnimal.getTeam`: a pet's own team, else, when it is tamed, its root
 /// owner's, else none. An untamed pet has no owner to take one from.
-pub(in crate::game::server_side) fn pet_team<'a>(
+pub(in crate::game) fn pet_team<'a>(
     board: &'a Scoreboard,
     own: &str,
     owner: Option<&str>,
@@ -94,13 +94,13 @@ pub(in crate::game::server_side) fn pet_team<'a>(
         .or_else(|| board.players_team(owner?))
 }
 /// A tamed pet's owner (`TamableAnimal.getOwnerReference` while `isTame`).
-pub(in crate::game::server_side) fn tame_owner(m: &sunrise_client::mobs::Mob) -> Option<[i32; 4]> {
+pub(in crate::game) fn tame_owner(m: &sunrise_client::mobs::Mob) -> Option<[i32; 4]> {
     m.extra.tame.then_some(m.extra.owner).flatten()
 }
 /// `TamableAnimal.getRootOwner`: the owner, or that owner's own root owner
 /// while it is a tamed pet itself. `pet_owner` is the owner of the tamed pet
 /// with a UUID, if it has one.
-pub(in crate::game::server_side) fn root_owner(
+pub(in crate::game) fn root_owner(
     mut owner: [i32; 4],
     pet_owner: impl Fn([i32; 4]) -> Option<[i32; 4]>,
 ) -> [i32; 4] {

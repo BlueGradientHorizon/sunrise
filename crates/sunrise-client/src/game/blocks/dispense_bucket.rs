@@ -9,7 +9,7 @@ use sunrise_world::{fluid::FluidKind, level::BucketContent};
 impl Game<'_> {
     /// Whether the dispenser empties `item` as a filled bucket: a bucket of a
     /// mod fluid, or an item with an `empty_contents` Part.
-    pub(super) fn dispenses_as_filled_bucket(&self, item: &str) -> bool {
+    pub(in crate::game) fn dispenses_as_filled_bucket(&self, item: &str) -> bool {
         sunrise_world::fluid::mod_fluid_of_bucket(item).is_some()
             || self.empty_contents_listens(item)
     }
@@ -19,7 +19,7 @@ impl Game<'_> {
     /// the empty bucket; not, the stack is dispensed as an item. A Part that
     /// changed the dispenser's slots while it emptied is refused and undone:
     /// the slots stay as they were and the dispenser fails.
-    pub(super) fn dispense_filled_bucket(
+    pub(in crate::game) fn dispense_filled_bucket(
         &mut self,
         pos: Pos,
         facing: Direction,

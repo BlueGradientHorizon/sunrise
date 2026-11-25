@@ -150,11 +150,6 @@ impl Game<'_> {
     /// the cursor where it is. Like GLFW's `glfwSetCursorPos`, nothing warps
     /// while the window is unfocused (losing focus releases the pointer).
     pub(in crate::game) fn capture(&mut self, capture: bool) {
-        // A guest's action (`as_guest`) opens and closes screens on the
-        // guest's own client: the window's pointer stays the host's (#687).
-        if self.lan_guest_acting() {
-            return;
-        }
         // MouseHandler.grabMouse never captures an inactive window, and vanilla
         // grabs only on `setScreen(null)`: the pack prompt and server dialogs
         // are screens over the world that keep the pointer, as does a screen a

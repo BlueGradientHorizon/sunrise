@@ -31,6 +31,7 @@ impl Game<'_> {
                     self.tick_script_step(event_loop);
                 }
                 sunrise_client::spans::time("tick", || self.tick())?;
+                self.tick_friends();
                 if self.remote.is_some() {
                     // Cave mood (a shader pack's playerMood) samples on a random
                     // seeded from the clock: under `SUNRISE_STILL` it waits for the
@@ -60,9 +61,6 @@ impl Game<'_> {
             // ClientTickEvent.Post, the tick's work done.
             self.native_client_tick_post();
             self.clock.record(started.elapsed());
-            if self.clock.take_sprint_report().is_some() {
-                self.on_tick_rate_changed();
-            }
         }
         self.clock.update_animation_phase(self.client.texture_ticks);
         Ok(())

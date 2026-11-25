@@ -41,12 +41,12 @@ pub(in crate::game) fn block_entity_signal(
     if let Some(sunrise_client::containers::BlockEntity::TestBlock(block)) =
         world.block_entities.get(&(pos.x, pos.y, pos.z))
     {
-        return super::test_blocks::own_signal(registry, state, block.powered);
+        return sunrise_gameplay::test_blocks::own_signal(registry, state, block.powered);
     }
     if let Some(count) = lid_openers.get(&(pos.x, pos.y, pos.z)) {
         return (*count).clamp(0, 15);
     }
-    super::jukebox::jukebox_signals(world, items, pos).map_or(0, |(signal, _)| signal)
+    crate::game::jukebox_common::jukebox_signals(world, items, pos).map_or(0, |(signal, _)| signal)
 }
 
 impl SignalAccess for ReadLevel<'_, '_> {
@@ -177,11 +177,17 @@ impl SignalAccess for ReadLevel<'_, '_> {
         })
     }
     fn block_entity_signal(&self, pos: BlockPos, state: BlockStateId, _: Direction) -> i32 {
+        static EMPTY: std::sync::OnceLock<HashMap<(i32, i32, i32), i32>> =
+            std::sync::OnceLock::new();
+        let lid_openers = self
+            .game
+            .side_lid_openers()
+            .unwrap_or_else(|| EMPTY.get_or_init(HashMap::new));
         block_entity_signal(
             &self.game.world,
             self.game.pack.assets.registry,
             self.game.items(),
-            &self.game.server.lid_openers,
+            lid_openers,
             pos,
             state,
         )
@@ -189,14 +195,11 @@ impl SignalAccess for ReadLevel<'_, '_> {
 }
 
 impl ReadLevel<'_, '_> {
-    pub(in crate::game::server_side) fn capability_site(
+    pub(in crate::game) fn capability_site(
         &self,
         at: mod_api::BlockSide,
     ) -> Option<mod_api::BlockCapabilitySite> {
-        let [x, y, z] = at.pos;
-        self.game
-            .containers()
-            .capability_site(at, self.game.world.block(x, y, z), false)
+        self.game.side_signal_capability_site(at)
     }
 }
 
@@ -211,13 +214,13 @@ impl LevelHost for ReadLevel<'_, '_> {
         support: mod_api::SupportType,
     ) -> Option<bool> {
         self.game
-            .level_block_face_sturdy(self.level, pos, face, support)
+            .side_level_block_face_sturdy(self.level, pos, face, support)
     }
     fn can_see_sky(&self, pos: [i32; 3]) -> Option<bool> {
-        self.game.level_can_see_sky(self.level, pos)
+        Some(super::native_world_read::can_see_sky(&self.game.world, pos))
     }
     fn block_entity(&self, pos: [i32; 3]) -> Option<mod_api::BlockEntityRef> {
-        self.game.block_entity(self.level, pos)
+        self.game.side_signal_block_entity(self.level, pos)
     }
     fn has_item_capability(&self, pos: [i32; 3], side: Option<Direction>) -> Option<bool> {
         let site = self.capability_site(mod_api::BlockSide {
@@ -236,7 +239,7 @@ impl LevelHost for ReadLevel<'_, '_> {
         {
             return None;
         }
-        self.game.container_size(at)
+        self.game.side_signal_container_size(at)
     }
     fn container_stack(&self, at: mod_api::BlockSide, slot: usize) -> Option<mod_api::ItemStack> {
         if at.level != self.level
@@ -247,10 +250,12 @@ impl LevelHost for ReadLevel<'_, '_> {
         {
             return None;
         }
-        self.game.container_stack(at, slot)?.try_into_api().ok()
+        self.game.side_signal_container_stack(at, slot)
     }
     fn attachment_read_scope(&self) -> mod_api::AttachmentReadScope<'_> {
-        self.game.attachment_frame_borrow()
+        mod_api::__private::game::attachment_read_scope(
+            &self.game.transactions.attachment_query_scopes,
+        )
     }
     fn block_entity_part_snapshot(
         &self,
@@ -261,7 +266,7 @@ impl LevelHost for ReadLevel<'_, '_> {
         super::native_block_entity_refs::part_snapshot(
             &self.game.world,
             Some(self.level),
-            self.game.native_authoritative(),
+            self.game.is_logical_server(),
             self.game.attachment_indexes.get(&self.game.dim),
             &self.game.transactions.attachment_query_scopes,
             entity,
@@ -271,7 +276,7 @@ impl LevelHost for ReadLevel<'_, '_> {
     fn block_entity_data(&self, entity: mod_api::BlockEntityRef) -> Option<mod_api::Compound> {
         use mod_api::__private::game::Fields;
         (entity.fields().level == self.level)
-            .then(|| self.game.block_entity_data(entity))
+            .then(|| self.game.side_signal_block_entity_data(entity))
             .flatten()
     }
     fn block_state(&self, [x, y, z]: [i32; 3]) -> Option<mod_api::BlockState> {
@@ -312,11 +317,20 @@ impl LevelHost for ReadLevel<'_, '_> {
             .world
             .is_loaded_at(x, y, z)
             .then(|| self.game.world.block(x, y, z))
-            .and_then(|state| self.game.state_fluid_state(state))
+            .and_then(|state| {
+                super::native_world_read::state_fluid(
+                    self.game.res.behaviours(),
+                    self.game.pack.assets.registry,
+                    state,
+                )
+            })
     }
     fn state_fluid_state(&self, state: mod_api::BlockState) -> Option<mod_api::FluidState> {
-        self.game
-            .state_fluid_state(state.try_into_engine(&()).ok()?)
+        super::native_world_read::state_fluid(
+            self.game.res.behaviours(),
+            self.game.pack.assets.registry,
+            state.try_into_engine(&()).ok()?,
+        )
     }
     fn fluid_in_tag(&self, fluid: &str, tag: &str) -> Option<bool> {
         Some(super::native_world_read::fluid_in_tag(
@@ -356,7 +370,7 @@ impl LevelHost for ReadLevel<'_, '_> {
     }
     fn is_raining_at(&self, pos: [i32; 3]) -> bool {
         self.game
-            .level_is_raining_at(self.level, pos)
+            .side_level_is_raining_at(self.level, pos)
             .unwrap_or(false)
     }
     fn enabled_features(&self) -> mod_api::FeatureFlags {

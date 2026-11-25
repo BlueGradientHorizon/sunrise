@@ -1466,17 +1466,7 @@ impl<'g> Game<'g> {
 
     /// Keeps entity `id`'s inventory as it is, if a transaction is open and hasn't yet.
     pub(in crate::game) fn journal_entity(&mut self, id: u32) {
-        self.transactions.writes = self.transactions.writes.wrapping_add(1);
-        if self.transactions.is_empty() {
-            return;
-        }
-        let dim = self.dim;
-        let Some(slots) = self.edit_entity_slots(id, |slots, _| slots.to_vec()) else {
-            return;
-        };
-        if let Some(level) = self.transactions.last_mut() {
-            level.entities.entry((dim, id)).or_insert(slots);
-        }
+        self.side_journal_entity(id);
     }
     /// Keeps the scoreboard as it is, if a transaction is open and hasn't yet: a copy of the
     /// whole board, taken on the transaction's first scoreboard write and never otherwise, so a
@@ -1641,7 +1631,10 @@ impl<'g> Game<'g> {
                 let Some(epoch) = self.native_lifecycle.epoch() else {
                     return;
                 };
-                Some(self.level_ref(epoch, self.dim.key()))
+                let Some(level_ref) = self.side_active_level_ref(epoch) else {
+                    return;
+                };
+                Some(level_ref)
             }
         };
         if let Some(frame) = self.transactions.last_mut() {

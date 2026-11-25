@@ -517,25 +517,7 @@ impl Game<'_> {
             return;
         }
         let before = self.carried.clone();
-        if !self.click_open_inventory(None, button, input) && input == Input::Pickup {
-            // A screen the menu engine doesn't model: the same doClick.
-            if let Some(c) = self.carried.as_mut() {
-                let thrown = if right {
-                    let one = ItemStack {
-                        count: 1,
-                        ..c.clone()
-                    };
-                    c.count -= 1;
-                    if c.count == 0 {
-                        self.carried = None;
-                    }
-                    one
-                } else {
-                    self.carried.take().expect("some")
-                };
-                self.player_drop(thrown);
-            }
-        }
+        let _ = self.click_open_inventory(None, button, input);
         if self.carried != before {
             self.swing_arm();
         }

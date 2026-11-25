@@ -4,6 +4,70 @@ pub(in crate::game::server_side) use super::*;
 pub(in crate::game::server_side) use crate::game::creatures::death_weapon::*;
 
 impl Game<'_> {
+    pub(in crate::game) fn projectile_attack(&self, shot: &Projectile) -> Attack {
+        let mut attack = match shot.owner {
+            Some(Who::Player) => self
+                .player_entity_id_by_connection(shot.guest)
+                .map_or_else(Attack::default, |entity| self.attack_of(entity)),
+            Some(Who::Mob(entity)) => self.attack_of(entity as i32),
+            None => Attack::default(),
+        };
+        Self::set_projectile_attack(&mut attack, shot);
+        attack
+    }
+    pub(in crate::game) fn shot_damage(
+        &mut self,
+        shot: &mut Projectile,
+        victim: Option<&str>,
+        who: Who,
+    ) -> f32 {
+        let base = self.shot_damage_base(shot, victim, who);
+        if matches!(shot.kind, ProjectileKind::Trident) {
+            base as f32
+        } else {
+            shot.arrow_damage_with_base(base) + shot.bonus.damage
+        }
+    }
+    pub(in crate::game) fn drop_death_loot(
+        &mut self,
+        m: &mut Mob,
+        player_uuid: Option<u128>,
+        player_killed: bool,
+        killer: sunrise_world::loot::LootEntity,
+        consumed: bool,
+        pos: [f64; 3],
+        source: Option<(&'static str, u32)>,
+    ) {
+        let orbs = self.drop_death_loot_items(
+            m,
+            player_uuid,
+            player_killed,
+            killer,
+            consumed,
+            pos,
+            source,
+        );
+        if let Some(amount) = orbs {
+            self.spawn_orbs(pos, amount as u32);
+        }
+    }
+    pub(in crate::game) fn death_experience(
+        &mut self,
+        m: &mut Mob,
+        player_uuid: Option<u128>,
+        player_killed: bool,
+        consumed: bool,
+    ) -> Option<i32> {
+        let mob_drops = self
+            .ui
+            .rules
+            .bool_at(sunrise_client::gamerules::vanilla::MOB_DROPS);
+        let experience =
+            sunrise_client::mobs::drops::experience_reward(m, player_killed, mob_drops);
+        let reward = experience.filter(|_| !consumed)?;
+        let kind = crate::game::native_hooks::mob_kind(m);
+        Some(self.living_experience_drop(m.id, &kind, player_uuid, reward))
+    }
     /// Hurt and settle a living target before the projectile resumes its on-hit work.
     /// The weapon is committed only when hurtServer accepts this projectile's source.
     pub(in crate::game) fn damage_projectile_with_weapon(

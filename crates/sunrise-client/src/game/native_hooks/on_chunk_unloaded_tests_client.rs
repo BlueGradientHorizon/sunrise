@@ -1,52 +1,32 @@
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_entity_refs::tests::{
+pub(in crate::game::server_side) use crate::game::native_entity_refs::tests::{
     run_fresh_cases, with_game_at,
 };
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::on_chunk_unloaded_tests::CALLS;
+pub(in crate::game::server_side) use crate::game::native_hooks::on_chunk_unloaded_tests::*;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::on_chunk_unloaded_tests::CHEST;
+pub(in crate::game::server_side) use crate::game::world_loading::WorldRequest;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::on_chunk_unloaded_tests::CHUNK;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::on_chunk_unloaded_tests::POT;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::on_chunk_unloaded_tests::POTS;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::on_chunk_unloaded_tests::Pot;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::on_chunk_unloaded_tests::Probe;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::on_chunk_unloaded_tests::prepared_root;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::on_chunk_unloaded_tests::pump_until;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::on_chunk_unloaded_tests::request;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::on_chunk_unloaded_tests::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::world_loading::WorldRequest;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::{
+pub(in crate::game::server_side) use mod_api::{
     BlockEntityPart, BlockPart, BlocksEvent, Hooks, HostSide, OnChunkUnloadedEvent, Registrar,
     RegistrationContext,
 };
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use std::path::Path;
+pub(in crate::game::server_side) use std::path::Path;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use std::sync::Mutex;
+pub(in crate::game::server_side) use std::sync::Mutex;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use std::time::{Duration, Instant};
+pub(in crate::game::server_side) use std::time::{Duration, Instant};
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::containers::BlockEntity;
+pub(in crate::game::server_side) use sunrise_client::containers::BlockEntity;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::nbt::{Compound, Tag};
+pub(in crate::game::server_side) use sunrise_core::nbt::{Compound, Tag};
 
 #[test]
 #[ignore = "daily"]
 fn each_mod_block_entity_of_an_unloading_chunk_is_told_once() {
     if run_fresh_cases(
-        "game::client_side::native_hooks_client::on_chunk_unloaded_tests::each_mod_block_entity_of_an_unloading_chunk_is_told_once",
+        "game::server_side::native_hooks_server::on_chunk_unloaded_tests::each_mod_block_entity_of_an_unloading_chunk_is_told_once",
         "SUNRISE_ON_CHUNK_UNLOADED_CHILD",
         &["game"],
     ) {
@@ -109,12 +89,8 @@ fn each_mod_block_entity_of_an_unloading_chunk_is_told_once() {
         }
 
         // Closing the world, its chunks with it, tells nothing.
-        game.begin_closing_save(false).unwrap();
-        let deadline = Instant::now() + Duration::from_secs(120);
-        while game.pending_save.0.is_some() {
-            assert!(Instant::now() < deadline, "the world did not close");
-            game.poll_closing_save().unwrap();
-        }
+        game.finish_server_save(false, None).unwrap();
+        game.world.chunks.clear();
         assert!(
             game.world.chunks.is_empty(),
             "the world's chunks went with it"

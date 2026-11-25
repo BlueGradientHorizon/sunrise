@@ -99,23 +99,4 @@ impl Game<'_> {
     pub(in crate::game) fn pot_data(&self, pos: [i32; 3]) -> Option<Tag> {
         pot_data_in(&self.world, self.res.facts(), pos)
     }
-    /// `DecoratedPotBlockEntity.loadAdditional`: command edits and BlockInput
-    /// loading write back to the same saved tag that live pot interactions use.
-    pub(in crate::game) fn set_pot_data(&mut self, pos: [i32; 3], input: &Tag) -> Option<bool> {
-        let before = self.pot_data(pos)?;
-        let mut input = input.clone();
-        if let Tag::Compound(map) = &mut input {
-            for key in ["id", "x", "y", "z"] {
-                map.insert(key.into(), before.get(key)?.clone());
-            }
-        }
-        let mut tag = sunrise_client::block_entity_nbt::canonical(&input)?;
-        if let Tag::Compound(map) = &mut tag {
-            map.remove(&"keepPacked".into());
-        }
-        let changed = tag != before;
-        spill::put_saved_entity(&mut self.world, pos, tag);
-        self.mark_block_entity_updated((pos[0], pos[1], pos[2]));
-        Some(changed)
-    }
 }

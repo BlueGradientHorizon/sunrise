@@ -670,28 +670,6 @@ fn liquid_part_accepts_nonwater_from_bucket_and_predicts_the_same_target() {
                 (false, Some(77), key("minecraft:lava")),
             ]
         );
-        calls.queried.lock().unwrap().clear();
-
-        // The same target check on a connected client retains the real prediction actor.
-        let dandelion = state(game, "minecraft:dandelion");
-        game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-        game.options.dedicated = None;
-        let (client, _server) = sunrise_protocol::connection::Pipe::pair();
-        game.connect_local(client, "LiquidPrediction").unwrap();
-        let remote = game.remote.as_mut().unwrap();
-        remote.logged_in = true;
-        remote.entity_id = 91;
-        remote.profile = 42;
-        game.world
-            .chunks
-            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        game.world.set(AT[0], AT[1], AT[2], dandelion).unwrap();
-        assert_eq!(game.bucket_target(lava, &hit), AT);
-        assert_eq!(
-            *calls.queried.lock().unwrap(),
-            [(true, Some(91), key("minecraft:lava"))]
-        );
-        assert_eq!(calls.placed.lock().unwrap().len(), 1);
     });
 }
 

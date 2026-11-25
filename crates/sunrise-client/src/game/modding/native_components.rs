@@ -229,30 +229,76 @@ impl Game<'_> {
             .try_into_api()
             .unwrap()
     }
+    /// Effective components, including defaults and removals, in the gameplay component view.
+    pub(in crate::game) fn item_combat_component(
+        &self,
+        stack: &ItemStack,
+        id: &str,
+    ) -> Option<serde_json::Value> {
+        self.pack
+            .item_renderer
+            .models
+            .components_view(&sunrise_client::item_render::stack_view(stack))
+            .get(id)
+            .cloned()
+    }
+    /// Materialize the effective enchantments for both attacks and detached previews.
+    pub(in crate::game) fn item_combat_stack(&self, stack: &ItemStack) -> ItemStack {
+        let mut effective = stack.clone();
+        let enchantments = self
+            .item_combat_component(stack, "minecraft:enchantments")
+            .unwrap_or_else(|| serde_json::json!({}));
+        let tag = sunrise_client::scoreboard::json_to_tag(
+            &serde_json::json!({"minecraft:enchantments": enchantments}),
+        );
+        let (_, extra) = sunrise_items::item_data::decode_components(Some(&tag));
+        effective.data_mut().enchantments =
+            extra.map_or_else(Vec::new, |data| data.enchantments.clone());
+        effective
+    }
+    pub(in crate::game) fn item_resource_attack_damage_bonus(
+        &self,
+        stack: &ItemStack,
+        attacker: mod_api::LivingRef,
+        target: mod_api::EntityRef,
+        base_damage: f32,
+    ) -> Option<f32> {
+        let (_, _, fall, flying) = self.item_combat_actor(attacker)?;
+        if self.entity_level(attacker.entity())?.dimension() != self.dim.key()
+            || self.entity_level(target)?.dimension() != self.dim.key()
+        {
+            return None;
+        }
+        self.native_entity_read_target(target)?;
+        let target = self.entity_kind(target)?.id(self)?;
+        let actor = self.entity_kind(attacker.entity())?.id(self)?;
+        let source = self.item_resource_damage_source(stack, attacker)?;
+        let source = source.damage_type.to_string();
+        let effective = self.item_combat_stack(stack);
+        let ctx = sunrise_items::enchant::EffectContext {
+            this: Some(target.as_str()),
+            attacker: Some(actor.as_str()),
+            direct_attacker: Some(actor.as_str()),
+            is_direct: true,
+            damage_type: Some(&source),
+            items: Some(self.items()),
+            direct_motion: Some((fall, flying)),
+            ..Default::default()
+        };
+        Some(stack_attack_bonus_preview(
+            self.item_enchantments(),
+            &effective,
+            &ctx,
+            &self.world.random,
+            base_damage,
+        ))
+    }
     /// Actor state shared by detached stack queries, without swapping equipment or players.
     pub(in crate::game) fn item_combat_actor(
         &self,
         actor: mod_api::LivingRef,
     ) -> Option<(bool, bool, f64, bool)> {
-        use super::commands::Target;
-        let target = self.native_living_read_target(actor)?;
-        Some(match target {
-            Target::Player => {
-                let p = self.player.as_ref()?;
-                (true, self.creative, p.fall_distance, p.fall_flying)
-            }
-            Target::Guest(conn) => {
-                let guest = self.command_guest(conn)?;
-                let p = guest.motion.as_ref()?;
-                (true, guest.creative(), p.fall_distance, p.fall_flying)
-            }
-            Target::Mob(id) => {
-                let mob = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
-                (false, false, mob.fall_distance, mob.extra.fall_flying)
-            }
-            Target::Stand(_) | Target::Dragon(_) => (false, false, 0.0, false),
-            _ => return None,
-        })
+        self.side_item_combat_actor(actor)
     }
     pub(in crate::game) fn item_resource_entity_attack_range(
         &self,
@@ -308,7 +354,7 @@ impl Game<'_> {
 #[allow(dead_code)]
 impl Game<'_> {
     /// Read a native component, including the item's default when not patched.
-    pub(in crate::game::client_side) fn native_component<'a>(
+    pub(in crate::game) fn native_component<'a>(
         &'a self,
         stack: &'a ItemStack,
         id: &str,
@@ -331,7 +377,7 @@ impl Game<'_> {
     }
 
     /// Set a registered native component after checking the network NBT limits.
-    pub(in crate::game::client_side) fn native_set_component(
+    pub(in crate::game) fn native_set_component(
         &self,
         stack: &mut ItemStack,
         id: &str,
@@ -357,7 +403,7 @@ impl Game<'_> {
     }
 
     /// Remove a native component, including its item default.
-    pub(in crate::game::client_side) fn native_remove_component(
+    pub(in crate::game) fn native_remove_component(
         &self,
         stack: &mut ItemStack,
         id: &str,
@@ -509,7 +555,7 @@ pub(in crate::game) use crate::game::server_side::native_components_server::item
         run_item_resource_changed_defaults_and_consumption();
     }
 
-    pub(in crate::game::client_side) fn run_item_resource_changed_defaults_and_consumption() {
+    pub(in crate::game) fn run_item_resource_changed_defaults_and_consumption() {
         use mod_api::{ComponentId, ItemResource, Tag};
         use serde_json::json;
         use std::{fs, path::Path};

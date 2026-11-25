@@ -23,41 +23,6 @@ pub(in crate::game) const TOTEM: &str = "minecraft:totem_of_undying";
 pub(in crate::game) const TOTEM_EVENT: i8 = 35;
 
 impl Game<'_> {
-    /// Whether the stack has `DataComponents.DEATH_PROTECTION`, whatever
-    /// item it is: the totem of undying is only one item that carries it.
-    pub(in crate::game) fn has_death_protection(&self, s: &ItemStack) -> bool {
-        death_protection_of(&self.pack.item_renderer.models, &s.item, Some(s)).is_some()
-    }
-    /// The `death_effects` of the stack's `minecraft:death_protection`.
-    pub(in crate::game) fn death_effects(
-        &self,
-        s: &ItemStack,
-    ) -> Vec<sunrise_client::items::ConsumeEffect> {
-        s.death_protection(self.items().get(&s.item))
-            .unwrap_or_default()
-            .to_vec()
-    }
-    /// Whether either hand holds a death-protection item, for the next hurt:
-    /// the window's player once a tick, a server's player for each of its
-    /// turns.
-    pub(in crate::game) fn update_totem_ready(&mut self) {
-        let ready = self.held().is_some_and(|s| self.has_death_protection(s))
-            || self
-                .offhand
-                .as_ref()
-                .is_some_and(|s| self.has_death_protection(s));
-        let off = !self.held().is_some_and(|s| self.has_death_protection(s));
-        if let Some(p) = self.player.as_mut() {
-            p.health.totem_ready = ready;
-            p.health.totem_off_hand = off;
-        }
-    }
-    /// Finish a hit before its caller can hurt the acting player again. Protection and
-    /// `ServerPlayer.die` both run on the current body, not its between-turn projection.
-    pub(in crate::game) fn finish_guest_damage(&mut self) {
-        let _ = self.finish_guest_damage_before_resume();
-    }
-
     /// Entity event 35 from a server, for this client's own player or an
     /// entity it draws.
     pub(in crate::game::client_side) fn remote_totem(&mut self, id: i32) {
@@ -154,7 +119,7 @@ impl Game<'_> {
 /// item's default. It runs for both of the player's hands and for every
 /// armed mob each tick, so the usual stack, which leaves the component alone,
 /// costs one map lookup instead of a component map built from its patch.
-pub(in crate::game::client_side) fn death_protection_of<'m>(
+pub(in crate::game) fn death_protection_of<'m>(
     models: &'m sunrise_assets::item_model::ItemModels,
     item: &str,
     stack: Option<&ItemStack>,

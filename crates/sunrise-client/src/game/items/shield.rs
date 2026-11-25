@@ -39,25 +39,6 @@ impl Game<'_> {
             "minecraft:arrow",
         )
     }
-    /// The stack's `blocks_attacks`: its own component, else its item's, as the stack's item
-    /// parts allow (`shield_block`): a stack they grant the ability to blocks with the
-    /// component's defaults when it has none, and one they deny it blocks with nothing.
-    pub(in crate::game) fn blocks_attacks(
-        &self,
-        stack: &ItemStack,
-    ) -> Option<std::borrow::Cow<'_, sunrise_client::items::BlocksAttacks>> {
-        let component =
-            sunrise_client::items::BlocksAttacks::of_stack(stack, self.items().get(&stack.item));
-        let ability = super::item_abilities::ability::SHIELD_BLOCK;
-        let blocks = self.stack_can_perform(stack, ability, component.is_some());
-        match component {
-            Some(component) if blocks => Some(component),
-            None if blocks => Some(std::borrow::Cow::Borrowed(
-                sunrise_client::items::BlocksAttacks::bare(),
-            )),
-            _ => None,
-        }
-    }
     /// `ShieldItem.use` (ItemUtils.startUsingInstantly) for the hand at `slot`;
     /// false when that hand holds no blocking item or it is on cooldown.
     pub(in crate::game) fn raise_shield(&mut self, slot: usize) -> bool {

@@ -113,9 +113,13 @@ pub(in crate::game) mod interaction;
 
 #[path = "menus_server.rs"]
 pub(in crate::game) mod menus;
+#[path = "menus.rs"]
+pub(in crate::game) mod menus_host;
 
 #[path = "mining_server.rs"]
 pub(in crate::game) mod mining;
+#[path = "mining.rs"]
+pub(in crate::game) mod mining_host;
 
 #[path = "movement_server.rs"]
 pub(in crate::game) mod movement;
@@ -128,6 +132,8 @@ pub(in crate::game) mod pickups;
 
 #[path = "respawn_server.rs"]
 pub(in crate::game) mod respawn;
+#[path = "respawn.rs"]
+pub(in crate::game) mod respawn_host;
 
 #[path = "sleep_server.rs"]
 pub(in crate::game) mod sleep;

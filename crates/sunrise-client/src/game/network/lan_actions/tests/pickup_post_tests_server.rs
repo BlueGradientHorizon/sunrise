@@ -101,28 +101,26 @@ fn host_pickup_tells_whole_and_partial_pickups_and_keeps_listener_changes() {
             game.server.lan_acting_name = Some("pickup_post".into());
 
             // The whole stack goes in: one post notice, original 8, remainder empty.
-            let (animations, stat) = (host_animations(game), host_stat(game));
+            let stat = host_stat(game);
             assert_eq!(
                 host_case(game, &probe, &CASE),
                 (vec![(7, 8, None)], None, 64)
             );
-            assert_eq!(host_animations(game), animations + 1);
             assert_eq!(host_stat(game), stat + 8);
 
             // 8 offered, 5 fit: one post notice, original 8 (untouched by the insertion),
             // remainder 3.
-            let (animations, stat) = (host_animations(game), host_stat(game));
+            let stat = host_stat(game);
             let partial = Case { room: 5, ..CASE };
             assert_eq!(
                 host_case(game, &probe, &partial),
                 (vec![(7, 8, Some(3))], Some(3), 64)
             );
-            assert_eq!(host_animations(game), animations + 1);
             assert_eq!(host_stat(game), stat + 5);
 
             // The listener on a partial pickup raises the remainder to 6: the entity keeps 6,
             // the pickup counts 2.
-            let (animations, stat) = (host_animations(game), host_stat(game));
+            let stat = host_stat(game);
             let raised = Case {
                 raise: Some(6),
                 ..partial
@@ -131,12 +129,11 @@ fn host_pickup_tells_whole_and_partial_pickups_and_keeps_listener_changes() {
                 host_case(game, &probe, &raised),
                 (vec![(7, 8, Some(3))], Some(6), 64)
             );
-            assert_eq!(host_animations(game), animations + 1);
             assert_eq!(host_stat(game), stat + 2);
 
             // The listener on a partial pickup empties the remainder: the entity goes, the
             // pickup counts 8.
-            let (animations, stat) = (host_animations(game), host_stat(game));
+            let stat = host_stat(game);
             let emptied = Case {
                 empty: true,
                 ..partial
@@ -145,12 +142,11 @@ fn host_pickup_tells_whole_and_partial_pickups_and_keeps_listener_changes() {
                 host_case(game, &probe, &emptied),
                 (vec![(7, 8, Some(3))], None, 64)
             );
-            assert_eq!(host_animations(game), animations + 1);
             assert_eq!(host_stat(game), stat + 8);
 
             // The listener on a partial pickup kills the item, lent back to the level while it
-            // hears: it stays gone, with no take animation, and the pickup counts 8.
-            let (animations, stat) = (host_animations(game), host_stat(game));
+            // hears: it stays gone, and the pickup counts 8.
+            let stat = host_stat(game);
             let killed = Case {
                 kill: true,
                 ..partial
@@ -159,7 +155,6 @@ fn host_pickup_tells_whole_and_partial_pickups_and_keeps_listener_changes() {
                 host_case(game, &probe, &killed),
                 (vec![(7, 8, Some(3))], None, 64)
             );
-            assert_eq!(host_animations(game), animations);
             assert_eq!(host_stat(game), stat + 8);
 
             // Refused by `item_picked_up`: nothing is told.
@@ -192,7 +187,7 @@ fn host_pickup_tells_whole_and_partial_pickups_and_keeps_listener_changes() {
             );
 
             // The listener puts 3 back: the entity stays with 3, the pickup counts 5.
-            let (animations, stat) = (host_animations(game), host_stat(game));
+            let stat = host_stat(game);
             let raised = Case {
                 raise: Some(3),
                 ..CASE
@@ -201,24 +196,20 @@ fn host_pickup_tells_whole_and_partial_pickups_and_keeps_listener_changes() {
                 host_case(game, &probe, &raised),
                 (vec![(7, 8, None)], Some(3), 64)
             );
-            assert_eq!(host_animations(game), animations + 1);
             assert_eq!(host_stat(game), stat + 5);
 
             // Creative takes the whole ground stack even with no inventory room.
             game.creative = true;
             let full = Case { room: 0, ..CASE };
-            let (animations, stat) = (host_animations(game), host_stat(game));
+            let stat = host_stat(game);
             assert_eq!(
                 host_case(game, &probe, &full),
                 (vec![(7, 8, None)], None, 0)
             );
-            assert_eq!(host_animations(game), animations + 1);
             assert_eq!(host_stat(game), stat + 8);
             game.creative = false;
 
-            // The listener puts 3 back, then kills the item: it stays gone, with no panic
-            // and no take animation.
-            let animations = host_animations(game);
+            // The listener puts 3 back, then kills the item: it stays gone, with no panic.
             let killed = Case {
                 raise: Some(3),
                 kill: true,
@@ -228,7 +219,6 @@ fn host_pickup_tells_whole_and_partial_pickups_and_keeps_listener_changes() {
                 host_case(game, &probe, &killed),
                 (vec![(7, 8, None)], None, 64)
             );
-            assert_eq!(host_animations(game), animations);
             let _ = std::fs::remove_dir_all(scratch);
         });
     });

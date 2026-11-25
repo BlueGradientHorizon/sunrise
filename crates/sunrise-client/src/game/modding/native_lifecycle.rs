@@ -227,27 +227,33 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn native_lifecycle_open_started(&mut self) {
+    pub(in crate::game) fn server_lifecycle_open_started(&mut self) {
         self.clear_composter_randoms();
         self.reset_entity_residency();
-        self.server.entity_initialization = Default::default();
-        if let Some(remote) = &mut self.remote {
-            remote.clear_attachments();
-        }
+        self.entity_initialization = Default::default();
         self.attachment_indexes.clear();
         self.passages.retire_world();
         self.native_lifecycle
             .begin_open(self.native_lifecycle_authority());
     }
 
-    pub(in crate::game) fn native_lifecycle_world_ready(&mut self) {
+    pub(in crate::game) fn server_lifecycle_world_ready(&mut self) {
         // The saved scoreboard is there for the server-started hooks, before any tick.
-        if self.is_logical_server() {
-            self.load_scoreboard();
-        }
+        self.load_scoreboard();
         if let Some(context) = self.native_lifecycle.world_open_ready() {
             self.native_server_started(context.authority == Authority::DedicatedServer);
         }
+    }
+
+    /// After the final save, before the lock release on the server.
+    pub(in crate::game) fn server_lifecycle_world_closed(&mut self) {
+        // Each server level closes after the final save (`LevelEvent.Unload`).
+        self.native_levels_closing();
+        if let Some(context) = self.native_lifecycle.world_close_final() {
+            self.native_world_lifecycle(&context, WorldPhase::WorldCloseFinal, "");
+        }
+        self.clear_composter_randoms();
+        self.finish_world_closed_common();
     }
 
     /// `error_text` is the engine's own error text, unchanged.

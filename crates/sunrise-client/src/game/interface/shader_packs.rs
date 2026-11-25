@@ -725,8 +725,17 @@ impl Game<'_> {
         let ridden = self.remote.as_ref().is_some_and(|r| r.has_passengers(id));
         // `Entity.isInWaterOrRain`: `isInWater`, else `isInRain`.
         let wet = self.player.as_ref().is_some_and(|p| {
-            p.fluids.was_touching_water
-                || self.rain_falls_on(p.position, p.bounds().max_position().y)
+            let bp = sunrise_core::geometry::BlockPos::new(
+                p.position.x.floor() as i32,
+                p.position.y.floor() as i32,
+                p.position.z.floor() as i32,
+            );
+            let up = sunrise_core::geometry::BlockPos::new(
+                bp.x,
+                p.bounds().max_position().y.floor() as i32,
+                bp.z,
+            );
+            p.fluids.was_touching_water || self.raining_at(bp) || self.raining_at(up)
         });
         (glowing, ridden, wet)
     }

@@ -57,19 +57,6 @@ impl Game<'_> {
         self.set_event_ai_target(mob, Some(target), player);
     }
 
-    pub(in crate::game) fn piglin_loved(&self, item: &str) -> bool {
-        self.item_in_tag("minecraft:piglin_loved", item)
-    }
-    /// `PiglinAi.isBarterCurrency`: vanilla's answer (`BARTERING_ITEM`), then the
-    /// parts of the stack's item (`ItemPart::is_piglin_currency`). An item with no
-    /// part for it costs one table lookup.
-    pub(in crate::game) fn piglin_currency(&self, stack: &ItemStack) -> bool {
-        let mut currency = &*stack.item == BARTERING_ITEM;
-        if mod_api::__private::item_listens(mod_api::HookId::IsPiglinCurrency, &stack.item) {
-            self.native_is_piglin_currency(stack, &mut currency);
-        }
-        currency
-    }
     /// `ItemStack.has(DataComponents.BLOCKS_ATTACKS)` for an item id.
     fn item_blocks_attacks(&self, item: &str) -> bool {
         self.res
@@ -346,10 +333,7 @@ impl Game<'_> {
             // Nuggets come whole, anything else one at a time.
             let (taken_item, id) = (e.clone(), self.mobs[i].id);
             let item = e.stack.item.clone();
-            self.add_pickup(
-                super::pickups::Taken::Item(Box::new(taken_item.clone())),
-                super::pickups::Collector::Mob(id),
-            );
+            self.server_mob_take_item(&taken_item, id);
             // LivingEntity.onItemPickup, before PiglinAi.pickUpItem splits the stack.
             self.mob_item_pickup_trigger(i, &taken_item);
             let stack = if &*item == "minecraft:gold_nugget" {

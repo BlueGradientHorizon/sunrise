@@ -1,11 +1,9 @@
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{Game, potions::mob_effect_id};
+pub(in crate::game::client_side) use super::Game;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::potent_sulfur::GEYSER_CONTINUOUS_ACTIVE;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::potent_sulfur::GEYSER_ERUPTION_ACTIVE;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::potent_sulfur::*;
+pub(in crate::game::client_side) use crate::game::potent_sulfur_common::{
+    GEYSER_CONTINUOUS_ACTIVE, GEYSER_ERUPTION_ACTIVE,
+};
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::{
     Result,

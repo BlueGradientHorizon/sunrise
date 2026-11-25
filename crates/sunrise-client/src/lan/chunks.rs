@@ -851,7 +851,13 @@ impl ChunkEncoder {
     ) -> Option<Tag> {
         let tag = self.update_tag(pos, state, entity);
         let BlockEntity::Mod(m) = entity else {
-            return tag;
+            return match tag {
+                Some(tag) => Some(tag),
+                None if matches!(entity, BlockEntity::TrialSpawner(_)) => {
+                    Some(Tag::Compound(Compound::new()))
+                }
+                None => None,
+            };
         };
         let Some(fields) = m.take_client_update_fields() else {
             return tag;

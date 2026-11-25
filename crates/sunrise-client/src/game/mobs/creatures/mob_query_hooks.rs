@@ -1,16 +1,14 @@
-// Included in creatures/mod.rs to preserve its existing scope.
+// Included in creatures/mod_server.rs (server-only MobHooks impl).
 impl sunrise_client::mobs::MobHooks for Game<'_> {
     fn block_path_type(
         &self,
         state: sunrise_world::registry::BlockStateId,
         pos: [i32; 3],
     ) -> Option<mod_api::PathType> {
-        if !self.is_logical_server()
-            || !crate::game::api_values::block_state::block_listens(
-                mod_api::HookId::BlockPathType,
-                state,
-            )
-        {
+        if !crate::game::api_values::block_state::block_listens(
+            mod_api::HookId::BlockPathType,
+            state,
+        ) {
             return None;
         }
         let level_ref = self.level(self.dim.id())?;
@@ -38,12 +36,10 @@ impl sunrise_client::mobs::MobHooks for Game<'_> {
         path_type: mod_api::PathType,
         default: Option<mod_api::PathType>,
     ) -> Option<mod_api::PathType> {
-        if !self.is_logical_server()
-            || !crate::game::api_values::block_state::block_listens(
-                mod_api::HookId::AdjacentBlockPathType,
-                state,
-            )
-        {
+        if !crate::game::api_values::block_state::block_listens(
+            mod_api::HookId::AdjacentBlockPathType,
+            state,
+        ) {
             return default;
         }
         let mut answer = None;

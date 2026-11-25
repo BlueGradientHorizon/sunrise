@@ -64,7 +64,18 @@ impl Game<'_> {
         let Some(entity) = self.world.block_entities.get(&key) else {
             return;
         };
-        if entity.id() != name || fields.is_empty() && !matches!(entity, BlockEntity::Conduit(_)) {
+        if entity.id() != name {
+            return;
+        }
+        if fields.is_empty() && !matches!(entity, BlockEntity::Conduit(_)) {
+            if source == BlockEntityDataSource::UpdatePacket
+                && let Some(BlockEntity::TrialSpawner(s)) = self.world.block_entities.get_mut(&key)
+            {
+                s.next_spawn_data = None;
+                self.side_update_spawner_display(key);
+                let state = self.world.block(pos[0], pos[1], pos[2]);
+                let _ = self.world.set(pos[0], pos[1], pos[2], state);
+            }
             return;
         }
         let mut full = fields.clone();

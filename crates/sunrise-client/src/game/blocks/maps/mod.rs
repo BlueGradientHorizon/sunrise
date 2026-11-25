@@ -803,7 +803,7 @@ pub(in crate::game::server_side) fn tracks_count(sprite: &str) -> bool {
 /// The sprite of a decoration type that a `minecraft:map_decorations`
 /// entry or a server's packet names: vanilla's, or one a mod registered
 /// (`map_decoration_types`).
-pub(in crate::game::server_side) fn decoration_sprite(id: &str) -> Option<&'static str> {
+pub(in crate::game) fn decoration_sprite(id: &str) -> Option<&'static str> {
     let name = id.strip_prefix("minecraft:").unwrap_or(id);
     DECORATION_TYPES
         .iter()
@@ -967,61 +967,6 @@ impl Game<'_> {
             }
         }
         self.maps.data.get_mut(&id)
-    }
-    /// `ClientboundMapItemDataPacket.handle`: the server's colours and
-    /// decorations for a map (one carried or framed on a server).
-    pub(in crate::game) fn remote_map_item_data(
-        &mut self,
-        p: &sunrise_protocol::packets::play::MapItemData,
-    ) {
-        let decorations = p.decorations.as_ref().map(|list| {
-            let types = self
-                .remote
-                .as_ref()
-                .and_then(|r| r.builtin.get("minecraft:map_decoration_type"));
-            list.iter()
-                .filter_map(|d| {
-                    Some(Decoration {
-                        sprite: decoration_sprite(types?.name(d.kind)?)?,
-                        x: d.x,
-                        y: d.y,
-                        rot: (d.rot & 15) as u8,
-                        name: d
-                            .name
-                            .as_ref()
-                            .map(|t| sunrise_client::entity_nbt::name_text(t).plain()),
-                        key: Key::Remote,
-                    })
-                })
-                .collect()
-        });
-        let dimension = self.dimension_id();
-        let map = self
-            .maps
-            .data
-            .entry(p.map_id)
-            .or_insert_with(|| MapData::fresh(0.0, 0.0, p.scale.max(0) as u8, dimension));
-        map.locked = p.locked;
-        if let Some(decorations) = decorations {
-            map.decorations = decorations;
-        }
-        let Some(patch) = &p.patch else {
-            map.dirty = false;
-            return;
-        };
-        for x in 0..patch.width {
-            for y in 0..patch.height {
-                let Some(&color) = patch.colors.get((x + y * patch.width) as usize) else {
-                    continue;
-                };
-                let (px, py) = (patch.start_x + x, patch.start_y + y);
-                if (0..128).contains(&px) && (0..128).contains(&py) {
-                    map.update_color(px, py, color);
-                }
-            }
-        }
-        // The server owns a remote map: only the texture has to change.
-        map.dirty = false;
     }
     /// The next ID in this save, after any map reserved by an open transaction.
     /// Peeking must not dirty the persisted counter, even on a save with no maps.
@@ -1277,7 +1222,7 @@ impl Game<'_> {
         ) {
             self.native_player_map_filled(player, &name, id);
         }
-        self.play_player_bound_sound(
+        self.server_play_player_bound_sound(
             "minecraft:ui.cartography_table.take_result",
             7,
             1.0,

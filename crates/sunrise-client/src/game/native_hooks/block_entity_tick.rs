@@ -24,10 +24,6 @@ use sunrise_core::nbt::{Compound, JavaString, Tag};
 #[allow(unused_imports)]
 use sunrise_items::items::Items;
 
-#[cfg(test)]
-#[path = "block_entity_tick/tests.rs"]
-pub(in crate::game) mod tests;
-
 /// Dispatch the one resident server ticker; the scope owns access to the Host.
 pub(in crate::game) fn native_block_entity_tick(
     kind: mod_api::BlockEntityTypeKey,

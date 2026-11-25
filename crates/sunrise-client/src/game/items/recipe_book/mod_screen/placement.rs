@@ -86,13 +86,6 @@ impl Game<'_> {
         }
         true
     }
-    pub(in crate::game) fn resolve_mod_book_declaration_slot(
-        &self,
-        slot: &mod_api::RecipeSlotDisplay,
-    ) -> Vec<ItemStack> {
-        let stocks = sunrise_client::menu::place::Stacked::default();
-        resolve::Resolver::new(self, &stocks, &[]).resolve(slot)
-    }
     pub(in crate::game::client_side) fn install_mod_book_ghost(
         &mut self,
         selection: &sunrise_client::recipe_book::placement_sync::Selection,

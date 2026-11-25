@@ -27,32 +27,7 @@ pub(in crate::game) struct Ammo {
     pub(in crate::game) slot: Option<usize>,
 }
 
-/// `ProjectileWeaponItem.ARROW_ONLY`: `stack.is(ItemTags.ARROWS)`, the loaded
-/// `#minecraft:arrows` tag (a data pack may add its own item to it).
-pub(in crate::game::server_side) fn is_arrow(items: &Items, stack: &ItemStack) -> bool {
-    items.item_in_tag("minecraft:arrows", &stack.item)
-}
-
-/// `Player.getProjectile`: what `weapon` supports in the off hand, then in
-/// the main hand (`getHeldProjectile`; crossbows also take firework rockets
-/// there), else the first arrows in the inventory. The slot of the stack.
-pub(in crate::game::server_side) fn projectile_slot(
-    weapon: &str,
-    hands: [(usize, Option<&ItemStack>); 2],
-    inventory: &[Option<ItemStack>],
-    items: &Items,
-) -> Option<usize> {
-    let held =
-        |s: &ItemStack| is_arrow(items, s) || weapon == CROSSBOW && &*s.item == FIREWORK_ROCKET;
-    hands
-        .into_iter()
-        .find_map(|(slot, s)| s.is_some_and(held).then_some(slot))
-        .or_else(|| {
-            inventory
-                .iter()
-                .position(|s| s.as_ref().is_some_and(|s| is_arrow(items, s)))
-        })
-}
+pub(in crate::game) use super::held_items::{is_arrow, projectile_slot};
 
 /// `CrossbowItem.onUseTick`'s loading sounds for a charge now at `charge`
 /// (of `getChargeDuration`) that has played `played` so far: the start and
@@ -78,10 +53,10 @@ pub(in crate::game::server_side) fn charge_sounds(
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn charge_ticks(stack: &ItemStack) -> u32 {
-        // crossbow_charge_time: 1.25 s, minus 0.25 s per Quick Charge level.
-        let seconds = 1.25 - 0.25 * stack.enchantment_level("minecraft:quick_charge") as f32;
-        (seconds.max(0.0) * 20.0).floor() as u32
+    pub(in crate::game) fn server_projectile_player_uuid(&mut self) -> Option<u128> {
+        Some(sunrise_client::lan::playerdata::ints_uuid(
+            self.acting_player_uuid(),
+        ))
     }
     pub(in crate::game::server_side) fn charging_sounds(stack: &ItemStack) -> [&'static str; 3] {
         match stack.enchantment_level("minecraft:quick_charge") {
@@ -106,44 +81,6 @@ impl Game<'_> {
                 "minecraft:item.crossbow.loading_end",
             ],
         }
-    }
-    /// `Player.getProjectile` for `weapon` (`projectile_slot`).
-    pub(in crate::game) fn projectile_slot(&self, weapon: &str) -> Option<usize> {
-        let hands = [OFFHAND_SLOT, self.selected].map(|slot| (slot, self.stack_in(slot)));
-        projectile_slot(weapon, hands, &self.inventory, world_items!(self))
-    }
-    /// `Player.getProjectile` for `weapon`, as `LivingGetProjectileEvent` leaves
-    /// it: a creative player without arrows has `hasInfiniteMaterials`' arrow.
-    pub(in crate::game) fn get_projectile(&mut self, weapon: &ItemStack) -> Option<Ammo> {
-        let slot = self.projectile_slot(&weapon.item);
-        let vanilla = match slot {
-            Some(i) => self.stack_in(i).cloned(),
-            None => self.creative.then(|| ItemStack::new(ARROW, 1)),
-        };
-        if !mod_api::__private::listened(mod_api::HookId::LivingGetProjectile) {
-            return vanilla.map(|stack| Ammo { stack, slot });
-        }
-        let mut projectile = vanilla.clone();
-        // A client predicting its own use has the profile it logged in with.
-        let player = match self
-            .remote
-            .as_ref()
-            .filter(|_| self.server.lan_acting_uuid.is_none())
-        {
-            Some(r) => r.profile(),
-            None => sunrise_client::lan::playerdata::ints_uuid(self.acting_player_uuid()),
-        };
-        let name = self.own_profile_name();
-        self.native_living_get_projectile(
-            Some(player),
-            &name,
-            None,
-            "minecraft:player",
-            weapon,
-            &mut projectile,
-        );
-        let slot = slot.filter(|_| projectile == vanilla);
-        projectile.map(|stack| Ammo { stack, slot })
     }
     /// `AbstractSkeleton.performRangedAttack`'s `getProjectile`: the arrow
     /// `mob` shot becomes the replaced ammunition's (`ProjectileUtil.getMobArrow`).

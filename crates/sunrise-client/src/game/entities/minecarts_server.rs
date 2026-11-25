@@ -115,6 +115,9 @@ pub(in crate::game) mod save_lending;
 #[path = "minecarts/hit_server.rs"]
 pub(in crate::game) mod hit;
 
+#[path = "minecarts/section_steps.rs"]
+pub(in crate::game) mod section_steps;
+
 impl CartIndex {
     /// The slots of the carts whose box may meet `area`, for the cart in slot
     /// `i` (just moved); false: scan them all.

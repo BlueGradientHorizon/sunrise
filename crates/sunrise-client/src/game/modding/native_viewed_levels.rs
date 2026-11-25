@@ -63,14 +63,31 @@ impl Game<'_> {
         renderer.set_world_view_own_level(own_level);
         Some(renderer.camera_frustum(camera, fov_degrees, yaw, pitch, bob, depth_far))
     }
-    /// The world for reads such as `block_state`, `brightness` and `clip`: on a server an open
-    /// level, in place or parked (`native_level_world`), on a client `client_view_world`.
-    pub(in crate::game) fn native_level_view_world(&self, level: LevelRef) -> Option<&World> {
-        if self.is_logical_server() {
-            self.native_level_world(level)
-        } else {
-            self.client_view_world(level)
+    pub(in crate::game) fn client_level_view_world(&self, level: LevelRef) -> Option<&World> {
+        self.client_view_world(level)
+    }
+
+    pub(in crate::game) fn client_collision_scan_world(
+        &self,
+        level: LevelRef,
+    ) -> Option<(&World, bool)> {
+        self.client_view_world(level).map(|w| (w, true))
+    }
+
+    pub(in crate::game) fn client_level_handle_current(&self, level: LevelRef) -> bool {
+        self.remote.as_ref().is_some_and(|r| r.logged_in)
+            && self.native_lifecycle.epoch() == Some(level.epoch())
+    }
+
+    pub(in crate::game) fn client_level_datapack_set(
+        &self,
+        level: LevelRef,
+    ) -> Option<std::sync::Arc<mod_api::DatapackRegistrySet>> {
+        if !self.client_level_handle_current(level) || level.dimension() != self.native_level_key()
+        {
+            return None;
         }
+        sunrise_client::datapack_net::received()
     }
 }
 

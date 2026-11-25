@@ -41,7 +41,7 @@ impl Game<'_> {
             }
         };
         if slot == self.held_slot() {
-            self.edit_block_use_stack(edit);
+            self.side_consume_held_slot(amount);
         } else {
             edit(self.stack_in_mut(slot));
         }
@@ -55,6 +55,24 @@ impl Game<'_> {
     pub(super) fn consume_held(&mut self) {
         if !self.creative {
             self.consume_player_slot(self.held_slot(), 1);
+        }
+    }
+
+    /// `BlockItem.place`'s shrink of the stack it placed, and
+    /// `SolidBucketItem.useOn`'s `BucketItem.getEmptySuccessItem`: a placed
+    /// powder snow bucket leaves an empty bucket in that hand, unless the player
+    /// has infinite materials. The client predicts the same as the server does.
+    pub(in crate::game) fn consume_placed(&mut self, placed: &ItemStack) {
+        if self.creative {
+            return;
+        }
+        let slot = self.held_slot();
+        let last = self.stack_in(slot).is_some_and(|stack| stack.count == 1);
+        self.consume_player_slot(slot, 1);
+        if &*placed.item == "minecraft:powder_snow_bucket"
+            && (!last || self.stack_in(slot).is_none())
+        {
+            *self.stack_in_mut(slot) = Some(ItemStack::new("minecraft:bucket", 1));
         }
     }
 }

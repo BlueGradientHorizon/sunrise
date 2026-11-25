@@ -16,10 +16,6 @@ struct Case {
     velocity: [f64; 3],
     spin: f32,
     #[serde(default)]
-    owned: Vec<bool>,
-    #[serde(default)]
-    paddles: Option<PaddleCase>,
-    #[serde(default)]
     attack: Option<Attack>,
 }
 
@@ -33,25 +29,6 @@ struct Attack {
     knockback: u8,
     #[serde(default)]
     creative: bool,
-}
-
-#[derive(Deserialize)]
-struct PaddleCase {
-    initial: [f32; 2],
-    steps: Vec<PaddleStep>,
-}
-#[derive(Deserialize)]
-struct PaddleStep {
-    occupied: bool,
-    #[serde(default)]
-    owned: bool,
-    #[serde(default = "is_player")]
-    first_player: bool,
-    flags: [bool; 2],
-}
-
-fn is_player() -> bool {
-    true
 }
 
 impl Game<'_> {
@@ -107,90 +84,6 @@ impl Game<'_> {
             ));
         }
         *out.lock().unwrap() = results;
-        Ok(())
-    }
-
-    pub(in crate::game) fn run_boat_authority_fixture(&mut self, directory: &Path) -> Result<()> {
-        let cases: Vec<Case> =
-            serde_json::from_str(&std::fs::read_to_string(directory.join("inputs.json"))?)?;
-        let total = cases.len();
-        let has_attacks = cases.iter().any(|case| case.attack.is_some());
-        let mut indexed: Vec<(usize, serde_json::Value)> = Vec::with_capacity(total);
-        if has_attacks {
-            let attacks = Arc::new(Mutex::new(Vec::new()));
-            self.run_component_harness(
-                crate::game::integrated::ComponentHarness::BoatAuthorityAttacks(
-                    directory.to_path_buf(),
-                    attacks.clone(),
-                ),
-            )?;
-            indexed.extend(std::mem::take(&mut *attacks.lock().unwrap()));
-        }
-        for (index, case) in cases.into_iter().enumerate() {
-            if case.attack.is_some() {
-                continue;
-            }
-            self.boats.clear();
-            let mut boat = Boat::new(1, "oak".into(), Vec3::new(0.0, 100.0, 0.0), 0.0);
-            let [x, y, z] = case.velocity;
-            boat.velocity = Vec3::new(x, y, z);
-            boat.delta_rotation = case.spin;
-            self.boats.push(boat);
-            let mut steps = Vec::new();
-            if let Some(paddles) = case.paddles {
-                self.riding = None;
-                self.boats.update(0, |b| b.paddles = paddles.initial);
-                for step in paddles.steps {
-                    self.boats.update(0, |b| b.paddling = step.flags);
-                    self.boats.update(0, |b| {
-                        b.paddle_controller = step.occupied && step.first_player
-                    });
-                    self.riding = step.owned.then_some(1);
-                    if step.owned {
-                        self.boats.update(0, |b| {
-                            b.input = [
-                                step.flags[1] && !step.flags[0],
-                                step.flags[0] && !step.flags[1],
-                                step.flags[0] && step.flags[1],
-                                false,
-                            ]
-                        });
-                        let boat = self.tick_boat(self.boats[0].clone(), true);
-                        self.store_boat_back(0, boat);
-                    }
-                    self.tick_remote_boat_bubbles();
-                    let boat = &self.boats[0];
-                    let rowing = [0.0, 0.25, 0.5, 1.0].map(|a| {
-                        [0, 1].map(|side| format!("{:08x}", boat.rowing_time(side, a).to_bits()))
-                    });
-                    steps.push(json!({
-                        "phase": boat.paddles.map(|p| format!("{:08x}", p.to_bits())),
-                        "rowing": rowing,
-                    }));
-                }
-                indexed.push((index, json!({"name": case.name, "steps": steps})));
-                continue;
-            }
-            for owned in case.owned {
-                self.riding = owned.then_some(1);
-                if owned {
-                    let boat = self.boats.remove(0);
-                    let boat = self.tick_boat(boat, true);
-                    self.boats.push(boat);
-                }
-                self.tick_remote_boat_bubbles();
-                let boat = &self.boats[0];
-                steps.push(json!({
-                    "owned": owned,
-                    "spin": format!("{:08x}", boat.delta_rotation.to_bits()),
-                    "velocity": boat.velocity.components().map(|v| format!("{:016x}", v.to_bits())),
-                }));
-            }
-            indexed.push((index, json!({"name": case.name, "steps": steps})));
-        }
-        indexed.sort_by_key(|(index, _)| *index);
-        let output: Vec<serde_json::Value> = indexed.into_iter().map(|(_, v)| v).collect();
-        std::fs::write(directory.join("rust.json"), serde_json::to_vec(&output)?)?;
         Ok(())
     }
 }

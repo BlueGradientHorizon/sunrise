@@ -1,5 +1,5 @@
 //! Resource-backed resolution of mod recipe displays.
-use crate::game::{Game, api_values::TryIntoEngine};
+use crate::game::Game;
 use mod_api::{RecipeBookDisplay as Display, RecipeSlotDisplay as Slot};
 use sunrise_client::{crafting::Ingredient, items::ItemStack, menu::place::Stacked};
 
@@ -23,110 +23,7 @@ impl<'a, 'w> Resolver<'a, 'w> {
     }
 
     pub(super) fn resolve(&self, slot: &Slot) -> Vec<ItemStack> {
-        let items = self.game.items();
-        match slot {
-            Slot::Empty => Vec::new(),
-            Slot::Item(id) => items
-                .get(id)
-                .map(|_| ItemStack::new(id, 1))
-                .into_iter()
-                .collect(),
-            Slot::ItemStack(stack) => stack.try_into_engine(items).ok().into_iter().collect(),
-            Slot::AnyFuel => items
-                .registry_order
-                .iter()
-                .filter(|id| items.get(id).is_some_and(|i| i.fuel.is_some()))
-                .map(|id| ItemStack::new(id, 1))
-                .collect(),
-            Slot::Tag(tag) => items
-                .item_tag_order
-                .get(tag)
-                .into_iter()
-                .flatten()
-                .map(|id| ItemStack::new(id, 1))
-                .collect(),
-            Slot::Composite(children) => children
-                .iter()
-                .flat_map(|child| self.resolve(child))
-                .collect(),
-            Slot::WithRemainder { input, .. } => self.resolve(input),
-            Slot::WithAnyPotion(source) => self
-                .resolve(source)
-                .into_iter()
-                .flat_map(|stack| {
-                    sunrise_client::brewing::POTIONS
-                        .iter()
-                        .map(move |p| stack.clone().with_potion(&format!("minecraft:{}", p.id)))
-                })
-                .collect(),
-            Slot::OnlyWithComponent { source, component } => self
-                .resolve(source)
-                .into_iter()
-                .filter(|stack| stack.carries_component(items.get(&stack.item), component))
-                .collect(),
-            Slot::Dyed { dye, target } => {
-                let targets = self.resolve(target);
-                self.resolve(dye)
-                    .iter()
-                    .map(|stack| {
-                        let name = stack
-                            .data()
-                            .and_then(|data| data.other("minecraft:dye"))
-                            .and_then(|tag| match tag {
-                                sunrise_core::nbt::Tag::String(value) => {
-                                    Some(value.to_string_lossy())
-                                }
-                                _ => None,
-                            })
-                            .or_else(|| items.get(&stack.item).and_then(|info| info.dye.clone()))
-                            .unwrap_or_else(|| "white".into());
-                        sunrise_client::block_entity_render::DYES
-                            .iter()
-                            .position(|(id, _)| *id == name)
-                            .unwrap_or(0)
-                    })
-                    .flat_map(|dye| targets.iter().map(move |stack| dye_stack(stack, dye)))
-                    // SlotDisplay.applyDemoTransformation cycles targets fastest,
-                    // then keeps at most 16 successful transformations.
-                    .take(16)
-                    .collect()
-            }
-            Slot::SmithingTrim {
-                base,
-                material,
-                pattern,
-            } => {
-                let materials = self.resolve(material);
-                let pattern =
-                    sunrise_client::crafting::RecipeTrimPattern::Reference(pattern.clone());
-                let bases = self.resolve(base);
-                if bases.is_empty() || materials.is_empty() {
-                    return Vec::new();
-                }
-                use sunrise_core::random::RandomSource;
-                // Vanilla seeds this demo from display identity, samples at most
-                // 256 pairs, and retains the first 16 successful trims.
-                let mut random =
-                    sunrise_core::random::LegacyRandom::new(slot as *const Slot as usize as i64);
-                (0..256)
-                    .filter_map(|_| {
-                        let base = random
-                            .next_int_bound(i32::try_from(bases.len()).ok()?)
-                            .ok()? as usize;
-                        let material = random
-                            .next_int_bound(i32::try_from(materials.len()).ok()?)
-                            .ok()? as usize;
-                        sunrise_client::stations::apply_trim(
-                            &self.game.stations().enchantments,
-                            &bases[base],
-                            &materials[material],
-                            &pattern,
-                        )
-                    })
-                    .take(16)
-                    .collect()
-            }
-        }
+        self.game.resolve_mod_book_declaration_slot(slot)
     }
 
     pub(super) fn craftable(&self, ingredients: &[Ingredient]) -> bool {
@@ -144,6 +41,7 @@ impl<'a, 'w> Resolver<'a, 'w> {
     }
 }
 
+#[cfg(test)]
 fn dye_stack(target: &ItemStack, dye: usize) -> ItemStack {
     let mut stack = target.clone();
     stack.count = 1;

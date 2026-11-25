@@ -31,7 +31,6 @@ pub(in crate::game::server_side) use crate::game::loading_screen::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::loading_window::{
     build_renderer, loading_frame, loading_renderer, prepare_renderer_textures, start_client_game,
-    start_dedicated_game,
 };
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::motion_ids::{motion_at, motion_block_entity};
@@ -48,6 +47,8 @@ pub(in crate::game::server_side) use crate::game::resource_loader::{
     EntityModels, GameCpuResources, Loaded, LoaderMsg, PendingWorldEntry, WorldRestLoader,
     run_loading, write_report,
 };
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::server_side::loading_server::start_dedicated_game;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::server_state::ServerState;
 #[allow(unused_imports)]
@@ -442,37 +443,11 @@ impl Game<'_> {
     /// Let go of every entity of the level (saved first): the next world
     /// opened must not inherit them, nor save them as its own.
     pub(crate) fn clear_entities(&mut self) {
+        self.clear_shared_entities();
         self.clear_pending_mob_actions();
-        self.mobs.clear();
-        self.dropped.clear();
-        self.orbs.clear();
-        self.creatures.projectiles.clear();
-        self.falling.clear();
-        self.tnts.clear();
-        self.boats.clear();
-        self.carts.clear();
-        self.armor_stands.clear();
-        self.cushions.clear();
-        self.item_frames.clear();
-        self.paintings.clear();
         self.others.0.clear();
-        self.dragon.discard();
-        self.crystals.clear();
-        self.breath_clouds.clear();
-        self.tridents.clear();
-        self.rockets.clear();
-        self.bolts.clear();
-        if !self.is_logical_server() {
-            self.clear_client_particles();
-        }
-        self.riding = None;
-        self.persist = Default::default();
         self.clear_entities_server_missing_professions();
-        self.entity_attachments.clear();
-        self.clear_remote_objects();
-        self.clear_remote_projectiles();
         self.levels.0.clear();
-        self.side_clear_render_caches();
     }
     #[inline(always)]
     pub(in crate::game) fn server_clear_render_caches(&mut self) {}
@@ -553,14 +528,6 @@ impl Game<'_> {
         self.session_lock.0 = None;
         self.server.world_adopted = false;
         self.server.startup_ticket_restore_pending = false;
-    }
-    #[inline(always)]
-    pub(in crate::game) fn finish_close_world_server_clear_bosses(&mut self) {
-        self.server.bosses = Default::default();
-    }
-    #[inline(always)]
-    pub(in crate::game) fn finish_close_world_server_clear_player_beds(&mut self) {
-        self.server.player_beds.clear();
     }
     pub(in crate::game) fn finish_open_world(
         &mut self,
@@ -732,7 +699,8 @@ impl Game<'_> {
         };
         self.carried = None;
         self.using = None;
-        self.apply_settings();
+        self.streaming.radius =
+            crate::game::entity_culling::streaming_radius_for(self.settings.render_distance, None);
         let facts = self.dimension_type_of(dim);
         self.streaming.sky_light = facts.height.has_skylight;
         self.streaming.nether_shading =
@@ -803,7 +771,7 @@ impl Game<'_> {
         };
         // LivingEntity.startSleeping: stopRiding once the bed is valid.
         self.stop_riding();
-        self.stop_mining();
+        self.mining = None;
         self.server_set_acting_attack(false);
         self.server_set_acting_use(false);
         self.using = None;
@@ -823,7 +791,6 @@ impl Game<'_> {
         self.pitch = 0.0;
         if self.server.lan_acting.is_none() {
             self.previous_position = at;
-            self.snap_player_model_pitch();
         }
         self.occupy_bed(head);
         true
@@ -1642,7 +1609,6 @@ impl Game<'_> {
             self.break_block(pos)?;
             self.server.destroy_delay = 5;
         }
-        self.update_local_crack();
         Ok(())
     }
     pub(in crate::game) fn tick_sleep(&mut self) {
@@ -1674,7 +1640,6 @@ impl Game<'_> {
             }
             // LivingEntity.tick: a sleeper's xRot is 0.
             self.pitch = 0.0;
-            self.snap_player_model_pitch();
         }
         // ServerLevel.tick: once enough of the players have slept 100 ticks,
         // skip to morning if `advance_time` is on, wake everyone, and
@@ -2254,7 +2219,6 @@ impl Game<'_> {
             self.pitch = 0.0;
             if self.server.lan_acting.is_none() {
                 self.previous_position = at;
-                self.snap_player_model_pitch();
             }
         }
     }

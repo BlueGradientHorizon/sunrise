@@ -112,7 +112,7 @@ impl Game<'_> {
             ];
             self.particles.0.add(&options, center, v);
         }
-        if let Some(view) = self.player_view()
+        if let Some(view) = self.client_player_view()
             && view.alive
             && view.bounds.intersects(area)
             && let Some(p) = self.player.as_mut()

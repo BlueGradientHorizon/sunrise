@@ -75,7 +75,7 @@ impl Game<'_> {
         // body forced translucent (`LivingEntityRenderer.submit`).
         let seen_invisible = invisible
             && !sunrise_client::scoreboard::invisible_to(
-                self.mob_team_of(mob),
+                self.client_mob_team_of(mob),
                 viewer,
                 self.own_player_is_spectator(),
                 true,

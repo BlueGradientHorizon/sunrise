@@ -40,8 +40,11 @@ impl Game<'_> {
         let p = self
             .target_position(Target::Player)
             .unwrap_or(self.source_position());
-        self.eye_position()
-            .unwrap_or([p[0], p[1] + self.target_eye_height(Target::Player), p[2]])
+        self.eye_position().unwrap_or([
+            p[0],
+            p[1] + self.server_target_eye_height(Target::Player),
+            p[2],
+        ])
     }
     pub(in crate::game) fn give_remainder(&mut self, rest: ItemStack, owner: Option<[i32; 4]>) {
         let eye = self.give_eye();

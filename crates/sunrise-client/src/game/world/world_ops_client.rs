@@ -1,0 +1,748 @@
+//! Client-side implementations of `side_ops::world` and client-only world/harness helpers.
+use super::*;
+use crate::game::piston_carry_state::PositionChange;
+use sunrise_client::join_seq::{
+    Joined as _,
+    residency::{Kind, Owner, Source},
+};
+
+impl Game<'_> {
+    pub(in crate::game) fn client_with_level_access<R>(
+        &mut self,
+        placement_preview: bool,
+        f: impl FnOnce(&Behaviours, &mut GameLevel<'_>, &mut Ticks) -> R,
+    ) -> R {
+        let darken = self.sky_darken();
+        let (rain, thunder) = self.weather_levels(1.0);
+        let (
+            player_box,
+            player_collision,
+            cart_boxes,
+            arrow_boxes,
+            fire_players,
+            trigger_hooks,
+            trigger_extras,
+            open_containers,
+            golem_chests,
+        ) = if placement_preview {
+            Default::default()
+        } else {
+            let spectator = self.spectator();
+            let player_box = self.player.as_ref().filter(|_| !spectator).map(|p| {
+                let w = f64::from(p.dimensions.width) / 2.0;
+                (
+                    [p.position.x - w, p.position.y, p.position.z - w],
+                    [
+                        p.position.x + w,
+                        p.position.y + f64::from(p.dimensions.height),
+                        p.position.z + w,
+                    ],
+                )
+            });
+            let player_collision = self.player.as_ref().filter(|_| !spectator).map(|p| {
+                let main_hand = self.inventory.get(self.selected).and_then(Option::as_ref);
+                PlayerCollision {
+                    y: p.position.y,
+                    descending: p.velocity.y < 0.0,
+                    fall_distance: p.fall_distance,
+                    main_hand_item: main_hand.map_or_else(
+                        || Arc::from("minecraft:air"),
+                        |stack| Arc::clone(&stack.item),
+                    ),
+                    main_hand_count: main_hand.map_or(0, |stack| stack.count as i32),
+                    leather_boots: worn_boots::leather_boots(&self.armor),
+                }
+            });
+            let cart_boxes = self
+                .carts
+                .iter()
+                .map(|c| {
+                    let p = c.position;
+                    (
+                        [p.x - 0.49, p.y, p.z - 0.49],
+                        [p.x + 0.49, p.y + 0.7, p.z + 0.49],
+                    )
+                })
+                .collect();
+            let arrow_boxes = self
+                .creatures
+                .projectiles
+                .iter()
+                .filter(|p| p.arrow.is_some())
+                .map(|p| p.position)
+                .chain(self.tridents.iter().map(|t| t.position))
+                .map(|at| {
+                    let b = sunrise_client::arrows::arrow_bounds(at);
+                    (b.min_position().components(), b.max_position().components())
+                })
+                .collect();
+            let fire_players: Vec<[f64; 3]> = self
+                .player
+                .iter()
+                .filter(|_| !spectator)
+                .map(|p| [p.position.x, p.position.y, p.position.z])
+                .collect();
+            let trigger_hooks: Vec<(Aabb, bool)> = self
+                .hook
+                .iter()
+                .map(|h| (h.bounds(), h.applies_block_effects()))
+                .collect();
+            let trigger_extras: Vec<Aabb> = self
+                .bolts
+                .iter()
+                .map(|b| {
+                    let at = Vec3::new(b.at[0], b.at[1], b.at[2]);
+                    Aabb::new(at, at)
+                })
+                .collect();
+            let mut open_containers: Vec<(i32, i32, i32)> = Vec::new();
+            for key in self.container.into_iter().filter(|_| !spectator) {
+                open_containers.push(key);
+                if let Some(other) = self.chest_other_half(key) {
+                    open_containers.push(other);
+                }
+            }
+            let mut golem_chests: Vec<(i32, i32, i32)> = Vec::new();
+            for &key in self.world.chest_openers.keys() {
+                golem_chests.push(key);
+                golem_chests.extend(self.chest_other_half(key));
+            }
+            (
+                player_box,
+                player_collision,
+                cart_boxes,
+                arrow_boxes,
+                fire_players,
+                trigger_hooks,
+                trigger_extras,
+                open_containers,
+                golem_chests,
+            )
+        };
+        let dimension = self.dim.level();
+        let rules = self.level_rules();
+        let api_level = self.native_client_level();
+        let liquid_transaction_open = self.has_level_transaction();
+        let environment = self.res.environment_of(&self.dimension_type().id);
+        let loot_storage = self.score.storage.snapshot();
+
+        let mut scratch_hoppers = HashMap::new();
+        let mut scratch_rand_sequences =
+            sunrise_client::random_sequences::RandomSequences::default();
+        let mut client_spill = spill::Spill::default();
+        let mut scratch_random_tick_sections =
+            sunrise_client::random_tick_sections::RandomTickSections::default();
+        let mut scratch_lid_openers = HashMap::new();
+        let mut scratch_native_sounds = Vec::new();
+        let mut scratch_native_particles = Vec::new();
+
+        let items = self
+            .server_items
+            .as_deref()
+            .unwrap_or_else(|| self.res.items());
+        let recipes = self
+            .recipe_tables
+            .synced
+            .as_ref()
+            .unwrap_or_else(|| self.res.recipes());
+        let enabled_features = match &self.remote {
+            Some(remote) => &remote.features,
+            None => crate::game::tables::default_client_features(),
+        };
+        let redstone_experiments = enabled_features
+            .iter()
+            .any(|feature| feature == "minecraft:redstone_experiments");
+        let other_entities = entity::entity_lists_of!(self, without_carts);
+
+        let mut level = GameLevel {
+            cake_probe: false,
+            cake_requested: std::cell::Cell::new(false),
+            cake_answer: None,
+            api_level,
+            part_state_index: self.attachment_indexes.get(&self.dim),
+            attachment_query_scopes: &self.transactions.attachment_query_scopes,
+            command_block_transition: None,
+            positions: piston_carry_state::PositionState {
+                gateways: &mut self.be_anims.gateway_servers,
+                hoppers: &mut scratch_hoppers,
+            },
+            border: self.border.geometry(),
+            redstone_experiments,
+            cart_boxes,
+            item_frames: &self.item_frames,
+            carts: &mut self.carts,
+            arrow_boxes,
+            other_entities,
+            crystals: &self.crystals,
+            trigger_hooks,
+            trigger_extras,
+            world: &mut self.world,
+            facts: self.res.facts(),
+            tables: native_block_tables::BlockTables::new(&self.res, &self.pack),
+            collision: self.collision,
+            events: &mut self.level_events,
+            dimension,
+            darken,
+            environment,
+            raining: rain > 0.2,
+            thundering: thunder > 0.9,
+            enabled_features,
+            player_box,
+            guest_boxes: Vec::new(),
+            building_player_boxes: None,
+            player_collision,
+            biomes: world_biomes!(self),
+            biome_zoom: self.streaming.biome_zoom,
+            seed: self.level.seed,
+            behaviours: self.res.behaviours(),
+            items,
+            recipes,
+            loot: None,
+            loot_storage,
+            registry: self.pack.assets.registry,
+            block_registries: &self.pack.block_registries,
+            rules,
+            difficulty: i32::from(self.ui.difficulty),
+            fire_players,
+            rand_sequences: &mut scratch_rand_sequences,
+            pending: &mut self.pending,
+            spill: &mut client_spill,
+            tickets: sunrise_client::ticket_levels::ChunkTickets::default().levels(),
+            random_tick_sections: &mut scratch_random_tick_sections,
+            lid_openers: &mut scratch_lid_openers,
+            open_containers: &open_containers,
+            golem_chests: &golem_chests,
+            client_side: true,
+            native_authoritative: false,
+            native_player: None,
+            native_player_entity: None,
+            liquid_transaction_open,
+            debug: false,
+            native_sounds: &mut scratch_native_sounds,
+            loop_context: &self.loop_context,
+            native_particles: &mut scratch_native_particles,
+            sound_seeds: None,
+            drop_tool: None,
+            drop_entity: None,
+            interacting: None,
+            location: location_world::LocationRefs {
+                dimension: self.dim.id(),
+                end: &self.end,
+                tags: advancements::TagSources {
+                    pack_tags: None,
+                    items,
+                    mob_data: self.res.mob_data(),
+                    damage: &self.health_resources.damage,
+                    resources: &self.options.resources,
+                },
+            },
+            drop_breaker_at: None,
+            drop_into: None,
+        };
+        let result = f(self.res.behaviours(), &mut level, &mut self.block_ticks);
+        drop(level);
+        if !placement_preview
+            && (!client_spill.piston_positions.is_empty() || !client_spill.removed.is_empty())
+        {
+            self.client_finish_spill(client_spill);
+        }
+        result
+    }
+
+    /// Client-visible spill cleanup (moving-piston animation/container state and removed block
+    /// entity container reset); omits server drops, hopper caches, guest menus, and LAN broadcasts.
+    fn client_finish_spill(&mut self, spill: spill::Spill) {
+        for change in spill.piston_positions {
+            match change {
+                PositionChange::Carry { from, to, partner } => {
+                    for at in [from, to] {
+                        let p = [at.0, at.1, at.2];
+                        self.be_anims.remove_position(p);
+                        self.world.shulkers.remove(&p);
+                        self.world.chest_openers.remove(&at);
+                    }
+                    if self
+                        .container
+                        .is_some_and(|at| at == from || Some(at) == partner)
+                    {
+                        self.side_close_container();
+                    }
+                }
+                PositionChange::Land { at } => {
+                    if self.world.block_entities.get(&at).is_none() {
+                        self.world.set_block_entity_extras(at, Default::default());
+                        self.world.block_names.remove(&at);
+                    }
+                }
+            }
+        }
+        for (pos, _) in spill.removed {
+            if self.container == Some((pos[0], pos[1], pos[2])) {
+                self.container = None;
+            }
+        }
+    }
+
+    pub(in crate::game) fn client_after_with_level(&mut self) {}
+
+    pub(in crate::game) fn client_set_block_live(
+        &mut self,
+        pos: [i32; 3],
+        state: BlockStateId,
+        flags: i32,
+        create_entity: bool,
+    ) -> bool {
+        let [x, y, z] = pos;
+        let at = BlockPos::new(x, y, z);
+        let previous = self.world.block(x, y, z);
+        self.with_level(|b, level, ticks| {
+            let changed = b.set_block(level, ticks, at, state, flags);
+            if create_entity {
+                level.finish_native_block(pos, previous, state, changed);
+            }
+            changed
+        })
+    }
+
+    pub(in crate::game) fn client_update_chunk_tickets(&mut self) {}
+
+    pub(in crate::game) fn client_section_mesh_pending_in(&self, section: (i32, i32, i32)) -> bool {
+        self.section_mesh_pending_in(section)
+    }
+
+    pub(in crate::game) fn client_landing_change_cancelled(
+        &mut self,
+        _player: Option<u128>,
+        _position: BlockPos,
+        _from: BlockStateId,
+        _to: BlockStateId,
+    ) -> bool {
+        false
+    }
+
+    pub(in crate::game) fn client_tick(&mut self) -> Result<()> {
+        let client_level = self.remote.is_some();
+        // Held through the carry too: a carried body's move asks the parts as its own does.
+        let _parts = client_level.then(|| self.collision_parts()).flatten();
+        // A client's tick of the level it shows holds the colliders as it began, then carries
+        // its own player with the one it stands on.
+        let _scope = client_level.then(|| {
+            sunrise_client_render::moving_colliders::Scope::enter_level(
+                self.client_collider_level(),
+                self.client_placed_moving_colliders(),
+            )
+        });
+        self.expire_client_cracks();
+        if self.agent.hold_server {
+            return Ok(());
+        }
+        self.abort_open_transactions();
+        self.update_interaction_ranges();
+        self.tick_client_lead()?;
+        if client_level {
+            self.with_residency_tick(Self::tick_remote)
+        } else {
+            Ok(())
+        }
+    }
+
+    pub(in crate::game) fn client_drop_stack_from_eyes(
+        &mut self,
+        _stack: ItemStack,
+        _thrown_from_hand: bool,
+    ) -> Option<u32> {
+        None
+    }
+
+    pub(in crate::game) fn client_give_experience_points(&mut self, _points: i32) {}
+
+    pub(in crate::game) fn client_journal_entity(&mut self, _id: u32) {
+        self.transactions.writes = self.transactions.writes.wrapping_add(1);
+    }
+
+    pub(in crate::game) fn client_active_level_ref(
+        &self,
+        _epoch: mod_api::WorldEpoch,
+    ) -> Option<mod_api::LevelRef> {
+        self.native_client_level()
+    }
+
+    /// Reset and rebind client-visible entity residency without touching server parked levels
+    /// or LAN guest tables.
+    pub(in crate::game) fn client_reset_entity_residency(&mut self) {
+        let dimension = self.dim.key();
+        let table = self.resident_entities.table.get_mut();
+        table.reset();
+        let journal = table.producer();
+        crate::game::entity_residency::bind_resident_list!(
+            Mob,
+            self.mobs,
+            &journal,
+            Owner {
+                dimension,
+                kind: Kind::Mob
+            }
+        );
+        crate::game::entity_residency::bind_resident_list!(
+            Item,
+            self.dropped,
+            &journal,
+            Owner {
+                dimension,
+                kind: Kind::Item
+            }
+        );
+        crate::game::entity_residency::bind_resident_list!(
+            Orb,
+            self.orbs,
+            &journal,
+            Owner {
+                dimension,
+                kind: Kind::Orb
+            }
+        );
+        crate::game::entity_residency::bind_resident_list!(
+            Stand,
+            self.armor_stands,
+            &journal,
+            Owner {
+                dimension,
+                kind: Kind::Stand
+            }
+        );
+        crate::game::entity_residency::bind_resident_list!(
+            Frame,
+            self.item_frames,
+            &journal,
+            Owner {
+                dimension,
+                kind: Kind::Frame
+            }
+        );
+        crate::game::entity_residency::bind_resident_list!(
+            Painting,
+            self.paintings,
+            &journal,
+            Owner {
+                dimension,
+                kind: Kind::Painting
+            }
+        );
+        crate::game::entity_residency::bind_resident_list!(
+            Boat,
+            self.boats,
+            &journal,
+            Owner {
+                dimension,
+                kind: Kind::Boat
+            }
+        );
+        crate::game::entity_residency::bind_resident_list!(
+            Cart,
+            self.carts,
+            &journal,
+            Owner {
+                dimension,
+                kind: Kind::Cart
+            }
+        );
+        crate::game::entity_residency::bind_resident_list!(
+            Fangs,
+            self.fangs.list,
+            &journal,
+            Owner {
+                dimension,
+                kind: Kind::Fangs
+            }
+        );
+        crate::game::entity_residency::bind_resident_list!(
+            Crystal,
+            self.crystals,
+            &journal,
+            Owner {
+                dimension,
+                kind: Kind::Crystal
+            }
+        );
+        crate::game::entity_residency::bind_resident_list!(
+            Tnt,
+            self.tnts,
+            &journal,
+            Owner {
+                dimension,
+                kind: Kind::Tnt
+            }
+        );
+        crate::game::entity_residency::bind_resident_list!(
+            Cushion,
+            self.cushions,
+            &journal,
+            Owner {
+                dimension,
+                kind: Kind::Cushion
+            }
+        );
+        crate::game::entity_residency::bind_resident_list!(
+            Knot,
+            self.resident_entities.knots,
+            &journal,
+            Owner {
+                dimension,
+                kind: Kind::Knot
+            }
+        );
+        crate::game::entity_residency::bind_resident_list!(
+            Falling,
+            self.falling,
+            &journal,
+            Owner {
+                dimension,
+                kind: Kind::Falling
+            }
+        );
+        crate::game::entity_residency::bind_resident_list!(
+            Rocket,
+            self.rockets,
+            &journal,
+            Owner {
+                dimension,
+                kind: Kind::Rocket
+            }
+        );
+        crate::game::entity_residency::bind_resident_list!(
+            Trident,
+            self.tridents,
+            &journal,
+            Owner {
+                dimension,
+                kind: Kind::Trident
+            }
+        );
+        crate::game::entity_residency::bind_resident_list!(
+            Spawner,
+            self.ominous_spawners,
+            &journal,
+            Owner {
+                dimension,
+                kind: Kind::Spawner
+            }
+        );
+        crate::game::entity_residency::bind_resident_list!(
+            Cloud,
+            self.breath_clouds,
+            &journal,
+            Owner {
+                dimension,
+                kind: Kind::Cloud
+            }
+        );
+        crate::game::entity_residency::bind_resident_list!(
+            Bolt,
+            self.bolts,
+            &journal,
+            Owner {
+                dimension,
+                kind: Kind::Bolt
+            }
+        );
+        crate::game::entity_residency::bind_resident_list!(
+            General,
+            self.resident_entities.general.rows,
+            &journal,
+            Owner {
+                dimension,
+                kind: Kind::General
+            }
+        );
+        self.creatures.projectiles.bind_residency(
+            &journal,
+            Owner {
+                dimension,
+                kind: Kind::Projectile,
+            },
+            |entity| (entity.id, entity.join_seq()),
+        );
+        self.dragon.bind_residency_specialized(
+            &journal,
+            Owner {
+                dimension,
+                kind: Kind::Dragon,
+            },
+            |entity| (entity.id, entity.join_seq()),
+            Source::Ordinary,
+            Some((Kind::DragonPart, 8, |dragon, offset| {
+                dragon.parts.get(usize::from(offset)).map(|part| part.3)
+            })),
+            None,
+        );
+        self.resident_entities.local_player.rebind(&journal);
+        let body_id = self.player.as_ref().map(|player| player.entity_id as u32);
+        if self
+            .resident_entities
+            .local_player
+            .identity()
+            .is_some_and(|identity| Some(identity.id.get()) != body_id)
+        {
+            self.resident_entities.local_player.extract();
+        }
+        self.hook.bind_residency_specialized(
+            &journal,
+            Owner {
+                dimension,
+                kind: Kind::Hook,
+            },
+            |hook| (hook.id(), hook.join_seq()),
+            Source::Hook { caster: None },
+            None,
+            Some(|hook| Some(hook.uuid)),
+        );
+    }
+
+    /// Forget client-side records for a removed remote entity (omitting server hurt tracking).
+    pub(in crate::game) fn client_forget_entity(&mut self, id: u32) {
+        self.persist.transient.remove(&id);
+        self.persist.uuids.remove(&id);
+        self.persist.score_destroyed.remove(&id);
+        self.forget_entity_initialization(mod_api::Holder::Entity(id));
+        self.entity_attachments.remove(&id);
+        self.entity_attachments.remove_collider(id);
+        self.persist.raw.remove(&id);
+        self.persist.no_physics.remove(&id);
+    }
+
+    /// The reach of the block entity a block state holds (see [`Self::block_entity_reach_entry`]).
+    pub(in crate::game) fn block_entity_reach(&self, state: u32) -> Reach {
+        self.block_entity_reach_entry(state).0
+    }
+
+    pub(in crate::game) fn orb_geometry<'a>(
+        &self,
+        camera: glam::DVec3,
+        frame: &OrbFrame,
+        orbs: impl Iterator<Item = (&'a sunrise_client::entities::ExperienceOrb, [f64; 3], f32)>,
+        orb_view: Option<&sunrise_client::gfx::JoinedFrusta>,
+        out: &mut Vec<Vertex>,
+    ) {
+        let OrbFrame {
+            sprite,
+            forward,
+            right,
+            up,
+        } = *frame;
+        for (o, at, partial) in orbs {
+            let p = glam::DVec3::new(at[0], at[1] + 0.1, at[2]) - camera;
+            let c = p.as_vec3();
+            if orb_view
+                .is_some_and(|view| forward.dot(c) < 0.0 && !entity_culling::orb_in_view(view, c))
+            {
+                continue;
+            }
+            if let Some(resolved) = native_entity_renderers::experience_orb_renderer() {
+                let entity: mod_api::EntityRenderState =
+                    mod_api::__private::built::EntityRenderState {
+                        id: o.id,
+                        partial,
+                        age: o.age as f32 + partial,
+                        yaw: o.rotation[0],
+                        pitch: o.rotation[1],
+                        living: None,
+                        tnt_fuse: None,
+                        orb_value: Some(o.value),
+                        painting: None,
+                        item_frame: None,
+                        attachments: None,
+                    }
+                    .into();
+                let light = self.world.light(
+                    o.position.x.floor() as i32,
+                    o.light_probe_y().floor() as i32,
+                    o.position.z.floor() as i32,
+                );
+                let packed = o.render_light(i32::from(light));
+                let block = [
+                    o.position.x.floor() as i32,
+                    o.light_probe_y().floor() as i32,
+                    o.position.z.floor() as i32,
+                ];
+                if self.mod_entity_renderer_geometry(
+                    &resolved,
+                    &entity,
+                    "minecraft:experience_orb",
+                    glam::DVec3::from_array(at) - camera,
+                    Some(glam::DVec3::from_array(at)),
+                    block,
+                    packed,
+                    out,
+                ) {
+                    continue;
+                }
+            }
+            let Some(r) = sprite else {
+                continue;
+            };
+            let icon = o.icon();
+            let (du, dv) = ((r.u1 - r.u0) / 4.0, (r.v1 - r.v0) / 4.0);
+            let (u0, v0) = (r.u0 + (icon % 4) as f32 * du, r.v0 + (icon / 4) as f32 * dv);
+            let t = (o.age as f32 + partial) / 2.0;
+            let red = ((t.sin() + 1.0) * 0.5 * 255.0) as u32;
+            let blue = (((t + 4.188_79).sin() + 1.0) * 0.1 * 255.0) as u32;
+            let color = 0x8000_0000 | blue << 16 | 255 << 8 | red;
+            let light = self.world.light(
+                o.position.x.floor() as i32,
+                o.light_probe_y().floor() as i32,
+                o.position.z.floor() as i32,
+            );
+            let packed = o.render_light(i32::from(light));
+            let s = sunrise_client::entities::ORB_QUAD_SCALE;
+            for (k, uv) in sunrise_client::entities::ORB_QUAD.iter().zip([
+                [u0, v0 + dv],
+                [u0 + du, v0 + dv],
+                [u0 + du, v0],
+                [u0, v0],
+            ]) {
+                let v = c + right * (k[0] * s) + up * (k[1] * s);
+                out.push(Vertex {
+                    normal: [0; 4],
+                    pos: v.to_array(),
+                    uv,
+                    layer: sunrise_client::gfx::OIT_ENTITY
+                        | u32::from(sunrise_client::mesher::VERY_BRIGHT) << 16,
+                    color,
+                    light: packed,
+                    glint_uv: [0.0, 0.0],
+                });
+            }
+        }
+    }
+
+    pub(in crate::game) fn run_component_harness(
+        &self,
+        fixture: integrated::ComponentHarness,
+    ) -> Result<()> {
+        integrated::run_component_harness_on_server(
+            self.res.clone(),
+            self.pack.clone(),
+            self.options.clone(),
+            self.settings.clone(),
+            fixture,
+        )
+    }
+
+    /// The server thread has already delivered its report: written to disk, or printed
+    /// when it couldn't be written. Join through the normal halt path and exit.
+    pub(in crate::game) fn exit_after_server_crash(&mut self) {
+        if !sunrise_client::crash::server_crashed() {
+            return;
+        }
+        let starting = self
+            .integrated_starting
+            .take()
+            .map(|starting| starting.handle);
+        for mut server in self.integrated.take().into_iter().chain(starting) {
+            if let Err(error) = server.halt() {
+                log::error!("Sunrise: crashed integrated server: {error}");
+            }
+        }
+        std::process::exit(101);
+    }
+}

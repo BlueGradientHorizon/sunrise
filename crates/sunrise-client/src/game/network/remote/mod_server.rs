@@ -19,6 +19,12 @@ pub(in crate::game::server_side) use super::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::api_values::TryIntoApi;
 #[allow(unused_imports)]
+#[cfg(test)]
+pub(in crate::game::server_side) use crate::game::client_side::remote_client::RemoteInputWorld;
+#[allow(unused_imports)]
+#[cfg(test)]
+pub(in crate::game::server_side) use crate::game::client_side::remote_client::RemoteUseWorld;
+#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::collision_source::Mover;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::remote::BACKLOG_LIMIT;
@@ -54,10 +60,6 @@ pub(in crate::game::server_side) use crate::game::remote::PlayerTextures;
 pub(in crate::game::server_side) use crate::game::remote::Remote;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::remote::RemoteDimensionEntry;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::RemoteInputWorld;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::remote::RemoteUseWorld;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::remote::SHIFT_INPUT;
 #[allow(unused_imports)]

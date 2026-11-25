@@ -661,6 +661,150 @@ impl Game<'_> {
         self.remote_dragon_phase_tick();
         self.place_dragon_parts();
     }
+
+    /// `BossHealthOverlay.extractRenderState`: whatever `publish_boss_bars`
+    /// (or a server's packets) put on this client's overlay.
+    pub(in crate::game) fn draw_boss_bars(&self, batch: &mut HudBatch) {
+        let draws = self.boss_bar_draws(batch.width as i32, batch.height as i32);
+        hud_layout::paint(batch, &self.gui.atlas, &draws);
+    }
+
+    /// `EnderDragonRenderer.submitRays`: untextured, additive death rays.
+    pub(in crate::game) fn dragon_rays(&self, base: glam::Mat4, t: f32, out: &mut Vec<Vertex>) {
+        dragon_rays(base, t, self.gui.atlas.font.white(), out);
+    }
+
+    pub(in crate::game) fn client_resident_dragon_part_index(&self, id: u32) -> Option<usize> {
+        let dragon = self.dragon.as_ref()?;
+        dragon_part_index(dragon.id, id)
+    }
+
+    /// Client-side entity check for `end_crystal_fits` (`EndCrystalItem.useOn`).
+    pub(in crate::game) fn client_entity_in(&self, room: Aabb) -> bool {
+        let touches = |lo: Vec3, hi: Vec3| {
+            let (a, b) = (room.min_position(), room.max_position());
+            lo.x < b.x && hi.x > a.x && lo.y < b.y && hi.y > a.y && lo.z < b.z && hi.z > a.z
+        };
+        let player = !self.spectator()
+            && self
+                .player
+                .as_ref()
+                .is_some_and(|p| touches(p.bounds().min_position(), p.bounds().max_position()));
+        player
+            || self.crystals.iter().any(|c| {
+                touches(
+                    Vec3::new(c.position.x - 1.0, c.position.y, c.position.z - 1.0),
+                    Vec3::new(c.position.x + 1.0, c.position.y + 2.0, c.position.z + 1.0),
+                )
+            })
+            || self.mobs.iter().any(|m| {
+                let w = f64::from(m.width()) / 2.0;
+                let h = f64::from(m.height());
+                touches(
+                    Vec3::new(m.position.x - w, m.position.y, m.position.z - w),
+                    Vec3::new(m.position.x + w, m.position.y + h, m.position.z + w),
+                )
+            })
+    }
+
+    /// Client-side dragon retirement: forgets parent and all 8 parts' client sidecars before discard.
+    pub(in crate::game::client_side) fn client_discard_dragon(&mut self) {
+        if let Some(id) = self
+            .dragon
+            .as_ref()
+            .filter(|dragon| dragon.id != 0 || self.remote.is_some())
+            .map(|dragon| dragon.id)
+        {
+            for part in 0..8 {
+                self.client_forget_entity(dragon_part_id(id, part));
+            }
+            self.client_forget_entity(id);
+        }
+        self.dragon.discard();
+    }
+
+    /// `handleAddEntity` for `minecraft:ender_dragon`. Its constructor
+    /// sets the full health and the hovering phase until the server's
+    /// synched data says otherwise.
+    pub(in crate::game) fn spawn_remote_dragon(&mut self, id: i32, position: [f64; 3], yaw: f32) {
+        let at = Vec3::new(position[0], position[1], position[2]);
+        let mut d = Dragon::new(at, yaw, i64::from(id));
+        d.id = id as u32;
+        d.phase = Phase::from_id(10);
+        d.join = sunrise_client::join_seq::JoinSeq::next();
+        self.client_discard_dragon();
+        self.dragon.replace(d);
+        self.place_dragon_parts();
+        if let Some(d) = self.dragon.as_mut() {
+            for part in &mut d.parts {
+                part.1 = part.0;
+            }
+        }
+    }
+
+    /// The remote dragon, if `id` is it or one of its parts.
+    pub(in crate::game::client_side) fn remote_dragon_mut(
+        &mut self,
+        id: i32,
+    ) -> Option<&mut Dragon> {
+        let uid = id as u32;
+        let remote = self.remote.is_some();
+        self.dragon.as_mut().filter(|d| {
+            (d.id != 0 || remote) && (d.id == uid || dragon_part_index(d.id, uid).is_some())
+        })
+    }
+
+    /// `handleSetEntityData`: LivingEntity.DATA_HEALTH_ID and
+    /// EnderDragon.DATA_PHASE (`onSyncedDataUpdated` sets the phase).
+    pub(in crate::game) fn remote_dragon_data(&mut self, id: i32, values: &[(u8, i32, Value)]) {
+        let Some(d) = self.remote_dragon_mut(id) else {
+            return;
+        };
+        for (index, _, value) in values {
+            match (index, value) {
+                (9, Value::Float(health)) => d.health = *health,
+                (16, Value::Int(phase)) => d.set_phase(Phase::from_id(*phase)),
+                // Mob.DATA_MOB_FLAGS_ID: isNoAi.
+                (15, Value::Byte(flags)) => d.no_ai = flags & 1 != 0,
+                _ => {}
+            }
+        }
+    }
+
+    /// `handleSetEntityMotion`: the velocity its wings flap by.
+    pub(in crate::game) fn remote_dragon_motion(&mut self, id: i32, velocity: [f64; 3]) {
+        if let Some(d) = self.remote_dragon_mut(id) {
+            d.velocity = Vec3::new(velocity[0], velocity[1], velocity[2]);
+        }
+    }
+
+    /// `handleHurtAnimation` and `handleDamageEvent`: the red flash.
+    pub(in crate::game) fn remote_dragon_hurt(&mut self, id: i32) {
+        if let Some(d) = self.remote_dragon_mut(id) {
+            // `LivingEntity.handleDamageEvent`: the red flash. Its sound is the
+            // server's (`playHurtSound`); a client plays one only for its own player.
+            d.hurt_time = 10;
+        }
+    }
+
+    /// `handleRemoveEntities`, or a crystal removed: the healing beam
+    /// keeps pointing at the same crystal.
+    pub(in crate::game) fn remove_remote_dragon(&mut self, id: i32) {
+        if self.dragon.as_ref().is_some_and(|d| d.id as i32 == id) {
+            self.client_discard_dragon();
+            return;
+        }
+        let Some(index) = self.crystals.iter().position(|c| c.id as i32 == id) else {
+            return;
+        };
+        if let Some(d) = self.dragon.as_mut() {
+            match d.nearest_crystal {
+                Some(n) if n == index => d.nearest_crystal = None,
+                Some(n) if n > index => d.nearest_crystal = Some(n - 1),
+                _ => {}
+            }
+        }
+    }
 }
 
 #[cfg(test)]

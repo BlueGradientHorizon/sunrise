@@ -6,68 +6,37 @@ use mod_api::{LevelRef, PlayerRef};
 use sunrise_world::registry::BlockStateId;
 
 impl Game<'_> {
-    /// `BlockBehaviour.getDestroyProgress(state, player, level, pos)` for a supplied state:
-    /// the same math as the game's own dig, including the `can_harvest_block`,
-    /// `player_harvest_check` and `player_break_speed` hooks. A server asks a connected or
-    /// fake player (their state swapped in); a client only its local player. None for a stale
-    /// handle, an unknown state, a dead player, a level other than the one in place, or a call
-    /// from inside one of those hooks, which would run it again without bound.
-    pub(in crate::game) fn player_destroy_progress(
+    pub(in crate::game) fn server_player_destroy_progress(
         &mut self,
         player: PlayerRef,
         level: LevelRef,
         pos: [i32; 3],
         state: BlockStateId,
     ) -> Option<f32> {
-        self.pack.assets.registry.state(state)?;
-        if crate::game::hand::BreakSpeedDispatch::running()
-            || crate::game::hand::HarvestDispatch::running()
-        {
-            return None;
-        }
-        if self.native_level_read_world(level).is_none() || level.dimension() != self.dim.key() {
+        if self.native_level_world(level).is_none() || level.dimension() != self.dim.key() {
             return None;
         }
         let mut answer = None;
-        if self.is_logical_server() {
-            self.native_as_player_handle(player, |game| {
-                answer = Some(game.destroy_progress_for(pos, state));
-            });
-        } else if self.local_player() == Some(player) {
-            answer = Some(self.destroy_progress_for(pos, state));
-        }
+        self.native_as_player_handle(player, |game| {
+            answer = Some(game.destroy_progress_for(pos, state));
+        });
         answer
     }
 
-    /// `Player.hasCorrectToolForDrops(state, level, pos)` and `canHarvestBlock`: the player's
-    /// selected slot against `state`, then the mods' `can_harvest_block` and
-    /// `player_harvest_check`. A server asks a connected or fake player (their state swapped
-    /// in); a client only its local player. None for a stale handle, an unknown state, a dead player,
-    /// a level other than the one in place, or a call from inside a harvest hook
-    /// (`can_harvest_block`, `player_harvest_check`), which would recurse.
-    pub(in crate::game) fn player_has_correct_tool_for_drops(
+    pub(in crate::game) fn server_player_has_correct_tool_for_drops(
         &mut self,
         player: PlayerRef,
         level: LevelRef,
         pos: [i32; 3],
         state: BlockStateId,
     ) -> Option<bool> {
-        self.pack.assets.registry.state(state)?;
-        // From inside a harvest hook the query would run the hook again, without bound.
-        if crate::game::hand::HarvestDispatch::running() {
-            return None;
-        }
-        if self.native_level_read_world(level).is_none() || level.dimension() != self.dim.key() {
+        if self.native_level_world(level).is_none() || level.dimension() != self.dim.key() {
             return None;
         }
         let mut answer = None;
-        if self.is_logical_server() {
-            self.native_as_player_handle(player, |game| {
-                answer = Some(game.acting_can_harvest(pos, state));
-            });
-        } else if self.local_player() == Some(player) {
-            answer = Some(self.acting_can_harvest(pos, state));
-        }
+        self.native_as_player_handle(player, |game| {
+            answer = Some(game.acting_can_harvest(pos, state));
+        });
         answer
     }
 }

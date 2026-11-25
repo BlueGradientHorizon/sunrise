@@ -73,4 +73,146 @@ impl Game<'_> {
             remote.colliders.insert(entity, state);
         }
     }
+
+    /// Where the collider entity `id` stands in the client's view.
+    pub(in crate::game) fn client_collider_origin(&self, id: u32) -> Option<Vec3> {
+        let epoch = self.native_lifecycle.epoch()?;
+        let at = self.native_client_tracked(EntityRef::new(epoch, id))?.1;
+        Some(Vec3::new(at[0], at[1], at[2]))
+    }
+
+    pub(in crate::game::client_side) fn client_vehicle_stack(&self, id: u32) -> Vec<u32> {
+        let Some(remote) = &self.remote else {
+            return vec![id];
+        };
+        stack_in_graph(&remote.passenger_vehicles, id)
+    }
+
+    /// The frame the collider of entity `id` has now on the client.
+    pub(in crate::game) fn client_collider_now_frame(
+        &self,
+        id: u32,
+    ) -> Option<sunrise_core::geometry::oriented::Frame> {
+        let state = self.remote.as_ref()?.colliders.get(&id)?;
+        Some(state.frame(self.client_collider_origin(id)?))
+    }
+
+    pub(in crate::game::client_side) fn client_each_collider(
+        &self,
+        mut f: impl FnMut(u32, &ColliderState) -> bool,
+    ) -> bool {
+        if let Some(remote) = &self.remote {
+            for (&id, state) in &remote.colliders {
+                if !f(id, state) {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    pub(in crate::game::client_side) fn client_is_alone(&self, id: u32) -> bool {
+        self.remote
+            .as_ref()
+            .is_none_or(|r| r.passenger_vehicle(id).is_none() && !r.has_passengers(id))
+    }
+
+    pub(in crate::game::client_side) fn client_stack_is(&self, id: u32, kept: &[u32]) -> bool {
+        if kept == [id] {
+            self.client_is_alone(id)
+        } else {
+            let mut now = self.client_vehicle_stack(id);
+            let mut kept = kept.to_vec();
+            now.sort_unstable();
+            kept.sort_unstable();
+            now == kept
+        }
+    }
+
+    /// The colliders of the client's current level, where they stand now.
+    pub(in crate::game) fn client_placed_moving_colliders(
+        &mut self,
+    ) -> sunrise_client_render::moving_colliders::Prepared {
+        use sunrise_client_render::moving_colliders::{Placed, Prepared};
+        let level = self.dim;
+        let mut any = false;
+        self.client_each_collider(|_, _| {
+            any = true;
+            false
+        });
+        if !any {
+            self.collider_placements.0.remove(&level);
+            return Prepared::empty();
+        }
+        if let Some(kept) = self.collider_placements.0.get(&level) {
+            let mut at = 0;
+            let same = self.client_each_collider(|id, state| {
+                let key = kept.keys.get(at);
+                at += 1;
+                let Some(origin) = self.client_collider_origin(id) else {
+                    return false;
+                };
+                key.is_some_and(|key| {
+                    key.id == id
+                        && key.serial == state.serial()
+                        && key.origin == origin_bits(origin)
+                        && self.client_stack_is(id, &key.stack)
+                })
+            });
+            if same && at == kept.keys.len() {
+                return kept.prepared.clone();
+            }
+        }
+        let mut keys = Vec::new();
+        let mut placed = Vec::new();
+        self.client_each_collider(|id, state| {
+            if let Some(origin) = self.client_collider_origin(id) {
+                let stack = self.client_vehicle_stack(id);
+                keys.push(PlacementKey {
+                    id,
+                    serial: state.serial(),
+                    origin: origin_bits(origin),
+                    stack: stack.clone(),
+                });
+                placed.push(Placed {
+                    id,
+                    collider: state.oriented(origin),
+                    exempt: stack,
+                });
+            }
+            true
+        });
+        let prepared = Prepared::new(placed);
+        self.collider_placements.0.insert(
+            level,
+            Placement {
+                keys,
+                prepared: prepared.clone(),
+            },
+        );
+        prepared
+    }
+
+    /// The client level in place for moving-collider scoping.
+    pub(in crate::game) fn client_collider_level(&self) -> Option<mod_api::LevelRef> {
+        self.native_client_level()
+    }
+
+    /// Runs `f` with the client's moving colliders and collision parts scoped (no history).
+    pub(in crate::game) fn client_in_this_levels_colliders<R>(
+        &mut self,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        use sunrise_client_render::moving_colliders::{HistoryScope, Scope};
+
+        let level = self.client_collider_level();
+        if level.is_some_and(Scope::covers) {
+            return f(self);
+        }
+        let placed = self.client_placed_moving_colliders();
+        let _parts = self.collision_parts();
+        let _history = HistoryScope::replace(None);
+        let _scope = Scope::enter_level(level, placed);
+        f(self)
+    }
 }

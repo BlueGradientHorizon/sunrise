@@ -108,27 +108,6 @@ impl Drop for DispenseScope<'_, '_> {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn prop(&self, state: BlockStateId, key: &str) -> Option<String> {
-        self.pack
-            .assets
-            .registry
-            .state(state)?
-            .properties
-            .get(key)
-            .cloned()
-    }
-    /// The same block with other properties (`withProperty`).
-    pub(in crate::game) fn with_props(
-        &self,
-        state: BlockStateId,
-        props: &[(&str, &str)],
-    ) -> Option<BlockStateId> {
-        let mut s = self.pack.assets.registry.state(state)?.clone();
-        for (k, v) in props {
-            s.properties.insert((*k).to_owned(), (*v).to_owned());
-        }
-        self.pack.assets.registry.resolve(&s).ok()
-    }
     pub(in crate::game) fn block_at(&self, p: Pos) -> BlockStateId {
         self.world.block(p.0, p.1, p.2)
     }
@@ -1330,17 +1309,6 @@ impl Game<'_> {
             return Ok((self.hurt_and_break(stack, 1), event));
         }
         Ok((Some(stack), event))
-    }
-    /// `CampfireBlock.canLight || CandleBlock.canLight || CandleCakeBlock.canLight`.
-    pub(in crate::game) fn can_light(&self, state: BlockStateId, name: &str) -> bool {
-        let lit = self.prop(state, "lit");
-        let waterlogged = self.prop(state, "waterlogged");
-        let dry_unlit = lit.as_deref() == Some("false") && waterlogged.as_deref() == Some("false");
-        ((self.in_block_tag("minecraft:campfires", name)
-            || self.in_block_tag("minecraft:candles", name))
-            && dry_unlit)
-            || (self.in_block_tag("minecraft:candle_cakes", name)
-                && lit.as_deref() == Some("false"))
     }
     pub(in crate::game::server_side) fn dispense_bone_meal(
         &mut self,

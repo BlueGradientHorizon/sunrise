@@ -111,7 +111,6 @@ impl Game<'_> {
     /// it: its clicks don't reach the mouse hooks.
     pub(in crate::game) fn mod_screen_open(&mut self, mod_id: &str) -> bool {
         let unavailable = self.renderer.0.is_none()
-            || self.lan_guest_acting()
             || (self.player.is_none() && self.title.0.is_none())
             || self.remote_loading();
         let owner = if self.screen_over_playing() {

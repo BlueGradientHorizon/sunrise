@@ -9,32 +9,7 @@ use sunrise_client::join_seq::{
 };
 use sunrise_core::geometry::{Aabb, Vec3};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(in crate::game) enum PickKind {
-    Mob,
-    Boat,
-    Cart,
-    ArmorStand,
-    Tnt,
-    Falling,
-    Projectile,
-    Trident,
-    Rocket,
-    General,
-    Painting,
-    ItemFrame,
-    Cushion,
-    Interaction,
-    RemoteGeneral,
-    RemoteKnot,
-    LocalKnot,
-    Crystal,
-    RemoteDisplay,
-    Item,
-    Orb,
-    LocalPlayer,
-    Dragon,
-}
+pub(in crate::game) use crate::game::pick_entity_common::PickKind;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(in crate::game) struct PickMember {
@@ -318,7 +293,7 @@ impl PickSectionStorage {
             self.scratch_removed.clear();
             for (&id, &(kind, _, _)) in &self.by_id {
                 if game.pick_member_position_of_kind(kind, id).is_none()
-                    && !matches!(game.server_resident_entity(id), EntityLookup::Taken)
+                    && !game.side_entity_is_taken(id)
                 {
                     self.scratch_removed.push(id);
                 }

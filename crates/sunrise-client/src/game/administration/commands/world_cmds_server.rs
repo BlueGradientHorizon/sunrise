@@ -326,7 +326,7 @@ impl Game<'_> {
                 let mut p = self.target_position(f).unwrap_or(pos);
                 let eyes = matches!(ctx.get("facingAnchor"), Some(Arg::Anchor(true)));
                 if eyes {
-                    p[1] += self.target_eye_height(f);
+                    p[1] += self.server_target_eye_height(f);
                 }
                 faced_entity = Some((f, eyes));
                 p
@@ -337,7 +337,7 @@ impl Game<'_> {
             // feet, unless `anchored eyes`).
             let anchored_eyes = self.server.command_source.is_some_and(|s| s.eyes);
             let eye = if anchored_eyes {
-                self.target_eye_height(t)
+                self.server_target_eye_height(t)
             } else {
                 0.0
             };

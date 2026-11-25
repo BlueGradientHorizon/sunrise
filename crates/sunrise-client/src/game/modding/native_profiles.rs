@@ -5,11 +5,8 @@ use mod_api::{AccountProfile, AccountProfileProperty, ProfileResolution};
 use sunrise_client::skins::{NameOrId, Resolve};
 
 impl Game<'_> {
-    /// Where the lookup of `key` stands, starting it the first time; `Done(None)` off a server.
+    /// Where the lookup of `key` stands, starting it the first time.
     pub(in crate::game) fn native_resolve_profile(&self, key: NameOrId) -> ProfileResolution {
-        if !self.is_logical_server() {
-            return ProfileResolution::Done(None);
-        }
         match self.skin_profiles.borrow_mut().state(&key) {
             Resolve::Pending => ProfileResolution::Pending,
             Resolve::Done(profile) => ProfileResolution::Done(profile.map(|profile| {
@@ -40,12 +37,12 @@ mod tests {
     use mod_api::{ProfileResolution, ServerHost};
 
     /// A name `StringUtil.isValidPlayerName` refuses answers at once with no profile, as
-    /// `fetchByName` does without a request; a client resolves nothing.
+    /// `fetchByName` does without a request.
     #[test]
     #[ignore = "daily"]
-    fn invalid_names_and_clients_resolve_no_profile() {
+    fn invalid_names_resolve_no_profile() {
         if run_fresh_cases(
-            "game::client_side::native_profiles::tests::invalid_names_and_clients_resolve_no_profile",
+            "game::server_side::native_profiles::tests::invalid_names_resolve_no_profile",
             "SUNRISE_PROFILES_CASE",
             &["server"],
         ) {
@@ -61,11 +58,6 @@ mod tests {
                     "{name}"
                 );
             }
-            game.options.execution_role = ExecutionRole::Client;
-            assert_eq!(
-                game.native_resolve_profile(sunrise_client::skins::NameOrId::Id(1)),
-                ProfileResolution::Done(None)
-            );
         });
     }
 }

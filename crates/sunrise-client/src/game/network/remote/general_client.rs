@@ -90,6 +90,41 @@ impl Game<'_> {
         }
         self.pick_section_sync_id(id as u32);
     }
+
+    /// `ClientLevel.tickPassenger` for the general rows in an applied passenger
+    /// list. Seat a nested general vehicle before its own general passengers.
+    pub(in crate::game) fn position_remote_general_passengers(&mut self) {
+        let Some(remote) = self.remote.as_mut() else {
+            return;
+        };
+        if remote.general.rows.is_empty() || remote.passenger_vehicles.is_empty() {
+            return;
+        }
+        let mut riders = std::mem::take(&mut remote.general.riders);
+        riders.clear();
+        riders.extend(remote.passenger_vehicles.iter().filter_map(|(&id, seat)| {
+            let id = id as i32;
+            if !remote.general.rows.contains_key(&id) {
+                return None;
+            }
+            let depth = std::iter::successors(Some(seat.vehicle), |&v| remote.passenger_vehicle(v))
+                .take(remote.passenger_vehicles.len() + 1)
+                .count();
+            Some((depth, id, seat.vehicle, seat.index))
+        }));
+        riders.sort_unstable();
+        for &(_, id, vehicle, _) in &riders {
+            if let Some(at) = self.general_passenger_position(vehicle, id as u32)
+                && let Some(remote) = self.remote.as_mut()
+                && let Some(row) = remote.general.rows.get_mut(&id)
+            {
+                row.position = [at.x, at.y, at.z];
+            }
+        }
+        if let Some(remote) = self.remote.as_mut() {
+            remote.general.riders = riders;
+        }
+    }
 }
 
 impl RemoteGeneral {

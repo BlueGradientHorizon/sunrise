@@ -62,4 +62,7 @@ impl Game<'_> {
     pub(in crate::game) fn mount_jumping(&self) -> bool {
         self.mount.jump_scale > 0.0 || self.mount.jump_ticks < 0
     }
+    pub(in crate::game) fn client_own_passenger_index(&self, _vehicle: u32) -> usize {
+        self.remote.as_ref().map_or(0, |r| r.passenger_index)
+    }
 }

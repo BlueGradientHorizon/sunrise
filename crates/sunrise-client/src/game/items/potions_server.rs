@@ -1,9 +1,8 @@
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::{
-    Game, Screen,
+    Game,
     commands::Target,
     dragon::{Breath, FightPlayer, FightWho},
-    item_draw::owner_at,
     living_attributes::AttributeWrite,
 };
 #[allow(unused_imports)]
@@ -32,6 +31,8 @@ pub(in crate::game::server_side) use crate::game::client_side::potions::collect_
 pub(in crate::game::server_side) use crate::game::client_side::potions::mob_can_be_affected;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::potions::mob_effect_id;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::potions::potion_cloud_from_nbt;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::potions::potion_cloud_to_nbt;
 #[allow(unused_imports)]
@@ -89,6 +90,707 @@ impl CloudSettings {
 }
 
 impl Game<'_> {
+    /// `InfestedMobEffect.onMobHurt` for the player: from half its height up,
+    /// along where it looks.
+    pub(in crate::game) fn player_infested(&mut self) {
+        if let Some(p) = self.player.as_ref() {
+            let at = [
+                p.position.x,
+                p.position.y + f64::from(p.dimensions.height) / 2.0,
+                p.position.z,
+            ];
+            let look = super::view_vector(self.yaw, self.pitch);
+            // The player's draws come from the world's random.
+            let velocities =
+                sunrise_client::mobs::infested_silverfish(&mut self.world.random, look);
+            self.spawn_infested(at, velocities);
+        }
+    }
+    /// `InfestedMobEffect.spawnSilverfish`: a silverfish at `at` (half the
+    /// bearer's height up) for each of the velocities the bearer's random drew
+    /// (`sunrise_client::mobs::infested_silverfish`).
+    pub(in crate::game) fn spawn_infested(&mut self, at: [f64; 3], velocities: Vec<Vec3>) {
+        for velocity in velocities {
+            if let Some(id) = self.spawn_mob(
+                "minecraft:silverfish",
+                at,
+                false,
+                super::creatures::SpawnSite::Plain,
+            ) && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id)
+            {
+                m.velocity = velocity;
+            }
+            self.server_play_sound("minecraft:entity.silverfish.hurt", at, 1.0, 1.0);
+        }
+    }
+    /// The local player's effects (`tick_mob_effects`), then the potions
+    /// in flight, which a server without a local player still has. A frozen
+    /// tick (`/tick freeze`) leaves the potions where they are
+    /// (`TickRateManager.isEntityFrozen`); players' effects still run.
+    pub(in crate::game) fn tick_effects(&mut self, running: bool) {
+        self.tick_mob_effects();
+        if running {
+            self.tick_thrown_potions();
+            self.tick_potion_clouds();
+        }
+    }
+    /// `LivingEntity.tickEffects` (server side) for `self.player`, the local
+    /// player or a guest acting (`as_guest`), then its attribute modifiers
+    /// and status flags.
+    pub(in crate::game) fn tick_mob_effects(&mut self) {
+        self.clear_dead_player_target();
+        let Some(player) = self.player.as_ref() else {
+            return;
+        };
+        if player.health.dead_or_dying() {
+            // LivingEntity.die → removeAllEffects. Vanilla runs the effects
+            // that act on death (`onMobRemoved`) when the dead player is
+            // removed, up to 20 ticks later; here it is as the effects go.
+            let w = f64::from(player.dimensions.width) / 2.0;
+            let bounds = Aabb::new(
+                Vec3::new(
+                    player.position.x - w,
+                    player.position.y,
+                    player.position.z - w,
+                ),
+                Vec3::new(
+                    player.position.x + w,
+                    player.position.y + f64::from(player.dimensions.height),
+                    player.position.z + w,
+                ),
+            );
+            let ids: Vec<&'static str> = self.potions.effects.list.iter().map(|e| e.id).collect();
+            self.potions.effects.clear();
+            if !ids.is_empty() {
+                self.remove_player_effect_attributes(&ids);
+                self.effects_on_death(
+                    &ids,
+                    bounds,
+                    sunrise_client::save::number(
+                        self.level
+                            .player_extra
+                            .as_ref()
+                            .and_then(|tag| tag.get("Silent")),
+                    )
+                    .unwrap_or(0)
+                        != 0,
+                    None,
+                    None,
+                );
+            }
+        }
+        // The omens act from inside the effect tick (BadOmenMobEffect,
+        // RaidOmenMobEffect), as a content mod's effects do.
+        let absorption_empty = self
+            .player
+            .as_ref()
+            .is_some_and(|p| p.health.absorption() <= 0.0);
+        let mut effects = std::mem::take(&mut self.potions.effects);
+        // `MobEffectEvent.Expired`: ask before the pass, for the effects at
+        // zero ticks and the ones reaching it in this pass (the last tick of
+        // their countdown); a canceled expiry keeps the effect at no ticks,
+        // asking again next tick. Only on the server, where the effects tick.
+        let keep_expired: Vec<&'static str> = {
+            let player = self.effect_living_ref(None);
+            effects
+                .list
+                .iter()
+                .filter(|e| matches!(e.duration, 0 | 1))
+                .filter(|e| {
+                    let Some(player) = player else {
+                        return false;
+                    };
+                    let mut cancel = false;
+                    self.native_mob_effect_expired(
+                        player,
+                        mod_api::__private::effect_key_by_index(
+                            e.registry_index.expect("active effect registry index"),
+                        )
+                        .expect("effects resolved at load"),
+                        e.amplifier,
+                        &mut cancel,
+                    );
+                    cancel
+                })
+                .map(|e| e.id)
+                .collect()
+        };
+        let (actions, raid_omen_added) = effects.tick_with(
+            &mut |e, t, actions, dispatch, active_effects| {
+                for action in actions.drain(..) {
+                    self.apply_effect_action(action);
+                }
+                if !dispatch {
+                    return OmenTick::Continue;
+                }
+                if !brewing::is_mod_effect(e.id) {
+                    self.omen_tick(e)
+                } else {
+                    let Some(player) = self.player.as_mut() else {
+                        return OmenTick::Remove;
+                    };
+                    let Some(epoch) = self.native_lifecycle.epoch() else {
+                        return OmenTick::Continue;
+                    };
+                    let holder = LivingRef::new(EntityRef::new(epoch, player.entity_id as u32));
+                    let health = player.health.health();
+                    let max_health =
+                        player.attribute("minecraft:max_health").unwrap_or(20.0) as f32;
+                    let food = &player.health.food;
+                    let food = Some(PlayerFood::from(mod_api::__private::built::PlayerFood {
+                        level: food.food,
+                        saturation: food.saturation,
+                        exhaustion: food.exhaustion,
+                    }));
+                    let (keep, changes) = self.mod_effect_tick(
+                        e.registry_index,
+                        None,
+                        t,
+                        e.amplifier,
+                        holder,
+                        health,
+                        max_health,
+                        food,
+                        active_effects
+                            .iter()
+                            .filter_map(|effect| effect.registry_index),
+                    );
+                    let registry = &self.health_resources.damage;
+                    actions.extend(changes.into_iter().filter_map(|change| {
+                        match change {
+                            EffectTickChange::Heal(amount) => Some(EffectAction::Heal(amount)),
+                            // An unregistered damage type hurts nothing.
+                            EffectTickChange::Hurt(source, amount) => {
+                                NamedDamage::registered(registry, &source)
+                                    .map(|damage| EffectAction::Hurt(damage.name, amount))
+                            }
+                            EffectTickChange::AddExhaustion(amount) => {
+                                Some(EffectAction::Exhaust(amount))
+                            }
+                            EffectTickChange::Eat(nutrition, saturation) => {
+                                Some(EffectAction::Eat(nutrition, saturation))
+                            }
+                            _ => unreachable!("EffectTickChange: unhandled variant"),
+                        }
+                    }));
+                    if keep {
+                        OmenTick::Continue
+                    } else {
+                        OmenTick::Remove
+                    }
+                }
+            },
+            absorption_empty,
+            &keep_expired,
+        );
+        self.potions.effects = effects;
+        if raid_omen_added {
+            self.raid_omen_added();
+        }
+        for action in actions {
+            self.apply_effect_action(action);
+        }
+        self.turtle_helmet_tick();
+        self.apply_effect_status();
+    }
+    /// `Player.tick` -> `turtleHelmetTick`: with a turtle helmet on the head
+    /// and the eyes out of the water, Water Breathing for 200 ticks (no
+    /// particles, an icon).
+    pub(in crate::game::server_side) fn turtle_helmet_tick(&mut self) {
+        let Some(p) = self.player.as_ref() else {
+            return;
+        };
+        let eye_y = p.position.y + f64::from(p.dimensions.eye_height);
+        let (bx, by, bz) = (
+            p.position.x.floor() as i32,
+            eye_y.floor() as i32,
+            p.position.z.floor() as i32,
+        );
+        let f = self.res.facts().get(self.world.block(bx, by, bz));
+        let eye_in_water = f.fluid == sunrise_client::blocks::Fluid::Water && {
+            let above = self.res.facts().get(self.world.block(bx, by + 1, bz));
+            let height = if above.fluid == sunrise_client::blocks::Fluid::Water {
+                1.0
+            } else {
+                f64::from(f.fluid_level) / 9.0
+            };
+            eye_y <= f64::from(by) + height
+        };
+        if !p.health.dead_or_dying()
+            && self.armor[0]
+                .as_ref()
+                .is_some_and(|s| &*s.item == "minecraft:turtle_helmet")
+            && !eye_in_water
+        {
+            let mut effect = EffectInstance::new("water_breathing", 200, 0);
+            effect.visible = false;
+            self.apply_player_effect(effect);
+        }
+    }
+    /// Add an active effect to the player and update attributes / absorption.
+    /// `LivingEntity.canBeAffected` with the `mob_effect_applicable` hook:
+    /// the event fires first, for every effect, and `Allow` or `Deny`
+    /// decides; unanswered, the vanilla tag check runs. `entity` is a mob's
+    /// `Entity.getId`, None for the player.
+    pub(in crate::game) fn can_be_affected(
+        &mut self,
+        entity: Option<i32>,
+        kind: &str,
+        effect: &str,
+    ) -> bool {
+        let key = brewing::effect(effect)
+            .and_then(|def| mod_api::__private::effect_key_by_index(def.index));
+        self.can_be_affected_resolved(entity, kind, effect, key)
+    }
+
+    /// The validated registry path, also used by native operations without parsing a name again.
+    pub(in crate::game) fn can_be_affected_resolved(
+        &mut self,
+        entity: Option<i32>,
+        kind: &str,
+        effect: &str,
+        key: Option<mod_api::EffectKey>,
+    ) -> bool {
+        let mut answered = None;
+        if let Some(living) = self.effect_living_ref(entity)
+            && let Some(key) = key
+        {
+            self.native_mob_effect_applicable(living, key, &mut answered);
+        }
+        match answered {
+            Some(EffectApplicable::Allow) => true,
+            Some(EffectApplicable::Deny) => false,
+            // An unanswered hook, or a future variant, defers to the
+            // vanilla tag check.
+            _ => {
+                let tags = &self.items().entity_type_tags;
+                mob_can_be_affected(tags, kind, tags.slot(kind), effect)
+            }
+        }
+    }
+    pub(in crate::game) fn add_player_effect(&mut self, effect: EffectInstance) -> bool {
+        // `LivingEntity.addEffect` refuses what cannot affect the entity;
+        // players pass the tag check, but the `mob_effect_applicable` hook
+        // is asked for every add.
+        let key = effect
+            .registry_index
+            .and_then(mod_api::__private::effect_key_by_index);
+        if !self.can_be_affected_resolved(None, "minecraft:player", effect.id, key) {
+            return false;
+        }
+        let id = effect.id;
+        let amp = effect.amplifier;
+        let new = self.potions.effects.get(id).is_none();
+        let changed = self.apply_player_effect(effect);
+        // MobEffect.onEffectAdded: an omen's sound when it is new, at the
+        // player's feet (#11373).
+        if new
+            && changed
+            && let Some(sound) = sound_on_added(id)
+            && let Some(p) = self.player.as_ref()
+        {
+            let at = [p.position.x, p.position.y, p.position.z];
+            self.server_play_sound(sound, at, 1.0, 1.0);
+        }
+        if id == "absorption"
+            && let Some(p) = self.player.as_mut()
+        {
+            let target = 4.0 * (amp + 1) as f32;
+            let current = p.health.absorption();
+            let _ = p.set_health(current.max(target), true);
+        }
+        if let Some(key) = key {
+            self.mod_effect_added_resolved(key, None, amp, new);
+        }
+        changed
+    }
+    /// Store an admitted effect. Only a real update replaces its modifier and
+    /// refreshes pending attributes; an add writes the modifier but defers refresh.
+    pub(in crate::game) fn apply_player_effect(&mut self, effect: EffectInstance) -> bool {
+        let id = effect.id;
+        let new = self.potions.effects.get(id).is_none();
+        let changed = self.potions.effects.add(effect);
+        if changed {
+            let amplifier = self.potions.effects.get(id).unwrap().amplifier;
+            self.update_player_effect_attributes(id, amplifier, !new);
+            self.apply_effect_status();
+        }
+        changed
+    }
+
+    /// Removes one effect, or all effects, and refreshes the player's derived state.
+    pub(in crate::game) fn remove_player_effects(&mut self, effect: Option<usize>) -> bool {
+        let mut removed = Vec::new();
+        let mut index = 0;
+        while index < self.potions.effects.list.len() {
+            let current = &self.potions.effects.list[index];
+            // The one being removed, or all of them when `effect` is None.
+            if effect.is_some_and(|index| current.registry_index != Some(index)) {
+                index += 1;
+                continue;
+            }
+            let amplifier = current.amplifier;
+            // `MobEffectEvent.Remove`: refusing the removal keeps it, and the
+            // next one is asked with this one still in place, as in vanilla.
+            let mut cancel = false;
+            if let Some(living) = self.effect_living_ref(None) {
+                self.native_mob_effect_remove(
+                    living,
+                    mod_api::__private::effect_key_by_index(
+                        current
+                            .registry_index
+                            .expect("active effect registry index"),
+                    )
+                    .expect("effects resolved at load"),
+                    amplifier,
+                    &mut cancel,
+                );
+            }
+            if cancel {
+                index += 1;
+            } else {
+                removed.push(self.potions.effects.list.remove(index).id);
+            }
+        }
+        if !removed.is_empty() {
+            self.remove_player_effect_attributes(&removed);
+            self.apply_effect_status();
+        }
+        !removed.is_empty()
+    }
+    /// `LivingEntity.addEffect` for a content mod's effect: its
+    /// `onEffectAdded` when it is new, then its `onEffectStarted`, on a
+    /// server. `entity` is a mob's id, None for the player.
+    pub(in crate::game) fn mod_effect_added(
+        &mut self,
+        effect: &str,
+        entity: Option<i32>,
+        amplifier: i32,
+        new: bool,
+    ) {
+        if let Some(effect) = brewing::effect(effect)
+            .and_then(|def| mod_api::__private::effect_key_by_index(def.index))
+        {
+            self.mod_effect_added_resolved(effect, entity, amplifier, new);
+        }
+    }
+    /// Dispatch an already resolved effect's added notices, without a registry name lookup.
+    pub(in crate::game) fn mod_effect_added_resolved(
+        &mut self,
+        effect: mod_api::EffectKey,
+        entity: Option<i32>,
+        amplifier: i32,
+        new: bool,
+    ) {
+        if mod_api::__private::effect_index(effect)
+            .and_then(sunrise_client_core::potions::effect_by_index)
+            .is_some_and(|def| def.index >= brewing::EFFECTS.len())
+        {
+            if new {
+                self.native_on_effect_added(effect, entity, amplifier);
+            }
+            self.native_mob_effect_added(effect, entity, amplifier);
+        }
+    }
+    /// `MobEffectInstance.tickServer` for a content mod's effect: its
+    /// `shouldApplyEffectTickThisTick`, then its `applyEffectTick`, which
+    /// may end it. Whether it stays.
+    pub(in crate::game::server_side) fn mod_effect_tick(
+        &self,
+        index: Option<usize>,
+        entity: Option<i32>,
+        tick_count: i32,
+        amplifier: i32,
+        holder: LivingRef,
+        health: f32,
+        max_health: f32,
+        food: Option<PlayerFood>,
+        active_effects: impl Iterator<Item = usize>,
+    ) -> (bool, Vec<EffectTickChange>) {
+        if !mod_api::__private::has_part_hook(mod_api::HookId::ShouldApplyEffectTickThisTick) {
+            return (true, Vec::new());
+        }
+        let Some(effect) = index.and_then(mod_api::__private::effect_key_by_index) else {
+            static MISSING_EFFECT: std::sync::Once = std::sync::Once::new();
+            MISSING_EFFECT.call_once(|| {
+                log::debug!("Skipping mod effect tick: missing registry key or declaring mod for index {index:?}");
+            });
+            return (true, Vec::new());
+        };
+        let mut keep = true;
+        let mut changes = Vec::new();
+        let keys = std::cell::OnceCell::new();
+        let (keep_out, changes_out) = (&mut keep, &mut changes);
+        mod_api::__private::dispatch_mob_effect_tick(
+            self,
+            tick_count,
+            effect,
+            amplifier,
+            |effect, amplifier| {
+                let keys = keys.get_or_init(|| {
+                    let mut keys = self.potions.tick_keys.borrow_mut();
+                    keys.clear();
+                    keys.extend(active_effects.filter_map(mod_api::__private::effect_key_by_index));
+                    keys
+                });
+                mod_api::__private::ApplyEffectTickCall {
+                    effect,
+                    dimension: self.dim.id(),
+                    entity,
+                    amplifier,
+                    holder,
+                    health,
+                    max_health,
+                    food,
+                    active_effects: keys,
+                    changes: changes_out,
+                    keep: keep_out,
+                }
+            },
+        );
+        (keep, changes)
+    }
+    /// `LivingEntity.onEffectAdded` and `onEffectUpdated`: only a server
+    /// writes the modifier. The client receives it with its attributes.
+    pub(in crate::game) fn update_player_effect_attributes(
+        &mut self,
+        effect: &str,
+        amplifier: i32,
+        refresh: bool,
+    ) {
+        if let Some((attribute, id, amount, operation)) = effect_modifier(effect) {
+            let amount = amount * f64::from(amplifier.wrapping_add(1));
+            // MobEffect.addAttributeModifiers replaces by id and stores permanently.
+            if let Some(write) = AttributeWrite::add(id, amount, operation, true, true) {
+                self.write_attribute(Target::Player, attribute, write);
+            }
+        }
+        if refresh {
+            self.refresh_effect_attributes();
+        }
+    }
+
+    /// `LivingEntity.onEffectsRemoved`: refresh even if there was no modifier
+    /// to remove; other writes can still have attributes pending.
+    pub(in crate::game) fn remove_player_effect_attributes(&mut self, effects: &[&str]) {
+        for effect in effects {
+            if let Some((attribute, id, _, _)) = effect_modifier(effect) {
+                self.write_attribute(
+                    Target::Player,
+                    attribute,
+                    AttributeWrite::Remove(id.to_owned()),
+                );
+            }
+        }
+        self.refresh_effect_attributes();
+    }
+
+    pub(in crate::game::server_side) fn refresh_effect_attributes(&mut self) {
+        if let Some(player) = self.player.as_mut() {
+            let _ = player.refresh_attributes();
+        }
+        self.apply_player_waypoint_updates();
+    }
+    /// `ThrowableProjectile.tick` for splash/lingering potions and experience bottles in flight:
+    /// exact `ProjectileUtil.getHitResultOnMoveVector` block clip + entity sweep, live target
+    /// visibility across bottles, vehicle-tree owner check after `setPos`, and Breeze deflection.
+    pub(in crate::game::server_side) fn tick_thrown_potions(&mut self) {
+        if self.potions.thrown.is_empty() {
+            return;
+        }
+        let thrown = std::mem::take(&mut self.potions.thrown);
+        let mut kept = Vec::with_capacity(thrown.len());
+        // ServerLevel.tick: only entities in entity-ticking chunks tick.
+        let ticking = self.entity_ticking_area();
+        let below_world = self.world.below_world_y();
+        for mut t in thrown {
+            if !ticking(t.position.x.floor() as i32, t.position.z.floor() as i32) {
+                t.previous = t.position;
+                kept.push(t);
+                continue;
+            }
+            t.age += 1;
+            let owner = self.shooter_who(t.thrower, t.guest);
+            t.previous = t.position;
+            self.thrown_potion_motion(&mut t);
+            let from = t.position;
+            let to = from.add_vector(t.velocity);
+            let bounds_at = |p: Vec3| {
+                Aabb::new(
+                    p.add_vector(Vec3::new(-0.125, 0.0, -0.125)),
+                    p.add_vector(Vec3::new(0.125, 0.25, 0.125)),
+                )
+            };
+            let query = super::creatures::TargetQuery {
+                include_guests: true,
+                ..Default::default()
+            };
+            let (block_clip, entity_hit) = {
+                use sunrise_client::projectiles::{NearestHit, ProjectileWorld, compute_margin};
+                let live = self.live_proj_world(query, &[]);
+                let block_clip = live.clip(from, to);
+                let entity_end = block_clip.map_or(to, |(at, ..)| at);
+                let search_area = bounds_at(from)
+                    .expand_towards(t.velocity)
+                    .inflate(Vec3::new(1.0, 1.0, 1.0));
+                let margin = compute_margin(t.age as i32);
+                let mut best = NearestHit::new();
+                self.visit_projectile_targets(query, &[], |c| {
+                    if !t.left_owner
+                        && let Some(o) = owner
+                        && self.in_same_vehicle_tree(o, c.who)
+                    {
+                        return;
+                    }
+                    best.consider(c, search_area, from, entity_end, margin);
+                });
+                (block_clip, best.finish())
+            };
+            let new_pos = entity_hit
+                .map(|(_, at)| at)
+                .or_else(|| block_clip.map(|(at, ..)| at))
+                .unwrap_or(to);
+            t.position = new_pos;
+            self.entity_powder_snow_particles(
+                t.previous,
+                t.position,
+                bounds_at(t.position),
+                t.velocity,
+                false,
+            );
+            // ThrowableProjectile.tick calls super.tick() (`checkLeftOwner`) after `setPos`.
+            if !t.left_owner {
+                let swept = bounds_at(t.position)
+                    .expand_towards(t.velocity)
+                    .inflate(Vec3::new(1.0, 1.0, 1.0));
+                t.left_owner = owner.is_none_or(|o| self.outside_owner_collision_range(o, swept));
+            }
+            if let Some((who, hit_at)) = entity_hit {
+                // Projectile.hitTargetOrDeflectSelf: Breeze deflects without splashing.
+                if let Who::Mob(id) = who
+                    && let Some(index) = self.mobs.iter().position(|m| {
+                        m.id == id
+                            && m.alive()
+                            && m.species() == sunrise_client::mobs::Species::Breeze
+                    })
+                {
+                    if t.last_deflected_by != Some(id) {
+                        let _ = t.random.next_float();
+                        t.velocity = t.velocity.scale(-0.5);
+                        t.last_deflected_by = Some(id);
+                        self.play_mob_bound_sound(
+                            index,
+                            "minecraft:entity.breeze.deflect",
+                            5,
+                            1.0,
+                            1.0,
+                            false,
+                        );
+                    }
+                    if t.age < 1200 && t.position.y >= below_world {
+                        kept.push(t);
+                    }
+                    continue;
+                }
+                if let Who::Mob(id) = who {
+                    self.redirect_projectile(id, owner, None, t.guest, None);
+                }
+                let target_pos = match who {
+                    Who::Player => self.player.as_ref().map(|p| p.position),
+                    Who::Mob(id) => self
+                        .mobs
+                        .iter()
+                        .find(|m| m.id == id)
+                        .map(|m| m.position)
+                        .or_else(|| {
+                            self.live_target_bounds(who).map(|b| {
+                                let c = b.center();
+                                Vec3::new(c.x, b.min_position().y, c.z)
+                            })
+                        }),
+                };
+                let thrower = t.owner.is_some().then_some(Who::Player);
+                let silent = self.entity_silent(t.id);
+                let item = t.stack.item.to_string();
+                let potion_owner = PotionOwner {
+                    player: t.owner.is_some(),
+                    name: t.owner,
+                    attacker: None,
+                    guest: t.guest,
+                };
+                self.splash(
+                    &t.stack,
+                    hit_at,
+                    target_pos,
+                    None,
+                    t.age,
+                    &potion_owner,
+                    silent,
+                    t.velocity,
+                );
+                self.projectile_landed_event(t.id, thrower, [hit_at.x, hit_at.y, hit_at.z]);
+                if item != "minecraft:experience_bottle" {
+                    self.native_potion_splash(&item, [hit_at.x, hit_at.y, hit_at.z]);
+                }
+                continue;
+            }
+            if let Some((hit_at, pos, face)) = block_clip {
+                let dir = Direction::approximate_nearest(Vec3::new(
+                    f64::from(face[0]),
+                    f64::from(face[1]),
+                    f64::from(face[2]),
+                ));
+                let thrower = t.owner.is_some().then_some(Who::Player);
+                let silent = self.entity_silent(t.id);
+                let item = t.stack.item.to_string();
+                let potion_owner = PotionOwner {
+                    player: t.owner.is_some(),
+                    name: t.owner,
+                    attacker: None,
+                    guest: t.guest,
+                };
+                self.splash(
+                    &t.stack,
+                    hit_at,
+                    None,
+                    Some((pos, dir)),
+                    t.age,
+                    &potion_owner,
+                    silent,
+                    t.velocity,
+                );
+                self.projectile_block_landed_event(t.id, thrower, pos);
+                if item != "minecraft:experience_bottle" {
+                    self.native_potion_splash(&item, [hit_at.x, hit_at.y, hit_at.z]);
+                }
+                continue;
+            }
+            if t.age < 1200 && t.position.y >= below_world {
+                kept.push(t);
+            }
+        }
+        self.potions.thrown.splice(0..0, kept);
+    }
+    /// `AreaEffectCloud.readAdditionalSaveData`: loaded clouds join the same
+    /// simulation as lingering potions, with their own timing and potion data.
+    /// The caller retains their UUID and original compound for command queries.
+    pub(in crate::game) fn load_potion_cloud(&mut self, tag: &Tag) -> Option<u32> {
+        self.load_potion_cloud_transferred(tag, None)
+    }
+    pub(in crate::game) fn load_potion_cloud_transferred(
+        &mut self,
+        tag: &Tag,
+        transferred: Option<super::entity_initialization::TransferredEntityState>,
+    ) -> Option<u32> {
+        let (_, mut cloud) = potion_cloud_from_nbt(tag)?;
+        let id = self.take_entity_id();
+        cloud.id = id;
+        if let Some(state) = transferred {
+            self.adopt_transferred_entity_state(id, state);
+        }
+        self.breath_clouds.push(cloud);
+        Some(id)
+    }
     pub(in crate::game) fn apply_effect_action(&mut self, action: EffectAction) {
         let action = match action {
             EffectAction::Heal(mut amount) => {
@@ -1324,6 +2026,61 @@ impl PotionState {
     }
 }
 
+/// A mob's content mod effects tick in its own tick (`ai::tick_effects_hurting`).
+impl sunrise_client::mobs::ModEffectTicks for Game<'_> {
+    fn tick_mod_effect(
+        &self,
+        effect: usize,
+        mob: &Mob,
+        tick_count: i32,
+        amplifier: i32,
+    ) -> ModEffectTick {
+        let Some(epoch) = self.native_lifecycle.epoch() else {
+            return ModEffectTick {
+                keep: true,
+                actions: Vec::new(),
+            };
+        };
+        let holder = LivingRef::new(EntityRef::new(epoch, mob.id));
+        let (keep, changes) = self.mod_effect_tick(
+            Some(effect),
+            Some(mob.id as i32),
+            tick_count,
+            amplifier,
+            holder,
+            mob.health,
+            mob.attrs.max_health,
+            None,
+            mob.extra
+                .effects
+                .iter()
+                .filter_map(|effect| effect.registry_index),
+        );
+        let registry = &self.health_resources.damage;
+        let actions = changes
+            .into_iter()
+            .filter_map(|change| match change {
+                EffectTickChange::Heal(amount) => Some(MobEffectAction::Heal(amount)),
+                // An unregistered damage type hurts nothing.
+                EffectTickChange::Hurt(source, amount) => {
+                    Self::registered_damage_kind(registry, &source)
+                        .map(|kind| MobEffectAction::Hurt(kind, amount))
+                }
+                // Mobs have no FoodData.
+                _ => None,
+            })
+            .collect();
+        ModEffectTick { keep, actions }
+    }
+    fn effect_expired(&self, mob: u32, effect: usize, amplifier: i32, cancel: &mut bool) {
+        if let Some(living) = self.effect_living_ref(Some(mob as i32))
+            && let Some(effect) = mod_api::__private::effect_key_by_index(effect)
+        {
+            self.native_mob_effect_expired(living, effect, amplifier, cancel);
+        }
+    }
+}
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     #[allow(unused_imports)]
@@ -1446,8 +2203,1395 @@ pub(in crate::game) mod tests {
             assert!(game.breath_clouds.is_empty());
         });
     }
+
+    #[test]
+    #[ignore = "daily"]
+    fn lifecycle_cloud_commands_and_parked_owners() {
+        super::super::entity::taken_pass_tests::LifecycleFixture {
+            seed: |game, entries| {
+                game.breath_clouds.clear();
+                for &(id, at) in entries {
+                    game.spawn_creeper_cloud(at, Vec::new(), Vec::new(), Vec::new(), 0);
+                    let i = game.breath_clouds.len() - 1;
+                    let mut cloud = game.breath_clouds.remove(i);
+                    cloud.id = id;
+                    game.breath_clouds.push(cloud);
+                }
+            },
+            ids: |game| game.breath_clouds.iter().map(|c| c.id).collect(),
+            target: super::super::commands::Target::Cloud,
+            unloads_with_chunk: true,
+            remote: None,
+        }
+        .run();
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn taken_breath_tick_keeps_both_spawns_before_survivors() {
+        cloud_spawns_during_pass(false);
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn taken_potion_tick_keeps_both_spawns_before_survivors() {
+        cloud_spawns_during_pass(true);
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn typed_cloud_retains_its_loaded_options_for_tracking_and_save() {
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::server_side::potions_server::tests::typed_cloud_retains_its_loaded_options_for_tracking_and_save",
+            "SUNRISE_TEST_TYPED_CLOUD_CASE",
+            &["cloud"],
+        ) {
+            return;
+        }
+        use crate::game::lan_particles::tests::{MeasuredParticle, PARTICLE_MAP_READS, test_hub};
+        use sunrise_protocol::entity_data::{ParticleData, Value, serializer};
+
+        crate::game::native_entity_refs::tests::with_game(|game| {
+            let entries = [mod_api::ModEntry::new("test", Box::new(MeasuredParticle))];
+            mod_platform::__private::part_tests::install_parts_fixture(&entries).unwrap();
+            crate::game::mods::resolve_particle_providers(&Default::default()).unwrap();
+            PARTICLE_MAP_READS.set(0);
+            let (hub, _, _) = test_hub(
+                "CloudParticleOptions",
+                vec!["minecraft:entity_effect".into()],
+                None,
+            );
+            game.lan = Some(crate::game::lan::LanHost::for_test(hub));
+            let (tag, _) = sunrise_core::nbt::parse_snbt(
+                r#"{Pos:[0d,80d,0d],Duration:200,WaitTime:0,Radius:3f,custom_particle:{type:"test:measured",measure:257,ignored:42}}"#,
+            ).unwrap();
+            let id = game.load_potion_cloud(&tag).unwrap();
+            game.particles.0.created_requests = Some(Vec::new());
+            game.tick_potion_clouds();
+            assert_eq!(game.breath_clouds[0].age, 1);
+            assert!(
+                game.particles.0.created_requests.take().unwrap().is_empty(),
+                "a server tick must not submit client particles"
+            );
+
+            let mut states = sunrise_client::lan::entity::States::default();
+            game.lan_object_states(&mut states, false, 0);
+            let cloud = states
+                .as_slice()
+                .iter()
+                .find(|e| e.id as u32 == id)
+                .unwrap();
+            let (index, ser, Value::Particle(particle)) = cloud
+                .meta
+                .iter()
+                .find(|(index, _, _)| *index == 10)
+                .unwrap()
+            else {
+                panic!("typed cloud was not tracked");
+            };
+            assert_eq!((*index, *ser), (10, serializer::PARTICLE));
+            let ParticleData::Mod { name, options } = particle.data.as_ref().unwrap() else {
+                panic!("not a typed particle: {particle:?}");
+            };
+            assert_eq!(name, "test:measured");
+            assert_eq!(options, &[1, 1, 0, 0]);
+
+            let saved = potion_cloud_to_nbt(&game.breath_clouds[0], [1, 2, 3, 4], Some(&tag));
+            let particle_tag = saved.get("custom_particle").unwrap();
+            assert_eq!(particle_tag.get("measure"), Some(&Tag::Int(257)));
+            assert!(
+                particle_tag.get("ignored").is_none(),
+                "save must use the map encoder, not the input tag"
+            );
+            assert_eq!(PARTICLE_MAP_READS.get(), 1);
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn owned_effect_ticks_read_live_effects_and_rules_and_subtract_exhaustion() {
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::server_side::potions_server::tests::owned_effect_ticks_read_live_effects_and_rules_and_subtract_exhaustion",
+            "SUNRISE_OWNED_EFFECT_CHILD",
+            &["effects"],
+        ) {
+            return;
+        }
+        let cancel_expiry = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        mod_platform::testing::with_mods(
+            std::sync::Arc::from([
+                mod_api::ModEntry::new(
+                    "effect-owner",
+                    Box::new(FoodEffectMod(cancel_expiry.clone())),
+                ),
+                mod_api::ModEntry::new("other-mod", Box::new(OtherEffectMod)),
+            ]),
+            || {
+                assert!(brewing::register_mod_effects(
+                    [
+                        ("test:comfort", "effect-owner"),
+                        ("test:nourishment", "effect-owner"),
+                        ("other-mod:foreign", "other-mod"),
+                    ]
+                    .map(|(id, owner)| (
+                        id.into(),
+                        0,
+                        brewing::Category::Beneficial,
+                        None,
+                        owner.into(),
+                    ))
+                ));
+                super::super::native_entity_refs::tests::with_game(|game| {
+                    game.options.dedicated = Some(Vec::new());
+                    game.player =
+                        Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
+                    game.player
+                        .as_mut()
+                        .unwrap()
+                        .set_health(10.0, false)
+                        .unwrap();
+                    game.player.as_mut().unwrap().health.food.saturation = 0.0;
+                    game.potions
+                        .effects
+                        .add(EffectInstance::new("test:comfort", 80, 0));
+                    game.tick_mob_effects();
+                    assert_eq!(game.player.as_ref().unwrap().health.health(), 11.0);
+                    game.tick_mob_effects();
+                    assert_eq!(
+                        game.player.as_ref().unwrap().health.health(),
+                        11.0,
+                        "only each 80 ticks"
+                    );
+                    game.potions.effects = PlayerEffects::default();
+                    game.potions
+                        .effects
+                        .add(EffectInstance::new("regeneration", 100, 0));
+                    game.potions
+                        .effects
+                        .add(EffectInstance::new("test:comfort", 80, 0));
+                    game.tick_mob_effects();
+                    assert_eq!(
+                        game.player.as_ref().unwrap().health.health(),
+                        12.0,
+                        "regeneration alone healed"
+                    );
+                    game.potions.effects = PlayerEffects::default();
+                    game.potions
+                        .effects
+                        .add(EffectInstance::new("regeneration", 1, 0));
+                    game.potions
+                        .effects
+                        .add(EffectInstance::new("test:comfort", 80, 0));
+                    game.tick_mob_effects();
+                    assert_eq!(
+                        game.player.as_ref().unwrap().health.health(),
+                        13.0,
+                        "an earlier expired regeneration is no longer present"
+                    );
+                    game.potions.effects = PlayerEffects::default();
+                    game.player.as_mut().unwrap().health.food.saturation = 1.0;
+                    game.potions
+                        .effects
+                        .add(EffectInstance::new("test:comfort", 80, 0));
+                    game.tick_mob_effects();
+                    assert_eq!(
+                        game.player.as_ref().unwrap().health.health(),
+                        13.0,
+                        "saturated players skip comfort"
+                    );
+
+                    game.potions.effects = PlayerEffects::default();
+                    game.potions
+                        .effects
+                        .add(EffectInstance::new("test:nourishment", 20, 0));
+                    let food = &mut game.player.as_mut().unwrap().health.food;
+                    food.food = 18;
+                    food.exhaustion = 6.0;
+                    game.tick_mob_effects();
+                    assert_eq!(
+                        game.player.as_ref().unwrap().health.food.exhaustion,
+                        6.0,
+                        "natural regeneration keeps its exhaustion"
+                    );
+                    assert!(game.ui.rules.set(
+                        "natural_health_regeneration",
+                        sunrise_client::gamerules::Value::Bool(false)
+                    ));
+                    game.tick_mob_effects();
+                    assert_eq!(game.player.as_ref().unwrap().health.food.exhaustion, 2.0);
+                    game.tick_mob_effects();
+                    assert_eq!(
+                        game.player.as_ref().unwrap().health.food.exhaustion,
+                        0.0,
+                        "subtract up to four"
+                    );
+                    game.potions.effects = PlayerEffects::default();
+                    game.potions
+                        .effects
+                        .add(EffectInstance::new("test:nourishment", 20, 1));
+                    game.player.as_mut().unwrap().health.food.exhaustion = 1.0;
+                    game.tick_mob_effects();
+                    assert_eq!(
+                        game.player.as_ref().unwrap().health.food.exhaustion,
+                        -4.0,
+                        "no exhaustion floor"
+                    );
+
+                    game.world.chunks.insert(
+                        (0, 0),
+                        std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    );
+                    let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+                    let mut mob = Mob::new(12, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
+                    mob.no_ai = true;
+                    mob.health = 5.0;
+                    mob.add_effect("test:comfort", 80, 0);
+                    mob.add_effect("test:nourishment", 20, 0);
+                    game.mobs.push(mob);
+                    game.tick_creature_entities().unwrap();
+                    assert_eq!(
+                        game.mobs[0].health, 6.0,
+                        "comfort heals a mob; nourishment has no food to change"
+                    );
+                    game.mobs[0].retain_effects(|_| false);
+                    game.mobs[0].add_effect("minecraft:regeneration", 99, 0);
+                    game.mobs[0].add_effect("test:comfort", 80, 0);
+                    game.tick_creature_entities().unwrap();
+                    assert_eq!(
+                        game.mobs[0].health, 6.0,
+                        "active regeneration suppresses comfort on a mob"
+                    );
+                    game.mobs[0].retain_effects(|_| false);
+                    game.mobs[0].add_effect("minecraft:regeneration", 1, 0);
+                    game.mobs[0].add_effect("test:comfort", 80, 0);
+                    game.tick_creature_entities().unwrap();
+                    assert_eq!(
+                        game.mobs[0].health, 7.0,
+                        "earlier mob expiry is visible to comfort"
+                    );
+
+                    game.mobs[0].retain_effects(|_| false);
+                    game.mobs[0].add_effect("minecraft:regeneration", 1, 0);
+                    game.mobs[0].add_effect("test:comfort", 80, 0);
+                    cancel_expiry.store(true, std::sync::atomic::Ordering::SeqCst);
+                    game.tick_creature_entities().unwrap();
+                    assert_eq!(
+                        game.mobs[0].health, 7.0,
+                        "cancelled expiry still suppresses comfort at duration zero"
+                    );
+                    assert!(game.mobs[0].has_effect("minecraft:regeneration"));
+                    cancel_expiry.store(false, std::sync::atomic::Ordering::SeqCst);
+                    game.mobs[0].add_effect("test:comfort", 80, 0);
+                    game.tick_creature_entities().unwrap();
+                    assert_eq!(
+                        game.mobs[0].health, 8.0,
+                        "a previously cancelled expiry is asked again before comfort"
+                    );
+
+                    game.mobs[0].retain_effects(|_| false);
+                    game.mobs[0].add_effect("minecraft:regeneration", 200, 0);
+                    game.mobs[0].add_effect("minecraft:regeneration", 1, 1);
+                    game.mobs[0].add_effect("test:comfort", 80, 0);
+                    game.tick_creature_entities().unwrap();
+                    assert_eq!(
+                        game.mobs[0].health, 8.0,
+                        "a promoted hidden regeneration still suppresses comfort"
+                    );
+                    let regen = game.mobs[0]
+                        .extra
+                        .effects
+                        .iter()
+                        .find(|effect| effect.id == "minecraft:regeneration")
+                        .unwrap();
+                    assert_eq!((regen.duration, regen.amplifier), (199, 0));
+                });
+            },
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn mod_tick_heals_and_feeds_player() {
+        // Mod effects are frozen process-wide: another fixture may have registered first.
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::server_side::potions_server::tests::mod_tick_heals_and_feeds_player",
+            "SUNRISE_POTION_EFFECT_CHILD",
+            &["effect"],
+        ) {
+            return;
+        }
+        effect_test_mod([]);
+        super::super::native_entity_refs::tests::with_game(|game| {
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+            let player = game.player.as_mut().unwrap();
+            player.set_health(18.0, false).unwrap();
+            player.health.food.food = 14;
+            player.health.food.saturation = 2.0;
+            let id = brewing::effect("test:effect").unwrap().id;
+            game.potions.effects.add(EffectInstance::new(id, 10, 0));
+            game.tick_mob_effects();
+            let player = game.player.as_ref().unwrap();
+            assert_eq!(player.health.health(), 20.0);
+            assert_eq!(player.health.food.food, 18);
+            assert_eq!(player.health.food.saturation, 6.0);
+            assert_eq!(player.health.food.exhaustion, 1.5);
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn mod_tick_magic_respects_player_hit_frames() {
+        // Mod effects are frozen process-wide: another fixture may have registered first.
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::server_side::potions_server::tests::mod_tick_magic_respects_player_hit_frames",
+            "SUNRISE_POTION_EFFECT_CHILD",
+            &["effect"],
+        ) {
+            return;
+        }
+        effect_test_mod([]);
+        super::super::native_entity_refs::tests::with_game(|game| {
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+            let id = brewing::effect("test:effect").unwrap().id;
+            game.potions.effects.add(EffectInstance::new(id, 10, 1));
+            game.tick_mob_effects();
+            assert_eq!(game.player.as_ref().unwrap().health.health(), 17.0);
+            game.tick_mob_effects();
+            assert_eq!(game.player.as_ref().unwrap().health.health(), 17.0);
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn mod_tick_kills_mob_through_death_and_drops() {
+        // Mod effects are frozen process-wide: another fixture may have registered first.
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::server_side::potions_server::tests::mod_tick_kills_mob_through_death_and_drops",
+            "SUNRISE_POTION_EFFECT_CHILD",
+            &["effect"],
+        ) {
+            return;
+        }
+        effect_test_mod([]);
+        super::super::native_entity_refs::tests::with_game(|game| {
+            // Death drops read the server's loot, which a world open loads.
+            game.load_server_loot();
+            use std::sync::Arc;
+            use sunrise_client::chunk::Chunk;
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            let kind = game
+                .res
+                .mob_types()
+                .get("minecraft:zombie")
+                .unwrap()
+                .clone();
+            let mut mob = Mob::new(12, kind, Vec3::new(1.0, 64.0, 1.0), 0.0);
+            mob.extra
+                .set_main_hand(Some(Arc::from("minecraft:iron_sword")));
+            mob.extra.drop_chances = Some(Box::new([2.0; 8]));
+            mob.add_effect(brewing::effect("test:effect").unwrap().id, 10, 2);
+            game.mobs.push(mob);
+            game.tick_creature_entities().unwrap();
+            assert!(!game.mobs[0].alive());
+            assert!(
+                game.dropped
+                    .iter()
+                    .any(|item| &*item.stack.item == "minecraft:iron_sword")
+            );
+            for _ in 0..20 {
+                game.tick_creature_entities().unwrap();
+            }
+            assert!(game.mobs.is_empty());
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn mod_tick_sees_prior_regeneration() {
+        // Mod effects are frozen process-wide: another fixture may have registered first.
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::server_side::potions_server::tests::mod_tick_sees_prior_regeneration",
+            "SUNRISE_POTION_EFFECT_CHILD",
+            &["effect"],
+        ) {
+            return;
+        }
+        effect_test_mod([]);
+        super::super::native_entity_refs::tests::with_game(|game| {
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+            game.player
+                .as_mut()
+                .unwrap()
+                .set_health(1.0, false)
+                .unwrap();
+            game.potions
+                .effects
+                .add(EffectInstance::new("regeneration", 50, 0));
+            let id = brewing::effect("test:effect").unwrap().id;
+            game.potions.effects.add(EffectInstance::new(id, 10, 3));
+            game.tick_mob_effects();
+            assert_eq!(game.player.as_ref().unwrap().health.health(), 1.0);
+        });
+    }
 }
 
 #[cfg(test)]
 #[path = "potions/cloud_water_tests_server.rs"]
 pub(in crate::game) mod cloud_water_tests;
+
+#[cfg(test)]
+pub(in crate::game) mod sound_on_added_tests {
+    use sunrise_client::effects::EffectInstance;
+
+    /// `LivingEntity.addEffect` → `MobEffect.onEffectAdded`: Bad Omen, Trial
+    /// Omen and Raid Omen sound once when they are new on the player, at its
+    /// feet; a renewal and any other effect are silent (#11373).
+    #[test]
+    #[ignore = "daily"]
+    fn a_new_omen_sounds_once_at_the_feet() {
+        super::super::native_entity_refs::tests::with_game(|game| {
+            game.player = Some(
+                sunrise_client::motion::PlayerMotion::new(
+                    game.motion,
+                    sunrise_core::geometry::Vec3::new(10.5, 64.0, -3.25),
+                )
+                .unwrap(),
+            );
+            game.audio.0.capture = Some(Vec::new());
+            for (id, amplifier) in [
+                ("bad_omen", 0),
+                ("bad_omen", 1),
+                ("speed", 0),
+                ("trial_omen", 0),
+                ("raid_omen", 0),
+            ] {
+                game.add_player_effect(EffectInstance::new(id, 2400, amplifier));
+            }
+            let played: Vec<(String, [f64; 3])> = game
+                .audio
+                .0
+                .capture
+                .take()
+                .unwrap()
+                .into_iter()
+                .map(|s| (s.event, s.position))
+                .collect();
+            let feet = [10.5, 64.0, -3.25];
+            assert_eq!(
+                played,
+                [
+                    ("minecraft:event.mob_effect.bad_omen".to_owned(), feet),
+                    ("minecraft:event.mob_effect.trial_omen".to_owned(), feet),
+                    ("minecraft:event.mob_effect.raid_omen".to_owned(), feet),
+                ]
+            );
+        });
+    }
+}
+
+#[cfg(test)]
+pub(in crate::game) mod xp_bottle_tests {
+    use super::*;
+
+    /// `ThrownExperienceBottle.onHit` uses `awardWithDirection`: every fresh
+    /// orb starts 0.25 out from the face it hit, or back along the bottle's
+    /// motion after an entity hit, moving that way (#11388).
+    #[test]
+    #[ignore = "daily"]
+    fn bottle_orbs_start_away_from_what_it_hit() {
+        super::super::native_entity_refs::tests::with_game(|game| {
+            let bottle = ItemStack::new("minecraft:experience_bottle", 1);
+            let at = Vec3::new(8.5, 70.5, 8.5);
+            // (hit face, the bottle's motion, the axis and sign the orbs leave by)
+            for (face, motion, axis, sign) in [
+                (
+                    Some(([9, 70, 8], Direction::West)),
+                    Vec3::new(1.0, 0.0, 0.0),
+                    0,
+                    -1.0,
+                ),
+                (None, Vec3::new(0.0, 0.0, 1.0), 2, -1.0),
+            ] {
+                game.orbs.clear();
+                game.splash(
+                    &bottle,
+                    at,
+                    None,
+                    face,
+                    0,
+                    &PotionOwner::default(),
+                    false,
+                    motion,
+                );
+                assert!(!game.orbs.is_empty());
+                let at = [at.x, at.y, at.z];
+                for o in game.orbs.iter() {
+                    let p = [o.position.x, o.position.y, o.position.z];
+                    let v = [o.velocity.x, o.velocity.y, o.velocity.z];
+                    assert!((p[axis] - (at[axis] + sign * 0.25)).abs() < 1e-9, "{p:?}");
+                    assert!(v[axis] * sign >= 0.0, "{v:?}");
+                }
+            }
+        });
+    }
+}
+
+#[cfg(test)]
+#[path = "potions/potion_contents_tests.rs"]
+pub(in crate::game) mod potion_contents_tests;
+
+#[cfg(test)]
+pub(in crate::game) mod mob_absorption_max_tests {
+    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use std::sync::Arc;
+    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
+    use sunrise_core::{geometry::Vec3, position::ChunkPos};
+
+    fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+        let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+        let settings = Settings::default();
+        let loaded = load_resources(
+            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+            Vec::new(),
+            None,
+            &root,
+            &settings,
+            std::time::Instant::now(),
+            false,
+            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            &Progress::new(),
+            &mut |_, _| unreachable!(),
+        )
+        .unwrap();
+        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+        options.resources = root.clone();
+        options.game_dir = Some(
+            std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
+                .join(format!("h203-{:?}", std::thread::current().id())),
+        );
+        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        let mut game = Game::new(
+            &loaded.resources,
+            loaded.pack,
+            loaded.gui.unwrap(),
+            options,
+            settings,
+            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
+                root.clone(),
+            )),
+            None,
+        )
+        .unwrap();
+        game.build_registries();
+        game.set_allow_commands(true);
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+        game.block_ticks
+            .add_empty_chunk(ChunkPos::new(0, 0))
+            .unwrap();
+        assert!(game.run_command("forceload add 0 0"));
+        game.player = Some(PlayerMotion::new(game.motion, Vec3::new(2.5, 200.0, 2.5)).unwrap());
+        game.creative = true;
+        assert!(game.run_command("scoreboard objectives add h203 dummy"));
+        game.load_ticking_neighbourhood(0, 0);
+        test(&mut game);
+    }
+    fn pig(game: &Game<'_>, n: i32) -> usize {
+        let i: Vec<usize> = (0..game.mobs.len())
+            .filter(|&i| game.persist.uuid_of(game.mobs[i].id) == Some([203, 0, 0, n]))
+            .collect();
+        assert_eq!(i.len(), 1, "one live pig with UUID {n}");
+        i[0]
+    }
+    /// `/attribute ... max_absorption get`, read back through a score.
+    fn max_absorption(game: &mut Game<'_>, tag: &str) -> i32 {
+        assert!(game.run_command(&format!(
+            "execute store result score #max h203 run attribute @e[tag={tag},limit=1] minecraft:max_absorption get"
+        )));
+        (0..=64)
+            .find(|v| game.run_command_quietly(&format!("execute if score #max h203 matches {v}")))
+            .unwrap_or(-1)
+    }
+
+    /// Expected values from the official 26.3 server: Absorption adds
+    /// 4 * (amplifier + 1) to max_absorption; its add raises the amount to at
+    /// least that much within the maximum; when it goes, the amount is
+    /// clamped to the maximum left (LivingEntity.onAttributeUpdated), so a
+    /// base-20 mob keeps it and a base-0 one loses it.
+    #[test]
+    #[ignore = "daily"]
+    fn absorption_follows_the_max_absorption_it_adds_and_leaves() {
+        with_game(|game| {
+            // name, UUID word, base max_absorption, amplifier, duration seconds
+            let cases = [
+                ("b0_clear", 1, None, 1, 100),
+                ("b0_expiry", 2, None, 0, 1),
+                ("b20_clear", 3, Some(20), 1, 100),
+                ("b20_expiry", 4, Some(20), 0, 1),
+                ("b20_upgrade", 5, Some(20), 0, 100),
+            ];
+            for (name, n, base, amp, secs) in cases {
+                let tag = format!("h203_{name}");
+                assert!(game.run_command(&format!(
+                    "summon minecraft:pig {}.5 200 4.5 {{UUID:[I;203,0,0,{n}],Tags:[\"{tag}\"],PersistenceRequired:1b,Silent:1b,NoAI:1b,Health:10f}}",
+                    2 * n
+                )));
+                if let Some(b) = base {
+                    assert!(game.run_command(&format!(
+                        "attribute @e[tag={tag},limit=1] minecraft:max_absorption base set {b}"
+                    )));
+                }
+                assert!(game.run_command(&format!(
+                    "effect give @e[tag={tag},limit=1] minecraft:absorption {secs} {amp}"
+                )));
+            }
+            assert!(game.run_command(
+                "effect give @e[tag=h203_b20_upgrade,limit=1] minecraft:absorption 100 1"
+            ));
+            let mut failures = Vec::new();
+            let mut expect =
+                |game: &mut Game<'_>, phase: &str, rows: [(&str, i32, f32, i32); 5]| {
+                    for (name, n, amount, max) in rows {
+                        let i = pig(game, n);
+                        if game.mobs[i].absorption != amount {
+                            failures.push(format!(
+                                "{phase} {name}: amount {}, expected {amount}",
+                                game.mobs[i].absorption
+                            ));
+                        }
+                        let got = max_absorption(game, &format!("h203_{name}"));
+                        if got != max {
+                            failures.push(format!(
+                                "{phase} {name}: max_absorption {got}, expected {max}"
+                            ));
+                        }
+                    }
+                };
+            expect(
+                game,
+                "added",
+                [
+                    ("b0_clear", 1, 8.0, 8),
+                    ("b0_expiry", 2, 4.0, 4),
+                    ("b20_clear", 3, 8.0, 28),
+                    ("b20_expiry", 4, 4.0, 24),
+                    ("b20_upgrade", 5, 8.0, 28),
+                ],
+            );
+            for tag in ["h203_b0_clear", "h203_b20_clear"] {
+                assert!(game.run_command(&format!(
+                    "effect clear @e[tag={tag},limit=1] minecraft:absorption"
+                )));
+            }
+            expect(
+                game,
+                "cleared",
+                [
+                    ("b0_clear", 1, 0.0, 0),
+                    ("b0_expiry", 2, 4.0, 4),
+                    ("b20_clear", 3, 8.0, 20),
+                    ("b20_expiry", 4, 4.0, 24),
+                    ("b20_upgrade", 5, 8.0, 28),
+                ],
+            );
+            for _ in 0..25 {
+                game.tick_world(true).unwrap();
+            }
+            expect(
+                game,
+                "expired",
+                [
+                    ("b0_clear", 1, 0.0, 0),
+                    ("b0_expiry", 2, 0.0, 0),
+                    ("b20_clear", 3, 8.0, 20),
+                    ("b20_expiry", 4, 4.0, 20),
+                    ("b20_upgrade", 5, 8.0, 28),
+                ],
+            );
+            assert!(failures.is_empty(), "mob absorption maximum: {failures:#?}");
+        });
+    }
+}
+
+#[cfg(test)]
+pub(in crate::game) mod mob_health_boost_tests {
+    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use std::sync::Arc;
+    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
+    use sunrise_core::{geometry::Vec3, position::ChunkPos};
+
+    fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+        let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+        let settings = Settings::default();
+        let loaded = load_resources(
+            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+            Vec::new(),
+            None,
+            &root,
+            &settings,
+            std::time::Instant::now(),
+            false,
+            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            &Progress::new(),
+            &mut |_, _| unreachable!(),
+        )
+        .unwrap();
+        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+        options.resources = root.clone();
+        options.game_dir = Some(
+            std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
+                .join(format!("h205-{:?}", std::thread::current().id())),
+        );
+        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        let mut game = Game::new(
+            &loaded.resources,
+            loaded.pack,
+            loaded.gui.unwrap(),
+            options,
+            settings,
+            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
+                root.clone(),
+            )),
+            None,
+        )
+        .unwrap();
+        game.build_registries();
+        game.set_allow_commands(true);
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+        game.block_ticks
+            .add_empty_chunk(ChunkPos::new(0, 0))
+            .unwrap();
+        assert!(game.run_command("forceload add 0 0"));
+        game.player = Some(PlayerMotion::new(game.motion, Vec3::new(2.5, 200.0, 2.5)).unwrap());
+        game.creative = true;
+        game.load_ticking_neighbourhood(0, 0);
+        test(&mut game);
+    }
+    fn pig(game: &Game<'_>, n: i32) -> usize {
+        let i: Vec<usize> = (0..game.mobs.len())
+            .filter(|&i| game.persist.uuid_of(game.mobs[i].id) == Some([205, 0, 0, n]))
+            .collect();
+        assert_eq!(i.len(), 1, "one live pig with UUID {n}");
+        i[0]
+    }
+    fn health(game: &Game<'_>, n: i32) -> f32 {
+        game.mobs[pig(game, n)].health
+    }
+    fn boost(game: &Game<'_>, n: i32) -> Option<(i32, i32)> {
+        let i = pig(game, n);
+        game.mobs[i]
+            .extra
+            .effects
+            .iter()
+            .find(|e| e.id == "minecraft:health_boost")
+            .map(|e| (e.duration, e.amplifier))
+    }
+
+    /// Expected values from the official 26.3 server: Health Boost II adds 8
+    /// to max_health without healing; Instant Health heals up to it on the next
+    /// tick; removing the effect (`/effect clear`, or running out) clamps
+    /// Health to the maximum without it (LivingEntity.onAttributeUpdated).
+    #[test]
+    #[ignore = "daily"]
+    fn health_boost_heals_to_its_maximum_and_clamps_when_it_goes() {
+        with_game(|game| {
+            // name, UUID word, Health, setup
+            let cases: [(&str, i32, f32, &[&str]); 5] = [
+                (
+                    "boost",
+                    1,
+                    10.0,
+                    &["effect give @e[tag=T,limit=1] minecraft:health_boost 100 1"],
+                ),
+                (
+                    "expiry",
+                    2,
+                    10.0,
+                    &["effect give @e[tag=T,limit=1] minecraft:health_boost 2 1"],
+                ),
+                ("noboost", 3, 10.0, &[]),
+                ("heal", 5, 5.0, &[]),
+                (
+                    "base",
+                    6,
+                    10.0,
+                    &["attribute @e[tag=T,limit=1] minecraft:max_health base set 14"],
+                ),
+            ];
+            for (name, n, h, setup) in cases {
+                let tag = format!("h205_{name}");
+                assert!(game.run_command(&format!(
+                    "summon minecraft:pig {}.5 200 4.5 {{UUID:[I;205,0,0,{n}],Tags:[\"{tag}\"],PersistenceRequired:1b,Silent:1b,NoAI:1b,Health:{h}f}}",
+                    2 * n
+                )));
+                for c in setup {
+                    assert!(game.run_command(&c.replace('T', &tag)), "{name}: {c}");
+                }
+            }
+            // Setup controls: the effect is there, nothing healed on the add.
+            assert_eq!(boost(game, 1), Some((2000, 1)));
+            assert_eq!(boost(game, 2), Some((40, 1)));
+            for (_, n, h, _) in cases {
+                assert_eq!(health(game, n), h, "UUID {n}: no heal on the add");
+            }
+            for (name, n, _, _) in cases {
+                let level = if name == "heal" { 0 } else { 1 };
+                assert!(game.run_command(&format!(
+                    "effect give @e[tag=h205_{name},limit=1] minecraft:instant_health 1 {level}"
+                )));
+                let _ = n;
+            }
+            game.tick_world(true).unwrap();
+            // The one tick: the boosts counted down once.
+            assert_eq!(boost(game, 1), Some((1999, 1)), "the mobs ticked once");
+            let mut failures = Vec::new();
+            let check = |game: &Game<'_>,
+                         failures: &mut Vec<String>,
+                         phase: &str,
+                         expected: [(i32, f32); 5]| {
+                for (n, h) in expected {
+                    if health(game, n) != h {
+                        failures.push(format!(
+                            "{phase}: UUID {n} Health {}, expected {h}",
+                            health(game, n)
+                        ));
+                    }
+                }
+            };
+            check(
+                game,
+                &mut failures,
+                "healed",
+                [(1, 18.0), (2, 18.0), (3, 10.0), (5, 9.0), (6, 14.0)],
+            );
+            assert!(
+                game.run_command("effect clear @e[tag=h205_boost,limit=1] minecraft:health_boost")
+            );
+            check(
+                game,
+                &mut failures,
+                "cleared",
+                [(1, 10.0), (2, 18.0), (3, 10.0), (5, 9.0), (6, 14.0)],
+            );
+            for _ in 0..40 {
+                game.tick_world(true).unwrap();
+            }
+            if boost(game, 2).is_some() {
+                failures.push("expiry: the effect did not run out in 40 ticks".into());
+            }
+            check(
+                game,
+                &mut failures,
+                "expired",
+                [(1, 10.0), (2, 10.0), (3, 10.0), (5, 9.0), (6, 14.0)],
+            );
+            assert!(failures.is_empty(), "mob health boost: {failures:#?}");
+        });
+    }
+
+    /// Sulfur cube sizing writes an attribute base (`set_size` -> `set_base`),
+    /// so Health Boost adds to that base without healing, as in the command
+    /// parity corpus. Taming still owns the wolf's cached maximum outside the
+    /// model; that maximum and its current health remain unchanged.
+    #[test]
+    #[ignore = "daily"]
+    fn health_boost_adds_to_size_attributes_and_keeps_the_tame_maximum() {
+        with_game(|game| {
+            // tag, UUID word, summon, amplifier
+            let cases = [
+                // size 3: attribute base and cache 12; Health Boost II adds 8
+                ("h205_cube", 20, "sulfur_cube 4.5 200 8.5 {Size:2", 1),
+                // size 5: attribute base and cache 20; Health Boost II adds 8
+                ("h205_cube_equal", 22, "sulfur_cube 6.5 200 8.5 {Size:4", 1),
+                // tame: max-health base 40; Health Boost II adds 8
+                ("h205_wolf", 21, "wolf 8.5 200 8.5 {", 1),
+                // tame: Health Boost VIII adds 32 to the tame base
+                ("h205_wolf_equal", 23, "wolf 10.5 200 8.5 {", 7),
+            ];
+            let mut ids = Vec::new();
+            for (tag, n, summon, _) in cases {
+                let sep = if summon.ends_with('{') { "" } else { "," };
+                assert!(game.run_command(&format!(
+                    "summon minecraft:{summon}{sep}UUID:[I;205,0,0,{n}],Tags:[\"{tag}\"],NoAI:1b,PersistenceRequired:1b,Silent:1b}}"
+                )));
+                let i = pig(game, n);
+                if tag.starts_with("h205_wolf") {
+                    sunrise_client::mobs::tame::set_tame(&mut game.mobs[i], true);
+                }
+                ids.push(i);
+            }
+            let state = |game: &Game<'_>| -> Vec<(f32, f32)> {
+                ids.iter()
+                    .map(|&i| (game.mobs[i].attrs.max_health, game.mobs[i].health))
+                    .collect()
+            };
+            let before = state(game);
+            assert_eq!(
+                before.iter().map(|s| s.0).collect::<Vec<_>>(),
+                [12.0, 20.0, 40.0, 40.0]
+            );
+            assert_eq!(
+                sunrise_client::mobs::finalize::max_health(&game.mobs[ids[1]]),
+                20.0,
+                "sizing installs the cube's actual max-health attribute base"
+            );
+            for (tag, _, _, amp) in cases {
+                assert!(game.run_command(&format!(
+                    "effect give @e[tag={tag},limit=1] minecraft:health_boost 100 {amp}"
+                )));
+            }
+            assert_eq!(
+                sunrise_client::mobs::finalize::max_health(&game.mobs[ids[3]]),
+                72.0,
+                "health boost adds to the tamed wolf's attribute base"
+            );
+            assert_eq!(
+                state(game),
+                [
+                    (20.0, before[0].1),
+                    (28.0, before[1].1),
+                    (48.0, before[2].1),
+                    (72.0, before[3].1),
+                ],
+                "size and tame attributes gain the modifier without healing"
+            );
+            for (tag, _, _, _) in cases {
+                assert!(game.run_command(&format!(
+                    "effect clear @e[tag={tag},limit=1] minecraft:health_boost"
+                )));
+            }
+            assert_eq!(state(game), before, "and after the clear");
+        });
+    }
+}
+
+#[cfg(test)]
+pub(in crate::game) mod depleted_absorption_tests {
+    use crate::game::{Audio, Game, Options, Progress, Settings, commands::Target, load_resources};
+    use std::sync::Arc;
+    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
+    use sunrise_core::{geometry::Vec3, position::ChunkPos};
+
+    fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+        let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+        let settings = Settings::default();
+        let loaded = load_resources(
+            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+            Vec::new(),
+            None,
+            &root,
+            &settings,
+            std::time::Instant::now(),
+            false,
+            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            &Progress::new(),
+            &mut |_, _| unreachable!(),
+        )
+        .unwrap();
+        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+        options.resources = root.clone();
+        options.game_dir = Some(
+            std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
+                .join(format!("h204-{:?}", std::thread::current().id())),
+        );
+        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        let mut game = Game::new(
+            &loaded.resources,
+            loaded.pack,
+            loaded.gui.unwrap(),
+            options,
+            settings,
+            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
+                root.clone(),
+            )),
+            None,
+        )
+        .unwrap();
+        game.build_registries();
+        game.set_allow_commands(true);
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+        game.block_ticks
+            .add_empty_chunk(ChunkPos::new(0, 0))
+            .unwrap();
+        assert!(game.run_command("forceload add 0 0"));
+        game.player = Some(PlayerMotion::new(game.motion, Vec3::new(2.5, 200.0, 2.5)).unwrap());
+        game.creative = true;
+        game.load_ticking_neighbourhood(0, 0);
+        test(&mut game);
+    }
+    /// The mob in the level with UUID word `n`.
+    fn pig(game: &Game<'_>, n: i32) -> usize {
+        let i: Vec<usize> = (0..game.mobs.len())
+            .filter(|&i| game.persist.uuid_of(game.mobs[i].id) == Some([204, 0, 0, n]))
+            .collect();
+        assert_eq!(i.len(), 1, "one live pig with UUID {n}");
+        i[0]
+    }
+    /// Absorption's remaining ticks on the mob, if it has the effect.
+    fn absorption(game: &Game<'_>, i: usize) -> Option<i32> {
+        game.mobs[i]
+            .extra
+            .effects
+            .iter()
+            .find(|e| e.id == "minecraft:absorption")
+            .map(|e| e.duration)
+    }
+
+    /// Expected values from the official 26.3 server:
+    /// AbsorptionMobEffect.applyEffectTick is false once the amount is 0, so
+    /// MobEffectInstance.tickServer drops the effect on the mob's next tick,
+    /// before the duration counts down; with any amount left it stays.
+    #[test]
+    #[ignore = "daily"]
+    fn a_mob_loses_absorption_on_the_tick_after_it_is_used_up() {
+        with_game(|game| {
+            // name, UUID word, extra NBT, effect, hit
+            let cases = [
+                ("depleted", 1, "NoAI:1b", true, Some(4)),
+                ("kept", 2, "NoAI:1b", true, None),
+                ("partial", 3, "NoAI:1b", true, Some(2)),
+                ("none", 4, "NoAI:1b", false, Some(4)),
+                ("refused", 5, "NoAI:1b,Invulnerable:1b", true, Some(4)),
+                ("ai", 6, "", true, Some(4)),
+            ];
+            for (name, n, extra, effect, _) in cases {
+                let extra = if extra.is_empty() {
+                    String::new()
+                } else {
+                    format!(",{extra}")
+                };
+                assert!(game.run_command(&format!(
+                    "summon minecraft:pig {}.5 200 4.5 {{UUID:[I;204,0,0,{n}],Tags:[\"h204_{name}\"],PersistenceRequired:1b,Silent:1b,Health:10f{extra}}}",
+                    2 * n
+                )));
+                if effect {
+                    assert!(game.run_command(&format!(
+                        "effect give @e[tag=h204_{name},limit=1] minecraft:absorption 100 0"
+                    )));
+                }
+            }
+            for (name, _, _, _, hit) in cases {
+                if let Some(hit) = hit {
+                    let accepted = game.run_command(&format!(
+                        "damage @e[tag=h204_{name},limit=1] {hit} minecraft:generic"
+                    ));
+                    assert_eq!(accepted, name != "refused", "{name}: damage result");
+                }
+            }
+            // Setup controls, independent of the tick: amount, health, effect.
+            for (name, n, _, effect, hit) in cases {
+                let i = pig(game, n);
+                let m = &game.mobs[i];
+                let amount = match (effect, hit) {
+                    (false, _) => 0.0,
+                    (true, Some(h)) if name != "refused" => 4.0 - h as f32,
+                    _ => 4.0,
+                };
+                assert_eq!(m.absorption, amount, "{name}: absorption after the hit");
+                let health = if !effect && hit.is_some() { 6.0 } else { 10.0 };
+                assert_eq!(m.health, health, "{name}: health after the hit");
+                assert_eq!(
+                    absorption(game, i),
+                    effect.then_some(2000),
+                    "{name}: effect before the tick"
+                );
+            }
+
+            // One level tick (`tick_world` runs after `tick` has advanced the
+            // clock): the kept effect counting 2000 -> 1999 shows the mobs ticked once.
+            let time = game.world.game_time;
+            game.tick_world(true).unwrap();
+            assert_eq!(
+                game.world.game_time, time,
+                "the level tick leaves the clock to `tick`"
+            );
+            assert_eq!(
+                absorption(game, pig(game, 2)),
+                Some(1999),
+                "the mobs ticked exactly once"
+            );
+            let mut failures = Vec::new();
+            for (name, n, _, effect, _) in cases {
+                let i = pig(game, n);
+                let expected = match name {
+                    "depleted" | "ai" => None,
+                    _ if effect => Some(1999),
+                    _ => None,
+                };
+                if absorption(game, i) != expected {
+                    failures.push(format!(
+                        "{name}: effect {:?}, expected {expected:?}",
+                        absorption(game, i)
+                    ));
+                }
+                let saved = game
+                    .command_target_nbt(Target::Mob(game.mobs[i].id))
+                    .unwrap();
+                let listed = matches!(saved.get("active_effects"), Some(sunrise_core::nbt::Tag::List(l)) if !l.is_empty());
+                if listed != expected.is_some() {
+                    failures.push(format!("{name}: saved active_effects {listed}"));
+                }
+            }
+            for (name, n, _, _, _) in [cases[0], cases[5]] {
+                let i = pig(game, n);
+                if game.mobs[i].absorption != 0.0 || game.mobs[i].health != 10.0 {
+                    failures.push(format!("{name}: amount/health changed by the removal"));
+                }
+            }
+            assert!(failures.is_empty(), "depleted absorption: {failures:#?}");
+        });
+    }
+
+    /// The same for infinite effects (`MobEffectInstance.tickServer` asks
+    /// `applyEffectTick` by the mob's tickCount): a used-up infinite
+    /// Absorption goes, an unused one stays infinite, and another infinite
+    /// effect is untouched.
+    #[test]
+    #[ignore = "daily"]
+    fn infinite_absorption_goes_only_once_used_up() {
+        with_game(|game| {
+            // name, UUID word, infinite effects, hit
+            let cases: [(&str, i32, &[&str], bool); 4] = [
+                ("inf_depleted", 11, &["absorption"], true),
+                ("inf_kept", 12, &["absorption"], false),
+                ("inf_other", 13, &["speed"], true),
+                ("inf_both", 14, &["speed", "absorption"], true),
+            ];
+            for (name, n, effects, _) in cases {
+                assert!(game.run_command(&format!(
+                    "summon minecraft:pig {}.5 200 8.5 {{UUID:[I;204,0,0,{n}],Tags:[\"h204_{name}\"],PersistenceRequired:1b,Silent:1b,Health:10f,NoAI:1b}}",
+                    n - 9
+                )));
+                for effect in effects {
+                    assert!(game.run_command(&format!(
+                        "effect give @e[tag=h204_{name},limit=1] minecraft:{effect} infinite 0"
+                    )));
+                }
+            }
+            for (name, _, _, hit) in cases {
+                if hit {
+                    assert!(game.run_command(&format!(
+                        "damage @e[tag=h204_{name},limit=1] 4 minecraft:generic"
+                    )));
+                }
+            }
+            let effect = |game: &Game<'_>, i: usize, id: &str| {
+                game.mobs[i]
+                    .extra
+                    .effects
+                    .iter()
+                    .find(|e| e.id == id)
+                    .map(|e| e.duration)
+            };
+            for (name, n, effects, hit) in cases {
+                let i = pig(game, n);
+                let has = effects.contains(&"absorption");
+                assert_eq!(
+                    game.mobs[i].absorption,
+                    if has && !hit { 4.0 } else { 0.0 },
+                    "{name}: amount"
+                );
+                assert_eq!(
+                    game.mobs[i].health,
+                    if hit && !has { 6.0 } else { 10.0 },
+                    "{name}: health"
+                );
+                assert_eq!(
+                    effect(game, i, "minecraft:absorption"),
+                    has.then_some(-1),
+                    "{name}: before"
+                );
+            }
+            let mut failures = Vec::new();
+            for tick in 1..=2 {
+                game.tick_world(true).unwrap();
+                for (name, n, effects, hit) in cases {
+                    let i = pig(game, n);
+                    let absorption = (effects.contains(&"absorption") && !hit).then_some(-1);
+                    let speed = effects.contains(&"speed").then_some(-1);
+                    let got = (
+                        effect(game, i, "minecraft:absorption"),
+                        effect(game, i, "minecraft:speed"),
+                    );
+                    if got != (absorption, speed) {
+                        failures.push(format!(
+                            "{name} tick {tick}: (absorption, speed) {got:?}, expected {:?}",
+                            (absorption, speed)
+                        ));
+                    }
+                }
+            }
+            assert!(failures.is_empty(), "infinite absorption: {failures:#?}");
+        });
+    }
+}
+
+#[cfg(test)]
+pub(in crate::game) mod arrow_contents {
+    //! Actual in-memory Game potion paths. No run loop, world load or server startup.
+    use super::*;
+    use crate::game::{Audio, Options, Progress, Settings, execution_role, load_resources};
+    use serde_json::{Value, json};
+    use std::{path::PathBuf, sync::Arc, time::Instant};
+    use sunrise_client::chunk::Chunk;
+
+    fn stack(row: &Value) -> ItemStack {
+        let mut stack = ItemStack::new("minecraft:tipped_arrow", 1);
+        if let Some(potion) = row["potion"].as_str() {
+            stack = stack.with_potion(&format!("minecraft:{potion}"));
+        }
+        let effects = row["custom"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| {
+                Tag::compound([
+                    (
+                        "id",
+                        Tag::String(
+                            format!("minecraft:{}", e["id"].as_str().unwrap())
+                                .as_str()
+                                .into(),
+                        ),
+                    ),
+                    ("duration", Tag::Int(e["duration"].as_i64().unwrap() as i32)),
+                    ("amplifier", Tag::Int(e["amp"].as_i64().unwrap() as i32)),
+                    (
+                        "ambient",
+                        Tag::Byte(i8::from(e["ambient"].as_bool().unwrap())),
+                    ),
+                    (
+                        "show_particles",
+                        Tag::Byte(i8::from(e["visible"].as_bool().unwrap())),
+                    ),
+                ])
+            })
+            .collect();
+        stack
+            .data_mut()
+            .potion_extra
+            .push(("custom_effects".into(), Tag::List(effects)));
+        if let Some(color) = row["color"].as_i64() {
+            stack
+                .data_mut()
+                .potion_extra
+                .push(("custom_color".into(), Tag::Int(color as i32)));
+        }
+        if let Some(name) = row["name"].as_str() {
+            stack
+                .data_mut()
+                .potion_extra
+                .push(("custom_name".into(), Tag::String(name.into())));
+        }
+        stack
+    }
+    #[test]
+    #[ignore = "explicit SUNRISE_TEST_RESOURCES and isolated potion oracle input/output"]
+    fn actual_arrow_contents_match_pinned_methods() {
+        run_actual_arrow_contents_match_pinned_methods();
+    }
+
+    pub(in crate::game::server_side) fn run_actual_arrow_contents_match_pinned_methods() {
+        let root =
+            PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").expect("explicit resources"));
+        let input =
+            PathBuf::from(std::env::var_os("SUNRISE_POTION_INPUT").expect("explicit input"));
+        let output =
+            PathBuf::from(std::env::var_os("SUNRISE_POTION_OUTPUT").expect("explicit output"));
+        let expected: Vec<Value> = serde_json::from_slice(
+            &std::fs::read(
+                std::env::var_os("SUNRISE_POTION_EXPECTED").expect("pinned method output"),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let rows: Vec<Value> = serde_json::from_slice(&std::fs::read(input).unwrap()).unwrap();
+        let settings = Settings::default();
+        let loaded = load_resources(
+            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+            Vec::new(),
+            None,
+            &root,
+            &settings,
+            Instant::now(),
+            false,
+            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            &Progress::new(),
+            &mut |_, _| unreachable!(),
+        )
+        .unwrap();
+        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+        options.resources = root.clone();
+        options.game_dir = Some(std::env::current_dir().unwrap());
+        options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+        let mut game = Game::new(
+            &loaded.resources,
+            loaded.pack,
+            loaded.gui.unwrap(),
+            options,
+            settings,
+            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
+                root.clone(),
+            )),
+            None,
+        )
+        .unwrap();
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+        let stone = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:stone")
+            .unwrap();
+        game.world.set(0, 64, 0, stone).unwrap();
+        assert_eq!(rows.len(), 5, "all five arrow cases must execute");
+        let mut results = Vec::new();
+        for (index, row) in rows.iter().enumerate() {
+            let id = row["id"].clone();
+            let mut arrow = Projectile::new(
+                ProjectileKind::Arrow {
+                    base_damage: 2.,
+                    critical: false,
+                    effect: None,
+                },
+                Vec3::new(0.5, 64.5, 0.5),
+                None,
+            );
+            let st = arrow.arrow.as_mut().unwrap();
+            st.pickup_item = stack(row);
+            st.in_ground = true;
+            st.in_ground_time = 598;
+            st.last_state = Some(stone);
+            arrow.stuck = true;
+            let rain = |_| false;
+            let scene = game.arrow_scene(&rain);
+            sunrise_client::arrows::tick(&mut arrow, &scene, &[]);
+            let st = arrow.arrow.as_ref().unwrap();
+            let item599 = st
+                .pickup_item
+                .item
+                .trim_start_matches("minecraft:")
+                .to_owned();
+            let color599 = st.potion_color().map_or(-1, |v| v as i32);
+            sunrise_client::arrows::tick(&mut arrow, &scene, &[]);
+            let st = arrow.arrow.as_ref().unwrap();
+            results.push(json!({"id":id,"item599":item599,"color599":color599,"item600":st.pickup_item.item.trim_start_matches("minecraft:"),"color600":st.potion_color().map_or(-1,|v|v as i32)}));
+            assert_eq!(
+                results.last().unwrap(),
+                &expected[index],
+                "actual arrow tick: {}",
+                id
+            );
+        }
+        std::fs::write(output, serde_json::to_vec_pretty(&results).unwrap()).unwrap();
+    }
+}

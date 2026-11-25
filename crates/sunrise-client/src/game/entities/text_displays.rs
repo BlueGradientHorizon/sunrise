@@ -862,19 +862,20 @@ impl Game<'_> {
         let cz = pos.z.floor() as i32 >> 4;
         self.world.chunks.contains_key(&(cx, cz))
     }
+    pub(in crate::game::client_side) fn client_entity_vehicle(&self, id: u32) -> Option<u32> {
+        self.remote.as_ref().and_then(|r| r.passenger_vehicle(id))
+    }
     pub(in crate::game::client_side) fn entity_has_ancestor(
         &self,
         passenger: u32,
         ancestor: u32,
     ) -> bool {
-        let Some(mut cur) = self.entity(passenger) else {
-            return false;
-        };
+        let mut cur = passenger;
         for _ in 0..16 {
-            let Some(v) = self.entity_vehicle(cur) else {
+            let Some(v) = self.client_entity_vehicle(cur) else {
                 return false;
             };
-            if v.id() == ancestor {
+            if v == ancestor {
                 return true;
             }
             cur = v;
@@ -929,14 +930,12 @@ impl Game<'_> {
         if first == id {
             return true;
         }
-        let Some(mut cur) = self.entity(first) else {
-            return false;
-        };
+        let mut cur = first;
         for _ in 0..16 {
-            let Some(next) = self.entity_vehicle(cur) else {
+            let Some(next) = self.client_entity_vehicle(cur) else {
                 return false;
             };
-            if next.id() == id {
+            if next == id {
                 return true;
             }
             cur = next;
@@ -1000,8 +999,8 @@ impl Game<'_> {
                 return false;
             }
             root = cur;
-            match self.entity(cur).and_then(|e| self.entity_vehicle(e)) {
-                Some(next) if next.id() != cur => cur = next.id(),
+            match self.client_entity_vehicle(cur) {
+                Some(next) if next != cur => cur = next,
                 _ => break,
             }
         }
@@ -1196,7 +1195,7 @@ impl Game<'_> {
             if display.data.glow_color != -1 {
                 display.data.glow_color as u32 & 0xFF_FFFF
             } else {
-                super::glowing::team_color(self.mob_team(id as u32))
+                super::glowing::team_color(self.client_mob_team(id as u32))
             }
         });
         self.entity_outline(id as u32, display.kind(), vanilla)

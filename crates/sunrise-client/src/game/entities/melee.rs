@@ -75,28 +75,12 @@ impl Game<'_> {
         );
     }
 
-    /// `Player.canCriticalAttack` for a living target at attack strength
-    /// `scale`: falling, off the ground, not in water, not on a ladder, not blind (mobility
-    /// restricted), not riding, not sprinting.
-    pub(in crate::game) fn critical_attack(&self, scale: f32) -> bool {
-        let player = self.player.as_ref();
-        let falling = player.is_some_and(|p| {
-            !p.ground.on_ground
-                && p.fall_distance > 0.0
-                && !p.fluids.was_touching_water
-                && !p.on_climbable
-                && !p.sprinting
-        });
-        let restricted = self.potions.effects.get("blindness").is_some() || self.riding.is_some();
-        scale > 0.9 && falling && !restricted
-    }
-
     /// Player.attack with the attack-strength charge, crits and knockback.
     pub(in crate::game) fn attack(&mut self) -> bool {
         if self.spectator() {
             return false;
         }
-        if let Some(hit) = self.crosshair_entity_hit() {
+        if let Some(hit) = self.server_crosshair_entity_hit() {
             if self.falling.iter().any(|f| f.id as i32 == hit.id) {
                 return false;
             }

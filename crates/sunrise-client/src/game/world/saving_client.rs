@@ -106,64 +106,24 @@ impl Game<'_> {
         self.capture(false);
         Ok(())
     }
-    /// Control saves acknowledge only after durable completion, while their
-    /// snapshot work is spread across event-loop turns too.
     #[cfg(test)]
-    pub(in crate::game) fn test_begin_control_save(
+    pub(in crate::game) fn test_seed_pending_server_save(
         &mut self,
-        all: bool,
         reply: std::sync::mpsc::Sender<String>,
-    ) -> Result<()> {
-        self.begin_control_save(all, reply)
-    }
-    #[cfg(test)]
-    pub(in crate::game) fn test_poll_closing_save(&mut self) -> Result<bool> {
-        self.poll_closing_save()
-    }
-    #[allow(dead_code)]
-    pub(in crate::game::client_side) fn begin_control_save(
-        &mut self,
-        all: bool,
-        reply: std::sync::mpsc::Sender<String>,
-    ) -> Result<()> {
-        if self.pending_save.0.is_some() {
-            return Err("a world save is already in progress".into());
-        }
-        if all {
-            self.world
-                .modified
-                .extend(self.world.chunks.keys().copied());
-        }
-        self.clear_device_keys();
-        self.client.physical_keys.clear();
-        self.set_mapping_held("key.attack", false);
-        self.set_mapping_held("key.use", false);
+    ) {
         self.pending_save.0 = Some(ClosingSave {
             quit: false,
             close: false,
             reply: Some(reply),
             started: Instant::now(),
-            stage: Stage::Generation,
+            stage: Stage::Server,
         });
-        Ok(())
     }
     /// `true` means the window can exit. The session lock stays in Game until
     /// every snapshot has been queued and every writer has synced its files.
     pub(in crate::game::client_side) fn poll_closing_save(&mut self) -> Result<bool> {
-        let defers = self.pending_save.0.as_ref().is_some_and(|save| {
-            !matches!(save.stage, Stage::Server | Stage::Quit)
-                && save.started.elapsed() < Duration::from_secs(30)
-        });
-        if defers && self.defer_chunk_disk_save() {
-            return Ok(false);
-        }
         let Some(mut save) = self.pending_save.0.take() else {
             return Ok(false);
-        };
-        let (per_frame, budget) = if save.close {
-            (CLOSING_SNAPSHOTS_PER_FRAME, CLOSING_SNAPSHOT_BUDGET)
-        } else {
-            (SNAPSHOTS_PER_FRAME, SNAPSHOT_BUDGET)
         };
         let result = (|| -> Result<bool> {
             match &mut save.stage {
@@ -185,72 +145,8 @@ impl Game<'_> {
                     }
                     Ok(true)
                 }
-                Stage::Generation => {
-                    if save.started.elapsed() > Duration::from_secs(30) {
-                        return Err("chunk generation did not finish before saving".into());
-                    }
-                    let deadline = Instant::now() + budget;
-                    loop {
-                        match self.streaming.prepare_poll_save(&mut self.world, deadline) {
-                            sunrise_client::streaming::SaveStep::Pending => break,
-                            sunrise_client::streaming::SaveStep::Full(chunk) => {
-                                self.native_late_full_chunk_snapshot(&chunk);
-                                self.streaming.save_finished(chunk);
-                            }
-                            sunrise_client::streaming::SaveStep::Protos(protos) => {
-                                self.native_proto_snapshots(&protos);
-                                if self.streaming.submit_protos(protos) {
-                                    save.stage = Stage::Chunks(
-                                        self.world.modified.iter().copied().collect(),
-                                    );
-                                }
-                                break;
-                            }
-                        }
-                    }
-                    Ok(false)
-                }
-                Stage::Chunks(keys) => {
-                    if let Some(entities) =
-                        self.poll_closing_save_chunks_server(keys, per_frame, budget)?
-                    {
-                        save.stage = Stage::Entities(entities);
-                    }
-                    Ok(false)
-                }
-                Stage::Entities(keys) => {
-                    if let Some(flush) =
-                        self.poll_closing_save_entities_server(keys, per_frame, budget)?
-                    {
-                        save.stage = Stage::Writes(Some(flush));
-                    }
-                    Ok(false)
-                }
-                Stage::Writes(flush) => {
-                    let Some(receive) = flush else {
-                        *flush = Some(self.poll_closing_save_flush_server()?);
-                        return Ok(false);
-                    };
-                    if !self.finish_player_autosaves(false)? {
-                        return Ok(false);
-                    }
-                    let result = match receive.try_recv() {
-                        Ok(result) => result,
-                        Err(TryRecvError::Empty) => return Ok(false),
-                        Err(TryRecvError::Disconnected) => {
-                            Err(std::io::Error::other("the region writer stopped"))
-                        }
-                    };
-                    // A later shutdown barrier must force the files again if this one failed.
-                    *flush = None;
-                    result?;
-                    if !save.close {
-                        self.client.message = Some((
-                            sunrise_client::lang::get("commands.save.success"),
-                            Instant::now(),
-                        ));
-                    }
-                    Ok(true)
+                Stage::Generation | Stage::Chunks(_) | Stage::Entities(_) | Stage::Writes(_) => {
+                    Err("local disk save stages only run on the server".into())
                 }
             }
         })();
@@ -413,36 +309,5 @@ impl Game<'_> {
             scaled: false,
             background: true,
         });
-    }
-}
-
-#[cfg(test)]
-pub(in crate::game) mod tests {
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::native_entity_refs::tests::with_game;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::saving::tests::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use std::sync::{Arc, mpsc};
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use sunrise_client::save::{LevelShape, SaveDir};
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use sunrise_core::nbt::{DISK_WRITE_NESTING_GUARD, Tag};
-
-    pub(in crate::game) fn finish_staged_save(game: &mut Game<'_>) -> bool {
-        let deadline = Instant::now() + Duration::from_secs(5);
-        loop {
-            let quit = game.poll_closing_save().unwrap();
-            if game.pending_save.0.is_none() {
-                return quit;
-            }
-            assert!(
-                Instant::now() < deadline,
-                "the region writer never acknowledged the save"
-            );
-            std::thread::yield_now();
-        }
     }
 }

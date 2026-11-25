@@ -128,10 +128,6 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-#[path = "tests/fireworks_events_tests_client.rs"]
-pub(in crate::game) mod events_tests;
-
-#[cfg(test)]
 pub(in crate::game) mod tests {
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::fireworks::tests::*;

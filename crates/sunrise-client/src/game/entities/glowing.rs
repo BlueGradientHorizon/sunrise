@@ -13,13 +13,9 @@ pub(in crate::game::client_side) fn team_color(team: Option<&sb::Team>) -> u32 {
 
 impl Game<'_> {
     /// `Entity.isCurrentlyGlowing` of an entity that is not living (an item, a projectile):
-    /// its `Glowing` tag, or shared flag 6 as a server sent it.
+    /// shared flag 6 as a server sent it.
     pub(in crate::game) fn tracked_entity_glowing(&self, id: u32) -> bool {
-        self.remote_glowing(id).unwrap_or_else(|| {
-            self.persist_raw(id)
-                .and_then(|t| sunrise_client::save::number(t.get("Glowing")))
-                .is_some_and(|b| b != 0)
-        })
+        self.remote_glowing(id).unwrap_or(false)
     }
 
     /// The outline an entity is drawn with: vanilla's (`Some` team colour when it glows),
@@ -39,7 +35,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn thing_outline(&self, id: u32, kind: &str) -> Option<u32> {
         let vanilla = self
             .tracked_entity_glowing(id)
-            .then(|| team_color(self.mob_team(id)));
+            .then(|| team_color(self.client_mob_team(id)));
         self.entity_outline(id, kind, vanilla)
     }
 
@@ -52,7 +48,7 @@ impl Game<'_> {
                 let name = names.into_iter().find(|(id, _)| *id == m.id);
                 name.and_then(|(_, name)| self.score.board.players_team(&name))
             } else {
-                self.mob_team_of(m)
+                self.client_mob_team_of(m)
             };
             team_color(team)
         });

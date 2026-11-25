@@ -55,10 +55,6 @@ pub(in crate::game::client_side) use crate::game::remote::Remote;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::RemoteDimensionEntry;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::RemoteInputWorld;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::remote::RemoteUseWorld;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::SHIFT_INPUT;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::ServicesKeys;
@@ -1305,6 +1301,80 @@ impl Game<'_> {
     pub(in crate::game) fn to_stack(&self, s: &Option<Stack>) -> Option<ItemStack> {
         self.decode_remote_stack(s.as_ref()?)
     }
+
+    pub(in crate::game) fn send(&self, packet: S) {
+        if self.remote.is_some() {
+            // MultiPlayerGameMode's attack, interact, useItem, useItemOn, releaseUsingItem, dropItem and
+            // piercingAttack run ensureHasSentCarriedItem before their packet: a slot the number keys
+            // chose this tick goes out first. A miss, a dig's start or a swap waits for the next tick.
+            if let S::Attack(_) | S::Interact(_) | S::UseItem(_) | S::UseItemOn(_) = &packet {
+                self.remote_send_carried();
+            } else if let S::PlayerAction(a) = &packet
+                && matches!(a.action, 4 | 5 | 6 | 8)
+            {
+                self.remote_send_carried();
+            }
+            self.send_play(packet);
+        }
+    }
+
+    /// `MultiPlayerGameMode.attack` runs `Player.attack` on this client too: its
+    /// `isSweepAttack` for a damaging hit on `target` (`living`: a
+    /// `LivingEntity`, which may be hit critically), heard by native mods on
+    /// both sides. Only the server sweeps.
+    pub(in crate::game) fn remote_sweep_event(&mut self, target: &str, living: bool) {
+        if mod_api::__private::mods().is_empty() {
+            return;
+        }
+        let (damage, scale) = self.remote_attack_damage();
+        // Player.getEnchantedDamage returns baseDamage on a client, so magic bonus is 0.
+        if damage <= 0.0 {
+            return;
+        }
+        let crit = living && self.critical_attack(scale);
+        self.sweep_decision(scale, crit, target);
+    }
+
+    /// Minecraft.handleKeybinds, key.swapOffhand: the server swaps the hands
+    /// (ServerboundPlayerActionPacket SWAP_ITEM_WITH_OFFHAND at BlockPos.ZERO, facing down) and
+    /// sends both slots back; nothing is predicted.
+    pub(in crate::game) fn remote_swap_hands(&mut self) {
+        self.send_action(7);
+        // Equal stacks swap with no slot update to wait for.
+        let (main, off) = (self.stack_in(self.selected), self.offhand.as_ref());
+        let moves = !super::hand::matches_for_swap(main, off);
+        if let Some(r) = self.remote.as_mut() {
+            r.swap_answer = [moves; 2];
+        }
+    }
+}
+
+/// The game as the tick's input sees it.
+pub(in crate::game) struct RemoteInputWorld<'g, 'a>(pub(in crate::game) &'g mut Game<'a>);
+
+pub(in crate::game) struct RemoteUseWorld<'g, 'a>(
+    pub(in crate::game) &'g mut Game<'a>,
+    pub(in crate::game) mod_api::InteractionAttempt,
+);
+
+impl sunrise_client::interaction_input::TargetUseWorld for RemoteUseWorld<'_, '_> {
+    fn use_entity(&mut self) -> bool {
+        self.0.remote_use_entity(Hand::Main)
+    }
+    fn use_block(&mut self) -> bool {
+        self.0.remote_use_block(Hand::Main, self.1, None)
+    }
+    fn use_item(&mut self) {
+        self.0.remote_use_hands(Hand::Main, self.1, None);
+    }
+}
+
+#[cfg(test)]
+impl Game<'_> {
+    pub(in crate::game) fn test_remote_pick_click(&mut self) {
+        use sunrise_client::interaction_input::InteractionWorld as _;
+        RemoteInputWorld(self).pick();
+    }
 }
 
 impl PlayerTextures {
@@ -1560,15 +1630,58 @@ pub(in crate::game) mod tests {
             &EnabledMods::new([("gates".into(), mod_api::Side::Both)]),
         )
         .unwrap();
+        let pos = [3, 64, 4];
+        let [x, y, z] = pos;
+        let hit = crate::game::Hit {
+            pos,
+            face: [0, 1, 0],
+            point: [3.5, 64.875, 4.5],
+            inside: false,
+        };
+        let open = |game: &crate::game::Game<'_>| {
+            let b = game.res.behaviours();
+            b.table.bool(game.world.block(x, y, z), b.props.open)
+        };
+        let blocks = mod_api::SoundSource::Blocks.index();
+
+        crate::game::native_entity_refs::tests::with_game_role(
+            root.clone(),
+            crate::game::execution_role::ExecutionRole::Client,
+            |game| {
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                let gate = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("gates:sites")
+                    .unwrap();
+                let vanilla_gate = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:oak_fence_gate")
+                    .unwrap();
+                for (state, name) in [
+                    (vanilla_gate, "minecraft:block.fence_gate.open"),
+                    (gate, use_sound),
+                ] {
+                    game.world.set(x, y, z, state).unwrap();
+                    game.audio.0.capture = Some(Vec::new());
+                    let (answer, dry) = game.remote_block_reacts(&hit, None, true);
+                    assert!(answer.consumes_action());
+                    game.predict_use(&dry, 1);
+                    assert!(open(game), "the gate opens without a server round trip");
+                    let capture = game.audio.0.capture.as_mut().unwrap();
+                    assert_eq!(capture.len(), 1);
+                    let predicted = capture.pop().unwrap();
+                    assert_eq!((predicted.event.as_str(), predicted.source), (name, blocks));
+                }
+            },
+        );
+
         with_guests_at(root, |game| {
-            let pos = [3, 64, 4];
-            let [x, y, z] = pos;
-            let hit = crate::game::Hit {
-                pos,
-                face: [0, 1, 0],
-                point: [3.5, 64.875, 4.5],
-                inside: false,
-            };
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -1579,10 +1692,6 @@ pub(in crate::game) mod tests {
                 .registry
                 .default_state("gates:sites")
                 .unwrap();
-            let open = |game: &crate::game::Game<'_>| {
-                let b = game.res.behaviours();
-                b.table.bool(game.world.block(x, y, z), b.props.open)
-            };
 
             let [actor, other] = [12, 13].map(|conn| {
                 let (tx, rx) = std::sync::mpsc::channel();
@@ -1624,7 +1733,6 @@ pub(in crate::game) mod tests {
                     })
                     .collect::<Vec<_>>()
             };
-            let blocks = mod_api::SoundSource::Blocks.index();
             let vanilla_gate = game
                 .pack
                 .assets
@@ -1636,17 +1744,6 @@ pub(in crate::game) mod tests {
                 (vanilla_gate, "minecraft:block.fence_gate.open"),
                 (gate, use_sound),
             ] {
-                game.world.set(x, y, z, state).unwrap();
-                game.audio.0.capture = Some(Vec::new());
-                let (answer, dry) = game.remote_block_reacts(&hit, None, true);
-                assert!(answer.consumes_action());
-                game.predict_use(&dry, 1);
-                assert!(open(game), "the gate opens without a server round trip");
-                let capture = game.audio.0.capture.as_mut().unwrap();
-                assert_eq!(capture.len(), 1);
-                let predicted = capture.pop().unwrap();
-                assert_eq!((predicted.event.as_str(), predicted.source), (name, blocks));
-
                 game.world.set(x, y, z, state).unwrap();
                 game.world.block_log = Some(Vec::new());
                 assert!(
@@ -1665,6 +1762,7 @@ pub(in crate::game) mod tests {
                 assert_eq!(sounds(game, &other), [(name.into(), blocks as i32, 1.0)]);
             }
 
+            game.start_audio_capture();
             game.explosion_trigger_blocks(&mut [pos]).unwrap();
             assert!(!open(game));
             game.lan_broadcast_effects();
@@ -1684,7 +1782,7 @@ pub(in crate::game) mod tests {
             assert!(game.with_level(|b, level, ticks| {
                 b.set_block(level, ticks, BlockPos::new(x + 1, y, z), power, 3)
             }));
-            game.client_process_level_events().unwrap();
+            game.server_process_level_events().unwrap();
             assert!(open(game));
             game.lan_broadcast_effects();
             for listener in [&actor, &other] {
@@ -1693,14 +1791,21 @@ pub(in crate::game) mod tests {
                     [(wire_sound.into(), blocks as i32, 1.0)]
                 );
             }
-            assert_eq!(game.audio.0.heard.get(blast_sound), Some(&1));
+            let blast_count = |game: &crate::game::Game<'_>| {
+                game.server
+                    .pending_sounds
+                    .iter()
+                    .filter(|s| s.event == blast_sound)
+                    .count()
+            };
+            assert_eq!(blast_count(game), 1);
             let powered = game
                 .with_props(gate, &[("open", "true"), ("powered", "true")])
                 .unwrap();
             game.world.set(x, y, z, powered).unwrap();
             game.explosion_trigger_blocks(&mut [pos]).unwrap();
             assert_eq!(game.world.block(x, y, z), powered);
-            assert_eq!(game.audio.0.heard.get(blast_sound), Some(&1));
+            assert_eq!(blast_count(game), 1);
         });
     }
 }

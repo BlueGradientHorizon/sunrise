@@ -194,6 +194,19 @@ pub(in crate::game::server_side) use sunrise_world::{
 };
 
 impl Game<'_> {
+    pub(in crate::game) fn server_set_audio_loop_context(
+        &mut self,
+        audio: Option<sunrise_world::native_load_context::LoopContext>,
+    ) {
+        debug_assert!(audio.is_none());
+    }
+
+    pub(in crate::game) fn server_retire_disabled_instance_groups(
+        &self,
+        _effective: &std::collections::BTreeSet<String>,
+    ) {
+    }
+
     /// The server's side of a live switch: the data packs reload from the new root.
     pub(in crate::game) fn apply_mods_reload(&mut self, reload: ModsReload) {
         let at = std::time::Instant::now();

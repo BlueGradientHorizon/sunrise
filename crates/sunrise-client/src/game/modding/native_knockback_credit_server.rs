@@ -20,6 +20,11 @@ pub(in crate::game::server_side) use sunrise_client::{
 };
 
 impl Game<'_> {
+    /// The attacking entity's canonical UUID, already assigned on creation or admission.
+    pub(in crate::game) fn known_attacker_uuid(&self, id: u32) -> Option<[i32; 4]> {
+        self.known_resident_entity_uuid_at(self.dim.key(), id)
+            .or_else(|| self.persist.uuids.get(&id).copied())
+    }
     /// The credited entity and its main hand: in the level in place, or a mob
     /// a kill credit found in another loaded level.
     pub(in crate::game::server_side) fn knockback_credit_entity(&self, id: i32) -> CreditEntity {

@@ -31,4 +31,42 @@ impl Game<'_> {
             self.audio.0.play(sound, Some(at), 1.0, 1.0);
         }
     }
+    /// `getTicksSinceLastKineticHitFeedback` of this window's player.
+    pub(in crate::game) fn kinetic_hit_ticks(&self, partial: f32) -> f32 {
+        self.kinetic_feedback
+            .get(&OWN)
+            .map_or(0.0, |&t| (self.world.game_time - t) as f32 + partial)
+    }
+    /// `LivingEntity.handleEntityEvent(2)` on a server's client: the
+    /// player `id` (this one, or another) was hit by the spear it uses.
+    pub(in crate::game) fn remote_kinetic_hit(&mut self, id: i32) {
+        let own = self.remote.as_ref().is_some_and(|r| r.entity_id == id);
+        let (item, at) = if own {
+            let item = self
+                .using
+                .and_then(|(slot, _)| self.stack_in(slot))
+                .map(|s| s.item.clone());
+            let at = self.player.as_ref().map(|p| p.position);
+            (item, at)
+        } else {
+            let mob = self
+                .mobs
+                .iter()
+                .find(|m| m.id == id as u32 && m.extra.using_item > 0);
+            let item = mob.and_then(|m| {
+                if m.extra.using_off_hand {
+                    sunrise_client::mobs::finalize::item(m, sunrise_client::mobs::finalize::OFFHAND)
+                } else {
+                    sunrise_client::mobs::finalize::item(
+                        m,
+                        sunrise_client::mobs::finalize::MAINHAND,
+                    )
+                }
+            });
+            (item, mob.map(|m| m.position))
+        };
+        if let (Some(kinetic), Some(at)) = (item.as_deref().and_then(Kinetic::of), at) {
+            self.kinetic_hit_feedback(if own { OWN } else { id }, &kinetic, [at.x, at.y, at.z]);
+        }
+    }
 }

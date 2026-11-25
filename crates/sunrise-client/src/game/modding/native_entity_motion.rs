@@ -51,7 +51,7 @@ pub(in crate::game::server_side) fn ray_end(
     std::array::from_fn(|i| from[i] + look[i] * distance)
 }
 
-pub(in crate::game::server_side) fn corners(b: Aabb) -> [[f64; 3]; 2] {
+pub(in crate::game) fn corners(b: Aabb) -> [[f64; 3]; 2] {
     let axes = [Axis::X, Axis::Y, Axis::Z];
     [axes.map(|a| b.min(a)), axes.map(|a| b.max(a))]
 }
@@ -87,20 +87,8 @@ impl Game<'_> {
     /// entity Sunrise doesn't simulate (a display, a painting) has none, so
     /// zero. On a client, another entity's is the motion the server last
     /// sent it (`Entity.lerpMotion`). API 379.
-    pub(in crate::game) fn entity_velocity(&self, entity: EntityRef) -> Option<[f64; 3]> {
-        let t = self.native_entity_read_target(entity)?;
-        if !self.is_logical_server() {
-            // The client's copy: its own player's motion, and the motion the
-            // server sent for an entity it tracks.
-            let v = match t {
-                Target::Player => self.player.as_ref()?.velocity,
-                _ => match self.native_walk_entity(entity.id()) {
-                    Some(h) => with_entity!(self, h, e => e.velocity()),
-                    None => Vec3::ZERO,
-                },
-            };
-            return Some([v.x, v.y, v.z]);
-        }
+    pub(in crate::game) fn server_entity_velocity(&self, entity: EntityRef) -> Option<[f64; 3]> {
+        let t = self.native_entity_target(entity)?;
         if let Some(g) = self.native_target_guest(t) {
             return Some(std::array::from_fn(|i| {
                 g.position[i] - g.previous_position[i]
@@ -374,25 +362,16 @@ impl Game<'_> {
     /// corners coincide at its committed tick position, not its rendering box or packet target.
     /// Interactions use their saved dimensions. End crystals have their 2 x 2 box.
     /// None for the dragon; a dragon part's is its own. API 379.
-    pub(in crate::game) fn entity_bounding_box(&self, entity: EntityRef) -> Option<[[f64; 3]; 2]> {
-        if let Some(pos) = self.side_client_display_position(entity) {
-            return Some([pos; 2]);
-        }
-        if let Some(row) = self.native_client_general(entity) {
-            return Some(corners(row.bounds()));
-        }
-        let t = self.native_entity_read_target(entity)?;
-        if let Some(p) = self.native_client_player(t) {
-            return Some(corners(p.bounds()));
-        }
+    pub(in crate::game) fn server_entity_bounding_box(
+        &self,
+        entity: EntityRef,
+    ) -> Option<[[f64; 3]; 2]> {
+        let t = self.native_entity_target(entity)?;
         if let Some(g) = self.native_target_guest(t) {
             return Some(corners(g.bounds()));
         }
         if let Some(h) = self.native_walk_entity(entity.id()) {
-            // A client's copy of a non-mob entity takes its `entity_size` answer's box.
-            return Some(corners(with_entity!(self, h, e => {
-                self.client_copy_box(e.id(), e.position(), e.bounds())
-            })));
+            return Some(corners(with_entity!(self, h, e => e.bounds())));
         }
         let (lo, hi) = match t {
             Target::Other(id) => {
@@ -410,24 +389,22 @@ impl Game<'_> {
             }
             Target::Crystal(id) => {
                 let c = self.crystals.iter().find(|c| c.id == id)?;
-                return Some(corners(self.client_copy_box(id, c.position, c.bounds())));
+                return Some(corners(c.bounds()));
             }
             Target::Cushion(id) => self.cushions.iter().find(|c| c.id == id)?.bounds(),
             Target::Frame(id) => self.item_frames.iter().find(|f| f.id == id)?.bounds(),
             Target::Painting(id) => self.paintings.iter().find(|p| p.id == id)?.bounds(),
             _ => return None,
         };
-        // A position that came off the wire can be NaN or infinite: no box.
         if lo.iter().chain(&hi).any(|v| !v.is_finite()) {
             return None;
         }
         Some([lo, hi])
     }
-    /// Where the entity's eyes are (`Entity.getEyePosition`). API
-    /// 379.
-    pub(in crate::game) fn entity_eye_position(&self, entity: EntityRef) -> Option<[f64; 3]> {
-        let [x, y, z] = self.entity_position(entity)?;
-        Some([x, y + self.entity_eye_height(entity)?, z])
+
+    pub(in crate::game) fn server_entity_eye_height(&self, entity: EntityRef) -> Option<f64> {
+        let target = self.native_entity_target(entity)?;
+        Some(self.server_target_eye_height(target))
     }
     /// The unit vector the entity looks along (`Entity.getViewVector`, from
     /// its pitch and yaw). API 379.

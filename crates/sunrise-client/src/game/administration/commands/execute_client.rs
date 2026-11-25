@@ -1,33 +1,5 @@
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{
-    Arg, Context, Dim, Game, R, Target, data::DataRef, err, wrap_degrees,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::execute::ExecState;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::execute::Source;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::execute::StoreEntry;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::execute::StoreTarget;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::execute::fork_limit_reached;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::execute::is_player_in_place;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::execute::java_int;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::execute::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::commands::target_entity_mut;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
-    command::CommandError, nbt_path::NbtPath, text::Text,
-};
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::trig;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::nbt::Tag;
+//! Client-side entity eye-height lookup (`Entity.getEyeHeight`).
+use crate::game::{Game, commands_common::Target};
 
 impl Game<'_> {
     pub(in crate::game) fn target_eye_height(&self, t: Target) -> f64 {
@@ -36,7 +8,10 @@ impl Game<'_> {
                 .player
                 .as_ref()
                 .map_or(1.62, |p| f64::from(p.dimensions.eye_height)),
-            Target::Guest(conn) => self.command_guest(conn).map_or(1.62, |g| g.eye_height()),
+            Target::Guest(_) => {
+                debug_assert!(false, "client target_eye_height called with Target::Guest");
+                1.62
+            }
             Target::Mob(id) => self
                 .mobs
                 .iter()
@@ -47,14 +22,79 @@ impl Game<'_> {
             Target::Stand(id) => match self.armor_stands.iter().find(|a| a.id == id) {
                 Some(a) if a.marker => 0.0,
                 Some(a) if a.small => f64::from(0.9875f32),
-                _ => self.type_eye_height(&self.target_type(t)),
+                _ => self.type_eye_height("minecraft:armor_stand"),
             },
             Target::Other(id) => self.client.interactions.get(&(id as i32)).map_or_else(
-                || self.type_eye_height(&self.target_type(t)),
+                || {
+                    let ty = self
+                        .others
+                        .0
+                        .iter()
+                        .find(|o| o.id == id)
+                        .map_or("", |o| o.kind.as_str());
+                    self.type_eye_height(ty)
+                },
                 |i| f64::from(i.eye_height()),
             ),
-            // Entity.getEyeHeight: the type's dimensions.
-            _ => self.type_eye_height(&self.target_type(t)),
+            Target::General(id) => {
+                let ty = self
+                    .remote
+                    .as_ref()
+                    .and_then(|r| r.general.rows.get(&(id as i32)))
+                    .map_or("", |row| row.kind());
+                self.type_eye_height(ty)
+            }
+            Target::Projectile(id) => {
+                let ty = self
+                    .creatures
+                    .projectiles
+                    .iter()
+                    .find(|p| p.id == id)
+                    .map_or("", |p| p.entity_type());
+                self.type_eye_height(ty)
+            }
+            Target::Frame(id) => {
+                let ty = if self.item_frames.iter().any(|f| f.id == id && f.glow) {
+                    "minecraft:glow_item_frame"
+                } else {
+                    "minecraft:item_frame"
+                };
+                self.type_eye_height(ty)
+            }
+            Target::Boat(id) => {
+                let ty = self
+                    .boats
+                    .iter()
+                    .find(|b| b.id == id)
+                    .map_or_else(|| "minecraft:oak_boat".into(), |b| b.entity_type());
+                self.type_eye_height(&ty)
+            }
+            Target::Cart(id) => {
+                let ty = self
+                    .carts
+                    .iter()
+                    .find(|c| c.id == id)
+                    .map_or("minecraft:minecart", |c| c.kind.id());
+                self.type_eye_height(ty)
+            }
+            Target::Item(_) => self.type_eye_height("minecraft:item"),
+            Target::Orb(_) => self.type_eye_height("minecraft:experience_orb"),
+            Target::Painting(_) => self.type_eye_height("minecraft:painting"),
+            Target::Crystal(_) => self.type_eye_height("minecraft:end_crystal"),
+            Target::Dragon(_) | Target::DragonPart(_) => {
+                self.type_eye_height("minecraft:ender_dragon")
+            }
+            Target::Tnt(_) => self.type_eye_height("minecraft:tnt"),
+            Target::Cushion(_) => self.type_eye_height("minecraft:cushion"),
+            Target::Falling(_) => self.type_eye_height("minecraft:falling_block"),
+            Target::Rocket(_) => self.type_eye_height("minecraft:firework_rocket"),
+            Target::Trident(_) => self.type_eye_height("minecraft:trident"),
+            Target::Fangs(_) => self.type_eye_height("minecraft:evoker_fangs"),
+            Target::Spawner(_) => self.type_eye_height("minecraft:ominous_item_spawner"),
+            Target::Cloud(_) => self.type_eye_height("minecraft:area_effect_cloud"),
+            Target::Bolt(_) => self.type_eye_height("minecraft:lightning_bolt"),
+            Target::Hook(_) => self.type_eye_height("minecraft:fishing_bobber"),
+            Target::Knot(_) => self.type_eye_height("minecraft:leash_knot"),
         }
     }
 }

@@ -12,7 +12,7 @@ pub(in crate::game::server_side) use crate::game::remote::use_ends_click;
 #[test]
 #[ignore = "daily"]
 fn an_end_crystal_click_on_a_block_ends_there() {
-    crate::game::native_entity_refs::tests::with_game(|game| {
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
         use crate::game::Hit;
         use std::sync::Arc;
         use sunrise_client::{chunk::Chunk, first_person::Hand, motion::PlayerMotion};

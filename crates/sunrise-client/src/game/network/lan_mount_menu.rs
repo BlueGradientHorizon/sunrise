@@ -13,12 +13,13 @@ use super::{
     lan_actions::guest_within_entity_range,
     lan_crafting::GuestMenuEffects,
     mount_menu::{mount_columns, shows_body},
-    transactions::After,
+    transactions::{After, SaveChunkScope},
 };
 #[allow(unused_imports)]
 use sunrise_client::{
     items::ItemStack,
     menu::{Kind, Menu, QuickCraftDrag},
+    mobs::nautilus,
 };
 #[allow(unused_imports)]
 use sunrise_protocol::packets::play::{self, Clientbound as C};
@@ -340,6 +341,93 @@ impl Game<'_> {
             }
         }
     }
+    /// The slots of mount `index` as its menu shows them: the saddle, the
+    /// body item (None when the slot isn't active), the chest.
+    pub(in crate::game) fn mount_contents(
+        &self,
+        index: usize,
+    ) -> (
+        Option<ItemStack>,
+        Option<Option<ItemStack>>,
+        Vec<Option<ItemStack>>,
+    ) {
+        let m = &self.mobs[index];
+        let species = m.species();
+        let body = shows_body(species).then(|| m.equipment_stacks()[6].clone());
+        let size = mount_columns(m) * 3;
+        let mut items: Vec<_> = m.extra.items.iter().take(size).cloned().collect();
+        items.resize(size, None);
+        (m.saddle_item(), body, items)
+    }
+
+    /// The menu's slots back on mount `index` (`body` None: not its slot),
+    /// with the equip sound of what was put on (`Equippable.equipSound`).
+    pub(in crate::game) fn mount_store(
+        &mut self,
+        index: usize,
+        saddle: Option<ItemStack>,
+        body: Option<Option<ItemStack>>,
+        items: Vec<Option<ItemStack>>,
+    ) {
+        let m = &self.mobs[index];
+        let at = m.center();
+        let saddle_put_on = saddle.is_some() && !m.extra.saddled();
+        let put_on = if saddle_put_on {
+            saddle.as_ref()
+        } else {
+            body.as_ref()
+                .and_then(Option::as_ref)
+                .filter(|_| m.extra.body_id().is_none())
+        };
+        let sound = if saddle_put_on && nautilus::is_nautilus(m.species()) {
+            // AbstractNautilus.getEquipSound: its own saddle sounds.
+            Some(format!("minecraft:{}", nautilus::saddle_sound(m)))
+        } else {
+            put_on.map(|s| {
+                sunrise_client::item_sync::equip_sound(s, self.res.items())
+                    .unwrap_or_else(|| "minecraft:item.armor.equip_generic".into())
+            })
+        };
+        let id = m.id;
+        let pos = m.position;
+        let saddle_off = m.extra.saddled() && saddle.is_none();
+        let body_off = body
+            .as_ref()
+            .is_some_and(|b| b.is_none() && m.extra.body_id().is_some());
+        let body_on = body
+            .as_ref()
+            .is_some_and(|b| b.is_some() && m.extra.body_id().is_none());
+        self.journal_equipment(id);
+        let m = &mut self.mobs[index];
+        m.set_saddle(saddle);
+        if let Some(body) = body {
+            m.extra.set_body_stack(body);
+        }
+        if !items.is_empty() {
+            self.journal_entity(id);
+            let _ = self.edit_entity_slots(id, |slots, _| {
+                for (slot, stack) in slots.iter_mut().zip(items) {
+                    *slot = stack;
+                }
+            });
+        }
+        let chunk = (at[0].floor() as i32 >> 4, at[2].floor() as i32 >> 4);
+        if self.has_open_transaction() {
+            self.journal_chunk_save(chunk, SaveChunkScope::Transaction);
+        } else {
+            self.world.modified.insert(chunk);
+        }
+        let equips = saddle_put_on || body_on;
+        if equips || saddle_off || body_off {
+            self.after_commit(After::MountEquipment {
+                dim: self.dim,
+                id,
+                at: [pos.x, pos.y, pos.z],
+                sound: sound.map(|sound| (sound, at)),
+                equips,
+            });
+        }
+    }
 }
 
 #[cfg(test)]
@@ -349,7 +437,7 @@ pub(in crate::game) mod tests {
     fn horse_inventory_click_keeps_complete_body_stack() {
         use sunrise_client::{items::ItemStack, menu::Input, mobs::Mob};
         use sunrise_core::geometry::Vec3;
-        super::super::native_entity_refs::tests::with_game(|game| {
+        crate::game::native_entity_refs::tests::with_game(|game| {
             let kind = game.res.mob_types().get("minecraft:horse").unwrap().clone();
             let mut mob = Mob::new(12, kind, Vec3::ZERO, 0.0);
             mob.extra.tame = true;
@@ -361,7 +449,6 @@ pub(in crate::game) mod tests {
                 .push(("minecraft:unbreaking".into(), 2));
             mob.extra.set_body_stack(Some(armor.clone()));
             game.mobs.push(mob);
-            game.open_mount_menu(0);
             let mut menu = game.mount_engine_menu(0, 0);
             assert_eq!(menu.slot(1), Some(&armor));
             let env = game.menu_env();

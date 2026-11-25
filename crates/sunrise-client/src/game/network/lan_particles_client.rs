@@ -41,6 +41,15 @@ pub(in crate::game::client_side) use sunrise_protocol::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::registry::BlockStateId;
 
+fn rgba(argb: i32) -> [f32; 4] {
+    let c = |shift: i32| ((argb >> shift) & 255) as f32 / 255.0;
+    [c(16), c(8), c(0), c(24)]
+}
+
+fn rgb(c: [f32; 4]) -> [f32; 3] {
+    [c[0], c[1], c[2]]
+}
+
 impl Game<'_> {
     /// Client-only landing block crumbs (`particle_sprite` + local particle engine,
     /// e.g. sniffer digging).
@@ -157,6 +166,74 @@ impl Game<'_> {
             &options,
         );
     }
+    /// The options a server's particle stands for (None for a type or data
+    /// this client doesn't draw).
+    pub(in crate::game) fn received_particle(
+        &mut self,
+        p: &Particle,
+        at: [f64; 3],
+    ) -> Option<ParticleOptions> {
+        if let Some(ParticleData::Mod { name, options }) = &p.data {
+            return decode_mod_particle(name, options);
+        }
+        let name = self
+            .remote
+            .as_ref()?
+            .builtin
+            .get("minecraft:particle_type")?
+            .name(p.id)?
+            .to_owned();
+        let ty = ParticleType::from_name(&name)?;
+        Some(match &p.data {
+            None => ParticleOptions::simple(ty),
+            Some(ParticleData::Item(stack)) => {
+                let remote = self.remote.as_ref()?;
+                let stack = sunrise_client::item_sync::from_network(
+                    stack,
+                    &remote.builtin,
+                    &remote.registries,
+                );
+                self.item_particle_options(&stack)?
+            }
+            Some(ParticleData::State(s)) => self.block_provider_options(
+                ty,
+                BlockStateId(*s as u32),
+                at.map(|v| v.floor() as i32),
+            )?,
+            Some(ParticleData::ColorScale(c, scale)) => {
+                ParticleOptions::dust(rgb(rgba(*c)), *scale)
+            }
+            Some(ParticleData::ColorScale2(from, to, scale)) => {
+                ParticleOptions::dust_transition(rgb(rgba(*from)), rgb(rgba(*to)), *scale)
+            }
+            Some(ParticleData::ColorPower(c, power)) => ParticleOptions {
+                scale: *power,
+                ..ParticleOptions::colored(ty, [rgba(*c)[0], rgba(*c)[1], rgba(*c)[2], 1.0])
+            },
+            Some(ParticleData::Color(c)) => ParticleOptions::colored(ty, rgba(*c)),
+            Some(ParticleData::Scalar(v)) if ty == ParticleType::SculkCharge => {
+                ParticleOptions::sculk_charge(*v)
+            }
+            Some(ParticleData::Scalar(v)) => ParticleOptions {
+                scale: *v,
+                ..ParticleOptions::simple(ty)
+            },
+            Some(ParticleData::Delay(d)) => ParticleOptions::shriek(*d),
+            Some(ParticleData::Geyser(water_blocks)) => ParticleOptions::geyser(ty, *water_blocks),
+            Some(ParticleData::GeyserBase(water_blocks, burst_impulse_base)) => {
+                ParticleOptions::geyser_base(ty, *water_blocks, *burst_impulse_base)
+            }
+            Some(ParticleData::Trail(target, color, duration)) => {
+                ParticleOptions::trail(*target, *color as u32 & 0xFF_FFFF, *duration)
+            }
+            Some(ParticleData::Vibration { source, ticks }) => ParticleOptions::vibration(
+                particle_position_source(source),
+                self.vibration_destination(source)?,
+                *ticks,
+            ),
+            Some(_) => return None,
+        })
+    }
     /// `PositionSource.getPosition`: a block's centre, or an entity's feet
     /// raised by the option's offset. An entity this client does not have is
     /// no destination at all: vanilla makes the particle and removes it on its
@@ -185,5 +262,96 @@ impl Game<'_> {
                     })
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "daily"]
+    fn received_block_particles_follow_the_provider_matrix() {
+        use crate::game::{
+            in_own_process, native_client_session::tests::logged_client,
+            native_entity_refs::tests::with_client_game,
+        };
+        in_own_process(
+            "game::client_side::lan_particles_client::tests::received_block_particles_follow_the_provider_matrix",
+            || {
+                with_client_game(|game| {
+                    let _server = logged_client(game);
+                    let types = [
+                        ParticleType::Block,
+                        ParticleType::DustPillar,
+                        ParticleType::BlockCrumble,
+                        ParticleType::FallingDust,
+                        ParticleType::BlockMarker,
+                    ];
+                    let registry = game
+                        .remote
+                        .as_ref()
+                        .unwrap()
+                        .builtin
+                        .get("minecraft:particle_type")
+                        .unwrap();
+                    let ids =
+                        types.map(|ty| registry.id(&format!("minecraft:{}", ty.name())).unwrap());
+                    for (name, terrain, dust) in [
+                        ("air", false, true),
+                        ("cave_air", false, true),
+                        ("void_air", false, true),
+                        ("moving_piston", false, false),
+                        ("barrier", false, false),
+                        ("structure_void", false, false),
+                        ("light", true, false),
+                        ("water", true, false),
+                        ("chest", true, true),
+                        ("sand", true, true),
+                        ("stone", true, true),
+                    ] {
+                        let state = game
+                            .pack
+                            .assets
+                            .registry
+                            .default_state(&format!("minecraft:{name}"))
+                            .unwrap();
+                        for ((ty, id), admit) in types
+                            .into_iter()
+                            .zip(ids)
+                            .zip([terrain, terrain, terrain, dust, true])
+                        {
+                            let result = game.received_particle(
+                                &Particle {
+                                    id,
+                                    data: Some(ParticleData::State(state.0 as i32)),
+                                },
+                                [0.5, 64.5, 0.5],
+                            );
+                            assert_eq!(result.is_some(), admit, "{name} for {}", ty.name());
+                            if let Some(options) = result {
+                                assert_eq!(options.ty, ty);
+                                let (sprite, tint) = options.block.unwrap();
+                                if ty == ParticleType::BlockMarker {
+                                    assert!(!sprite.is_empty());
+                                    assert_eq!(tint, 0xFFFFFF);
+                                } else if ty == ParticleType::FallingDust {
+                                    assert!(
+                                        sprite.is_empty(),
+                                        "falling dust uses the provider's sprite set"
+                                    );
+                                    match name {
+                                        "sand" => assert_eq!(tint, 0xDBD3A0),
+                                        "stone" => assert_eq!(tint, 0x707070),
+                                        "air" | "cave_air" | "void_air" => assert_eq!(tint, 0),
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                })
+            },
+        );
     }
 }

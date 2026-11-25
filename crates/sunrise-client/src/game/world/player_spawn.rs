@@ -81,7 +81,6 @@ impl Game<'_> {
         };
         let mut player = PlayerMotion::new(self.motion, feet)?;
         player.yaw = self.yaw;
-        let entering = self.server.restore_player_state;
         player.load_saved_state_once(&mut self.server.restore_player_state, &self.level)?;
         let spectator = self.mode == sunrise_client::command::args::GameMode::Spectator;
         player.may_fly = self.creative || spectator;
@@ -98,7 +97,15 @@ impl Game<'_> {
             .map_or(0, |s| s.enchantment_level("minecraft:respiration") as i32);
         player.pitch = self.pitch;
         player.glider = self.glider_worn();
-        self.spawn_player_client(player, feet, entering);
+        self.previous_position = feet;
+        self.hook.discard();
+        self.player_state.attachments.retire();
+        self.resident_entities.local_player.renew();
+        self.player = Some(player);
+        self.bind_local_player_residency();
+        self.apply_equipment();
+        self.eye = 1.62;
+        self.clock.reset();
         Ok(())
     }
 }

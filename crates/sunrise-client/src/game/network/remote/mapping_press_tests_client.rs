@@ -115,7 +115,7 @@ pub(in crate::game) fn with_callback_game(
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        with_interaction_game(true, |game| {
+        with_interaction_client_game(|game| {
             game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
             game.title.0 = None;
             game.client.screen = Screen::Playing;

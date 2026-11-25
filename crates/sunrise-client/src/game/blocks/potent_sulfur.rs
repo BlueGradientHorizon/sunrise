@@ -7,6 +7,10 @@
 #[allow(unused_imports)]
 use super::{Game, potions::mob_effect_id};
 #[allow(unused_imports)]
+pub(in crate::game) use crate::game::potent_sulfur_common::{
+    GEYSER_CONTINUOUS_ACTIVE, GEYSER_ERUPTION_ACTIVE, PassMobs,
+};
+#[allow(unused_imports)]
 use sunrise_client::{
     Result,
     block_entities::Pos,
@@ -21,21 +25,12 @@ use sunrise_client::{
 #[allow(unused_imports)]
 use sunrise_core::{geometry::Aabb, position::BlockPos, random::RandomSource};
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::potent_sulfur::PassMobs;
-#[allow(unused_imports)]
 use sunrise_gameplay::potent_sulfur::{
     EFFECT_APPLICATION_FREQUENCY_TICKS, EFFECT_DURATION_IN_TICKS, Geyser, PARTICLE_FREQUENCY_TICKS,
     SOUND_FREQUENCY_TICKS, geyser_positional, launch_area, nearby_living_area,
 };
 #[allow(unused_imports)]
 use sunrise_world::{level::flags, registry::BlockStateId};
-
-/// `SoundEvents.GEYSER_ERUPTION_ACTIVE`.
-pub(in crate::game) const GEYSER_ERUPTION_ACTIVE: &str =
-    "minecraft:block.potent_sulfur.geyser_eruption_active";
-/// `SoundEvents.GEYSER_CONTINUOUS_ACTIVE`.
-pub(in crate::game) const GEYSER_CONTINUOUS_ACTIVE: &str =
-    "minecraft:block.potent_sulfur.geyser_continuous_eruption_active";
 
 /// `PotentSulfurBlockEntity.applyNauseaEffect` on a mob that passed the
 /// `canBeAffected` ask.
@@ -46,40 +41,6 @@ pub(in crate::game::server_side) fn apply_nausea_effect_to_mob(mob: &mut Mob) {
 }
 
 impl Game<'_> {
-    /// The `potent_sulfur_state` of the block at `pos`, with its block state.
-    pub(in crate::game) fn potent_sulfur_state(&self, pos: Pos) -> Option<(BlockStateId, Geyser)> {
-        let state = self.world.block(pos.0, pos.1, pos.2);
-        let value = self
-            .pack
-            .assets
-            .registry
-            .state(state)?
-            .properties
-            .get("potent_sulfur_state")?;
-        let geyser = match value.as_str() {
-            "dry" => Geyser::Dry,
-            "wet" => Geyser::Wet,
-            "dormant" => Geyser::Dormant,
-            "erupting" => Geyser::Erupting,
-            "continuous" => Geyser::Continuous,
-            _ => return None,
-        };
-        Some((state, geyser))
-    }
-
-    /// `PotentSulfurBlockEntity.findNoxiousGasSourceBlock` of the sulfur at
-    /// `pos`.
-    pub(in crate::game) fn potent_sulfur_source(&self, pos: Pos) -> Option<[i32; 3]> {
-        let level = ParticleLevel {
-            world: &self.world,
-            facts: self.res.facts(),
-            collision: self.collision,
-            player: None,
-            cached_chunk: std::cell::Cell::new(None),
-        };
-        find_noxious_gas_source_block(&level, [pos.0, pos.1, pos.2])
-    }
-
     /// `PotentSulfurBlock.getTicker` on the server, for the block entity at
     /// `pos`: a wet block gives nausea; a dormant one counts down, then gives
     /// nausea; an erupting one pushes entities, then counts down; a continuous

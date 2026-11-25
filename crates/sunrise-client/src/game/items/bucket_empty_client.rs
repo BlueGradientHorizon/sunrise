@@ -19,7 +19,9 @@ impl Game<'_> {
         &self,
         stack: &'s ItemStack,
     ) -> Option<(BucketContent, &'s str, Option<&'s str>)> {
-        if self.empty_contents_listens(&stack.item) {
+        if mod_api::__private::has_part_hook(mod_api::HookId::EmptyContents)
+            && mod_api::__private::item_listens(mod_api::HookId::EmptyContents, &stack.item)
+        {
             return None;
         }
         sunrise_client::items::bucket_contents(&stack.item)

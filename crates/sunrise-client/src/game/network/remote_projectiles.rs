@@ -400,7 +400,7 @@ impl Game<'_> {
         #[cfg(test)]
         nested_spawn_tests::after_lift(self, nested_spawn_tests::Point::Falling);
         falling.for_each_mut(|f| {
-            let _ = self.fall_step(f, false, &[]);
+            let _ = self.client_fall_step(f);
             self.pick_section_move(f.id, f.position.components());
         });
         self.falling.restore(
@@ -458,8 +458,9 @@ impl Game<'_> {
             let mut visited = Vec::new();
             {
                 let rain = self.arrow_rain();
-                let arrow_scene = self.arrow_scene(&rain);
-                let w = self.client_mob_world_base(&[]);
+                let arrow_scene = self.client_arrow_scene(&rain);
+                let side = self.client_mob_side();
+                let w = self.client_mob_world_base(&[], &side);
                 let world = super::creatures::ProjWorld {
                     w: &w,
                     targets: &[],
@@ -499,7 +500,7 @@ impl Game<'_> {
             sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
         );
         for (at, event) in arrow_events {
-            self.arrow_event(at, event);
+            self.client_arrow_event(at, event);
         }
         self.native_tick_post_batch(round);
         self.arrow_effect_particles();
@@ -591,49 +592,9 @@ impl Game<'_> {
         self.clear_remote_hooks();
     }
 
-    /// Their kind and place, for `status`.
-    pub(in crate::game) fn projectiles_status(&self) -> Vec<serde_json::Value> {
-        use serde_json::json;
-        let at = |p: Vec3| [p.x, p.y, p.z];
-        let mut out = Vec::new();
-        for f in &self.fangs.list {
-            out.push(
-                json!({"id": f.id, "kind": "minecraft:evoker_fangs", "position": f.pos,
-                "yaw": f.yaw, "started": f.started, "life": f.life}),
-            );
-        }
-        for t in &self.tnts {
-            out.push(json!({"id": t.id, "kind": "minecraft:tnt", "position": at(t.position), "fuse": t.fuse}));
-        }
-        for f in &self.falling {
-            out.push(json!({"id": f.id, "kind": "minecraft:falling_block", "position": at(f.position), "velocity": at(f.velocity), "state": f.state.0}));
-        }
-        for b in &self.boats {
-            out.push(json!({"id": b.id, "kind": "minecraft:boat", "position": at(b.position), "velocity": at(b.velocity)}));
-        }
-        for c in &self.carts {
-            out.push(json!({"id": c.id, "kind": "minecraft:minecart", "position": at(c.position), "velocity": at(c.velocity)}));
-        }
-        for c in &self.crystals {
-            out.push(json!({"id": c.id, "kind": "minecraft:end_crystal", "position": at(c.position), "show_bottom": c.show_bottom}));
-        }
-        for t in &self.tridents {
-            out.push(json!({"id": t.id, "kind": "minecraft:trident", "position": at(t.position), "velocity": at(t.velocity), "on_fire": t.fire_ticks > 0}));
-        }
-        for r in &self.rockets {
-            out.push(json!({"id": r.id, "kind": "minecraft:firework_rocket", "position": at(r.position), "velocity": at(r.velocity)}));
-        }
-        for p in &self.creatures.projectiles {
-            out.push(json!({"id": p.id, "kind": format!("{:?}", p.kind).split([' ', '{']).next().unwrap_or(""), "position": at(p.position), "velocity": at(p.velocity),
-                "player_owned": p.owner == Some(sunrise_client::mobs::Who::Player),
-                "on_fire": p.arrow.as_ref().is_some_and(|a| a.on_fire())}));
-        }
-        for (kind, p, _) in self.potions.thrown_entities() {
-            out.push(json!({"kind": kind, "position": at(p)}));
-        }
-        for (id, p) in self.end.eye_positions() {
-            out.push(json!({"id": id, "kind": "minecraft:eye_of_ender", "position": p}));
-        }
+    /// Their kind and place, for client `status` (including remote fishing hooks).
+    pub(in crate::game) fn client_projectiles_status(&self) -> Vec<serde_json::Value> {
+        let mut out = self.projectiles_status();
         out.extend(self.hooks_status());
         out
     }
@@ -662,8 +623,9 @@ impl Game<'_> {
             // The projectiles up to the next one told alone, through one set of views.
             {
                 let rain = self.arrow_rain();
-                let scene = self.arrow_scene(&rain);
-                let w = self.client_mob_world_base(&[]);
+                let scene = self.client_arrow_scene(&rain);
+                let side = self.client_mob_side();
+                let w = self.client_mob_world_base(&[], &side);
                 let world = super::creatures::ProjWorld {
                     w: &w,
                     targets: &[],
@@ -720,8 +682,9 @@ impl Game<'_> {
             };
             {
                 let rain = self.arrow_rain();
-                let scene = self.arrow_scene(&rain);
-                let w = self.client_mob_world_base(&[]);
+                let scene = self.client_arrow_scene(&rain);
+                let side = self.client_mob_side();
+                let w = self.client_mob_world_base(&[], &side);
                 let world = super::creatures::ProjWorld {
                     w: &w,
                     targets: &[],
@@ -749,7 +712,8 @@ impl Game<'_> {
             Vec::new()
         };
         if !alone {
-            let w = self.client_mob_world_base(&[]);
+            let side = self.client_mob_side();
+            let w = self.client_mob_world_base(&[], &side);
             let world = super::creatures::ProjWorld {
                 w: &w,
                 targets: &[],
@@ -792,7 +756,8 @@ impl Game<'_> {
                 continue;
             };
             {
-                let w = self.client_mob_world_base(&[]);
+                let side = self.client_mob_side();
+                let w = self.client_mob_world_base(&[], &side);
                 let world = super::creatures::ProjWorld {
                     w: &w,
                     targets: &[],
@@ -1083,7 +1048,14 @@ impl Game<'_> {
                 p.velocity = velocity;
                 p.yaw = yaw;
                 p.pitch = pitch;
-                self.add_projectile(p);
+                if let Some(a) = p.arrow.as_mut()
+                    && !p.stuck
+                {
+                    a.spawn_pos = Some(p.position);
+                    a.spawn_velocity = Some(p.velocity);
+                    a.spawn_rot = Some((p.pitch, p.yaw));
+                }
+                self.creatures.projectiles.push(p);
             }
         }
         true

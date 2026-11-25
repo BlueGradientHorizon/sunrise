@@ -1,11 +1,11 @@
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{Game, item_abilities::ability};
+pub(in crate::game::server_side) use crate::game::server_side::beehives::GameHive;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::beehives::GameHive;
+pub(in crate::game::server_side) use crate::game::server_side::beehives::*;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::beehives::*;
+pub(in crate::game::server_side) use crate::game::{Game, item_abilities::ability};
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::{
+pub(in crate::game::server_side) use sunrise_client::{
     Result,
     beehive::{self, Beehive, BeehiveExt, HiveHost, Release},
     containers::BlockEntity,
@@ -13,12 +13,12 @@ pub(in crate::game::client_side) use sunrise_client::{
     mobs::{Mob, Who, bee},
 };
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::{
+pub(in crate::game::server_side) use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::{LegacyRandom, RandomSource},
 };
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use {
+pub(in crate::game::server_side) use {
     sunrise_core::nbt::Tag, sunrise_world::registry::BlockStateId,
 };
 
@@ -65,9 +65,7 @@ impl HiveHost for GameHive<'_, '_> {
     }
     fn sound(&mut self, name: &'static str, at: [f64; 3]) {
         self.game
-            .audio
-            .0
-            .play(&format!("minecraft:{name}"), Some(at), 1.0, 1.0);
+            .server_play_sound(&format!("minecraft:{name}"), at, 1.0, 1.0);
     }
     fn set_changed(&mut self, at: [i32; 3]) {
         self.game.world.modified.insert((at[0] >> 4, at[2] >> 4));

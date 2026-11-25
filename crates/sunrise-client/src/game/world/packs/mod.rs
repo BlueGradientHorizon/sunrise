@@ -293,13 +293,6 @@ impl Game<'_> {
             &additional,
         )
     }
-    pub(in crate::game) fn vanilla_root(&self) -> PathBuf {
-        if self.ui.vanilla_root.as_os_str().is_empty() {
-            self.options.resources.clone()
-        } else {
-            self.ui.vanilla_root.clone()
-        }
-    }
     /// Whether all active packs preserve vanilla's block models. The server
     /// overlay sits above the local selection and must be included too.
     pub(in crate::game::client_side) fn model_packs_are_vanilla(&self) -> bool {

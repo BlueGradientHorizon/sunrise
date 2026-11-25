@@ -622,7 +622,10 @@ impl Game<'_> {
             return None;
         }
         if self.client.panel.of.as_ref() != Some(&of) {
-            let items = world_items!(self);
+            let items = self
+                .server_items
+                .as_deref()
+                .unwrap_or_else(|| self.res.items());
             let stacks = shown
                 .items
                 .iter()

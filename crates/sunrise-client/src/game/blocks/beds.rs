@@ -8,9 +8,6 @@
 use super::native_hooks::SleepProblem;
 use super::{Dim, Game};
 use sunrise_client::Result;
-use sunrise_client::bed_geometry::{SleepOn, pos_to_bed, shape_top, slept_on};
-use sunrise_core::geometry::Vec3;
-use sunrise_world::registry::BlockStateId;
 
 impl Game<'_> {
     /// `BedRule.canSleep` of the current dimension's bed rule.
@@ -135,54 +132,5 @@ impl Game<'_> {
             }
         }
         self.enter_level(back)
-    }
-}
-
-impl Game<'_> {
-    /// The bed's `part`: head or foot.
-    fn bed_part(&self, state: BlockStateId) -> Option<&str> {
-        self.pack
-            .assets
-            .registry
-            .state(state)
-            .and_then(|s| s.properties.get("part"))
-            .map(String::as_str)
-    }
-    /// `LivingEntity.startSleeping`'s height: the top of the shape the player
-    /// lies on, measured from the head's own y - a straw bed's head from its
-    /// foot's - or `None` when there is no such shape, in which case the
-    /// player does not lie down at all.
-    pub(in crate::game::server_side) fn sleep_height(&self, head: [i32; 3]) -> Option<f64> {
-        let state = self.world.block(head[0], head[1], head[2]);
-        if !self.is_bed(state) {
-            return None;
-        }
-        let name = &self.res.facts().get(state).name;
-        let part = self.bed_part(state);
-        let step = self.bed_forward(state);
-        let foot_at = [head[0] - step[0], head[1], head[2] - step[2]];
-        let foot_state = self.world.block(foot_at[0], foot_at[1], foot_at[2]);
-        let foot_name = &self.res.facts().get(foot_state).name;
-        let foot_part = self.bed_part(foot_state);
-        let on = slept_on(name, part, Some((foot_name, foot_part)))?;
-        let at = match on {
-            SleepOn::Head => head,
-            SleepOn::Foot => foot_at,
-        };
-        shape_top(
-            self.outline_boxes_iter(
-                &self.world,
-                self.world.block(at[0], at[1], at[2]),
-                &self.be_anims,
-                at,
-                true,
-            ),
-            f64::from(at[1]),
-        )
-    }
-    /// Where the sleeper lies (`setPosToBed`), when the bed gives it a shape.
-    pub(in crate::game) fn sleeping_position(&self, head: [i32; 3]) -> Option<Vec3> {
-        self.sleep_height(head)
-            .map(|height| pos_to_bed(head, height))
     }
 }

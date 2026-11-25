@@ -15,7 +15,7 @@ impl Game<'_> {
     /// `Hud.setOverlayMessage(line, animate_color)` on this window's HUD, outside a borrowed
     /// server guest's turn: no chat, narration or packet, as the direct setter does none.
     pub(in crate::game) fn set_overlay_message(&mut self, line: Text, animate_color: bool) {
-        if self.native_window() && !self.lan_guest_acting() {
+        if self.native_window() {
             self.client.titles.set_overlay(line, animate_color);
         }
     }

@@ -9,6 +9,7 @@
 
 #[allow(unused_imports)]
 use super::Game;
+pub(in crate::game) use crate::game::entity_initialization_common::EntityInitialization;
 #[allow(unused_imports)]
 use mod_api::Holder;
 #[allow(unused_imports)]
@@ -18,40 +19,9 @@ use std::collections::{HashMap, HashSet};
 #[path = "entity_initialization/tests.rs"]
 pub(in crate::game) mod tests;
 
-#[derive(Default)]
-pub(in crate::game) struct EntityInitialization {
-    /// The object holders already told (entity IDs and separate player UUIDs). An entity is forgotten when it leaves the world (`forget_entity`:
-    /// death, a chunk unloading), so the next one made from its data is
-    /// told again, as vanilla constructs a new entity for each of those.
-    pub(in crate::game) initialized: HashSet<Holder>,
-    /// Each LAN guest's connection when its player was last told: a new connection is a new
-    /// `ServerPlayer`.
-    pub(in crate::game) players: HashMap<u128, u32>,
-    /// The holder being told now: its attachments are reachable before it is in the level.
-    pub(in crate::game) active: Option<Holder>,
-}
-
 impl Game<'_> {
-    /// Tell the listeners about a new entity of type `kind`, unless it was already told. Marked
-    /// before the dispatch, so a listener's own attachment access doesn't tell it again.
-    pub(in crate::game) fn initialize_entity(&mut self, holder: Holder, kind: &str) {
-        if !mod_api::__private::listened(mod_api::HookId::EntityConstructing) {
-            return;
-        }
-        if !matches!(holder, Holder::Entity(_) | Holder::Player(_)) {
-            return;
-        }
-        if !self.server.entity_initialization.initialized.insert(holder) {
-            return;
-        }
-        let previous = self.server.entity_initialization.active.replace(holder);
-        self.native_entity_constructing(holder, kind);
-        self.server.entity_initialization.active = previous;
-        // Listener stores skip binding while their holder is being constructed.
-        // A resident part has no separate join callback, so finish its binding
-        // here even when construction was triggered by an inspection.
+    pub(in crate::game) fn server_bind_constructed_entity_attachments(&mut self, id: u32) {
         if self.native_authoritative()
-            && let Holder::Entity(id) = holder
             && self
                 .entity_attachments
                 .get(&id)
@@ -62,49 +32,12 @@ impl Game<'_> {
         }
     }
 
-    /// `initialize_entity` for a holder whose attachments are about to be read, its type
-    /// looked up: an entity that started on a path that doesn't tell (one made and touched
-    /// within a pass, before the join pass) is told before the read.
-    pub(in crate::game) fn initialize_entity_on_access(&mut self, holder: Holder) {
-        if !mod_api::__private::listened(mod_api::HookId::EntityConstructing) {
-            return;
-        }
-        match holder {
-            Holder::Entity(id) => {
-                let Some(kind) = self
-                    .entity(id)
-                    .and_then(|entity| self.entity_kind(entity)?.id(self))
-                else {
-                    return;
-                };
-                self.initialize_entity(holder, &kind);
-            }
-            Holder::Player(_) => self.initialize_entity(holder, "minecraft:player"),
-            _ => {}
-        }
-    }
-
-    pub(in crate::game) fn forget_entity_initialization(&mut self, holder: Holder) {
-        if let Holder::Entity(id) = holder
-            && let Some(mob) = self.mobs.iter_mut().find(|mob| mob.id == id)
-        {
-            mob.accepted_hit = None;
-        }
-        self.server
-            .entity_initialization
-            .initialized
-            .remove(&holder);
-    }
-
     /// Forget destroyed objects in this level before its UUID metadata is pruned.
-    /// The supplied set includes reachable off-level objects. Other levels and
-    /// player lifetimes are owned by their own cleanup boundaries.
     pub(in crate::game::server_side) fn prune_entity_initializations(
         &mut self,
         retained: &HashSet<u32>,
     ) {
-        self.server
-            .entity_initialization
+        self.entity_initialization
             .initialized
             .retain(|holder| match holder {
                 Holder::Entity(id) => !self.persist.uuids.contains_key(id) || retained.contains(id),
@@ -112,11 +45,9 @@ impl Game<'_> {
             });
     }
 
-    /// A LAN guest's player, its file just read for connection `conn`: told once per
-    /// connection (`PlayerList.placeNewPlayer` constructs the `ServerPlayer`, then
-    /// `loadPlayerData` reads its file).
+    /// A LAN guest's player, its file just read for connection `conn`.
     pub(in crate::game::server_side) fn initialize_server_player(&mut self, uuid: u128, conn: u32) {
-        if self.server.entity_initialization.players.insert(uuid, conn) != Some(conn) {
+        if self.entity_initialization.players.insert(uuid, conn) != Some(conn) {
             self.forget_entity_initialization(Holder::Player(uuid));
         }
         self.initialize_guest_player_under_data(uuid, conn);
@@ -222,7 +153,6 @@ impl Game<'_> {
             rollback,
             source: id,
             initialized: self
-                .server
                 .entity_initialization
                 .initialized
                 .remove(&Holder::Entity(id)),
@@ -263,8 +193,7 @@ impl Game<'_> {
         }
         self.entity_attachments.insert(id, map);
         if state.initialized {
-            self.server
-                .entity_initialization
+            self.entity_initialization
                 .initialized
                 .insert(Holder::Entity(id));
         }

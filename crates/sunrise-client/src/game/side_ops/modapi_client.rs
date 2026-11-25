@@ -9,9 +9,6 @@ impl Game<'_> {
         holder: mod_api::Holder,
         _access: AttachmentAccess,
     ) -> Result<&mut mod_api::Attachments, mod_api::AttachmentError> {
-        if self.client_attachment_entity_exists(holder) {
-            self.initialize_entity_on_access(holder);
-        }
         let Some(remote) = self.remote.as_mut() else {
             return Err(mod_api::AttachmentError::MissingHolder);
         };

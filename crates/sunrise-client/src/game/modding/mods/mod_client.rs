@@ -205,22 +205,26 @@ impl Game<'_> {
             .clone()
             .unwrap_or_else(|| self.settings.mods.enabled.clone())
     }
-    pub(in crate::game) fn install_loop_context(&mut self, context: PreparedLoopContext) {
-        self.protect_condition_root();
-        self.loop_context = context.game;
-        self.refresh_recipe_property_context();
-        self.setting_overrides.borrow_mut().clear();
-        if !self.is_logical_server() {
-            if let Some(audio) = context.audio {
-                self.audio.0.set_loop_context(audio);
-            }
-        } else {
-            debug_assert!(context.audio.is_none());
-        }
-        if let Some(worldgen) = context.worldgen {
-            sunrise_world::native_worldgen_hooks::publish_context(Arc::new(worldgen));
+
+    pub(in crate::game) fn client_set_audio_loop_context(
+        &mut self,
+        audio: Option<sunrise_world::native_load_context::LoopContext>,
+    ) {
+        if let Some(audio) = audio {
+            self.audio.0.set_loop_context(audio);
         }
     }
+
+    pub(in crate::game) fn client_retire_disabled_instance_groups(
+        &self,
+        effective: &std::collections::BTreeSet<String>,
+    ) {
+        self.client
+            .instance_groups
+            .borrow_mut()
+            .retire_disabled(effective);
+    }
+
     /// A live switch's resources applied: the server reloads its data packs
     /// from the new root, as `/reload` does (recipes, tags, loot tables,
     /// advancements, functions), and sends them to its players.
@@ -244,8 +248,6 @@ impl Game<'_> {
         log::info!("Sunrise: content mods switched live: resources reloaded in {resources_ms} ms");
         if let Some(server) = &self.integrated {
             server.tell(OwnerRequest::ReloadMods(Box::new(reload)));
-        } else if self.is_logical_server() {
-            self.apply_mods_reload(reload);
         }
     }
     /// The player turned content mods on or off (Options > Mods, or an
@@ -304,17 +306,6 @@ impl Game<'_> {
         self.mods.applied = Some(next);
         self.mods.live = Some(std::time::Instant::now());
         self.reload_packs();
-    }
-    /// Apply the player's switches at the canonical native dispatch boundary.
-    pub(in crate::game) fn sync_native_switches(&self) {
-        let (effective, _) = self
-            .mods
-            .reconcile_code_switches(&self.settings.mods.disabled);
-        self.client
-            .instance_groups
-            .borrow_mut()
-            .retire_disabled(&effective);
-        self.mods.apply_code_switches(&effective);
     }
 }
 

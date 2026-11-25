@@ -95,7 +95,7 @@ impl Game<'_> {
         &mut self,
         items: &mut JoinList<ItemEntity>,
         (min, max): ([f64; 3], [f64; 3]),
-        feet: [f64; 3],
+        _feet: [f64; 3],
         own: [i32; 4],
     ) {
         let listened = mod_api::__private::listened;
@@ -147,8 +147,7 @@ impl Game<'_> {
                 if let Some(thrower) = thrower {
                     self.trigger_thrown_picked_up_by_player(&items[i].stack, thrower);
                 }
-                let item = items.remove(i);
-                self.native_take_item(item, feet);
+                items.remove(i);
                 continue;
             };
             let taken = before.saturating_sub(left.count);
@@ -157,7 +156,6 @@ impl Game<'_> {
                 if let Some(thrower) = thrower {
                     self.trigger_thrown_picked_up_by_player(&left, thrower);
                 }
-                self.native_take_item(items[i].clone(), feet);
             }
             items[i].stack = left;
             i += 1;

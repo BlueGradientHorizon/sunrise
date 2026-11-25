@@ -149,90 +149,111 @@ pub(in crate::game::client_side) use sunrise_gameplay::projectile_world::ProjWor
 pub(in crate::game) mod living_draw;
 
 impl Game<'_> {
-    /// What an arrow's tick asked for: its particles and sounds.
-    pub(in crate::game) fn arrow_event(
+    /// Client-side arrow particles and local sounds.
+    pub(in crate::game) fn client_arrow_event(
         &mut self,
         at: Vec3,
         event: sunrise_client::arrows::ArrowEvent,
     ) {
-        use sunrise_client::arrows::{ArrowEvent, ArrowParticle, ArrowSound, BlockReaction};
+        use sunrise_client::arrows::{ArrowEvent, ArrowParticle};
         use sunrise_client::particles::{ParticleOptions, ParticleType};
-        let sound_name = |sound| match sound {
-            ArrowSound::Splash => "minecraft:entity.generic.splash",
-            ArrowSound::HitGround => "minecraft:entity.arrow.hit",
-            ArrowSound::CrossbowHit => "minecraft:item.crossbow.hit",
-            ArrowSound::Extinguish => "minecraft:entity.generic.extinguish_fire",
-            ArrowSound::TridentHitGround => "minecraft:item.trident.hit_ground",
-            ArrowSound::TridentHit => "minecraft:item.trident.hit",
+        let kind = |k| match k {
+            ArrowParticle::Bubble => ParticleType::Bubble,
+            ArrowParticle::Crit => ParticleType::Crit,
+            ArrowParticle::Splash => ParticleType::Splash,
         };
-        if !self.is_logical_server() {
-            let kind = |k| match k {
-                ArrowParticle::Bubble => ParticleType::Bubble,
-                ArrowParticle::Crit => ParticleType::Crit,
-                ArrowParticle::Splash => ParticleType::Splash,
-            };
-            match event {
-                ArrowEvent::Particle {
-                    kind: k,
-                    position,
-                    velocity,
-                } => self.particles.0.add(
-                    &ParticleOptions::simple(kind(k)),
-                    [position.x, position.y, position.z],
-                    [velocity.x, velocity.y, velocity.z],
-                ),
-                ArrowEvent::Sound {
-                    sound,
-                    volume,
-                    pitch,
-                } => self.audio.0.play_on(
-                    6,
-                    sound_name(sound),
-                    Some([at.x, at.y, at.z]),
-                    volume,
-                    pitch,
-                ),
-                _ => {}
-            }
-            return;
-        }
         match event {
-            ArrowEvent::Particle { .. } => {}
-            // Arrow.tick: `broadcastEntityEvent(this, 0)`. The guests burst the particles.
-            ArrowEvent::PotionPuff { id, .. } => {
-                self.lan_entity_event(id as i32, 0, [at.x, at.y, at.z]);
-            }
+            ArrowEvent::Particle {
+                kind: k,
+                position,
+                velocity,
+            } => self.particles.0.add(
+                &ParticleOptions::simple(kind(k)),
+                [position.x, position.y, position.z],
+                [velocity.x, velocity.y, velocity.z],
+            ),
             ArrowEvent::Sound {
                 sound,
                 volume,
                 pitch,
-            } => {
-                // NEUTRAL, which neither AbstractArrow nor ThrownTrident overrides.
-                self.server_play_sound_on(6, sound_name(sound), [at.x, at.y, at.z], volume, pitch);
+            } => self.audio.0.play_on(
+                6,
+                arrow_sound_name(sound),
+                Some([at.x, at.y, at.z]),
+                volume,
+                pitch,
+            ),
+            _ => {}
+        }
+    }
+    /// The level as remote client arrows see it (no server hooks or owner table).
+    pub(in crate::game) fn client_arrow_scene<'s>(
+        &'s self,
+        rain: &'s dyn Fn(BlockPos) -> bool,
+    ) -> sunrise_client::arrows::ArrowScene<'s, 's> {
+        self.arrow_scene_with(rain, None, &())
+    }
+    pub(in crate::game) fn client_shulker_lid_push(
+        &mut self,
+        shulker: u32,
+        area: Aabb,
+        delta: [f64; 3],
+    ) {
+        let lid = Lid::Shulker(shulker);
+        let movement = Vec3::new(delta[0], delta[1], delta[2]);
+        self.lid_push_local(lid, area, movement);
+    }
+    pub(in crate::game) fn client_handle_mob_events_reusable(
+        &mut self,
+        events: &mut Vec<MobEvent>,
+    ) -> Result<()> {
+        self.handle_client_mob_events(events);
+        Ok(())
+    }
+    /// A beam target's centre (half its height), interpolated.
+    pub(in crate::game) fn beam_target(&self, who: Option<Who>, alpha: f64) -> Option<glam::DVec3> {
+        match who? {
+            Who::Player => {
+                let p = self.player.as_ref()?;
+                let (a, b) = (self.previous_position, p.position);
+                Some(glam::DVec3::new(
+                    a.x + (b.x - a.x) * alpha,
+                    a.y + (b.y - a.y) * alpha + f64::from(p.dimensions.height) * 0.5,
+                    a.z + (b.z - a.z) * alpha,
+                ))
             }
-            ArrowEvent::BubbleColumnParticles { pos } => self.bubble_column_particles(pos),
-            ArrowEvent::Block {
-                pos,
-                reaction,
-                owner,
-            } => match reaction {
-                BlockReaction::PrimeTnt => {
-                    // `TntBlock.onProjectileHit`: the arrow's owner lights it.
-                    if self.tnt_prime_allowed(pos) {
-                        self.spawn_primed_tnt(pos, false, owner, None);
-                        self.with_level(|b, level, ticks| b.remove_block(level, ticks, pos, false));
-                        let _ = self.server_process_level_events();
-                    }
-                }
-                BlockReaction::Light(lit) => {
-                    let _ = self.level_set([pos.x, pos.y, pos.z], lit);
-                }
-            },
-            ArrowEvent::SplashEvent => {
-                self.projectile_event("minecraft:splash", None, [at.x, at.y, at.z]);
+            Who::Mob(id) => {
+                let m = self.mobs.iter().find(|m| m.id == id)?;
+                Some(glam::DVec3::new(
+                    m.previous.x + (m.position.x - m.previous.x) * alpha,
+                    m.previous.y
+                        + (m.position.y - m.previous.y) * alpha
+                        + f64::from(m.height()) * 0.5,
+                    m.previous.z + (m.position.z - m.previous.z) * alpha,
+                ))
             }
-            // finish_arrow_hit drops the pickup, which it holds.
-            ArrowEvent::ShootEvent | ArrowEvent::Drop => {}
+        }
+    }
+    pub(in crate::game) fn mob_run_geometry(
+        &self,
+        frame: &MobDrawFrame<'_>,
+        range: std::ops::Range<usize>,
+        out: &mut Vec<Vertex>,
+    ) {
+        if frame.precheck {
+            self.mob_run::<true>(&frame.living, range, out);
+        } else {
+            self.mob_run::<false>(&frame.living, range, out);
+        }
+    }
+    pub(in crate::game) fn mob_run<const PRECHECK: bool>(
+        &self,
+        frame: &LivingFrame<'_>,
+        range: std::ops::Range<usize>,
+        out: &mut Vec<Vertex>,
+    ) {
+        for mob in &self.mobs[range] {
+            self.living_geometry::<PRECHECK>(mob, frame, out);
         }
     }
     pub(in crate::game) fn begin_mob_geometry(
@@ -279,7 +300,7 @@ impl Game<'_> {
                 camera,
                 alpha,
                 scale: self.view_scale(),
-                viewer: self.player_team(),
+                viewer: self.client_player_team(),
                 skinning: self.skinning(),
                 listened: self.mob_render_listened(),
                 now: std::time::Instant::now(),
@@ -302,38 +323,6 @@ impl Game<'_> {
                 models.tagged = renderer.is_some_and(|r| r.skins_tagged());
             }
             None => self.client.skin_frame.borrow_mut().clear_draws(),
-        }
-    }
-    /// `Entity.sendBubbleColumnParticles` at the top of the column block `pos`: two
-    /// splashes and two bubbles over it, which the level random places, shown here
-    /// and to the players within range.
-    pub(in crate::game) fn bubble_column_particles(&mut self, pos: BlockPos) {
-        for _ in 0..2 {
-            let r = &mut self.world.random;
-            let splash = [
-                f64::from(pos.x) + r.next_double(),
-                f64::from(pos.y + 1),
-                f64::from(pos.z) + r.next_double(),
-            ];
-            let bubble = [
-                f64::from(pos.x) + r.next_double(),
-                f64::from(pos.y + 1),
-                f64::from(pos.z) + r.next_double(),
-            ];
-            self.server_level_particles(
-                &crate::lan::server_effects::ServerParticle::simple(ParticleType::Splash),
-                splash,
-                [0.0; 3],
-                1.0,
-                1,
-            );
-            self.server_level_particles(
-                &crate::lan::server_effects::ServerParticle::simple(ParticleType::Bubble),
-                bubble,
-                [0.0, 0.01, 0.0],
-                0.2,
-                1,
-            );
         }
     }
     /// Culls one entity's vertices from `entity_start`, counting what it drew
@@ -511,7 +500,11 @@ impl Game<'_> {
                     speed,
                 } => self.client_landing_dust(state, Vec3::new(at[0], at[1], at[2]), count, speed),
                 MobEvent::PowderSnowParticle { at, velocity } => {
-                    self.snowflake_particle(at, velocity);
+                    self.particles.0.add(
+                        &ParticleOptions::simple(ParticleType::Snowflake),
+                        at,
+                        velocity,
+                    );
                 }
                 MobEvent::LevelParticles {
                     kind,
@@ -568,7 +561,7 @@ impl Game<'_> {
                     shulker,
                     area,
                     delta,
-                } => self.apply_shulker_lid_push(shulker, area, delta),
+                } => self.client_shulker_lid_push(shulker, area, delta),
                 _ => {}
             }
         }
@@ -592,85 +585,6 @@ impl Game<'_> {
             };
             self.particles.0.add(&options, at, v);
         }
-    }
-    /// `ThrownEnderpearl.onHit` for a living non-player owner: the same hook,
-    /// then the normal entity teleport, without a player's endermite roll or damage.
-    pub(in crate::game) fn mob_pearl_teleport(&mut self, pearl: &Projectile, id: u32, hit: Hit) {
-        let Some(owner) = self.entity(id) else { return };
-        let Some(from) = self
-            .mobs
-            .iter()
-            .find(|m| {
-                m.id == id
-                    && m.alive()
-                    && !m.removed
-                    && !sunrise_client::mobs::villager::sleeping(m)
-            })
-            .map(|m| m.position)
-        else {
-            return;
-        };
-        let dimension = self.dim;
-        let failures = mod_api::runtime::isolated_failures();
-        let _: std::result::Result<(), ()> = self.storage_transaction(|game, _| {
-            let (mut target, _, cancel) =
-                game.native_pearl_teleport(owner, pearl.id, from, pearl.previous, 0.0, hit);
-            if mod_api::runtime::isolated_failures() != failures {
-                return Err(());
-            }
-            // Listener writes stay in the transaction; never overwrite a changed,
-            // dead, sleeping or removed owner using the old decision.
-            if cancel
-                || game.dim != dimension
-                || game.entity(id) != Some(owner)
-                || !game.mobs.iter().any(|m| {
-                    m.id == id
-                        && m.alive()
-                        && !m.removed
-                        && m.position == from
-                        && !sunrise_client::mobs::villager::sleeping(m)
-                })
-            {
-                return Ok(());
-            }
-            if !target.iter().all(|v| v.is_finite()) {
-                target = [pearl.previous.x, pearl.previous.y, pearl.previous.z];
-            }
-            if !super::native_entity_moves::in_bounds(target) {
-                return Ok(());
-            }
-            let _ = game.place_teleport_filed(
-                super::commands::Target::Mob(id),
-                target,
-                None,
-                [false; 3],
-                true,
-            );
-            if let Some(m) = game.mobs.iter_mut().find(|m| m.id == id) {
-                m.fall_distance = 0.0;
-                // Entity.teleport's setOldRot: keep the owner's angles without
-                // interpolating from the pre-teleport rotation on the client.
-                m.previous_yaw = m.yaw;
-                m.previous_head_pitch = m.head_pitch;
-            }
-            game.audio
-                .0
-                .play("minecraft:entity.player.teleport", Some(target), 1.0, 1.0);
-            Ok(())
-        });
-    }
-    /// `MushroomCow.shear`'s `sendParticles(EXPLOSION, x, getY(0.5), z, 1, 0, 0, 0, 0)`:
-    /// one puff over a sheared mooshroom, half its `height` up, shown here and to
-    /// the players within range.
-    pub(in crate::game) fn mooshroom_shear_puff(&mut self, at: [f64; 3], height: f64) {
-        let at = [at[0], at[1] + 0.5 * height, at[2]];
-        self.server_level_particles(
-            &crate::lan::server_effects::ServerParticle::simple(ParticleType::Explosion),
-            at,
-            [0.0; 3],
-            0.0,
-            1,
-        );
     }
     pub(in crate::game::client_side) fn pickup_arrow_geometry(
         &self,

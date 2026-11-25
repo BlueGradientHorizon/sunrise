@@ -55,6 +55,23 @@ pub(in crate::game::client_side) use {
 pub(in crate::game) mod respawn_attributes;
 
 impl Game<'_> {
+    /// Whether the inventory key opens nothing while standing in a nether portal.
+    pub(in crate::game) fn in_portal_transition(&self) -> bool {
+        self.portals.client_was_inside
+    }
+
+    /// Client-side `setAsInsidePortal`, driving `client_portal_effect`.
+    pub(in crate::game) fn client_inside_nether_portal(&mut self) {
+        if !self.player_can_use_portal() {
+            return;
+        }
+        if self.portals.player.cooldown > 0 {
+            self.portals.player.cooldown = PLAYER_DELAY;
+        } else {
+            self.portals.client_inside = true;
+        }
+    }
+
     /// `LocalPlayer.handlePortalTransitionEffect`: whether the confusion
     /// effect grows this tick. Entering a portal closes the screen only when
     /// it does not allow it (`Screen.isAllowedInPortal`), and plays

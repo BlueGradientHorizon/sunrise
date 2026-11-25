@@ -37,23 +37,6 @@ impl Game<'_> {
     ) -> Option<(f32, f32)> {
         if mod_screen_shown { None } else { stock }
     }
-
-    /// The recipe id and result of the crafting grid.
-    /// `RecipeCraftingHolder.awardUsedRecipes`: a crafted recipe becomes known
-    /// (special ones never do).
-    pub(in crate::game) fn award_crafted(&mut self, crafts: &[(String, Vec<Option<ItemStack>>)]) {
-        for (recipe, ingredients) in crafts {
-            // The whole id: the advancements' `recipe_crafted` criteria name
-            // `minecraft:x`, and the crafting copy names the recipe bare.
-            let recipe = sunrise_client::crafting::qualified(recipe);
-            self.trigger_recipe_crafted(&recipe, ingredients);
-        }
-        let recipes: Vec<String> = crafts
-            .iter()
-            .map(|(r, _)| sunrise_client::crafting::qualified(r))
-            .collect();
-        self.award_recipes(&recipes);
-    }
 }
 
 impl Game<'_> {

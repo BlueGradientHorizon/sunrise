@@ -1,8 +1,12 @@
 use super::Game;
 use sunrise_core::{nbt::Tag, position::BlockPos};
-use sunrise_world::level::MovingPiston;
+use sunrise_world::{level::MovingPiston, registry::BlockStateId};
 
 impl Game<'_> {
+    pub(in crate::game) fn state_to_nbt(&self, state: BlockStateId) -> Tag {
+        super::entity_nbt::state_to_nbt(self.pack.assets.registry, state)
+    }
+
     /// `PistonMovingBlockEntity.saveAdditional`, then components and full metadata.
     pub(super) fn moving_piston_to_nbt(&self, pos: BlockPos, piston: &MovingPiston) -> Tag {
         let flag = |b: bool| Tag::Byte(i8::from(b));

@@ -84,7 +84,6 @@ impl Game<'_> {
         else {
             return;
         };
-        self.destroy_block_progress(id, pos, progress);
         let Some(host) = self.lan.as_ref() else {
             return;
         };

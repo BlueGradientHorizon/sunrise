@@ -19,6 +19,58 @@ pub(in crate::game::server_side) use sunrise_protocol::packets::play::{
 pub(in crate::game::server_side) use winit::keyboard::KeyCode;
 
 impl Game<'_> {
+    /// `WallHangingSignBlock.shouldTryToChainAnotherHangingSign` and
+    /// `CeilingHangingSignBlock.shouldTryToChainAnotherHangingSign`: a hanging
+    /// sign item clicked on a hanging sign's free side chains another sign onto
+    /// it, unless the side the player faces carries click commands the click
+    /// runs instead (`canExecuteClickCommands`).
+    pub(in crate::game) fn chains_hanging_sign(
+        &self,
+        pos: [i32; 3],
+        face: [i32; 3],
+        held: Option<&ItemStack>,
+    ) -> bool {
+        let hanging_sign = held.is_some_and(|s| {
+            self.res
+                .behaviours()
+                .item_binding(&s.item)
+                .is_some_and(|i| i.kind == sunrise_world::level::ItemKind::HangingSign)
+        });
+        let key = (pos[0], pos[1], pos[2]);
+        if !hanging_sign {
+            return false;
+        }
+        let state = self.world.block(pos[0], pos[1], pos[2]);
+        let Some(form) = self
+            .res
+            .facts()
+            .get(state)
+            .sign_form()
+            .filter(|f| f.hanging)
+        else {
+            return false;
+        };
+        let free_side = if form.wall {
+            let Some(facing) = self
+                .pack
+                .assets
+                .registry
+                .state(state)
+                .and_then(|s| s.properties.get("facing"))
+            else {
+                return false;
+            };
+            let axis = match &**facing {
+                "east" | "west" => 0,
+                "up" | "down" => 1,
+                _ => 2,
+            };
+            face.iter().position(|c| *c != 0) != Some(axis)
+        } else {
+            face == [0, -1, 0]
+        };
+        free_side && !self.sign_can_execute_click_commands(key)
+    }
     /// `SignBlockEntity.getSlotPlayerIsFacing`: whether the player faces the sign's front side.
     pub(in crate::game::server_side) fn facing_sign_front(&self, pos: (i32, i32, i32)) -> bool {
         let Some(player) = self.player.as_ref() else {

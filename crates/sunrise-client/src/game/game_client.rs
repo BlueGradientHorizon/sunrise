@@ -33,7 +33,6 @@ pub(in crate::game::client_side) use crate::game::loading_screen::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::loading_window::{
     build_renderer, loading_frame, loading_renderer, prepare_renderer_textures, start_client_game,
-    start_dedicated_game,
 };
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::motion_ids::{motion_at, motion_block_entity};
@@ -179,36 +178,53 @@ pub(in crate::game) struct WindowKeyInput<'a> {
 }
 
 impl Game<'_> {
-    /// `Entity.doWaterSplashEffect` for a dropped item. The client draws the
-    /// bubble and splash particles (`Level.addParticle` is empty on a server).
-    /// The server plays `entity.generic.splash` (`Entity.playSound`); a
-    /// client's `playSeededSound` ignores that call.
-    pub(crate) fn apply_item_splash(&mut self, splash: sunrise_client::entities::ItemSplash) {
+    /// Client-side water splash particles for a dropped item (`side_apply_item_splash`).
+    pub(in crate::game) fn client_apply_item_splash(
+        &mut self,
+        splash: sunrise_client::entities::ItemSplash,
+    ) {
         use sunrise_client::entities::ItemSplash;
-        let client = self.options.execution_role.is_client();
-        match splash {
-            ItemSplash::Sound { at, volume, pitch } if !client => {
-                self.audio
-                    .0
-                    .play("minecraft:entity.generic.splash", Some(at), volume, pitch);
-            }
-            ItemSplash::Particle {
-                bubble,
-                at,
-                velocity,
-            } if client => {
-                use sunrise_client::particles::{ParticleOptions, ParticleType};
-                let kind = if bubble {
-                    ParticleType::Bubble
-                } else {
-                    ParticleType::Splash
-                };
-                self.particles
-                    .0
-                    .add(&ParticleOptions::simple(kind), at, velocity);
-            }
-            _ => {}
+        if let ItemSplash::Particle {
+            bubble,
+            at,
+            velocity,
+        } = splash
+        {
+            use sunrise_client::particles::{ParticleOptions, ParticleType};
+            let kind = if bubble {
+                ParticleType::Bubble
+            } else {
+                ParticleType::Splash
+            };
+            self.particles
+                .0
+                .add(&ParticleOptions::simple(kind), at, velocity);
         }
+    }
+    /// Client-side block entity NBT for adventure predicates (`side_block_entity_nbt`).
+    pub(in crate::game) fn client_block_entity_nbt(
+        &self,
+        pos: [i32; 3],
+    ) -> Option<sunrise_core::nbt::Tag> {
+        if let Some(tag) = self.pot_data(pos) {
+            return Some(tag);
+        }
+        let key = (pos[0], pos[1], pos[2]);
+        let entity = self.world.block_entities.get(&key)?;
+        let block = self.data_block_name(pos);
+        Some(self.client_encode_live_block_entity(key, entity, &block))
+    }
+    /// Send a control-socket command through the client chat path (`side_send_chat_command`).
+    pub(in crate::game) fn client_send_chat_command(&mut self, command: &str) {
+        self.send_signed_chat_input(command);
+    }
+    /// Clear shared entity lists, client particles, remote mirrors, and render caches.
+    pub(in crate::game) fn client_clear_entities(&mut self) {
+        self.clear_shared_entities();
+        self.clear_client_particles();
+        self.clear_remote_objects();
+        self.clear_remote_projectiles();
+        self.client_clear_render_caches();
     }
     /// How far the block entity of a block state is drawn (its `BlockEntityRenderer`'s reach), and
     /// whether entity culling may hide it (the end portal and gateway never are), by state id,
@@ -1341,7 +1357,6 @@ impl Game<'_> {
         self.client.item_activation.reset();
         self.client.kept_block_entities.get_mut().clear();
         self.client.mod_view_distances.take();
-        self.finish_close_world_server_clear_bosses();
         self.streaming.paused = true;
         self.world = crate::game::world_for_mods(self.res.facts().air, 0);
         self.player = None;
@@ -1350,8 +1365,7 @@ impl Game<'_> {
         self.reset_toggle_keys();
         self.sleeping = None;
         self.sleep_timer = 0;
-        self.finish_close_world_server_clear_player_beds();
-        self.clear_entities();
+        self.client_clear_entities();
         self.set_screen(Screen::Playing);
         self.clear_lod();
         self.pending_uploads.0.clear();
@@ -1935,9 +1949,6 @@ impl Game<'_> {
                             );
                         }
                         sunrise_client::spans::time("update_world", || self.client_update_world());
-                        if self.title.0.is_none() && self.is_logical_server() {
-                            sunrise_client::spans::time("spawn_player", || self.spawn_player())?;
-                        }
                     } else if let Err(e) =
                         sunrise_client::spans::time("poll_remote", || self.poll_remote())
                     {

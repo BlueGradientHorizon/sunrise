@@ -583,7 +583,7 @@ impl Game<'_> {
                 self.creatures.projectiles.remove(i);
             }
             for event in events {
-                self.arrow_event(p.position, event);
+                self.server_arrow_event(p.position, event);
             }
         } else if !pending.keep {
             self.creatures.projectiles.remove(i);
@@ -620,7 +620,7 @@ impl Game<'_> {
             if event == ArrowEvent::ShootEvent {
                 self.projectile_shoot_event(owner, guest, at.components());
             } else {
-                self.arrow_event(at, event);
+                self.server_arrow_event(at, event);
             }
         }
     }

@@ -15,17 +15,7 @@ use sunrise_core::random::LegacyRandom;
 use sunrise_world::registry::BlockStateId;
 use {sunrise_core::dimension::Dimension as LevelDimension, sunrise_world::level::LevelAccess};
 
-fn weather_for_level(
-    shape: sunrise_client::chunk::LevelShape,
-    is_end: bool,
-    levels: (f32, f32),
-) -> (f32, f32) {
-    if shape.sky_light && !shape.has_ceiling && !is_end {
-        levels
-    } else {
-        (0.0, 0.0)
-    }
-}
+use crate::game::mod_api_host_common::weather_for_level;
 
 fn weather_for_world(world: &World, is_end: bool) -> (f32, f32) {
     weather_for_level(world.shape, is_end, world.weather.levels(1.0))
@@ -37,7 +27,7 @@ fn weather_flags((rain, thunder): (f32, f32)) -> (bool, bool) {
 }
 
 /// `Level.isRainingAt` over `world`, the column of the level in dimension `dim`.
-pub(in crate::game::server_side) fn rain_at(
+pub(in crate::game) fn rain_at(
     world: &World,
     facts: &sunrise_client::blocks::BlockFacts,
     biomes: &sunrise_client::biome::Biomes,
@@ -111,36 +101,6 @@ impl LevelAccess for RainView<'_> {
 }
 
 impl Game<'_> {
-    /// `Level.getSkyDarken`: the same dimension, time and weather calculation used by gameplay.
-    pub(in crate::game) fn sky_darken_in(&self, world: &World, dimension: Dim) -> i32 {
-        // A client of a server has the environment its server's type made for the level it is
-        // in; a parked level keeps the client's own for its dimension.
-        let environment = match self
-            .remote
-            .as_ref()
-            .and_then(|r| r.level_environment.as_deref())
-            .filter(|_| dimension == self.dim)
-        {
-            Some(own) => own,
-            None => match dimension {
-                Dim::Overworld => self.res.environment(),
-                Dim::Extra(_) => sunrise_client::environment::Environment::for_level(
-                    dimension.id(),
-                    self.res.environment(),
-                ),
-                Dim::Nether => self.res.nether_environment(),
-                Dim::End => self.res.end_environment(),
-            },
-        };
-        let (rain, thunder) = weather_for_level(
-            world.shape,
-            dimension == Dim::End,
-            self.world.weather.levels(1.0),
-        );
-        let day_time = self.command_clock_time(&self.level_clock_name(dimension));
-        sunrise_client::environment::sky_darken(environment, day_time, rain, thunder)
-    }
-
     /// `Level.getSkyDarken` for an active or parked level, without switching dimensions.
     pub(in crate::game) fn level_get_sky_darken(&self, level: LevelRef) -> Option<i32> {
         let world = self.native_level_read_world(level)?;

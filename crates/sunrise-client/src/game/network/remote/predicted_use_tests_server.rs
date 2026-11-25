@@ -10,7 +10,7 @@ pub(in crate::game) fn matrix(mods: mod_api::Mods) {
         crate::game::api_values::install_parts(&mods).unwrap();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let root = super::super::super::mods::content_root(&base, &Default::default()).unwrap();
-        with_interaction_game_at(true, root.prepared().to_owned(), |game| {
+        with_interaction_client_game_at(root.prepared().to_owned(), |game| {
             let stone = game
                 .pack
                 .assets

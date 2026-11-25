@@ -75,7 +75,7 @@ impl Game<'_> {
             return Ok(None);
         }
         let [x, y, z] = delta;
-        self.in_this_levels_colliders(|game| {
+        self.client_in_this_levels_colliders(|game| {
             game.move_local_player(MoverType::SelfMovement, Vec3::new(x, y, z), false)
         })
         .map(|moved| moved.map(Vec3::components))
@@ -314,7 +314,7 @@ mod tests {
             loaded_client(game);
             let start = game.player.as_ref().unwrap().position;
             let player_id = game.own_entity_id() as u32;
-            let level = game.collider_level().unwrap();
+            let level = game.client_collider_level().unwrap();
             let mut sweep = |min: Vec3, size: Vec3, sneaking: bool, exempt: bool| {
                 let player = game.player.as_mut().unwrap();
                 player.position = start;

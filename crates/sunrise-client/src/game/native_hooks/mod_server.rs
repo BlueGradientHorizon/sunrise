@@ -302,9 +302,6 @@ pub(in crate::game::server_side) use crate::game::native_hooks::shake_pose;
 pub(in crate::game::server_side) use crate::game::native_hooks::OpenNativeScreen;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::native_hooks::OpenNativeMenu;
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::seed_native_menu;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::native_hooks::SlotMoves;
 #[allow(unused_imports)]
@@ -495,6 +492,9 @@ pub(in crate::game) mod item_fallthrough;
 
 #[path = "shared/loot_server.rs"]
 pub(in crate::game) mod loot;
+
+#[path = "shared/world_helpers_server.rs"]
+pub(in crate::game) mod world_helpers;
 
 impl Drop for ContentsChangedGuard<'_, '_> {
     fn drop(&mut self) {
@@ -771,18 +771,294 @@ impl Game<'_> {
             _ => None,
         }
     }
-    /// The player clicking, as the block-use hooks name them: the acting
-    /// player's UUID and entity id on a server, this client's own player on
-    /// a client.
-    pub(in crate::game) fn native_clicker(&mut self) -> (u128, i32) {
-        if !self.is_logical_server() {
-            return (self.own_uuid(), self.own_entity_id());
-        }
+    pub(in crate::game) fn server_acting_id(&mut self) -> u128 {
+        sunrise_client::lan::playerdata::ints_uuid(self.acting_player_uuid())
+    }
+    pub(in crate::game) fn server_clicker(&mut self) -> (u128, i32) {
         let entity = self
             .server
             .lan_acting_entity
             .map_or_else(|| self.own_entity_id(), |id| id as i32);
-        (self.native_acting_id(), entity)
+        (self.server_acting_id(), entity)
+    }
+    pub(in crate::game) fn server_acting_or_local_player(&self) -> Option<PlayerRef> {
+        self.native_acting_player()
+    }
+    pub(in crate::game) fn server_chunks_loaded(&mut self) {
+        self.fire_pending_block_entity_data_loads();
+        let loaded = std::mem::take(&mut self.world.loaded_chunks);
+        let dimension = self.dim.id();
+        for (x, z, new) in loaded {
+            self.native_chunk_load(dimension, [x, z], new);
+        }
+    }
+    pub(in crate::game) fn server_chunks_unloaded(
+        &mut self,
+        unloaded: &[std::sync::Arc<sunrise_client::chunk::Chunk>],
+    ) {
+        let dimension = self.dim.id();
+        for chunk in unloaded {
+            self.native_chunk_and_block_entities_unload(dimension, [chunk.x, chunk.z]);
+        }
+    }
+    pub(in crate::game) fn server_apply_after_use_components(&mut self, stack: &ItemStack) {
+        self.apply_after_use_components(stack);
+    }
+    /// A write an `entity_inside` part asked for, applied as a landing write is: at the
+    /// touched block, once the entity's batch has ticked.
+    pub(in crate::game) fn apply_inside_write(
+        &mut self,
+        level: mod_api::LevelRef,
+        pos: BlockPos,
+        write: sunrise_world::level::InsideWrite,
+    ) {
+        let at = [pos.x, pos.y, pos.z];
+        match write {
+            sunrise_world::level::InsideWrite::SetBlock(state) => {
+                let flags = BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS;
+                let _ = self.level_set_block(level, at, state, flags);
+            }
+            sunrise_world::level::InsideWrite::DestroyBlock { drop } => {
+                self.level_destroy_block(level, at, drop, None, false);
+            }
+            // A write a later API adds that this game does not know is not applied.
+            _ => {}
+        }
+    }
+    /// Apply one already-validated engine write, at the block the entity landed on.
+    /// The original-state guard runs once before the ordered batch, not between writes.
+    pub(in crate::game) fn apply_landing_write(
+        &mut self,
+        level: mod_api::LevelRef,
+        pos: BlockPos,
+        write: sunrise_world::level::LandingWrite,
+    ) {
+        let at = [pos.x, pos.y, pos.z];
+        match write {
+            // `Level.setBlockAndUpdate`: flag 3, the neighbours and the clients.
+            sunrise_world::level::LandingWrite::SetBlock(state) => {
+                let flags = BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS;
+                let _ = self.level_set_block(level, at, state, flags);
+            }
+            sunrise_world::level::LandingWrite::DestroyBlock { drop } => {
+                self.level_destroy_block(level, at, drop, None, false);
+            }
+            // A write a later API adds that this game does not know is not applied.
+            _ => {}
+        }
+    }
+    /// [`Self::attack_of`] for the attacker a damage source names: the player, a mob, or (none)
+    /// the attack the enclosing [`Self::with_attack`] lends.
+    pub(in crate::game) fn attack_of_who(&self, attacker: Option<Who>) -> Attack {
+        match attacker {
+            Some(Who::Player) => self.attack_of(self.player.as_ref().map_or(0, |p| p.entity_id)),
+            Some(Who::Mob(id)) => self.attack_of(id as i32),
+            None => self.current_attack(),
+        }
+    }
+    /// Deliver what the batch just ticked recorded, in order: `minecart_pass`
+    /// to the parts, and the writes a landing, step, or mid-walk `entity_inside`
+    /// contact asked for to the level. A write is skipped when the block at
+    /// its position is no longer the state it touched, as vanilla never sees
+    /// a stale one. The parts' own `entity_inside` contacts fire mid-walk now,
+    /// on the shared inside sweep, not here.
+    pub(in crate::game) fn drain_entity_inside(&mut self) {
+        for contact in sunrise_client::block_contact::take_pending() {
+            let (state, pos) = match &contact {
+                Pending::Landed(landed) => (landed.state, landed.position),
+                Pending::MinecartPass(pass) => (pass.state, pass.position),
+                Pending::InsideWritten(written) => (written.state, written.position),
+            };
+            let Some(level) = self.level(self.dim.id()) else {
+                continue;
+            };
+            if self.level_block_state(level, [pos.x, pos.y, pos.z]) != Some(state) {
+                continue;
+            }
+            match contact {
+                Pending::MinecartPass(pass) => {
+                    if let Some(entity) = u32::try_from(pass.entity)
+                        .ok()
+                        .and_then(|id| self.entity(id))
+                    {
+                        self.native_minecart_pass(state, pos, entity);
+                    }
+                }
+                Pending::Landed(landed) => {
+                    for write in landed.writes {
+                        self.apply_landing_write(level, pos, write);
+                    }
+                }
+                // The mid-walk contacts' own level writes, guarded on the touched
+                // state above, as a landing's are.
+                Pending::InsideWritten(written) => {
+                    for write in written.writes {
+                        self.apply_inside_write(level, pos, write);
+                    }
+                }
+            }
+        }
+    }
+    /// The mobs from index `from` on are new in the world.
+    pub(in crate::game) fn native_mobs_joined(&mut self, from: usize, natural: bool) {
+        // Preserve saved/constructed UUIDs. Natural spawns built with provisional
+        // IDs get their persistent identity when admitted, not on their first hit.
+        for mob in self.mobs.iter().skip(from) {
+            self.persist
+                .uuids
+                .get_or_insert_with(mob.id, sunrise_client::save::random_uuid);
+        }
+        self.join_spawn_tags(from);
+        // A mod can keep a mob out; it is then taken out and not told of.
+        self.native_joins_flush(false, 0);
+        for i in from..self.mobs.len() {
+            let m = &self.mobs[i];
+            let (kind, pos) = (mob_kind(m), [m.position.x, m.position.y, m.position.z]);
+            self.native_mob_spawned(self.dim.id(), &kind, pos, natural);
+        }
+    }
+    pub(in crate::game) fn placement_canceled(
+        &mut self,
+        placer: Option<EntityRef>,
+        pos: BlockPos,
+        state: BlockStateId,
+        placed_against: BlockStateId,
+        extra: impl IntoIterator<Item = (BlockPos, BlockStateId)>,
+    ) -> bool {
+        let mut extra = extra.into_iter();
+        let placement = if let Some(first) = extra.next() {
+            let Some(writes) = std::iter::once((pos, state))
+                .chain(std::iter::once(first))
+                .chain(extra)
+                .map(|(at, state)| Some(BlockPlacement::new(at, state.try_into_api().ok()?)))
+                .collect()
+            else {
+                return false;
+            };
+            Placement::Multi(writes)
+        } else {
+            Placement::Single
+        };
+        let mut canceled = false;
+        self.native_entity_place(placer, pos, state, placed_against, placement, &mut canceled);
+        canceled
+    }
+    /// Let `entity_place` veto exactly the decision the world will apply. If the
+    /// callback changed the inputs, do not choose another target behind its back.
+    pub(in crate::game) fn place_item_block(
+        &mut self,
+        ctx: &PlaceContext,
+        by_player: bool,
+        stack: &ItemStack,
+    ) -> crate::Result<Option<sunrise_world::level::AppliedPlacement>> {
+        let registry = self.pack.assets.registry;
+        let game_master = ctx.can_use_game_master_blocks;
+        let stack_state =
+            |state| crate::game::block_items::item_block_state(registry, state, stack, game_master);
+        let has_part =
+            mod_api::__private::item_listens(mod_api::HookId::PlacementContext, &stack.item);
+        let placer = (has_part && by_player)
+            .then(|| self.placement_placer())
+            .flatten();
+        let Some((decision, preview)) = self.with_level(|b, level, ticks| {
+            b.decide_placement(level, ticks, ctx, stack_state, |level, context| {
+                has_part
+                    .then(|| level.rewrite_placement_context(stack, context, placer))
+                    .flatten()
+            })
+        }) else {
+            return Ok(None);
+        };
+        let veto = mod_api::__private::listened(mod_api::HookId::EntityPlace);
+        if veto {
+            let against_pos = decision.placed_against_pos();
+            let block = |game: &Game<'_>, pos: BlockPos| game.world.block(pos.x, pos.y, pos.z);
+            let against = block(self, against_pos);
+            let target_before = block(self, preview.pos);
+            // One proposed state per affected cell. A companion at the pre-clear
+            // position supersedes the intermediate air or water write.
+            let extra = preview.companion.into_iter().chain(
+                preview
+                    .pre_clear
+                    .filter(|(pos, _)| preview.companion.is_none_or(|(at, _)| at != *pos)),
+            );
+            let hand = if by_player {
+                self.held().cloned()
+            } else {
+                None
+            };
+            let placer = by_player
+                .then(|| self.native_clicker().1.cast_unsigned())
+                .and_then(|entity| self.entity(entity));
+            // The block revision and journal epoch cover supporting blocks and
+            // block-entity shapes without tracing ordinary reads.
+            let level = (self.dim, self.world.revision, self.transactions.writes());
+            if self.placement_canceled(placer, preview.pos, preview.state, against, extra)
+                || level != (self.dim, self.world.revision, self.transactions.writes())
+                || block(self, preview.pos) != target_before
+                || block(self, against_pos) != against
+                || (by_player && self.held() != hand.as_ref())
+            {
+                return Ok(None);
+            }
+        }
+        let Some(placed) = self
+            .with_level(|b, level, ticks| b.apply_placement(level, ticks, decision, stack_state))
+        else {
+            return Ok(None);
+        };
+        if placed.matches_candidate {
+            let pos = placed.context.pos;
+            let target = [pos.x, pos.y, pos.z];
+            self.apply_block_item_data(target, placed.state, stack, game_master);
+            self.with_level(|b, level, ticks| b.placement_set_placed_by(level, ticks, &placed));
+            let placer = by_player.then(|| self.native_acting_player()).flatten();
+            self.set_placed_by(target, placer, Some(stack))?;
+            self.block_item_placed(stack, placer, &placed.context);
+            if by_player {
+                self.trigger_block("minecraft:placed_block", target, stack);
+            }
+        }
+        self.with_level(|b, level, ticks| b.report_placement(level, ticks, &placed));
+        Ok(Some(placed))
+    }
+    /// `GameRuleChangedEvent` once the server set the rule `name` to `value`
+    /// (`GameRules.set` with a server).
+    pub(in crate::game) fn game_rule_changed(
+        &mut self,
+        name: &str,
+        value: GameRuleValue,
+        actor: Option<&GameRuleActor<'_>>,
+    ) {
+        if mod_api::__private::listened(mod_api::HookId::GameRuleChanged) {
+            self.native_game_rule_changed(name, value, actor);
+        }
+    }
+    /// The players still here leave with the server (`PlayerList.removeAll`):
+    /// the mods hear it once, whichever path closes it.
+    pub(in crate::game) fn native_players_leaving(&mut self) {
+        let Some(host) = self.lan.as_mut() else {
+            return;
+        };
+        if std::mem::replace(&mut host.players_told_left, true) {
+            return;
+        }
+        let players: Vec<(u128, String)> = host
+            .hub
+            .guests
+            .iter()
+            .filter(|g| g.placed && g.participates_online())
+            .map(|g| (g.uuid, g.name.clone()))
+            .collect();
+        for (player, name) in players {
+            self.native_player_logged_out(player, &name);
+        }
+    }
+    /// The acting player's blow killed mob `index`.
+    pub(in crate::game) fn native_kill_event(&mut self, index: usize) {
+        let (entity, kind) = (self.mobs[index].id, mob_kind(&self.mobs[index]));
+        let player = self.native_acting_id();
+        self.native_mob_killed(player, entity, &kind);
     }
     /// The containers of the mod blocks' block entities, by block state
     /// (`native_block_entity_container`), checked.
@@ -985,6 +1261,10 @@ pub(in crate::game) mod death_source_tests;
 #[cfg(test)]
 #[path = "on_block_placed_by_tests_server.rs"]
 pub(in crate::game) mod on_block_placed_by_tests;
+
+#[cfg(test)]
+#[path = "on_chunk_unloaded_tests_client.rs"]
+pub(in crate::game) mod on_chunk_unloaded_tests;
 
 #[cfg(test)]
 #[path = "piston_push_reaction_tests_server.rs"]

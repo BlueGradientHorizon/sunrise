@@ -43,7 +43,7 @@ impl Game<'_> {
         // one the packet named, or the one the crosshair picked.
         let (named, distance) = match target {
             Some(t) => (Some(t.id), None),
-            None => match self.crosshair_entity_hit() {
+            None => match self.server_crosshair_entity_hit() {
                 Some(hit) => (Some(hit.id), Some(hit.distance)),
                 None => (None, None),
             },
@@ -190,10 +190,11 @@ impl Game<'_> {
             return Ok(Some(Hand::Main));
         }
         // An EntityHitResult may fall through to Item.use, never to useItemOn.
+        let entity = guest.is_none() && self.server_crosshair_entity_hit().is_some();
         let block_hit = match guest {
             Some(GuestUse::OnBlock { .. }) => self.pick(),
             Some(GuestUse::Item(_)) => None,
-            _ if self.entity_targeted() => None,
+            _ if entity => None,
             _ => self.pick(),
         };
         let hands = match guest {
@@ -204,7 +205,6 @@ impl Game<'_> {
             }
             None => Hand::BOTH.to_vec(),
         };
-        let entity = guest.is_none() && self.entity_targeted();
         for hand in hands {
             // The off hand's turn starts on the entity too (Minecraft.startUseItem).
             if entity && hand == Hand::Off && self.with_hand(hand, |g| g.interact_entity(None))? {
@@ -215,5 +215,29 @@ impl Game<'_> {
             }
         }
         Ok(None)
+    }
+    pub(in crate::game) fn server_consume_held_slot(&mut self, amount: u32) {
+        self.edit_block_use_stack(|cell| {
+            if let Some(stack) = cell.as_mut() {
+                stack.count = stack.count.saturating_sub(amount);
+                if stack.count == 0 {
+                    *cell = None;
+                }
+            }
+        });
+    }
+    pub(in crate::game) fn server_apply_use_cooldown(&mut self, stack: &ItemStack) {
+        self.apply_use_cooldown(stack);
+    }
+    pub(in crate::game) fn server_acting_player_ref(&self) -> Option<mod_api::PlayerRef> {
+        let uuid = self.server.lan_acting_uuid.or_else(|| {
+            self.level
+                .player_uuid
+                .map(sunrise_client::lan::playerdata::ints_uuid)
+        })?;
+        self.player(uuid)
+    }
+    pub(in crate::game) fn server_current_level_ref(&self) -> Option<mod_api::LevelRef> {
+        self.level(self.dim.id())
     }
 }

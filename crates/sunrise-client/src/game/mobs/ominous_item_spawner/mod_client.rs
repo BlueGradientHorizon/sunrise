@@ -85,4 +85,27 @@ impl Game<'_> {
             self.particles.0.add(&options, at, v);
         }
     }
+    /// `OminousItemSpawner.tick` on a client: advances tickCount and emits particles every 5 ticks.
+    pub(in crate::game) fn tick_remote_ominous_item_spawners(&mut self) {
+        let at: Vec<[f64; 3]> = self.ominous_spawners.iter().map(|s| s.position).collect();
+        self.ominous_spawners.for_each_mut(|s| s.tick_count += 1);
+        if self.world.game_time % 5 == 0 {
+            for position in at {
+                self.ominous_spawner_particles(position);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod client_clock_tests {
+    #[test]
+    #[ignore = "daily"]
+    fn client_spawner_clock_advances() {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
+            game.add_remote_ominous_item_spawner(701, [1.0, 80.0, 1.0]);
+            game.tick_remote_ominous_item_spawners();
+            assert_eq!(game.ominous_spawners[0].tick_count, 1);
+        });
+    }
 }

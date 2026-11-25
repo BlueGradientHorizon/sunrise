@@ -637,8 +637,21 @@ impl Game<'_> {
             "trident" => {
                 // TridentItem.use: not about to break, and Riptide needs water or rain.
                 let riptide = stack.enchantment_level("minecraft:riptide") > 0;
+                let wet = self.player.as_ref().is_some_and(|p| {
+                    let bp = sunrise_core::geometry::BlockPos::new(
+                        p.position.x.floor() as i32,
+                        p.position.y.floor() as i32,
+                        p.position.z.floor() as i32,
+                    );
+                    let up = sunrise_core::geometry::BlockPos::new(
+                        bp.x,
+                        p.bounds().max_position().y.floor() as i32,
+                        bp.z,
+                    );
+                    p.fluids.was_touching_water || self.raining_at(bp) || self.raining_at(up)
+                });
                 if stack.damage >= self.trident_max_damage(&stack).saturating_sub(1)
-                    || (riptide && !self.in_water_or_rain())
+                    || (riptide && !wet)
                 {
                     return None;
                 }

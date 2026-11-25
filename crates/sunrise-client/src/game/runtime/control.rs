@@ -732,7 +732,17 @@ impl Game<'_> {
                     "auto": self.client.gpu_culling_auto.state(),
                 })))
             }
-            "sculk" => Ok(Some(self.sculk_command(&words)?)),
+            "sculk" => {
+                let server = self
+                    .integrated
+                    .as_ref()
+                    .ok_or("sculk requires a single-player world")?;
+                let words = words.iter().map(|w| (*w).to_owned()).collect();
+                let value = server
+                    .ask(|reply| OwnerRequest::Control(ControlRequest::Sculk { words, reply }))
+                    .ok_or(super::integrated::NO_ANSWER)??;
+                Ok(Some(value))
+            }
             "hello" => Ok(Some(hello())),
             "status" => Ok(Some(self.control_status())),
             "memory" => Ok(Some(self.memory_value())),
@@ -774,7 +784,7 @@ impl Game<'_> {
                         .ask(|reply| OwnerRequest::Control(ControlRequest::Simulation(reply)))
                         .ok_or(super::integrated::NO_ANSWER)?
                 } else {
-                    json!({ "game_time": self.world.game_time, "projectiles": self.projectiles_status() })
+                    json!({ "game_time": self.world.game_time, "projectiles": self.client_projectiles_status() })
                 };
                 Ok(Some(value))
             }
@@ -1112,8 +1122,7 @@ impl Game<'_> {
                         .ok_or(super::integrated::NO_ANSWER)??;
                     return Ok(Some(json!({ "ok": true, "id": id })));
                 }
-                let id = self.summon_command_mob(&kind, at, baby)?;
-                Ok(Some(json!({ "ok": true, "id": id })))
+                Err("summon requires an integrated server".into())
             }
             "mobs" => {
                 self.require_world()?;
@@ -1141,7 +1150,7 @@ impl Game<'_> {
                         .ok_or(super::integrated::NO_ANSWER)?;
                     return Ok(Some(value));
                 }
-                Ok(Some(self.control_hurt_log()))
+                Ok(Some(self.client_control_hurt_log()))
             }
             "resume" => {
                 if self.client.screen == Screen::Paused {
@@ -1415,8 +1424,6 @@ impl Game<'_> {
                     server
                         .ask(|reply| OwnerRequest::Control(ControlRequest::Save { all, reply }))
                         .ok_or(super::integrated::NO_ANSWER)??;
-                } else if self.is_logical_server() {
-                    self.control_save(all)?;
                 } else {
                     return Err("save requires a single-player world".into());
                 }
@@ -1425,13 +1432,15 @@ impl Game<'_> {
             "dragon-hurt" => {
                 // Test hook: damage the dragon's head as the player would.
                 let amount: f32 = arg(1)?.parse()?;
-                self.hit_special(
-                    super::dragon::SPECIAL,
-                    amount,
-                    true,
-                    sunrise_client::mobs::DamageKind::PlayerAttack,
-                    None,
-                );
+                let server = self
+                    .integrated
+                    .as_ref()
+                    .ok_or("dragon-hurt requires a single-player world")?;
+                server
+                    .ask(|reply| {
+                        OwnerRequest::Control(ControlRequest::DragonHurt { amount, reply })
+                    })
+                    .ok_or(super::integrated::NO_ANSWER)??;
                 ok()
             }
             "quit" => {
@@ -1507,9 +1516,9 @@ impl Game<'_> {
         }
     }
 
-    /// The hurts and melee attacks each player logged since the last call
+    /// The hurts and melee attacks the local player logged since the last call
     /// (`PlayerMotion::hurt_log`, `attack_log`), taken out.
-    pub(in crate::game) fn control_hurt_log(&mut self) -> Value {
+    pub(in crate::game) fn client_control_hurt_log(&mut self) -> Value {
         fn drain(
             name: &str,
             hurt_log: &mut Vec<sunrise_client::health::HurtRecord>,
@@ -1540,17 +1549,6 @@ impl Game<'_> {
         let mut players = Vec::new();
         if let Some(p) = self.player.as_mut() {
             players.push(drain("host", &mut p.hurt_log, &mut p.attack_log));
-        }
-        if let Some(host) = self.lan.as_mut() {
-            host.hub.guests.update_all(|g| {
-                let name = g.name.clone();
-                if let Some(m) = g.motion.as_mut() {
-                    players.push(drain(&name, &mut m.hurt_log, &mut m.attack_log));
-                } else if let Some((mut hurts, mut attacks)) = g.logs_kept.take() {
-                    // Dead, not yet respawned: what its last body logged.
-                    players.push(drain(&name, &mut hurts, &mut attacks));
-                }
-            });
         }
         json!({ "ok": true, "players": players })
     }
@@ -1678,10 +1676,8 @@ impl Game<'_> {
             "day_time": self.world.day_time,
             "music": self.client.music.current(&self.audio.0.engine),
             "sounds": self.audio.0.census(),
-            "fishing": self.hook_status(),
             "tridents": self.tridents.len(),
             "rockets": self.rockets.len(),
-            "fight": self.dragon_status(),
             // A client of a server (single player's server thread) knows the
             // carts it was sent.
             "carts": self.remote_carts().unwrap_or_else(|| self.carts.iter().map(|c| serde_json::json!({"kind": c.kind.id(), "position": [c.position.x, c.position.y, c.position.z], "velocity": [c.velocity.x, c.velocity.y, c.velocity.z]})).collect::<Vec<_>>()),
@@ -1710,6 +1706,40 @@ impl Game<'_> {
                 .eye_position()
                 .map(|e| self.shown_name_tags(glam::DVec3::from_array(e))),
         });
+        let (fishing, fight) = self
+            .integrated
+            .as_ref()
+            .and_then(|server| {
+                server.ask(|reply| OwnerRequest::Control(ControlRequest::StatusExtras(reply)))
+            })
+            .and_then(std::result::Result::ok)
+            .unwrap_or_else(|| {
+                (
+                    self.hook_status(),
+                    json!({
+                        "dragon": self.dragon.as_ref().map(|d| json!({
+                            "id": d.id,
+                            "position": [d.position.x, d.position.y, d.position.z],
+                            "health": d.health,
+                            "phase": d.phase.id(),
+                            "death_time": d.death_time,
+                            "strafing": Value::Null,
+                        })),
+                        "players": 0,
+                        "crystals": self.crystals.len(),
+                        "crystal_list": self.crystals.iter().map(|c| json!({
+                            "id": c.id,
+                            "position": [c.position.x, c.position.y, c.position.z],
+                        })).collect::<Vec<_>>(),
+                        "alive_crystals": self.crystals.len(),
+                        "killed": false,
+                        "exit_portal": Value::Null,
+                        "respawn": Value::Null,
+                    }),
+                )
+            });
+        status["fishing"] = json!(fishing);
+        status["fight"] = fight;
         status["lod"] = lod;
         // Parallel Tick: the setting, whether the next tick shares its work, and Auto's state.
         let (setting, on, auto) = sunrise_client::parallel::status();
@@ -1737,7 +1767,7 @@ impl Game<'_> {
         status["lightning"] = json!({"bolts": self.bolts.len(), "struck": self.client.lightning_seen[0],
             "flashes": self.client.lightning_seen[1], "flash": self.flash});
         // Primed TNT, falling blocks, projectiles, tridents and end crystals.
-        status["projectiles"] = json!(self.projectiles_status());
+        status["projectiles"] = json!(self.client_projectiles_status());
         let mut fangs_vertices = Vec::new();
         self.fangs_geometry(glam::DVec3::ZERO, 0.5, &mut fangs_vertices);
         status["fangs_vertices"] = json!(fangs_vertices.len());

@@ -160,57 +160,39 @@ pub(in crate::game) mod animate_tick;
 
 /// The hook points. Each does nothing in Sunrise.
 impl Game<'_> {
-    /// A write an `entity_inside` part asked for, applied as a landing write is: at the
-    /// touched block, once the entity's batch has ticked.
-    pub(in crate::game) fn apply_inside_write(
+    /// Shared click metadata borrows the already-converted API snapshot for this call.
+    pub(in crate::game) fn block_click<'a>(
         &mut self,
-        level: mod_api::LevelRef,
-        pos: BlockPos,
-        write: sunrise_world::level::InsideWrite,
-    ) {
-        let at = [pos.x, pos.y, pos.z];
-        match write {
-            sunrise_world::level::InsideWrite::SetBlock(state) => {
-                let flags = BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS;
-                let _ = self.level_set_block(level, at, state, flags);
-            }
-            sunrise_world::level::InsideWrite::DestroyBlock { drop } => {
-                self.level_destroy_block(level, at, drop, None, false);
-            }
-            // A write a later API adds that this game does not know is not applied.
-            _ => {}
-        }
+        hit: &super::Hit,
+        hand: mod_api::Hand,
+        stack: Option<&'a mod_api::ItemStack>,
+    ) -> mod_api::BlockClick<'a> {
+        let (player, player_entity_id) = self.native_clicker();
+        mod_api::BlockClick::from(mod_api::__private::built::BlockClick {
+            side: if self.is_logical_server() {
+                LogicalSide::Server
+            } else {
+                LogicalSide::Client
+            },
+            dimension: self.dim.level(),
+            pos: hit.pos,
+            hit: hit.native(),
+            hand,
+            stack,
+            player,
+            player_entity_id,
+        })
     }
-    /// Apply one already-validated engine write, at the block the entity landed on.
-    /// The original-state guard runs once before the ordered batch, not between writes.
-    pub(in crate::game) fn apply_landing_write(
-        &mut self,
-        level: mod_api::LevelRef,
-        pos: BlockPos,
-        write: sunrise_world::level::LandingWrite,
-    ) {
-        let at = [pos.x, pos.y, pos.z];
-        match write {
-            // `Level.setBlockAndUpdate`: flag 3, the neighbours and the clients.
-            sunrise_world::level::LandingWrite::SetBlock(state) => {
-                let flags = BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS;
-                let _ = self.level_set_block(level, at, state, flags);
-            }
-            sunrise_world::level::LandingWrite::DestroyBlock { drop } => {
-                self.level_destroy_block(level, at, drop, None, false);
-            }
-            // A write a later API adds that this game does not know is not applied.
-            _ => {}
-        }
-    }
-    /// [`Self::attack_of`] for the attacker a damage source names: the player, a mob, or (none)
-    /// the attack the enclosing [`Self::with_attack`] lends.
-    pub(in crate::game) fn attack_of_who(&self, attacker: Option<Who>) -> Attack {
-        match attacker {
-            Some(Who::Player) => self.attack_of(self.player.as_ref().map_or(0, |p| p.entity_id)),
-            Some(Who::Mob(id)) => self.attack_of(id as i32),
-            None => self.current_attack(),
-        }
+    /// The living entity an effect decision names: `Some(id)` a mob's
+    /// `Entity.getId`, `None` the acting player. `None` when no native
+    /// world runs, and the decision falls back to vanilla's.
+    pub(in crate::game) fn effect_living_ref(&self, entity: Option<i32>) -> Option<LivingRef> {
+        let epoch = self.native_lifecycle.epoch()?;
+        let id = match entity {
+            Some(id) => id as u32,
+            None => self.own_entity_id() as u32,
+        };
+        Some(LivingRef::new(EntityRef::new(epoch, id)))
     }
     /// `BonemealEvent` for bone meal from `stack` on `pos`, used by the
     /// acting player (`by_player`) or by a dispenser or a villager:
@@ -262,71 +244,16 @@ impl Game<'_> {
             check: Some(check),
         }
     }
-    /// Deliver what the batch just ticked recorded, in order: `minecart_pass`
-    /// to the parts, and the writes a landing, step, or mid-walk `entity_inside`
-    /// contact asked for to the level. A write is skipped when the block at
-    /// its position is no longer the state it touched, as vanilla never sees
-    /// a stale one. The parts' own `entity_inside` contacts fire mid-walk now,
-    /// on the shared inside sweep, not here.
-    pub(in crate::game) fn drain_entity_inside(&mut self) {
-        for contact in sunrise_client::block_contact::take_pending() {
-            let (state, pos) = match &contact {
-                Pending::Landed(landed) => (landed.state, landed.position),
-                Pending::MinecartPass(pass) => (pass.state, pass.position),
-                Pending::InsideWritten(written) => (written.state, written.position),
-            };
-            let Some(level) = self.level(self.dim.id()) else {
-                continue;
-            };
-            if self.level_block_state(level, [pos.x, pos.y, pos.z]) != Some(state) {
-                continue;
-            }
-            match contact {
-                Pending::MinecartPass(pass) => {
-                    if let Some(entity) = u32::try_from(pass.entity)
-                        .ok()
-                        .and_then(|id| self.entity(id))
-                    {
-                        self.native_minecart_pass(state, pos, entity);
-                    }
-                }
-                Pending::Landed(landed) => {
-                    for write in landed.writes {
-                        self.apply_landing_write(level, pos, write);
-                    }
-                }
-                // The mid-walk contacts' own level writes, guarded on the touched
-                // state above, as a landing's are.
-                Pending::InsideWritten(written) => {
-                    for write in written.writes {
-                        self.apply_inside_write(level, pos, write);
-                    }
-                }
-            }
-        }
-    }
     /// The acting player as the hook points name one: the guest whose turn
     /// it is, else the host.
     pub(in crate::game) fn native_acting_id(&mut self) -> u128 {
-        sunrise_client::lan::playerdata::ints_uuid(self.acting_player_uuid())
+        self.side_acting_id()
     }
-    /// The mobs from index `from` on are new in the world.
-    pub(in crate::game) fn native_mobs_joined(&mut self, from: usize, natural: bool) {
-        // Preserve saved/constructed UUIDs. Natural spawns built with provisional
-        // IDs get their persistent identity when admitted, not on their first hit.
-        for mob in self.mobs.iter().skip(from) {
-            self.persist
-                .uuids
-                .get_or_insert_with(mob.id, sunrise_client::save::random_uuid);
-        }
-        self.join_spawn_tags(from);
-        // A mod can keep a mob out; it is then taken out and not told of.
-        self.native_joins_flush(false, 0);
-        for i in from..self.mobs.len() {
-            let m = &self.mobs[i];
-            let (kind, pos) = (mob_kind(m), [m.position.x, m.position.y, m.position.z]);
-            self.native_mob_spawned(self.dim.id(), &kind, pos, natural);
-        }
+    /// The player clicking, as the block-use hooks name them: the acting
+    /// player's UUID and entity id on a server, this client's own player on
+    /// a client.
+    pub(in crate::game) fn native_clicker(&mut self) -> (u128, i32) {
+        self.side_clicker()
     }
     /// `PlayerInteractEvent.RightClickBlock` for a click on `hit` with
     /// `hand` holding `stack`: what the mods let it use.

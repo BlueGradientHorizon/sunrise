@@ -72,31 +72,31 @@ pub(in crate::game) fn places_of(
 /// allocates nothing.
 #[derive(Default)]
 pub(in crate::game) struct TickBuffers {
-    ids: Vec<u32>,
+    pub(in crate::game) ids: Vec<u32>,
     /// Empty between calls: it borrows the round's kinds only while a hook runs.
-    kinds: Vec<&'static str>,
+    pub(in crate::game) kinds: Vec<&'static str>,
     /// The types of entities whose rows hold them as their own strings, copied out for a call.
-    names: KindNames,
+    pub(in crate::game) names: KindNames,
 }
 
 /// Type names copied out of the rows that own them, so a hook is told them while the rows stay
 /// in their list for handles to read: one string and where each name ends.
 #[derive(Default)]
-struct KindNames {
+pub(in crate::game) struct KindNames {
     text: String,
     ends: Vec<usize>,
 }
 
 impl KindNames {
-    fn clear(&mut self) {
+    pub(in crate::game) fn clear(&mut self) {
         self.text.clear();
         self.ends.clear();
     }
-    fn push(&mut self, kind: &str) {
+    pub(in crate::game) fn push(&mut self, kind: &str) {
         self.text.push_str(kind);
         self.ends.push(self.text.len());
     }
-    fn names(&self) -> impl Iterator<Item = &str> {
+    pub(in crate::game) fn names(&self) -> impl Iterator<Item = &str> {
         let mut start = 0;
         self.ends.iter().map(move |&end| {
             let name = &self.text[start..end];
@@ -104,14 +104,6 @@ impl KindNames {
             name
         })
     }
-}
-
-/// Whether an entity the server keeps without simulating it (`others`: displays, markers,
-/// interactions) is told its tick here. Leash knots and eyes of ender tick in loops of their own;
-/// a missing mod's record is kept, not an entity of the level that ticks.
-pub(in crate::game::server_side) fn other_ticks(kind: &str) -> bool {
-    !matches!(kind, "minecraft:leash_knot" | "minecraft:eye_of_ender")
-        && !super::general::quarantined_kind(kind)
 }
 
 /// Which entities of a round are told alone, around their own tick.
@@ -131,18 +123,18 @@ enum Alone {
 #[derive(Clone, Copy, Debug, Default)]
 pub(in crate::game) struct Told {
     /// Whether the tick hooks are listened to on this side: otherwise no Pre or Post is told.
-    listening: bool,
+    pub(in crate::game) listening: bool,
     /// Which entities are told alone instead of with their family.
     alone: Alone,
 }
 
 impl Told {
     /// Whether the tick hooks are listened to on this side.
-    pub(in crate::game::server_side) fn listening(&self) -> bool {
+    pub(in crate::game) fn listening(&self) -> bool {
         self.listening
     }
     /// Whether a mob of type `kind` is told alone, around its own tick, not with its family.
-    pub(in crate::game::server_side) fn alone_mob(&self, kind: &MobType) -> bool {
+    pub(in crate::game) fn alone_mob(&self, kind: &MobType) -> bool {
         self.listening
             && match self.alone {
                 Alone::None => false,
@@ -152,7 +144,7 @@ impl Told {
     }
     /// Whether the entities of type `kind` are told alone. For a family of one type
     /// (`minecraft:item`) it is asked once for the family, not for each entity.
-    pub(in crate::game::server_side) fn alone_kind(&self, kind: &str) -> bool {
+    pub(in crate::game) fn alone_kind(&self, kind: &str) -> bool {
         self.listening
             && match self.alone {
                 Alone::None => false,
@@ -168,7 +160,7 @@ impl Told {
 #[derive(Default)]
 pub(in crate::game) struct TickRound {
     /// Whether the hooks are heard, and who is told alone.
-    told: Told,
+    pub(in crate::game) told: Told,
     /// Whether `entity_entering_section` is listened to on this server: each entity's position
     /// write is filed and told while its tick is still running.
     sections: bool,
@@ -190,7 +182,7 @@ impl TickRound {
         !self.canceled.is_empty() && self.canceled.contains(&id)
     }
     /// Whether a part ended the tick of item `id` (`on_entity_item_update`).
-    pub(in crate::game::server_side) fn halted(&self, id: u32) -> bool {
+    pub(in crate::game) fn halted(&self, id: u32) -> bool {
         !self.halted.is_empty() && self.halted.contains(&id)
     }
     /// A part ended the tick of item `id`.
@@ -198,7 +190,7 @@ impl TickRound {
         self.halted.push(id);
     }
     /// Whether `entity_entering_section` is listened to: each entity's position updates are filed.
-    pub(in crate::game::server_side) fn sections(&self) -> bool {
+    pub(in crate::game) fn sections(&self) -> bool {
         self.sections
     }
     /// Whether the round keeps the entities that tick: a mod hears their ticks or their moves.
@@ -244,7 +236,7 @@ impl TickRound {
     }
     /// The entity `id`, told its Pre, went before it ticked (an item merged into an earlier
     /// one): it hears no Post.
-    pub(in crate::game::server_side) fn not_ticked(&mut self, id: u32) {
+    pub(in crate::game) fn not_ticked(&mut self, id: u32) {
         if self.listening() {
             self.ticking.retain(|(other, _)| *other != id);
         }
@@ -256,7 +248,7 @@ impl Game<'_> {
     /// listens (`native_entity_tick_listened`). Its list is kept between ticks.
     pub(in crate::game) fn native_tick_round(&mut self) -> TickRound {
         let told = self.native_tick_told();
-        let sections = self.is_logical_server() && self.entity_section_scope().is_some();
+        let sections = self.side_tick_uses_server_sections();
         TickRound {
             told,
             sections,
@@ -273,7 +265,7 @@ impl Game<'_> {
 
     /// Whether the tick hooks are heard on this side (`native_entity_tick_listened`), and which
     /// entities are told alone.
-    pub(in crate::game::server_side) fn native_tick_told(&mut self) -> Told {
+    pub(in crate::game) fn native_tick_told(&mut self) -> Told {
         let mut listening = false;
         self.native_entity_tick_listened(&mut listening);
         let alone = match mod_api::__private::entity_tick_each() {
@@ -353,151 +345,14 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
-    /// The entity the server keeps unsimulated at `others[i]` (`other_ticks`), of a type a mod
-    /// named, at its own place in the join order: its Pre, then its Post, as nothing of it moves
-    /// in between. One the Pre canceled or took out of the level hears no Post.
-    pub(in crate::game::server_side) fn native_other_tick_alone(&mut self, told: Told, i: usize) {
-        let mut buffers = std::mem::take(&mut self.creatures.tick_hooks);
-        let (id, join) = (self.others.0[i].id, self.others.0[i].join);
-        buffers.names.push(&self.others.0[i].kind);
-        if let Some(kind) = buffers.names.names().next() {
-            let mut round = TickRound {
-                told,
-                ..TickRound::default()
-            };
-            if self.native_tick_pre_one(&mut round, id, kind)
-                && self.others.0.locate(join).is_some()
-            {
-                self.native_tick_post_one(&round, id, kind);
-            }
-        }
-        buffers.names.clear();
-        self.creatures.tick_hooks = buffers;
-    }
-
-    /// The server's unsimulated entities (`other_ticks`) of the types no mod named, joined before
-    /// `born` and in entity-ticking chunks: once for the family, the Pre and then the Post of
-    /// those it let through.
-    pub(in crate::game::server_side) fn native_others_tick_family(
-        &mut self,
-        told: Told,
-        born: JoinSeq,
-    ) {
-        if !told.listening {
-            return;
-        }
-        let ticking = self.entity_ticking_area();
-        let buffers = std::mem::take(&mut self.creatures.tick_hooks);
-        let (mut ids, mut names) = (buffers.ids, buffers.names);
-        for o in self.others.0.iter() {
-            if o.join < born
-                && other_ticks(&o.kind)
-                && !told.alone_kind(&o.kind)
-                && ticking(o.position.x.floor() as i32, o.position.z.floor() as i32)
-            {
-                ids.push(o.id);
-                names.push(&o.kind);
-            }
-        }
-        let mut kinds: Vec<&str> = buffers.kinds;
-        if !ids.is_empty() {
-            kinds.extend(names.names());
-            let mut canceled = Vec::new();
-            self.native_entity_tick_pre(self.dim.id(), &ids, &kinds, &mut canceled);
-            if !canceled.is_empty() {
-                let mut kept = 0;
-                for at in 0..ids.len() {
-                    if !canceled.contains(&ids[at]) {
-                        ids.swap(kept, at);
-                        kinds.swap(kept, at);
-                        kept += 1;
-                    }
-                }
-                ids.truncate(kept);
-                kinds.truncate(kept);
-            }
-            if !ids.is_empty() {
-                self.native_entity_tick_post(self.dim.id(), &ids, &kinds);
-            }
-        }
-        // The kinds borrow the names: give them back first.
-        let mut back = TickBuffers::emptied(ids, kinds, KindNames::default());
-        names.clear();
-        back.names = names;
-        self.creatures.tick_hooks = back;
-    }
-
-    /// `native_entity_tick_pre` for the players about to run `ServerPlayer.tick` (the guests the
-    /// server ticks): each alone when a mod named `minecraft:player`, else once for the family.
-    /// The guests a Pre canceled are kept for the tick ([`Self::player_tick_canceled`]); their
-    /// `doTick` body still runs, as vanilla's connection tick does. The round goes on to their
-    /// Posts: [`Self::native_player_tick_post_alone`] after each turn, then
-    /// `native_tick_post_batch` for the family.
-    pub(in crate::game::server_side) fn native_players_tick_pre(&mut self) -> TickRound {
-        self.creatures.canceled_players.clear();
-        let mut round = self.native_tick_round();
-        if !round.told.listening {
-            return round;
-        }
-        let Some(host) = self.lan.as_ref() else {
-            return round;
-        };
-        if round.alone_kind(PLAYER) {
-            // Taken one by one by index: a Pre's listener may change the guests.
-            for gi in 0..host.hub.guests.len() {
-                let Some((conn, id)) = self.lan.as_ref().and_then(|host| {
-                    let g = host.hub.guests.get(gi).filter(|g| host.hub.here(g))?;
-                    Some((g.conn, g.entity_id as u32))
-                }) else {
-                    continue;
-                };
-                if !self.native_tick_pre_one(&mut round, id, PLAYER) {
-                    self.creatures.canceled_players.push(conn);
-                }
-            }
-        } else {
-            for g in host.hub.guests.iter().filter(|g| host.hub.here(g)) {
-                round.add(g.entity_id as u32, TickKind::Fixed(PLAYER));
-            }
-            self.native_tick_pre_batch(&mut round);
-            if let Some(host) = self.lan.as_ref() {
-                let canceled = &mut self.creatures.canceled_players;
-                canceled.extend(
-                    host.hub
-                        .guests
-                        .iter()
-                        .filter(|g| round.canceled(g.entity_id as u32))
-                        .map(|g| g.conn),
-                );
-            }
-        }
-        round
-    }
-
-    /// `native_entity_tick_post` for the player told alone whose turn just ended, if any.
-    pub(in crate::game::server_side) fn native_player_tick_post_alone(
-        &mut self,
-        round: &TickRound,
-        told: &mut Option<u32>,
-    ) {
-        if let Some(id) = told.take() {
-            self.native_tick_post_one(round, id, PLAYER);
-        }
-    }
-
-    /// Whether a mod's Pre canceled guest `conn`'s `ServerPlayer.tick` this tick: each of its
-    /// parts skips that guest. One branch while no Pre canceled a player.
-    pub(in crate::game) fn player_tick_canceled(&self, conn: u32) -> bool {
-        let canceled = &self.creatures.canceled_players;
-        !canceled.is_empty() && canceled.contains(&conn)
-    }
-}
-
 impl TickBuffers {
     /// The buffers back, emptied: collecting a vector's own iterator into one of the same
     /// layout keeps its allocation, so the kinds' buffer outlives the borrow it held.
-    fn emptied(mut ids: Vec<u32>, mut kinds: Vec<&str>, mut names: KindNames) -> Self {
+    pub(in crate::game) fn emptied(
+        mut ids: Vec<u32>,
+        mut kinds: Vec<&str>,
+        mut names: KindNames,
+    ) -> Self {
         ids.clear();
         kinds.clear();
         names.clear();

@@ -5,8 +5,6 @@ pub(in crate::game::server_side) use super::super::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::ProjWorld;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::creatures::projectile_targets::LiveProjWorld;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::creatures::projectile_targets::NonMobHit;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::creatures::projectile_targets::ProjectileHitInfo;
@@ -36,7 +34,293 @@ pub(in crate::game::server_side) use sunrise_core::{
     position::BlockPos,
 };
 
+/// Zero-allocation live world view for `ProjectileWorld` and `ArrowTargets`.
+pub(in crate::game) struct LiveProjWorld<'a, 'r> {
+    pub game: &'a Game<'r>,
+    pub w: MobWorld<'a>,
+    pub border: Option<[f64; 4]>,
+    pub query: TargetQuery,
+    pub extra_projectiles: &'a [TargetCandidate],
+}
+
+impl<'a, 'r> LiveProjWorld<'a, 'r> {
+    pub(in crate::game) fn base(&self) -> ProjWorld<'_, 'a> {
+        ProjWorld {
+            w: &self.w,
+            targets: &[],
+            border: self.border,
+        }
+    }
+}
+
+impl ProjectileWorld for LiveProjWorld<'_, '_> {
+    fn clip(&self, from: Vec3, to: Vec3) -> Option<(Vec3, [i32; 3], [i32; 3])> {
+        self.base().clip(from, to)
+    }
+    fn in_water(&self, bounds: Aabb) -> bool {
+        self.base().in_water(bounds)
+    }
+    fn in_lava_box(&self, bounds: Aabb) -> bool {
+        self.base().in_lava_box(bounds)
+    }
+    fn pushed_by_currents(&self, bounds: Aabb, velocity: Vec3) -> Vec3 {
+        self.base().pushed_by_currents(bounds, velocity)
+    }
+    fn targets(&self) -> &[(Who, Aabb)] {
+        &[]
+    }
+    fn visit_targets(&self, visit: impl FnMut(TargetCandidate)) {
+        self.game
+            .visit_projectile_targets(self.query, self.extra_projectiles, visit);
+    }
+    fn owner_tree_contains(&self, owner: Who, candidate: Who) -> bool {
+        self.game.in_same_vehicle_tree(owner, candidate)
+    }
+    fn outside_owner_collision_range(&self, owner: Who, swept: Aabb) -> bool {
+        self.game.outside_owner_collision_range(owner, swept)
+    }
+    fn target_bounds(&self, target: Who) -> Option<Aabb> {
+        self.game.live_target_bounds(target)
+    }
+    fn below_world_y(&self) -> f64 {
+        self.base().below_world_y()
+    }
+    fn empty(&self, p: [i32; 3]) -> bool {
+        self.base().empty(p)
+    }
+    fn can_stand_on(&self, p: [i32; 3], entity_y: f64) -> bool {
+        self.base().can_stand_on(p, entity_y)
+    }
+    fn ignites(&self, p: [i32; 3]) -> bool {
+        self.base().ignites(p)
+    }
+    fn lava_height(&self, p: BlockPos) -> Option<f64> {
+        self.base().lava_height(p)
+    }
+    fn bubble_column(&self, p: [i32; 3]) -> Option<(bool, bool)> {
+        self.base().bubble_column(p)
+    }
+    fn stuck_speed(&self, p: [i32; 3]) -> Option<Vec3> {
+        self.base().stuck_speed(p)
+    }
+}
+
+impl ArrowTargets for LiveProjWorld<'_, '_> {
+    fn visit(&self, visit: impl FnMut(TargetCandidate)) {
+        self.game
+            .visit_projectile_targets(self.query, self.extra_projectiles, visit);
+    }
+    fn owner_tree_contains(&self, owner: Who, candidate: Who) -> bool {
+        self.game.in_same_vehicle_tree(owner, candidate)
+    }
+    fn outside_owner_collision_range(&self, owner: Who, swept: Aabb) -> bool {
+        self.game.outside_owner_collision_range(owner, swept)
+    }
+}
+
 impl<'r> Game<'r> {
+    /// Construct a live zero-allocation world view for projectile sweeps.
+    pub(in crate::game) fn live_proj_world<'a>(
+        &'a self,
+        query: TargetQuery,
+        extra_projectiles: &'a [TargetCandidate],
+    ) -> LiveProjWorld<'a, 'r> {
+        LiveProjWorld {
+            game: self,
+            w: self.mob_world_base(&[]),
+            border: Some(self.border.bounds()),
+            query,
+            extra_projectiles,
+        }
+    }
+
+    /// Resolve a LAN guest connection id from their entity id.
+    pub(in crate::game) fn lan_guest_conn_by_id(&self, id: u32) -> Option<u32> {
+        self.lan.as_ref().and_then(|host| {
+            host.hub
+                .guests
+                .iter()
+                .find(|g| g.entity_id as u32 == id)
+                .map(|g| g.conn)
+        })
+    }
+
+    /// Exact vanilla damage type id for `shot`, using the live resolved owner.
+    pub(in crate::game) fn projectile_damage_type(&self, shot: &Projectile) -> &'static str {
+        let has_owner = self
+            .resolved_projectile_owner(shot.owner, shot.guest)
+            .is_some();
+        match shot.kind {
+            ProjectileKind::Arrow { .. } => "minecraft:arrow",
+            ProjectileKind::Trident => "minecraft:trident",
+            ProjectileKind::SmallFireball | ProjectileKind::LargeFireball { .. } => {
+                if has_owner {
+                    "minecraft:fireball"
+                } else {
+                    "minecraft:unattributed_fireball"
+                }
+            }
+            ProjectileKind::WindCharge | ProjectileKind::BreezeWindCharge => {
+                "minecraft:wind_charge"
+            }
+            ProjectileKind::LlamaSpit => "minecraft:spit",
+            ProjectileKind::ShulkerBullet { .. } => "minecraft:mob_projectile",
+            ProjectileKind::WitherSkull { .. } => {
+                if has_owner {
+                    "minecraft:wither_skull"
+                } else {
+                    "minecraft:magic"
+                }
+            }
+            _ => "minecraft:thrown",
+        }
+    }
+
+    /// Immediate vehicle (`Entity.getVehicle`) of `who`, if any.
+    pub(in crate::game) fn mount_of(&self, who: Who) -> Option<Who> {
+        match who {
+            Who::Player => self.riding.map(Who::Mob),
+            Who::Mob(id) => self
+                .lan
+                .as_ref()
+                .and_then(|h| h.hub.guests.iter().find(|g| g.entity_id as u32 == id))
+                .and_then(|g| g.vehicle)
+                .or_else(|| {
+                    self.mobs
+                        .iter()
+                        .find(|m| m.id == id)
+                        .and_then(|m| m.extra.mount)
+                })
+                .or_else(|| {
+                    self.armor_stands
+                        .iter()
+                        .find(|a| a.id == id)
+                        .and_then(|a| a.vehicle)
+                })
+                .or_else(|| self.resident_entities.general.row(id).and_then(|r| r.mount))
+                .map(Who::Mob),
+        }
+    }
+
+    /// `Entity.getRootVehicle`: climb vehicle pointers to the root entity.
+    pub(in crate::game) fn root_vehicle_of(&self, mut who: Who) -> Who {
+        for _ in 0..16 {
+            let Some(next) = self.mount_of(who) else {
+                break;
+            };
+            if next == who {
+                break;
+            }
+            who = next;
+        }
+        who
+    }
+
+    /// `Entity.isPassengerOfSameVehicle`: whether `a` and `b` share the same root vehicle tree.
+    pub(in crate::game) fn in_same_vehicle_tree(&self, a: Who, b: Who) -> bool {
+        a == b || self.root_vehicle_of(a) == self.root_vehicle_of(b)
+    }
+
+    /// `Projectile.isOutsideOwnerCollisionRange`: true when `swept` touches no pickable entity
+    /// in `owner.getRootVehicle().getSelfAndPassengers()`.
+    pub(in crate::game) fn outside_owner_collision_range(&self, owner: Who, swept: Aabb) -> bool {
+        let root = self.root_vehicle_of(owner);
+        let mut outside = true;
+        self.visit_projectile_targets(
+            TargetQuery {
+                include_guests: true,
+                ..TargetQuery::default()
+            },
+            &[],
+            |c| {
+                if outside && c.bounds.intersects(swept) && self.root_vehicle_of(c.who) == root {
+                    outside = false;
+                }
+            },
+        );
+        outside
+    }
+
+    /// Current bounding box of a live target (for `ShulkerBullet` homing).
+    pub(in crate::game) fn live_target_bounds(&self, target: Who) -> Option<Aabb> {
+        match target {
+            Who::Player => self
+                .player_view()
+                .filter(|p| p.alive && !self.spectator())
+                .map(|p| p.bounds),
+            Who::Mob(id) => {
+                if let Some(m) = self
+                    .mobs
+                    .iter()
+                    .find(|m| m.id == id && m.alive() && !m.removed)
+                {
+                    return Some(m.bounds());
+                }
+                if let Some(host) = self.lan.as_ref()
+                    && let Some(g) = host.hub.guests.iter().find(|g| {
+                        g.entity_id as u32 == id
+                            && host.hub.here(g)
+                            && g.loaded
+                            && !g.dead
+                            && !g.spectator()
+                    })
+                {
+                    return Some(guest_bounds(g));
+                }
+                if let Some(c) = self.crystals.iter().find(|c| c.id == id) {
+                    return Some(c.bounds());
+                }
+                if id >= crate::game::dragon::SPECIAL {
+                    let part = (id - crate::game::dragon::SPECIAL) as usize;
+                    return self
+                        .dragon_part_boxes()
+                        .and_then(|boxes| boxes.get(part).copied());
+                }
+                if let Some(a) = self.armor_stands.iter().find(|a| a.id == id) {
+                    return Some(a.bounds());
+                }
+                if let Some(b) = self.boats.iter().find(|b| b.id == id) {
+                    return Some(b.bounds());
+                }
+                if let Some(c) = self.carts.iter().find(|c| c.id == id) {
+                    return Some(c.bounds());
+                }
+                None
+            }
+        }
+    }
+
+    /// `Projectile.onRedirectProjectile` (`AIM_DEFLECT`, or `MOMENTUM_DEFLECT` for `ShulkerBullet`).
+    pub(in crate::game) fn redirect_projectile(
+        &mut self,
+        target_id: u32,
+        hitter_owner: Option<Who>,
+        hitter_owner_uuid: Option<[i32; 4]>,
+        hitter_guest: Option<u32>,
+        momentum: Option<Vec3>,
+    ) {
+        let Some(j) = self
+            .creatures
+            .projectiles
+            .iter()
+            .position(|q| q.id == target_id && crate::game::deflect::redirectable(q))
+        else {
+            return;
+        };
+        let dir = match momentum {
+            Some(v) => (v.length_squared() > 0.0).then(|| v.normalize()),
+            None => self.owner_look(hitter_owner, hitter_guest),
+        };
+        self.creatures.projectiles.update(j, |target| {
+            target.deflect(
+                sunrise_client::projectiles::Turn::Direction(dir),
+                [1.0; 3],
+                (hitter_owner, hitter_owner_uuid, hitter_guest),
+                true,
+            );
+        });
+    }
+
     /// `AbstractArrow.canHitEntity`: player-on-player check (`owner.canHarmPlayer(target)`).
     pub(in crate::game::server_side) fn can_arrow_harm_player(
         &self,

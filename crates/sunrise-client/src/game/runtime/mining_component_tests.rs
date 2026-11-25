@@ -256,7 +256,7 @@ fn efficiency_applies_to_a_same_item_swap() {
             assert!(game.run_command(&format!(
                 "item replace entity @s weapon.mainhand with minecraft:{tool}"
             )));
-            game.tick_hand();
+            game.apply_equipment();
             assert_eq!(
                 game.destroy_progress(pos),
                 base / hardness / 30.0,
@@ -265,7 +265,7 @@ fn efficiency_applies_to_a_same_item_swap() {
             assert!(game.run_command(&format!(
                 "item replace entity @s weapon.mainhand with minecraft:{tool}[minecraft:enchantments={{\"minecraft:efficiency\":3}}]"
             )));
-            game.tick_hand();
+            game.apply_equipment();
             assert_eq!(
                 game.destroy_progress(pos),
                 (base + 10.0) / hardness / 30.0,
@@ -306,7 +306,7 @@ fn a_stacks_attribute_modifiers_replace_its_items_attack_damage() {
             assert!(game.run_command(&format!(
                 "item replace entity @s weapon.mainhand with {stack}"
             )));
-            game.tick_hand();
+            game.apply_equipment();
             assert_eq!(game.attack_damage(), damage, "{stack}");
         }
     });

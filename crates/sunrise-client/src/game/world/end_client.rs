@@ -51,7 +51,96 @@ pub(in crate::game::client_side) use sunrise_core::{
     random::{LegacyRandom, RandomSource},
 };
 
+/// SkyRenderer.renderEndFlash's quad: the end_flash `sprite` at height 100, scale 60, turned by
+/// `pose`, at `intensity`; none when the flash is out or has no sprite. Each quad comes with what
+/// it is (`Frame::celestial_bodies`).
+pub(in crate::game) fn end_flash_quad(
+    sprite: Option<sunrise_client::hud::Rect>,
+    intensity: f32,
+    pose: glam::Mat4,
+) -> (Vec<Vertex>, Vec<CelestialBody>) {
+    let mut out = Vec::new();
+    if intensity > 1e-5
+        && let Some(r) = sprite
+    {
+        let level = (intensity.clamp(0.0, 1.0) * 255.0) as u32;
+        let color = level << 24 | level << 16 | level << 8 | level;
+        let corners = [
+            (-1.0, -1.0, [r.u0, r.v0]),
+            (1.0, -1.0, [r.u1, r.v0]),
+            (1.0, 1.0, [r.u1, r.v1]),
+            (-1.0, 1.0, [r.u0, r.v1]),
+        ];
+        for (x, z, uv) in corners {
+            let p = pose.transform_point3(glam::Vec3::new(x * 60.0, 100.0, z * 60.0));
+            out.push(Vertex {
+                normal: [0; 4],
+                pos: p.to_array(),
+                uv,
+                layer: 2,
+                color,
+                light: 0,
+
+                glint_uv: [0.0, 0.0],
+            });
+        }
+    }
+    let bodies = vec![CelestialBody::EndFlash; out.len() / 4];
+    (out, bodies)
+}
+
 impl Game<'_> {
+    /// The environment attributes the frame draws: the packs' Polytone layers over the
+    /// current dimension's, when a pack has some. Gameplay keeps `dim_environment`. A client of a
+    /// server draws the type its server sent, with the packs' layers over it where they have a
+    /// stack of that type.
+    pub(in crate::game) fn view_environment(&self) -> &Environment {
+        if let Some(own) = self.remote.as_ref().and_then(|r| {
+            r.level_pack_environment
+                .as_deref()
+                .or(r.level_environment.as_deref())
+        }) {
+            return own;
+        }
+        match (&self.pack.environments, self.dim) {
+            (Some(e), Dim::Overworld) => &e[0],
+            (Some(e), Dim::Nether) => &e[1],
+            (Some(e), Dim::End) => &e[2],
+            (None, _) | (_, Dim::Extra(_)) => self.dim_environment(),
+        }
+    }
+
+    /// SkyRenderer.renderEndFlash, drawn after the renderer's resident sky mesh: its quad, if
+    /// any, with what it is.
+    pub(in crate::game) fn end_flash_geometry(&self) -> (Vec<Vertex>, Vec<CelestialBody>) {
+        // The old combined sky/flash draw also skipped the flash without a sky sprite.
+        if !self.gui.atlas.sprites.contains_key("environment/end_sky") {
+            return (Vec::new(), Vec::new());
+        }
+        let intensity = self.end.flash.intensity(self.clock.fraction() as f32);
+        let sprite = self
+            .gui
+            .atlas
+            .sprites
+            .get("environment/celestial/end_flash");
+        end_flash_quad(sprite.copied(), intensity, self.end.flash.pose())
+    }
+
+    /// Iris's `endFlashIntensity` and the flash's direction (camera-relative, length 100: the
+    /// sprite's centre), for shader packs; no flash outside the End.
+    pub(in crate::game) fn end_flash_for_pack(&self, partial: f32) -> (f32, glam::Vec3) {
+        if self.dimension_type().skybox != sunrise_world::dimension_type::Skybox::End {
+            return (0.0, glam::Vec3::ZERO);
+        }
+        let flash = &self.end.flash;
+        (
+            flash.intensity(partial).clamp(0.0, 1.0),
+            flash
+                .pose()
+                .transform_point3(glam::Vec3::new(0.0, 100.0, 0.0)),
+        )
+    }
+
     /// `EndCrystalRenderer.submit`: the crystal and its beam to the respawn target.
     pub(in crate::game) fn end_crystal_geometry(
         &self,
@@ -251,6 +340,31 @@ impl Game<'_> {
                 flash.y_angle,
             );
             self.audio.0.play_instance_after(instance, 30);
+        }
+    }
+}
+
+#[cfg(test)]
+pub(in crate::game) mod tests {
+    use super::*;
+
+    /// The End's flash quad says it is the End's flash, and there is no entry without the quad.
+    #[test]
+    fn the_end_flash_quad_is_the_end_flash() {
+        let sprite = sunrise_client::hud::Rect {
+            u0: 0.25,
+            v0: 0.0,
+            u1: 0.375,
+            v1: 0.125,
+            w: 16,
+            h: 16,
+        };
+        let pose = flash_pose(-60.0, 30.0);
+        let (quad, bodies) = end_flash_quad(Some(sprite), 1.0, pose);
+        assert_eq!((quad.len(), bodies), (4, vec![CelestialBody::EndFlash]));
+        for (sprite, intensity) in [(Some(sprite), 0.0), (None, 1.0)] {
+            let (quad, bodies) = end_flash_quad(sprite, intensity, pose);
+            assert!(quad.is_empty() && bodies.is_empty());
         }
     }
 }

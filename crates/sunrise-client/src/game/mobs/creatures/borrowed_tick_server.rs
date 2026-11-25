@@ -1072,7 +1072,7 @@ impl Game<'_> {
                     }
                 }
                 if let Some((shulker, area, delta)) = lid_push {
-                    self.apply_shulker_lid_push(shulker, area, delta);
+                    self.server_shulker_lid_push(shulker, area, delta);
                 }
                 if let Some(cut) = stand_cut {
                     *state.stand_result = self.tick_armor_stands_before(cut);

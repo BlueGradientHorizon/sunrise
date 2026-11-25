@@ -1,26 +1,7 @@
 //! `AnvilScreen`'s rename box: the 50-character `EditBox`, read-only while
 //! the input slot is empty (`AnvilScreen.slotChanged`).
 use super::Station;
-
-/// `AnvilScreen`: `name.setMaxLength(50)`.
-pub(in crate::game) const NAME_CHARS: usize = 50;
-
-/// `AnvilScreen.init`: the unbordered box of 50 at the menu's name position,
-/// focused; `slotChanged` makes it editable once the input slot has an item.
-pub(in crate::game::client_side) fn rename_box() -> sunrise_client::ui::EditBox {
-    let mut edit = sunrise_client::ui::EditBox::new(0.0, 0.0, 103.0, 12.0);
-    edit.message = super::super::screen_info::tr("container.repair", &[]);
-    edit.bordered = false;
-    edit.max_length = NAME_CHARS;
-    edit.text_color = u32::MAX;
-    // AnvilScreen also sets `setTextColorUneditable(-1)`: white either way.
-    edit.text_color_uneditable = u32::MAX;
-    // AnvilScreen sets `setInvertHighlightedTextColor(false)`.
-    edit.invert_highlighted_text_color = false;
-    edit.focused = true;
-    edit.editable = false;
-    edit
-}
+pub(in crate::game) use crate::game::stations_common::{NAME_CHARS, rename_box};
 
 /// `AnvilScreen.slotChanged`: the box shows the input's name, and only an
 /// input item makes it editable (`name.setEditable(!itemStack.isEmpty())`).

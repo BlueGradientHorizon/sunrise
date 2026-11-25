@@ -316,7 +316,6 @@ const TAB_H: f32 = 24.0;
 const FOOTER: f32 = 33.0;
 impl Game<'_> {
     pub(in crate::game::client_side) fn open_stats(&mut self) {
-        self.load_stats();
         // StatsScreen.init: a server's client asks for its statistics.
         if self.remote.is_some() {
             self.send(sunrise_protocol::packets::play::Serverbound::ClientCommand(

@@ -4,7 +4,7 @@
 #[allow(unused_imports)]
 use super::Game;
 #[allow(unused_imports)]
-use super::level_sounds::LevelSound;
+use crate::game::level_sounds::LevelSound;
 #[allow(unused_imports)]
 use mod_api::SoundSource;
 #[allow(unused_imports)]
@@ -26,7 +26,7 @@ impl Game<'_> {
         let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
             return;
         };
-        let top = super::mounts::on_top(m);
+        let top = crate::game::mounts::on_top(m);
         let up: MobEvent = happy_ghast::goggles(false, m);
         if let Some(p) = self.player.as_mut() {
             p.position = top;

@@ -1,85 +1,38 @@
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::Game;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::native_components::ITEM_ENVIRONMENT_DAMAGE;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::native_components::NativeComponentError;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::native_components::item_damage_resolver;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::native_components::stack_attack_bonus_preview;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::native_components::*;
+pub(in crate::game::server_side) use crate::game::native_components::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_client::items::ItemStack;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_core::nbt::Tag;
 
 impl Game<'_> {
-    /// Effective components, including defaults and removals, in the gameplay component view.
-    pub(in crate::game) fn item_combat_component(
+    pub(in crate::game) fn server_item_combat_actor(
         &self,
-        stack: &ItemStack,
-        id: &str,
-    ) -> Option<serde_json::Value> {
-        self.pack
-            .item_renderer
-            .models
-            .components_view(&sunrise_client::item_render::stack_view(stack))
-            .get(id)
-            .cloned()
+        actor: mod_api::LivingRef,
+    ) -> Option<(bool, bool, f64, bool)> {
+        use super::commands::Target;
+        let target = self.server_living_read_target(actor)?;
+        Some(match target {
+            Target::Player => {
+                let p = self.player.as_ref()?;
+                (true, self.creative, p.fall_distance, p.fall_flying)
+            }
+            Target::Guest(conn) => {
+                let guest = self.command_guest(conn)?;
+                let p = guest.motion.as_ref()?;
+                (true, guest.creative(), p.fall_distance, p.fall_flying)
+            }
+            Target::Mob(id) => {
+                let mob = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
+                (false, false, mob.fall_distance, mob.extra.fall_flying)
+            }
+            Target::Stand(_) | Target::Dragon(_) => (false, false, 0.0, false),
+            _ => return None,
+        })
     }
-    /// Materialize the effective enchantments for both attacks and detached previews.
-    pub(in crate::game) fn item_combat_stack(&self, stack: &ItemStack) -> ItemStack {
-        let mut effective = stack.clone();
-        let enchantments = self
-            .item_combat_component(stack, "minecraft:enchantments")
-            .unwrap_or_else(|| serde_json::json!({}));
-        let tag = sunrise_client::scoreboard::json_to_tag(
-            &serde_json::json!({"minecraft:enchantments": enchantments}),
-        );
-        let (_, extra) = sunrise_items::item_data::decode_components(Some(&tag));
-        effective.data_mut().enchantments =
-            extra.map_or_else(Vec::new, |data| data.enchantments.clone());
-        effective
-    }
-    pub(in crate::game) fn item_resource_attack_damage_bonus(
-        &self,
-        stack: &ItemStack,
-        attacker: mod_api::LivingRef,
-        target: mod_api::EntityRef,
-        base_damage: f32,
-    ) -> Option<f32> {
-        let (_, _, fall, flying) = self.item_combat_actor(attacker)?;
-        if self.entity_level(attacker.entity())?.dimension() != self.dim.key()
-            || self.entity_level(target)?.dimension() != self.dim.key()
-        {
-            return None;
-        }
-        self.native_entity_read_target(target)?;
-        let target = self.entity_kind(target)?.id(self)?;
-        let actor = self.entity_kind(attacker.entity())?.id(self)?;
-        let source = self.item_resource_damage_source(stack, attacker)?;
-        let source = source.damage_type.to_string();
-        let effective = self.item_combat_stack(stack);
-        let ctx = sunrise_items::enchant::EffectContext {
-            this: Some(target.as_str()),
-            attacker: Some(actor.as_str()),
-            direct_attacker: Some(actor.as_str()),
-            is_direct: true,
-            damage_type: Some(&source),
-            items: Some(world_items!(self)),
-            direct_motion: Some((fall, flying)),
-            ..Default::default()
-        };
-        Some(stack_attack_bonus_preview(
-            self.item_enchantments(),
-            &effective,
-            &ctx,
-            &self.world.random,
-            base_damage,
-        ))
-    }
+
     /// Roll through the game's enchantment registry and the active level's random source.
     pub(in crate::game) fn item_resource_enchant_randomly(
         &mut self,
@@ -117,9 +70,9 @@ pub(in crate::game) mod item_resource_property_tests {
     #[allow(unused_imports)]
 pub(in crate::game::server_side) use serde_json::Value;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::native_components::item_resource_property_tests::*;
+pub(in crate::game::server_side) use crate::game::native_components::item_resource_property_tests::*;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::native_components::item_resource_property_tests::engine;
+pub(in crate::game::server_side) use crate::game::native_components::item_resource_property_tests::engine;
 
     pub(in crate::game) fn run_effective_resource_properties_match_vanilla() {
         let inputs = std::env::var("SUNRISE_ITEM_PROPERTIES_CASES")

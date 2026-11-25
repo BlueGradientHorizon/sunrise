@@ -123,7 +123,7 @@ fn a_spectator_fires_right_click_block_on_the_client_and_its_cancel_answers() {
     .into();
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
-        with_interaction_game(true, |game| {
+        with_interaction_client_game(|game| {
             game.set_local_mode(sunrise_client::command::args::GameMode::Spectator);
             assert!(game.spectator());
             let stone = game
@@ -175,7 +175,7 @@ fn a_spectators_passing_block_click_skips_item_use_for_both_hands() {
     .into();
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
-        with_interaction_game(true, |game| {
+        with_interaction_client_game(|game| {
             game.set_local_mode(sunrise_client::command::args::GameMode::Spectator);
             assert!(game.spectator());
             game.offhand = Some(ItemStack::new("minecraft:shield", 1));
@@ -380,7 +380,7 @@ fn an_item_used_from_the_off_hand_reaches_the_use_hooks_on_the_server() {
     .into();
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
-        with_interaction_game(false, |game| {
+        with_interaction_server_game(|game| {
             let side = LogicalSide::Server;
             game.offhand = Some(ItemStack::new("minecraft:stick", 1));
 
@@ -660,7 +660,7 @@ fn item_use_overlap_matrix_on_the_server() {
     .into();
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
-        with_interaction_game(false, |game| {
+        with_interaction_server_game(|game| {
             let stone = game
                 .pack
                 .assets
@@ -774,7 +774,7 @@ fn on_item_use_first_runs_before_the_block_and_ends_the_click() {
     .into();
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
-        with_interaction_game(false, |game| {
+        with_interaction_server_game(|game| {
             let registry = game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
             let lever = game

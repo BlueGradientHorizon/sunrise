@@ -805,20 +805,50 @@ impl Game<'_> {
 
     // leave_server: remote/session.rs
 
-    pub(in crate::game) fn send(&self, packet: S) {
-        if self.remote.is_some() {
-            // MultiPlayerGameMode's attack, interact, useItem, useItemOn, releaseUsingItem, dropItem and
-            // piercingAttack run ensureHasSentCarriedItem before their packet: a slot the number keys
-            // chose this tick goes out first. A miss, a dig's start or a swap waits for the next tick.
-            if let S::Attack(_) | S::Interact(_) | S::UseItem(_) | S::UseItemOn(_) = &packet {
-                self.remote_send_carried();
-            } else if let S::PlayerAction(a) = &packet
-                && matches!(a.action, 4 | 5 | 6 | 8)
-            {
-                self.remote_send_carried();
-            }
-            self.send_play(packet);
+    /// Their kind and place, for `status` (shared projectiles; client callers append `hooks_status`).
+    pub(in crate::game) fn projectiles_status(&self) -> Vec<serde_json::Value> {
+        use serde_json::json;
+        let at = |p: sunrise_core::geometry::Vec3| [p.x, p.y, p.z];
+        let mut out = Vec::new();
+        for f in &self.fangs.list {
+            out.push(
+                json!({"id": f.id, "kind": "minecraft:evoker_fangs", "position": f.pos,
+                "yaw": f.yaw, "started": f.started, "life": f.life}),
+            );
         }
+        for t in &self.tnts {
+            out.push(json!({"id": t.id, "kind": "minecraft:tnt", "position": at(t.position), "fuse": t.fuse}));
+        }
+        for f in &self.falling {
+            out.push(json!({"id": f.id, "kind": "minecraft:falling_block", "position": at(f.position), "velocity": at(f.velocity), "state": f.state.0}));
+        }
+        for b in &self.boats {
+            out.push(json!({"id": b.id, "kind": "minecraft:boat", "position": at(b.position), "velocity": at(b.velocity)}));
+        }
+        for c in &self.carts {
+            out.push(json!({"id": c.id, "kind": "minecraft:minecart", "position": at(c.position), "velocity": at(c.velocity)}));
+        }
+        for c in &self.crystals {
+            out.push(json!({"id": c.id, "kind": "minecraft:end_crystal", "position": at(c.position), "show_bottom": c.show_bottom}));
+        }
+        for t in &self.tridents {
+            out.push(json!({"id": t.id, "kind": "minecraft:trident", "position": at(t.position), "velocity": at(t.velocity), "on_fire": t.fire_ticks > 0}));
+        }
+        for r in &self.rockets {
+            out.push(json!({"id": r.id, "kind": "minecraft:firework_rocket", "position": at(r.position), "velocity": at(r.velocity)}));
+        }
+        for p in &self.creatures.projectiles {
+            out.push(json!({"id": p.id, "kind": format!("{:?}", p.kind).split([' ', '{']).next().unwrap_or(""), "position": at(p.position), "velocity": at(p.velocity),
+                "player_owned": p.owner == Some(sunrise_client::mobs::Who::Player),
+                "on_fire": p.arrow.as_ref().is_some_and(|a| a.on_fire())}));
+        }
+        for (kind, p, _) in self.potions.thrown_entities() {
+            out.push(json!({"kind": kind, "position": at(p)}));
+        }
+        for (id, p) in self.end.eye_positions() {
+            out.push(json!({"id": id, "kind": "minecraft:eye_of_ender", "position": p}));
+        }
+        out
     }
 
     // remote_effect_network_id: remote/sync.rs
@@ -957,23 +987,6 @@ impl Game<'_> {
 
     // remote_send_carried: remote/sync.rs
 
-    /// `MultiPlayerGameMode.attack` runs `Player.attack` on this client too: its
-    /// `isSweepAttack` for a damaging hit on `target` (`living`: a
-    /// `LivingEntity`, which may be hit critically), heard by native mods on
-    /// both sides. Only the server sweeps.
-    pub(in crate::game) fn remote_sweep_event(&mut self, target: &str, living: bool) {
-        if mod_api::__private::mods().is_empty() {
-            return;
-        }
-        let (damage, scale) = self.remote_attack_damage();
-        let magic = scale * (self.enchanted_damage(target, damage, None) - damage);
-        if damage <= 0.0 && magic <= 0.0 {
-            return;
-        }
-        let crit = living && self.critical_attack(scale);
-        self.sweep_decision(scale, crit, target);
-    }
-
     /// The entity type of the boat, minecart, armor stand or End crystal with
     /// server id `id` that an attack reaches `Player.attack`'s sweep check on,
     /// and whether it is living. A painting or item frame is not: on this
@@ -1008,19 +1021,6 @@ impl Game<'_> {
     }
 
     // remote_key: remote/ui.rs
-
-    /// Minecraft.handleKeybinds, key.swapOffhand: the server swaps the hands
-    /// (ServerboundPlayerActionPacket SWAP_ITEM_WITH_OFFHAND at BlockPos.ZERO, facing down) and
-    /// sends both slots back; nothing is predicted.
-    pub(in crate::game) fn remote_swap_hands(&mut self) {
-        self.send_action(7);
-        // Equal stacks swap with no slot update to wait for.
-        let (main, off) = (self.stack_in(self.selected), self.offhand.as_ref());
-        let moves = !super::hand::matches_for_swap(main, off);
-        if let Some(r) = self.remote.as_mut() {
-            r.swap_answer = [moves; 2];
-        }
-    }
 
     // remote_click: remote/use.rs
 
@@ -1345,34 +1345,6 @@ pub(in crate::game) fn synced_local_use(
         }
         Some(_) if !server_using => None,
         using => using,
-    }
-}
-
-/// The game as the tick's input sees it.
-pub(in crate::game) struct RemoteInputWorld<'g, 'a>(pub(in crate::game) &'g mut Game<'a>);
-
-pub(in crate::game) struct RemoteUseWorld<'g, 'a>(
-    pub(in crate::game) &'g mut Game<'a>,
-    pub(in crate::game) mod_api::InteractionAttempt,
-);
-
-impl sunrise_client::interaction_input::TargetUseWorld for RemoteUseWorld<'_, '_> {
-    fn use_entity(&mut self) -> bool {
-        self.0.remote_use_entity(Hand::Main)
-    }
-    fn use_block(&mut self) -> bool {
-        self.0.remote_use_block(Hand::Main, self.1, None)
-    }
-    fn use_item(&mut self) {
-        self.0.remote_use_hands(Hand::Main, self.1, None);
-    }
-}
-
-#[cfg(test)]
-impl Game<'_> {
-    pub(in crate::game) fn test_remote_pick_click(&mut self) {
-        use sunrise_client::interaction_input::InteractionWorld as _;
-        RemoteInputWorld(self).pick();
     }
 }
 

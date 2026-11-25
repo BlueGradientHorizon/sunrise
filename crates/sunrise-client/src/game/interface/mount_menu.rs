@@ -161,113 +161,9 @@ impl Game<'_> {
             self.capture(true);
         }
     }
-    /// Closing the screen keeps what is in the slots on the mount.
+    /// Closing the screen clears the client's open mount menu copy.
     pub(in crate::game) fn mount_closed(&mut self) {
-        self.mount_sync();
         self.client.mount_menu.open = None;
-    }
-    /// Writes the menu slots to the mount, with the equip sounds. A
-    /// server's menu is the server's to write.
-    pub(in crate::game::client_side) fn mount_sync(&mut self) {
-        if self.remote.is_some() {
-            return;
-        }
-        let Some(open) = self.client.mount_menu.open.as_ref() else {
-            return;
-        };
-        let Some(index) = self.mount_mob_index(open.mob) else {
-            return;
-        };
-        let (saddle, armor) = (open.saddle.clone(), open.armor.clone());
-        let body = open.show_armor.then_some(armor);
-        let items = open.items.iter().take(open.columns * 3).cloned().collect();
-        self.mount_store(index, saddle, body, items);
-    }
-    /// The slots of mount `index` as its menu shows them: the saddle, the
-    /// body item (None when the slot isn't active), the chest.
-    pub(in crate::game) fn mount_contents(
-        &self,
-        index: usize,
-    ) -> (
-        Option<ItemStack>,
-        Option<Option<ItemStack>>,
-        Vec<Option<ItemStack>>,
-    ) {
-        let m = &self.mobs[index];
-        let species = m.species();
-        let body = shows_body(species).then(|| m.equipment_stacks()[6].clone());
-        let size = mount_columns(m) * 3;
-        let mut items: Vec<_> = m.extra.items.iter().take(size).cloned().collect();
-        items.resize(size, None);
-        (m.saddle_item(), body, items)
-    }
-    /// The menu's slots back on mount `index` (`body` None: not its slot),
-    /// with the equip sound of what was put on (`Equippable.equipSound`).
-    pub(in crate::game) fn mount_store(
-        &mut self,
-        index: usize,
-        saddle: Option<ItemStack>,
-        body: Option<Option<ItemStack>>,
-        items: Vec<Option<ItemStack>>,
-    ) {
-        let m = &self.mobs[index];
-        let at = m.center();
-        let saddle_put_on = saddle.is_some() && !m.extra.saddled();
-        let put_on = if saddle_put_on {
-            saddle.as_ref()
-        } else {
-            body.as_ref()
-                .and_then(Option::as_ref)
-                .filter(|_| m.extra.body_id().is_none())
-        };
-        let sound = if saddle_put_on && nautilus::is_nautilus(m.species()) {
-            // AbstractNautilus.getEquipSound: its own saddle sounds.
-            Some(format!("minecraft:{}", nautilus::saddle_sound(m)))
-        } else {
-            put_on.map(|s| {
-                sunrise_client::item_sync::equip_sound(s, self.res.items())
-                    .unwrap_or_else(|| "minecraft:item.armor.equip_generic".into())
-            })
-        };
-        let id = m.id;
-        let pos = m.position;
-        let saddle_off = m.extra.saddled() && saddle.is_none();
-        let body_off = body
-            .as_ref()
-            .is_some_and(|b| b.is_none() && m.extra.body_id().is_some());
-        let body_on = body
-            .as_ref()
-            .is_some_and(|b| b.is_some() && m.extra.body_id().is_none());
-        self.journal_equipment(id);
-        let m = &mut self.mobs[index];
-        m.set_saddle(saddle);
-        if let Some(body) = body {
-            m.extra.set_body_stack(body);
-        }
-        if !items.is_empty() {
-            self.journal_entity(id);
-            let _ = self.edit_entity_slots(id, |slots, _| {
-                for (slot, stack) in slots.iter_mut().zip(items) {
-                    *slot = stack;
-                }
-            });
-        }
-        let chunk = (at[0].floor() as i32 >> 4, at[2].floor() as i32 >> 4);
-        if self.has_open_transaction() {
-            self.journal_chunk_save(chunk, SaveChunkScope::Transaction);
-        } else {
-            self.world.modified.insert(chunk);
-        }
-        let equips = saddle_put_on || body_on;
-        if equips || saddle_off || body_off {
-            self.after_commit(After::MountEquipment {
-                dim: self.dim,
-                id,
-                at: [pos.x, pos.y, pos.z],
-                sound: sound.map(|sound| (sound, at)),
-                equips,
-            });
-        }
     }
     pub(in crate::game::client_side) fn mount_slots(&self) -> Option<Vec<usize>> {
         let open = self
@@ -392,7 +288,6 @@ impl Game<'_> {
         } else {
             return false;
         }
-        self.mount_sync();
         true
     }
     /// The inventory slot ids in menu order.

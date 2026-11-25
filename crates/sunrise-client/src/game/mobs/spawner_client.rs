@@ -131,7 +131,22 @@ impl Game<'_> {
         let id = match self.world.block_entities.get(&key)? {
             BlockEntity::Spawner(s) => s.next_data()?.id()?,
             BlockEntity::TrialSpawner(s) => {
-                self.trial_spawner_block(key)?.0.spinning_mob_speed()?;
+                let block = self
+                    .pack
+                    .assets
+                    .registry
+                    .state(self.world.block(key.0, key.1, key.2))?;
+                if sunrise_client::block_entity_types::factory_block(&block.name)
+                    != "minecraft:trial_spawner"
+                {
+                    return None;
+                }
+                let state = block
+                    .properties
+                    .get("trial_spawner_state")
+                    .and_then(|v| sunrise_client::mobs::trial_spawner::TrialState::from_name(v))
+                    .unwrap_or(sunrise_client::mobs::trial_spawner::TrialState::Inactive);
+                state.spinning_mob_speed()?;
                 s.next_spawn_data.as_ref()?.id()?
             }
             _ => return None,

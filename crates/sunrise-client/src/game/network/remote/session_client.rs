@@ -118,7 +118,7 @@ impl Game<'_> {
         // Out of the server's bed: InBedChatScreen goes with the level.
         self.sleeping = None;
         self.sleep_timer = 0;
-        self.clear_entities();
+        self.client_clear_entities();
         self.score.board = Default::default();
         self.tab_list.0 = Default::default();
         self.border = Default::default();
@@ -310,8 +310,8 @@ impl Game<'_> {
             }
             // Entity IDs belong to this ClientLevel, not the connection. A
             // same-level respawn keeps it; a replacement invalidates handles.
-            self.native_lifecycle_open_started();
-            self.native_lifecycle_world_ready();
+            self.client_lifecycle_open_started();
+            self.client_lifecycle_world_ready();
             self.world.shape = shape;
             self.world.game_time = time;
             self.world.day_time = day;
@@ -463,7 +463,6 @@ impl Game<'_> {
         self.world
             .chunks
             .track_connection_groups(group_count.clone());
-        self.init_remote_for_replay_server();
         self.inventory = vec![None; 36];
         self.offhand = None;
         self.armor = [None, None, None, None];
@@ -740,7 +739,6 @@ impl Game<'_> {
         self.world
             .chunks
             .track_connection_groups(group_count.clone());
-        self.install_remote_session_server();
         self.inventory = vec![None; 36];
         self.offhand = None;
         self.armor = [None, None, None, None];

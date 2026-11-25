@@ -11,6 +11,24 @@ pub(in crate::game::client_side) use crate::game::native_hooks::system_helpers::
 // Native mods use these; nothing in Sunrise does.
 #[allow(dead_code)]
 impl Game<'_> {
+    /// The frame counter: frames in the last second, the slowest frame and
+    /// the 1% low of the last 5 seconds, in frames per second.
+    pub(in crate::game) fn native_frame_rate(&self) -> (u32, u32, u32) {
+        self.frame_reading()
+    }
+    /// Attack and use clicks in the last second.
+    pub(in crate::game) fn native_clicks(&mut self) -> (u32, u32) {
+        self.click_reading()
+    }
+    /// Every item and recipe the game knows, made once (the same for every
+    /// call); none outside a world. They are the window's own (the content
+    /// mods' and vanilla's), with the server's recipes of the types a mod had
+    /// it send (`native_datapack_sync`) in their place; made again when those
+    /// arrive (`native_recipes_received`).
+    pub(in crate::game) fn native_recipes(&mut self) -> Option<Arc<NativeRecipes>> {
+        self.player.as_ref()?;
+        self.made_recipes()
+    }
     /// A line in chat from the client.
     pub(in crate::game::client_side) fn native_chat(&mut self, text: &str) {
         let focused = self.client.screen == Screen::Chat;

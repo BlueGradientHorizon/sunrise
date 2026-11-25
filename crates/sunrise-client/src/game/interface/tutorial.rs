@@ -52,7 +52,6 @@ impl super::Game<'_> {
         // guest's tutorial is their own client's to record.
         if self.options.dedicated.is_some()
             || self.serving.is_some()
-            || self.lan_guest_acting()
             || self.title.0.is_some()
             || self.player.is_none()
         {
@@ -77,7 +76,6 @@ impl super::Game<'_> {
         // guest's tutorial is their own client's to record.
         if self.options.dedicated.is_some()
             || self.serving.is_some()
-            || self.lan_guest_acting()
             || self.title.0.is_some()
             || self.player.is_none()
         {

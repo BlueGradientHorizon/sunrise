@@ -162,7 +162,7 @@ impl Game<'_> {
 
     /// Deliver any pending `AnvilMenu.createResult` or `GrindstoneMenu.createResult` hook
     /// live after a slot write or rename, updating `menu`'s result in place.
-    pub(in crate::game::client_side) fn lan_station_deliver_result(
+    pub(in crate::game::server_side) fn lan_station_deliver_result(
         &mut self,
         gi: usize,
         kind: StationKind,
@@ -201,7 +201,7 @@ impl Game<'_> {
 
     /// `lan_station_op` for `op` that makes `click`, which the mods decide first when it is a
     /// pickup they listen to (`guest_menu_op_decided`).
-    pub(in crate::game::client_side) fn lan_station_op_clicked(
+    pub(in crate::game::server_side) fn lan_station_op_clicked(
         &mut self,
         conn: u32,
         window: Option<i32>,
@@ -378,7 +378,7 @@ impl Game<'_> {
 
     /// The lectern's book and page for the client: everything (`all`), or
     /// what changed since it was last sent.
-    pub(in crate::game::client_side) fn lan_send_lectern(&mut self, conn: u32, all: bool) {
+    pub(in crate::game::server_side) fn lan_send_lectern(&mut self, conn: u32, all: bool) {
         let Some((key, window, sent)) = self
             .lan
             .as_ref()
@@ -425,7 +425,7 @@ impl Game<'_> {
     /// Runs `op` on the guest's lectern menu (window `window`) with their
     /// inventory, the block entity takes the book and page back, and the
     /// client gets what changed. False when no such window is open.
-    pub(in crate::game::client_side) fn lan_lectern_op(
+    pub(in crate::game::server_side) fn lan_lectern_op(
         &mut self,
         conn: u32,
         window: i32,
@@ -435,7 +435,7 @@ impl Game<'_> {
     }
 
     /// `lan_lectern_op` for `op` that makes `click` (see `lan_station_op_clicked`).
-    pub(in crate::game::client_side) fn lan_lectern_op_clicked(
+    pub(in crate::game::server_side) fn lan_lectern_op_clicked(
         &mut self,
         conn: u32,
         window: i32,
@@ -506,7 +506,7 @@ impl Game<'_> {
     }
 
     /// Result-slot onTake runs before doClick checks for another result or drops the stack.
-    pub(in crate::game::client_side) fn lan_station_finish_take(
+    pub(in crate::game::server_side) fn lan_station_finish_take(
         &mut self,
         conn: u32,
         gi: usize,
@@ -584,7 +584,7 @@ impl Game<'_> {
 
     /// `EnchantmentMenu.slotsChanged` with a level: the costs and clues for
     /// the guest's seed and the bookshelves around the table.
-    pub(in crate::game::client_side) fn lan_enchant_offers(
+    pub(in crate::game::server_side) fn lan_enchant_offers(
         &mut self,
         gi: usize,
         gs: &mut GuestStation,
@@ -688,7 +688,7 @@ impl Game<'_> {
     /// `EnchantmentMenu.clickMenuButton`'s `access.execute`: the item gets
     /// the offer's enchantments, the guest pays its levels and lapis and
     /// gets a new seed, the table sounds, and the offers are made again.
-    pub(in crate::game::client_side) fn lan_enchant(
+    pub(in crate::game::server_side) fn lan_enchant(
         &mut self,
         gi: usize,
         gs: &mut GuestStation,
@@ -778,7 +778,7 @@ impl Game<'_> {
 
     /// The sounds the menu played, at the station (heard by everyone around,
     /// as `level.playSound(null, pos, ...)`), once per tick.
-    pub(in crate::game::client_side) fn lan_station_sounds(&mut self, gs: &mut GuestStation) {
+    pub(in crate::game::server_side) fn lan_station_sounds(&mut self, gs: &mut GuestStation) {
         let sounds = std::mem::take(&mut gs.menu.sounds);
         if sounds.is_empty() || gs.last_sound == self.ticks {
             return;
@@ -1041,7 +1041,7 @@ impl Game<'_> {
 
     /// `BeaconBlockEntity.dataAccess`: the pyramid's levels and the powers
     /// (`BeaconMenu.encodeEffect`: the `mob_effect` id + 1, 0 for none).
-    pub(in crate::game::client_side) fn beacon_data(&self, pos: [i32; 3]) -> [i32; 3] {
+    pub(in crate::game::server_side) fn beacon_data(&self, pos: [i32; 3]) -> [i32; 3] {
         let Some(BlockEntity::Beacon(b)) = self.world.block_entities.get(&(pos[0], pos[1], pos[2]))
         else {
             return [0; 3];
@@ -1217,7 +1217,7 @@ impl Game<'_> {
     /// The guests' lecterns each tick: `stillValid` (the block entity, its
     /// book, the reach) closes them, and `broadcastChanges` sends a book or
     /// page another player changed.
-    pub(in crate::game::client_side) fn lan_lecterns_tick(&mut self) {
+    pub(in crate::game::server_side) fn lan_lecterns_tick(&mut self) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };

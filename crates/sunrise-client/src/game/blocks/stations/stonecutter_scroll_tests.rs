@@ -37,13 +37,12 @@ fn pick_recipe(game: &mut Game<'_>, index: i32) -> bool {
 #[test]
 #[ignore = "daily"]
 fn the_stonecutter_list_returns_to_the_top_when_its_input_changes() {
-    crate::game::native_entity_refs::tests::with_game(|g| {
-        g.options.dedicated = Some(Vec::new());
+    crate::game::native_entity_refs::tests::with_client_game(|g| {
         g.world.chunks.insert(
             (0, 0),
             std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
         );
-        assert!(g.open_station([0, 64, 0], "minecraft:stonecutter"));
+        g.station = Some(Station::new(Kind::Stonecutter, [0, 64, 0]));
         // Two deepslate in the input: 17 recipes, so the list scrolls.
         *g.slot_mut(9) = Some(deepslate(2));
         assert!(g.click_open_inventory(Some(9), 0, Input::Pickup));

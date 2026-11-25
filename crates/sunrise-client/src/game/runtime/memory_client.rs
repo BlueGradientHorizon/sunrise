@@ -51,7 +51,7 @@ impl Game<'_> {
                 .options
                 .dedicated
                 .is_none()
-                .then(|| self.census_chunks()),
+                .then(|| self.world.chunks.values().cloned().collect()),
             renderer: self.renderer.0.as_ref().map(|r| r.memory_snapshot()),
             far,
         }

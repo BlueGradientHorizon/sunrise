@@ -191,7 +191,7 @@ impl Game<'_> {
         let target = self.mob_hit().map(|(i, _, _)| self.mobs[i].id);
         // Asked once a frame: a mod loaded without this hook costs the tags nothing.
         let name_format = hooks && mod_api::__private::listened(mod_api::HookId::PlayerNameFormat);
-        let viewer = self.player_team();
+        let viewer = self.client_player_team();
         let mut tags = Vec::new();
         let players = self.other_players();
         let player_ids = named_by_player_list(&players);
@@ -263,7 +263,7 @@ impl Game<'_> {
             let team = if player {
                 self.score.board.players_team(&name)
             } else {
-                self.mob_team_of(m)
+                self.client_mob_team_of(m)
             };
             // LivingEntityRenderer.shouldShowName (team rules included), then
             // MobRenderer: a visible name, or the mob under the crosshair.
@@ -428,7 +428,7 @@ impl Game<'_> {
             ) {
                 continue;
             }
-            let team = self.mob_team(a.id);
+            let team = self.client_mob_team(a.id);
             // `ArmorStandRenderer.shouldShowName` overrides the living
             // entity's rule with `isCustomNameVisible` alone: no team
             // visibility, no F1, no invisibility.
@@ -586,7 +586,7 @@ impl Game<'_> {
                 continue;
             }
             let at = display.render_position(entity_partial);
-            let team = self.mob_team(id as u32);
+            let team = self.client_mob_team(id as u32);
             let shown = match team {
                 Some(t) => t.formatted_name(name.clone()),
                 None => name.clone(),

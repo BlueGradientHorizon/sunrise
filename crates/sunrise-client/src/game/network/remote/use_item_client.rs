@@ -132,7 +132,7 @@ impl Game<'_> {
         }
         // Item.use: Equippable.swapWithEquipmentSlot runs on this client too, so
         // the armor slot and the hand change at once (the server confirms).
-        if info.equip_slot.is_some() && self.with_hand(hand, |g| g.equip_from_hand(&held)) {
+        if info.equip_slot.is_some() && self.with_hand(hand, |g| g.client_equip_from_hand(&held)) {
             // Equippable.swapWithEquipmentSlot's SUCCESS (SwingSource.CLIENT).
             self.with_hand(hand, Game::swing_arm);
             return true;
@@ -185,7 +185,7 @@ impl Game<'_> {
                     .is_some_and(|t| matches!(t, Tag::List(l) if !l.is_empty()));
             self.with_hand(hand, Game::consume_held);
             if has_recipes {
-                self.apply_use_cooldown(&held);
+                self.client_apply_use_cooldown(&held);
                 self.with_hand(hand, Game::swing_arm);
             }
             return has_recipes;
@@ -204,14 +204,11 @@ impl Game<'_> {
         if self.with_hand(hand, |g| g.use_finds_no_target(&held)) {
             return false;
         }
-        // It runs the use here too: ItemStack.use starts the `use_cooldown`
-        // of an item with no use time, and the server's
-        // ClientboundCooldownPacket confirms it; one held in use starts it at
-        // finishUsingItem (remote_complete_using).
-        if !info.consumable.as_ref().is_some_and(|c| c.ticks() > 0) {
-            self.apply_use_cooldown(&held);
-        }
+        let instant_cooldown = !info.consumable.as_ref().is_some_and(|c| c.ticks() > 0);
         if self.with_hand(hand, |g| g.remote_use_book(&held)) {
+            if instant_cooldown {
+                self.client_apply_use_cooldown(&held);
+            }
             // WritableBookItem.use's SUCCESS (SwingSource.CLIENT).
             self.with_hand(hand, Game::swing_arm);
             return true;
@@ -220,6 +217,11 @@ impl Game<'_> {
         // itemUsed (the hand doesn't dip) and the other hand's turn comes.
         if !self.with_hand(hand, |g| g.remote_start_held_use(&held)) {
             return false;
+        }
+        // Predict non-consumable use cooldown after held-use eligibility checks so a
+        // custom shield with an immediate use_cooldown still raises on its first click.
+        if instant_cooldown {
+            self.client_apply_use_cooldown(&held);
         }
         let gliding = self.player.as_ref().is_some_and(|p| p.fall_flying);
         // FireworkRocketItem.use while gliding: SUCCESS (SwingSource.PREDICTED),

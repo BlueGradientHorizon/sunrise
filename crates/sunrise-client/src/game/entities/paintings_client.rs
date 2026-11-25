@@ -230,30 +230,4 @@ impl Game<'_> {
             self.finish_entity_occlusion(culling, p, out, entity_start);
         }
     }
-    /// `Painting.dropItem`: break sound, then item unless drops off or creative.
-    pub(in crate::game) fn drop_painting(&mut self, p: Painting, at: [f64; 3], creative: bool) {
-        if !self
-            .ui
-            .rules
-            .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS)
-        {
-            return;
-        }
-        self.server_play_sound("minecraft:entity.painting.break", at, 1.0, 1.0);
-        if creative {
-            return;
-        }
-        let stack = ItemStack {
-            item: Arc::from("minecraft:painting"),
-            count: 1,
-            damage: 0,
-            extra: None,
-        };
-        self.spawn_item(
-            stack,
-            super::frames::hanging_drop_position(at, p.step()),
-            [0.0; 3],
-            10,
-        );
-    }
 }

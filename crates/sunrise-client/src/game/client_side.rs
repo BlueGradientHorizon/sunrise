@@ -44,8 +44,6 @@ pub(in crate::game) mod camera_hud;
 pub(in crate::game) mod cauldron_prediction_client;
 #[path = "interface/chat.rs"]
 pub(in crate::game) mod chat;
-#[path = "blocks/chiseled_bookshelf.rs"]
-pub(in crate::game) mod chiseled_bookshelf;
 #[path = "interface/client_ambient.rs"]
 pub(in crate::game) mod client_ambient;
 #[path = "items/client_attack_targets.rs"]
@@ -81,8 +79,6 @@ pub(in crate::game) mod container_hooks;
 pub(in crate::game) mod container_layout;
 #[path = "runtime/control.rs"]
 pub(in crate::game) mod control;
-#[path = "mobs/copper_golems.rs"]
-pub(in crate::game) mod copper_golems;
 #[path = "items/creative_hotbar.rs"]
 pub(in crate::game) mod creative_hotbar;
 #[path = "mobs/creatures/mod_client.rs"]
@@ -165,8 +161,6 @@ pub(in crate::game) mod game_mode_client;
 pub(in crate::game) mod gamemode_switcher;
 #[path = "mobs/general_draw.rs"]
 pub(in crate::game) mod general_draw;
-#[path = "mobs/ghasts.rs"]
-pub(in crate::game) mod ghasts;
 #[path = "entities/glowing.rs"]
 pub(in crate::game) mod glowing;
 #[path = "blocks/growth.rs"]
@@ -222,8 +216,6 @@ pub(in crate::game) mod jigsaw_edit;
 pub(in crate::game) mod jukebox;
 #[path = "network/lan_screen.rs"]
 pub(in crate::game) mod lan_screen;
-#[path = "network/lan_stations.rs"]
-pub(in crate::game) mod lan_stations;
 #[path = "runtime/launch_timeout.rs"]
 pub(in crate::game) mod launch_timeout;
 #[path = "interface/level_particles_client.rs"]
@@ -307,8 +299,6 @@ pub(in crate::game) mod native_client_screens;
 pub mod native_client_services;
 #[path = "modding/native_client_session.rs"]
 pub(in crate::game) mod native_client_session;
-#[path = "modding/native_components.rs"]
-pub(in crate::game) mod native_components;
 #[path = "modding/native_connection_groups.rs"]
 pub(in crate::game) mod native_connection_groups;
 #[path = "modding/native_custom_geometry.rs"]
@@ -320,8 +310,6 @@ pub(in crate::game) mod native_disconnect;
 pub(in crate::game) mod native_disconnect_tests;
 #[path = "modding/native_dynamic_textures.rs"]
 pub(in crate::game) mod native_dynamic_textures;
-#[path = "modding/native_entity_extinguish.rs"]
-pub(in crate::game) mod native_entity_extinguish;
 #[path = "modding/native_entity_layers.rs"]
 pub(in crate::game) mod native_entity_layers;
 #[path = "modding/native_entity_refs_client.rs"]
@@ -352,8 +340,6 @@ pub(in crate::game) mod native_key_mappings_tests;
 #[cfg(test)]
 #[path = "modding/native_level_notify_tests.rs"]
 pub(in crate::game) mod native_level_notify_tests;
-#[path = "modding/native_living_blocking.rs"]
-pub(in crate::game) mod native_living_blocking;
 #[path = "modding/native_living_effects_client.rs"]
 pub(in crate::game) mod native_living_effects_client;
 #[path = "modding/native_local_player_writes.rs"]
@@ -383,8 +369,6 @@ pub(in crate::game) mod native_passage_cross;
 #[cfg(test)]
 #[path = "modding/native_player_inventory_tests.rs"]
 pub(in crate::game) mod native_player_inventory_tests;
-#[path = "modding/native_profiles.rs"]
-pub(in crate::game) mod native_profiles;
 #[path = "modding/native_recipes.rs"]
 pub(in crate::game) mod native_recipes;
 #[cfg(test)]
@@ -450,8 +434,6 @@ pub(in crate::game) mod pad_menu;
 pub(in crate::game) mod paintings_client;
 #[path = "interface/particle_culling.rs"]
 pub(in crate::game) mod particle_culling;
-#[path = "modding/payload_transport.rs"]
-pub(in crate::game) mod payload_transport;
 #[path = "interface/perf_link.rs"]
 pub(in crate::game) mod perf_link;
 #[path = "interface/perspective.rs"]
@@ -475,8 +457,6 @@ pub(in crate::game) mod pointer_capture;
 pub(in crate::game) mod polytone_frame_tests;
 #[path = "items/potions.rs"]
 pub(in crate::game) mod potions;
-#[path = "blocks/powder_snow.rs"]
-pub(in crate::game) mod powder_snow;
 #[path = "interface/profile_capture.rs"]
 pub(in crate::game) mod profile_capture;
 #[path = "entities/pvp.rs"]
@@ -588,8 +568,6 @@ pub(in crate::game) mod spear_client;
 pub(in crate::game) mod spectator;
 #[path = "items/stack_attribute_tooltip.rs"]
 pub(in crate::game) mod stack_attribute_tooltip;
-#[path = "modding/stacked_on_other.rs"]
-pub(in crate::game) mod stacked_on_other;
 #[path = "interface/startup_menu.rs"]
 pub(in crate::game) mod startup_menu;
 #[path = "runtime/station_control.rs"]
@@ -678,14 +656,16 @@ pub(in crate::game) mod zombie_villagers_client;
 pub(in crate::game) mod api_values_client;
 #[path = "entities/armor_stands_client.rs"]
 pub(in crate::game) mod armor_stands_client;
+#[path = "modding/attachment_sync_client.rs"]
+pub(in crate::game) mod attachment_sync_client;
 #[path = "blocks/banners_client.rs"]
 pub(in crate::game) mod banners_client;
-#[path = "mobs/beehives_client.rs"]
-pub(in crate::game) mod beehives_client;
 #[path = "blocks/block_entity_anims_common_client.rs"]
 pub(in crate::game) mod block_entity_anims_common_client;
 #[path = "blocks/block_items_client.rs"]
 pub(in crate::game) mod block_items_client;
+#[path = "blocks/block_particles.rs"]
+pub(in crate::game) mod block_particles;
 #[path = "blocks/block_particles_client.rs"]
 pub(in crate::game) mod block_particles_client;
 #[path = "interface/bossbars_client.rs"]
@@ -700,6 +680,8 @@ pub(in crate::game) mod bucket_empty_client;
 pub(in crate::game) mod campfire_client;
 #[path = "blocks/campfire_douse_client.rs"]
 pub(in crate::game) mod campfire_douse_client;
+#[path = "blocks/cartography_client.rs"]
+pub(in crate::game) mod cartography_client;
 #[path = "blocks/cauldron_interactions_client.rs"]
 pub(in crate::game) mod cauldron_interactions_client;
 #[path = "blocks/cauldrons_client.rs"]
@@ -719,6 +701,8 @@ pub(in crate::game) mod creative_screen_client;
 pub(in crate::game) mod crossbow_client;
 #[path = "entities/cushions_client.rs"]
 pub(in crate::game) mod cushions_client;
+#[path = "interface/custom_arm_pose.rs"]
+pub(in crate::game) mod custom_arm_pose;
 #[path = "interface/debug_lines_client.rs"]
 pub(in crate::game) mod debug_lines_client;
 #[path = "interface/developer_launch_client.rs"]
@@ -740,8 +724,6 @@ pub(in crate::game) mod falling_blocks_client;
 pub(in crate::game) mod frames_client;
 #[path = "interface/game_mode_common_client.rs"]
 pub(in crate::game) mod game_mode_common_client;
-#[path = "mobs/golems_client.rs"]
-pub(in crate::game) mod golems_client;
 #[path = "host/mod_client.rs"]
 pub(in crate::game) mod host_client;
 #[cfg(test)]
@@ -793,6 +775,8 @@ pub(in crate::game) mod mods_client;
 pub(in crate::game) mod mounts_client;
 #[path = "blocks/moving_pistons_client.rs"]
 pub(in crate::game) mod moving_pistons_client;
+#[path = "modding/native_biome_colors.rs"]
+pub(in crate::game) mod native_biome_colors;
 #[path = "modding/native_block_sounds_client.rs"]
 pub(in crate::game) mod native_block_sounds_client;
 #[path = "modding/native_colliders_client.rs"]
@@ -805,9 +789,13 @@ pub(in crate::game) mod native_entity_motion_client;
 pub(in crate::game) mod native_entity_refs_common_client;
 #[path = "modding/native_entity_riding_client.rs"]
 pub(in crate::game) mod native_entity_riding_client;
+#[path = "modding/native_entity_state_client.rs"]
+pub(in crate::game) mod native_entity_state_client;
 #[cfg(test)]
 #[path = "modding/native_guest_turn_tests_client.rs"]
 pub(in crate::game) mod native_guest_turn_tests_client;
+#[path = "modding/native_harvest_queries_client.rs"]
+pub(in crate::game) mod native_harvest_queries_client;
 #[path = "modding/native_item_places_client.rs"]
 pub(in crate::game) mod native_item_places_client;
 #[cfg(test)]
@@ -824,10 +812,14 @@ pub(in crate::game) mod native_passages_client;
 #[cfg(test)]
 #[path = "modding/native_player_level_tests_client.rs"]
 pub(in crate::game) mod native_player_level_tests_client;
+#[path = "modding/native_scoreboard_client.rs"]
+pub(in crate::game) mod native_scoreboard_client;
 #[path = "modding/native_server_client.rs"]
 pub(in crate::game) mod native_server_client;
 #[path = "modding/native_state_shapes_client.rs"]
 pub(in crate::game) mod native_state_shapes_client;
+#[path = "modding/native_world_columns_client.rs"]
+pub(in crate::game) mod native_world_columns_client;
 #[path = "blocks/nether_portal_client.rs"]
 pub(in crate::game) mod nether_portal_client;
 #[path = "mobs/pandas_client.rs"]
@@ -865,6 +857,8 @@ pub(in crate::game) mod screen_backgrounds_client;
 pub(in crate::game) mod sheep_dye_client;
 #[path = "items/stack_names_client.rs"]
 pub(in crate::game) mod stack_names_client;
+#[path = "modding/stacked_on_other_client.rs"]
+pub(in crate::game) mod stacked_on_other_client;
 #[cfg(test)]
 #[path = "modding/stacked_on_other_tests_client.rs"]
 pub(in crate::game) mod stacked_on_other_tests_client;
@@ -887,10 +881,17 @@ pub(in crate::game) mod vault_client;
 pub(in crate::game) mod vehicle_removal_tests_client;
 #[path = "network/villager_client_client.rs"]
 pub(in crate::game) mod villager_client_client;
+#[path = "mobs/villagers_client.rs"]
+pub(in crate::game) mod villagers_client;
 #[path = "interface/wind_client.rs"]
 pub(in crate::game) mod wind_client;
 #[path = "world/world_entry_client.rs"]
 pub(in crate::game) mod world_entry_client;
+#[cfg(test)]
+#[path = "blocks/world_fluids_tests_client.rs"]
+pub(in crate::game) mod world_fluids_tests_client;
+#[path = "world/world_ops_client.rs"]
+pub(in crate::game) mod world_ops_client;
 
 pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) darkness_blend: (f32, f32),

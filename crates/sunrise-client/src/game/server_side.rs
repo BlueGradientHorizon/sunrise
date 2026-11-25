@@ -331,8 +331,6 @@ pub(in crate::game) mod lightning_server;
 pub(in crate::game) mod living_attributes;
 #[path = "mobs/llamas.rs"]
 pub(in crate::game) mod llamas;
-#[path = "modding/load_conditions.rs"]
-pub(in crate::game) mod load_conditions;
 #[cfg(test)]
 #[path = "administration/loot_kill_guest_tests.rs"]
 pub(in crate::game) mod loot_kill_guest_tests;
@@ -383,8 +381,6 @@ pub(in crate::game) mod native_biome_keys_tests;
 pub(in crate::game) mod native_block_entity_item_tests;
 #[path = "modding/native_block_entity_refs.rs"]
 pub(in crate::game) mod native_block_entity_refs;
-#[path = "modding/native_block_sounds.rs"]
-pub(crate) mod native_block_sounds;
 #[path = "modding/native_book_apply.rs"]
 pub(in crate::game) mod native_book_apply;
 #[path = "modding/native_book_backings.rs"]
@@ -550,8 +546,6 @@ pub(in crate::game) mod native_level_placement_tests;
 pub(in crate::game) mod native_level_players;
 #[path = "modding/native_level_refs.rs"]
 pub(in crate::game) mod native_level_refs;
-#[path = "modding/native_level_signals.rs"]
-pub(in crate::game) mod native_level_signals;
 #[cfg(test)]
 #[path = "modding/native_level_sound_except_tests.rs"]
 pub(in crate::game) mod native_level_sound_except_tests;
@@ -698,12 +692,8 @@ pub(in crate::game) mod native_structures;
 #[cfg(test)]
 #[path = "modding/native_success_broadcast_tests.rs"]
 pub(in crate::game) mod native_success_broadcast_tests;
-#[path = "modding/native_surface.rs"]
-pub(crate) mod native_surface;
 #[path = "modding/native_tick_time.rs"]
 pub(in crate::game) mod native_tick_time;
-#[path = "modding/native_ticks.rs"]
-pub(in crate::game) mod native_ticks;
 #[path = "modding/native_unspawned_mob.rs"]
 pub(in crate::game) mod native_unspawned_mob;
 #[path = "modding/native_world_edit.rs"]
@@ -971,14 +961,24 @@ pub(in crate::game) mod zombie_villagers;
 
 #[path = "runtime/agent/mod_server.rs"]
 pub(in crate::game) mod agent_server;
+#[path = "modding/attachment_sync.rs"]
+pub(in crate::game) mod attachment_sync;
 #[path = "world/autosave_server.rs"]
 pub(in crate::game) mod autosave_server;
 #[path = "blocks/banners_server.rs"]
 pub(in crate::game) mod banners_server;
+#[path = "blocks/beacon_server.rs"]
+pub(in crate::game) mod beacon_server;
+#[path = "mobs/beehives_client.rs"]
+pub(in crate::game) mod beehives_client;
 #[path = "blocks/block_breaking_server.rs"]
 pub(in crate::game) mod block_breaking_server;
+#[path = "blocks/block_entity_ticks.rs"]
+pub(in crate::game) mod block_entity_ticks;
 #[path = "blocks/block_entity_ticks_server.rs"]
 pub(in crate::game) mod block_entity_ticks_server;
+#[path = "blocks/block_items_server.rs"]
+pub(in crate::game) mod block_items_server;
 #[path = "blocks/block_particles_server.rs"]
 pub(in crate::game) mod block_particles_server;
 #[cfg(test)]
@@ -990,14 +990,18 @@ pub(in crate::game) mod breezes_server;
 pub(in crate::game) mod brush_server;
 #[path = "blocks/campfire_douse_server.rs"]
 pub(in crate::game) mod campfire_douse_server;
+#[path = "blocks/cartography_server.rs"]
+pub(in crate::game) mod cartography_server;
 #[path = "blocks/cauldrons_server.rs"]
 pub(in crate::game) mod cauldrons_server;
 #[path = "interface/chat_common_server.rs"]
 pub(in crate::game) mod chat_common_server;
-#[path = "modding/client_cracks_server.rs"]
-pub(in crate::game) mod client_cracks_server;
+#[path = "blocks/chiseled_bookshelf.rs"]
+pub(in crate::game) mod chiseled_bookshelf;
 #[path = "world/clocks_server.rs"]
 pub(in crate::game) mod clocks_server;
+#[path = "entities/collision_source_server.rs"]
+pub(in crate::game) mod collision_source_server;
 #[path = "administration/commands_common_server.rs"]
 pub(in crate::game) mod commands_common_server;
 #[path = "runtime/control_server.rs"]
@@ -1018,12 +1022,18 @@ pub(in crate::game) mod debug_lines_server;
 pub(in crate::game) mod decorated_pot_server;
 #[path = "interface/developer_launch_server.rs"]
 pub(in crate::game) mod developer_launch_server;
+#[path = "blocks/dispense_bucket.rs"]
+pub(in crate::game) mod dispense_bucket;
 #[path = "items/durability_server.rs"]
 pub(in crate::game) mod durability_server;
 #[path = "world/end_client_server.rs"]
 pub(in crate::game) mod end_client_server;
+#[path = "mobs/enderman.rs"]
+pub(in crate::game) mod enderman;
 #[path = "modding/entity_sections_server.rs"]
 pub(in crate::game) mod entity_sections_server;
+#[path = "entities/entity_sounds_server.rs"]
+pub(in crate::game) mod entity_sounds_server;
 #[path = "entities/fireworks_server.rs"]
 pub(in crate::game) mod fireworks_server;
 #[path = "items/fishing_client_server.rs"]
@@ -1032,6 +1042,8 @@ pub(in crate::game) mod fishing_client_server;
 pub(in crate::game) mod fluid_interactions_server;
 #[path = "interface/game_mode_common_server.rs"]
 pub(in crate::game) mod game_mode_common_server;
+#[path = "mobs/ghasts.rs"]
+pub(in crate::game) mod ghasts;
 #[path = "mobs/ghasts_server.rs"]
 pub(in crate::game) mod ghasts_server;
 #[path = "blocks/growth_server.rs"]
@@ -1045,6 +1057,8 @@ pub(in crate::game) mod held_items_server;
 pub(in crate::game) mod item_abilities_server;
 #[path = "items/item_actions_server.rs"]
 pub(in crate::game) mod item_actions_server;
+#[path = "runtime/transactions/item_entity_server.rs"]
+pub(in crate::game) mod item_entity_server;
 #[path = "items/item_entity_spawn_server.rs"]
 pub(in crate::game) mod item_entity_spawn_server;
 #[path = "administration/jigsaw_blocks_server.rs"]
@@ -1053,16 +1067,28 @@ pub(in crate::game) mod jigsaw_blocks_server;
 pub(in crate::game) mod jukebox_server;
 #[path = "network/lan_actions/mod_server.rs"]
 pub(in crate::game) mod lan_actions_server;
+#[path = "network/lan_mount_menu.rs"]
+pub(in crate::game) mod lan_mount_menu;
 #[path = "network/lan_mount_menu_server.rs"]
 pub(in crate::game) mod lan_mount_menu_server;
+#[path = "network/lan_stations.rs"]
+pub(in crate::game) mod lan_stations;
 #[path = "network/lan_stations_server.rs"]
 pub(in crate::game) mod lan_stations_server;
+#[path = "network/lan_trade_decisions.rs"]
+pub(in crate::game) mod lan_trade_decisions;
 #[path = "network/lan_trade_decisions_server.rs"]
 pub(in crate::game) mod lan_trade_decisions_server;
+#[path = "runtime/loading_server.rs"]
+pub(in crate::game) mod loading_server;
 #[path = "runtime/memory_common_server.rs"]
 pub(in crate::game) mod memory_common_server;
+#[path = "entities/minecart_moves.rs"]
+pub(in crate::game) mod minecart_moves;
 #[path = "entities/minecart_moves_server.rs"]
 pub(in crate::game) mod minecart_moves_server;
+#[path = "entities/minecarts_ops_server.rs"]
+pub(in crate::game) mod minecarts_ops_server;
 #[path = "entities/minecarts_server.rs"]
 pub(in crate::game) mod minecarts_server;
 #[path = "modding/mods/mod_server.rs"]
@@ -1071,30 +1097,78 @@ pub(in crate::game) mod mods_server;
 pub(in crate::game) mod names_server;
 #[path = "modding/native_book_placement_server.rs"]
 pub(in crate::game) mod native_book_placement_server;
+#[path = "modding/native_chat_recipients.rs"]
+pub(in crate::game) mod native_chat_recipients;
+#[path = "modding/native_chunk_queries.rs"]
+pub(in crate::game) mod native_chunk_queries;
+#[path = "modding/native_command_reads.rs"]
+pub(in crate::game) mod native_command_reads;
 #[path = "modding/native_components_server.rs"]
 pub(in crate::game) mod native_components_server;
+#[path = "modding/native_death_weapon.rs"]
+pub(in crate::game) mod native_death_weapon;
+#[path = "modding/native_entity_extinguish.rs"]
+pub(in crate::game) mod native_entity_extinguish;
+#[path = "modding/native_entity_selectors_server.rs"]
+pub(in crate::game) mod native_entity_selectors_server;
+#[path = "modding/native_give_stack_server.rs"]
+pub(in crate::game) mod native_give_stack_server;
 #[path = "native_hooks/mod_server.rs"]
 pub(in crate::game) mod native_hooks_server;
 #[path = "modding/native_item_entity_refs_server.rs"]
 pub(in crate::game) mod native_item_entity_refs_server;
 #[path = "modding/native_knockback_credit_server.rs"]
 pub(in crate::game) mod native_knockback_credit_server;
+#[path = "modding/native_level_weather.rs"]
+pub(in crate::game) mod native_level_weather;
+#[path = "modding/native_living_absorption_server.rs"]
+pub(in crate::game) mod native_living_absorption_server;
 #[path = "modding/native_living_body_server.rs"]
 pub(in crate::game) mod native_living_body_server;
 #[path = "modding/native_menu_refs_server.rs"]
 pub(in crate::game) mod native_menu_refs_server;
+#[path = "modding/native_mob_navigation.rs"]
+pub(in crate::game) mod native_mob_navigation;
+#[path = "modding/native_player_attack.rs"]
+pub(in crate::game) mod native_player_attack;
+#[path = "modding/native_player_death_server.rs"]
+pub(in crate::game) mod native_player_death_server;
+#[path = "modding/native_player_food_server.rs"]
+pub(in crate::game) mod native_player_food_server;
+#[path = "modding/native_player_place.rs"]
+pub(in crate::game) mod native_player_place;
+#[path = "modding/native_portal_destination.rs"]
+pub(in crate::game) mod native_portal_destination;
+#[path = "modding/native_profiles.rs"]
+pub(in crate::game) mod native_profiles;
+#[path = "modding/native_recipe_sync.rs"]
+pub(in crate::game) mod native_recipe_sync;
+#[path = "modding/native_recipes_server.rs"]
+pub(in crate::game) mod native_recipes_server;
+#[path = "modding/native_scoreboard_teams.rs"]
+pub(in crate::game) mod native_scoreboard_teams;
 #[path = "modding/native_server_server.rs"]
 pub(in crate::game) mod native_server_server;
+#[path = "modding/native_ticks_server.rs"]
+pub(in crate::game) mod native_ticks_server;
+#[path = "modding/native_world_columns_server.rs"]
+pub(in crate::game) mod native_world_columns_server;
 #[path = "mobs/nautili_server.rs"]
 pub(in crate::game) mod nautili_server;
 #[path = "interface/pad/mod_server.rs"]
 pub(in crate::game) mod pad_server;
 #[path = "entities/pick_entity_server.rs"]
 pub(in crate::game) mod pick_entity_server;
+#[path = "blocks/piston_push/carrying_server.rs"]
+pub(in crate::game) mod piston_push_carrying_server;
 #[path = "blocks/piston_push_server.rs"]
 pub(in crate::game) mod piston_push_server;
+#[path = "blocks/piston_push/shoving_server.rs"]
+pub(in crate::game) mod piston_push_shoving_server;
 #[path = "interface/play_keys_server.rs"]
 pub(in crate::game) mod play_keys_server;
+#[path = "entities/player_equip_ops_server.rs"]
+pub(in crate::game) mod player_equip_ops_server;
 #[path = "entities/player_equip_server.rs"]
 pub(in crate::game) mod player_equip_server;
 #[path = "items/potions_server.rs"]
@@ -1123,6 +1197,10 @@ pub(in crate::game) mod scheduled_tasks_server;
 pub(in crate::game) mod screen_widgets_server;
 #[path = "interface/shader_packs_server.rs"]
 pub(in crate::game) mod shader_packs_server;
+#[path = "mobs/sheep_dye_server.rs"]
+pub(in crate::game) mod sheep_dye_server;
+#[path = "blocks/shelf_server.rs"]
+pub(in crate::game) mod shelf_server;
 #[path = "mobs/sniffers_server.rs"]
 pub(in crate::game) mod sniffers_server;
 #[path = "network/social_server.rs"]
@@ -1138,6 +1216,8 @@ pub(in crate::game) mod state_resolver_server;
 pub(in crate::game) mod stations_server;
 #[path = "world/storage_server.rs"]
 pub(in crate::game) mod storage_server;
+#[path = "administration/test_blocks.rs"]
+pub(in crate::game) mod test_blocks;
 #[path = "administration/test_entities_server.rs"]
 pub(in crate::game) mod test_entities_server;
 #[path = "entities/text_displays_server.rs"]
@@ -1150,6 +1230,11 @@ pub(in crate::game) mod totem_server;
 pub(in crate::game) mod weather_server;
 #[path = "world/world_entry_server.rs"]
 pub(in crate::game) mod world_entry_server;
+#[cfg(test)]
+#[path = "blocks/world_fluids_tests.rs"]
+pub(in crate::game) mod world_fluids_tests;
+#[path = "world/world_ops_server.rs"]
+pub(in crate::game) mod world_ops_server;
 
 pub(in crate::game) struct ServerState {
     /// The registries native mods registered data map types for, as of the
@@ -1319,8 +1404,6 @@ pub(in crate::game) struct ServerState {
     pub(in crate::game::server_side) missing_professions: HashSet<String>,
     /// What changed in entities' colliders this tick, for the players who track them.
     pub(in crate::game::server_side) collider_changes: Vec<native_colliders::ColliderChange>,
-    pub(in crate::game::server_side) entity_initialization:
-        entity_initialization::EntityInitialization,
     /// The shapes of the open world's levels, from its dimension types.
     pub(in crate::game::server_side) level_shapes: sunrise_client::chunk::LevelShapes,
     /// `IntegratedServer`'s single-player profile, fixed when the server thread is created,
@@ -1380,9 +1463,6 @@ pub(in crate::game) struct ServerState {
     /// The movement a guest's client reported this tick
     /// (`ServerPlayer.getKnownMovement`), for their turn.
     pub(in crate::game::server_side) known_movement: Vec3,
-    /// `LivingEntity.lastKineticHitFeedbackTime` of the entities that felt a
-    /// spear's hit (`spear::OWN` is this window's player), in game time.
-    pub(in crate::game::server_side) kinetic_feedback: HashMap<i32, i64>,
     /// Global level events for every guest (`ServerLevel.globalLevelEvent`), with their level.
     pub(in crate::game::server_side) lan_global_events: Vec<(&'static str, i32, [i32; 3], i32)>,
     /// `ContainerOpenersCounter`: how many players (the host and the guests)
@@ -1565,7 +1645,6 @@ impl ServerState {
             vehicle_mobs: Default::default(),
             missing_professions: Default::default(),
             collider_changes: Vec::new(),
-            entity_initialization: Default::default(),
             level_shapes: Default::default(),
             singleplayer_profile: None,
             structure_templates: HashMap::new(),
@@ -1588,7 +1667,6 @@ impl ServerState {
             stab_players: Vec::new(),
             player_stabs: Vec::new(),
             known_movement: Vec3::ZERO,
-            kinetic_feedback: HashMap::new(),
             lan_global_events: Vec::new(),
             lid_openers: HashMap::new(),
             lan_acting: None,

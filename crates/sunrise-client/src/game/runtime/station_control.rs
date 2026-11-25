@@ -106,8 +106,18 @@ impl Game<'_> {
         match words.first().copied().unwrap_or("") {
             "xp" => {
                 let n: i32 = arg(1)?.parse()?;
-                self.give_levels(n);
-                Ok(Some(json!({ "ok": true, "level": self.experience.level })))
+                let server = self
+                    .integrated
+                    .as_ref()
+                    .ok_or("xp requires a single-player world")?;
+                let level = server
+                    .ask(|reply| {
+                        super::owner_link::OwnerRequest::Control(
+                            super::owner_link::ControlRequest::GiveLevels { levels: n, reply },
+                        )
+                    })
+                    .ok_or(super::integrated::NO_ANSWER)??;
+                Ok(Some(json!({ "ok": true, "level": level })))
             }
             "setblock" => {
                 let pos = [arg(1)?.parse()?, arg(2)?.parse()?, arg(3)?.parse()?];
@@ -125,9 +135,7 @@ impl Game<'_> {
             }
             "use" => {
                 let pos = [arg(1)?.parse()?, arg(2)?.parse()?, arg(3)?.parse()?];
-                if self.is_logical_server() {
-                    self.open_block_effect_menu(pos);
-                } else if self.remote.is_some() {
+                if self.remote.is_some() {
                     self.send_use_item_on_block(pos);
                 } else {
                     return Err("not connected to a world".into());
@@ -202,18 +210,29 @@ impl Game<'_> {
                 })))
             }
             "effect" => {
-                if arg(1)? == "clear" {
-                    self.remove_player_effects(None);
-                    return ok();
-                }
-                let def = sunrise_client::brewing::effect(arg(1)?).ok_or("unknown effect")?;
-                let seconds: i32 = arg(2)?.parse()?;
-                let amp: i32 = words.get(3).map_or(Ok(0), |a| a.parse())?;
-                self.apply_player_effect(sunrise_client::effects::EffectInstance::new(
-                    def.id,
-                    seconds * 20,
-                    amp,
-                ));
+                let effect = if arg(1)? == "clear" {
+                    None
+                } else {
+                    let def = sunrise_client::brewing::effect(arg(1)?).ok_or("unknown effect")?;
+                    let seconds: i32 = arg(2)?.parse()?;
+                    let amp: i32 = words.get(3).map_or(Ok(0), |a| a.parse())?;
+                    Some(sunrise_client::effects::EffectInstance::new(
+                        def.id,
+                        seconds * 20,
+                        amp,
+                    ))
+                };
+                let server = self
+                    .integrated
+                    .as_ref()
+                    .ok_or("effect requires a single-player world")?;
+                server
+                    .ask(|reply| {
+                        super::owner_link::OwnerRequest::Control(
+                            super::owner_link::ControlRequest::StationEffect { effect, reply },
+                        )
+                    })
+                    .ok_or(super::integrated::NO_ANSWER)??;
                 ok()
             }
             "trade" => {
@@ -227,11 +246,7 @@ impl Game<'_> {
                 }
                 let level: i32 = words.get(2).map_or(Ok(1), |l| l.parse())?;
                 let variant = id(words.get(3).copied().unwrap_or("plains"));
-                if self.is_logical_server() {
-                    self.open_merchant(&profession, &variant, level);
-                } else {
-                    self.open_preview_merchant(&profession, &variant, level);
-                }
+                self.open_preview_merchant(&profession, &variant, level);
                 ok()
             }
             "effects" => Ok(Some(
@@ -261,13 +276,9 @@ impl Game<'_> {
                 ok()
             }
             "close" => {
-                if self.is_logical_server() {
-                    self.close_container_server();
-                } else {
-                    self.close_container_client();
-                    self.set_screen(Screen::Playing);
-                    self.capture(true);
-                }
+                self.close_container_client();
+                self.set_screen(Screen::Playing);
+                self.capture(true);
                 ok()
             }
             _ => Ok(None),

@@ -34,11 +34,7 @@ fn calling_mod_owns(controller: TicketController) -> bool {
 }
 
 /// The stored light of `layer` at `pos` in `world`, as the game's own light query reads it.
-pub(in crate::game::server_side) fn world_brightness(
-    world: &World,
-    layer: LightLayer,
-    pos: [i32; 3],
-) -> i32 {
+pub(in crate::game) fn world_brightness(world: &World, layer: LightLayer, pos: [i32; 3]) -> i32 {
     let light = world.light(pos[0], pos[1], pos[2]);
     i32::from(match layer {
         LightLayer::Block => light & 15,
@@ -598,15 +594,22 @@ impl Game<'_> {
     /// The block state ID at `pos` (`Level.getBlockState`), without formatting a string.
     /// None for a chunk that isn't loaded or a `y` outside the world. On a client, the state
     /// the server sent for a column the client holds, of its own level or a viewed one.
-    pub(in crate::game) fn level_block_state(
+    pub(in crate::game) fn server_level_view_world(&self, level: LevelRef) -> Option<&World> {
+        self.native_level_world(level)
+    }
+
+    pub(in crate::game) fn server_level_handle_current(&self, level: LevelRef) -> bool {
+        self.level_handle_current(level)
+    }
+
+    pub(in crate::game) fn server_level_datapack_set(
         &self,
         level: LevelRef,
-        pos: [i32; 3],
-    ) -> Option<BlockStateId> {
-        let world = self.native_level_view_world(level)?;
-        let [x, y, z] = pos;
-        world.is_loaded_at(x, y, z).then(|| world.block(x, y, z))
+    ) -> Option<std::sync::Arc<mod_api::DatapackRegistrySet>> {
+        self.native_level_world(level)?;
+        self.mods.datapack_registries.clone()
     }
+
     /// `BlockState.isRedstoneConductor(level, pos)` of the block at `pos`. None for a stale
     /// handle, a client or an unloaded `pos`.
     pub(in crate::game) fn level_is_redstone_conductor(
@@ -721,42 +724,6 @@ impl Game<'_> {
             .properties
             .get(key)
             .cloned()
-    }
-    pub(in crate::game) fn level_get_enchant_power_bonus(
-        &self,
-        level: LevelRef,
-        pos: [i32; 3],
-        state: BlockStateId,
-        table_pos: [i32; 3],
-    ) -> Result<f32, mod_api::LevelReadError> {
-        use mod_api::LevelReadError;
-        if self.native_level_view_world(level).is_none() {
-            return Err(if self.level_handle_current(level) {
-                LevelReadError::Unavailable
-            } else {
-                LevelReadError::Stale
-            });
-        }
-        self.enchant_power(Some(level), state, block_pos(pos), block_pos(table_pos))
-            .ok_or(LevelReadError::Unavailable)
-    }
-
-    /// Read the mod-published connection group at `pos`, or `Ok(None)` when unset, unloaded, or
-    /// out of height. Works on both server (including parked levels) and client (including viewed
-    /// levels).
-    pub(in crate::game) fn level_connection_group(
-        &self,
-        level: LevelRef,
-        pos: [i32; 3],
-    ) -> Result<Option<u64>, mod_api::LevelReadError> {
-        let world = self.native_level_view_world(level).ok_or_else(|| {
-            if self.level_handle_current(level) {
-                mod_api::LevelReadError::Unavailable
-            } else {
-                mod_api::LevelReadError::Stale
-            }
-        })?;
-        Ok(world.connection_group(pos[0], pos[1], pos[2]))
     }
     /// Whether this is the level in place: the one the server ticks now, whose block entities
     /// the game's own capabilities read and write and whose capabilities
@@ -875,17 +842,6 @@ impl Game<'_> {
     /// The stored light of one layer at `pos` (`BlockAndLightGetter.getBrightness`), 0 to 15.
     /// As with `block_state`, a client reads the named level, shown or open for viewing.
     /// Returns None if the level is unavailable or the position isn't loaded.
-    pub(in crate::game) fn level_brightness(
-        &self,
-        level: LevelRef,
-        layer: LightLayer,
-        pos: [i32; 3],
-    ) -> Option<i32> {
-        let world = self.native_level_view_world(level)?;
-        world
-            .is_loaded_at(pos[0], pos[1], pos[2])
-            .then(|| world_brightness(world, layer, pos))
-    }
     /// `BlockAndLightGetter.canSeeSky`: whether the local sky light at `pos` is full.
     pub(in crate::game) fn level_can_see_sky(
         &self,

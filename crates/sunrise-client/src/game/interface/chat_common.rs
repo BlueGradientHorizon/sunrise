@@ -515,4 +515,62 @@ impl Game<'_> {
             .find(|&y| kind.is_opaque(properties.heightmap_state(self.world.block(x, y, z))))
             .map_or(self.world.bottom_y(), |y| y + 1)
     }
+
+    /// The engine-side rule values (block behaviour and health).
+    pub(in crate::game) fn level_rules(&self) -> sunrise_world::level::GameRules {
+        let r = &self.ui.rules;
+        sunrise_world::level::GameRules {
+            water_source_conversion: r
+                .bool_at(sunrise_client::gamerules::vanilla::WATER_SOURCE_CONVERSION),
+            lava_source_conversion: r
+                .bool_at(sunrise_client::gamerules::vanilla::LAVA_SOURCE_CONVERSION),
+            random_tick_speed: r.int_at(sunrise_client::gamerules::vanilla::RANDOM_TICK_SPEED),
+            block_drops: r.bool_at(sunrise_client::gamerules::vanilla::BLOCK_DROPS),
+            mob_griefing: r.bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING),
+            max_snow_accumulation_height: r
+                .int_at(sunrise_client::gamerules::vanilla::MAX_SNOW_ACCUMULATION_HEIGHT),
+            spawn_mobs: r.bool_at(sunrise_client::gamerules::vanilla::SPAWN_MOBS),
+            spawn_monsters: r.bool_at(sunrise_client::gamerules::vanilla::SPAWN_MONSTERS),
+            fire_spread_radius_around_player: r
+                .int_at(sunrise_client::gamerules::vanilla::FIRE_SPREAD_RADIUS_AROUND_PLAYER),
+            spread_vines: r.bool_at(sunrise_client::gamerules::vanilla::SPREAD_VINES),
+        }
+    }
+
+    /// Apply rules mirrored in other state (natural regeneration, difficulty).
+    pub(in crate::game) fn sync_rules(&mut self) {
+        self.world.health_rules.natural_regeneration = self
+            .ui
+            .rules
+            .bool_at(sunrise_client::gamerules::vanilla::NATURAL_HEALTH_REGENERATION);
+        // Player.isInvulnerableTo: the damage-type rules.
+        self.world.health_rules.drowning_damage = self
+            .ui
+            .rules
+            .bool_at(sunrise_client::gamerules::vanilla::DROWNING_DAMAGE);
+        self.world.health_rules.fall_damage = self
+            .ui
+            .rules
+            .bool_at(sunrise_client::gamerules::vanilla::FALL_DAMAGE);
+        self.world.health_rules.fire_damage = self
+            .ui
+            .rules
+            .bool_at(sunrise_client::gamerules::vanilla::FIRE_DAMAGE);
+        self.world.health_rules.freeze_damage = self
+            .ui
+            .rules
+            .bool_at(sunrise_client::gamerules::vanilla::FREEZE_DAMAGE);
+        sunrise_client::mobs::sulfur_cube::set_tnt_explodes(
+            self.ui
+                .rules
+                .bool_at(sunrise_client::gamerules::vanilla::TNT_EXPLODES),
+        );
+        use sunrise_world::food::Difficulty;
+        self.world.health_rules.difficulty = match self.ui.difficulty {
+            0 => Difficulty::Peaceful,
+            1 => Difficulty::Easy,
+            3 => Difficulty::Hard,
+            _ => Difficulty::Normal,
+        };
+    }
 }

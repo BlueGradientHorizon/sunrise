@@ -24,22 +24,25 @@ pub(in crate::game::client_side) use mod_api::{ScheduleError, TaskId};
 pub(in crate::game::client_side) use std::sync::atomic::{AtomicU64, Ordering};
 
 impl Game<'_> {
-    /// After the final save, before the lock release. Client epochs retire
-    /// without dispatching server lifecycle hooks.
-    pub(in crate::game) fn native_lifecycle_world_closed(&mut self) {
-        self.client.instance_groups.borrow_mut().clear();
-        // Each server level closes after the final save (`LevelEvent.Unload`).
-        if self.is_logical_server() {
-            self.native_levels_closing();
-        }
-        if let Some(context) = self.native_lifecycle.world_close_final() {
-            self.native_world_lifecycle(&context, WorldPhase::WorldCloseFinal, "");
+    pub(in crate::game) fn client_lifecycle_open_started(&mut self) {
+        self.client_reset_entity_residency();
+        self.entity_initialization = Default::default();
+        if let Some(remote) = &mut self.remote {
+            remote.clear_attachments();
         }
         self.attachment_indexes.clear();
         self.passages.retire_world();
-        self.resident_entities.table.get_mut().reset();
-        super::cauldron_interactions::clear();
-        self.clear_composter_randoms();
-        self.clear_world_parts();
+        self.native_lifecycle.begin_open(Authority::RemoteClient);
+    }
+
+    pub(in crate::game) fn client_lifecycle_world_ready(&mut self) {
+        let _ = self.native_lifecycle.world_open_ready();
+    }
+
+    /// Client epochs retire without dispatching server lifecycle hooks.
+    pub(in crate::game) fn client_lifecycle_world_closed(&mut self) {
+        self.client.instance_groups.borrow_mut().clear();
+        let _ = self.native_lifecycle.world_close_final();
+        self.finish_world_closed_common();
     }
 }

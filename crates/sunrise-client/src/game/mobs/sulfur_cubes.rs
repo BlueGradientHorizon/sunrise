@@ -15,72 +15,7 @@ use sunrise_client::{
 #[allow(unused_imports)]
 use sunrise_core::position::BlockPos;
 
-pub(in crate::game::server_side) fn block_transform(base: glam::Mat4, baby: bool) -> glam::Mat4 {
-    base * glam::Mat4::from_scale(glam::Vec3::new(1.0, -1.0, -1.0))
-        * glam::Mat4::from_scale(glam::Vec3::splat(if baby { 0.5 } else { 1.0 }))
-        * glam::Mat4::from_translation(glam::Vec3::new(-0.5, -0.518, -0.5))
-}
-
-pub(in crate::game::server_side) fn block_overlay(fuse_ticks: i32, alpha: f32, hurt: bool) -> u32 {
-    let fuse = if fuse_ticks >= 0 {
-        fuse_ticks as f32 - alpha + 1.0
-    } else {
-        0.0
-    };
-    if fuse > 0.0 && (fuse / 5.0) as i32 % 2 == 0 {
-        sunrise_client::overlay::living(1.0, false)
-    } else {
-        sunrise_client::overlay::living(0.0, hurt)
-    }
-}
-
-pub(in crate::game::server_side) fn block_light(light: u32, emission: u8) -> u32 {
-    let block = (light >> 8 & 0xFF).max(u32::from(emission) * 16);
-    (light & 0xFF) | block << 8
-}
-
 impl Game<'_> {
-    /// The swallowed block replaces the opaque core and precedes the shell.
-    pub(in crate::game) fn sulfur_cube_body_geometry(
-        &self,
-        mob: &Mob,
-        alpha: f32,
-        base: glam::Mat4,
-        light: u32,
-        out: &mut Vec<Vertex>,
-    ) {
-        let Some(item) = mob.extra.body_id() else {
-            return;
-        };
-        if super::armor_stands::skull_kind(item).is_some() {
-            return;
-        }
-        // shortcut: the body slot retains only an item id; preserve the stack
-        // before supporting its block-state components here.
-        let Some(state) = self.items().get(item).and_then(|item| item.block) else {
-            return;
-        };
-        let start = out.len();
-        self.block_model_vertices(
-            state,
-            42,
-            block_transform(base, mob.is_baby()),
-            block_light(light, self.res.facts().get(state).emission),
-            true,
-            out,
-        );
-        let overlay = block_overlay(
-            sulfur_cube::fuse(mob),
-            alpha,
-            mob.hurt_time > 0 || mob.death_time > 0,
-        );
-        if overlay != 0 {
-            for vertex in &mut out[start..] {
-                vertex.layer = overlay;
-            }
-        }
-    }
-
     /// Spit the swallowed block out on top (`EntityAttachment.PASSENGER`).
     pub(in crate::game::server_side) fn eject_sulfur_block(&mut self, index: usize) {
         let m = &mut self.mobs[index];
@@ -342,10 +277,7 @@ impl Game<'_> {
             let mut swallowed = e.stack.clone();
             swallowed.count = 1;
             let (taken_item, id) = (e.clone(), self.mobs[i].id);
-            self.add_pickup(
-                super::pickups::Taken::Item(Box::new(taken_item)),
-                super::pickups::Collector::Mob(id),
-            );
+            self.server_mob_take_item(&taken_item, id);
             let e = &mut self.dropped[j];
             e.stack.count -= 1;
             if e.stack.count == 0 {

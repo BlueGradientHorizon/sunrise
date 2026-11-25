@@ -48,7 +48,7 @@ impl Game<'_> {
         // A LAN or server guest only shows the host's items.
         let merging = self.is_logical_server();
         // `Entity.checkBelowWorld`: below `Level.getMinY() - 64`.
-        let void = f64::from(self.level_min_y() - 64);
+        let void = f64::from(self.world.shape.min_y - 64);
         let mut obstacles =
             sunrise_client::entities::ObstacleGrid::new(self.entity_collisions(Mover::Passive));
         let mut nearby = Vec::new();
@@ -155,7 +155,16 @@ impl Game<'_> {
                 // Entity.doWaterSplashEffect: the server plays the sound (broadcast
                 // to clients). Its addParticle is empty.
                 for splash in entered {
-                    self.apply_item_splash(splash);
+                    if let sunrise_client::entities::ItemSplash::Sound { at, volume, pitch } =
+                        splash
+                    {
+                        self.server_play_sound(
+                            "minecraft:entity.generic.splash",
+                            at,
+                            volume,
+                            pitch,
+                        );
+                    }
                 }
                 if discarded {
                     if merging
@@ -816,13 +825,53 @@ impl Game<'_> {
             let pitch = (r.next_float() - r.next_float()) * 0.35 + 0.9;
             let at = [o.position.x, o.position.y, o.position.z];
             self.server_play_sound("minecraft:entity.experience_orb.pickup", at, 0.1, pitch);
-            self.add_pickup(
-                crate::game::pickups::Taken::Orb(Box::new(o)),
-                crate::game::pickups::Collector::Player,
-            );
         }
         if gained > 0 {
             self.give_experience_points(gained as i32);
+        }
+    }
+
+    /// `ServerLevel.addFreshEntity` of the item `id` that `push_item_entity`
+    /// made, with the stack it holds now.
+    /// Whether the item entity is in the level after its join: false when a join listener kept
+    /// it out (or no such item entity was made).
+    pub(in crate::game) fn join_item_entity(&mut self, id: u32, position: [f64; 3]) -> bool {
+        self.announce_item_entity(id, position, false)
+    }
+
+    pub(in crate::game) fn join_removal_item(&mut self, id: u32, position: [f64; 3]) {
+        self.announce_item_entity(id, position, true);
+    }
+
+    pub(in crate::game) fn announce_item_entity(
+        &mut self,
+        id: u32,
+        position: [f64; 3],
+        in_removal: bool,
+    ) -> bool {
+        let Some((item, count)) = self
+            .dropped
+            .iter()
+            .rev()
+            .find(|d| d.id == id)
+            .map(|d| (d.stack.item.clone(), d.stack.count as i32))
+        else {
+            return false;
+        };
+        if !mod_api::__private::mods().is_empty() {
+            self.native_lifecycle
+                .pending_item_spawns
+                .push((id, item.to_string(), count, position));
+            if in_removal {
+                self.flush_removal_join(id)
+            } else {
+                self.native_joins_flush(false, id)
+            }
+        } else if self.native_joins_flush(false, id) {
+            self.native_item_spawn(id, &item, count, position);
+            true
+        } else {
+            false
         }
     }
 

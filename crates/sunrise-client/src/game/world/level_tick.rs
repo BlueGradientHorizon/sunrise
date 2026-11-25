@@ -23,13 +23,6 @@ impl Game<'_> {
         self.server.shield_cooldown = self.server.shield_cooldown.saturating_sub(1);
         self.cooldowns.tick();
         sunrise_client::spans::time("tick_using", || self.tick_using_server());
-        // The player's digging comes in with its packets, before the level
-        // ticks; ServerLevel.tick then runs the scheduled and random block
-        // ticks before any entity, so what they drop or spawn (dispensed
-        // items, popped crops) moves on the tick it appears, as in vanilla.
-        // On the server thread the window is a hub guest: drain its packets
-        // here too, before falling-block schedules run (#4510).
-        sunrise_client::spans::time("tick_local_hand", || self.tick_local_hand())?;
         sunrise_client::spans::time("postprocess_chunks", || self.postprocess_chunks())?;
         let mut sent = None;
         if running {
@@ -152,7 +145,6 @@ impl Game<'_> {
         if let Some(log) = self.world.block_log.as_mut() {
             log.extend(held);
         }
-        span("tick_friends", || self.tick_friends());
         sunrise_client::spans::time("tick_sleep", || self.tick_sleep());
         span("sleep_status", || self.announce_sleep_status());
         span("sleep_status", || self.free_left_beds());
@@ -218,7 +210,6 @@ impl Game<'_> {
         self.tick_worldborder();
         self.spawn_phantoms();
         self.tick_advancements();
-        self.tick_player_model();
         Ok(())
     }
 }

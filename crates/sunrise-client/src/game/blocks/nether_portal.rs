@@ -758,28 +758,6 @@ impl Game<'_> {
 
     // ---- the player ----
 
-    /// Whether the inventory key opens nothing: vanilla opens the screen,
-    /// then `LocalPlayer.handlePortalTransitionEffect` closes it in the same
-    /// tick while the player stands in a nether portal, so it is never drawn.
-    /// The fading effect after leaving the portal closes nothing.
-    pub(in crate::game) fn in_portal_transition(&self) -> bool {
-        self.portals.client_was_inside
-    }
-
-    /// The same on a server's client: `Entity.canUsePortal` (alive, not a
-    /// passenger), then only the client's `setAsInsidePortal`, which drives
-    /// the confusion effect (`client_portal_effect`). On a server's client
-    /// `portals.player` holds only the LocalPlayer's `portalCooldown`.
-    pub(in crate::game) fn client_inside_nether_portal(&mut self) {
-        if !self.player_can_use_portal() {
-            return;
-        }
-        if self.portals.player.cooldown > 0 {
-            self.portals.player.cooldown = PLAYER_DELAY;
-        } else {
-            self.portals.client_inside = true;
-        }
-    }
     /// Where to wait for the destination of `plan` to load, once its level
     /// is open: the portal its points of interest lead to, or the
     /// approximate exit.
@@ -1036,27 +1014,6 @@ impl Game<'_> {
     pub(in crate::game) fn set_portal_cooldown(&mut self, id: u32) {
         let delay = self.dimension_changing_delay(id);
         self.portals.entities.entry(id).or_default().cooldown = delay;
-    }
-    /// `LivingEntity.canUsePortal` over a player's body and its transport
-    /// (#943): `Entity.canUsePortal(false)` (alive, nobody's passenger) and
-    /// not asleep (`isSleeping`). The one rule the client's portal entry,
-    /// the player in place and the guest arm of the `LivingRef` read answer
-    /// — a parity fix: the client's own entry used to skip the sleep half
-    /// (vanilla `LivingEntity.canUsePortal` checks it).
-    pub(in crate::game::server_side) fn can_use_portal_of(
-        &self,
-        p: &sunrise_client::motion::PlayerMotion,
-        riding: bool,
-        sleeping: bool,
-    ) -> bool {
-        !p.health.dead_or_dying() && !riding && !sleeping
-    }
-    /// [`can_use_portal_of`](Self::can_use_portal_of) for the player of
-    /// this game.
-    pub(in crate::game::server_side) fn player_can_use_portal(&self) -> bool {
-        self.player
-            .as_ref()
-            .is_some_and(|p| self.can_use_portal_of(p, self.riding.is_some(), p.sleeping))
     }
     /// The rest of `NetherPortalBlock.randomTick` after a won roll: with a
     /// player close enough for spawning, a zombified piglin spawns on the block

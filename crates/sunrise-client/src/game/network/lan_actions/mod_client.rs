@@ -90,8 +90,5 @@ pub(in crate::game::client_side) use sunrise_world::entity_move::EntityMoveWorld
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use winit::keyboard::KeyCode;
 
-#[path = "interaction_client.rs"]
-pub(in crate::game) mod interaction;
-
 #[path = "pickups_client.rs"]
 pub(in crate::game) mod pickups;

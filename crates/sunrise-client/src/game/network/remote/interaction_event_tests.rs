@@ -290,8 +290,54 @@ impl ItemPart for Observer {
     }
 }
 
-// The same real Game runs either its server path or its normal local-client
-// connection/prediction path, as the existing remote menu fixture does.
+pub(in crate::game) fn with_interaction_client_game(test: impl FnOnce(&mut Game<'_>)) {
+    let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+    with_interaction_client_game_at(root, test);
+}
+
+pub(in crate::game) fn with_interaction_client_game_at(
+    root: std::path::PathBuf,
+    test: impl FnOnce(&mut Game<'_>),
+) {
+    super::super::native_entity_refs::tests::with_game_role(root, ExecutionRole::Client, |game| {
+        let (client, _server) = Pipe::pair();
+        game.connect_local(client, "InteractionTest").unwrap();
+        game.remote.as_mut().unwrap().logged_in = true;
+        game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 3.5)).unwrap());
+        game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+        game.inventory[game.selected] = Some(ItemStack::new("minecraft:stick", 1));
+        test(game);
+    });
+}
+
+pub(in crate::game) fn with_interaction_server_game(test: impl FnOnce(&mut Game<'_>)) {
+    let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+    with_interaction_server_game_at(root, test);
+}
+
+pub(in crate::game) fn with_interaction_server_game_at(
+    root: std::path::PathBuf,
+    test: impl FnOnce(&mut Game<'_>),
+) {
+    super::super::native_entity_refs::tests::with_game_at(root, |game| {
+        game.options.dedicated = Some(Vec::new());
+        game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 3.5)).unwrap());
+        game.set_mode_id(1);
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+        let _receiver = setup_interaction_guest(game);
+        game.as_guest(12, |game| {
+            game.inventory[game.selected] = Some(ItemStack::new("minecraft:stick", 1));
+            test(game);
+        })
+        .unwrap();
+    });
+}
+
 pub(in crate::game) fn with_interaction_game(client: bool, test: impl FnOnce(&mut Game<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     with_interaction_game_at(client, root, test);
@@ -302,38 +348,11 @@ pub(in crate::game) fn with_interaction_game_at(
     root: std::path::PathBuf,
     test: impl FnOnce(&mut Game<'_>),
 ) {
-    super::super::native_entity_refs::tests::with_game_at(root, |game| {
-        let _peer = if client {
-            game.options.execution_role = ExecutionRole::Client;
-            let (client, server) = Pipe::pair();
-            game.connect_local(client, "InteractionTest").unwrap();
-            game.remote.as_mut().unwrap().logged_in = true;
-            Some(server)
-        } else {
-            game.options.dedicated = Some(Vec::new());
-            None
-        };
-        game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 3.5)).unwrap());
-        if client {
-            game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
-        } else {
-            game.set_mode_id(1);
-        }
-        game.world
-            .chunks
-            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        if client {
-            game.inventory[game.selected] = Some(ItemStack::new("minecraft:stick", 1));
-            test(game);
-        } else {
-            let _receiver = setup_interaction_guest(game);
-            game.as_guest(12, |game| {
-                game.inventory[game.selected] = Some(ItemStack::new("minecraft:stick", 1));
-                test(game);
-            })
-            .unwrap();
-        }
-    });
+    if client {
+        with_interaction_client_game_at(root, test);
+    } else {
+        with_interaction_server_game_at(root, test);
+    }
 }
 
 pub(in crate::game) fn hit() -> Hit {
@@ -359,7 +378,7 @@ fn a_server_client_fires_use_item_finish_when_the_server_completes_the_use() {
     .into();
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
-        with_interaction_game(true, |game| {
+        with_interaction_client_game(|game| {
             let offhand = super::super::shield::OFFHAND_SLOT;
             // (slot, creative, used stack, replacement, what the listener sees, what the slot
             // holds after), the expectations from vanilla's client finishUsingItem.
@@ -537,7 +556,7 @@ fn a_creative_hand_replaced_by_a_finish_listener_is_not_sent_as_a_creative_slot(
     .into();
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
-        with_interaction_game(true, |game| {
+        with_interaction_client_game(|game| {
             let offhand = super::super::shield::OFFHAND_SLOT;
             let packets = |observer: &Observer| observer.0.lock().unwrap().creative_slot_packets;
             // Finish the use of `slot`, a listener setting the result's count to `count`.
@@ -607,7 +626,7 @@ fn a_server_client_keeps_a_bundle_use_until_the_server_completes_it() {
     .into();
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
-        with_interaction_game(true, |game| {
+        with_interaction_client_game(|game| {
             game.inventory[game.selected] = Some(ItemStack::new("minecraft:bundle", 1));
             assert!(game.start_using_item());
             // 200 client ticks: the use is still on, waiting for the server.

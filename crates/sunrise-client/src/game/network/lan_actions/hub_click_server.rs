@@ -24,8 +24,8 @@ impl Game<'_> {
         let mut click = prepared.take()?;
         self.with_lan_lifted(|game, host| {
             let rules = ItemRules(
-                world_items!(game),
-                &world_stations!(game).enchantments,
+                game.items(),
+                &game.stations().enchantments,
                 Some(&*game),
                 answer,
                 click.container_insert_rules().to_vec(),
@@ -90,8 +90,8 @@ impl Game<'_> {
                             return false;
                         };
                         let rules = ItemRules(
-                            world_items!(game),
-                            &world_stations!(game).enchantments,
+                            game.items(),
+                            &game.stations().enchantments,
                             Some(&*game),
                             None,
                             prepared.container_insert_rules().to_vec(),

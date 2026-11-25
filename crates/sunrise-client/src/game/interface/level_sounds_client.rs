@@ -44,7 +44,7 @@ impl Game<'_> {
             None => None,
         };
         let at = sound.at;
-        let Some(heard) = self.ask_level_sound(self.dim.id(), sound) else {
+        let Some(heard) = self.client_ask_level_sound(self.dim.id(), sound) else {
             return;
         };
         match entity {
@@ -75,7 +75,7 @@ impl Game<'_> {
         );
         let seed = self.audio.0.next_sound_seed();
         let at = sound.at;
-        if let Some(heard) = self.ask_level_sound(self.dim.id(), sound) {
+        if let Some(heard) = self.client_ask_level_sound(self.dim.id(), sound) {
             self.audio.0.play_on_seeded(
                 heard.source.index(),
                 &heard.name,
@@ -85,6 +85,90 @@ impl Game<'_> {
                 seed,
             );
         }
+    }
+    /// Client-side `PlayLevelSoundEvent` check (no server `pending_native_sounds`).
+    pub(in crate::game::client_side) fn client_ask_level_sound<'a>(
+        &mut self,
+        dimension: &str,
+        sound: LevelSound<'a>,
+    ) -> Option<HeardSound<'a>> {
+        let LevelSound {
+            name,
+            at,
+            volume,
+            pitch,
+            source,
+            emitter,
+        } = sound;
+        let asked = HeardSound {
+            name: Cow::Borrowed(name),
+            source,
+            volume,
+            pitch,
+        };
+        if !listened() || self.creatures.asking_level_sound {
+            return Some(asked);
+        }
+        let Ok(mut id) = Identifier::parse(name) else {
+            return Some(asked);
+        };
+        let (mut source_now, mut volume_now, mut pitch_now, mut cancel) =
+            (source, volume, pitch, false);
+        let entity = emitter.and_then(|id| self.entity(id));
+        // A missing client emitter must not become an AtPosition request.
+        if emitter.is_some() && entity.is_none() {
+            return None;
+        }
+        struct AskGuard<'g, 'a> {
+            game: &'g mut Game<'a>,
+        }
+        impl Drop for AskGuard<'_, '_> {
+            fn drop(&mut self) {
+                self.game.creatures.asking_level_sound = false;
+            }
+        }
+        self.creatures.asking_level_sound = true;
+        let guard = AskGuard { game: self };
+        match entity {
+            Some(entity) => guard.game.native_play_level_sound_at_entity(
+                mod_api::__private::PlayLevelSoundAtEntityCall {
+                    entity,
+                    sound: &mut id,
+                    source: &mut source_now,
+                    volume: &mut volume_now,
+                    pitch: &mut pitch_now,
+                    original_volume: volume,
+                    original_pitch: pitch,
+                    cancel: &mut cancel,
+                },
+            ),
+            None => {
+                let level = guard.game.level(dimension)?;
+                guard.game.native_play_level_sound_at_position(
+                    mod_api::__private::PlayLevelSoundAtPositionCall {
+                        level,
+                        position: at,
+                        sound: &mut id,
+                        source: &mut source_now,
+                        volume: &mut volume_now,
+                        pitch: &mut pitch_now,
+                        original_volume: volume,
+                        original_pitch: pitch,
+                        cancel: &mut cancel,
+                    },
+                );
+            }
+        }
+        drop(guard);
+        if cancel || !level_sound_playable(at, volume_now, pitch_now) {
+            return None;
+        }
+        Some(HeardSound {
+            name: Cow::Owned(id.to_string()),
+            source: source_now,
+            volume: volume_now,
+            pitch: pitch_now,
+        })
     }
     /// `LocalPlayer.playSound`, including inherited step, fall and consume sounds.
     pub(in crate::game) fn play_client_player_sound(

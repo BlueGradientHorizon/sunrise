@@ -1,8 +1,6 @@
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::*;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::block_particles::*;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_client::{
     blocks::{MAP_COLORS, RenderShape},
     particles::{ParticleOptions, ParticleType},

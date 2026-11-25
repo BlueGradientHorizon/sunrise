@@ -4,11 +4,7 @@ use sunrise_core::geometry::Vec3;
 impl Game<'_> {
     /// `BlockPlaceContext.getPlayer`: the active server player or the client doing prediction.
     pub(in crate::game) fn placement_placer(&self) -> Option<mod_api::PlacementPlacer> {
-        let player = if self.remote.is_some() {
-            self.local_player()?
-        } else {
-            self.native_acting_player()?
-        };
+        let player = self.side_acting_or_local_player()?;
         Some(mod_api::PlacementPlacer::new(player, self.eye_position()?))
     }
 }

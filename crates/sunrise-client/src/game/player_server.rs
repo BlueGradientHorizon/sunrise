@@ -407,7 +407,7 @@ impl Game<'_> {
     }
 
     /// Authoritative server `compute_crosshair_decision` equivalent.
-    fn server_pick_ray_decision(&self) -> CrosshairDecision {
+    pub(in crate::game::server_side) fn server_pick_ray_decision(&self) -> CrosshairDecision {
         if let Some(range) = self.active_attack_range() {
             match self.server_attack_range_pick_result(&range) {
                 AttackRangePickResult::Entity(hit) => return CrosshairDecision::Entity(hit),

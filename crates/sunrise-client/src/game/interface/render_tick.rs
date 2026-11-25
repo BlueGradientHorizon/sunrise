@@ -374,15 +374,11 @@ impl Game<'_> {
     fn level_flat(&self) -> bool {
         self.remote.as_ref().is_some_and(|r| r.flat)
     }
-    /// `Level.getMinY`: the current dimension type's minimum y.
-    pub(in crate::game) fn level_min_y(&self) -> i32 {
-        if self.is_logical_server() {
-            self.world.shape.min_y
-        } else {
-            self.remote
-                .as_ref()
-                .map_or(self.world.shape.min_y, |r| r.dimension.min_y)
-        }
+    /// Client arm of `level_min_y` (`side_level_min_y`).
+    pub(in crate::game) fn client_level_min_y(&self) -> i32 {
+        self.remote
+            .as_ref()
+            .map_or(self.world.shape.min_y, |r| r.dimension.min_y)
     }
     /// `SkyRenderer.shouldRenderDarkDisc`: uses `minecraft.player` eye and water state, not camera.
     pub(in crate::game::client_side) fn dark_disc(&self, _camera: glam::DVec3) -> bool {

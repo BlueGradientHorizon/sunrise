@@ -49,69 +49,8 @@ pub(in crate::game::client_side) fn done_button(w: f32, h: f32) -> (f32, f32) {
 }
 
 impl Game<'_> {
-    /// `WallHangingSignBlock.shouldTryToChainAnotherHangingSign` and
-    /// `CeilingHangingSignBlock.shouldTryToChainAnotherHangingSign`: a hanging
-    /// sign item clicked on a hanging sign's free side chains another sign onto
-    /// it, unless the side the player faces carries click commands the click
-    /// runs instead (`canExecuteClickCommands`).
-    pub(in crate::game) fn chains_hanging_sign(
-        &self,
-        pos: [i32; 3],
-        face: [i32; 3],
-        held: Option<&ItemStack>,
-    ) -> bool {
-        // `itemStack.getItem() instanceof HangingSignItem`, by the item's class
-        // and not its name.
-        let hanging_sign = held.is_some_and(|s| {
-            self.res
-                .behaviours()
-                .item_binding(&s.item)
-                .is_some_and(|i| i.kind == sunrise_world::level::ItemKind::HangingSign)
-        });
-        let key = (pos[0], pos[1], pos[2]);
-        if !hanging_sign {
-            return false;
-        }
-        let state = self.world.block(pos[0], pos[1], pos[2]);
-        let Some(form) = self
-            .res
-            .facts()
-            .get(state)
-            .sign_form()
-            .filter(|f| f.hanging)
-        else {
-            return false;
-        };
-        let free_side = if form.wall {
-            // `isHittingEditableSide`: a wall hanging sign's board lies in its
-            // FACING's plane, so its two faces are the editable text and only
-            // its edges chain.
-            let Some(facing) = self
-                .pack
-                .assets
-                .registry
-                .state(state)
-                .and_then(|s| s.properties.get("facing"))
-            else {
-                return false;
-            };
-            let axis = match &**facing {
-                "east" | "west" => 0,
-                "up" | "down" => 1,
-                _ => 2,
-            };
-            face.iter().position(|c| *c != 0) != Some(axis)
-        } else {
-            // `hitResult.getDirection().equals(Direction.DOWN)`.
-            face == [0, -1, 0]
-        };
-        free_side && !self.sign_can_execute_click_commands(key)
-    }
     /// `SignBlock.openTextEdit` for the front side after placement.
     pub(in crate::game) fn open_sign_editor(&mut self, pos: (i32, i32, i32), front: bool) {
-        if self.fake_blocks(mod_api::FakeEffect::Menu) {
-            return;
-        }
         self.open_screen_overlay("sign_editor", |game| {
             // Minecraft.setScreen: the editor already open is removed first.
             game.close_sign_editor();
@@ -132,7 +71,6 @@ impl Game<'_> {
             game.set_mapping_held("key.use", false);
             game.capture(false);
         });
-        self.open_sign_editor_server(pos, front);
     }
     /// `AbstractSignEditScreen.tick`: the editor closes (and `removed` sends
     /// the text) once its sign is removed or the player's eyes are further

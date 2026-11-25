@@ -1071,10 +1071,7 @@ impl Game<'_> {
         }
         for (i, mob) in collectors {
             let item = self.dropped[i].clone();
-            self.add_pickup(
-                super::pickups::Taken::Item(Box::new(item)),
-                super::pickups::Collector::Mob(mob),
-            );
+            self.server_mob_take_item(&item, mob);
         }
         taken.sort_unstable();
         for i in taken.into_iter().rev() {

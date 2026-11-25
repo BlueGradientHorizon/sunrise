@@ -1305,63 +1305,6 @@ impl TryIntoApi for crate::menu::AnvilCraftSnapshot {
 }
 
 impl super::Game<'_> {
-    pub(in crate::game) fn api_anvil_update(
-        &mut self,
-        player: u128,
-        entity: i32,
-        pos: [i32; 3],
-        inputs: crate::menu::AnvilUpdateInputs<'_>,
-        result: &mut crate::stations::AnvilResult,
-    ) {
-        use mod_api::item::menu::{AnvilUpdateEdits, AnvilUpdateInputs, StackResult};
-
-        let Ok(left) = inputs.left.try_into_api() else {
-            return;
-        };
-        let Ok(right) = inputs.right.try_into_api() else {
-            return;
-        };
-        let Ok(vanilla_output) = result.result.try_into_api() else {
-            return;
-        };
-        let inputs = AnvilUpdateInputs {
-            left: &left,
-            right: right.as_ref(),
-            name: inputs.name,
-            vanilla_output: vanilla_output.as_ref(),
-            vanilla_xp_cost: result.cost,
-            vanilla_material_cost: i32::try_from(result.repair_item_count_cost).unwrap_or(i32::MAX),
-        };
-        let mut edits = AnvilUpdateEdits {
-            output: StackResult::Keep,
-            xp_cost: inputs.vanilla_xp_cost,
-            material_cost: inputs.vanilla_material_cost,
-        };
-        let mut cancel = false;
-        self.native_anvil_update(player, entity, pos, &inputs, &mut edits, &mut cancel);
-        if cancel {
-            *result = Default::default();
-            return;
-        }
-        // An equal replacement keeps the original engine stack, even if a mod could not write it.
-        if let StackResult::Set(output) = edits.output
-            && output != vanilla_output
-        {
-            match output.try_into_engine(self.items()) {
-                Ok(output) => {
-                    result.only_renaming &= result.result == output;
-                    result.result = output;
-                }
-                Err(err) => {
-                    log::warn!(
-                        "anvil_update: ignoring invalid output replacement at {pos:?}: {err:?}"
-                    );
-                }
-            }
-        }
-        result.cost = edits.xp_cost.max(0);
-        result.repair_item_count_cost = edits.material_cost.max(0) as u32;
-    }
     pub(in crate::game) fn api_grindstone_place(
         &mut self,
         player: u128,
@@ -1884,29 +1827,6 @@ impl super::Game<'_> {
         if let Ok(api) = entity.try_into_api() {
             crate::game::native_hooks::native_block_entity_update_tag(pos, &api, tag);
         }
-    }
-    /// Shared click metadata borrows the already-converted API snapshot for this call.
-    pub(in crate::game) fn block_click<'a>(
-        &mut self,
-        hit: &super::Hit,
-        hand: mod_api::Hand,
-        stack: Option<&'a ApiStack>,
-    ) -> mod_api::BlockClick<'a> {
-        let (player, player_entity_id) = self.native_clicker();
-        mod_api::BlockClick::from(mod_api::__private::built::BlockClick {
-            side: if self.remote.is_some() {
-                mod_api::LogicalSide::Client
-            } else {
-                mod_api::LogicalSide::Server
-            },
-            dimension: self.dim.level(),
-            pos: hit.pos,
-            hit: hit.native(),
-            hand,
-            stack,
-            player,
-            player_entity_id,
-        })
     }
 }
 impl super::GameLevel<'_> {

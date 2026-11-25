@@ -9,8 +9,6 @@
 pub(in crate::game) mod lifetime_tests;
 #[path = "minecarts/save_lending.rs"]
 pub(in crate::game) mod save_lending;
-#[path = "minecarts/section_steps.rs"]
-pub(in crate::game) mod section_steps;
 
 #[allow(unused_imports)]
 use super::{Game, Hit, InteractTarget, Keys, entity::Entity};
@@ -610,25 +608,6 @@ impl Game<'_> {
             && self.carts.store_back(index, cart)
     }
 
-    /// `getDismountLocationForPassenger`: beside the cart's motion direction,
-    /// else on top.
-    pub(in crate::game) fn dismount_cart(&mut self, i: usize) {
-        let id = self.carts[i].id;
-        if self.riding == Some(id) && !self.native_may_leave(id) {
-            return;
-        }
-        self.riding = None;
-        if self.dismount_in_portal(self.carts[i].position) {
-            return;
-        }
-        let target = self.cart_player_dismount_target(i);
-        let from = self.player.as_ref().map(|player| player.position);
-        if let Some(p) = self.player.as_mut() {
-            p.position = target;
-            p.velocity = Vec3::ZERO;
-        }
-        section_steps::tell_player(self, from.map(|from| (from, target)));
-    }
     /// Where the cart at `i` lets a player off.
     pub(in crate::game) fn cart_player_dismount_target(&self, i: usize) -> Vec3 {
         let c = &self.carts[i];
@@ -661,26 +640,6 @@ impl Game<'_> {
         }
         let top = c.bounds().max_position().y;
         target.unwrap_or(Vec3::new(c.position.x, top, c.position.z))
-    }
-    /// The slots of the cart `id`, for a command: `getChestVehicleItem` and
-    /// `setChestVehicleItem` first unpack its loot table with no player, so
-    /// no `player_generates_container_loot` fires later. While its menu is
-    /// open the live slots are the placeholder copy (`open_cart_container`).
-    pub(in crate::game) fn edit_cart_slots<R>(
-        &mut self,
-        id: u32,
-        edit: impl FnOnce(&mut Vec<Option<ItemStack>>) -> R,
-    ) -> Option<R> {
-        let i = self.carts.iter().position(|c| c.id == id)?;
-        self.unpack_loot(super::container_loot::LootTarget::Cart(id), None);
-        match self
-            .world
-            .block_entities
-            .get_mut(&(i32::MAX - 15, CART_KEY_Y, id as i32))
-        {
-            Some(BlockEntity::Chest(open)) => Some(edit(open)),
-            _ => Some(self.carts.update(i, |c| edit(&mut c.items))),
-        }
     }
     /// Closing the cart's container open under `key` copies the items back.
     pub(in crate::game) fn close_cart_container(&mut self, key: (i32, i32, i32)) {
@@ -742,35 +701,6 @@ impl Game<'_> {
                     .any(|b| b.chest && b.id as i32 == key.2)
                     .then_some(CartKind::Chest)
             })
-    }
-    /// `Containers.dropContents(level, entity, container)` at a vehicle's
-    /// position `at`: each slot (an empty one too) from a spot in its block,
-    /// in pieces of 10 to 30 with the level random's scatter, no pickup
-    /// delay. `AbstractChestBoat.remove` and `AbstractMinecartContainer.remove`
-    /// spill this way for a destroying removal (kill or discard), and
-    /// `chestVehicleDestroyed` again for the emptied container.
-    pub(in crate::game) fn drop_vehicle_contents(
-        &mut self,
-        at: [f64; 3],
-        items: &[Option<ItemStack>],
-    ) {
-        for stack in items {
-            let count = stack.as_ref().map_or(0, |s| s.count);
-            let pieces = sunrise_world::level::removal::drop_item_stack_at(
-                &mut self.world.random,
-                at,
-                count,
-            );
-            if let Some(stack) = stack {
-                for piece in pieces {
-                    let piece_stack = ItemStack {
-                        count: piece.count,
-                        ..stack.clone()
-                    };
-                    self.spawn_item(piece_stack, piece.pos, piece.motion, 0);
-                }
-            }
-        }
     }
     /// The seed vanilla picks a block state model's weighted alternatives with outside the
     /// world (`BlockModelResolver.MODEL_SEED`).
@@ -1019,29 +949,6 @@ pub(in crate::game) fn tnt_ignites_by_collision(
 /// the cast: HotSpot's atan2, multiplied then divided in Java's order.
 pub(in crate::game) fn java_degrees(y: f64, x: f64) -> f64 {
     sunrise_core::jmath::atan2(y, x) * 180.0 / std::f64::consts::PI
-}
-
-impl Game<'_> {
-    /// `MinecartTNT.primeFuse`: fuse 80, then `Level.broadcastEntityEvent`
-    /// (`EntityEvent.TNT_PRIME`, 70) and, unless the cart is silent,
-    /// `SoundEvents.TNT_PRIMED` on `SoundSource.BLOCKS`. A client that
-    /// receives 70 only sets the fuse (`handleEntityEvent`).
-    pub(in crate::game) fn prime_cart(&mut self, c: &mut Minecart) {
-        if !self
-            .ui
-            .rules
-            .bool_at(sunrise_client::gamerules::vanilla::TNT_EXPLODES)
-        {
-            return;
-        }
-        c.fuse = 80;
-        let at = [c.position.x, c.position.y, c.position.z];
-        let id = c.id as i32;
-        self.lan_entity_event(id, TNT_PRIME_EVENT, at);
-        if !self.entity_silent(c.id) {
-            self.server_play_sound_on(BLOCKS, "minecraft:entity.tnt.primed", at, 1.0, 1.0);
-        }
-    }
 }
 
 #[cfg(test)]

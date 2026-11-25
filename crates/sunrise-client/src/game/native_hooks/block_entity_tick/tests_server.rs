@@ -1,4 +1,6 @@
 #[allow(unused_imports)]
+pub(in crate::game::server_side) use super::tick_tests::*;
+#[allow(unused_imports)]
 pub(in crate::game::server_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::Dim;
@@ -6,42 +8,6 @@ pub(in crate::game::server_side) use crate::game::Dim;
 pub(in crate::game::server_side) use crate::game::native_entity_refs::tests::{
     bind_local_player, run_fresh_cases, with_game, with_game_at,
 };
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tick::tests::AT;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tick::tests::CHUNK;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tick::tests::CONTAINER_MACHINE;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tick::tests::Effects;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tick::tests::KIND;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tick::tests::MACHINE;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tick::tests::POS;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tick::tests::Retake;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tick::tests::UNSUBSCRIBED;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tick::tests::UNSUBSCRIBED_MACHINE;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tick::tests::access;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tick::tests::check_edit_then_replace;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tick::tests::enable_block_ticks;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tick::tests::place_subject;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tick::tests::row;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tick::tests::with_ticker;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tick::tests::with_ticker_mods;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::block_entity_tick::tests::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use mod_api::{
     BlockEdit, BlockEntityLoadAdditionalEvent, BlockEntityPart, BlockEntitySaveAdditionalEvent,

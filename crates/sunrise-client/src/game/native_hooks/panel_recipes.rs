@@ -48,16 +48,3 @@ fn recipe_view(view: mod_api::RecipeView) -> Option<NativeRecipeView> {
         action: view.action,
     })
 }
-
-impl Game<'_> {
-    /// Shows `page` in mod `mod_id`'s item panel instead of its items, cut to the renderer's
-    /// limits; `None` shows the items again.
-    pub(in crate::game) fn panel_recipes(
-        &mut self,
-        mod_id: &str,
-        page: Option<mod_api::RecipePage>,
-    ) {
-        let (title, tabs, tab, views) = page_views(page);
-        self.native_panel_recipes(mod_id, &title, tabs, tab, views);
-    }
-}

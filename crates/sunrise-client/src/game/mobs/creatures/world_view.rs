@@ -4,11 +4,13 @@ use super::*;
 
 /// Side-specific inputs supplied to [`Game::mob_world_base_with`] by server or client.
 pub(in crate::game) struct MobWorldSideParams<'s> {
+    pub(in crate::game) side: &'s dyn sunrise_client::motion::SideLevel,
     pub(in crate::game) trading_players:
         Option<&'s dyn sunrise_client::mobs::villager_brain::TradingPlayers>,
     pub(in crate::game) player: Option<PlayerView>,
     pub(in crate::game) player_identity: Option<([i32; 4], u32)>,
     pub(in crate::game) leash_boats: &'s [(u32, sunrise_client::mobs::leash::HolderState)],
+    pub(in crate::game) teams: std::sync::Arc<sunrise_client::mobs::Teams<'s>>,
     pub(in crate::game) lid_openers: &'s std::collections::HashMap<(i32, i32, i32), i32>,
     pub(in crate::game) mod_effects: Option<&'s dyn sunrise_client::mobs::ModEffectTicks>,
     pub(in crate::game) mob_hooks: Option<&'s dyn sunrise_client::mobs::MobHooks>,
@@ -34,7 +36,7 @@ impl Game<'_> {
             .filter(|p| !p.spectator)
             .map(|p| p.position);
         MobWorld {
-            side: self,
+            side: params.side,
             mob_maps: self.mob_maps(),
             section_writer: None,
             trading_players: params.trading_players,
@@ -100,7 +102,7 @@ impl Game<'_> {
             dimension_type: self.dimension_type(),
             world_seed: self.level.seed,
             sea_level: self.dim.sea_level(),
-            teams: std::sync::Arc::new(self.mob_teams()),
+            teams: params.teams,
             items: Some(self.items()),
             lid_openers: params.lid_openers,
             mod_effects: params.mod_effects,

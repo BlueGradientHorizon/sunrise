@@ -9,10 +9,12 @@ impl Game<'_> {
         self.mob_world_base_with(
             others,
             MobWorldSideParams {
+                side: self,
                 trading_players: Some(self),
                 player: self.player_view(),
                 player_identity: self.player_identity(),
                 leash_boats: &self.server.leash_boats,
+                teams: std::sync::Arc::new(self.mob_teams()),
                 lid_openers: &self.server.lid_openers,
                 mod_effects: Some(self),
                 mob_hooks: (self.native_authoritative()

@@ -4,9 +4,9 @@ pub(in crate::game::server_side) use super::Game;
 pub(in crate::game::server_side) use super::level_sounds::LevelSound;
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::ghasts::with_headless_game;
+pub(in crate::game::server_side) use crate::game::server_side::ghasts::with_headless_game;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::ghasts::*;
+pub(in crate::game::server_side) use crate::game::server_side::ghasts::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use mod_api::SoundSource;
 #[allow(unused_imports)]

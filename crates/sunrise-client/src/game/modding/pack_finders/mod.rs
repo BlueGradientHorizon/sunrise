@@ -18,10 +18,10 @@ mod tests;
 pub(in crate::game) struct Registry {
     kind: PackType,
     mods: ModsState,
-    packs: Vec<Pack>,
+    pub(in crate::game) packs: Vec<Pack>,
 }
 impl Registry {
-    fn new(kind: PackType, mods: ModsState) -> Self {
+    pub(in crate::game) fn new(kind: PackType, mods: ModsState) -> Self {
         Self {
             kind,
             mods,
@@ -193,15 +193,4 @@ pub(in crate::game::server_side) fn data_repository(
     packs.extend(additional.iter().map(|pack| (**pack).clone()));
     packs.sort_by(|a, b| sunrise_client::datapack::compare_ids(&a.id, &b.id));
     packs
-}
-
-impl Game<'_> {
-    pub(in crate::game) fn discover_mod_packs(&mut self, kind: PackType) -> Vec<Pack> {
-        if !mod_api::__private::enabled_listened(HookId::AddPackFinders) {
-            return Vec::new();
-        }
-        let mut registry = Registry::new(kind, self.mods.clone());
-        self.native_add_pack_finders(&mut registry);
-        registry.packs
-    }
 }

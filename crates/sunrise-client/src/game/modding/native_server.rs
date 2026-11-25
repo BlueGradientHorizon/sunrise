@@ -606,83 +606,43 @@ impl PlayerRead<'_> {
     }
 }
 
-/// Helpers for server mods, kept as stable as the hook points.
+/// Helpers for mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.
 #[allow(dead_code)]
 impl Game<'_> {
-    /// A fake player acts as a player does, through the game's own path for the action
-    /// (`ServerGamePacketListenerImpl.handleUseItemOn` / `handleUseItem` / `handleInteract`'s
-    /// ATTACK, and `ServerPlayerGameMode.destroyBlock`), as its packet would run it: reach,
-    /// protection and the border, then the action. Once it runs, an effect a fake can't take
-    /// part in (a menu, sleep, a ride, another dimension) is stopped where it would start, and
-    /// the answer says which; the action's own side effects (the swing, the hooks before it,
-    /// vanilla's result) have still happened then. The fake is found once, and its turn
-    /// starts at that place in the list.
-    pub(in crate::game) fn player_perform_action(
-        &mut self,
-        player: PlayerRef,
-        action: PlayerAction,
-    ) -> Result<ActionOutcome, ActionRefused> {
-        let (gi, conn) = self.fake_action_actor(player, action)?;
-        self.perform_fake_action(gi, conn, action)
-    }
-
-    /// Resolve a real online player by UUID, never a fake. A fake is reached
-    /// through the handle returned by its factory. During a nested player swap,
-    /// outer players whose records are displaced return None.
+    /// Resolve a real online player by UUID, never a fake.
     pub(in crate::game) fn player(&self, uuid: u128) -> Option<PlayerRef> {
-        let epoch = self.native_lifecycle.epoch()?;
-        if let Some(remote) = self
-            .remote
-            .as_ref()
-            .filter(|r| r.logged_in && r.profile == uuid)
-        {
-            return Some(mod_api::__private::game::player_ref(
-                mod_api::EntityRef::new(epoch, u32::try_from(remote.entity_id).ok()?),
-                uuid,
-            ));
-        }
-        let (_, id) = self.player_lookup(uuid)?;
-        Some(mod_api::__private::game::player_ref(
-            mod_api::EntityRef::new(epoch, id),
-            uuid,
-        ))
+        self.side_player(uuid)
     }
 
-    /// The dimension id and block of the player's last death, through the
-    /// shared player resolver. None for a stale or unavailable player.
+    /// The dimension id and block of the player's last death, through the shared player resolver.
     pub(in crate::game) fn native_player_last_death_record(
         &self,
         player: PlayerRef,
     ) -> Option<(String, [i32; 3])> {
-        if !self.is_logical_server() {
-            // A client's copy: what the login and respawn packets carried.
-            return (self.local_player()? == player)
-                .then(|| self.level.last_death.clone())
-                .flatten();
-        }
-        self.player_handle_read(player)?.last_death().cloned()
+        self.player_read_both(player)?.last_death().cloned()
     }
 
-    /// `player_handle_read` for the reads that work on both sides. On a
-    /// client the local player (`Minecraft.player`) reads its own copy of
-    /// what the server sent (`LocalPlayer`): the entity's resolved `PlayerInfo`
-    /// game mode (`AbstractClientPlayer.gameMode`, None before `ADD_PLAYER`),
-    /// food, live `Abilities`, hotbar slot and experience. Any other player
-    /// reads None there: the client is not sent their state.
+    /// `player_handle_read` for the reads that work on both sides.
     pub(in crate::game) fn player_read_both(&self, player: PlayerRef) -> Option<PlayerRead<'_>> {
-        if self.is_logical_server() {
-            return self.player_handle_read(player);
-        }
-        (self.local_player()? == player).then(|| PlayerRead::Acting {
-            mode: self
-                .player_info_game_mode()
-                .map(sunrise_client::command::args::GameMode::id),
-            body: self.player.as_ref(),
-            abilities: self.client_abilities(),
-            last_death: self.level.last_death.as_ref(),
-        })
+        self.side_player_read_both(player)
     }
+
+    /// The dimension key of an online player (`ServerPlayer.level().dimension()`).
+    pub(in crate::game) fn player_dimension_key(
+        &self,
+        player: PlayerRef,
+    ) -> Option<mod_api::DimensionKey> {
+        self.side_player_dimension_key(player)
+    }
+
+    pub(in crate::game) fn player_collision_flags(
+        &self,
+        player: PlayerRef,
+    ) -> Result<Option<mod_api::CollisionFlags>, mod_api::LevelReadError> {
+        self.side_player_collision_flags(player)
+    }
+
     pub(in crate::game) fn player_supporting_block(
         &self,
         player: PlayerRef,
@@ -713,32 +673,11 @@ impl Game<'_> {
         }))
     }
 
-    /// `ServerPlayerGameMode.getGameModeForPlayer` on a server; `AbstractClientPlayer.gameMode`
-    /// (resolved `PlayerInfo`) on a client. None for stale, offline or unavailable players
-    /// (including displaced outer players), and on a client before `ADD_PLAYER` resolves the
-    /// entity's `PlayerInfo`. Distinct from `player_abilities`, which reads `LocalPlayer.abilities`.
+    /// `ServerPlayerGameMode.getGameModeForPlayer` on a server; `AbstractClientPlayer.gameMode` on a client.
     pub(in crate::game) fn player_game_mode(&self, player: PlayerRef) -> Option<GameMode> {
         self.player_read_both(player)?
             .mode()
             .and_then(GameMode::from_id)
-    }
-
-    /// Changes a player's game mode as `ServerPlayer.setGameMode` and
-    /// `/gamemode` do, including the cancellable change hook and ability
-    /// updates. Returns false for a stale or unavailable player, an active
-    /// outer guest, no change, or a canceled change.
-    pub(in crate::game) fn player_set_game_mode(
-        &mut self,
-        player: PlayerRef,
-        mode: GameMode,
-    ) -> bool {
-        if self.player_handle_read(player).is_none() {
-            return false;
-        }
-        let mut changed = false;
-        self.native_as_player_handle(player, |game| {
-            changed = game.set_game_mode(mode);
-        }) && changed
     }
 
     /// `Player.isCreative`; Paper `HumanEntity#getGameMode`.
@@ -754,40 +693,7 @@ impl Game<'_> {
         })
     }
 
-    /// `Player.drop(stack, false, thrown_by_player)`: `stack` thrown from the player's eyes along
-    /// their view as an item entity with the drop key's pickup delay, the main hand swinging and
-    /// `item_toss` asked first. Nothing is taken from an inventory: the stack is the caller's
-    /// (take it out through the item places first). `thrown_by_player` names the player as the
-    /// thrower, as the drop key does. None once the item is in the world; the stack back,
-    /// untouched, for an empty stack, a stale or dead player, a player in another level than the
-    /// one in place and a toss a mod canceled, so a refused drop never loses items.
-    pub(in crate::game) fn player_drop_stack(
-        &mut self,
-        player: PlayerRef,
-        stack: ItemStack,
-        thrown_by_player: bool,
-    ) -> Option<ItemStack> {
-        if self.entity_ids_exhausted() {
-            return Some(stack);
-        }
-        if stack.count == 0 {
-            return Some(stack);
-        }
-        // `throw_from_eyes` discards a vetoed toss, as `item_toss` always has: keep a copy so
-        // the caller gets it back.
-        let copy = stack.clone();
-        let mut dropped = false;
-        let ran = self.native_as_player_handle(player, |game| {
-            // A stack thrown from a player in another level would land in this one.
-            if game.acting_in_level_in_place() {
-                dropped = game.drop_stack_from_eyes(stack, thrown_by_player).is_some();
-            }
-        });
-        (!(ran && dropped)).then_some(copy)
-    }
-
-    /// `Player.isSpectator` (`gameMode() == GameType.SPECTATOR` on a client, authoritative
-    /// `ServerPlayerGameMode` on a server); Paper `HumanEntity#getGameMode`.
+    /// `Player.isSpectator`.
     pub(in crate::game) fn player_is_spectator(&self, player: PlayerRef) -> Option<bool> {
         Some(self.player_read_both(player)?.mode() == Some(3))
     }
@@ -797,489 +703,39 @@ impl Game<'_> {
         Some(self.player_read_both(player)?.may_build())
     }
 
-    /// `FoodData.getFoodLevel/getSaturationLevel/getExhaustionLevel`; Paper
-    /// `HumanEntity#getFoodLevel/getSaturation/getExhaustion`. None until the
-    /// guest's body exists, as well as for stale or unavailable players.
+    /// `FoodData.getFoodLevel/getSaturationLevel/getExhaustionLevel`.
     pub(in crate::game) fn player_food(&self, player: PlayerRef) -> Option<PlayerFood> {
         self.player_read_both(player)?.food()
     }
 
-    /// Find a connected player by their account name, case-insensitively,
-    /// including an integrated server's own player.
-    pub(in crate::game) fn native_player_by_name(&self, name: &str) -> Option<PlayerRef> {
-        let epoch = self.native_lifecycle.epoch()?;
-        let player = self
-            .lan
-            .as_ref()?
-            .hub
-            .online_players()
-            .find(|player| player.name.eq_ignore_ascii_case(name))?;
-        Some(mod_api::__private::game::player_ref(
-            mod_api::EntityRef::new(epoch, player.entity_id as u32),
-            player.uuid,
-        ))
-    }
-
-    /// A connected player's record, including a body removed for respawn or displaced by a turn.
-    pub(in crate::game) fn online_player_record(&self, player: PlayerRef) -> Option<&Guest> {
-        (self.native_lifecycle.epoch()? == player.entity().epoch()).then_some(())?;
-        let guests = &self.lan.as_ref()?.hub.guests;
-        let guest = guests.get(guests.identity_index(player.uuid(), player.entity().id())?)?;
-        (guest.joined() && guest.participates_online()).then_some(guest)
-    }
-
-    /// The level the online player is in (`ServerPlayer.level`): on an integrated
-    /// server or dedicated server, the player's current dimension; on a client,
-    /// the client's level. None for a stale or unavailable player.
+    /// The level the online player is in (`ServerPlayer.level`).
     pub(in crate::game) fn player_level(&self, player: PlayerRef) -> Option<LevelRef> {
         let dim = self.player_dimension_key(player)?;
         Some(self.level_ref(player.fields().entity.epoch(), dim))
     }
 
-    /// The dimension the online player is in (`ServerPlayer.level().dimension()`):
-    /// `minecraft:overworld`, `minecraft:the_nether`, ... None for a stale
-    /// or unavailable player.
+    /// The dimension the online player is in (`ServerPlayer.level().dimension()`).
     pub(in crate::game) fn player_dimension(&self, player: PlayerRef) -> Option<Identifier> {
         let level = self.player_level(player)?;
         Identifier::parse(level.dimension_id()).ok()
     }
 
-    /// The IP address the player connects from, without the port. Displaced connected
-    /// players keep their address; an acting player with no known connection
-    /// has an empty address. None for a stale or unavailable player.
-    pub(in crate::game) fn player_address(&self, player: PlayerRef) -> Option<&str> {
-        if let Some(guest) = self.online_player_record(player) {
-            return Some(guest.ip_address());
-        }
-        (self.native_acting_player() == Some(player)).then_some("")
-    }
-
-    pub(in crate::game) fn player_virtual_host(&self, player: PlayerRef) -> Option<&VirtualHost> {
-        if !self.is_logical_server() {
-            return None;
-        }
-        self.online_player_record(player)?.sender.virtual_host()
-    }
-
-    /// The brand the player's client announced when it connected (`ServerPlayer.clientBrand`),
-    /// empty when it sent none. Displaced connected players keep theirs; an acting player with
-    /// no known connection has an empty one. None for a stale or unavailable player.
+    /// The brand the player's client announced when it connected (`ServerPlayer.clientBrand`).
     pub(in crate::game) fn player_client_brand(&self, player: PlayerRef) -> Option<&str> {
-        if let Some(guest) = self.online_player_record(player) {
-            return Some(&guest.brand);
-        }
-        (self.native_acting_player() == Some(player)).then_some("")
+        self.side_player_client_brand(player)
     }
 
-    /// A snapshot of the plugin channels the player's client announced (`minecraft:register`
-    /// less `minecraft:unregister`), kept by its connection from configuration on.
-    pub(in crate::game) fn player_announced_channels(
-        &self,
-        player: PlayerRef,
-    ) -> Option<Arc<[String]>> {
-        static EMPTY: LazyLock<Arc<[String]>> = LazyLock::new(Arc::default);
-        if let Some(guest) = self.online_player_record(player) {
-            return Some(guest.sender.announced.list());
-        }
-        (self.native_acting_player() == Some(player)).then(|| Arc::clone(&EMPTY))
-    }
-
-    /// Validate identity without requiring a live body: sending to an online
-    /// displaced player still works, as it did through the UUID send path.
-    pub(in crate::game) fn message_player_uuid(&self, player: PlayerRef) -> Option<u128> {
-        (self.native_acting_player() == Some(player) || self.online_player_record(player).is_some())
-            .then_some(player.uuid())
-    }
-    /// A system line in that player's chat, also inside a player's hook for
-    /// the acting player; false when they aren't on.
-    pub(in crate::game) fn player_tell(&mut self, player: PlayerRef, line: Text) -> bool {
-        let Some(uuid) = self.message_player_uuid(player) else {
-            return false;
-        };
-        self.native_send(uuid, system_chat(&line))
-    }
-    /// A line over that player's hotbar (the action bar), also inside a
-    /// player's hook for the acting player; false when they aren't on.
-    pub(in crate::game) fn player_action_bar(&mut self, player: PlayerRef, line: Text) -> bool {
-        let Some(uuid) = self.message_player_uuid(player) else {
-            return false;
-        };
-        let packet = C::SystemChat(play::SystemChat {
-            content: component_nbt(&line.component()),
-            overlay: true,
-        });
-        self.native_send(uuid, packet)
-    }
-    /// Sends `packet` to that player, also when they are the acting player
-    /// (their packets then go after the hook); false when they aren't on.
-    pub(in crate::game) fn native_send(&mut self, uuid: u128, packet: C) -> bool {
-        self.native_send_all(uuid, vec![packet])
-    }
-    /// Resolve the physical recipient before converting any of the supplied text.
-    pub(in crate::game) fn player_set_sidebar(
-        &mut self,
-        player: PlayerRef,
-        sidebar: Option<Sidebar>,
-    ) -> Result<bool, TextFormError> {
-        let Some(conn) = self.online_player_record(player).map(|guest| guest.conn) else {
-            return Ok(false);
-        };
-        let contents = sidebar
-            .map(|sidebar| {
-                let items = self.res.item_defaults().entries();
-                SidebarContents::prepare(sidebar, &|item| items.contains_key(item)).map(Box::new)
-            })
-            .transpose()?;
-        self.after_commit(super::transactions::After::PersonalSidebar(conn, contents));
-        Ok(true)
-    }
-    /// The lines over and under that player's list of players (Tab):
-    /// `ClientboundTabListPacket`, an empty text for none. False when they
-    /// aren't on.
-    pub(in crate::game) fn player_tab_list(
-        &mut self,
-        player: PlayerRef,
-        header: &Text,
-        footer: &Text,
-    ) -> bool {
-        let Some(uuid) = self.message_player_uuid(player) else {
-            return false;
-        };
-        let packet = C::TabList(play::TabList {
-            header: component_nbt(&header.component()),
-            footer: component_nbt(&footer.component()),
-        });
-        self.native_send(uuid, packet)
-    }
-    /// The server's tick rate (20 unless `/tick rate` changed it) and the
-    /// milliseconds its ticks took on average lately, as `/tick query`
-    /// reports them. The ticks a second it keeps up is the rate, or
-    /// 1000 / milliseconds when that is lower.
+    /// The server's tick rate and average tick duration in milliseconds.
     pub(in crate::game) fn tick_stats(&self) -> (f32, f64) {
         (
             self.clock.rate(),
             self.clock.average_nanos() as f64 / 1_000_000.0,
         )
     }
+
     /// `TickRateManager.isFrozen`; None on a client, which follows its server's.
     pub(in crate::game) fn tick_rate_is_frozen(&self) -> Option<bool> {
         self.is_logical_server().then(|| self.clock.frozen())
-    }
-    /// A mod's `set_tick_rate`: `apply_tick_rate`, refused inside the `server_tick_rate_changed`
-    /// hook so a listener can't fire it again without end.
-    pub(in crate::game) fn set_tick_rate(&mut self, rate: f32) -> bool {
-        !LevelControl::TickRate.is_heard() && self.apply_tick_rate(rate)
-    }
-    /// `/tick rate`'s `ServerTickRateManager.setTickRate`, then `MinecraftServer.onTickRateChanged`
-    /// (the hook, and the autosave wait shortened). False for a rate outside 1 to 10000 and
-    /// on a client, which follows its server's rate. The command runs it from a listener too,
-    /// as vanilla does.
-    pub(in crate::game) fn apply_tick_rate(&mut self, rate: f32) -> bool {
-        if !self.is_logical_server() || !(1.0..=10_000.0).contains(&rate) {
-            return false;
-        }
-        self.clock.set_rate(rate);
-        self.on_tick_rate_changed();
-        true
-    }
-    /// Whether that player counts for `players_sleeping_percentage`: an
-    /// ignored player who isn't in bed is left out of the players the night
-    /// needs asleep, as a spectator is (an away-from-keyboard mod). Kept
-    /// until a mod sets it back or the server stops, also if they leave and
-    /// come back. False when the server list is unavailable, the handle is
-    /// stale or the player isn't online.
-    pub(in crate::game) fn player_set_sleep_ignored(
-        &mut self,
-        player: PlayerRef,
-        ignored: bool,
-    ) -> bool {
-        let Some(uuid) = self.sleep_list_uuid(player) else {
-            return false;
-        };
-        let Some(host) = &mut self.lan else {
-            return false;
-        };
-        if ignored {
-            host.sleep_ignored.insert(uuid);
-        } else {
-            host.sleep_ignored.remove(&uuid);
-        }
-        true
-    }
-    /// The UUID of a player the server list holds, whom the sleep count can
-    /// leave out: None when the list is unavailable, the handle is stale or
-    /// the player isn't online.
-    pub(in crate::game) fn sleep_list_uuid(&self, player: PlayerRef) -> Option<u128> {
-        let uuid = self.message_player_uuid(player)?;
-        self.lan
-            .as_ref()?
-            .hub
-            .online_players()
-            .any(|g| g.uuid == uuid)
-            .then_some(uuid)
-    }
-    /// Whether `player_set_sleep_ignored` left the player out of the sleep
-    /// count. None as the write's false.
-    pub(in crate::game) fn player_sleep_ignored(&self, player: PlayerRef) -> Option<bool> {
-        let uuid = self.sleep_list_uuid(player)?;
-        Some(self.lan.as_ref()?.sleep_ignored.contains(&uuid))
-    }
-    /// `Player.getSleepTimer`: the ticks in bed (`sleepCounter`), in the
-    /// record of a guest or in place for the acting player. None for a
-    /// stale or unavailable player.
-    pub(in crate::game) fn player_sleep_timer(&self, player: PlayerRef) -> Option<u32> {
-        Some(match self.player_handle_read(player)? {
-            PlayerRead::Acting { .. } => self.sleep_timer,
-            PlayerRead::Guest(guest) => guest.sleep_timer,
-        })
-    }
-    /// Sets `Player.sleepCounter` to `ticks`, 0 to 109 (what `tick_sleep_timer`
-    /// reaches), through the sleep writes' guard: false for a fake player,
-    /// a guest in another level and a stale player.
-    pub(in crate::game) fn player_set_sleep_timer(
-        &mut self,
-        player: PlayerRef,
-        ticks: u32,
-    ) -> bool {
-        if ticks > super::MAX_SLEEP_TIMER || self.player_handle_read(player).is_none() {
-            return false;
-        }
-        let Some(target) = self.native_entity_target(player.entity()) else {
-            return false;
-        };
-        self.native_player_sleep_write(target, |game| {
-            game.sleep_timer = ticks;
-            true
-        })
-    }
-    /// `ServerPlayer.isTextFilteringEnabled`: what the client's
-    /// `ClientInformation` said, false for the player running the server and
-    /// for an acting player with no connection. None for a stale or
-    /// unavailable player.
-    pub(in crate::game) fn player_text_filtering(&self, player: PlayerRef) -> Option<bool> {
-        if let Some(guest) = self.online_player_record(player) {
-            return Some(guest.info.text_filtering);
-        }
-        (self.native_acting_player() == Some(player)).then_some(false)
-    }
-    /// `ServerPlayer.setRespawnPosition`, as `/spawnpoint` sets it (the
-    /// same `set_respawn_point`): `config`, or none for None. The removed
-    /// original is writable here during the respawn-position callback, even
-    /// after death. Otherwise dead players, stale handles, unknown levels,
-    /// non-finite yaw and canceled changes are refused.
-    pub(in crate::game) fn player_set_respawn_config(
-        &mut self,
-        player: PlayerRef,
-        config: Option<PlayerRespawnConfig>,
-    ) -> bool {
-        let stored = match config {
-            Some(config) => {
-                let dimension = config.position.dimension().to_string();
-                if !config.yaw.is_finite() || !Dim::exists(&dimension) {
-                    return false;
-                }
-                let at = config.position.pos();
-                Some(RespawnConfig::wrapped(
-                    Dim::from_id(&dimension),
-                    [at.x, at.y, at.z],
-                    config.yaw,
-                    config.forced,
-                ))
-            }
-            None => None,
-        };
-        // The cloning scope lends the removed original to PlayerRespawnPositionEvent.
-        // Allow this write without publishing the player or relaxing other dead-player writes.
-        match self.player_handle_read(player) {
-            Some(PlayerRead::Acting { .. }) => {
-                let mut set = false;
-                self.native_as_acting(|game| set = game.set_respawn_point(stored)) && set
-            }
-            Some(PlayerRead::Guest(guest))
-                if !guest.dead
-                    || self
-                        .cloning_guest(guest.uuid)
-                        .is_some_and(|original| original.conn == guest.conn) =>
-            {
-                let conn = guest.conn;
-                self.as_guest(conn, |game| game.set_respawn_point(stored)) == Some(true)
-            }
-            _ => false,
-        }
-    }
-    /// The ping the Tab list shows (`ServerCommonPacketListenerImpl.latency`, kept by the
-    /// connection's keep-alives): 0 for a fake player and for an acting player with no known
-    /// connection.
-    pub(in crate::game) fn player_latency(
-        &self,
-        player: PlayerRef,
-    ) -> Result<i32, mod_api::PlayerWorldRefusal> {
-        use mod_api::PlayerWorldRefusal as Refusal;
-        if !self.is_logical_server() {
-            return Err(Refusal::Client);
-        }
-        if let Some(guest) = self.online_player_record(player) {
-            return Ok(guest.latency.load(Ordering::Relaxed));
-        }
-        (self.native_acting_player() == Some(player) || self.player_handle_read(player).is_some())
-            .then_some(0)
-            .ok_or(Refusal::Stale)
-    }
-    pub(in crate::game) fn player_send_ping(
-        &mut self,
-        player: PlayerRef,
-        id: i32,
-    ) -> Result<(), mod_api::PlayerPingRefusal> {
-        use mod_api::PlayerPingRefusal as Refusal;
-        let Some(guest) = self.online_player_record(player) else {
-            return Err(
-                if self.native_acting_player() == Some(player)
-                    || self.player_handle_read(player).is_some()
-                {
-                    Refusal::NoConnection
-                } else {
-                    Refusal::Stale
-                },
-            );
-        };
-        if !guest.play_connection_open() {
-            return Err(Refusal::NoConnection);
-        }
-        guest
-            .sender
-            .try_send_play_ping(id)
-            .then_some(())
-            .ok_or(Refusal::SendFailed)
-    }
-    /// The permission level `player_hide` set, `None` when shown: kept by UUID, and read as
-    /// stored before the world is opened to others (an unpublished single-player world runs a
-    /// hub for its owner too), where it applies once it is.
-    pub(in crate::game) fn player_hidden(
-        &self,
-        player: PlayerRef,
-    ) -> Result<Option<u8>, mod_api::PlayerWorldRefusal> {
-        use mod_api::PlayerWorldRefusal as Refusal;
-        if !self.is_logical_server() {
-            return Err(Refusal::Client);
-        }
-        let hub = &self.lan.as_ref().ok_or(Refusal::Stale)?.hub;
-        if self.native_lifecycle.epoch() != Some(player.entity().epoch()) {
-            return Err(Refusal::Stale);
-        }
-        Ok(hub.hidden.get(&player.uuid()).copied())
-    }
-    /// The name `player_set_nickname` set, `None` when there is none; the player must be
-    /// online. An unpublished single-player world has a server list: `player_set_nickname`
-    /// works there, so its nickname reads back.
-    pub(in crate::game) fn player_nickname(
-        &self,
-        player: PlayerRef,
-    ) -> Result<Option<&str>, mod_api::PlayerWorldRefusal> {
-        use mod_api::PlayerWorldRefusal as Refusal;
-        if !self.is_logical_server() {
-            return Err(Refusal::Client);
-        }
-        let uuid = self.message_player_uuid(player).ok_or(Refusal::Stale)?;
-        let hub = &self.lan.as_ref().ok_or(Refusal::Stale)?.hub;
-        if !hub.online_players().any(|g| g.uuid == uuid) {
-            return Err(Refusal::Stale);
-        }
-        Ok(hub.nicknames.get(&uuid).map(String::as_str))
-    }
-    /// Hides that player (a vanish) from the players below permission
-    /// `level`, or shows them again (None): from the next tick those players
-    /// lose them from the Tab list and the world (their client stops
-    /// tracking the player, as it does a spectator), and don't read their
-    /// joining or leaving; players of `level` or more still see them, and
-    /// a player made an operator meanwhile sees them again. Kept by UUID, even
-    /// after this handle disconnects (the player rejoins hidden), until a mod sets it again
-    /// or the server stops. Works inside a player's hook too; false for a stale
-    /// world epoch and on a client.
-    pub(in crate::game) fn player_hide(&mut self, player: PlayerRef, level: Option<u8>) -> bool {
-        if self.native_lifecycle.epoch() != Some(player.entity().epoch()) {
-            return false;
-        }
-        let uuid = player.uuid();
-        let Some(host) = &mut self.lan else {
-            return false;
-        };
-        match level {
-            Some(level) => host.hub.hidden.insert(uuid, level),
-            None => host.hub.hidden.remove(&uuid),
-        };
-        true
-    }
-    /// Shows `nickname` in place of that player's name in chat (their
-    /// messages, `/me`, `/msg`) and in the Tab list; None shows their name
-    /// again. Hovering the shown name gives the real one, which stays in the
-    /// log, commands, selectors and the server's events. Kept until a mod
-    /// sets it again or the server stops (also if they leave and come back).
-    /// Plain text: the mod checks it (its length, other players' names). False when the server list is unavailable,
-    /// the handle is stale or the player isn't online.
-    pub(in crate::game) fn player_set_nickname(
-        &mut self,
-        player: PlayerRef,
-        nickname: Option<&str>,
-    ) -> bool {
-        let Some(uuid) = self.message_player_uuid(player) else {
-            return false;
-        };
-        let Some(host) = &mut self.lan else {
-            return false;
-        };
-        if !host.hub.online_players().any(|g| g.uuid == uuid) {
-            return false;
-        }
-        host.hub.set_nickname(uuid, nickname.map(str::to_owned));
-        true
-    }
-    /// A system line in every player's chat and the server's log.
-    pub(in crate::game) fn native_broadcast(&self, mut line: Text) {
-        let mut cancel = false;
-        self.native_broadcast_message(&mut line, &mut cancel);
-        if cancel {
-            return;
-        }
-        let plain = line.plain();
-        if self.is_dedicated_server() {
-            super::dedicated::log("INFO", &plain);
-        } else {
-            log::info!("{plain}");
-        }
-        let Some(host) = &self.lan else {
-            return;
-        };
-        let packet = system_chat(&line);
-        for g in host.hub.guests.iter().filter(|g| g.placed) {
-            host.hub.send_to(g.conn, &packet);
-        }
-    }
-    /// Posts a line to the dedicated server's event stream (`GET /api/v1/events`)
-    /// as an `announce` event, which sunrise-server's Discord bridge relays when
-    /// `[discord] events` lists `announce`: `name` and `uuid` say who it is
-    /// about (empty and 0 for no one), `message` is the line (`§` codes colour it).
-    /// Only on a dedicated server; false elsewhere and for an empty message.
-    pub(in crate::game) fn native_server_event(
-        &self,
-        name: &str,
-        uuid: u128,
-        message: &str,
-    ) -> bool {
-        if !self.is_dedicated_server() || message.trim().is_empty() {
-            return false;
-        }
-        super::dedicated::events::record("announce", name, uuid, json!({ "message": message }));
-        true
-    }
-    /// Runs `line` (no slash) as the server's console does: permission
-    /// level 4, from the world spawn in its level, with no output. A teleport to
-    /// another level (`execute in minecraft:the_nether run tp Alex 0 70 0`)
-    /// happens at the next tick's start, as the console's. Whether it ran
-    /// without failing. During a guest's turn, live players (including the
-    /// acting player) are reachable; displaced outer players are excluded
-    /// from name, UUID and selector resolution on this path only.
-    pub(in crate::game) fn native_run_command(&mut self, line: &str) -> bool {
-        self.run_console_command(line, false).0
     }
 }
 
@@ -1306,252 +762,11 @@ pub(in crate::game) fn ordered_box(min: [f64; 3], max: [f64; 3]) -> Option<([f64
     ))
 }
 
-/// Experience for server mods.
-#[allow(dead_code)]
-impl Game<'_> {
-    /// The experience orbs of the server level `dimension` whose box meets
-    /// the box `min`..`max`, in the level's order: what a mod reads before it
-    /// cancels an orb in `native_entity_join_level`, to give its points with
-    /// `PlayerRef::give_experience_points`. Empty for a level not in place, on a
-    /// client of a server and for a bound that is not finite (NaN or infinite); a
-    /// minimum above its maximum is the same box with the two swapped (`AABB`).
-    pub(in crate::game) fn experience_orbs(
-        &self,
-        dimension: &str,
-        min: [f64; 3],
-        max: [f64; 3],
-    ) -> Vec<mod_api::ExperienceOrb> {
-        let Some((min, max)) = ordered_box(min, max) else {
-            return Vec::new();
-        };
-        if (self.serving.is_none() && self.options.dedicated.is_none())
-            || dimension != self.dim.id()
-        {
-            return Vec::new();
-        }
-        self.orbs
-            .iter()
-            .filter(|o| o.count > 0)
-            .map(|o| mod_api::ExperienceOrb {
-                id: o.id,
-                position: [o.position.x, o.position.y, o.position.z],
-                value: o.value,
-                count: o.count,
-            })
-            .filter(|o| orb_meets(o.position, min, max))
-            .collect()
-    }
-    /// Writes the experience orb `id`'s `value` (the points a pickup gives), `count`
-    /// (orbs merged into it, each worth `value`) and `age` (ticks lived; an orb
-    /// despawns at 6000); a `None` is left as it is.
-    /// False, and nothing written, for an orb not in the server level `dimension`, a
-    /// `count` of 0 or above `i32::MAX`, an `age` above `i32::MAX` (`ExperienceOrb.age`
-    /// is an int), a `value` outside -32768..=32767 (a save keeps `Value` as a short
-    /// and `Count` as an int, so a write it accepts reloads
-    /// unchanged), and on a client of a server. In `experience_orb_merge`, a write to
-    /// `into` is the merged orb.
-    pub(in crate::game) fn set_experience_orb(
-        &mut self,
-        dimension: &str,
-        id: u32,
-        value: Option<i32>,
-        count: Option<u32>,
-        age: Option<u32>,
-    ) -> bool {
-        if (self.serving.is_none() && self.options.dedicated.is_none())
-            || dimension != self.dim.id()
-            || count == Some(0)
-            || count.is_some_and(|c| c > crate::orb_limits::MAX_COUNT)
-            || value.is_some_and(|v| !crate::orb_limits::value_fits(v))
-        {
-            return false;
-        }
-        let Ok(age) = age.map(i32::try_from).transpose() else {
-            return false;
-        };
-        let Some(orb) = self.orbs.iter_mut().find(|o| o.id == id) else {
-            return false;
-        };
-        orb.value = value.unwrap_or(orb.value);
-        orb.count = count.unwrap_or(orb.count);
-        orb.age = age.unwrap_or(orb.age);
-        true
-    }
-
-    pub(in crate::game) fn native_player_holder(&self, uuid: u128) -> Option<&Guest> {
-        self.cloning_guest(uuid)
-            .or_else(|| self.lan.as_ref()?.hub.holder_guest(uuid, self.dim.id()))
-    }
-
-    pub(in crate::game) fn native_live_acting_body(&self) -> Option<&PlayerMotion> {
-        let body = self.player.as_ref()?;
-        if body.health.health() <= 0.0 {
-            return None;
-        }
-        Some(body)
-    }
-
-    /// `f` for the acting player, whose state is in place: false when they are dead.
-    pub(in crate::game) fn native_as_acting(&mut self, f: impl FnOnce(&mut Self)) -> bool {
-        if self.native_live_acting_body().is_none() {
-            return false;
-        }
-        f(self);
-        true
-    }
-}
-
 pub(in crate::game) fn system_chat(line: &Text) -> C {
     C::SystemChat(play::SystemChat {
         content: component_nbt(&line.component()),
         overlay: false,
     })
-}
-
-/// Where the game calls the server hook points.
-impl Game<'_> {
-    /// `Hub::resend_commands` with the mods' say on each tree.
-    pub(in crate::game) fn resend_commands_filtered(&mut self) {
-        let Some(host) = self.lan.as_mut() else {
-            return;
-        };
-        host.hub.refresh_permissions();
-        self.native_filter_commands(None);
-        if let Some(host) = self.lan.as_mut() {
-            host.hub.resend_commands();
-        }
-    }
-
-    pub(in crate::game) fn native_command_player_target(
-        &self,
-        target: super::commands::Target,
-    ) -> Option<PlayerRef> {
-        use super::commands::Target;
-        match target {
-            Target::Player => self.native_acting_player(),
-            Target::Guest(conn) => self
-                .command_guest(conn)
-                .and_then(|guest| self.player(guest.uuid)),
-            _ => None,
-        }
-    }
-
-    pub(in crate::game) fn native_command_entity_target(
-        &mut self,
-        target: super::commands::Target,
-    ) -> Option<mod_api::EntityRef> {
-        if let Some(player) = self.native_command_player_target(target) {
-            return Some(player.entity());
-        }
-        let id = super::native_entities::target_id(target)?;
-        self.in_target_level(target, |game| game.entity(id))
-            .flatten()
-    }
-
-    /// `EntityArgument.getEntity` / `getEntities` / `getPlayer` / `getPlayers`:
-    /// convert validated arguments through the shared source-aware selector resolver.
-    pub(in crate::game) fn resolve_native_command(
-        &mut self,
-        context: Context,
-    ) -> Result<mod_api::CommandInvocation, sunrise_client::command::CommandError> {
-        use super::commands::err;
-        use mod_api::{CommandArgument, CommandArgumentValue as Value};
-        let mut arguments = Vec::with_capacity(context.args.len());
-        for argument in context.args {
-            let ty = parsed_type(&self.ui.dispatcher.0, &context.nodes, argument.range);
-            let value = match argument.value {
-                Arg::Str(text) if matches!(ty, Some(ArgType::Nbt)) => nbt_value(&text)?,
-                Arg::Str(value) => Value::String(value),
-                Arg::Int(value) => Value::Integer(value),
-                Arg::Long(value) => Value::Long(value),
-                Arg::Double(value) => Value::Number(value),
-                Arg::Bool(value) => Value::Boolean(value),
-                Arg::Entity(selector) => {
-                    // The parsed node, not its name, determines cardinality: usages may
-                    // repeat an argument name or use different kinds on separate branches.
-                    let (single, players) = context
-                        .nodes
-                        .iter()
-                        .find_map(|(node, range)| {
-                            if *range != argument.range {
-                                return None;
-                            }
-                            match &self.ui.dispatcher.0.nodes[*node].kind {
-                                sunrise_client::command::NodeKind::Argument {
-                                    ty: ArgType::Entity { single, players },
-                                    ..
-                                } => Some((*single, *players)),
-                                _ => None,
-                            }
-                        })
-                        .expect("parsed entity argument has its dispatcher node");
-                    let targets = self.resolve_entity_argument(&selector, players)?;
-                    if single && targets.len() > 1 {
-                        return Err(err(
-                            if players {
-                                "argument.player.toomany"
-                            } else {
-                                "argument.entity.toomany"
-                            },
-                            &[],
-                        ));
-                    }
-                    if players {
-                        if single {
-                            Value::Player(
-                                self.native_command_player_target(targets[0])
-                                    .ok_or_else(|| err("argument.entity.notfound.player", &[]))?,
-                            )
-                        } else {
-                            let selected = targets
-                                .into_iter()
-                                .map(|target| {
-                                    self.native_command_player_target(target)
-                                        .ok_or_else(|| err("argument.entity.notfound.player", &[]))
-                                })
-                                .collect::<Result<Vec<_>, _>>()?;
-                            Value::Players(selected)
-                        }
-                    } else if single {
-                        Value::Entity(
-                            self.native_command_entity_target(targets[0])
-                                .ok_or_else(|| err("argument.entity.notfound.entity", &[]))?,
-                        )
-                    } else {
-                        let selected: Vec<_> = targets
-                            .into_iter()
-                            .filter_map(|target| self.native_command_entity_target(target))
-                            .collect();
-                        if selected.is_empty() {
-                            return Err(err("argument.entity.notfound.entity", &[]));
-                        }
-                        Value::Entities(selected)
-                    }
-                }
-                Arg::Coords(coordinates) => positional_value(
-                    ty.as_ref(),
-                    &coordinates,
-                    self.resolve_coords(&coordinates),
-                    self.source_rotation(),
-                ),
-                Arg::Item(input) => Value::Item(
-                    self.command_item_stack(&input, 1)?
-                        .try_into_api()
-                        .expect("command item validation resolves registered items"),
-                ),
-                Arg::Resource(id) if matches!(ty, Some(ArgType::Dimension)) => {
-                    dimension_value(&id, |dimension| self.level(dimension))?
-                }
-                Arg::Resource(id) => Value::Id(
-                    mod_api::Identifier::parse(&id).map_err(|_| err("command.failed", &[]))?,
-                ),
-                Arg::Custom { kind, value } => custom_value(&kind, value),
-                _ => unreachable!("the native tree contains only registered native argument kinds"),
-            };
-            arguments.push(CommandArgument::new(argument.name, value));
-        }
-        Ok(self.native_invocation(context.literals, arguments))
-    }
 }
 
 /// The temporary state of the same persistent guest, not another player or action engine.
@@ -4959,28 +4174,6 @@ pub(in crate::game) mod player_rule_tests {
                 .unwrap();
             assert_eq!(seen, (Some(109), Some(true)));
         });
-    }
-}
-
-// Dedicated network settings stay engine-private.
-#[allow(dead_code)]
-impl Game<'_> {
-    /// Whether the dedicated server runs in online mode (`online-mode` of server.properties):
-    /// its players sign in with their accounts. None off a dedicated server and before it listens.
-    /// API @API:server_settings@.
-    pub(in crate::game) fn native_online_mode(&self) -> Option<bool> {
-        Some(online_mode_of(&self.dedicated_lan()?.shared.config))
-    }
-    /// The port the dedicated server listens on: `server-port` of server.properties, or the
-    /// `--port` it was started with. None off a dedicated server and before it listens.
-    /// API @API:server_settings@.
-    pub(in crate::game) fn native_server_port(&self) -> Option<u16> {
-        Some(self.dedicated_lan()?.port)
-    }
-    /// The listening socket of a dedicated server; None on any other side and before it listens.
-    pub(in crate::game) fn dedicated_lan(&self) -> Option<&sunrise_client::lan::Lan> {
-        self.options.dedicated.as_ref()?;
-        Some(&self.lan.as_ref()?.hub.lan)
     }
 }
 

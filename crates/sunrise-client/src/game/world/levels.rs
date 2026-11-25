@@ -1082,7 +1082,10 @@ impl Game<'_> {
         let mut starting_level = if starting_dim != Dim::Overworld {
             let mut overworld = self.open_level(Dim::Overworld)?;
             self.replace_level(Dim::Overworld, &mut overworld);
-            self.apply_settings();
+            self.streaming.radius = crate::game::entity_culling::streaming_radius_for(
+                self.settings.render_distance,
+                None,
+            );
             self.read_raids();
             Some(overworld)
         } else {
@@ -1099,7 +1102,10 @@ impl Game<'_> {
                 let mut level = self.open_level(dim)?;
                 let left = self.replace_level(dim, &mut level);
                 self.levels.0.parked.insert(left, level);
-                self.apply_settings();
+                self.streaming.radius = crate::game::entity_culling::streaming_radius_for(
+                    self.settings.render_distance,
+                    None,
+                );
                 self.read_raids();
             }
             self.native_level_opened(dim);
@@ -1322,8 +1328,10 @@ impl Game<'_> {
             let left = self.replace_level(target, &mut p);
             self.levels.0.parked.insert(left, p);
             if opened {
-                // The new streaming's radius and meshing options.
-                self.apply_settings();
+                self.streaming.radius = crate::game::entity_culling::streaming_radius_for(
+                    self.settings.render_distance,
+                    None,
+                );
                 // ServerLevel's constructor reads the level's raids.
                 self.read_raids();
                 self.native_level_opened(target);

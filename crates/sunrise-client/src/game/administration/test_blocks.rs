@@ -10,7 +10,7 @@ use sunrise_protocol::packets::play;
 
 type Pos = (i32, i32, i32);
 
-pub(super) use sunrise_gameplay::test_blocks::own_signal;
+pub(in crate::game) use sunrise_gameplay::test_blocks::own_signal;
 
 impl Game<'_> {
     fn test_block_mut(&mut self, pos: Pos) -> Option<&mut TestBlock> {
@@ -28,12 +28,12 @@ impl Game<'_> {
     }
 
     /// `TestBlockEntity.hasTriggered`.
-    pub(super) fn test_block_triggered(&self, pos: Pos) -> bool {
+    pub(in crate::game) fn test_block_triggered(&self, pos: Pos) -> bool {
         self.test_block_at(pos).is_some_and(|b| b.triggered)
     }
 
     /// `TestBlockEntity.getMessage`.
-    pub(super) fn test_block_message(&self, pos: Pos) -> String {
+    pub(in crate::game) fn test_block_message(&self, pos: Pos) -> String {
         self.test_block_at(pos)
             .map_or_else(String::new, |b| b.message.clone())
     }
@@ -65,7 +65,7 @@ impl Game<'_> {
     }
 
     /// `TestBlockEntity.trigger`.
-    pub(super) fn trigger_test_block(&mut self, pos: Pos) {
+    pub(in crate::game) fn trigger_test_block(&mut self, pos: Pos) {
         let Some(effects) = self.test_block_mut(pos).map(TestBlock::trigger) else {
             return;
         };
@@ -73,7 +73,7 @@ impl Game<'_> {
     }
 
     /// `TestBlockEntity.reset`, which `TestBlock.tick` runs.
-    pub(super) fn reset_test_block(&mut self, pos: Pos) {
+    pub(in crate::game) fn reset_test_block(&mut self, pos: Pos) {
         let Some(effects) = self.test_block_mut(pos).map(TestBlock::reset) else {
             return;
         };
@@ -81,7 +81,7 @@ impl Game<'_> {
     }
 
     /// `TestBlock.neighborChanged`: a rising signal triggers the block.
-    pub(super) fn test_block_neighbor_changed(&mut self, pos: Pos) {
+    pub(in crate::game) fn test_block_neighbor_changed(&mut self, pos: Pos) {
         if self.test_block_at(pos).is_none() {
             return;
         }
@@ -98,7 +98,7 @@ impl Game<'_> {
 
     /// `handleSetTestBlock` for a guest: only a creative player with game
     /// master commands edits the block.
-    pub(super) fn lan_set_test_block(&mut self, conn: u32, p: play::SetTestBlock) {
+    pub(in crate::game) fn lan_set_test_block(&mut self, conn: u32, p: play::SetTestBlock) {
         let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
             return;
         };

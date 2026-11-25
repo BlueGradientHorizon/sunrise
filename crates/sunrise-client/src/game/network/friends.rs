@@ -21,6 +21,7 @@ pub use screen::{TITLE, title};
 
 pub(in crate::game) struct Sharing {
     host: Host,
+    port: u16,
     /// Sharing opened the world to LAN, so stopping closes it again.
     opened_lan: bool,
     code: Option<String>,
@@ -68,7 +69,7 @@ impl Game<'_> {
         let opened_lan = self.lan_port().is_none();
         if opened_lan {
             // ShareToLanScreen's defaults, as the world options screen offers them.
-            self.lan_open(LanSettings {
+            self.client_lan_open(LanSettings {
                 port: sunrise_client::lan::available_port(),
                 guest_commands: false,
                 force_game_mode: true,
@@ -96,13 +97,14 @@ impl Game<'_> {
             Ok(h) => h,
             Err(e) => {
                 if opened_lan {
-                    self.lan_close(true);
+                    self.client_lan_close(true);
                 }
                 return Err(e.into());
             }
         };
         self.friends = Some(Sharing {
             host,
+            port,
             opened_lan,
             code: None,
             wrong: 0,
@@ -121,7 +123,7 @@ impl Game<'_> {
         };
         sharing.host.stop();
         if sharing.opened_lan {
-            self.lan_close(true);
+            self.client_lan_close(true);
         } else {
             self.client_system_message(Text::literal(lang::get_or(
                 "sunrise.friends.stopped",
@@ -139,6 +141,13 @@ impl Game<'_> {
 
     /// New codes and sessions, once a tick and while the pause menu is drawn.
     pub(in crate::game) fn tick_friends(&mut self) {
+        // Retire stale sharing if LAN closed or rebound to a different port.
+        if let Some(port) = self.friends.as_ref().map(|s| s.port)
+            && self.lan_port() != Some(port)
+        {
+            self.friends_lan_closed();
+            return;
+        }
         let Some(sharing) = self.friends.as_mut() else {
             return;
         };

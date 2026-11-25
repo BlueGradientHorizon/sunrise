@@ -348,7 +348,6 @@ impl Game<'_> {
         };
         let at = m.position;
         self.lan_entity_event(id as i32, 20, [at.x, at.y, at.z]);
-        self.poof_particles(id);
     }
     /// `SpawnEggItem.useOn` on a spawner: the egg sets its mob, and an op's
     /// egg its effective entity `data` too.
@@ -404,7 +403,6 @@ impl Game<'_> {
         }
         // sendBlockUpdated(3) and the player's block_change game event.
         self.spawner_block_updated(key);
-        self.update_spawner_display(key);
         self.post_block_game_event("minecraft:block_change", pos, Some(Who::Player), None);
         Some(true)
     }

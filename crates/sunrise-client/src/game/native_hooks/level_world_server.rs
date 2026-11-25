@@ -8,6 +8,14 @@ pub(in crate::game::server_side) use mod_api::{LevelRef, RandomDraw};
 pub(in crate::game::server_side) use sunrise_core::random::LegacyRandom;
 
 impl Game<'_> {
+    /// Lend the named level's live stream directly.
+    pub(in crate::game) fn with_level_random(&mut self, level: LevelRef, draw: RandomDraw<'_>) {
+        let Some(random) = self.level_random_mut(level) else {
+            return;
+        };
+        with_live_level_random(random, draw);
+    }
+
     /// Select a current, resident server level's stream without bringing the level into place.
     pub(in crate::game) fn level_random_mut(
         &mut self,

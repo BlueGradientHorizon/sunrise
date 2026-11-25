@@ -200,15 +200,25 @@ fn native_process_environment_in_registration_and_game_hosts() {
         } else {
             ExecutionRole::Client
         };
+        if role.is_client() {
+            crate::game::native_entity_refs::tests::with_game_role(
+                crate::game::native_entity_refs::tests::fixture_root(),
+                ExecutionRole::Client,
+                |game: &mut Game<'_>| {
+                    game.native_client_tick_pre();
+                },
+            );
+        }
+        // A client process's integrated logical server runs on its own server fixture.
+        let server_role = if dedicated {
+            ExecutionRole::DedicatedServer
+        } else {
+            ExecutionRole::IntegratedServer
+        };
         crate::game::native_entity_refs::tests::with_game_role(
             crate::game::native_entity_refs::tests::fixture_root(),
-            role,
+            server_role,
             |game: &mut Game<'_>| {
-                if role.is_client() {
-                    game.native_client_tick_pre();
-                    // A client process's integrated logical server must read that same snapshot.
-                    game.options.execution_role = ExecutionRole::IntegratedServer;
-                }
                 game.native_server_started(dedicated);
                 game.native_register_game_tests(&mut mod_api::GameTestFunctions::default());
             },

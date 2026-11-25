@@ -59,7 +59,13 @@ impl Game<'_> {
             return;
         };
         self.start_using_item();
-        self.play_player_bound_sound(&instrument.sound, 2, instrument.range / 16.0, 1.0, true);
+        self.server_play_player_bound_sound(
+            &instrument.sound,
+            2,
+            instrument.range / 16.0,
+            1.0,
+            true,
+        );
         self.post_entity_event(
             "minecraft:instrument_play",
             sunrise_client::mobs::Who::Player,
@@ -70,22 +76,15 @@ impl Game<'_> {
         }
         self.award_stat("used", &stack.item, 1);
     }
-    /// `BlockItem.place`'s shrink of the stack it placed, and
-    /// `SolidBucketItem.useOn`'s `BucketItem.getEmptySuccessItem`: a placed
-    /// powder snow bucket leaves an empty bucket in that hand, unless the player
-    /// has infinite materials. The client predicts the same as the server does.
-    pub(in crate::game) fn consume_placed(&mut self, placed: &ItemStack) {
-        if self.creative {
-            return;
+    /// `SpyglassItem.releaseUsing` / `finishUsingItem` (after 1200 ticks).
+    pub(in crate::game) fn stop_spyglass(&mut self) {
+        if let Some(at) = self.eye_position() {
+            self.server_play_sound("minecraft:item.spyglass.stop_using", at, 1.0, 1.0);
         }
-        let slot = self.held_slot();
-        let last = self.stack_in(slot).is_some_and(|stack| stack.count == 1);
-        self.consume_player_slot(slot, 1);
-        if &*placed.item == "minecraft:powder_snow_bucket"
-            && (!last || self.stack_in(slot).is_none())
-        {
-            *self.stack_in_mut(slot) = Some(ItemStack::new("minecraft:bucket", 1));
-        }
+    }
+    pub(in crate::game) fn server_on_start_using_item(&mut self, stack: &ItemStack) {
+        self.use_vibration(stack, "minecraft:item_interact_start");
+        self.server.crossbow_sounds = [false; 2];
     }
     pub(in crate::game) fn tick_using_server(&mut self) {
         assert!(

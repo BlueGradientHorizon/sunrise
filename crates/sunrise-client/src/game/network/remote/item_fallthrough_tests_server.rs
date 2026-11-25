@@ -19,7 +19,7 @@ pub(in crate::game) fn assert_block_item_before_fallthrough(
     .into();
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
-        with_interaction_game(false, |game| {
+        with_interaction_server_game(|game| {
             game.set_mode_id(0);
             let state = game.pack.assets.registry.default_state(block).unwrap();
             let dirt = game
@@ -67,7 +67,7 @@ fn block_pass_falls_through_but_fail_and_success_stop_the_apple() {
     .into();
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
-        with_interaction_game(true, |game| {
+        with_interaction_client_game(|game| {
             let stone = game
                 .pack
                 .assets

@@ -68,7 +68,7 @@ pub(in crate::game) struct HeardSound<'a> {
 }
 
 /// Whether a mod listens to either level sound hook.
-pub(in crate::game::server_side) fn listened() -> bool {
+pub(in crate::game) fn listened() -> bool {
     mod_api::__private::listened(HookId::PlayLevelSoundAtPosition)
         || mod_api::__private::listened(HookId::PlayLevelSoundAtEntity)
 }

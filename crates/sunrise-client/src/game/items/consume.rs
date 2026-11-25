@@ -62,11 +62,6 @@ impl Game<'_> {
         )
     }
 
-    /// `stack.get(DataComponents.CONSUMABLE)`: item prototype, data patch or wire patch.
-    pub(in crate::game) fn consumable(&self, stack: &ItemStack) -> Option<ItemConsumable> {
-        sunrise_client::item_sync::consumable(stack, self.items())
-    }
-
     /// `ServerPlayer.completeUsingItem`: the player's own client is told
     /// first, and completes the use itself (eating the food there too).
     pub(in crate::game::server_side) fn send_use_item_complete(&mut self) {
@@ -76,8 +71,8 @@ impl Game<'_> {
                 .push(USE_ITEM_COMPLETE_EVENT);
         }
     }
-    /// `Consumable.emitParticlesAndSounds(user.getRandom(), user, stack, count)`.
-    pub(in crate::game) fn emit_consume(
+    /// Server-side `Consumable.emitParticlesAndSounds`.
+    pub(in crate::game) fn server_emit_consume(
         &mut self,
         consumable: &ItemConsumable,
         stack: &ItemStack,
@@ -405,8 +400,6 @@ impl Game<'_> {
         // is a remote client, so the packet is what draws the particles there.
         if let Some(id) = self.server.lan_acting_entity {
             self.lan_entity_event(id as i32, 46, [at.x, at.y, at.z]);
-        } else {
-            self.portal_particles();
         }
         true
     }
@@ -546,8 +539,10 @@ impl Game<'_> {
     }
 }
 
-/// `Consumable.emitParticlesAndSounds` against the local player.
-pub(in crate::game) struct Emitter<'a, 'g>(pub(in crate::game) &'a mut Game<'g>);
+/// `Consumable.emitParticlesAndSounds` on the server.
+pub(in crate::game::server_side) struct Emitter<'a, 'g>(
+    pub(in crate::game::server_side) &'a mut Game<'g>,
+);
 impl EmissionWorld for Emitter<'_, '_> {
     type Error = Infallible;
     type Stack = ItemStack;
@@ -559,9 +554,7 @@ impl EmissionWorld for Emitter<'_, '_> {
     }
     /// `LivingEntity.spawnItemParticles`.
     fn spawn_item_particles(&mut self, stack: ItemStack, count: i32) -> Result<(), Infallible> {
-        if !self.0.is_logical_server() {
-            self.0.eat_particles(&stack, count.max(0) as u32);
-        } else if count > 5
+        if count > 5
             && let Some(at) = self.0.eye_position()
         {
             self.0
@@ -588,20 +581,16 @@ impl EmissionWorld for Emitter<'_, '_> {
     /// player, whose own client plays it (`level.playSound(player, ...)`):
     /// a guest's server turn leaves the guest out.
     fn play_sound(&mut self, sound: String, volume: f32, pitch: f32) -> Result<(), Infallible> {
-        let at = self.0.feet();
-        if !self.0.is_logical_server() {
-            self.0.play_client_player_sound(&sound, volume, pitch);
-        } else if self.0.server.lan_acting.is_some() {
-            if let Some(at) = at {
-                self.0
-                    .server
-                    .guest_player_sounds
-                    .push((sound, at, volume, pitch));
-            }
+        let Some(at) = self.0.feet() else {
+            return Ok(());
+        };
+        if self.0.server.lan_acting.is_some() {
+            self.0
+                .server
+                .guest_player_sounds
+                .push((sound, at, volume, pitch));
         } else {
-            if let Some(at) = at {
-                self.0.server_play_sound(&sound, at, volume, pitch);
-            };
+            self.0.server_play_sound(&sound, at, volume, pitch);
         }
         Ok(())
     }
@@ -774,6 +763,137 @@ impl MobTeleporter<'_, '_> {
             .find(|m| m.id == self.id && m.alive() && !m.removed)
             .map(|m| m.position)
             .ok_or(())
+    }
+}
+
+impl TeleportConsumeWorld for MobTeleporter<'_, '_> {
+    type Error = ();
+    type Level = Dim;
+    type Random = u32;
+    type Source = LegacyRandom;
+    fn position_field(&self) -> Vec3 {
+        // get_random immediately refuses an absent actor before any draw or apply.
+        self.at().unwrap_or_default()
+    }
+    fn get_random(&mut self) -> Result<u32, ()> {
+        self.at()?;
+        Ok(self.id)
+    }
+    fn random_source(&mut self, id: u32) -> &mut LegacyRandom {
+        &mut self
+            .game
+            .mobs
+            .iter_mut()
+            .find(|m| m.id == id)
+            .expect("get_random validated the actor without an intervening callback")
+            .random
+    }
+    fn min_y(&mut self, _: Dim) -> Result<i32, ()> {
+        Ok(self.game.world.shape.min_y)
+    }
+    fn logical_height(&mut self, _: Dim) -> Result<i32, ()> {
+        Ok(self.game.world.shape.logical_height)
+    }
+    fn is_passenger(&mut self) -> Result<bool, ()> {
+        self.game
+            .mobs
+            .iter()
+            .find(|m| m.id == self.id)
+            .map(|m| m.extra.passenger)
+            .ok_or(())
+    }
+    fn stop_riding(&mut self) -> Result<(), ()> {
+        self.game.dismount_mob(self.id);
+        Ok(())
+    }
+    fn position(&mut self) -> Result<Vec3, ()> {
+        self.at()
+    }
+    fn teleport_allowed(&mut self, target: &mut Vec3) -> Result<bool, ()> {
+        let from = self.at()?;
+        let mut to = [target.x, target.y, target.z];
+        let mut cancel = false;
+        if let Some(consumed) = self.consumed {
+            self.game.native_item_consumption_teleport(
+                self.consumer,
+                consumed,
+                [from.x, from.y, from.z],
+                &mut to,
+                &mut cancel,
+            );
+        }
+        if self.game.dim != self.dim
+            || !matches!(self.game.native_living_target(self.consumer),
+                Some(super::commands_common::Target::Mob(id)) if id == self.id)
+            || !self
+                .game
+                .mobs
+                .iter()
+                .any(|m| m.id == self.id && self.usage.still_valid(m, from))
+        {
+            return Err(());
+        }
+        if to.iter().all(|v| v.is_finite()) {
+            let shape = self.game.world.shape;
+            let high = shape.min_y + shape.logical_height - 1;
+            *target = Vec3::new(
+                to[0],
+                to[1].clamp(f64::from(shape.min_y), f64::from(high)),
+                to[2],
+            );
+        }
+        Ok(!cancel)
+    }
+    fn random_teleport(&mut self, at: Vec3) -> Result<bool, ()> {
+        Ok(self.game.living_random_teleport(
+            self.consumer,
+            [at.x, at.y, at.z],
+            Some("minecraft:consumable_does_not_teleport_to"),
+        ))
+    }
+    fn teleport_event(&mut self, _: Dim, old: Vec3) -> Result<(), ()> {
+        let ctx = self.game.who_context(Some(Who::Mob(self.id)), None);
+        self.game
+            .post_game_event("minecraft:teleport", [old.x, old.y, old.z], ctx);
+        Ok(())
+    }
+    fn is_fox(&self) -> bool {
+        matches!(self.usage, MobConsumption::Fox(_))
+    }
+    fn teleport_sound(&mut self, _: Dim, at: Vec3, fox: bool) -> Result<(), ()> {
+        self.game.server_play_sound(
+            if fox {
+                "minecraft:entity.fox.teleport"
+            } else {
+                "minecraft:item.chorus_fruit.teleport"
+            },
+            [at.x, at.y, at.z],
+            1.0,
+            1.0,
+        );
+        Ok(())
+    }
+    fn block_position(&mut self) -> Result<BlockPos, ()> {
+        Ok(BlockPos::containing(self.at()?))
+    }
+    fn directional_particles(&mut self, _: Dim, origin: BlockPos, offset: i32) -> Result<(), ()> {
+        self.game
+            .server_level_event_at(2017, [origin.x, origin.y, origin.z], offset);
+        Ok(())
+    }
+    fn reset_fall_distance(&mut self) -> Result<(), ()> {
+        let m = self
+            .game
+            .mobs
+            .iter_mut()
+            .find(|m| m.id == self.id)
+            .ok_or(())?;
+        m.fall_distance = 0.0;
+        Ok(())
+    }
+    fn reset_impulse(&mut self) -> Result<(), ()> {
+        // The existing mob model has no separate CurrentImpulseContext state.
+        Ok(())
     }
 }
 

@@ -26,7 +26,10 @@ impl Game<'_> {
     /// The box of a boat, minecart, armor stand, item frame, painting or general row, and
     /// the point an interact packet's location is measured from (the
     /// client's `remote_object_hit` uses the same points).
-    pub(in crate::game) fn object_target(&self, id: i32) -> Option<([f64; 3], [f64; 3], [f64; 3])> {
+    pub(in crate::game) fn client_object_target(
+        &self,
+        id: i32,
+    ) -> Option<([f64; 3], [f64; 3], [f64; 3])> {
         let at = |v: Vec3| [v.x, v.y, v.z];
         let centre = |p: [i32; 3]| p.map(|v| f64::from(v) + 0.5);
         if let Some(i) = self.client.interactions.get(&id) {
@@ -69,7 +72,15 @@ impl Game<'_> {
             let (lo, hi) = corners(f.bounds());
             return Some((lo, hi, at(f.position)));
         }
-        let row = self.general_row(id)?;
+        if !self.persist.removals.is_empty()
+            && self
+                .persist
+                .removals
+                .contains(&crate::game::commands_common::Target::General(id))
+        {
+            return None;
+        }
+        let row = self.resident_entities.general.row(id)?;
         let (lo, hi) = corners(super::entity::Entity::bounds(row));
         Some((lo, hi, at(row.position)))
     }

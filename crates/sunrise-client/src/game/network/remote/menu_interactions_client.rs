@@ -930,4 +930,19 @@ impl Game<'_> {
             item: Some(item),
         }))
     }
+
+    pub(in crate::game) fn remote_close_container(&mut self) {
+        let id = self
+            .remote
+            .as_ref()
+            .and_then(|r| r.menu.as_ref().map(|m| m.0))
+            .unwrap_or(0);
+        self.send(S::ContainerClose(play::ContainerClose { container: id }));
+        self.remote_close_local();
+    }
+
+    pub(in crate::game) fn remote_close_local(&mut self) {
+        self.remote_set_menu(None, None);
+        self.remove_remote_menu_screen();
+    }
 }

@@ -229,7 +229,7 @@ impl Game<'_> {
                 // Minecraft.emergencySaveAndCrash: the world is saved, then the
                 // game stops; main writes the crash report.
                 let crash = sunrise_client::crash::DebugCrash::new();
-                if let Err(e) = self.save_game() {
+                if let Err(e) = self.save_for_exit() {
                     log::error!("the emergency save before the crash failed: {e}");
                 }
                 return Err(crash.into());
@@ -993,7 +993,20 @@ impl Game<'_> {
             return;
         }
         let tag = if add_nbt {
-            self.block_entity_tag(pos)
+            self.world
+                .block_entities
+                .get(&(pos[0], pos[1], pos[2]))
+                .map(|e| {
+                    let name = self.data_block_name(pos);
+                    let mut tag =
+                        self.client_encode_live_block_entity((pos[0], pos[1], pos[2]), e, &name);
+                    if let Tag::Compound(c) = &mut tag {
+                        for key in ["id", "x", "y", "z", "keepPacked"] {
+                            c.remove(&key.into());
+                        }
+                    }
+                    tag
+                })
         } else {
             None
         };

@@ -87,10 +87,7 @@ impl Game<'_> {
                 .0
                 .get(&id)
                 .map(|display| display.position().to_array())
-                .or_else(|| {
-                    self.level_entity(id)
-                        .and_then(|target| self.target_position(target))
-                })
+                .or_else(|| self.remote_simulated_entity_position(id))
                 .unwrap_or(last_position),
         };
         Some(TrackingBody {
@@ -98,6 +95,116 @@ impl Game<'_> {
             width,
             height,
         })
+    }
+
+    /// Current simulated position of a client-mirrored entity (excluding server-only `others`).
+    pub(in crate::game::client_side) fn remote_simulated_entity_position(
+        &self,
+        id: i32,
+    ) -> Option<[f64; 3]> {
+        if let Some(row) = self.remote.as_ref().and_then(|r| r.general.rows.get(&id)) {
+            return Some(row.position);
+        }
+        if let Some(entity) = self.client.interactions.get(&id) {
+            return Some([entity.position.x, entity.position.y, entity.position.z]);
+        }
+        if let Some(display) = self.text_displays.0.get(&id) {
+            return Some(display.position().to_array());
+        }
+        let eid = u32::try_from(id).ok()?;
+        if let Some(dragon) = self.dragon.as_ref() {
+            if dragon.id == eid {
+                return Some([dragon.position.x, dragon.position.y, dragon.position.z]);
+            }
+            if let Some(part) = crate::game::dragon::dragon_part_index(dragon.id, eid) {
+                let p = dragon.parts[part].0;
+                return Some([p.x, p.y, p.z]);
+            }
+        }
+        if let Some(m) = self.mob_index.get(&self.mobs, eid) {
+            return Some([m.position.x, m.position.y, m.position.z]);
+        }
+        if let Some(b) = self.boats.iter().find(|b| b.id == eid) {
+            return Some([b.position.x, b.position.y, b.position.z]);
+        }
+        if let Some(c) = self.carts.iter().find(|c| c.id == eid) {
+            return Some([c.position.x, c.position.y, c.position.z]);
+        }
+        if let Some(d) = self.dropped.iter().find(|d| d.id == eid) {
+            return Some([d.position.x, d.position.y, d.position.z]);
+        }
+        if let Some(o) = self.orbs.iter().find(|o| o.id == eid) {
+            return Some([o.position.x, o.position.y, o.position.z]);
+        }
+        if let Some(p) = self.creatures.projectiles.iter().find(|p| p.id == eid) {
+            return Some([p.position.x, p.position.y, p.position.z]);
+        }
+        if let Some(t) = self.tridents.iter().find(|t| t.id == eid) {
+            return Some([t.position.x, t.position.y, t.position.z]);
+        }
+        if let Some(r) = self.rockets.iter().find(|r| r.id == eid) {
+            return Some([r.position.x, r.position.y, r.position.z]);
+        }
+        if let Some(a) = self.armor_stands.iter().find(|a| a.id == eid) {
+            return Some([a.position.x, a.position.y, a.position.z]);
+        }
+        if let Some(c) = self.cushions.iter().find(|c| c.id == eid) {
+            return Some([c.position.x, c.position.y, c.position.z]);
+        }
+        if let Some(f) = self.item_frames.iter().find(|f| f.id == eid) {
+            let (lo, hi) = f.bounds();
+            return Some([
+                (lo[0] + hi[0]) / 2.0,
+                (lo[1] + hi[1]) / 2.0,
+                (lo[2] + hi[2]) / 2.0,
+            ]);
+        }
+        if let Some(p) = self.paintings.iter().find(|p| p.id == eid) {
+            let (lo, hi) = p.bounds();
+            return Some([
+                (lo[0] + hi[0]) / 2.0,
+                (lo[1] + hi[1]) / 2.0,
+                (lo[2] + hi[2]) / 2.0,
+            ]);
+        }
+        if let Some(c) = self.crystals.iter().find(|c| c.id == eid) {
+            return Some([c.position.x, c.position.y, c.position.z]);
+        }
+        if let Some(t) = self.tnts.iter().find(|t| t.id == eid) {
+            return Some([t.position.x, t.position.y, t.position.z]);
+        }
+        if let Some(f) = self.falling.iter().find(|f| f.id == eid) {
+            return Some([f.position.x, f.position.y, f.position.z]);
+        }
+        if let Some(c) = self.breath_clouds.iter().find(|c| c.id == eid) {
+            return Some(c.at);
+        }
+        if let Some(b) = self.bolts.iter().find(|b| b.id == eid) {
+            return Some(b.at);
+        }
+        if let Some(f) = self.fangs.list.iter().find(|f| f.id == eid) {
+            return Some(f.pos);
+        }
+        if let Some(s) = self.ominous_spawners.iter().find(|s| s.id == eid) {
+            return Some(s.position);
+        }
+        if let Some((_, _, _, p, _)) = self.potions.thrown_tracked().find(|(tid, ..)| *tid == eid) {
+            return Some([p.x, p.y, p.z]);
+        }
+        if let Some(c) = self.potions.clouds.iter().find(|c| c.id == eid) {
+            return Some(c.at);
+        }
+        if let Some((_, p)) = self.end.eye_positions().find(|(eye_id, _)| *eye_id == eid) {
+            return Some(p);
+        }
+        if let Some(h) = self.client.remote_hooks.iter().find(|h| h.id == eid) {
+            return Some([h.position.x, h.position.y, h.position.z]);
+        }
+        if let Some(&fence) = self.client.remote_knots.get(&eid) {
+            let p = sunrise_client::mobs::leash::knot_state(fence).position;
+            return Some([p.x, p.y, p.z]);
+        }
+        None
     }
     pub(in crate::game) fn spawn_entity(
         &mut self,

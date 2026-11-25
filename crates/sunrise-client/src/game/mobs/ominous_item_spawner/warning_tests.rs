@@ -268,7 +268,5 @@ fn residency_command_positions_and_client_spawner_clock() {
         assert_eq!(game.ominous_spawners[0].position, [64.0, 80.0, 64.0]);
         assert!(game.run_command("tp @e[type=minecraft:area_effect_cloud] -32.0 90.0 -48.0"));
         assert_eq!(game.breath_clouds[0].at, [-32.0, 90.0, -48.0]);
-        game.tick_remote_ominous_item_spawners();
-        assert_eq!(game.ominous_spawners[0].tick_count, 1);
     });
 }

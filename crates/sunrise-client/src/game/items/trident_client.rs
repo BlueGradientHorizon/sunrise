@@ -172,6 +172,62 @@ impl Game<'_> {
         });
         self.draw_tridents(camera, taken, out);
     }
+    pub(in crate::game) fn client_in_rain(&self, at: Vec3, top: f64) -> bool {
+        let p = BlockPos::new(
+            at.x.floor() as i32,
+            at.y.floor() as i32,
+            at.z.floor() as i32,
+        );
+        let up = BlockPos::new(p.x, top.floor() as i32, p.z);
+        self.raining_at(p) || self.raining_at(up)
+    }
+    /// Client-side `TridentItem.releaseUsing` for Riptide spin prediction.
+    pub(in crate::game) fn client_release_trident(&mut self, ticks: u32) {
+        if ticks < 10 {
+            return;
+        }
+        let Some(stack) = self.held().cloned() else {
+            return;
+        };
+        if self.eye_position().is_none() {
+            return;
+        }
+        let riptide = stack.enchantment_level("minecraft:riptide");
+        if riptide == 0 || !self.in_water_or_rain() || self.riding.is_some() {
+            return;
+        }
+        if stack.damage >= self.trident_max_damage(&stack).saturating_sub(1) {
+            return;
+        }
+        let spin_stack = self.held().cloned();
+        let strength = 1.5 + 0.75 * (riptide as f32 - 1.0);
+        use sunrise_core::geometry::trig;
+        let (y, x) = (
+            f64::from(self.yaw * trig::DEG_TO_RAD),
+            f64::from(self.pitch * trig::DEG_TO_RAD),
+        );
+        let xd = -trig::sin(y) * trig::cos(x);
+        let yd = -trig::sin(x);
+        let zd = trig::cos(y) * trig::cos(x);
+        let scale = strength / f64::from(xd * xd + yd * yd + zd * zd).sqrt() as f32;
+        if let Some(p) = self.player.as_mut() {
+            p.velocity = Vec3::new(
+                p.velocity.x + f64::from(xd * scale),
+                p.velocity.y + f64::from(yd * scale),
+                p.velocity.z + f64::from(zd * scale),
+            );
+            p.auto_spin_attack_ticks = 20;
+            p.auto_spin_attack_dmg = 8.0;
+            p.auto_spin_attack_item = spin_stack;
+        }
+        if self.player.as_ref().is_some_and(|p| p.ground.on_ground) {
+            let _ = self.move_local_player(
+                sunrise_world::entity_move::MoverType::SelfMovement,
+                Vec3::new(0.0, f64::from(1.1999999f32), 0.0),
+                true,
+            );
+        }
+    }
 }
 
 #[cfg(test)]

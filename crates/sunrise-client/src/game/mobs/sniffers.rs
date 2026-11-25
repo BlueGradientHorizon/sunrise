@@ -1,6 +1,4 @@
-//! Sniffers on the game side: the egg a bred pair lays
-//! (`Sniffer.spawnChildFromBreeding`), the snifflet that hatches from an
-//! egg block (`SnifferEggBlock.tick`) and the dust and sound of digging.
+//! Sniffers on the client side: digging particles, block hit sound, and searching sound.
 #[allow(unused_imports)]
 use super::Game;
 #[allow(unused_imports)]
@@ -9,35 +7,27 @@ use sunrise_client::{
     mobs::{Mob, Species, Who, sniffer},
 };
 #[allow(unused_imports)]
-use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_core::{geometry::Vec3, position::BlockPos, random::RandomSource};
 
 impl Game<'_> {
-    /// A snifflet where the egg was.
-    pub(in crate::game) fn hatch_sniffer(&mut self, pos: [i32; 3]) {
-        let at = [
-            f64::from(pos[0]) + 0.5,
-            f64::from(pos[1]) + 0.5,
-            f64::from(pos[2]) + 0.5,
-        ];
-        if let Some(id) = self.spawn_mob_raw("minecraft:sniffer", at, true)
-            && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id)
-        {
-            m.extra.age = sniffer::BABY_START_AGE;
-            let yaw = self.world.random.next_float() * 360.0 - 180.0;
-            m.yaw = yaw;
-            m.body_yaw = yaw;
-            m.head_yaw = yaw;
-        }
-    }
     /// The sniffer's client-side effects: `Sniffer.emitDiggingParticles`
-    /// (block dust and the block's hit sound between the 1.7th and the 6th
-    /// second of the digging animation) and `playSearchingSound`.
+    /// and `playSearchingSound`.
     pub(in crate::game) fn tick_sniffer_client(&mut self) {
         assert!(
             !self.is_logical_server(),
             "tick_sniffer_client called on Server role"
         );
-        let players = self.level_players();
+        let mut players: Vec<Vec3> = Vec::new();
+        if let Some(p) = self.player.as_ref()
+            && !p.health.dead_or_dying()
+        {
+            players.push(p.position);
+        }
+        for m in &self.mobs {
+            if &*m.kind.id == "minecraft:player" && m.alive() && !m.removed {
+                players.push(m.position);
+            }
+        }
         if players.is_empty() {
             return;
         }
@@ -47,13 +37,12 @@ impl Game<'_> {
                 || !m.alive()
                 || !players
                     .iter()
-                    .any(|p| m.position.distance_squared(p.position) <= 32.0 * 32.0)
+                    .any(|&p| m.position.distance_squared(p) <= 32.0 * 32.0)
             {
                 continue;
             }
             let id = m.id;
             let at = [m.position.x, m.position.y, m.position.z];
-            // playSearchingSound is playLocalSound: silence does not mute it.
             if sniffer::state(m) == sniffer::SEARCHING && m.age.is_multiple_of(20) {
                 self.audio.0.play_unshared(
                     "minecraft:entity.sniffer.searching",
@@ -74,7 +63,6 @@ impl Game<'_> {
                 let head = sniffer::head_block(&self.mobs[i]);
                 let ground = [head[0], head[1] - 1, head[2]];
                 let below = self.world.block(ground[0], ground[1], ground[2]);
-                // `stateBelow.getRenderShape() != RenderShape.INVISIBLE`.
                 if self.res.facts().get(below).render_shape
                     != sunrise_client::blocks::RenderShape::Invisible
                 {
@@ -94,12 +82,17 @@ impl Game<'_> {
                             0.0,
                         );
                     }
-                    // The hit sound is playLocalSound too: silence does not mute it.
                     if age.is_multiple_of(10) {
                         let sniffer = Some((id, self.mobs[i].kind.id.as_str()));
-                        let hit = self
-                            .block_sound_type(ground, below, sniffer, mod_api::BlockSoundCause::Dig)
-                            .hit;
+                        let hit = sunrise_client::block_sounds::sound_type(
+                            &self.loop_context,
+                            self.res.facts(),
+                            BlockPos::new(ground[0], ground[1], ground[2]),
+                            below,
+                            sniffer,
+                            mod_api::BlockSoundCause::Dig,
+                        )
+                        .hit;
                         self.audio.0.play_unshared(&hit, Some(at), 0.5, 0.5);
                     }
                 }

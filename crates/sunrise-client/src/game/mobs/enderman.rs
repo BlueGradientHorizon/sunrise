@@ -1,5 +1,5 @@
 //! Enderman leave-block attempts need the authoritative block simulation.
-use super::Game;
+use crate::game::Game;
 use sunrise_client::{Result, mobs::Species};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
@@ -30,7 +30,7 @@ impl Game<'_> {
     /// world, so it leaves them pending (an enderman's tries in `counter2`, a
     /// shulker's flags); a hurt the game layer deals runs them here, right
     /// after it, not on the mob's next AI step.
-    pub(super) fn settle_hurt_teleports(&mut self) -> Result<()> {
+    pub(in crate::game) fn settle_hurt_teleports(&mut self) -> Result<()> {
         let pending: Vec<u32> = self
             .mobs
             .iter()
@@ -104,7 +104,7 @@ impl Game<'_> {
     }
     /// `EndermanLeaveBlockGoal.tick`: normalize, check, place, post
     /// BLOCK_PLACE with the enderman and the placed state, then clear.
-    pub(super) fn enderman_place_block(
+    pub(in crate::game) fn enderman_place_block(
         &mut self,
         mob: u32,
         pos: [i32; 3],

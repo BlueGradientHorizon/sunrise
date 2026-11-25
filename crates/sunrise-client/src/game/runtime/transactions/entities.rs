@@ -110,20 +110,6 @@ pub(in crate::game) struct Committing {
     pub(in crate::game) removing: Option<u32>,
 }
 
-/// Takes the commit it pushed, and any a listener's left, off the stack when it ends, however
-/// it ends.
-pub(in crate::game) struct Telling<'a, 'g> {
-    pub(in crate::game) game: &'a mut Game<'g>,
-    /// The stack's length before the commit was pushed: its place.
-    pub(in crate::game) frame: usize,
-}
-
-impl Drop for Telling<'_, '_> {
-    fn drop(&mut self) {
-        self.game.transactions.committing.truncate(self.frame);
-    }
-}
-
 /// The innermost commit being told in `dimension`: a listener's commit in another level sits
 /// above it on the stack and must not hide it.
 pub(in crate::game) fn committing_in(
@@ -309,8 +295,9 @@ pub(in crate::game) type ArrivalRollback =
 /// lifetime slot: both retire when the root closes, committed or not, since travel is not
 /// undone. Until then the source level's index keeps the rows it had at the take.
 pub(in crate::game) struct Departure {
-    lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
-    registration: Option<sunrise_mod_runtime::attachments::AttachmentRegistration>,
+    pub(in crate::game) lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
+    pub(in crate::game) registration:
+        Option<sunrise_mod_runtime::attachments::AttachmentRegistration>,
 }
 
 impl Drop for Departure {
@@ -342,29 +329,6 @@ fn remove_entity_attachment(
 }
 
 impl Game<'_> {
-    /// Entity `id` is leaving this level with `map` inside a transaction: its index rows stay
-    /// until the root closes, so a snapshot inside the action sees no gap.
-    pub(in crate::game) fn defer_departure(
-        &mut self,
-        id: u32,
-        map: Option<&mut sunrise_mod_runtime::attachments::Attachments>,
-    ) {
-        use super::super::entity_residency::SlotAccess;
-        let lifetime = std::num::NonZeroU32::new(id)
-            .map(|id| self.with_resident_slot(&self.dim.key(), id, std::mem::take))
-            .and_then(|access| match access {
-                SlotAccess::Done(lifetime) => Some(lifetime),
-                _ => None,
-            })
-            .unwrap_or_default();
-        let registration = map.and_then(|map| map.take_index_binding());
-        if let Some(level) = self.transactions.last_mut() {
-            level.departed.push(Departure {
-                lifetime,
-                registration,
-            });
-        }
-    }
     /// Entity `id` is taken for a transfer inside a transaction, its map kept under `id`: the
     /// slot its arrival reads an abort's way back from, if the abort comes first.
     pub(in crate::game) fn journal_in_flight(&mut self, id: u32) -> ArrivalRollback {

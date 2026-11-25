@@ -4,6 +4,55 @@ pub(in crate::game::server_side) use super::{Game, to_loot};
 pub(in crate::game::server_side) use crate::game::creatures::player_loot_entity::*;
 
 impl Game<'_> {
+    /// The acting player as `INTERACTING_ENTITY`: [`Self::killer_loot_entity`]
+    /// with the fire and vehicle state the loot predicates test.
+    pub(in crate::game) fn interacting_loot_entity(&mut self) -> sunrise_world::loot::LootEntity {
+        let mut entity = self.killer_loot_entity(None);
+        entity.on_fire = self
+            .player
+            .as_ref()
+            .is_some_and(sunrise_client::motion::PlayerMotion::is_on_fire);
+        entity.vehicle = self
+            .riding
+            .and_then(|id| self.vehicle_loot_entity(id))
+            .map(Box::new);
+        entity
+    }
+    /// The vehicle `id` (`Entity.getVehicle`) as loot predicates read it.
+    pub(in crate::game) fn vehicle_loot_entity(
+        &self,
+        id: u32,
+    ) -> Option<sunrise_world::loot::LootEntity> {
+        use sunrise_world::loot::LootEntity;
+        if let Some(mob) = self.mobs.iter().find(|mob| mob.id == id) {
+            let vehicle = mob
+                .extra
+                .mount
+                .and_then(|mount| self.vehicle_loot_entity(mount));
+            return Some(sunrise_client::mobs::drops::loot_entity(mob, vehicle));
+        }
+        if let Some(boat) = self.boats.iter().find(|boat| boat.id == id) {
+            return Some(LootEntity {
+                kind: boat.entity_type(),
+                on_fire: boat.fire_ticks > 0,
+                ..LootEntity::default()
+            });
+        }
+        self.carts
+            .iter()
+            .find(|cart| cart.id == id)
+            .map(|cart| LootEntity {
+                kind: cart.kind.id().into(),
+                ..LootEntity::default()
+            })
+    }
+    /// `Player.getLuck`: the luck attribute (the Luck and Bad Luck effects).
+    pub(in crate::game) fn acting_luck(&mut self) -> f32 {
+        self.player
+            .as_mut()
+            .and_then(|p| p.attribute("minecraft:luck").ok())
+            .unwrap_or(0.0) as f32
+    }
     /// The killing player as a loot entity: their worn and held items, read
     /// from the guest who struck the last blow when a server's player did
     /// (on the server thread that is every player, the window's too), so

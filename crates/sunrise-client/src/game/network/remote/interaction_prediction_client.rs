@@ -297,7 +297,9 @@ impl Game<'_> {
                         .is_some_and(|r| r.has_passengers(hit.id as u32)));
             // EndCrystal, EnderDragonPart, PrimedTnt, and FallingBlock keep Entity.interact's PASS.
             let crystal_passes = self.crystals.iter().any(|c| c.id as i32 == hit.id)
-                || self.level_dragon_part(hit.id as u32).is_some();
+                || self.dragon.as_ref().is_some_and(|d| {
+                    crate::game::dragon::dragon_part_index(d.id, hit.id as u32).is_some()
+                });
             let tnt_or_falling_passes = self.tnts.iter().any(|t| t.id as i32 == hit.id)
                 || self.falling.iter().any(|f| f.id as i32 == hit.id);
             let passes = self

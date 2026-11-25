@@ -104,7 +104,7 @@ impl Game<'_> {
     }
 
     fn pick_object_origin(&self, id: u32) -> Option<[f64; 3]> {
-        if let Some((_, _, origin)) = self.object_target(id as i32) {
+        if let Some((_, _, origin)) = self.client_object_target(id as i32) {
             return Some(origin);
         }
         if let Some(row) = self
@@ -864,7 +864,8 @@ impl Game<'_> {
         let mut events = Vec::new();
         let hooks = self.damage_hooks.client_side();
         {
-            let world = self.client_mob_world_base(&[]);
+            let side = self.client_mob_side();
+            let world = self.client_mob_world_base(&[], &side);
             let mut level = self.predicting_damage_level(&mut lent, &hooks);
             mob.tick(&world, &mut level, &mut events);
         }
@@ -1201,8 +1202,9 @@ pub(in crate::game) mod tests {
                 let mut test_level = sunrise_client::health::TestLevel::new(0);
                 *test_level.random() = (*game.world.random).clone();
                 let mut events = Vec::new();
+                let side = game.client_mob_side();
                 server_mount.tick(
-                    &game.client_mob_world_base(&[]),
+                    &game.client_mob_world_base(&[], &side),
                     &mut test_level.level(),
                     &mut events,
                 );

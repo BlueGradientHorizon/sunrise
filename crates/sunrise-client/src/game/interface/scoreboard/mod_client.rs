@@ -168,4 +168,117 @@ impl Game<'_> {
             .collect();
         serde_json::json!({ "objective": objective.name, "title": objective.display_text().plain(), "scores": scores })
     }
+    /// Client-side viewer team from `Remote::profile_name` (never falls back to server `PLAYER_NAME`).
+    pub(in crate::game) fn client_player_team(&self) -> Option<&sb::Team> {
+        self.own_team()
+    }
+    /// Client-side `TamableAnimal.getTeam` of an entity id (other players by profile name, mobs by UUID).
+    pub(in crate::game) fn client_mob_team(&self, id: u32) -> Option<&sb::Team> {
+        if self.score.board.teams.is_empty() {
+            return None;
+        }
+        self.client_team_with_owner(id, || {
+            self.mobs.iter().find(|m| m.id == id).and_then(tame_owner)
+        })
+    }
+    /// Client-side [`client_mob_team`](Self::client_mob_team) for a mob already in hand.
+    pub(in crate::game) fn client_mob_team_of(
+        &self,
+        m: &sunrise_client::mobs::Mob,
+    ) -> Option<&sb::Team> {
+        if self.score.board.teams.is_empty() {
+            return None;
+        }
+        self.client_team_with_owner(m.id, || tame_owner(m))
+    }
+    /// Client-side team snapshot for `MobWorld` (viewer, remote players, and client-tracked mobs).
+    pub(in crate::game) fn client_mob_teams(&self) -> sunrise_client::mobs::Teams<'_> {
+        if self.score.board.teams.is_empty() {
+            return Default::default();
+        }
+        let tame_owners: HashMap<u32, [i32; 4]> = self
+            .mobs
+            .iter()
+            .filter_map(|m| Some((m.id, tame_owner(m)?)))
+            .collect();
+        let own = self
+            .remote
+            .as_ref()
+            .and_then(|r| Some((u32::try_from(r.entity_id).ok()?, self.client_player_team()?)));
+        let others = self
+            .remote_player_names()
+            .into_iter()
+            .filter_map(|(id, name)| Some((id, self.score.board.players_team(&name)?)));
+        let players: HashMap<u32, &sb::Team> = own.into_iter().chain(others).collect();
+        sunrise_client::mobs::Teams {
+            player: self.client_player_team(),
+            players,
+            mobs: self
+                .persist
+                .uuids
+                .keys()
+                .filter_map(|id| {
+                    let owner = || tame_owners.get(id).copied();
+                    Some((*id, self.client_team_with_owner(*id, owner)?))
+                })
+                .collect(),
+        }
+    }
+    fn client_team_with_owner(
+        &self,
+        id: u32,
+        owner: impl FnOnce() -> Option<[i32; 4]>,
+    ) -> Option<&sb::Team> {
+        if let Some(name) = self.remote_player_name(id) {
+            return self.score.board.players_team(name);
+        }
+        let uuid = *self.persist.uuids.get(&id)?;
+        let own = uuid_text(uuid);
+        if let Some(team) = self.score.board.players_team(&own) {
+            return Some(team);
+        }
+        let owner = owner().and_then(|o| self.client_root_owner_name(o));
+        pet_team(&self.score.board, &own, owner.as_deref())
+    }
+    fn client_root_owner_name(&self, owner: [i32; 4]) -> Option<String> {
+        let pet_owner = |uuid: [i32; 4]| {
+            let pet = self
+                .remote
+                .as_ref()
+                .and_then(|r| r.level_uuids.get(&ints_uuid(uuid)).copied())
+                .and_then(|id| u32::try_from(id).ok())
+                .or_else(|| {
+                    self.persist
+                        .uuids
+                        .iter()
+                        .find_map(|(&id, &u)| (u == uuid).then_some(id))
+                })?;
+            self.mobs
+                .iter()
+                .find(|m| m.id == pet && m.extra.tame)?
+                .extra
+                .owner
+        };
+        let root = root_owner(owner, pet_owner);
+        let root_u128 = ints_uuid(root);
+        if let Some(r) = self.remote.as_ref() {
+            if r.profile == root_u128 {
+                return Some(r.profile_name.clone());
+            }
+            if let Some((&id, _)) = r.level_players.iter().find(|(_, u)| **u == root_u128) {
+                return Some(
+                    r.level_player_name(id, &root_u128)
+                        .map_or_else(|| uuid_text(root), str::to_owned),
+                );
+            }
+            if r.level_uuids.contains_key(&root_u128) {
+                return Some(uuid_text(root));
+            }
+        }
+        self.persist
+            .uuids
+            .values()
+            .any(|&u| u == root)
+            .then(|| uuid_text(root))
+    }
 }

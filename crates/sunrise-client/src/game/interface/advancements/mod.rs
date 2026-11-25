@@ -1494,8 +1494,21 @@ impl Game<'_> {
                     if let Some(eye) = self.eye_position() {
                         self.spawn_item(rest, eye, [0.0; 3], 0);
                     }
-                } else {
-                    self.advancement_pickup_sound();
+                } else if let Some((at, pitch)) = self.player.as_mut().map(|p| {
+                    let at = [p.position.x, p.position.y, p.position.z];
+                    let pitch = ((p.random.next_float() - p.random.next_float()) * 0.7 + 1.0) * 2.0;
+                    (at, pitch)
+                }) {
+                    self.send_level_sound(
+                        crate::game::level_sounds::LevelSound::new(
+                            "minecraft:entity.item.pickup",
+                            at,
+                            0.2,
+                            pitch,
+                        )
+                        .in_source(mod_api::SoundSource::Players),
+                        None,
+                    );
                 }
             }
         }
@@ -2078,7 +2091,7 @@ impl Game<'_> {
         // `ClipContext.Block.COLLIDER`, no fluids, within 128 blocks.
         let at = self.target_position(t)?;
         let from = Vec3::new(eye[0], eye[1], eye[2]);
-        let to = Vec3::new(at[0], at[1] + self.target_eye_height(t), at[2]);
+        let to = Vec3::new(at[0], at[1] + self.server_target_eye_height(t), at[2]);
         let world = self.mob_world_base(&[]);
         let clear = to.distance(from) <= 128.0 && world.clear_between(from, to, false);
         if !clear {
@@ -2849,48 +2862,6 @@ impl Game<'_> {
             self.advancement_progress(advancement, criterion, ProgressType::Revoke);
         }
         revoked
-    }
-}
-impl Game<'_> {
-    /// Convert the admitted packet's network icon, components and requirements
-    /// into the definition used by the screen and toast.
-    pub(in crate::game) fn remote_advancement(
-        &self,
-        a: sunrise_protocol::packets::play::Advancement,
-    ) -> adv::Advancement {
-        use sunrise_client::scoreboard::tag_to_json;
-        let display = a.display.map(|d| adv::Display {
-            icon: self.remote_advancement_icon(d.icon),
-            title: tag_to_json(&d.title),
-            description: tag_to_json(&d.description),
-            frame: match d.frame {
-                1 => Frame::Challenge,
-                2 => Frame::Goal,
-                _ => Frame::Task,
-            },
-            background: d.background,
-            show_toast: d.show_toast,
-            announce: false,
-            hidden: d.hidden,
-        });
-        let mut criteria: Vec<adv::Criterion> = Vec::new();
-        for name in a.requirements.iter().flatten() {
-            if !criteria.iter().any(|c| &c.name == name) {
-                criteria.push(adv::Criterion {
-                    name: name.clone(),
-                    trigger: String::new(),
-                    conditions: Value::Null.into(),
-                });
-            }
-        }
-        adv::Advancement {
-            id: a.id,
-            parent: a.parent,
-            display,
-            criteria,
-            requirements: a.requirements,
-            rewards: Default::default(),
-        }
     }
 }
 /// An advancement's title or description: a whole component (ComponentSerialization.CODEC),
