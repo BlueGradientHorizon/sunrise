@@ -157,7 +157,7 @@ pub(crate) fn check_for_run<'a>(
 /// Why `owners` cannot have their original `jar` at `path`, and how to add it.
 fn jar_unavailable(owners: &[String], jar: &JarRef, path: &Path, why: &str) -> String {
     format!(
-        "{} needs Java jar {} {} (SHA-512 {}): {}: {why}
+        "{} needs Java jar {} {} (SHA-512 {}): {}: {why}\n\
          Add the exact original with `cargo sunrise-mod use-jar <path>` and run without --jars, or use `cargo sunrise-mod run --jars <dir>` with `<sha512>.jar` files",
         owners.join(", "),
         jar.id(),

@@ -373,6 +373,13 @@ fn run_refuses_a_missing_or_wrong_jar_before_building() {
     for expected in ["garden", "original", "1.0", SHA512, "use-jar"] {
         assert!(missing.contains(expected), "{missing}");
     }
+    // The fix is its own line, as staging words it.
+    assert!(
+        missing
+            .lines()
+            .any(|line| line.starts_with("Add the exact original with `cargo sunrise-mod use-jar")),
+        "{missing}"
+    );
     fs::write(&original, b"not abc").unwrap();
     let wrong = run();
     assert!(
