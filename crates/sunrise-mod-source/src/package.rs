@@ -52,8 +52,8 @@ pub fn binary_kind(head: &[u8]) -> Option<&'static str> {
 
 /// The source files a package of the folder at `root` carries, `/`-separated and sorted: the files
 /// `cargo package` would put in the crate. The whole folder is walked, but not [`NOT_PACKAGED`]
-/// folders, folders whose name starts with `.`, nested packages (a folder holding its own
-/// `Cargo.toml`), the names [`source_file`] refuses, or what the root `.gitignore` ignores. Then
+/// folders, nested packages (a folder holding its own `Cargo.toml`) that no packaged manifest names
+/// as a `path` dependency, `.`-named files and folders (unless `include` is set), the names [`source_file`] refuses, or what the root `.gitignore` ignores. Then
 /// `[package] include` of `Cargo.toml` keeps only the files it matches, or else `[package]
 /// exclude` drops the files it matches, both as gitignore-style patterns. `Cargo.toml` and
 /// `Cargo.lock` at the root are always kept. No entry whose name a package path cannot hold (not
@@ -137,37 +137,103 @@ pub fn source_files(root: &Path) -> io::Result<Vec<String>> {
         }
     };
 
+    // Cargo skips `.*` unless `include` is set, which alone then decides.
+    let hidden =
+        |name: &str| include.is_none() && name.split('/').any(|part| part.starts_with('.'));
     let mut found = Vec::new();
     let mut pending = vec![(root.to_path_buf(), String::new())];
-    while let Some((dir, prefix)) = pending.pop() {
-        for entry in std::fs::read_dir(&dir)? {
-            let entry = entry?;
-            let kind = entry.file_type()?;
-            let file_name = entry.file_name();
-            let Some(file_name) = file_name.to_str().filter(|name| !name.contains('\\')) else {
-                continue;
-            };
-            let name = if prefix.is_empty() {
-                file_name.to_owned()
-            } else {
-                format!("{prefix}/{file_name}")
-            };
-            if kind.is_dir() {
-                if file_name.starts_with('.')
-                    || !source_file(&format!("{name}/"))
-                    || entry.path().join("Cargo.toml").exists()
-                    || !packaged(&name, true)
-                {
+    // Folders a packaged manifest names as a `path` dependency, and the nested packages seen so far.
+    let mut wanted = std::collections::HashSet::new();
+    let mut nested = Vec::new();
+    wanted_folders(&manifest, "", &mut wanted);
+    loop {
+        while let Some((dir, prefix)) = pending.pop() {
+            for entry in std::fs::read_dir(&dir)? {
+                let entry = entry?;
+                let kind = entry.file_type()?;
+                let file_name = entry.file_name();
+                let Some(file_name) = file_name.to_str().filter(|name| !name.contains('\\')) else {
                     continue;
+                };
+                let name = if prefix.is_empty() {
+                    file_name.to_owned()
+                } else {
+                    format!("{prefix}/{file_name}")
+                };
+                if kind.is_dir() {
+                    if hidden(&name) || !source_file(&format!("{name}/")) || !packaged(&name, true)
+                    {
+                        continue;
+                    }
+                    if entry.path().join("Cargo.toml").exists() {
+                        nested.push((entry.path(), name));
+                    } else {
+                        pending.push((entry.path(), name));
+                    }
+                } else if source_file(&name) && !hidden(&name) && packaged(&name, false) {
+                    found.push(name);
                 }
-                pending.push((entry.path(), name));
-            } else if source_file(&name) && packaged(&name, false) {
-                found.push(name);
             }
+        }
+        // A nested package is walked once a packaged manifest names its folder, which can be one
+        // found after it, so the list is read again until none is newly named.
+        let (named, others): (Vec<_>, Vec<_>) = std::mem::take(&mut nested)
+            .into_iter()
+            .partition(|(_, name)| wanted.contains(name));
+        nested = others;
+        if named.is_empty() {
+            break;
+        }
+        for (dir, name) in named {
+            let text = std::fs::read_to_string(dir.join("Cargo.toml"))?;
+            let table = text
+                .parse::<toml::Table>()
+                .map_err(|e| invalid(format!("{name}/Cargo.toml: {e}")))?;
+            wanted_folders(&table, &name, &mut wanted);
+            pending.push((dir, name));
         }
     }
     found.sort();
     Ok(found)
+}
+
+/// Adds to `wanted` the folders (relative to the package, `/`-separated) that `manifest`, the
+/// `Cargo.toml` of the folder `base`, names as `path` dependencies in `[dependencies]`,
+/// `[build-dependencies]`, `[dev-dependencies]` and their `[target.*.*]` forms. A path that leaves
+/// the package is not added.
+#[cfg(feature = "folder")]
+fn wanted_folders(
+    manifest: &toml::Table,
+    base: &str,
+    wanted: &mut std::collections::HashSet<String>,
+) {
+    const TABLES: [&str; 3] = ["dependencies", "build-dependencies", "dev-dependencies"];
+    let mut tables: Vec<&toml::Value> =
+        TABLES.iter().filter_map(|key| manifest.get(*key)).collect();
+    if let Some(targets) = manifest.get("target").and_then(toml::Value::as_table) {
+        for target in targets.values() {
+            tables.extend(TABLES.iter().filter_map(|key| target.get(*key)));
+        }
+    }
+    for table in tables.into_iter().filter_map(toml::Value::as_table) {
+        for dependency in table.values() {
+            let Some(path) = dependency.get("path").and_then(toml::Value::as_str) else {
+                continue;
+            };
+            let mut parts: Vec<&str> = base.split('/').filter(|part| !part.is_empty()).collect();
+            let mut inside = true;
+            for part in path.split(['/', '\\']) {
+                match part {
+                    "" | "." => {}
+                    ".." => inside &= parts.pop().is_some(),
+                    part => parts.push(part),
+                }
+            }
+            if inside && !parts.is_empty() {
+                wanted.insert(parts.join("/"));
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -312,11 +378,21 @@ mod folder_tests {
     }
 
     #[test]
-    fn a_nested_package_and_a_gitignored_file_are_left_out() {
+    fn only_a_nested_package_a_manifest_names_is_packaged_and_gitignored_files_are_left_out() {
         let root = project(&[
-            ("Cargo.toml", "[package]\nname = 'ruby'\n"),
+            (
+                "Cargo.toml",
+                "[package]\nname = 'ruby'\n[dependencies]\nhelper = { path = 'src/helper' }\n",
+            ),
             (".gitignore", "out/\n*.o\n"),
             ("src/lib.rs", ""),
+            (
+                "src/helper/Cargo.toml",
+                "[package]\nname = 'helper'\n[dependencies]\ndeep = { path = '../deep' }\n",
+            ),
+            ("src/helper/src/lib.rs", ""),
+            ("src/deep/Cargo.toml", "[package]\nname = 'deep'\n"),
+            ("src/deep/lib.rs", ""),
             ("src/cache.o", ""),
             ("out/generated.c", ""),
             ("vendor/dep/Cargo.toml", "[package]\nname = 'dep'\n"),
@@ -326,7 +402,15 @@ mod folder_tests {
         ]);
         assert_eq!(
             names(root.path()),
-            [".gitignore", "Cargo.toml", "src/lib.rs", "vendor/plain.c"]
+            [
+                "Cargo.toml",
+                "src/deep/Cargo.toml",
+                "src/deep/lib.rs",
+                "src/helper/Cargo.toml",
+                "src/helper/src/lib.rs",
+                "src/lib.rs",
+                "vendor/plain.c"
+            ]
         );
     }
 }
