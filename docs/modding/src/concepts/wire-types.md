@@ -65,8 +65,10 @@ trees, including ingredients and recipe slot displays.
 
 Typed payloads use the same encoding with their own limits. They count lists, present
 options, boxes, shared pointers, NBT containers and explicit recursion, not derived record
-frames, against `PAYLOAD_MAX_DEPTH`. String and list lengths are bounded by
-`PAYLOAD_MAX_STRING_BYTES` and `PAYLOAD_MAX_LIST_ENTRIES`. The reader and writer both
+frames, against `PAYLOAD_MAX_DEPTH`. String lengths are bounded by `PAYLOAD_MAX_STRING_BYTES`.
+A list has no count limit of its own, as in vanilla (`ByteBufCodecs.collection`): its count is
+refused when its entries, at `Wire::MIN` bytes each and never less than one, could not fit in
+the rest of the body, so a hostile count never forces a large allocation. The reader and writer both
 charge `PAYLOAD_DECODE_BUDGET` for decoded storage, separately from the 8 MiB body cap.
 A failed encode is never queued.
 

@@ -18,7 +18,7 @@ use std::sync::Arc;
 pub(crate) mod limits;
 mod schema;
 
-use limits::{Budget, PAYLOAD_MAX_DEPTH, PAYLOAD_MAX_LIST_ENTRIES, PAYLOAD_MAX_STRING_BYTES};
+use limits::{Budget, PAYLOAD_MAX_DEPTH, PAYLOAD_MAX_STRING_BYTES};
 
 pub use schema::WireSchema;
 
@@ -190,7 +190,10 @@ impl Writer {
                 let Some(len) = out.list_len(items.len()) else {
                     return;
                 };
+                // The reader refuses a count whose entries, at one byte each at least,
+                // could not fit in the rest of the body; refuse the same lists here.
                 let Some(size) = min
+                    .max(1)
                     .checked_mul(items.len())
                     .and_then(|size| size.checked_add(4))
                 else {
@@ -221,10 +224,6 @@ impl Writer {
         }
     }
     fn list_len(&mut self, len: usize) -> Option<u32> {
-        if self.payload.is_some() && len > PAYLOAD_MAX_LIST_ENTRIES {
-            self.fail(WireError::Length);
-            return None;
-        }
         match u32::try_from(len) {
             Ok(len) => Some(len),
             Err(_) => {
@@ -384,18 +383,13 @@ impl<'a> Reader<'a> {
         Ok(head)
     }
     /// A length read before `items` values of at least `min` bytes each: refused when the rest
-    /// of the buffer could not hold them, so no allocation outruns its input.
+    /// of the buffer could not hold them, counting a zero-width value as one byte, so no
+    /// allocation outruns its input. Vanilla's collection codecs have no count limit of their
+    /// own (`ByteBufCodecs.collection` defaults to `Integer.MAX_VALUE`); the packet's size
+    /// bounds them.
     pub fn take_len(&mut self, min: usize) -> Result<usize, WireError> {
         let len = u32::take(self)? as usize;
-        let min = if self.budget.is_some() {
-            if len > PAYLOAD_MAX_LIST_ENTRIES {
-                return Err(WireError::Length);
-            }
-            min // Zero-width entries are safe when their count is capped independently.
-        } else {
-            min.max(1)
-        };
-        match len.checked_mul(min) {
+        match len.checked_mul(min.max(1)) {
             Some(needed) if needed <= self.data.len() => Ok(len),
             _ => Err(WireError::Length),
         }

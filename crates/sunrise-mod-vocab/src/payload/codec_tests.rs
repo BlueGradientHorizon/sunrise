@@ -55,7 +55,7 @@ fn the_canonical_enum_encoding_has_a_new_negotiated_fingerprint() {
 #[test]
 fn both_codecs_of_a_typed_body_refuse_excess_allocation_before_reserving() {
     // One byte per None in the body, but a Vec entry large enough to cross the
-    // allocation budget. Exactly 4096 entries meets the distinct collection cap.
+    // allocation budget: 4096 entries of 2049 bytes pass 8 MiB.
     type Wide = Vec<Option<[u8; 2048]>>;
     let mut bytes = vec![0, 0x10, 0, 0];
     bytes.resize(4 + 4096, 0);
@@ -64,6 +64,18 @@ fn both_codecs_of_a_typed_body_refuse_excess_allocation_before_reserving() {
         encode_payload(&vec![None::<[u8; 2048]>; 4096], PAYLOAD_DECODE_BUDGET),
         Err(WireError::Budget)
     );
+}
+
+#[test]
+fn a_zero_width_list_counts_each_entry_as_one_byte_in_both_codecs() {
+    // `()` has no encoded bytes, so its count alone could ask for any length; each entry is
+    // charged one byte against the rest of the body, the same rule as every other list.
+    assert_eq!(
+        decode_payload::<Vec<()>>(&[3, 0, 0, 0, 0, 0]),
+        Err(WireError::Length)
+    );
+    assert_eq!(encode_payload(&vec![(); 3], 6), Err(WireError::Length));
+    assert_eq!(encode_payload(&vec![(); 3], 7), Ok(vec![3, 0, 0, 0]));
 }
 
 #[test]
