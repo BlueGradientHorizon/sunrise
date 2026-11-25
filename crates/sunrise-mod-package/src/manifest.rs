@@ -1296,6 +1296,7 @@ impl Package {
     /// their declared sizes summed from the archive's directory, before any is inflated, as the
     /// packers bound them. The game never reads source entries, so only the readers that inflate
     /// them (`index::native::Bundle::read`, the registry's requirement scan) call this.
+    #[cfg(feature = "index-read")]
     pub(crate) fn check_source_bounds<R: Read + std::io::Seek>(
         zip: &mut zip::ZipArchive<R>,
     ) -> Result<(), String> {
@@ -2467,7 +2468,12 @@ capabilities = ["registries"]
                 .map(String::from_utf8_lossy)
                 .collect::<Vec<_>>()
         );
-        std::fs::write(root.join("src/lib.rs"), b"MZ executable").unwrap();
+        // A PE: `MZ`, the offset of its `PE\0\0` signature at 0x3c, and the signature there.
+        let mut pe = vec![0u8; 0x44];
+        pe[..2].copy_from_slice(b"MZ");
+        pe[0x3c] = 0x40;
+        pe[0x40..].copy_from_slice(b"PE\0\0");
+        std::fs::write(root.join("src/lib.rs"), pe).unwrap();
         assert!(
             Package::pack_directory(&root)
                 .unwrap_err()
