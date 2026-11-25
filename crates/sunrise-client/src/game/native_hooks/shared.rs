@@ -2750,7 +2750,7 @@ impl Game<'_> {
         self.placement_canceled(self.entity(placer), pos, state, placed_against, companion)
     }
 
-    fn placement_canceled(
+    pub(in crate::game) fn placement_canceled(
         &mut self,
         placer: Option<EntityRef>,
         pos: BlockPos,

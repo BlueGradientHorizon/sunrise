@@ -5533,6 +5533,7 @@ dependencies = [
  "naga",
  "pollster",
  "serde_json",
+ "sha2 0.10.9",
  "smallvec",
  "sunrise-core",
  "sunrise-render-core",
@@ -5621,6 +5622,7 @@ dependencies = [
  "naga",
  "png",
  "sunrise-core",
+ "sunrise-glsl",
  "zip",
 ]
 
