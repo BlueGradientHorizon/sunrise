@@ -552,13 +552,14 @@ fn run_fixture(family: Family, output: Output, dim: Dim) {
     let _ =
         sunrise_client::block_contact::HOOKS.set(crate::game::native_hooks::BLOCK_CONTACT_HOOKS);
     if family == Family::Knockback {
-        assert!(sunrise_client::brewing::register_mod_effects([(
-            "borrowed-panic:hit".into(),
-            0,
-            sunrise_client::brewing::Category::Neutral,
-            None,
-            FAILING_MOD.into(),
-        )]));
+        assert!(sunrise_client::brewing::register_mod_effects([
+            sunrise_client::brewing::ModEffect::new(
+                "borrowed-panic:hit",
+                0,
+                sunrise_client::brewing::Category::Neutral,
+                FAILING_MOD,
+            )
+        ]));
     }
     let scratch = tempfile::tempdir().unwrap();
     let goal_payload = family.is_goal().then(|| Box::new(PanicToken(0xdecaf)));

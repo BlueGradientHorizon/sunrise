@@ -6,7 +6,7 @@ use crate::*;
 #[doc(hidden)]
 #[sunrise_mod_api_macros::host_area]
 pub trait PlayerInteractionBackend {
-    /// Side: server.
+    /// Side: both.
     /// `Player.getAttackStrengthScale(partial)`: the charge the player's next
     /// `Player.attack` reads, from 0 (just swung) to 1 (full), where `partial`
     /// (vanilla reads 0.5) is how far between ticks the read is. It is
@@ -15,7 +15,18 @@ pub trait PlayerInteractionBackend {
     /// Inside `attack_entity` it reads the charge that blow uses: the hook
     /// runs before `Player.attack` resets the ticker. None for a stale or unavailable player.
     /// Non-finite partial ticks return `None`; finite partials are not restricted.
+    /// On a client it answers for the local player alone (vanilla's `minecraft.player`, not the
+    /// camera entity), from the client's own ticker, as `Hud.extractCrosshair`'s attack
+    /// indicator reads it; None for any other player.
     fn player_attack_strength_scale(&self, player: PlayerRef, partial: f32) -> Option<f32>;
+    /// Side: both.
+    /// `Player.getCurrentItemAttackStrengthDelay()`: the ticks a full charge takes, `20 / attack
+    /// speed` from the attack speed attribute with the main-hand item's modifiers.
+    /// `Hud.extractCrosshair` draws the full-charge icon when it is above 5 and the target is in
+    /// reach. On a client it answers for the local player alone, as
+    /// [`player_attack_strength_scale`](Self::player_attack_strength_scale) does. None for a
+    /// stale or unavailable player.
+    fn player_current_item_attack_strength_delay(&self, player: PlayerRef) -> Option<f32>;
     /// Side: server.
     /// `Player.mayUseItemAt(pos, face, stack)`: whether the player may use `stack` at `pos`, the
     /// block it would be placed in when clicked on its `face`. A player who may build (survival,

@@ -3,7 +3,7 @@ use super::*;
 /// The hook points. Each does nothing in Sunrise.
 impl Game<'_> {
     /// `IItemExtension.canContinueUsing`: does the use of `stack` go on with
-    /// `held` in the used `hand`? `entity` is `None` for a player.
+    /// `held` in the used `hand`? `entity` is the user's id, a player's included.
     /// `can_continue` arrives with vanilla's `isSameItem`; the parts of
     /// `stack`'s item may set it either way. Both sides.
     #[inline(never)]

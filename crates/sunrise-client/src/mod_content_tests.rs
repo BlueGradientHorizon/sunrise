@@ -1357,7 +1357,7 @@ fn content_files(
         "sunrise-content".into(),
         resources.data_changes().clone(),
     );
-    crate::datapack::DataStore::load(&[&content])
+    crate::datapack::DataStore::load(&crate::datapack::DataPacks::new(&[&content]))
         .files
         .into_iter()
         .collect()
@@ -2396,10 +2396,16 @@ fn content_root_carries_a_structure_mod() {
     assert!(!root.join("worldgen/structure/huts/hut.nbt").exists());
     let tags: BTreeMap<String, String> =
         serde_json::from_slice(&fs::read(root.join("worldgen/biome_tags.json")).unwrap()).unwrap();
+    // `#c:is_plains` stays: NeoForge generates that biome tag, so the reference resolves;
+    // `othermod:glade` names a biome nobody installed and goes.
     let hut: serde_json::Value = serde_json::from_str(&tags["huts:has_hut"]).unwrap();
     assert_eq!(
         hut["values"],
-        serde_json::json!(["#minecraft:is_overworld", "minecraft:plains"])
+        serde_json::json!([
+            "#minecraft:is_overworld",
+            "#c:is_plains",
+            "minecraft:plains"
+        ])
     );
     // The additions join vanilla's entries at the end and are no set or pool
     // of their own.
@@ -6097,6 +6103,166 @@ fn biome_modifiers_apply_over_world_packs() {
     let _ = fs::remove_dir_all(&scratch);
 }
 
+/// Biome modifiers and structure modifiers see Sunrise's built-in `c:` and `neoforge:`
+/// convention tags without a mod defining those files, and mod/pack files layer on top
+/// with additive merge and `"replace": true`.
+#[test]
+fn biome_modifiers_resolve_builtin_convention_tags() {
+    let base = biome_base("biome-modifiers-c-tags");
+    let scratch = base.parent().unwrap().to_owned();
+
+    // 1. Built-in `#c:is_plains` biome tag and `#c:bosses` entity tag resolve with no mod tag file.
+    let m = zinc_mod(
+        &scratch.join("zinc_default"),
+        &[
+            (
+                "add_plains_ore",
+                r##"{"type":"neoforge:add_features","biomes":"#c:is_plains",
+                    "features":"zinc:ore_zinc","step":"underground_ores"}"##,
+            ),
+            (
+                "remove_bosses",
+                r##"{"type":"neoforge:remove_spawns","biomes":"#c:is_plains",
+                    "entity_types":"#c:bosses"}"##,
+            ),
+        ],
+    );
+    let out = scratch.join("out_default");
+    let warnings = build_fixture(&base, &base.join("jars"), &[m], &out).unwrap();
+    assert!(warnings.is_empty(), "unexpected warnings: {warnings:?}");
+    let features = biome_features(&out);
+    assert_eq!(
+        features["minecraft:plains"],
+        serde_json::json!([
+            [],
+            ["minecraft:lake"],
+            [],
+            [],
+            [],
+            [],
+            ["minecraft:ore_coal", "zinc:ore_zinc"]
+        ])
+    );
+    assert_eq!(
+        features["minecraft:desert"],
+        serde_json::json!([["minecraft:fossil"]])
+    );
+
+    // 2. `biome_modifiers_over_packs` sees built-in `#c:is_plains` and layers pack additions on top.
+    let mut packs = sunrise_world::worldgen::overrides::WorldgenOverrides::default();
+    packs.set(
+        "biomes",
+        "minecraft:plains",
+        r#"{"temperature":0.5,"features":[[],[],[],[],[],[],["minecraft:ore_coal"]]}"#.to_owned(),
+    );
+    packs.set("biomes", "terra:alpine", r#"{"features":[]}"#.to_owned());
+    packs.add_tag(
+        "biome_tags",
+        "c:is_plains",
+        "file/terra",
+        r#"{"values":["terra:alpine"]}"#.to_owned(),
+    );
+    let after = biome_modifiers_over_packs(&out, &packs, &[])
+        .unwrap()
+        .unwrap();
+    let pack_features = |id: &str| -> serde_json::Value {
+        let text = after.entries("biomes").find(|(i, _)| *i == id).unwrap().1;
+        serde_json::from_str::<serde_json::Value>(text).unwrap()["features"].clone()
+    };
+    assert_eq!(
+        pack_features("minecraft:plains"),
+        serde_json::json!([
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            ["minecraft:ore_coal", "zinc:ore_zinc"]
+        ])
+    );
+    assert_eq!(
+        pack_features("terra:alpine"),
+        serde_json::json!([[], [], [], [], [], [], ["zinc:ore_zinc"]])
+    );
+
+    // 3. Mod additive tag file on `c:is_plains` keeps built-in `minecraft:plains` and adds `minecraft:desert`.
+    let m_add = zinc_mod(
+        &scratch.join("zinc_add"),
+        &[(
+            "add_plains_ore",
+            r##"{"type":"neoforge:add_features","biomes":"#c:is_plains",
+                "features":"zinc:ore_zinc","step":"underground_ores"}"##,
+        )],
+    );
+    let add_tag = scratch.join("zinc_add/data/c/tags/worldgen/biome/is_plains.json");
+    fs::create_dir_all(add_tag.parent().unwrap()).unwrap();
+    fs::write(&add_tag, r#"{"values":["minecraft:desert"]}"#).unwrap();
+    let out_add = scratch.join("out_add");
+    let warnings = build_fixture(&base, Path::new(""), &[m_add], &out_add).unwrap();
+    assert!(warnings.is_empty(), "unexpected warnings: {warnings:?}");
+    let features = biome_features(&out_add);
+    assert_eq!(
+        features["minecraft:plains"][6],
+        serde_json::json!(["minecraft:ore_coal", "zinc:ore_zinc"])
+    );
+    assert_eq!(
+        features["minecraft:desert"][6],
+        serde_json::json!(["zinc:ore_zinc"])
+    );
+
+    // 4. Mod `"replace": true` on `c:is_plains` drops built-in `minecraft:plains`.
+    let m_replace = zinc_mod(
+        &scratch.join("zinc_replace"),
+        &[(
+            "add_plains_ore",
+            r##"{"type":"neoforge:add_features","biomes":"#c:is_plains",
+                "features":"zinc:ore_zinc","step":"underground_ores"}"##,
+        )],
+    );
+    let replace_tag = scratch.join("zinc_replace/data/c/tags/worldgen/biome/is_plains.json");
+    fs::create_dir_all(replace_tag.parent().unwrap()).unwrap();
+    fs::write(
+        &replace_tag,
+        r#"{"replace":true,"values":["minecraft:desert"]}"#,
+    )
+    .unwrap();
+    let out_replace = scratch.join("out_replace");
+    let warnings = build_fixture(&base, Path::new(""), &[m_replace], &out_replace).unwrap();
+    assert!(
+        warnings.iter().all(|w| w.contains("replaces data/c/tags/")),
+        "unexpected warnings: {warnings:?}"
+    );
+    let features = biome_features(&out_replace);
+    assert_eq!(
+        features["minecraft:plains"][6],
+        serde_json::json!(["minecraft:ore_coal"])
+    );
+    assert_eq!(
+        features["minecraft:desert"][6],
+        serde_json::json!(["zinc:ore_zinc"])
+    );
+
+    // 5. Structure modifiers resolve built-in `#c:` structure and entity tags without warnings.
+    let s_base = structure_modifier_base("structure-modifiers-c-tags");
+    let s_scratch = s_base.parent().unwrap().to_owned();
+    let sm = structure_modifier_mod(
+        &s_scratch.join("smod"),
+        &[(
+            "remove_bosses",
+            r##"{"type":"neoforge:remove_spawns","structures":"#c:hidden_from_displayers",
+                "entity_types":"#c:bosses"}"##,
+        )],
+    );
+    let s_warnings = build_fixture(&s_base, Path::new(""), &[sm], &s_scratch.join("out")).unwrap();
+    assert!(
+        s_warnings.is_empty(),
+        "unexpected structure modifier warnings: {s_warnings:?}"
+    );
+    let _ = fs::remove_dir_all(&s_scratch);
+    let _ = fs::remove_dir_all(&scratch);
+}
+
 /// A mod with features but no modifier leaves vanilla's biome bundle alone.
 #[test]
 fn biome_modifiers_none_keep_the_vanilla_biomes() {
@@ -6124,7 +6290,7 @@ fn biome_modifiers_refuse_unknown_names() {
     let base = biome_base("biome-modifiers-errors");
     let scratch = base.parent().unwrap().to_owned();
     // A name the root doesn't have, or a type not read yet: that modifier is
-    // skipped with a warning (another mod's ids, `#c:` tags and its own serializers
+    // skipped with a warning (another mod's ids, unknown tags and its own serializers
     // are common in real mods), and the mods still load.
     for (i, (modifier, warning)) in [
         (
@@ -6790,11 +6956,9 @@ fn signs_take_their_form_wood_and_wall_block_from_their_declaration() {
     );
     assert_eq!(&*block("signs:board").item, "signs:notice");
     assert_eq!(&*block("signs:bracket").item, "signs:lantern");
-    let defaults = sunrise_world::item_defaults::read(&root).unwrap();
     let mut renderer = crate::block_entity_render::BlockEntityRenderer::load(
         &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
         registry,
-        &defaults,
     )
     .unwrap();
     renderer.add_mod_signs(&facts, registry);
@@ -8393,8 +8557,13 @@ fn declared_offsets_resolve_modes_and_publish_only_declared_shape_channels() {
 #[test]
 fn plain_block_properties_replace_template_facts_and_face_rule() {
     for value in [true, false] {
+        let skip = if value {
+            r#"[{"neighbor":"self"}]"#
+        } else {
+            "[]"
+        };
         let declaration = format!(
-            r#"{{"template":"minecraft:test","item":false,"properties":{{"instrument":"CUSTOM_HEAD","ignited_by_lava":{value},"replaceable":{value},"skip_same_block_faces":{value}}}}}"#
+            r#"{{"template":"minecraft:test","item":false,"properties":{{"instrument":"CUSTOM_HEAD","ignited_by_lava":{value},"replaceable":{value},"skip_rendering":{skip}}}}}"#
         );
         let (base, mods) = block_base(&format!("plain-properties-{value}"), &[&declaration]);
         let plan = Plan::new(&base, &mods).unwrap();
@@ -8429,11 +8598,17 @@ fn plain_block_properties_replace_template_facts_and_face_rule() {
             serde_json::from_str(r#"{"minecraft:test":{"rule":"bars"}}"#).unwrap();
         plan.json("render-definitions.json", &mut definitions)
             .unwrap();
+        let expected_rules = if value {
+            J::Arr(vec![J::Obj(vec![(
+                "neighbor".into(),
+                J::Str("self".into()),
+            )])])
+        } else {
+            J::Arr(Vec::new())
+        };
         assert_eq!(
-            definitions.at("testmod:test/rule"),
-            Some(&mut J::Str(
-                if value { "same_block" } else { "never" }.into()
-            ))
+            definitions.at("testmod:test/skip_rendering"),
+            Some(&mut expected_rules.clone())
         );
         let mut behaviour: J = serde_json::from_str(
             r#"{"states":[[0,0,0,0,0,0,0,0,"HARP"],[0,0,0,0,0,0,0,0,"HARP"]],"blocks":[],"items":{}}"#,
@@ -8708,6 +8883,77 @@ fn accept_declared_refuses_host_duplicates_of_served_content_and_keeps_served_re
             "{label}: batch must be refused atomically"
         );
     }
+}
+
+/// Face rules declared in a content block's data reach the visibility table the mesher culls
+/// with, over the prepared game: `skip_rendering`, `hides_neighbor_face` and
+/// `supports_external_face_hiding` decide the face between two neighbours.
+#[test]
+#[ignore = "daily"]
+fn content_block_face_rules_reach_the_mesher_visibility() {
+    use sunrise_core::geometry::Direction;
+    use sunrise_world::registry::BlockStateId;
+    let Some(base) = prepared() else {
+        return;
+    };
+    let scratch = std::env::temp_dir().join(format!("sunrise-face-rules-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&scratch);
+    let manifest_text = manifest("testmod", "");
+    let m = folder_mod(
+        &scratch.join("mod"),
+        &[
+            ("sunrise-mod.toml", manifest_text.as_str()),
+            (
+                "data/testmod/sunrise/block/self_skip.json",
+                r#"{"template":"minecraft:glass","item":false,"properties":{"occludes":false,"skip_rendering":[{"neighbor":"self"}]}}"#,
+            ),
+            (
+                "data/testmod/sunrise/block/no_skip.json",
+                r#"{"template":"minecraft:glass","item":false,"properties":{"occludes":false,"skip_rendering":[]}}"#,
+            ),
+            (
+                "data/testmod/sunrise/block/hider.json",
+                r#"{"template":"minecraft:glass","item":false,"properties":{"occludes":false,"skip_rendering":[],"hides_neighbor_face":[{"neighbor":"testmod:no_skip"},{"neighbor":"testmod:opt_out"}]}}"#,
+            ),
+            (
+                "data/testmod/sunrise/block/opt_out.json",
+                r#"{"template":"minecraft:glass","item":false,"properties":{"occludes":false,"skip_rendering":[],"supports_external_face_hiding":false}}"#,
+            ),
+        ],
+    );
+    let root = resource_root_fixture(&base, Path::new(""), &[m], &scratch.join("cache")).unwrap();
+    let assets = Assets::load(&root).unwrap();
+    let registry = assets.registry;
+    let mut visibility = crate::models::load_visibility(&root, registry).unwrap();
+    let state = |id: &str| BlockStateId(registry.default_state(id).unwrap().0);
+    let (self_skip, no_skip, hider, opt_out) = (
+        state("testmod:self_skip"),
+        state("testmod:no_skip"),
+        state("testmod:hider"),
+        state("testmod:opt_out"),
+    );
+    let mut shown = |a, b| {
+        visibility
+            .should_render_face(a, b, Direction::East, true)
+            .unwrap()
+    };
+    assert!(
+        !shown(self_skip, self_skip),
+        "skip_rendering self hides the shared face"
+    );
+    assert!(
+        shown(no_skip, no_skip),
+        "an empty skip_rendering drops glass's same-block skip"
+    );
+    assert!(
+        !shown(no_skip, hider),
+        "hides_neighbor_face hides the neighbour's face"
+    );
+    assert!(
+        shown(opt_out, hider),
+        "supports_external_face_hiding: false keeps the face"
+    );
+    let _ = fs::remove_dir_all(&scratch);
 }
 
 #[test]

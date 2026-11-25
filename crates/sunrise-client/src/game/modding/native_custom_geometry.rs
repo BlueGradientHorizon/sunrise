@@ -37,13 +37,21 @@ impl<'a, 'g> GameWorldStageDriver<'a, 'g> {
     }
 
     fn view<'v>(
+        game: &Game<'_>,
         camera: &'v mod_api::Camera,
         alpha: f64,
-        game_time: i64,
         sections: &'v [mod_api::RenderableSection],
         oit_on: bool,
     ) -> mod_api::WorldRenderView<'v> {
-        mod_api::WorldRenderView::new(camera, alpha as f32, game_time, oit_on, sections)
+        mod_api::WorldRenderView::new(
+            camera,
+            game.world_camera_entity_eye(),
+            alpha as f32,
+            game.world.game_time,
+            game.animation_time(),
+            oit_on,
+            sections,
+        )
     }
 }
 
@@ -59,26 +67,14 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
     }
 
     fn on_custom_geometry(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool) {
-        let view = Self::view(
-            self.frame_camera,
-            self.alpha,
-            self.game.world.game_time,
-            sections,
-            oit_on,
-        );
+        let view = Self::view(self.game, self.frame_camera, self.alpha, sections, oit_on);
         self.draw.begin_custom_geometry();
         self.game.native_submit_custom_geometry(&view, self.draw);
         self.game.submit_debug_geometry(&view, self.draw);
     }
 
     fn on_after_sky(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool) {
-        let view = Self::view(
-            self.frame_camera,
-            self.alpha,
-            self.game.world.game_time,
-            sections,
-            oit_on,
-        );
+        let view = Self::view(self.game, self.frame_camera, self.alpha, sections, oit_on);
         let mut surface = self.draw.stage_surface(RenderLevelStage::AfterSky);
         self.game
             .native_render_level_stage(RenderLevelStage::AfterSky, &view, &mut surface);
@@ -90,19 +86,18 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
         oit_on: bool,
         out: &mut sunrise_client::gfx::world_primitives::PreparedHookGeometry,
     ) {
-        let view = Self::view(
-            self.frame_camera,
-            self.alpha,
-            self.game.world.game_time,
-            sections,
-            oit_on,
-        );
+        let view = Self::view(self.game, self.frame_camera, self.alpha, sections, oit_on);
         self.game.native_prepare_render_buffers(&view, self.draw);
         self.draw.finalize();
         self.game.resolve_submitted_groups(self.draw);
         let camera = DVec3::from(self.draw.camera());
-        self.game
-            .bake_model_instances(self.draw, camera, &mut out.entities, &mut out.entity_spans);
+        self.game.bake_model_instances(
+            self.draw,
+            camera,
+            &mut out.entities,
+            &mut out.entity_spans,
+            Some(&mut out.see_through),
+        );
         self.draw.sort_labels();
         let [world, see_through] = self.draw.labels();
         if !world.is_empty()
@@ -126,13 +121,7 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
         sections: &[mod_api::RenderableSection],
         oit_on: bool,
     ) -> &[sunrise_client::gfx::world_primitives::DrawRanges] {
-        let view = Self::view(
-            self.frame_camera,
-            self.alpha,
-            self.game.world.game_time,
-            sections,
-            oit_on,
-        );
+        let view = Self::view(self.game, self.frame_camera, self.alpha, sections, oit_on);
         let mut surface = self.draw.stage_surface(stage);
         self.game
             .native_render_level_stage(stage, &view, &mut surface);
@@ -144,13 +133,7 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
     }
 
     fn on_after_level(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool) {
-        let view = Self::view(
-            self.frame_camera,
-            self.alpha,
-            self.game.world.game_time,
-            sections,
-            oit_on,
-        );
+        let view = Self::view(self.game, self.frame_camera, self.alpha, sections, oit_on);
         let mut surface = self.draw.stage_surface(RenderLevelStage::AfterLevel);
         self.game
             .native_render_level_stage(RenderLevelStage::AfterLevel, &view, &mut surface);
@@ -268,8 +251,10 @@ impl Game<'_> {
         draw.set_time(((self.world.game_time.rem_euclid(72_000) as f64 + alpha) / 20.0) as f32);
         let view = mod_api::WorldRenderView::new(
             frame_camera,
+            self.world_camera_entity_eye(),
             alpha as f32,
             self.world.game_time,
+            self.animation_time(),
             oit_on,
             sections,
         );
@@ -387,9 +372,438 @@ impl Game<'_> {
     ) -> Result<(), DrawError> {
         draw.quads(quads)
     }
-    /// Submit quads drawn by a mod pipeline: the handle is checked against the published
-    /// pipelines once, non-finite quads are skipped individually without rejecting valid quads
-    /// in the same slice, and quad storage grows dynamically into the GPU buffers.
+    /// Allocate a retained GPU [`mod_api::MeshRef`] on the active renderer.
+    pub(super) fn create_mesh(
+        &self,
+        desc: &mod_api::MeshDescriptor<'_>,
+    ) -> Result<mod_api::MeshRef, mod_api::MeshError> {
+        let renderer = self
+            .renderer
+            .as_ref()
+            .ok_or(mod_api::MeshError::Unavailable)?;
+        renderer.create_mesh(mod_api::content::crash::current_native_mod(), desc)
+    }
+    /// Update vertex buffer `binding` of retained `mesh`.
+    pub(super) fn mesh_write_vertices(
+        &self,
+        mesh: mod_api::MeshRef,
+        binding: u8,
+        byte_offset: u64,
+        data: &[u8],
+    ) -> Result<(), mod_api::MeshError> {
+        let renderer = self
+            .renderer
+            .as_ref()
+            .ok_or(mod_api::MeshError::Unavailable)?;
+        renderer.mesh_write_vertices(
+            mod_api::content::crash::current_native_mod(),
+            mesh,
+            binding,
+            byte_offset,
+            data,
+        )
+    }
+    /// Update the index buffer of retained `mesh`.
+    pub(super) fn mesh_write_indices(
+        &self,
+        mesh: mod_api::MeshRef,
+        byte_offset: u64,
+        data: &[u8],
+    ) -> Result<(), mod_api::MeshError> {
+        let renderer = self
+            .renderer
+            .as_ref()
+            .ok_or(mod_api::MeshError::Unavailable)?;
+        renderer.mesh_write_indices(
+            mod_api::content::crash::current_native_mod(),
+            mesh,
+            byte_offset,
+            data,
+        )
+    }
+    /// Reallocate backing GPU buffers of retained `mesh` in place.
+    pub(super) fn mesh_replace(
+        &self,
+        mesh: mod_api::MeshRef,
+        desc: &mod_api::MeshDescriptor<'_>,
+    ) -> Result<(), mod_api::MeshError> {
+        let renderer = self
+            .renderer
+            .as_ref()
+            .ok_or(mod_api::MeshError::Unavailable)?;
+        renderer.mesh_replace(mod_api::content::crash::current_native_mod(), mesh, desc)
+    }
+    /// Free retained `mesh`'s GPU buffers and retire the handle.
+    pub(super) fn mesh_release(&self, mesh: mod_api::MeshRef) -> Result<(), mod_api::MeshError> {
+        let renderer = self
+            .renderer
+            .as_ref()
+            .ok_or(mod_api::MeshError::Unavailable)?;
+        renderer.mesh_release(mod_api::content::crash::current_native_mod(), mesh)
+    }
+    /// Allocate a retained GPU [`mod_api::UniformBufferRef`] on the active renderer.
+    pub(super) fn create_uniform_buffer(
+        &self,
+        bytes: &[u8],
+    ) -> Result<mod_api::UniformBufferRef, mod_api::BufferError> {
+        let renderer = self
+            .renderer
+            .as_ref()
+            .ok_or(mod_api::BufferError::Unavailable)?;
+        renderer.create_uniform_buffer(mod_api::content::crash::current_native_mod(), bytes)
+    }
+    /// Partially or fully update retained uniform `buffer` starting at `byte_offset`.
+    pub(super) fn uniform_buffer_write(
+        &self,
+        buffer: mod_api::UniformBufferRef,
+        byte_offset: u32,
+        bytes: &[u8],
+    ) -> Result<(), mod_api::BufferError> {
+        let renderer = self
+            .renderer
+            .as_ref()
+            .ok_or(mod_api::BufferError::Unavailable)?;
+        renderer.uniform_buffer_write(
+            mod_api::content::crash::current_native_mod(),
+            buffer,
+            byte_offset,
+            bytes,
+        )
+    }
+    /// Free retained uniform `buffer` and retire the handle.
+    pub(super) fn uniform_buffer_release(
+        &self,
+        buffer: mod_api::UniformBufferRef,
+    ) -> Result<(), mod_api::BufferError> {
+        let renderer = self
+            .renderer
+            .as_ref()
+            .ok_or(mod_api::BufferError::Unavailable)?;
+        renderer.uniform_buffer_release(mod_api::content::crash::current_native_mod(), buffer)
+    }
+    /// Allocate a retained GPU [`mod_api::StorageBufferRef`] on the active renderer.
+    pub(super) fn create_storage_buffer(
+        &self,
+        desc: &mod_api::StorageBufferDescriptor,
+    ) -> Result<mod_api::StorageBufferRef, mod_api::BufferError> {
+        let renderer = self
+            .renderer
+            .as_ref()
+            .ok_or(mod_api::BufferError::Unavailable)?;
+        renderer.create_storage_buffer(mod_api::content::crash::current_native_mod(), desc)
+    }
+    /// Queue `data` for `offset` of retained storage `buffer`.
+    pub(super) fn storage_buffer_write_range(
+        &self,
+        buffer: mod_api::StorageBufferRef,
+        offset: u64,
+        data: &[u8],
+    ) -> Result<(), mod_api::BufferError> {
+        let renderer = self
+            .renderer
+            .as_ref()
+            .ok_or(mod_api::BufferError::Unavailable)?;
+        renderer.storage_buffer_write_range(
+            mod_api::content::crash::current_native_mod(),
+            buffer,
+            offset,
+            data,
+        )
+    }
+    /// The size retained storage `buffer` was created with.
+    pub(super) fn storage_buffer_size(
+        &self,
+        buffer: mod_api::StorageBufferRef,
+    ) -> Result<u64, mod_api::BufferError> {
+        let renderer = self
+            .renderer
+            .as_ref()
+            .ok_or(mod_api::BufferError::Unavailable)?;
+        renderer.storage_buffer_size(mod_api::content::crash::current_native_mod(), buffer)
+    }
+    /// Free retained storage `buffer` and retire the handle.
+    pub(super) fn storage_buffer_release(
+        &self,
+        buffer: mod_api::StorageBufferRef,
+    ) -> Result<(), mod_api::BufferError> {
+        let renderer = self
+            .renderer
+            .as_ref()
+            .ok_or(mod_api::BufferError::Unavailable)?;
+        renderer.storage_buffer_release(mod_api::content::crash::current_native_mod(), buffer)
+    }
+    /// Validate and resolve per-draw set-1 [`mod_api::DrawBindings`] against pipeline `slot`'s
+    /// declared `BindGroupLayout` and `push_constant_size`.
+    fn resolve_draw_bindings(
+        &self,
+        draw: &mut WorldGeometry,
+        slot: u32,
+        bindings: &mod_api::DrawBindings<'_>,
+    ) -> Result<Option<sunrise_client::gfx::mod_pipelines::ResolvedDrawBindings>, PipelineDrawError>
+    {
+        let (layout, pc_size) = self
+            .pack
+            .render
+            .mod_pipelines
+            .bind_group_layout(slot)
+            .ok_or(PipelineDrawError::Pipeline(
+                mod_api::RenderPipelineError::Invalid,
+            ))?;
+        if layout.is_empty() && pc_size == 0 {
+            if !bindings.entries.is_empty() || bindings.push_constants.is_some() {
+                return Err(PipelineDrawError::InvalidBinding);
+            }
+            return Ok(None);
+        }
+        // Reject duplicate or unknown entry names in `bindings`.
+        if bindings.entries.len() != layout.entries.len() {
+            return Err(PipelineDrawError::InvalidBinding);
+        }
+        let renderer = self
+            .renderer
+            .as_ref()
+            .ok_or(PipelineDrawError::Buffer(mod_api::BufferError::Unavailable))?;
+        let owner = mod_api::content::crash::current_native_mod();
+        let writes_depth = self.pack.render.mod_pipelines.writes_depth(slot);
+        let (max_uniform, max_texel) = renderer.mod_binding_limits();
+
+        // Validate every declared entry before appending to `draw`'s byte pools so a refused
+        // draw appends nothing.
+        enum StagedEntry<'a> {
+            UniformBuffer {
+                id: u64,
+                buffer: wgpu::Buffer,
+                byte_len: u64,
+            },
+            InlineUniform(&'a [u8]),
+            Texture {
+                view_id: u64,
+                view: wgpu::TextureView,
+            },
+            TexelBytes(Vec<u8>),
+            Storage(sunrise_client::gfx::mod_storage::ResolvedStorageRange),
+        }
+        let mut staged = Vec::with_capacity(layout.entries.len());
+        for decl in &layout.entries {
+            let mut matches = bindings
+                .entries
+                .iter()
+                .filter(|(name, _)| *name == decl.name.as_str());
+            let Some((_, value)) = matches.next() else {
+                return Err(PipelineDrawError::InvalidBinding);
+            };
+            if matches.next().is_some() {
+                return Err(PipelineDrawError::InvalidBinding);
+            }
+            match (decl.kind, value) {
+                (
+                    mod_api::BindingKind::UniformBuffer { min_size },
+                    mod_api::BindingValue::Uniform(mod_api::UniformValue::Buffer(handle)),
+                ) => {
+                    let (id, buffer, byte_len) =
+                        renderer.resolve_mod_uniform_buffer(owner, *handle, min_size)?;
+                    staged.push(StagedEntry::UniformBuffer {
+                        id,
+                        buffer,
+                        byte_len,
+                    });
+                }
+                (
+                    mod_api::BindingKind::UniformBuffer { min_size },
+                    mod_api::BindingValue::Uniform(mod_api::UniformValue::Inline(bytes)),
+                ) => {
+                    if bytes.len() < min_size as usize
+                        || !bytes.len().is_multiple_of(4)
+                        || bytes.len() as u64 > max_uniform
+                    {
+                        return Err(PipelineDrawError::InvalidBinding);
+                    }
+                    staged.push(StagedEntry::InlineUniform(bytes));
+                }
+                (
+                    mod_api::BindingKind::CombinedImageSampler { .. },
+                    mod_api::BindingValue::Texture(source),
+                ) => {
+                    let (view_id, view) = match source {
+                        mod_api::TextureSource::AtlasSprite(id) => {
+                            let sprite_key = id
+                                .to_string()
+                                .strip_prefix("minecraft:")
+                                .map(str::to_owned)
+                                .unwrap_or_else(|| id.to_string());
+                            if !self.pack.render.sprite_layers.contains_key(&sprite_key)
+                                && !self.gui.atlas.sprites.contains_key(&sprite_key)
+                            {
+                                return Err(PipelineDrawError::InvalidBinding);
+                            }
+                            renderer.mod_atlas_texture_view()
+                        }
+                        mod_api::TextureSource::DynamicTexture(id) => {
+                            self.resolve_dynamic_texture_view(renderer, id)?
+                        }
+                        mod_api::TextureSource::StandaloneTexture(id) => {
+                            let asset_path = if id.path().ends_with(".png") {
+                                format!("assets/{}/{}", id.namespace(), id.path())
+                            } else {
+                                format!("assets/{}/textures/{}.png", id.namespace(), id.path())
+                            };
+                            renderer.resolve_mod_standalone_texture(id, || {
+                                self.pack.source.read(&asset_path).ok()
+                            })?
+                        }
+                        mod_api::TextureSource::WorldDepth => {
+                            if writes_depth {
+                                return Err(PipelineDrawError::InvalidBinding);
+                            }
+                            renderer.mod_world_depth_texture_view()
+                        }
+                        mod_api::TextureSource::Lightmap => renderer.mod_lightmap_texture_view(),
+                        _ => return Err(PipelineDrawError::InvalidBinding),
+                    };
+                    staged.push(StagedEntry::Texture { view_id, view });
+                }
+                (
+                    mod_api::BindingKind::TexelBuffer { format },
+                    mod_api::BindingValue::TexelBuffer(bytes),
+                ) => {
+                    let expanded_len = bytes.len() as u64 * (4 / format.element_bytes() as u64);
+                    if bytes.is_empty()
+                        || !bytes.len().is_multiple_of(format.element_bytes())
+                        || expanded_len > max_texel
+                    {
+                        return Err(PipelineDrawError::InvalidBinding);
+                    }
+                    let expanded = match format {
+                        mod_api::TexelBufferFormat::R8Sint => {
+                            let mut out = Vec::with_capacity(bytes.len() * 4);
+                            for &b in *bytes {
+                                out.extend_from_slice(&i32::from(b as i8).to_ne_bytes());
+                            }
+                            out
+                        }
+                        mod_api::TexelBufferFormat::R8Uint => {
+                            let mut out = Vec::with_capacity(bytes.len() * 4);
+                            for &b in *bytes {
+                                out.extend_from_slice(&u32::from(b).to_ne_bytes());
+                            }
+                            out
+                        }
+                        mod_api::TexelBufferFormat::R32Sint
+                        | mod_api::TexelBufferFormat::R32Uint => bytes.to_vec(),
+                        _ => return Err(PipelineDrawError::InvalidBinding),
+                    };
+                    staged.push(StagedEntry::TexelBytes(expanded));
+                }
+                (
+                    mod_api::BindingKind::StorageBuffer { min_size, .. },
+                    mod_api::BindingValue::StorageBuffer(slice),
+                ) => {
+                    let range = renderer
+                        .resolve_mod_storage_range(owner, *slice, min_size)
+                        .map_err(PipelineDrawError::Buffer)?;
+                    staged.push(StagedEntry::Storage(range));
+                }
+                _ => return Err(PipelineDrawError::InvalidBinding),
+            }
+        }
+        let pc_slice = if pc_size > 0 {
+            let Some(bytes) = bindings.push_constants else {
+                return Err(PipelineDrawError::InvalidBinding);
+            };
+            if bytes.is_empty() || bytes.len() > pc_size as usize || !bytes.len().is_multiple_of(4)
+            {
+                return Err(PipelineDrawError::InvalidBinding);
+            }
+            Some(bytes)
+        } else {
+            if bindings.push_constants.is_some() {
+                return Err(PipelineDrawError::InvalidBinding);
+            }
+            None
+        };
+
+        let mut resolved_entries = Vec::with_capacity(staged.len());
+        for entry in staged {
+            match entry {
+                StagedEntry::UniformBuffer {
+                    id,
+                    buffer,
+                    byte_len,
+                } => {
+                    resolved_entries.push(
+                        sunrise_client::gfx::mod_pipelines::ResolvedSet1Entry::UniformBuffer {
+                            id,
+                            buffer,
+                            byte_len,
+                        },
+                    );
+                }
+                StagedEntry::InlineUniform(bytes) => {
+                    let byte_range = draw.push_inline_uniform(bytes);
+                    resolved_entries.push(
+                        sunrise_client::gfx::mod_pipelines::ResolvedSet1Entry::InlineUniform {
+                            byte_range,
+                        },
+                    );
+                }
+                StagedEntry::Texture { view_id, view } => {
+                    resolved_entries.push(
+                        sunrise_client::gfx::mod_pipelines::ResolvedSet1Entry::Texture {
+                            view_id,
+                            view,
+                        },
+                    );
+                }
+                StagedEntry::Storage(range) => {
+                    resolved_entries.push(
+                        sunrise_client::gfx::mod_pipelines::ResolvedSet1Entry::StorageBuffer {
+                            id: range.id,
+                            buffer: range.buffer,
+                            offset: range.offset,
+                            size: range.length,
+                        },
+                    );
+                }
+                StagedEntry::TexelBytes(bytes) => {
+                    let byte_range = draw.push_texel_data(&bytes);
+                    resolved_entries.push(
+                        sunrise_client::gfx::mod_pipelines::ResolvedSet1Entry::TexelBuffer {
+                            byte_range,
+                        },
+                    );
+                }
+            }
+        }
+        let push_constants = pc_slice.map(|bytes| draw.push_inline_uniform(bytes));
+        Ok(Some(
+            sunrise_client::gfx::mod_pipelines::ResolvedDrawBindings {
+                entries: resolved_entries,
+                push_constants,
+            },
+        ))
+    }
+
+    fn resolve_dynamic_texture_view(
+        &self,
+        renderer: &sunrise_client::gfx::Renderer,
+        id: &mod_api::Identifier,
+    ) -> Result<(u64, wgpu::TextureView), mod_api::PipelineDrawError> {
+        let Some((handle, _)) = self.dynamic_textures.get(id) else {
+            return Err(mod_api::PipelineDrawError::InvalidBinding);
+        };
+        let Some((view, revision)) = renderer.hud.dynamic().view(handle) else {
+            return Err(mod_api::PipelineDrawError::InvalidBinding);
+        };
+        Ok((
+            sunrise_client::gfx::mod_uniforms::DYNAMIC_VIEW_ID_BIT | revision,
+            view,
+        ))
+    }
+
+    /// Submit quads drawn by a mod pipeline: shorthand over [`Self::native_world_draw_vertices`]
+    /// for pipelines using the default `PositionTexColor` vertex format and
+    /// [`mod_api::PrimitiveTopology::Quads`]. Non-finite quads are skipped individually without
+    /// rejecting valid quads in the same slice.
     pub(super) fn native_world_draw_pipeline_quads(
         &self,
         draw: &mut WorldGeometry,
@@ -402,7 +816,214 @@ impl Game<'_> {
             .mod_pipelines
             .slot(pipeline)
             .map_err(PipelineDrawError::Pipeline)?;
-        draw.pipeline_quads(slot, quads);
+        let base_topology = self
+            .pack
+            .render
+            .mod_pipelines
+            .topology(slot)
+            .unwrap_or(mod_api::PrimitiveTopology::Quads);
+        if draw.effective_topology(base_topology) != mod_api::PrimitiveTopology::Quads {
+            return Err(PipelineDrawError::TopologyMismatch);
+        }
+        if !self
+            .pack
+            .render
+            .mod_pipelines
+            .uses_default_vertex_format(slot)
+        {
+            return Err(PipelineDrawError::VertexFormatMismatch);
+        }
+        let camera = draw.camera();
+        let mut vertices = Vec::with_capacity(quads.len() * 4);
+        for q in quads {
+            let corners_finite = q.corners.iter().all(|corner| {
+                corner
+                    .iter()
+                    .zip(camera)
+                    .all(|(&p, cam)| p.is_finite() && ((p - cam) as f32).is_finite())
+            });
+            if !corners_finite || q.uv.iter().flatten().any(|c| !c.is_finite()) {
+                continue;
+            }
+            let color = sunrise_client::world_primitives::vertex_color(q.color, 255);
+            vertices.extend((0..4).map(|corner| {
+                sunrise_client::gfx::mod_pipelines::PipelineVertex {
+                    pos: std::array::from_fn(|i| (q.corners[corner][i] - camera[i]) as f32),
+                    uv: q.uv[corner],
+                    color,
+                }
+            }));
+        }
+        if vertices.is_empty() {
+            return Ok(());
+        }
+        self.native_world_draw_vertices(
+            draw,
+            pipeline,
+            &[bytemuck::cast_slice(&vertices)],
+            None,
+            mod_api::MeshDraw::vertices(0..vertices.len() as u32),
+            &mod_api::DrawBindings::EMPTY,
+        )
+    }
+    /// Record a zero-copy retained GPU [`mod_api::MeshRef`] draw call after validating pipeline
+    /// liveness, mesh ownership/liveness, vertex-binding strides, and draw/instance bounds.
+    pub(super) fn native_world_draw_mesh(
+        &self,
+        draw: &mut WorldGeometry,
+        pipeline: RenderPipelineRef,
+        mesh: mod_api::MeshRef,
+        mesh_draw: mod_api::MeshDraw,
+        bindings: &mod_api::DrawBindings<'_>,
+    ) -> Result<(), PipelineDrawError> {
+        let slot = self
+            .pack
+            .render
+            .mod_pipelines
+            .slot(pipeline)
+            .map_err(PipelineDrawError::Pipeline)?;
+        let vertex_bindings = self.pack.render.mod_pipelines.vertex_bindings(slot).ok_or(
+            PipelineDrawError::Pipeline(mod_api::RenderPipelineError::Invalid),
+        )?;
+        let base_topology = self
+            .pack
+            .render
+            .mod_pipelines
+            .topology(slot)
+            .unwrap_or(mod_api::PrimitiveTopology::Quads);
+        let topology = draw.effective_topology(base_topology);
+        let renderer = self
+            .renderer
+            .as_ref()
+            .ok_or(PipelineDrawError::Mesh(mod_api::MeshError::Unavailable))?;
+        check_generated_indices(topology, &mesh_draw, renderer.max_buffer_size())?;
+        let resolved = renderer.resolve_mod_mesh_draw(
+            mod_api::content::crash::current_native_mod(),
+            mesh,
+            vertex_bindings,
+            topology,
+            &mesh_draw,
+        )?;
+        let resolved_bindings = self.resolve_draw_bindings(draw, slot, bindings)?;
+        let empty = mesh_draw.instances.is_empty()
+            || match &mesh_draw.range {
+                mod_api::DrawRange::Vertices(r) => r.is_empty(),
+                mod_api::DrawRange::Indexed { indices, .. } => indices.is_empty(),
+                _ => true,
+            };
+        if !empty {
+            draw.draw_mesh_slot(slot, resolved, mesh_draw, resolved_bindings);
+        }
+        Ok(())
+    }
+    /// Validate and queue a transient per-frame vertex/index draw call.
+    pub(super) fn native_world_draw_vertices(
+        &self,
+        draw: &mut WorldGeometry,
+        pipeline: RenderPipelineRef,
+        vertices: &[&[u8]],
+        indices: Option<(mod_api::IndexFormat, &[u8])>,
+        mesh_draw: mod_api::MeshDraw,
+        bindings: &mod_api::DrawBindings<'_>,
+    ) -> Result<(), PipelineDrawError> {
+        let slot = self
+            .pack
+            .render
+            .mod_pipelines
+            .slot(pipeline)
+            .map_err(PipelineDrawError::Pipeline)?;
+        let vertex_bindings = self.pack.render.mod_pipelines.vertex_bindings(slot).ok_or(
+            PipelineDrawError::Pipeline(mod_api::RenderPipelineError::Invalid),
+        )?;
+        let base_topology = self
+            .pack
+            .render
+            .mod_pipelines
+            .topology(slot)
+            .unwrap_or(mod_api::PrimitiveTopology::Quads);
+        let topology = draw.effective_topology(base_topology);
+        if mesh_draw.instances.start > mesh_draw.instances.end {
+            return Err(PipelineDrawError::InvalidRange);
+        }
+        if vertices.len() != vertex_bindings.len() {
+            return Err(PipelineDrawError::VertexFormatMismatch);
+        }
+        let mut bound_slices = Vec::with_capacity(vertices.len());
+        let mut vertex_records = Vec::with_capacity(vertices.len());
+        for ((binding_idx, fmt), &slice) in vertex_bindings.iter().zip(vertices.iter()) {
+            let stride = fmt.stride as usize;
+            if slice.len() % 4 != 0 || slice.len() % stride != 0 {
+                return Err(PipelineDrawError::InvalidAlignment);
+            }
+            let record_count = slice.len() / stride;
+            match fmt.step_mode {
+                mod_api::VertexStepMode::Vertex => {
+                    if let mod_api::DrawRange::Vertices(ref range) = mesh_draw.range
+                        && (range.start > range.end || (range.end as usize) > record_count)
+                    {
+                        return Err(PipelineDrawError::InvalidRange);
+                    }
+                }
+                mod_api::VertexStepMode::Instance => {
+                    if (mesh_draw.instances.end as usize) > record_count {
+                        return Err(PipelineDrawError::InvalidRange);
+                    }
+                }
+                _ => return Err(PipelineDrawError::VertexFormatMismatch),
+            }
+            vertex_records.push((fmt.step_mode, record_count));
+            bound_slices.push((u32::from(*binding_idx), slice));
+        }
+        check_generated_indices(
+            topology,
+            &mesh_draw,
+            self.renderer
+                .as_ref()
+                .map_or(u64::MAX, |r| r.max_buffer_size()),
+        )?;
+        match &mesh_draw.range {
+            mod_api::DrawRange::Vertices(range) => {
+                if range.start > range.end {
+                    return Err(PipelineDrawError::InvalidRange);
+                }
+                let count = range.end - range.start;
+                if matches!(
+                    topology,
+                    mod_api::PrimitiveTopology::Quads | mod_api::PrimitiveTopology::Lines
+                ) && count % 4 != 0
+                {
+                    return Err(PipelineDrawError::InvalidRange);
+                }
+            }
+            mod_api::DrawRange::Indexed {
+                indices: idx_range,
+                base_vertex,
+            } => {
+                let Some((fmt, idx_bytes)) = indices else {
+                    return Err(PipelineDrawError::MissingIndexBuffer);
+                };
+                let elem = fmt.byte_size() as usize;
+                if idx_bytes.len() % elem != 0 || idx_bytes.len() % 4 != 0 {
+                    return Err(PipelineDrawError::InvalidAlignment);
+                }
+                let idx_count = idx_bytes.len() / elem;
+                if idx_range.start > idx_range.end || (idx_range.end as usize) > idx_count {
+                    return Err(PipelineDrawError::InvalidRange);
+                }
+                check_indexed_vertices(&vertex_records, fmt, idx_bytes, idx_range, *base_vertex)?;
+            }
+            _ => return Err(PipelineDrawError::InvalidRange),
+        }
+        let resolved_bindings = self.resolve_draw_bindings(draw, slot, bindings)?;
+        let empty = mesh_draw.instances.is_empty()
+            || match &mesh_draw.range {
+                mod_api::DrawRange::Vertices(r) => r.is_empty(),
+                mod_api::DrawRange::Indexed { indices, .. } => indices.is_empty(),
+                _ => true,
+            };
+        if !empty {
+            draw.draw_vertices_slot(slot, &bound_slices, indices, mesh_draw, resolved_bindings);
+        }
         Ok(())
     }
     /// Resolve `model` once, cull copies against the frustum first, and skip any individual
@@ -461,8 +1082,10 @@ impl Game<'_> {
         };
         let mut stage_copy = |index: usize, copy: &world_geometry::ModelCopy| {
             // The instance route draws one fixed index range per model: a copy that needs
-            // other faces, another colour, translucency or a block state takes the CPU route.
-            if copy.overlay != 0
+            // other faces, another colour, translucency, a ThroughWalls modifier, or a block state
+            // takes the CPU route.
+            if copy.through_walls
+                || copy.overlay != 0
                 || copy.color != u32::MAX
                 || copy.hidden_faces != 0
                 || cpu_only
@@ -513,18 +1136,26 @@ impl Game<'_> {
         camera: DVec3,
         entities: &mut Vec<Vertex>,
     ) {
-        self.bake_model_instances(draw, camera, entities, &mut self.entity_spans.borrow_mut());
+        self.bake_model_instances(
+            draw,
+            camera,
+            entities,
+            &mut self.entity_spans.borrow_mut(),
+            None,
+        );
     }
 
     /// Bake CPU copies onto the entity stream with their pack spans. Opaque standalone copies
     /// go as block entities, one run per overlay. Material copies follow and the renderer sorts
-    /// their translucent quads far to near.
+    /// their translucent quads far to near. Copies carrying a `ThroughWalls` pipeline modifier
+    /// bake into `see_through` when provided.
     fn bake_model_instances(
         &self,
         draw: &mut WorldGeometry,
         camera: DVec3,
         entities: &mut Vec<Vertex>,
         spans: &mut Vec<sunrise_client::gfx::pack_draw::EntitySpan>,
+        mut see_through: Option<&mut Vec<Vertex>>,
     ) {
         let capacity = self.entity_quad_capacity();
         let reserved_quads = self.entity_batch_reserved_quads();
@@ -544,6 +1175,27 @@ impl Game<'_> {
             let Some(slot) = self.standalone_geometry.instance_slot(copy.slot) else {
                 continue;
             };
+            if copy.through_walls {
+                if let (Some(out), Some(faces)) = (
+                    see_through.as_deref_mut(),
+                    self.standalone_geometry.faces(copy.slot),
+                ) {
+                    submit_opaque_model_copy(
+                        out,
+                        capacity,
+                        0,
+                        faces,
+                        copy.transform,
+                        (DVec3::from(copy.origin) - camera).as_vec3(),
+                        copy.light,
+                        copy.tint,
+                        copy.color,
+                        copy.overlay,
+                        copy.hidden_faces,
+                    );
+                }
+                continue;
+            }
             if slot.translucent || slot.state || copy.color >> 24 != 0xFF {
                 materials.push(index as u32);
                 continue;
@@ -579,20 +1231,20 @@ impl Game<'_> {
         if !materials.is_empty() {
             mark_span(entities.len());
             let layers = &self.pack.render.sprite_layers;
-            let mut scope =
-                sunrise_client::gfx::EntityQuadScope::new(entities, capacity, reserved_quads);
             for &index in materials.iter() {
-                if !scope.has_room() {
+                if !sunrise_client::gfx::EntityQuadScope::new(entities, capacity, reserved_quads)
+                    .has_room()
+                {
                     break;
                 }
                 let copy = draw.copy(index as usize);
                 let Some(faces) = self.model_faces(copy.slot) else {
                     continue;
                 };
-                let state = self
+                let (state, special) = self
                     .standalone_geometry
                     .instance_slot(copy.slot)
-                    .is_some_and(|slot| slot.state);
+                    .map_or((false, None), |slot| (slot.state, slot.special));
                 let shift = (DVec3::from(copy.origin) - camera).as_vec3();
                 let pose =
                     Mat4::from_translation(shift) * world_geometry::row_major_3x4(copy.transform);
@@ -608,12 +1260,37 @@ impl Game<'_> {
                     hidden_faces: copy.hidden_faces,
                     ..Default::default()
                 };
-                submit_material_model_copy(&mut scope, faces, pose, copy.light, options, |name| {
-                    layers
-                        .get(name)
-                        .or_else(|| layers.get(name.strip_prefix("minecraft:")?))
-                        .copied()
-                });
+                {
+                    let mut scope = sunrise_client::gfx::EntityQuadScope::new(
+                        entities,
+                        capacity,
+                        reserved_quads,
+                    );
+                    submit_material_model_copy(
+                        &mut scope,
+                        faces,
+                        pose,
+                        copy.light,
+                        options,
+                        |name| {
+                            layers
+                                .get(name)
+                                .or_else(|| layers.get(name.strip_prefix("minecraft:")?))
+                                .copied()
+                        },
+                    );
+                }
+                if let Some(state) = special {
+                    self.special_model_part(
+                        state,
+                        pose,
+                        copy.light,
+                        copy.color,
+                        entities,
+                        capacity,
+                        reserved_quads,
+                    );
+                }
             }
         }
         draw.clear_copies();
@@ -680,6 +1357,62 @@ fn submit_material_model_copy(
         scope.submit_quad(quad)
     });
 }
+/// Refuse a `Vertices` draw whose engine-generated indices (`Quads`, `Lines`, `TriangleFan`)
+/// would need a larger index buffer than the device allows, as a draw with no vertex-step
+/// buffer to bound it would otherwise ask for.
+fn check_generated_indices(
+    topology: mod_api::PrimitiveTopology,
+    draw: &mod_api::MeshDraw,
+    max_buffer_size: u64,
+) -> Result<(), PipelineDrawError> {
+    if let mod_api::DrawRange::Vertices(range) = &draw.range
+        && matches!(
+            topology,
+            mod_api::PrimitiveTopology::Quads
+                | mod_api::PrimitiveTopology::Lines
+                | mod_api::PrimitiveTopology::TriangleFan
+        )
+        && range.start <= range.end
+        && u64::from(topology.index_count(range.end - range.start)) * 4 > max_buffer_size
+    {
+        return Err(PipelineDrawError::InvalidRange);
+    }
+    Ok(())
+}
+
+/// Check that an indexed draw only reaches records every per-vertex buffer holds: each
+/// vertex-step buffer is non-empty, and the largest index in `range` plus `base_vertex` falls
+/// inside all of them. `records` lists each bound buffer's step mode and record count.
+fn check_indexed_vertices(
+    records: &[(mod_api::VertexStepMode, usize)],
+    format: mod_api::IndexFormat,
+    index_bytes: &[u8],
+    range: &std::ops::Range<u32>,
+    base_vertex: i32,
+) -> Result<(), PipelineDrawError> {
+    if range.is_empty() {
+        return Ok(());
+    }
+    let size = format.byte_size() as usize;
+    let used = &index_bytes[range.start as usize * size..range.end as usize * size];
+    let read = |chunk: &[u8]| match format {
+        mod_api::IndexFormat::Uint16 => u32::from(u16::from_le_bytes([chunk[0], chunk[1]])),
+        _ => u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]),
+    };
+    let (lowest, highest) = used
+        .chunks_exact(size)
+        .map(read)
+        .fold((u32::MAX, 0), |(lo, hi), i| (lo.min(i), hi.max(i)));
+    let first = i64::from(lowest) + i64::from(base_vertex);
+    let last = i64::from(highest) + i64::from(base_vertex);
+    for &(step, count) in records {
+        if step == mod_api::VertexStepMode::Vertex && (first < 0 || last >= count as i64) {
+            return Err(PipelineDrawError::InvalidRange);
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -804,6 +1537,77 @@ mod tests {
     }
 
     #[test]
+    fn indexed_draws_need_every_vertex_buffer_to_hold_the_indexed_records() {
+        use mod_api::{IndexFormat, VertexStepMode};
+        let indices: Vec<u8> = [0u16, 1, 2, 0]
+            .iter()
+            .flat_map(|i| i.to_le_bytes())
+            .collect();
+        let check = |records: &[(VertexStepMode, usize)], base: i32| {
+            check_indexed_vertices(records, IndexFormat::Uint16, &indices, &(0..4), base)
+        };
+        assert_eq!(check(&[(VertexStepMode::Vertex, 3)], 0), Ok(()));
+        // An empty per-vertex buffer with a non-empty indexed range is refused, not drawn.
+        assert_eq!(
+            check(&[(VertexStepMode::Vertex, 0)], 0),
+            Err(PipelineDrawError::InvalidRange)
+        );
+        // The largest index (2) must fit, after `base_vertex`.
+        assert_eq!(
+            check(&[(VertexStepMode::Vertex, 2)], 0),
+            Err(PipelineDrawError::InvalidRange)
+        );
+        // `base_vertex` 2 moves the largest index to record 4.
+        assert_eq!(check(&[(VertexStepMode::Vertex, 5)], 2), Ok(()));
+        assert_eq!(
+            check(&[(VertexStepMode::Vertex, 4)], 2),
+            Err(PipelineDrawError::InvalidRange)
+        );
+        // A negative `base_vertex` that moves the lowest index below record 0 is refused.
+        assert_eq!(
+            check(&[(VertexStepMode::Vertex, 4)], -1),
+            Err(PipelineDrawError::InvalidRange)
+        );
+        // Instance-step buffers are bounded by the instance range, not by the indices.
+        assert_eq!(check(&[(VertexStepMode::Instance, 0)], 0), Ok(()));
+        // An empty range reads nothing.
+        assert_eq!(
+            check_indexed_vertices(
+                &[(VertexStepMode::Vertex, 0)],
+                IndexFormat::Uint16,
+                &indices,
+                &(2..2),
+                0
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn generated_indices_are_bounded_by_the_device_buffer_size() {
+        use mod_api::{MeshDraw, PrimitiveTopology};
+        let draw = MeshDraw::vertices(0..4_000_000_000).with_instances(0..4);
+        // Four million quads would need 24 bytes each of generated indices.
+        assert_eq!(
+            check_generated_indices(PrimitiveTopology::Quads, &draw, 1 << 30),
+            Err(PipelineDrawError::InvalidRange)
+        );
+        assert_eq!(
+            check_generated_indices(PrimitiveTopology::Triangles, &draw, 1 << 30),
+            Ok(())
+        );
+        let small = MeshDraw::vertices(0..4);
+        assert_eq!(
+            check_generated_indices(PrimitiveTopology::Quads, &small, 24),
+            Ok(())
+        );
+        assert_eq!(
+            check_generated_indices(PrimitiveTopology::Quads, &small, 23),
+            Err(PipelineDrawError::InvalidRange)
+        );
+    }
+
+    #[test]
     #[ignore = "daily"]
     fn an_opaque_copy_with_a_colour_or_hidden_faces_is_baked_on_the_cpu() {
         let _fixture =
@@ -864,6 +1668,107 @@ mod tests {
                 .find_map(|state| slot(state).ok().map(|slot| (state, slot)))
                 .expect("some block state has a model");
             assert_eq!(slot(state), Ok(first));
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_special_block_state_draws_its_renderer_and_a_faded_copy_blends() {
+        let _fixture = sunrise_client::models::standalone_fixture(Vec::new());
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let _restore = Restore;
+            let chest = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:chest")
+                .unwrap();
+            // `BuiltInBlockModels`: a chest is its block-state model plus its special renderer.
+            let model = game
+                .native_block_state_model(chest)
+                .expect("a chest resolves to its composite model");
+            let slot = mod_api::__private::game::Fields::fields(&model).slot;
+            let instance = game.standalone_geometry.instance_slot(slot).unwrap();
+            assert_eq!(instance.special, Some(chest));
+            // The chest's box reaches 14/16 up, so copies cull by the renderer's geometry.
+            assert!(instance.bounds[1][1] > 0.8, "{:?}", instance.bounds);
+            let camera = DVec3::new(0.0, 70.0, 0.0);
+            let mut draw = WorldGeometry::default();
+            draw.reset(camera.to_array(), Mat4::IDENTITY, [0.0, 0.0]);
+            context(game, &mut draw)
+                .draw_model_instances(
+                    model,
+                    &[
+                        ModelInstance::at([3.0, 70.0, 0.0], u32::MAX),
+                        ModelInstance::at([6.0, 70.0, 0.0], u32::MAX).with_color(0x80FF_FFFF),
+                    ],
+                )
+                .unwrap();
+            let mut entities = Vec::new();
+            game.commit_model_instances(&mut draw, camera, &mut entities);
+            let (opaque, faded): (Vec<&Vertex>, Vec<&Vertex>) =
+                entities.iter().partition(|vertex| vertex.pos[0] < 5.0);
+            assert!(!opaque.is_empty() && opaque.len() == faded.len());
+            assert!(
+                opaque.iter().all(
+                    |v| v.layer & sunrise_client::gfx::OIT_ENTITY == 0 && v.color >> 24 == 0xFF
+                )
+            );
+            assert!(
+                faded
+                    .iter()
+                    .all(|v| v.layer & sunrise_client::gfx::OIT_ENTITY != 0 && v.color >> 24 < 0xFF)
+            );
+            let registry = &game.pack.assets.registry;
+            let parse = |text| sunrise_client::block_sprites::parse_state(registry, text).unwrap();
+            let (left, gateway, table) = (
+                parse("chest[type=left]"),
+                parse("end_gateway"),
+                parse("enchanting_table"),
+            );
+            let special = |state, pose, color| {
+                let mut out = Vec::new();
+                game.special_model_part(
+                    state,
+                    pose,
+                    0xF0F0,
+                    color,
+                    &mut out,
+                    sunrise_client::gfx::EntityQuadCapacity::default_device(),
+                    0,
+                );
+                out
+            };
+            // The left half of a double chest draws alone, with no neighbour to pair with.
+            let out = special(left, Mat4::IDENTITY, u32::MAX);
+            assert!(!out.is_empty());
+            // Non-finite quads from a pose past the finite range are skipped.
+            let out = special(
+                chest,
+                Mat4::from_scale(Vec3::splat(f32::INFINITY)),
+                u32::MAX,
+            );
+            assert!(out.is_empty());
+            // EndCubeSpecialRenderer: all six faces, and the starfield stays opaque when faded.
+            let out = special(gateway, Mat4::IDENTITY, 0x80FF_FFFF);
+            assert_eq!(out.len(), 24);
+            assert!(
+                out.iter()
+                    .all(|v| v.layer & sunrise_client::gfx::OIT_ENTITY == 0)
+            );
+            // The enchanting table: its block-state faces, then the book.
+            let out = special(table, Mat4::IDENTITY, u32::MAX);
+            assert!(!out.is_empty());
+            let model = game.native_block_state_model(table).unwrap();
+            let slot = mod_api::__private::game::Fields::fields(&model).slot;
+            assert!(!game.model_faces(slot).unwrap().is_empty());
+            assert_eq!(
+                game.standalone_geometry
+                    .instance_slot(slot)
+                    .unwrap()
+                    .special,
+                Some(table)
+            );
         });
     }
 
@@ -2431,6 +3336,7 @@ mod tests {
             &[make_baked()],
             |_| Some(7),
             TerrainModelOptions::default(),
+            |_, _, _, _, _| {},
         );
         let mut entities = draw.into_vertices();
         assert_eq!(entities.len(), 4, "1 terrain model quad admitted");

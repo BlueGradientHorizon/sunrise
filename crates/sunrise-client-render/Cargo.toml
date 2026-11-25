@@ -120,6 +120,7 @@ sunrise-perf = { path = "../sunrise-perf" }
 # Tests: a TrueType font to load, and the design system the menus' motion curves match.
 sunrise-theme = { path = "../sunrise-theme" }
 sunrise-items = { path = "../sunrise-items", features = ["test-support"] }
+sunrise-client-core = { path = "../sunrise-client-core", features = ["test-effect-registry"] }
 naga = { version = "30.0.1", features = ["wgsl-in", "hlsl-out", "glsl-out", "msl-out", "spv-out"] }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]

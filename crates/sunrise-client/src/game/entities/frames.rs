@@ -832,6 +832,11 @@ impl Game<'_> {
                         age: f.ticks as f32 + partial,
                         yaw,
                         pitch,
+                        position: at.to_array(),
+                        // EntityTypes.ITEM_FRAME / GLOW_ITEM_FRAME: sized(0.5F, 0.5F).eyeHeight(0.0F).
+                        size: [0.5, 0.5],
+                        eye_height: 0.0,
+                        distance_to_camera_sq: (at - camera).length_squared(),
                         living: None,
                         tnt_fuse: None,
                         orb_value: None,

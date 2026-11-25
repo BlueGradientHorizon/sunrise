@@ -3,6 +3,7 @@
 //! of `hurtServer` (creative breaks at once), and `ArmorStandRenderer` with
 //! the default pose, the hit wobble and humanoid armor layers.
 use super::entity::Entity;
+use super::stock_layer_mask::StockLayerMask;
 use super::{Game, InteractTarget};
 use std::{collections::HashMap, sync::Arc};
 use sunrise_assets::resource_source::ResourceSource;
@@ -284,7 +285,7 @@ impl ArmorStandAssets {
         self.equipment = fresh.equipment;
         self.extensions = fresh.extensions;
         self.trim_overrides = fresh.trim_overrides;
-        self.trims = fresh.trims;
+        self.trims.reloaded(fresh.trims);
         self.root = fresh.root;
     }
     /// `TrimTextureKey`: the trim texture on the given humanoid layer.
@@ -313,25 +314,41 @@ impl Game<'_> {
     }
     /// `HumanoidArmorLayer` for the player: (model, texture rect, colour,
     /// overlay) of each worn piece, head to feet.
-    pub(super) fn player_armor_layers(&self) -> Vec<WornLayer<'_>> {
-        self.stack_armor_layers(&self.armor)
+    pub(super) fn player_armor_layers(&self, hidden_layers: StockLayerMask) -> Vec<WornLayer<'_>> {
+        self.stack_armor_layers(&self.armor, hidden_layers)
     }
     /// `HumanoidArmorLayer` for worn stacks (head to feet), trims included.
-    pub(super) fn stack_armor_layers(&self, armor: &[Option<ItemStack>; 4]) -> Vec<WornLayer<'_>> {
+    pub(super) fn stack_armor_layers(
+        &self,
+        armor: &[Option<ItemStack>; 4],
+        hidden_layers: StockLayerMask,
+    ) -> Vec<WornLayer<'_>> {
         self.armor_layers(
             armor
                 .each_ref()
                 .map(|s| s.as_ref().map(EquipmentRead::resident)),
+            hidden_layers,
         )
     }
     /// `HumanoidArmorLayer` for another player's model: the armour it wears
     /// (`extra.equipment`, head to feet).
-    pub(super) fn worn_armor_layers(&self, m: &Mob) -> Vec<WornLayer<'_>> {
+    pub(super) fn worn_armor_layers(
+        &self,
+        m: &Mob,
+        hidden_layers: StockLayerMask,
+    ) -> Vec<WornLayer<'_>> {
         use sunrise_core::equipment_slot::EquipmentSlot::{Chest, Feet, Head, Legs};
-        self.armor_layers([Head, Chest, Legs, Feet].map(|slot| finalize::equipment_slot(m, slot)))
+        self.armor_layers(
+            [Head, Chest, Legs, Feet].map(|slot| finalize::equipment_slot(m, slot)),
+            hidden_layers,
+        )
     }
     /// The layers of the armour items `worn`, head to feet.
-    fn armor_layers(&self, worn: [Option<EquipmentRead<'_>>; 4]) -> Vec<WornLayer<'_>> {
+    fn armor_layers(
+        &self,
+        worn: [Option<EquipmentRead<'_>>; 4],
+        hidden_layers: StockLayerMask,
+    ) -> Vec<WornLayer<'_>> {
         let assets = &self.armor_stand_assets;
         let mut out = Vec::new();
         for (item, (layer, slot)) in worn.into_iter().zip([
@@ -354,13 +371,16 @@ impl Game<'_> {
                 &stack,
                 super::equipment_piece::EquipmentPass::Draw,
             ) {
+                let Some(overlay) = material.visible_overlay(piece.slot, hidden_layers) else {
+                    continue;
+                };
                 out.push((
                     material.model.map_or(WornModel::Vanilla(part), |model| {
                         WornModel::Override(model, piece.slot)
                     }),
                     material.binding.uv,
                     material.color,
-                    material.overlay,
+                    overlay,
                     material.glows,
                 ));
             }
@@ -887,6 +907,7 @@ impl Game<'_> {
             causing: attacker,
             direct: attacker,
             position: None,
+            direct_type: None,
         };
         if super::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
             .invulnerability_check(
@@ -1324,6 +1345,7 @@ impl Game<'_> {
                         causing: 0,
                         direct: 0,
                         position: None,
+                        direct_type: None,
                     };
                     sunrise_client::health::DamageLevel::of(
                         world,
@@ -1704,6 +1726,7 @@ impl Game<'_> {
             causing: causing_id as i32,
             direct: direct as i32,
             position,
+            direct_type: None,
         };
         if super::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
             .invulnerability_check(

@@ -5211,6 +5211,7 @@ version = "0.1.0"
 dependencies = [
  "naga",
  "sunrise-glsl",
+ "sunrise-mod-vocab",
  "wgpu-types",
 ]
 
@@ -5758,6 +5759,8 @@ dependencies = [
  "sunrise-mod-api-macros",
  "sunrise-mod-vocab",
  "sunrise-threads",
+ "tar",
+ "ureq",
  "xxhash-rust",
 ]
 

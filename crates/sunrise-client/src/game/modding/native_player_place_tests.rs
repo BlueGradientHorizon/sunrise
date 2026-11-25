@@ -721,7 +721,7 @@ fn set_placed_by_writes_are_part_of_player_placement() {
             if self.destroy {
                 let drops = event
                     .level
-                    .destroy_block(host, ABOVE, true, None, self.collect)
+                    .destroy_block(host, ABOVE, true, None, None, self.collect)
                     .unwrap()
                     .expect("captured destruction");
                 if self.collect {

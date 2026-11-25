@@ -365,6 +365,11 @@ impl FixedStep {
         clock.manager.base.set_frozen(still);
         clock
     }
+    /// A clock with `SUNRISE_STILL` on, for game fixtures that test what the switch does.
+    #[cfg(any(test, feature = "test-still-clock"))]
+    pub fn still_for_tests() -> Self {
+        Self::new(true)
+    }
     /// `SUNRISE_STILL` (`still`).
     pub fn still(&self) -> bool {
         self.still

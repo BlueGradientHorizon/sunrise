@@ -747,16 +747,18 @@ pub fn mob_to_nbt(
 }
 
 /// Runtime state shared by chunk saving and inspecting a live mob.
-pub struct MobSave {
+pub struct MobSave<'a> {
     pub include_id: bool,
     pub game_time: i64,
+    pub variants: Option<&'a crate::mobs::variants::VariantTables>,
 }
 
-impl Default for MobSave {
+impl Default for MobSave<'_> {
     fn default() -> Self {
         Self {
             include_id: true,
             game_time: 0,
+            variants: None,
         }
     }
 }
@@ -769,11 +771,12 @@ pub fn write_mob(
     registry: Option<&BlockRegistry>,
     mut uuid_of: impl FnMut(u32) -> Option<[i32; 4]>,
     items: &crate::items::Items,
-    mode: MobSave,
+    mode: MobSave<'_>,
 ) {
     let MobSave {
         include_id,
         game_time,
+        variants,
     } = mode;
     use crate::mobs::Species as S;
     let base = Base {
@@ -1199,24 +1202,100 @@ pub fn write_mob(
     // mooshroom saves `Type` (below), a fox `Type`, a horse and a llama a
     // packed `Variant` int, so those report the component but save no name.
     // ZombieNautilus writes its variant after the TamableAnimal fields below.
-    if species != S::ZombieNautilus
-        && crate::mobs::finalize::saves_variant_name(species)
-        && let Some((_, variant)) =
-            crate::mobs::finalize::species_variant_component(species, m.extra.variant)
-    {
-        map.insert("variant".into(), string(&variant));
+    match species {
+        S::Wolf => {
+            if let Some(variants) = variants
+                && let Some(r) = m.wolf_variant(&variants.wolf)
+                && let Some(id) = variants.wolf.id(r)
+            {
+                map.insert("variant".into(), string(id));
+            }
+        }
+        S::Cat => {
+            if let Some(variants) = variants
+                && let Some(r) = m.cat_variant(&variants.cat)
+                && let Some(id) = variants.cat.id(r)
+            {
+                map.insert("variant".into(), string(id));
+            }
+        }
+        S::Pig => {
+            if let Some(variants) = variants
+                && let Some(r) = m.pig_variant(&variants.pig)
+                && let Some(id) = variants.pig.id(r)
+            {
+                map.insert("variant".into(), string(id));
+            }
+        }
+        S::Cow => {
+            if let Some(variants) = variants
+                && let Some(r) = m.cow_variant(&variants.cow)
+                && let Some(id) = variants.cow.id(r)
+            {
+                map.insert("variant".into(), string(id));
+            }
+        }
+        S::Chicken => {
+            if let Some(variants) = variants
+                && let Some(r) = m.chicken_variant(&variants.chicken)
+                && let Some(id) = variants.chicken.id(r)
+            {
+                map.insert("variant".into(), string(id));
+            }
+        }
+        S::Frog => {
+            if let Some(variants) = variants
+                && let Some(r) = m.frog_variant(&variants.frog)
+                && let Some(id) = variants.frog.id(r)
+            {
+                map.insert("variant".into(), string(id));
+            }
+        }
+        _ => {}
     }
-    if species == S::Wolf {
-        write_persistent_anger(m, map, &mut uuid_of);
-    }
-    let sounds = crate::mobs::finalize::sound_variants(species);
-    if !sounds.is_empty() {
-        let sound = m.extra.sound_variant.and_then(|i| sounds.get(i as usize));
-        let sound = sound.copied().unwrap_or("classic");
-        map.insert(
-            "sound_variant".into(),
-            string(&format!("minecraft:{sound}")),
-        );
+    match species {
+        S::Wolf => {
+            write_persistent_anger(m, map, &mut uuid_of);
+            if let Some(variants) = variants
+                && let Some(r) = m.wolf_sound_variant(&variants.wolf_sound)
+                && let Some(id) = variants.wolf_sound.id(r)
+            {
+                map.insert("sound_variant".into(), string(id));
+            }
+        }
+        S::Cat => {
+            if let Some(variants) = variants
+                && let Some(r) = m.cat_sound_variant(&variants.cat_sound)
+                && let Some(id) = variants.cat_sound.id(r)
+            {
+                map.insert("sound_variant".into(), string(id));
+            }
+        }
+        S::Pig => {
+            if let Some(variants) = variants
+                && let Some(r) = m.pig_sound_variant(&variants.pig_sound)
+                && let Some(id) = variants.pig_sound.id(r)
+            {
+                map.insert("sound_variant".into(), string(id));
+            }
+        }
+        S::Cow => {
+            if let Some(variants) = variants
+                && let Some(r) = m.cow_sound_variant(&variants.cow_sound)
+                && let Some(id) = variants.cow_sound.id(r)
+            {
+                map.insert("sound_variant".into(), string(id));
+            }
+        }
+        S::Chicken => {
+            if let Some(variants) = variants
+                && let Some(r) = m.chicken_sound_variant(&variants.chicken_sound)
+                && let Some(id) = variants.chicken_sound.id(r)
+            {
+                map.insert("sound_variant".into(), string(id));
+            }
+        }
+        _ => {}
     }
     match id {
         // Fox.addAdditionalSaveData.
@@ -1541,7 +1620,7 @@ pub fn write_mob(
             );
         }
         "minecraft:nautilus" | "minecraft:zombie_nautilus" => {
-            crate::mobs::nautilus::to_nbt(m, map);
+            crate::mobs::nautilus::to_nbt(m, map, variants);
         }
         "minecraft:sulfur_cube" => crate::mobs::sulfur_cube::to_nbt(m, map),
         "minecraft:bee" => crate::mobs::bee::to_nbt(m, map, &mut uuid_of),
@@ -1841,7 +1920,7 @@ fn put_sulfur_attributes(map: &mut EntityTagWriter, m: &Mob) {
     if m.species() != crate::mobs::Species::SulfurCube {
         return;
     }
-    let Some(attributes) = m.extra.armor_attributes.as_deref() else {
+    let Some(attributes) = m.extra.generic_attributes.as_deref() else {
         return;
     };
     let mut list = match map.get(&"attributes".into()) {
@@ -2129,6 +2208,15 @@ fn mob_from_nbt_at(
             kind.attributes.contains_key(id)
                 && !Attr::ALL.iter().any(|a| *a != Attr::Armor && a.id() == id)
         });
+        // A saved scale (an effect's modifier, `/attribute`) sizes the mob
+        // as `onAttributeUpdated(SCALE)` does once the load dirtied it.
+        if let Some(Tag::List(list)) = tag.get("attributes")
+            && list
+                .iter()
+                .any(|entry| text(entry.get("id")).as_deref() == Some("minecraft:scale"))
+        {
+            crate::mobs::finalize::scale_changed(&mut m);
+        }
     }
     m.health = loaded_health(&m, float(tag.get("Health")));
     // LivingEntity.readAdditionalSaveData: `internalSetAbsorptionAmount`
@@ -2406,20 +2494,10 @@ fn mob_from_nbt_at(
             };
         }
     }
-    if crate::mobs::finalize::saves_variant_name(m.species())
-        && let Some(v) = text(tag.get("variant"))
-    {
-        m.extra.variant = crate::mobs::finalize::variant_index(m.species(), &v);
-    }
     if m.species() == crate::mobs::Species::Chicken
         && let Some(t) = number(tag.get("EggLayTime"))
     {
         m.extra.egg_time = t as i32;
-    }
-    if let Some(v) = text(tag.get("sound_variant")) {
-        let v = v.trim_start_matches("minecraft:");
-        let sounds = crate::mobs::finalize::sound_variants(m.species());
-        m.extra.sound_variant = sounds.iter().position(|n| *n == v).map(|i| i as u8);
     }
     match m.species() {
         crate::mobs::Species::Fox => {
@@ -7296,48 +7374,26 @@ pub fn apply_item_components(m: &mut Mob, stack: &crate::items::ItemStack) {
             m.extra.variant3 = id as u8;
         }
     }
-    // Chicken, Cow and Pig.applyImplicitComponents: their variant and sound
-    // variant components, both registry names (`minecraft:warm`,
-    // `minecraft:picky`).
+    // Enum variant components (`applyImplicitComponents`). Registry-backed
+    // variants resolve against the world's `VariantTables` in
+    // `apply_item_variant_components`.
     let species = m.species();
-    let (variant, sound) = match species {
-        crate::mobs::Species::Chicken => (
-            Some("minecraft:chicken/variant"),
-            Some("minecraft:chicken/sound_variant"),
-        ),
-        crate::mobs::Species::Cow => (
-            Some("minecraft:cow/variant"),
-            Some("minecraft:cow/sound_variant"),
-        ),
-        crate::mobs::Species::Pig => (
-            Some("minecraft:pig/variant"),
-            Some("minecraft:pig/sound_variant"),
-        ),
-        // ZombieNautilus.applyImplicitComponents: the variant only.
-        crate::mobs::Species::ZombieNautilus => (Some("minecraft:zombie_nautilus/variant"), None),
-        // Fox and Frog.applyImplicitComponent: `setVariant` from the component
+    let variant = match species {
+        // Fox.applyImplicitComponent: `setVariant` from the component
         // alone, so a spawn egg carrying one hatches that variant.
-        crate::mobs::Species::Fox => (Some("minecraft:fox/variant"), None),
-        crate::mobs::Species::Frog => (Some("minecraft:frog/variant"), None),
+        crate::mobs::Species::Fox => Some("minecraft:fox/variant"),
         // Horse.applyImplicitComponent: `setVariant` sets the coat colour and
         // keeps the markings the spawn picked (`getTypeVariant() & -256`),
         // which Sunrise keeps in `extra.variant2` and leaves alone here.
-        crate::mobs::Species::Horse => (Some("minecraft:horse/variant"), None),
+        crate::mobs::Species::Horse => Some("minecraft:horse/variant"),
         // Llama.applyImplicitComponent, which a trader llama inherits.
         crate::mobs::Species::Llama | crate::mobs::Species::TraderLlama => {
-            (Some("minecraft:llama/variant"), None)
+            Some("minecraft:llama/variant")
         }
-        _ => (None, None),
+        _ => None,
     };
     if let Some(name) = variant.and_then(|id| text(components.other(id))) {
         m.extra.variant = crate::mobs::finalize::variant_index(species, &name);
-    }
-    if let Some(name) = sound.and_then(|id| text(components.other(id)))
-        && let Some(i) = crate::mobs::finalize::sound_variants(species)
-            .iter()
-            .position(|v| *v == name.trim_start_matches("minecraft:"))
-    {
-        m.extra.sound_variant = Some(i as u8);
     }
     // MushroomCow.applyImplicitComponents: `Variant.DEFAULT` is red, as the
     // save's `Type` reads it.
@@ -7355,6 +7411,173 @@ pub fn apply_item_components(m: &mut Mob, stack: &crate::items::ItemStack) {
     {
         m.extra.color = i as u8;
     }
+}
+
+/// Apply registry-backed variant and sound-variant item components
+/// (`Pig`/`Cow`/`Chicken`/`Wolf`/`Cat`/`Frog`/`ZombieNautilus.applyImplicitComponents`)
+/// against the world's `VariantTables`.
+pub fn apply_item_variant_components(
+    m: &mut Mob,
+    stack: &crate::items::ItemStack,
+    variants: &crate::mobs::variants::VariantTables,
+) {
+    let Some(components) = stack.data() else {
+        return;
+    };
+    match m.species() {
+        crate::mobs::Species::Wolf => {
+            if let Some(name) = text(components.other("minecraft:wolf/variant"))
+                && let Some(r) = variants.wolf.lookup(&name)
+            {
+                m.extra.wolf_variant = Some(r);
+            }
+            if let Some(name) = text(components.other("minecraft:wolf/sound_variant"))
+                && let Some(r) = variants.wolf_sound.lookup(&name)
+            {
+                m.extra.wolf_sound_variant = Some(r);
+            }
+        }
+        crate::mobs::Species::Cat => {
+            if let Some(name) = text(components.other("minecraft:cat/variant"))
+                && let Some(r) = variants.cat.lookup(&name)
+            {
+                m.extra.cat_variant = Some(r);
+            }
+            if let Some(name) = text(components.other("minecraft:cat/sound_variant"))
+                && let Some(r) = variants.cat_sound.lookup(&name)
+            {
+                m.extra.cat_sound_variant = Some(r);
+            }
+        }
+        crate::mobs::Species::Pig => {
+            if let Some(name) = text(components.other("minecraft:pig/variant"))
+                && let Some(r) = variants.pig.lookup(&name)
+            {
+                m.extra.pig_variant = Some(r);
+            }
+            if let Some(name) = text(components.other("minecraft:pig/sound_variant"))
+                && let Some(r) = variants.pig_sound.lookup(&name)
+            {
+                m.extra.pig_sound_variant = Some(r);
+            }
+        }
+        crate::mobs::Species::Cow => {
+            if let Some(name) = text(components.other("minecraft:cow/variant"))
+                && let Some(r) = variants.cow.lookup(&name)
+            {
+                m.extra.cow_variant = Some(r);
+            }
+            if let Some(name) = text(components.other("minecraft:cow/sound_variant"))
+                && let Some(r) = variants.cow_sound.lookup(&name)
+            {
+                m.extra.cow_sound_variant = Some(r);
+            }
+        }
+        crate::mobs::Species::Chicken => {
+            if let Some(name) = text(components.other("minecraft:chicken/variant"))
+                && let Some(r) = variants.chicken.lookup(&name)
+            {
+                m.extra.chicken_variant = Some(r);
+            }
+            if let Some(name) = text(components.other("minecraft:chicken/sound_variant"))
+                && let Some(r) = variants.chicken_sound.lookup(&name)
+            {
+                m.extra.chicken_sound_variant = Some(r);
+            }
+        }
+        crate::mobs::Species::Frog => {
+            if let Some(name) = text(components.other("minecraft:frog/variant"))
+                && let Some(r) = variants.frog.lookup(&name)
+            {
+                m.extra.frog_variant = Some(r);
+            }
+        }
+        crate::mobs::Species::ZombieNautilus => {
+            if let Some(name) = text(components.other("minecraft:zombie_nautilus/variant"))
+                && let Some(r) = variants.zombie_nautilus.lookup(&name)
+            {
+                m.extra.zombie_nautilus_variant = Some(r);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Resolve registry-backed mob variants from saved NBT against the world's
+/// `VariantTables` (`VariantUtils.readVariant` +
+/// `Wolf`/`Cat`/`Pig`/`Cow`/`Chicken`/`Frog`/`ZombieNautilus.readAdditionalSaveData`).
+/// Missing or unknown ids leave the vanilla default (`getDefaultOrAny`).
+pub fn read_mob_variants(m: &mut Mob, tag: &Tag, variants: &crate::mobs::variants::VariantTables) {
+    match m.species() {
+        crate::mobs::Species::Wolf => {
+            m.extra.wolf_variant = text(tag.get("variant"))
+                .and_then(|v| variants.wolf.lookup(&v))
+                .or_else(|| variants.wolf.default_or_any("minecraft:pale"));
+            m.extra.wolf_sound_variant = text(tag.get("sound_variant"))
+                .and_then(|v| variants.wolf_sound.lookup(&v))
+                .or_else(|| variants.wolf_sound.default_or_any("minecraft:classic"));
+        }
+        crate::mobs::Species::Cat => {
+            m.extra.cat_variant = text(tag.get("variant"))
+                .and_then(|v| variants.cat.lookup(&v))
+                .or_else(|| variants.cat.default_or_any("minecraft:black"));
+            m.extra.cat_sound_variant = text(tag.get("sound_variant"))
+                .and_then(|v| variants.cat_sound.lookup(&v))
+                .or_else(|| variants.cat_sound.default_or_any("minecraft:classic"));
+        }
+        crate::mobs::Species::Pig => {
+            m.extra.pig_variant = text(tag.get("variant"))
+                .and_then(|v| variants.pig.lookup(&v))
+                .or_else(|| variants.pig.default_or_any("minecraft:temperate"));
+            m.extra.pig_sound_variant = text(tag.get("sound_variant"))
+                .and_then(|v| variants.pig_sound.lookup(&v))
+                .or_else(|| variants.pig_sound.default_or_any("minecraft:classic"));
+        }
+        crate::mobs::Species::Cow => {
+            m.extra.cow_variant = text(tag.get("variant"))
+                .and_then(|v| variants.cow.lookup(&v))
+                .or_else(|| variants.cow.default_or_any("minecraft:temperate"));
+            m.extra.cow_sound_variant = text(tag.get("sound_variant"))
+                .and_then(|v| variants.cow_sound.lookup(&v))
+                .or_else(|| variants.cow_sound.default_or_any("minecraft:classic"));
+        }
+        crate::mobs::Species::Chicken => {
+            m.extra.chicken_variant = text(tag.get("variant"))
+                .and_then(|v| variants.chicken.lookup(&v))
+                .or_else(|| variants.chicken.default_or_any("minecraft:temperate"));
+            m.extra.chicken_sound_variant = text(tag.get("sound_variant"))
+                .and_then(|v| variants.chicken_sound.lookup(&v))
+                .or_else(|| variants.chicken_sound.default_or_any("minecraft:classic"));
+        }
+        crate::mobs::Species::Frog => {
+            m.extra.frog_variant = text(tag.get("variant"))
+                .and_then(|v| variants.frog.lookup(&v))
+                .or_else(|| variants.frog.default_or_any("minecraft:temperate"));
+        }
+        crate::mobs::Species::ZombieNautilus => {
+            m.extra.zombie_nautilus_variant = text(tag.get("variant"))
+                .and_then(|v| variants.zombie_nautilus.lookup(&v))
+                .or_else(|| {
+                    variants
+                        .zombie_nautilus
+                        .default_or_any("minecraft:temperate")
+                });
+        }
+        _ => {}
+    }
+}
+
+/// `mob_from_nbt` followed by [`read_mob_variants`].
+pub fn mob_from_nbt_with_variants(
+    tag: &Tag,
+    types: &HashMap<String, Arc<MobType>>,
+    id: u32,
+    registry: Option<&BlockRegistry>,
+    variants: &crate::mobs::variants::VariantTables,
+) -> Option<Mob> {
+    let mut mob = mob_from_nbt(tag, types, id, registry)?;
+    read_mob_variants(&mut mob, tag, variants);
+    Some(mob)
 }
 
 #[cfg(test)]

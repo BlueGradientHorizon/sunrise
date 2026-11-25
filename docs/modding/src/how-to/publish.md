@@ -67,6 +67,10 @@ workflow, commits the version bump signed off (`Signed-off-by`, from your Git `u
 at the repository root or `<id>/v<version>` for a subfolder package. GitHub Actions builds and attests both the
 `.smod` and its page bundle, with no signing key for you to manage.
 
+`release` reads your repository's ID from GitHub's API. Set `GH_TOKEN` or `GITHUB_TOKEN` when you release
+many packages in an hour: with a token GitHub allows far more than the 60 requests an hour it allows without one.
+The token is sent to `api.github.com` alone.
+
 If your default branch accepts changes only through pull requests, add `--pull-request`:
 
 ```sh

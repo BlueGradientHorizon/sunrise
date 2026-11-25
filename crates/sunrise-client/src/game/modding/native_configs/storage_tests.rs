@@ -66,7 +66,7 @@ fn chunk_disk_uses_the_captured_native_config_root() {
             ChunkDiskKind::Full,
             ChunkDiskPhase::Save,
         );
-        let resources = OwningWorldgen::new(&NoWorldgen, &|_, _, _| None);
+        let resources = OwningWorldgen::new(&NoWorldgen, &|_, _, _| None, &|_, _| None);
         let chunk_disk = OwningChunkDisk::new(&captured, &resources, |_, _, nbt| Ok(nbt));
         assert_eq!(chunk_disk.config_dir(), root.0.join("config"));
     });

@@ -214,12 +214,11 @@ pub(in crate::game) fn run_borrowed_creaking_hurt_finishes_before_the_tick_conti
     .into();
     mod_platform::testing::with_mods(mods, || {
         if matches!(effect_edit, Some(EffectEdit::ReplaceRegistered)) {
-            assert!(brewing::register_mod_effects([(
-                FINAL_HURT.into(),
+            assert!(brewing::register_mod_effects([brewing::ModEffect::new(
+                FINAL_HURT,
                 0,
                 brewing::Category::Harmful,
-                None,
-                "watch".into(),
+                "watch",
             )]));
         }
         with_game(|game| {

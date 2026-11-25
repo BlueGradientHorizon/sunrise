@@ -52,6 +52,26 @@ fn held_focus(
     }
 }
 
+/// The pointer's presence over the window and the window's occlusion, from the window system's
+/// events. A person's pointer moving inside the window says it is there, as an enter that came
+/// before the game listened would have; an agent's made-up moves say nothing of the pointer.
+fn track_window_state(
+    origin: input_trace::InputOrigin,
+    event: &WindowEvent,
+    hovered: &mut bool,
+    occluded: &mut bool,
+) {
+    match event {
+        WindowEvent::CursorEntered { .. } => *hovered = true,
+        WindowEvent::CursorLeft { .. } => *hovered = false,
+        WindowEvent::CursorMoved { .. } if origin == input_trace::InputOrigin::User => {
+            *hovered = true;
+        }
+        WindowEvent::Occluded(now) => *occluded = *now,
+        _ => {}
+    }
+}
+
 /// What a person's event does at an agent's window no one has clicked yet.
 #[derive(Debug, PartialEq)]
 enum Unclaimed {
@@ -155,6 +175,13 @@ impl Game<'_> {
         if !ours {
             return;
         }
+        // The window's state, not input: kept whoever's turn it is.
+        track_window_state(
+            origin,
+            &event,
+            &mut self.window_hovered,
+            &mut self.window_occluded,
+        );
         if let Some(modifiers) = held_modifiers(origin, self.unclaimed_window, &event) {
             self.unclaimed_modifiers = Some(modifiers);
         }
@@ -301,6 +328,7 @@ impl Game<'_> {
     /// winit's `about_to_wait`: what happens between frames (stop requests, the closing
     /// save, world entry, the control socket, pads), then the next frame.
     pub(super) fn idle(&mut self, event_loop: &dyn EventLoopCtl) {
+        self.fire_dropped_files();
         let quit_requested = match self.client_quit.get() {
             ClientQuit::Running => sunrise_threads::stop_requests() > 0,
             ClientQuit::Requested => true,
@@ -616,6 +644,40 @@ mod tests {
             WindowEvent::ModifiersChanged(Modifiers::from(ModifiersState::empty())),
             WindowEvent::Ime(Ime::Commit("a".into())),
         ]
+    }
+
+    #[test]
+    fn the_window_tracks_the_pointer_over_it_and_its_occlusion() {
+        let device_id = DeviceId::dummy();
+        let moved = WindowEvent::CursorMoved {
+            device_id,
+            position: PhysicalPosition::new(10.0, 20.0),
+        };
+        let (mut hovered, mut occluded) = (false, false);
+        let mut track = |origin, event: &WindowEvent| {
+            track_window_state(origin, event, &mut hovered, &mut occluded);
+            (hovered, occluded)
+        };
+        // An agent's move says nothing of the person's pointer; theirs does.
+        assert_eq!(track(InputOrigin::Agent, &moved), (false, false));
+        assert_eq!(track(InputOrigin::User, &moved), (true, false));
+        let left = WindowEvent::CursorLeft { device_id };
+        assert_eq!(track(InputOrigin::User, &left), (false, false));
+        let entered = WindowEvent::CursorEntered { device_id };
+        assert_eq!(track(InputOrigin::User, &entered), (true, false));
+        assert_eq!(
+            track(InputOrigin::User, &WindowEvent::Occluded(true)),
+            (true, true)
+        );
+        // Focus and other events change neither.
+        assert_eq!(
+            track(InputOrigin::User, &WindowEvent::Focused(false)),
+            (true, true)
+        );
+        assert_eq!(
+            track(InputOrigin::User, &WindowEvent::Occluded(false)),
+            (true, false)
+        );
     }
 
     #[test]

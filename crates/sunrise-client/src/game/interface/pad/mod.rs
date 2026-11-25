@@ -808,16 +808,22 @@ impl Game<'_> {
                 label("sunrise.controller.notice.controller_disconnected.hint"),
             ),
         };
-        self.controller_notice.raise(notice);
+        let clock = sunrise_client::toasts::ToastClock::of(self.clock.still());
+        self.controller_notice.raise(notice, clock);
     }
 
     /// Connection notices sit below the boss bars and last as long as a toast.
-    pub(super) fn draw_controller_notice(&mut self, batch: &mut HudBatch) {
+    pub(super) fn draw_controller_notice(
+        &mut self,
+        batch: &mut HudBatch,
+        clock: sunrise_client::toasts::ToastClock,
+    ) {
         let shown_for = Duration::from_secs_f64(5.0 * self.settings.notification_display_time);
         self.controller_notice.draw(
             batch,
             &self.gui.atlas,
             self.ui.room.below_top(18.0),
+            clock,
             shown_for,
         );
     }
