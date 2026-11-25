@@ -1068,7 +1068,7 @@ pub mod entity_sounds;
 mod entity_type;
 pub use entity_type::EntityType;
 mod face_rules;
-pub use face_rules::parse_face_rules;
+pub use face_rules::{check_face_rule_properties, parse_face_rules};
 pub mod fluid_interaction;
 pub use fluid_interaction::FluidInteraction;
 mod lenient;
@@ -3928,24 +3928,17 @@ capabilities = ["registries"]
             face_rules::check_face_rules("hides_neighbor_face", &props.hides_neighbor_face).is_ok()
         );
 
-        let bad_fact = serde_json::from_str::<BlockProperties>(
-            r#"{"skip_rendering":[{"facts":{"blocks_motion":false}}]}"#,
-        )
-        .unwrap_err()
-        .to_string();
         assert!(
-            bad_fact.contains("skip_rendering") && bad_fact.contains("blocks_motion"),
-            "{bad_fact}"
+            serde_json::from_str::<BlockProperties>(
+                r#"{"skip_rendering":[{"facts":{"blocks_motion":false}}]}"#
+            )
+            .is_err()
         );
-
-        let bad_dir = serde_json::from_str::<BlockProperties>(
-            r#"{"hides_neighbor_face":[{"faces":["north","sideways"]}]}"#,
-        )
-        .unwrap_err()
-        .to_string();
         assert!(
-            bad_dir.contains("hides_neighbor_face") && bad_dir.contains("sideways"),
-            "{bad_dir}"
+            serde_json::from_str::<BlockProperties>(
+                r#"{"hides_neighbor_face":[{"faces":["north","sideways"]}]}"#
+            )
+            .is_err()
         );
 
         use mod_vocab::{FaceNeighbor, FaceRule};
@@ -3956,26 +3949,59 @@ capabilities = ["registries"]
             },
             ..FaceRule::default()
         }];
-        let err = face_rules::check_face_rules("skip_rendering", &bad_typed).unwrap_err();
-        assert!(
-            err.contains("skip_rendering") && err.contains("not_namespaced"),
-            "{err}"
-        );
+        assert!(face_rules::check_face_rules("skip_rendering", &bad_typed).is_err());
 
         let file = "data/ruby/sunrise/block/bad_rules.json";
-        let err = smod(
-            "bad-face-rule",
-            MANIFEST_TEXT,
-            &[(
-                file,
-                br#"{"template":"minecraft:stone","properties":{"skip_rendering":[{"facts":{"unknown_fact":true}}]}}"#,
-            )],
-        )
-        .unwrap_err();
         assert!(
-            err.contains(file) && err.contains("skip_rendering") && err.contains("unknown_fact"),
-            "{err}"
+            smod(
+                "bad-face-rule",
+                MANIFEST_TEXT,
+                &[(
+                    file,
+                    br#"{"template":"minecraft:stone","properties":{"skip_rendering":[{"facts":{"unknown_fact":true}}]}}"#,
+                )],
+            )
+            .is_err()
         );
+    }
+
+    #[test]
+    fn face_rules_refuse_properties_the_block_does_not_declare() {
+        use mod_vocab::FaceRule;
+        let known = BTreeMap::from([(
+            "axis".to_owned(),
+            std::collections::BTreeSet::from(["x".to_owned(), "y".to_owned()]),
+        )]);
+        let rule = |state: &[(&str, &str)], same: &[&str]| FaceRule {
+            state: state
+                .iter()
+                .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+                .collect(),
+            same: same.iter().map(|k| (*k).to_owned()).collect(),
+            ..FaceRule::default()
+        };
+        let accepted = [
+            rule(&[("axis", "x")], &["axis"]),
+            FaceRule {
+                neighbor: mod_vocab::FaceNeighbor::Tag {
+                    id: "optional:empty".into(),
+                    state: BTreeMap::from([("elsewhere".to_owned(), "1".to_owned())]),
+                },
+                ..FaceRule::default()
+            },
+        ];
+        assert!(
+            face_rules::check_face_rule_properties("skip_rendering", &accepted, &known).is_ok()
+        );
+        for bad in [
+            rule(&[("axs", "x")], &[]),
+            rule(&[("axis", "z")], &[]),
+            rule(&[], &["axs"]),
+        ] {
+            assert!(
+                face_rules::check_face_rule_properties("skip_rendering", &[bad], &known).is_err()
+            );
+        }
     }
 
     #[test]

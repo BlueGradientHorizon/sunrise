@@ -352,29 +352,26 @@ pub fn load_visibility(
         })
         .collect::<std::result::Result<BTreeMap<_, _>, String>>()?;
     if needs_tags {
-        let mut block_tags: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
         let tags_path = root.join("block-tags.json");
-        if tags_path.is_file() {
-            let bundle: Value = sunrise_world::json_file::read(&tags_path)?;
-            let mut tag_defs = TagDefinitions::default();
-            for (tag_name, text) in bundle.as_object().ok_or("invalid block tag bundle")? {
-                tag_defs.apply_json(
-                    tag_name,
-                    "vanilla",
-                    text.as_str().ok_or("invalid block tag text")?,
-                )?;
-            }
-            let built = tag_defs.build(|block_name, _| {
-                registry
-                    .default_state(block_name)
-                    .map(|_| block_name.to_owned())
-            })?;
-            block_tags = built
-                .tags
-                .into_iter()
-                .map(|(tag, members)| (tag, members.into_iter().collect()))
-                .collect();
+        let bundle: Value = sunrise_world::json_file::read(&tags_path)?;
+        let mut tag_defs = TagDefinitions::default();
+        for (tag_name, text) in bundle.as_object().ok_or("invalid block tag bundle")? {
+            tag_defs.apply_json(
+                tag_name,
+                "vanilla",
+                text.as_str().ok_or("invalid block tag text")?,
+            )?;
         }
+        let built = tag_defs.build(|block_name, _| {
+            registry
+                .default_state(block_name)
+                .map(|_| block_name.to_owned())
+        })?;
+        let block_tags: BTreeMap<String, BTreeSet<String>> = built
+            .tags
+            .into_iter()
+            .map(|(tag, members)| (tag, members.into_iter().collect()))
+            .collect();
         Ok(FaceVisibility::new_with_tags(
             &occlusion,
             &definitions,

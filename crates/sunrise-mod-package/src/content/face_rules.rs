@@ -4,7 +4,7 @@ use super::{namespaced_id, property_bool};
 use mod_vocab::{FaceDirections, FaceFacts, FaceNeighbor, FaceRule};
 use serde::Deserialize;
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use sunrise_core::geometry::Direction;
 
 fn parse_direction(name: &str, key: &str) -> Result<Direction, String> {
@@ -299,6 +299,37 @@ pub(super) fn check_face_rules(key: &str, rules: &[FaceRule]) -> Result<(), Stri
         for prop in &rule.same {
             if prop.is_empty() {
                 return Err(format!("{key}.same: property name must not be empty"));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Refuses a rule whose `state` or `same` names a property the declaring block does not have, or
+/// a `state` value outside that property's values. `known` maps each property of the block, the
+/// template's and the declared ones, to its values. Neighbour ids and tags are not checked: they
+/// may belong to optional mods.
+pub fn check_face_rule_properties(
+    key: &str,
+    rules: &[FaceRule],
+    known: &BTreeMap<String, BTreeSet<String>>,
+) -> Result<(), String> {
+    for rule in rules {
+        for (name, value) in &rule.state {
+            let Some(values) = known.get(name) else {
+                return Err(format!(
+                    "{key}.state.{name}: the block has no such property"
+                ));
+            };
+            if !values.contains(value) {
+                return Err(format!(
+                    "{key}.state.{name}: {value:?} is not a value of the property"
+                ));
+            }
+        }
+        for name in &rule.same {
+            if !known.contains_key(name) {
+                return Err(format!("{key}.same: the block has no property {name:?}"));
             }
         }
     }

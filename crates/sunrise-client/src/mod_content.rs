@@ -38,6 +38,7 @@ use sunrise_core::{
 use sunrise_mod_package::content::{
     Block, BlockEntityType, BlockShapes, Content, ContextCollision, CreativeTab, EntityType,
     FluidLook, Item, LocalDeclaration, MenuType, MobEffect, Rarity, StateProperty, StateValues,
+    check_face_rule_properties,
 };
 use sunrise_mod_package::manifest::{
     JarInputsError, JarRef, collect_jar_requirements, missing_jars,
@@ -1643,6 +1644,38 @@ impl<'a> Plan<'a> {
                 }
                 let combos = combinations(&decl.state_properties, &decl.default_state)
                     .map_err(|e| format!("{}: {e}", decl.id))?;
+                let mut known: BTreeMap<String, BTreeSet<String>> = decl
+                    .state_properties
+                    .iter()
+                    .map(|(name, property)| {
+                        (
+                            name.clone(),
+                            property.values().into_iter().map(str::to_owned).collect(),
+                        )
+                    })
+                    .collect();
+                for id in states.clone() {
+                    if let Some(J::Obj(own)) = properties(id) {
+                        for (name, value) in own {
+                            if let J::Str(value) = value {
+                                known.entry(name.clone()).or_default().insert(value.clone());
+                            }
+                        }
+                    }
+                }
+                for (key, rules) in [
+                    (
+                        "skip_rendering",
+                        decl.properties.skip_rendering.as_deref().unwrap_or(&[]),
+                    ),
+                    (
+                        "hides_neighbor_face",
+                        &decl.properties.hides_neighbor_face[..],
+                    ),
+                ] {
+                    check_face_rule_properties(key, rules, &known)
+                        .map_err(|e| format!("{}: {e}", decl.id))?;
+                }
                 // A `default_state` key the block itself declares is its own,
                 // and `combinations` already checks that value against the
                 // property. Only a key the template already has narrows which
