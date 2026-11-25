@@ -21,7 +21,6 @@ use std::{
     sync::Arc,
 };
 #[allow(unused_imports)]
-use sunrise_client::actions::Action;
 #[allow(unused_imports)]
 use sunrise_client::{
     advancements::{self as adv, EntityView, Frame, ItemView, Progress, Tree},
@@ -878,7 +877,7 @@ impl Game<'_> {
             body,
             name: self.acting_player_name(),
             mode: self.mode,
-            input_sneak: self.held_mapping(Action::Sneak),
+            input_sneak: self.server_acting_sneak(),
             main_hand: self.held(),
             off_hand: self.offhand.as_ref(),
             armor: &self.armor,
@@ -1467,7 +1466,7 @@ impl Game<'_> {
                                     &text.component(),
                                 ));
                         }
-                        self.system_message(text);
+                        if self.lan.is_none() { self.server_system_message(text); }
                     }
                 }
             }

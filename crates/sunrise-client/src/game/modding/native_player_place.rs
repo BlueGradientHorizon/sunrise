@@ -251,7 +251,7 @@ impl Game<'_> {
                         && sign.front.has_editable_text()
                         && !self.fake_blocks(mod_api::FakeEffect::Menu) =>
                 {
-                    self.open_text_edit(key, true);
+                    self.server_request_sign_editor(key, true);
                 }
                 _ => {}
             }

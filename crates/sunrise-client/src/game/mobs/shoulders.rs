@@ -148,7 +148,7 @@ impl Game<'_> {
             &nearby,
         ) {
             let sound = sunrise_client::mobs::entity_sounds::full_id(sound);
-            self.client_audio_play(&sound, Some(at), volume, pitch);
+            self.server_play_sound(&sound, at, volume, pitch);
         }
     }
 

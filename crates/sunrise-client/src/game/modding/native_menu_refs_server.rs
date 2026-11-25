@@ -28,7 +28,7 @@ pub(in crate::game::server_side) use sunrise_client::{
 impl Game<'_> {
     /// Carried (cursor) stack; outer None means unavailable.
     pub(in crate::game) fn menu_carried(&self, menu: MenuRef) -> Option<Option<ItemStack>> {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             self.native_client_menu_name(menu)?;
             return Some(self.carried.clone());
         }
@@ -46,7 +46,7 @@ impl Game<'_> {
         menu: MenuRef,
         slot: usize,
     ) -> Option<Option<ItemStack>> {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             let name = self.native_client_menu_name(menu)?;
             let index = Self::inventory_screen_slot(name, i32::try_from(slot).ok()?)?;
             return Some(self.slot_view(index));

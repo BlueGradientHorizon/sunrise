@@ -116,10 +116,6 @@ impl Game<'_> {
             _ => Err("lan open|close|status|op".into()),
         }
     }
-    #[inline(always)]
-    pub(in crate::game) fn lan_disconnect_client(&mut self) {
-        self.audio.0.capture = None;
-    }
 }
 
 #[cfg(test)]

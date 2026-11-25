@@ -280,43 +280,22 @@ impl Game<'_> {
         self.combat.0.attack.clone()
     }
 
-    /// Entity event 67 from a server, for this client's own player or an
-    /// entity it draws.
-    pub(in crate::game) fn remote_drown(&mut self, id: i32) {
-        let own = self.remote.as_ref().is_some_and(|r| r.entity_id == id);
-        let body = if own {
-            self.player.as_ref().map(|p| {
-                let (at, v) = (p.position, p.velocity);
-                ([at.x, at.y, at.z], [v.x, v.y, v.z])
-            })
-        } else {
-            self.mobs.iter().find(|m| m.id == id as u32).map(|m| {
-                let (at, v) = (m.position, m.velocity);
-                ([at.x, at.y, at.z], [v.x, v.y, v.z])
-            })
-        };
-        if let Some((at, v)) = body {
-            self.drown_particles(at, v, 8);
-        }
-    }
     /// `LivingDrownEvent`'s `bubbles` for an entity drowning at `at`: true for
-    /// vanilla's eight, which the caller sends as entity event 67 and draws.
+    /// vanilla's eight, which the caller sends as entity event 67.
     /// Another positive count goes to the players around as that many bubble
-    /// particles and is drawn here, since a vanilla client's event 67 always
-    /// draws eight; none sends nothing.
+    /// particles, since a vanilla client's event 67 always draws eight; none sends nothing.
     pub(in crate::game) fn drown_bubbles(
         &mut self,
         at: [f64; 3],
-        velocity: [f64; 3],
+        _velocity: [f64; 3],
         bubbles: i32,
     ) -> bool {
         if bubbles == 8 {
             return true;
         }
         if bubbles > 0 {
-            let bubble = ParticleOptions::simple(ParticleType::Bubble);
-            self.lan_level_particles(&bubble, at, [0.5; 3], 0.0, bubbles as u32, None);
-            self.drown_particles(at, velocity, bubbles);
+            let bubble = crate::lan::server_effects::ServerParticle::simple(ParticleType::Bubble);
+            self.server_level_particles(&bubble, at, [0.5; 3], 0.0, bubbles as u32);
         }
         false
     }
@@ -329,7 +308,6 @@ impl Game<'_> {
             .map_or([0.0; 3], |m| [m.velocity.x, m.velocity.y, m.velocity.z]);
         if self.drown_bubbles(at, v, bubbles) {
             self.lan_entity_event(mob as i32, DROWN_EVENT, at);
-            self.drown_particles(at, v, 8);
         }
     }
     /// The display name of a mob: its custom name or its type's name.
@@ -803,19 +781,17 @@ impl Game<'_> {
         {
             return;
         }
-        let host = self.player.is_some()
-            && self.options.dedicated.is_none()
-            && sunrise_client::mobs::tame::owned_by(
-                Some(owner),
-                self.level.player_uuid.unwrap_or_default(),
-            );
         let uuid = sunrise_client::lan::playerdata::ints_uuid(owner);
-        let guest = !host
-            && self
-                .lan
-                .as_ref()
-                .is_some_and(|l| l.hub.guests.iter().any(|g| g.placed && g.uuid == uuid));
-        if !host && !guest {
+        let recipient = if let Some(lan) = &self.lan {
+            lan.hub.guests.iter().any(|g| g.placed && g.uuid == uuid)
+        } else {
+            self.player.is_some()
+                && sunrise_client::mobs::tame::owned_by(
+                    Some(owner),
+                    self.level.player_uuid.unwrap_or_default(),
+                )
+        };
+        if !recipient {
             return;
         }
         let mut built = Some(self.mob_death_message(m, killer));
@@ -825,11 +801,11 @@ impl Game<'_> {
         let Some(message) = built else {
             return;
         };
-        if host {
-            self.system_message(message);
-        } else if let Some(lan) = &self.lan {
+        if let Some(lan) = &self.lan {
             let content = sunrise_client::lan::data::component_nbt(&message.component());
             lan.hub.system_message_to_player(uuid, content);
+        } else {
+            self.server_system_message(message);
         }
     }
     /// `CombatTracker.getDeathMessage` for a mob, from the hits it recorded
@@ -1144,7 +1120,7 @@ impl Game<'_> {
         if let Some(b) = self.mobs.iter_mut().find(|m| m.id == mob)
             && sunrise_client::mobs::bee::sting_landed(b)
         {
-            self.client_audio_play("minecraft:entity.bee.sting", Some(from), 1.0, 1.0);
+            self.server_play_sound("minecraft:entity.bee.sting", from, 1.0, 1.0);
         }
     }
     /// Whether a hit from a mob's tick on `target`, handled after the mob

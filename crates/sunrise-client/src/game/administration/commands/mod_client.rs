@@ -76,9 +76,6 @@ pub(in crate::game) mod extra;
 #[path = "raid_client.rs"]
 pub(in crate::game) mod raid;
 
-#[path = "text_commands_client.rs"]
-pub(in crate::game) mod text_commands;
-
 #[path = "world_cmds_client.rs"]
 pub(in crate::game) mod world_cmds;
 

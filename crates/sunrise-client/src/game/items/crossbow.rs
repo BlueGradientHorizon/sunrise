@@ -271,12 +271,8 @@ impl Game<'_> {
             .map(|p| [p.position.x, p.position.y, p.position.z]);
         let (played, start, middle) = charge_sounds(now, self.server.crossbow_sounds, sounds);
         self.server.crossbow_sounds = played;
-        if let Some(sound) = start {
-            self.client_audio_play(sound, at, 0.5, 1.0);
-        }
-        if let Some(sound) = middle {
-            self.client_audio_play(sound, at, 0.5, 1.0);
-        }
+        if let Some(sound) = start { if let Some(at) = at { self.server_play_sound(sound, at, 0.5, 1.0); } }
+        if let Some(sound) = middle { if let Some(at) = at { self.server_play_sound(sound, at, 0.5, 1.0); } }
         let charged = stack.data().is_some_and(|d| !d.charged.is_empty());
         if now >= 1.0 && !charged {
             // tryLoadProjectiles / ProjectileWeaponItem.draw.
@@ -318,7 +314,7 @@ impl Game<'_> {
                 self.consume_player_slot(i, 1);
             }
             let pitch = 1.0 / (self.world.random.next_float() * 0.5 + 1.0) + 0.2;
-            self.client_audio_play(sounds[2], at, 1.0, pitch);
+            if let Some(at) = at { self.server_play_sound(sounds[2], at, 1.0, pitch); }
         }
     }
     /// `CrossbowItem.performShooting`.
@@ -426,7 +422,7 @@ impl Game<'_> {
                 .player
                 .as_ref()
                 .map_or(eye, |pl| [pl.position.x, pl.position.y, pl.position.z]);
-            self.client_audio_play("minecraft:item.crossbow.shoot", Some(feet), 1.0, pitch);
+            self.server_play_sound("minecraft:item.crossbow.shoot", feet, 1.0, pitch);
             self.damage_held(if rocket { 3 } else { 1 });
         }
         // CrossbowItem.performShooting: SHOT_CROSSBOW with the crossbow, which

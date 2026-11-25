@@ -528,7 +528,7 @@ impl Game<'_> {
     /// player's UUID and entity id on a server, this client's own player on
     /// a client.
     pub(in crate::game) fn native_clicker(&mut self) -> (u128, i32) {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return (self.own_uuid(), self.own_entity_id());
         }
         let entity = self

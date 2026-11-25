@@ -156,7 +156,11 @@ impl Game<'_> {
                     event,
                     ctx.source.and_then(|source| source.actor()),
                     self.server.lan_entity_events.len(),
-                    self.audio_capture_len(),
+                    if self.is_logical_server() {
+                        self.server.pending_sounds.len()
+                    } else {
+                        0
+                    },
                 ));
             }
         });

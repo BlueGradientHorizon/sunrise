@@ -738,14 +738,6 @@ impl Game<'_> {
         self.level.allow_commands = Some(allow);
         self.ui.registries.permission = owner_permission(allow);
     }
-    /// Commands the game issues itself (the server console, harnesses, the
-    /// control socket) run at the owner's level whatever Allow Commands says.
-    pub(in crate::game) fn as_console<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
-        let level = std::mem::replace(&mut self.ui.registries.permission, 4);
-        let out = f(self);
-        self.ui.registries.permission = level;
-        out
-    }
     /// `ResourceOrIdArgument`'s loot tables are the server's: every table the
     /// world plays with, the game's, the content mods' and its packs'.
     pub(in crate::game) fn sync_loot_table_ids(&mut self) {
@@ -1181,6 +1173,18 @@ impl Game<'_> {
             self.add_chat_line(text, ChatSource::Client);
         } else {
             self.local_chat_line(text, Some(SYSTEM_INDICATOR), ChatSource::Client);
+        }
+    }
+    /// A client-side system message written directly to `ui.chat`.
+    pub(in crate::game) fn client_system_message(&mut self, text: Text) {
+        assert!(
+            !self.is_logical_server(),
+            "client_system_message called on server role"
+        );
+        if self.remote.is_some() {
+            self.add_chat_line(text, ChatSource::Server);
+        } else {
+            self.local_chat_line(text, Some(SYSTEM_INDICATOR), ChatSource::Server);
         }
     }
     /// A line on the window's own chat when the Chat option lets `source`

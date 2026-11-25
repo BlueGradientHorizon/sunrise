@@ -303,7 +303,7 @@ impl Game<'_> {
                 });
                 std::mem::take(&mut p.bubble_surfaces)
             });
-            if self.remote.is_none() {
+            if self.is_logical_server() {
                 for [x, y, z] in tops {
                     self.bubble_column_particles(BlockPos::new(x, y, z));
                 }

@@ -596,7 +596,11 @@ impl Game<'_> {
             if places_on_block && (self.may_build() || self.can_place_on_in_adventure(hit.pos)) {
                 return Some(Verb::Place);
             }
-            if self.may_build() && self.block_transform(&stack, hit).is_some() {
+            if self.may_build()
+                && self
+                    .block_transform(&stack, hit, self.held_mapping(Action::Sneak))
+                    .is_some()
+            {
                 return Some(Verb::Use);
             }
             if id == "firework_rocket" && !gliding {

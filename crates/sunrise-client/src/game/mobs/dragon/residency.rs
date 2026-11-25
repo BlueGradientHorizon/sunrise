@@ -67,7 +67,7 @@ impl Game<'_> {
         &self,
         id: u32,
     ) -> Option<(&Dragon, usize)> {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             let dragon = self.dragon.as_ref()?;
             let part = dragon_part_index(dragon.id, id)?;
             return Some((dragon, part));

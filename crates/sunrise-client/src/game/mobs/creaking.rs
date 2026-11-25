@@ -14,7 +14,7 @@ use sunrise_client::{
         Mob, MobType,
         creaking_heart::{self, HeartEvent, HeartHost},
     },
-    particles::{ParticleOptions, ParticleType},
+    particles::ParticleType,
 };
 #[allow(unused_imports)]
 use sunrise_core::{
@@ -174,15 +174,15 @@ impl Game<'_> {
             match e {
                 HeartEvent::SetBlock(at, state) => self.level_set(at, state)?,
                 HeartEvent::Sound(name, at, volume, pitch) => {
-                    self.client_audio_play(&format!("minecraft:{name}"), Some(at), volume, pitch)
+                    self.server_play_sound(&format!("minecraft:{name}"), at, volume, pitch)
                 }
                 HeartEvent::Trail {
                     at,
                     target,
                     color,
                     duration,
-                } => self.client_particles_add(
-                    &ParticleOptions::trail(target, color, duration),
+                } => self.server_particle_at(
+                    crate::lan::server_effects::ServerParticle::trail(target, color, duration),
                     at,
                     [0.0; 3],
                 ),

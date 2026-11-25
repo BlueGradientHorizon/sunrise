@@ -153,7 +153,7 @@ impl Game<'_> {
     /// server's client sends the packet, the window's own world applies it.
     pub(super) fn set_command_minecart(&mut self, id: u32, s: &CommandBlockScreen) {
         if !self.can_use_game_master_blocks() {
-            self.system_message(Text::translate("advMode.notAllowed", &[]));
+            self.client_system_message(Text::translate("advMode.notAllowed", &[]));
             return;
         }
         let command = s.command.value().to_owned();
@@ -183,7 +183,7 @@ impl Game<'_> {
             if allowed {
                 game.apply_cart_command(p.entity as u32, p.command, p.track_output);
             } else {
-                game.system_message(Text::translate("advMode.notAllowed", &[]));
+                game.server_system_message(Text::translate("advMode.notAllowed", &[]));
             }
         });
     }
@@ -216,7 +216,7 @@ impl Game<'_> {
             } else {
                 "advMode.setCommand.disabled"
             };
-            self.system_message(Text::translate(key, &[Text::literal(command)]));
+            self.server_system_message(Text::translate(key, &[Text::literal(command)]));
         }
     }
 }

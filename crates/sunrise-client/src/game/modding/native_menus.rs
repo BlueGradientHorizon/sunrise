@@ -269,7 +269,7 @@ impl Game<'_> {
         items: Vec<Option<ItemStack>>,
     ) -> Result<(), mod_api::MenuItemsRefusal> {
         use mod_api::MenuItemsRefusal;
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return Err(MenuItemsRefusal::Client);
         }
         let conn = self.native_conn(uuid).ok_or(MenuItemsRefusal::NoPlayer)?;

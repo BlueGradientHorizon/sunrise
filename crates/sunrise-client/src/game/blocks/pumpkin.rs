@@ -66,13 +66,13 @@ impl Game<'_> {
             let vz = 0.05 * dz + r.next_double() * 0.02;
             self.spawn_item(seeds, at, [vx, 0.05, vz], 0);
         }
-        self.audio.0.play(
+        self.server_play_sound(
             "minecraft:block.pumpkin.carve",
-            Some([
+            [
                 f64::from(pos[0]) + 0.5,
                 f64::from(pos[1]) + 0.5,
                 f64::from(pos[2]) + 0.5,
-            ]),
+            ],
             1.0,
             1.0,
         );

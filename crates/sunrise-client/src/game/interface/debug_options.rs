@@ -129,7 +129,7 @@ impl Game<'_> {
     fn close_screen_behind_debug_options(&mut self) {
         match self.client.screen {
             Screen::Inventory => {
-                self.close_container();
+                self.close_container_client();
                 self.client.pause_focus = None;
                 self.set_screen(Screen::Playing);
                 self.client.pause_menu = true;

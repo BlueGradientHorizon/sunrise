@@ -912,7 +912,7 @@ impl Game<'_> {
                                 .is_some_and(|i| i.equip_slot.is_some()))
                 });
                 let changed = self.mobs[index].set_equipment_stack(slot, stack);
-                if changed && !first_tick && !same && self.remote.is_none() {
+                if changed && !first_tick && !same && self.is_logical_server() {
                     self.mob_equip_event(*id, at, equippable);
                 }
                 changed
@@ -942,7 +942,7 @@ impl Game<'_> {
                 if !a.equipment.set(*i, stack) {
                     return false;
                 }
-                if effects && emit && self.remote.is_none() {
+                if effects && emit && self.is_logical_server() {
                     self.post_game_event(
                         if equippable {
                             "minecraft:equip"

@@ -88,7 +88,6 @@ impl Game<'_> {
         // then the block change game event from the player.
         if self.server.lan_acting.is_none() {
             let signal = state.properties.get("signal_fire").map(String::as_str) == Some("true");
-            self.use_campfire_douse_client(pos, signal);
         }
         self.post_block_game_event("minecraft:block_change", pos, self.sculk_actor(), None);
         self.level_set(pos, unlit)?;

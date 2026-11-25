@@ -160,7 +160,7 @@ impl Game<'_> {
             j.ticks = 0;
         }
         self.jukebox_record_changed(pos, true);
-        self.start_song(pos, &song);
+        self.start_song_server(pos, &song);
         self.jukebox_changed(pos);
     }
     /// `JukeboxBlockEntity.setTheItem(EMPTY)` from a container (a hopper
@@ -211,7 +211,7 @@ impl Game<'_> {
         j.ticks = 0;
         self.jukebox_record_changed(pos, has_record);
         match song {
-            Some(song) => self.start_song(pos, &song),
+            Some(song) => self.start_song_server(pos, &song),
             None if was_playing => self.stop_song_heard(pos),
             None => {}
         }
@@ -279,7 +279,7 @@ impl Game<'_> {
         );
         self.jukebox_record_changed(pos, true);
         if let Some(song) = song {
-            self.start_song(pos, &song);
+            self.start_song_server(pos, &song);
         }
         self.jukebox_changed(pos);
         self.post_block_game_event(
@@ -305,13 +305,16 @@ impl Game<'_> {
     }
     /// Level event 1010: the song from the jukebox, and the "Now Playing" overlay.
     pub(in crate::game::client_side) fn start_song(&mut self, pos: [i32; 3], song: &str) {
+        assert!(!self.is_logical_server(), "start_song called on server role");
         self.stop_sound(pos);
         let Some(s) = self.items().songs.get(song).cloned() else {
             return;
         };
         // LevelRenderer.playJukeboxSong: SimpleSoundInstance.forJukeboxSong.
         let id = self.audio.0.play_jukebox_song(&s.sound, pos);
-        self.jukebox_sounds.insert((pos[0], pos[1], pos[2]), id);
+        self.client
+            .jukebox_sounds
+            .insert((pos[0], pos[1], pos[2]), id);
         let description =
             sunrise_client::component::to_text(&s.description, &mut |k| Text::literal(k));
         // Hud.setNowPlaying: the overlay, said at once.
@@ -320,7 +323,6 @@ impl Game<'_> {
         self.client.titles.set_overlay(message, true);
         self.update_song_volumes();
         self.notify_record_playing(pos, true);
-        self.start_song_server(pos, song);
     }
     /// `LevelEventHandler` 1010 on a client of a server: `playJukeboxSong`
     /// for the song the event's data names in the server's `jukebox_song`
@@ -337,7 +339,8 @@ impl Game<'_> {
         self.notify_record_playing(pos, false);
     }
     pub(in crate::game) fn stop_sound(&mut self, pos: [i32; 3]) {
-        if let Some(id) = self.jukebox_sounds.remove(&(pos[0], pos[1], pos[2])) {
+        assert!(!self.is_logical_server(), "stop_sound called on server role");
+        if let Some(id) = self.client.jukebox_sounds.remove(&(pos[0], pos[1], pos[2])) {
             self.audio.0.stop_and_release(id);
         }
     }
@@ -449,8 +452,6 @@ impl Game<'_> {
             if let Some(BlockEntity::Jukebox(j)) = self.world.block_entities.get_mut(&key) {
                 j.loaded_clock = false;
             }
-        } else if !self.jukebox_sounds.contains_key(&key) && ticks == 0 {
-            self.start_song(pos, &song);
         }
         if ticks % 20 == 0 {
             // `JukeboxSongPlayer.tick`: `gameEvent(JUKEBOX_PLAY, pos,
@@ -464,8 +465,8 @@ impl Game<'_> {
                 f64::from(pos[1]) + f64::from(1.2_f32), // add(0.0, 1.2F, 0.0)
                 f64::from(pos[2]) + 0.5,
             ];
-            self.particles.0.add(
-                &ParticleOptions::simple(ParticleType::Note),
+            self.server_particle_at(
+                crate::lan::server_effects::ServerParticle::simple(ParticleType::Note),
                 at,
                 [color, 0.0, 0.0],
             );
@@ -476,7 +477,12 @@ impl Game<'_> {
     }
     /// Let go of songs that ended or whose jukebox stopped.
     pub(in crate::game) fn update_song_volumes(&mut self) {
+        assert!(
+            !self.is_logical_server(),
+            "update_song_volumes called on server role"
+        );
         let sounds: Vec<_> = self
+            .client
             .jukebox_sounds
             .iter()
             .map(|(k, id)| (*k, *id))
@@ -491,7 +497,7 @@ impl Game<'_> {
                 playing,
             ) {
                 self.audio.0.stop_and_release(id);
-                self.jukebox_sounds.remove(&k);
+                self.client.jukebox_sounds.remove(&k);
             }
         }
     }

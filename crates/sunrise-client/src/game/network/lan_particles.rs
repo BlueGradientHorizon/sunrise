@@ -4,6 +4,11 @@
 #[allow(unused_imports)]
 use super::{Game, explosion_settings::BlastEffects, lan::LanHost, level_sounds::LevelSound};
 #[allow(unused_imports)]
+use crate::lan::server_effects::{
+    ServerExplosion, ServerExplosionParticle, ServerParticle, ServerParticleData,
+    ServerQueuedParticle,
+};
+#[allow(unused_imports)]
 use mod_api::{SoundSource, client::particles::PositionSource};
 #[allow(unused_imports)]
 use sunrise_client::lan::{Body, containers::within_range, hub::Hub};
@@ -23,28 +28,96 @@ use sunrise_protocol::{
 #[allow(unused_imports)]
 use sunrise_world::registry::BlockStateId;
 
-/// An explosion packet a guest's turn put off (`lan_explode`).
-pub(in crate::game) struct LanExplosion {
-    pub(in crate::game) center: [f64; 3],
-    pub(in crate::game) small: bool,
-    pub(in crate::game) radius: f32,
-    pub(in crate::game) block_count: usize,
-    pub(in crate::game) pushed: Vec<(u32, [f64; 3])>,
-    pub(in crate::game) effects: BlastEffects,
-}
-
-/// A particle request awaiting delivery to players in its level.
-pub(in crate::game) struct QueuedParticle {
-    pub dimension: &'static str,
-    pub options: ParticleOptions,
-    pub state: Option<BlockStateId>,
-    pub at: [f64; 3],
-    pub spread: [f64; 3],
-    /// Per-axis maximum speed used by the packet's ALTERNATIVE randomization.
-    pub speed: [f64; 3],
-    pub count: i32,
-    /// The packet's `RandomizationType` (0 DEFAULT, 1 ALTERNATIVE).
-    pub randomization: i32,
+/// Convert engine `ParticleOptions` (from `/particle` or native mod APIs) into a portable
+/// [`ServerParticle`]. Returns `None` only when a typed mod particle fails stream encoding.
+pub(in crate::game) fn server_particle_from_options(
+    options: &ParticleOptions,
+    state: Option<BlockStateId>,
+) -> Option<ServerParticle> {
+    use ParticleType as T;
+    if let Some(name) = &options.mod_particle {
+        let bytes = if let Some((value, _)) = &options.typed_particle {
+            match mod_api::__private::encode_particle_stream(
+                value,
+                sunrise_protocol::frame::MAX_UNCOMPRESSED,
+            ) {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    log::warn!("Cannot encode particle {name}: {error}");
+                    return None;
+                }
+            }
+        } else {
+            Vec::new()
+        };
+        return Some(ServerParticle::mod_particle(name.as_ref(), bytes));
+    }
+    let rgb = [options.color[0], options.color[1], options.color[2]];
+    let data = match options.ty {
+        T::Block | T::BlockMarker | T::FallingDust | T::DustPillar | T::BlockCrumble => {
+            match state {
+                Some(state) => ServerParticleData::Block(state),
+                None => ServerParticleData::None,
+            }
+        }
+        T::Dust => ServerParticleData::ColorScale {
+            rgb,
+            scale: options.scale,
+        },
+        T::DustColorTransition => ServerParticleData::ColorScale2 {
+            from: rgb,
+            to: options.to_color,
+            scale: options.scale,
+        },
+        T::Effect | T::InstantEffect => ServerParticleData::ColorPower {
+            rgb,
+            power: options.scale,
+        },
+        T::EntityEffect | T::TintedLeaves | T::Flash => {
+            ServerParticleData::ColorRgba(options.color)
+        }
+        T::DragonBreath | T::SculkCharge => ServerParticleData::Scalar(options.scale),
+        T::Shriek => ServerParticleData::Delay(options.scale as i32),
+        T::Geyser | T::GeyserPlume => match options.geyser {
+            Some((water_blocks, _)) => ServerParticleData::Geyser(water_blocks),
+            None => ServerParticleData::None,
+        },
+        T::GeyserBase | T::GeyserPoof => match options.geyser {
+            Some((water_blocks, burst_impulse_base)) => ServerParticleData::GeyserBase {
+                water_blocks,
+                burst_impulse_base,
+            },
+            None => ServerParticleData::None,
+        },
+        T::Vibration => match &options.vibration {
+            Some((source, _, ticks)) => ServerParticleData::Vibration {
+                source: source.clone(),
+                ticks: *ticks,
+            },
+            None => ServerParticleData::None,
+        },
+        T::Item => match &options.item_stack {
+            Some(stack) => ServerParticleData::Item(stack.clone()),
+            None => ServerParticleData::None,
+        },
+        T::Trail => match options.trail {
+            Some((target, duration)) => {
+                let b = |v: f32| ((v.clamp(0.0, 1.0) * 255.0).round() as u32) & 255;
+                let color = (b(rgb[0]) << 16) | (b(rgb[1]) << 8) | b(rgb[2]);
+                ServerParticleData::Trail {
+                    target,
+                    color,
+                    duration,
+                }
+            }
+            None => ServerParticleData::None,
+        },
+        _ => ServerParticleData::None,
+    };
+    Some(ServerParticle {
+        ty: options.ty,
+        data,
+    })
 }
 
 /// `PowderSnowBlock.entityInside`'s server roll. The branch and both float
@@ -186,14 +259,13 @@ pub(in crate::game) fn send_snowflake_particle(
 /// `ServerLevel.sendParticles`: sends a `ClientboundLevelParticlesPacket` to each player within 32 blocks.
 pub(in crate::game::server_side) fn send_hub_level_particles(
     hub: &Hub,
-    options: &ParticleOptions,
+    particle: &ServerParticle,
     at: [f64; 3],
     spread: [f64; 3],
     speed: f64,
     count: u32,
-    state: Option<BlockStateId>,
 ) {
-    let Some(particle) = hub.particle(options, state) else {
+    let Some(particle) = hub.server_particle(particle) else {
         return;
     };
     let sunrise_only = particle.sunrise_only();
@@ -246,13 +318,13 @@ pub(in crate::game::server_side) fn send_hub_level_particles(
 
 impl Game<'_> {
     /// `SonicBoom.tick` uses `ServerLevel.sendParticles` for each ray point.
-    /// Keep the local event's rendering; connected players receive one at rest.
+    /// Connected players receive one at rest.
     pub(in crate::game::server_side) fn lan_sonic_boom(
         &self,
-        options: &ParticleOptions,
+        particle: &ServerParticle,
         at: [f64; 3],
     ) {
-        let (Some(host), Some(particle)) = (&self.lan, self.network_particle(options, None)) else {
+        let (Some(host), Some(particle)) = (&self.lan, self.network_particle(particle)) else {
             return;
         };
         let packet = C::LevelParticles(play::LevelParticles {
@@ -276,22 +348,73 @@ impl Game<'_> {
         }
     }
 
-    /// `ServerLevel.sendParticles` of a mob's particles: a packet to each
-    /// player within 32 blocks. The window draws its own copy. `state` is the
-    /// block of a block particle.
-    pub(in crate::game) fn lan_level_particles(
+    /// `ServerLevel.sendParticles` of a server particle: a packet to each
+    /// player within 32 blocks.
+    pub(in crate::game) fn server_level_particles(
         &self,
-        options: &ParticleOptions,
+        particle: &ServerParticle,
         at: [f64; 3],
         spread: [f64; 3],
         speed: f64,
         count: u32,
-        state: Option<BlockStateId>,
     ) {
         let Some(hub) = self.lan.as_ref().map(|h| &h.hub) else {
             return;
         };
-        send_hub_level_particles(hub, options, at, spread, speed, count, state);
+        send_hub_level_particles(hub, particle, at, spread, speed, count);
+    }
+
+    /// `BucketItem.emptyContents` where water evaporates: `sendParticles(
+    /// LARGE_SMOKE, x, y, z, 8, 1, 1, 1, 0, ALTERNATIVE)` from the block's
+    /// corner, so each puff lands inside the block.
+    pub(in crate::game) fn evaporation_smoke(&mut self, pos: [i32; 3]) {
+        self.server_send_particles(ServerQueuedParticle {
+            dimension: self.dim.id(),
+            particle: ServerParticle::simple(ParticleType::LargeSmoke),
+            at: pos.map(f64::from),
+            spread: [1.0; 3],
+            speed: [0.0; 3],
+            count: 8,
+            randomization: 1,
+            except: None,
+        });
+    }
+
+    /// `LivingEntity.checkFallDamage`'s `ServerLevel.sendParticles` of the
+    /// landing block's crumbs, sent to each player within 32 blocks.
+    pub(in crate::game) fn server_landing_dust(
+        &self,
+        state: BlockStateId,
+        at: Vec3,
+        count: i32,
+        speed: f64,
+    ) {
+        assert!(
+            self.is_logical_server(),
+            "server_landing_dust called on Client role"
+        );
+        let at = [at.x, at.y, at.z];
+        self.server_level_particles(
+            &ServerParticle::block(ParticleType::Block, state),
+            at,
+            [0.0; 3],
+            speed,
+            count.max(0) as u32,
+        );
+    }
+
+    /// `PowderSnowBlock.entityInside`'s snowflake particle, sent to nearby players.
+    pub(in crate::game) fn snowflake_particle(&mut self, at: [f64; 3], velocity: [f64; 3]) {
+        self.server_send_particles(ServerQueuedParticle {
+            dimension: self.dim.id(),
+            particle: ServerParticle::simple(ParticleType::Snowflake),
+            at,
+            spread: [0.0; 3],
+            speed: velocity,
+            count: 1,
+            randomization: 1,
+            except: None,
+        });
     }
 
     /// Shared block callback for any entity family that applies block effects.
@@ -305,7 +428,7 @@ impl Game<'_> {
     ) {
         // `particle_velocity` refuses no horizontal movement before any draw,
         // so a resting entity skips the sweep (most items, orbs and carts).
-        if self.remote.is_some() || (known_movement.x == 0.0 && known_movement.z == 0.0) {
+        if !self.is_logical_server() || (known_movement.x == 0.0 && known_movement.z == 0.0) {
             return;
         }
         let snow = sunrise_client::powder_snow::contacts(previous, position, bounds, living, |p| {
@@ -323,7 +446,7 @@ impl Game<'_> {
         position: Vec3,
         known_movement: Vec3,
     ) {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return;
         }
         let Some(velocity) = powder_snow_velocity(known_movement, &mut self.world.random) else {
@@ -332,16 +455,13 @@ impl Game<'_> {
         self.snowflake_particle([position.x, f64::from(block.y + 1), position.z], velocity);
     }
 
-    /// `ParticleTypes.STREAM_CODEC`'s value for `options`: the type's
-    /// network id and the data it carries (`state` for the block particles).
-    /// None while not serving, or for a particle whose data isn't sent from
-    /// here (items, trails).
+    /// `ParticleTypes.STREAM_CODEC`'s value for `particle`: the type's
+    /// network id and the data it carries. None while not serving.
     pub(in crate::game::server_side) fn network_particle(
         &self,
-        options: &ParticleOptions,
-        state: Option<BlockStateId>,
+        particle: &ServerParticle,
     ) -> Option<Particle> {
-        self.lan.as_ref()?.hub.particle(options, state)
+        self.lan.as_ref()?.hub.server_particle(particle)
     }
 
     /// The options a server's particle stands for (None for a type or data
@@ -450,24 +570,24 @@ impl Game<'_> {
     /// the players (a guest's turn through `as_guest`, a host's hit on a
     /// guest) the packet waits for the turn to end so that it reaches every
     /// player, the guest too.
-    pub(in crate::game) fn lan_send_particles(&mut self, request: QueuedParticle) {
+    pub(in crate::game) fn server_send_particles(&mut self, request: ServerQueuedParticle) {
         if self.lan.is_none() {
-            if self.serving.is_some() || self.options.dedicated.is_some() {
-                self.creatures.lan_particles.push(request);
+            if self.is_logical_server() {
+                self.server.pending_particles.push(request);
             }
             return;
         }
-        let QueuedParticle {
+        let ServerQueuedParticle {
             dimension,
-            options,
-            state,
+            particle,
             at,
             spread,
             speed,
             count,
             randomization,
+            except,
         } = request;
-        let Some(particle) = self.network_particle(&options, state) else {
+        let Some(particle) = self.network_particle(&particle) else {
             return;
         };
         let Some(host) = self.lan.as_ref() else {
@@ -487,7 +607,7 @@ impl Game<'_> {
         .encode();
         // BlockPos.closerToCenterThan(at, 32): from the centre of the
         // player's block.
-        send_native_nearby(host, dimension, body, sunrise_only, None, |position| {
+        send_native_nearby(host, dimension, body, sunrise_only, except, |position| {
             let d: f64 = (0..3)
                 .map(|k| (position[k].floor() + 0.5 - at[k]).powi(2))
                 .sum();
@@ -601,7 +721,7 @@ impl Game<'_> {
             return;
         }
         // Leave sounds queued by callbacks for the next flush.
-        for sound in std::mem::take(&mut self.creatures.lan_sounds) {
+        for sound in std::mem::take(&mut self.server.pending_native_sounds) {
             if let Some(resolved) = self.resolve_native_sound(sound) {
                 self.send_resolved_native_sound(&resolved);
             }
@@ -610,8 +730,11 @@ impl Game<'_> {
 
     /// The particles guests' turns put off.
     pub(in crate::game) fn flush_lan_particles(&mut self) {
-        for request in std::mem::take(&mut self.creatures.lan_particles) {
-            self.lan_send_particles(request);
+        if self.lan.is_none() {
+            return;
+        }
+        for request in std::mem::take(&mut self.server.pending_particles) {
+            self.server_send_particles(request);
         }
     }
 
@@ -633,7 +756,7 @@ impl Game<'_> {
         // host holds the players (`as_guest`): the packet waits for the turn
         // to end so that it reaches every player, the guest too.
         if self.server.lan_acting.is_some() && self.lan.is_none() {
-            self.creatures.lan_explosions.push(LanExplosion {
+            self.server.pending_explosions.push(ServerExplosion {
                 center,
                 small,
                 radius,
@@ -661,7 +784,7 @@ impl Game<'_> {
 
     /// The explosions guests' turns put off.
     pub(in crate::game) fn flush_lan_explosions(&mut self) {
-        for e in std::mem::take(&mut self.creatures.lan_explosions) {
+        for e in std::mem::take(&mut self.server.pending_explosions) {
             self.lan_explode(
                 e.center,
                 e.small,
@@ -685,7 +808,7 @@ impl Game<'_> {
         block_count: usize,
         pushed: &[(u32, [f64; 3])],
     ) {
-        let emitter = ParticleOptions::simple(if radius < 2.0 {
+        let emitter = ServerParticle::simple(if radius < 2.0 {
             ParticleType::GustEmitterSmall
         } else {
             ParticleType::GustEmitterLarge
@@ -734,18 +857,18 @@ pub(in crate::game::server_side) fn explosion_packet(
     center: [f64; 3],
     radius: f32,
     block_count: usize,
-    emitter: &ParticleOptions,
+    emitter: &ServerParticle,
     sound: &str,
-    block_particles: &[ExplosionParticle],
+    block_particles: &[ServerExplosionParticle],
 ) -> Option<play::Explode> {
     let block_particles = block_particles
         .iter()
         .map(|p| {
             Some(play::ExplosionParticle {
-                particle: hub.particle(&p.options, None)?,
+                particle: hub.server_particle(&p.particle)?,
                 scaling: p.scaling,
                 speed: p.speed,
-                weight: i32::try_from(p.weight).ok()?,
+                weight: p.weight,
             })
         })
         .collect::<Option<_>>()?;
@@ -754,7 +877,7 @@ pub(in crate::game::server_side) fn explosion_packet(
         radius,
         block_count: block_count as i32,
         knockback: None,
-        particle: hub.particle(emitter, None)?,
+        particle: hub.server_particle(emitter)?,
         sound: match hub.registry_id("minecraft:sound_event", sound) {
             Some(id) => (id, None),
             None => (-1, Some((sound.into(), None))),
@@ -988,13 +1111,13 @@ pub(in crate::game) mod tests {
     fn an_explosion_packet_carries_the_blasts_particles_and_sound() {
         let names = vec!["minecraft:flame".into(), "minecraft:end_rod".into()];
         let (hub, _near, _far) = test_hub("ExplosionEffectsTest", names, None);
-        let block_particles = [ExplosionParticle {
-            options: ParticleOptions::simple(ParticleType::EndRod),
+        let block_particles = [ServerExplosionParticle {
+            particle: ServerParticle::simple(ParticleType::EndRod),
             scaling: 0.25,
             speed: 2.0,
             weight: 3,
         }];
-        let flame = ParticleOptions::simple(ParticleType::Flame);
+        let flame = ServerParticle::simple(ParticleType::Flame);
         let packet = explosion_packet(
             &hub,
             [1.0, 64.0, 2.0],
@@ -1104,8 +1227,9 @@ pub(in crate::game) mod tests {
         .unwrap()
         .unwrap();
         let options = ParticleOptions::typed(typed).unwrap();
+        let server_particle = server_particle_from_options(&options, None).unwrap();
         let at = [1.0, 2.0, 3.0];
-        send_hub_level_particles(&hub, &options, at, [0.25, 0.5, 1.0], 2.0, 2, None);
+        send_hub_level_particles(&hub, &server_particle, at, [0.25, 0.5, 1.0], 2.0, 2);
         assert!(vanilla.try_recv().is_err());
         let mut packet = level_particles(&sunrise);
         let Some(ParticleData::Mod {
@@ -1153,12 +1277,11 @@ pub(in crate::game) mod tests {
 
         send_hub_level_particles(
             &hub,
-            &ParticleOptions::simple(ParticleType::from_name("crit").unwrap()),
+            &ServerParticle::simple(ParticleType::from_name("crit").unwrap()),
             at,
             [0.0; 3],
             0.0,
             1,
-            None,
         );
         let Out::Packet(vanilla) = vanilla.try_recv().unwrap() else {
             panic!("expected vanilla particle packet")
@@ -1190,8 +1313,8 @@ pub(in crate::game) mod tests {
             test_hub("ShulkerBulletTest", vec!["minecraft:crit".into()], None);
 
         let at = [0.0, 64.0, 0.0];
-        let options = ParticleOptions::simple(ParticleType::from_name("crit").unwrap());
-        send_hub_level_particles(&hub, &options, at, [0.2, 0.2, 0.2], 0.0, 15, None);
+        let particle = ServerParticle::simple(ParticleType::from_name("crit").unwrap());
+        send_hub_level_particles(&hub, &particle, at, [0.2, 0.2, 0.2], 0.0, 15);
 
         assert!(
             rx_far.try_recv().is_err(),
@@ -1220,8 +1343,8 @@ pub(in crate::game) mod tests {
 
         let source = PositionSource::Block([3, 64, -7]);
         let at = [1.25, 64.0, 3.75];
-        let options = ParticleOptions::vibration(source, [3.5, 64.5, -6.5], 14);
-        send_hub_level_particles(&hub, &options, at, [0.0; 3], 0.0, 1, None);
+        let particle = ServerParticle::vibration(source, 14);
+        send_hub_level_particles(&hub, &particle, at, [0.0; 3], 0.0, 1);
 
         assert!(rx_far.try_recv().is_err(), "only players within 32 blocks");
         let p = level_particles(&rx_near);
@@ -1245,9 +1368,8 @@ pub(in crate::game) mod tests {
             id: 42,
             y_offset: 1.15,
         };
-        // The render destination is not the transmitted identity of the listener.
-        let options = ParticleOptions::vibration(source, [0.5, 65.0, 0.5], 7);
-        send_hub_level_particles(&hub, &options, at, [0.0; 3], 0.0, 1, None);
+        let particle = ServerParticle::vibration(source, 7);
+        send_hub_level_particles(&hub, &particle, at, [0.0; 3], 0.0, 1);
         assert!(rx_far.try_recv().is_err(), "only players within 32 blocks");
         let p = level_particles(&rx_near);
         assert_eq!(p.count, 1);
@@ -1268,6 +1390,10 @@ pub(in crate::game) mod tests {
         );
         assert!(
             hub.particle(&ParticleOptions::simple(ParticleType::Vibration), None)
+                .is_none()
+        );
+        assert!(
+            hub.server_particle(&ServerParticle::simple(ParticleType::Vibration))
                 .is_none()
         );
     }
@@ -1318,8 +1444,8 @@ pub(in crate::game) mod tests {
         );
 
         let at = [0.0, 64.0, 0.0];
-        let options = ParticleOptions::colored(ParticleType::Flash, [1.0, 0.0, 0.0, 1.0]);
-        send_hub_level_particles(&hub, &options, at, [0.0; 3], 0.0, 1, None);
+        let particle = ServerParticle::colored(ParticleType::Flash, [1.0, 0.0, 0.0, 1.0]);
+        send_hub_level_particles(&hub, &particle, at, [0.0; 3], 0.0, 1);
 
         assert!(rx_far.try_recv().is_err(), "only players within 32 blocks");
         let p = level_particles(&rx_near);

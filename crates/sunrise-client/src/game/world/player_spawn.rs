@@ -5,7 +5,7 @@ use super::*;
 
 impl Game<'_> {
     pub(in crate::game) fn spawn_player(&mut self) -> Result<()> {
-        if self.player.is_some() || self.remote.is_some() {
+        if self.player.is_some() || !self.is_logical_server() {
             return Ok(());
         }
         let saved = self.level.position.map(|p| Vec3::new(p[0], p[1], p[2]));

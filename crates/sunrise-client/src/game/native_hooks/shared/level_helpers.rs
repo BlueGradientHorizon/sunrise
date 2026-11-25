@@ -71,16 +71,21 @@ impl GameLevel<'_> {
         {
             return false;
         }
+        let Some(particle) =
+            crate::game::lan_particles::server_particle_from_options(options, state)
+        else {
+            return false;
+        };
         self.native_particles
-            .push(crate::game::lan_particles::QueuedParticle {
+            .push(crate::lan::server_effects::ServerQueuedParticle {
                 dimension: dimension_id(self.dimension),
-                options: options.clone(),
-                state,
+                particle,
                 at,
                 spread,
                 speed: [speed; 3],
                 count,
                 randomization: 0,
+                except: None,
             });
         true
     }

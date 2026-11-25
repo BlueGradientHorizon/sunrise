@@ -538,7 +538,7 @@ impl Game<'_> {
     /// `LightningBolt.tick` for every bolt.
     pub(in crate::game) fn tick_bolts(&mut self) {
         let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
-        let server = self.remote.is_none();
+        let server = self.is_logical_server();
         let ticking = self.entity_ticking_area();
         let ids: Vec<u32> = self.bolts.iter().map(|b| b.id).collect();
         for id in ids {
@@ -585,27 +585,18 @@ impl Game<'_> {
                     continue;
                 }
             }
-            let (life, silent, visual_only, seed) = {
+            let (life, silent, visual_only) = {
                 let b = &self.bolts[i];
-                (b.life, b.silent, b.visual_only, b.seed)
+                (b.life, b.silent, b.visual_only)
             };
             if life == 2 {
-                if !silent {
-                    // Separate client sound pitch draws from the server bolt's RNG stream.
-                    let (thunder_pitch, impact_pitch) = if server {
-                        let mut sound_rng = LegacyRandom::new(seed);
+                if !server && !silent {
+                    let (thunder_pitch, impact_pitch) = self.bolts.update(i, |b| {
                         (
-                            0.8 + sound_rng.next_float() * 0.2,
-                            0.5 + sound_rng.next_float() * 0.2,
+                            0.8 + b.random.next_float() * 0.2,
+                            0.5 + b.random.next_float() * 0.2,
                         )
-                    } else {
-                        self.bolts.update(i, |b| {
-                            (
-                                0.8 + b.random.next_float() * 0.2,
-                                0.5 + b.random.next_float() * 0.2,
-                            )
-                        })
-                    };
+                    });
                     self.audio.0.play(
                         "minecraft:entity.lightning_bolt.thunder",
                         Some(at),

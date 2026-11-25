@@ -33,7 +33,7 @@ impl Game<'_> {
         slot < 36
             || slot == 504
             || (crate::game::inventory_slots::container_slot_index(slot).is_some()
-                && (self.remote.is_none() || self.remote_storage_open())
+                && self.remote_storage_open()
                 && self.slots().contains(&slot))
     }
 

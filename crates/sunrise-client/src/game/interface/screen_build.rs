@@ -585,16 +585,6 @@ impl ScreenBuildState {
 }
 
 impl Game<'_> {
-    #[inline(always)]
-    pub(in crate::game) fn chat_screen_open(&self) -> bool {
-        self.client.screen == Screen::Chat
-    }
-
-    #[inline(always)]
-    pub(in crate::game) fn playing_screen_open(&self) -> bool {
-        self.client.screen == Screen::Playing
-    }
-
     /// `Gui.setScreen`: `KeyMapping.releaseAll` on a successful screen or overlay
     /// opening/replacement transition (never on per-frame observation or resize).
     pub(in crate::game) fn release_mappings_on_screen_open(&mut self) {

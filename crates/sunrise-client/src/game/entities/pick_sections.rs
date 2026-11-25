@@ -401,7 +401,7 @@ pub(in crate::game) fn visit_section_members(
     for e in game
         .mobs
         .iter()
-        .filter(|e| game.remote.is_none() || game.dragon.as_ref().is_none_or(|d| d.id != e.id))
+        .filter(|e| game.is_logical_server() || game.dragon.as_ref().is_none_or(|d| d.id != e.id))
     {
         let p = e.position();
         consider(e.join_seq().get(), PickKind::Mob, e.id(), [p.x, p.y, p.z]);

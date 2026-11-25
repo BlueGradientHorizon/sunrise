@@ -267,7 +267,7 @@ impl Game<'_> {
             }
             // setRespawnPosition(config, true): the message, the point; the
             // anchor replaces a bed.
-            self.system_message(Text::translate("block.minecraft.set_spawn", &[]));
+            self.server_system_message(Text::translate("block.minecraft.set_spawn", &[]));
             self.server.respawn_config = Some(config);
             if let Some([x, y, z]) = self.level.world_spawn {
                 self.spawn = Some(Vec3::new(
@@ -281,12 +281,7 @@ impl Game<'_> {
                 f64::from(pos[1]) + 0.5,
                 f64::from(pos[2]) + 0.5,
             ];
-            self.client_audio_play(
-                "minecraft:block.respawn_anchor.set_spawn",
-                Some(at),
-                1.0,
-                1.0,
-            );
+            self.server_play_sound("minecraft:block.respawn_anchor.set_spawn", at, 1.0, 1.0);
         }
         Ok(())
     }
@@ -668,6 +663,39 @@ pub(in crate::game::server_side) fn wrap_degrees(degrees: f64) -> f64 {
         d += 360.0;
     }
     d
+}
+
+impl Game<'_> {
+    /// `RespawnAnchorBlock.charge`: one more charge, the block change and the sound.
+    pub(in crate::game) fn charge_anchor(
+        &mut self,
+        pos: [i32; 3],
+        state: BlockStateId,
+        who: Option<Who>,
+    ) -> Result<()> {
+        let Some(next) = self.anchor_with_charges(state, self.anchor_charges(state) + 1) else {
+            return Ok(());
+        };
+        self.level_set(pos, next)?;
+        self.post_block_game_event("minecraft:block_change", pos, who, Some(next));
+        let at = [
+            f64::from(pos[0]) + 0.5,
+            f64::from(pos[1]) + 0.5,
+            f64::from(pos[2]) + 0.5,
+        ];
+        self.server_play_sound("minecraft:block.respawn_anchor.charge", at, 1.0, 1.0);
+        Ok(())
+    }
+    /// `StrawBedBlock.destroyBed`: the break sound, then the bed is air.
+    pub(in crate::game) fn destroy_straw_bed(&mut self, head: [i32; 3]) -> Result<()> {
+        let center = [
+            f64::from(head[0]) + 0.5,
+            f64::from(head[1]) + 0.5,
+            f64::from(head[2]) + 0.5,
+        ];
+        self.server_play_sound("minecraft:block.straw_bed.break_leave", center, 1.0, 1.0);
+        self.level_set(head, self.world.air)
+    }
 }
 
 #[cfg(test)]

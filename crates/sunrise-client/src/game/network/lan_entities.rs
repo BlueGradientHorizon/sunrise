@@ -148,7 +148,7 @@ impl Game<'_> {
             Some(host) => std::mem::take(&mut host.hub.native_tracking),
             None => return,
         };
-        let tell = self.remote.is_none() && !self.options.execution_role.is_client();
+        let tell = self.is_logical_server();
         for mut batch in batches {
             // Packet order; the stops a respawn or a level change made without one come first.
             batch.events.sort_by_key(|e| e.at.unwrap_or(0));

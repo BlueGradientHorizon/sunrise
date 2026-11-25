@@ -112,11 +112,43 @@ pub(in crate::game::client_side) use sunrise_world::level::flags;
 
 impl<'g> Game<'g> {
     pub(in crate::game) fn run_after(&mut self, after: After) {
+        if !self.is_logical_server() {
+            match after {
+                After::Payload(payload) => payload.publish(),
+                After::Packet(packet, body) => self.publish_mod_held(packet, body),
+                // Only reached through a root commit, which replays blocks and connection groups in order.
+                After::Block(_) | After::BulkBlocks(..) | After::ConnectionGroup(..) => {}
+                After::MountEquipment { .. } => {
+                    assert!(
+                        self.is_logical_server(),
+                        "After::MountEquipment is server-only"
+                    );
+                }
+                After::Effect(DeferredEffect::Sound { .. }) => {
+                    assert!(
+                        self.is_logical_server(),
+                        "DeferredEffect::Sound is server-only"
+                    );
+                }
+                other => {
+                    debug_assert!(
+                        self.is_logical_server(),
+                        "server-only After variant replayed on Client role: {:?}",
+                        std::mem::discriminant(&other)
+                    );
+                }
+            }
+            return;
+        }
         match after {
+            After::Payload(payload) => payload.publish(),
+            After::Packet(..) => {
+                debug_assert!(!self.is_logical_server(), "After::Packet is client-only");
+            }
+            // Only reached through a root commit, which replays blocks and connection groups in order.
+            After::Block(_) | After::BulkBlocks(..) | After::ConnectionGroup(..) => {}
             After::PlayerRespawn(conn) => self.commit_player_respawn(conn),
             After::Trade(effect) => self.commit_merchant_effect(*effect),
-            After::Payload(payload) => payload.publish(),
-            After::Packet(packet, body) => self.publish_mod_held(packet, body),
             After::Composter(effects) => self.commit_composter_effects(effects),
             After::FluidWrite(written) => self.commit_fluid_write(*written),
             After::FluidEffects(effects) => self.commit_fluid_effects(*effects),
@@ -168,7 +200,11 @@ impl<'g> Game<'g> {
             } => {
                 let _ = self.with_effect_level(dim, |game| {
                     if let Some((sound, center)) = sound {
-                        game.audio.0.play(&sound, Some(center), 1.0, 1.0);
+                        assert!(
+                            game.is_logical_server(),
+                            "After::MountEquipment is server-only"
+                        );
+                        game.server_play_sound(&sound, center, 1.0, 1.0);
                     }
                     game.mob_equip_event(id, at, equips);
                 });
@@ -211,13 +247,17 @@ impl<'g> Game<'g> {
                     at,
                     volume,
                     pitch,
-                } => self.audio.0.play(sound, Some(at), volume, pitch),
+                } => {
+                    assert!(
+                        self.is_logical_server(),
+                        "DeferredEffect::Sound is server-only"
+                    );
+                    self.server_play_sound(sound, at, volume, pitch);
+                }
                 DeferredEffect::RestoreStatistics(player, values) => {
                     self.restore_player_statistics(player, *values);
                 }
             },
-            // Only reached through a root commit, which replays blocks and connection groups in order.
-            After::Block(_) | After::BulkBlocks(..) | After::ConnectionGroup(..) => {}
             After::Drop(pos, stack) => {
                 self.spawn_item(stack, pos.map(|p| f64::from(p) + 0.5), [0.0; 3], 10);
             }
@@ -373,14 +413,14 @@ pub(in crate::game) mod tests {
             game.creative = false;
             game.inventory[0] = Some(ItemStack::new("minecraft:water_bucket", 1));
             let before = game.stats.get("custom", "minecraft:fill_cauldron");
-            game.audio.0.capture = Some(Vec::new());
+            game.start_audio_capture();
             game.open_storage_transaction();
             assert_eq!(
                 game.use_on_cauldron(pos).unwrap(),
                 sunrise_client::cauldron::Outcome::Success
             );
             assert_eq!(game.stats.get("custom", "minecraft:fill_cauldron"), before);
-            assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
+            assert!(game.server.pending_sounds.is_empty());
             game.close_storage_transaction(false);
             assert_eq!(game.world.block(pos[0], pos[1], pos[2]), empty);
             assert_eq!(
@@ -388,7 +428,7 @@ pub(in crate::game) mod tests {
                 "minecraft:water_bucket"
             );
             assert_eq!(game.stats.get("custom", "minecraft:fill_cauldron"), before);
-            assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
+            assert!(game.server.pending_sounds.is_empty());
             game.open_storage_transaction();
             game.open_storage_transaction();
             assert_eq!(
@@ -403,7 +443,7 @@ pub(in crate::game) mod tests {
             );
             game.close_storage_transaction(true);
             assert_eq!(game.stats.get("custom", "minecraft:fill_cauldron"), before);
-            assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
+            assert!(game.server.pending_sounds.is_empty());
             assert_eq!(
                 game.use_on_cauldron(pos).unwrap(),
                 sunrise_client::cauldron::Outcome::Success
@@ -418,11 +458,8 @@ pub(in crate::game) mod tests {
                 before + 1
             );
             assert_eq!(
-                game.audio
-                    .0
-                    .capture
-                    .as_ref()
-                    .unwrap()
+                game.server
+                    .pending_sounds
                     .iter()
                     .map(|s| s.event.as_str())
                     .collect::<Vec<_>>(),

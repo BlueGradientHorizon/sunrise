@@ -7,8 +7,8 @@ impl Game<'_> {
         answer: mod_api::InteractionResult,
     ) -> bool {
         use mod_api::InteractionResult as Answer;
-        if (answer == Answer::Success && self.remote.is_some())
-            || (answer == Answer::SuccessServer && self.remote.is_none())
+        if (answer == Answer::Success && !self.is_logical_server())
+            || (answer == Answer::SuccessServer && self.is_logical_server())
         {
             self.swing_arm();
         }
@@ -94,13 +94,13 @@ impl Game<'_> {
         match result? {
             Result::Pass | Result::TryWithEmptyHand => None,
             Result::Success => {
-                if self.remote.is_some() {
+                if !self.is_logical_server() {
                     self.swing_arm();
                 }
                 Some(true)
             }
             Result::SuccessServer => {
-                if self.remote.is_none() {
+                if self.is_logical_server() {
                     self.swing_arm();
                 }
                 Some(true)

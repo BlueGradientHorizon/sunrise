@@ -50,7 +50,7 @@ impl Game<'_> {
                 pitch,
             });
         } else {
-            self.audio.0.play(sound, Some(at), 1.0, pitch);
+            self.server_play_sound(sound, at, 1.0, pitch);
         }
     }
 }

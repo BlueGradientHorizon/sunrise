@@ -37,33 +37,6 @@ pub(in crate::game::client_side) use sunrise_client::mobs::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::attributes::{Modifier, Operation};
 
-impl Game<'_> {
-    /// The effects of `LivingEntity.onEquipItem` once the guards passed (server
-    /// side, not a spectator, not the first tick, another item): the equip
-    /// sound when there is one, and the `equip` (the stack is equippable) or
-    /// `unequip` game event.
-    pub(in crate::game) fn equip_item_effects(
-        &mut self,
-        at: [f64; 3],
-        sound: Option<String>,
-        equips: bool,
-        ctx: sunrise_client::sculk::Context,
-    ) {
-        if let Some(sound) = sound {
-            self.audio.0.play(&sound, Some(at), 1.0, 1.0);
-        }
-        self.post_game_event(
-            if equips {
-                "minecraft:equip"
-            } else {
-                "minecraft:unequip"
-            },
-            at,
-            ctx,
-        );
-    }
-}
-
 #[cfg(test)]
 pub(in crate::game) mod tests {
     #[allow(unused_imports)]

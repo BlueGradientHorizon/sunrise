@@ -8,6 +8,15 @@ pub(super) fn encode(
     if options.ty != crate::particles::ParticleType::Item {
         return None;
     }
+    let stack = options.item_stack.as_ref()?;
+    encode_stack(hub, id, stack)
+}
+
+pub(super) fn encode_stack(
+    hub: &Hub,
+    id: i32,
+    stack: &crate::items::ItemStack,
+) -> Option<Particle> {
     let stack = crate::lan::guest::stack_to_network(
         |name| {
             hub.sync
@@ -17,7 +26,7 @@ pub(super) fn encode(
                 .unwrap_or(0)
         },
         |registry, name| hub.sync.id(registry, name),
-        &options.item_stack,
+        &Some(stack.clone()),
     )?;
     Some(Particle {
         id,

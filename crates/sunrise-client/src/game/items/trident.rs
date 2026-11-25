@@ -167,7 +167,7 @@ impl Game<'_> {
         if let Some(last) = self.bolts.len().checked_sub(1) {
             self.bolts.update(last, |bolt| bolt.cause = Some(guest));
         }
-        self.client_audio_play("minecraft:item.trident.thunder", Some(at), 5.0, 1.0);
+        self.server_play_sound("minecraft:item.trident.thunder", at, 5.0, 1.0);
     }
     /// `minecraft:hit_block` of Channeling (`AbstractArrow.hitBlockEnchantmentEffects`):
     /// the block the trident's path first hits, if it is a lightning rod, with
@@ -323,7 +323,7 @@ impl Game<'_> {
                             LevelSound::new(&sound, at, 1.0, 1.0).in_source(SoundSource::Players);
                         self.play_bound_sound(sound, player, None);
                     }
-                    _ => self.client_audio_play(&sound, at, 1.0, 1.0),
+                    _ => if let Some(at) = at { self.server_play_sound(&sound, at, 1.0, 1.0); },
                 }
                 if let (Some(player), Some(name)) = (
                     self.server.lan_acting_uuid,
@@ -638,9 +638,9 @@ impl Game<'_> {
                 let to = t.position;
                 self.entity_section_step(t.id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
                 if t.returning == 0 {
-                    self.client_audio_play(
+                    self.server_play_sound(
                         "minecraft:item.trident.return",
-                        Some([t.position.x, t.position.y, t.position.z]),
+                        [t.position.x, t.position.y, t.position.z],
                         10.0,
                         1.0,
                     );
@@ -765,9 +765,9 @@ impl Game<'_> {
                         if t.deflected_by != Some(breeze_id) {
                             let sound_at =
                                 [breeze.position.x, breeze.position.y, breeze.position.z];
-                            self.client_audio_play(
+                            self.server_play_sound(
                                 "minecraft:entity.breeze.deflect",
-                                Some(sound_at),
+                                sound_at,
                                 1.0,
                                 1.0,
                             );
@@ -1033,9 +1033,9 @@ impl Game<'_> {
                                 t.velocity.y * (-0.5 * 0.2),
                                 t.velocity.z * (-0.5 * 0.02),
                             );
-                            self.client_audio_play(
+                            self.server_play_sound(
                                 "minecraft:item.trident.hit",
-                                Some([t.position.x, t.position.y, t.position.z]),
+                                [t.position.x, t.position.y, t.position.z],
                                 1.0,
                                 1.0,
                             );
@@ -1086,7 +1086,7 @@ impl Game<'_> {
                         t.last_state = Some(self.world.block(block.x, block.y, block.z));
                         t.shake = 7;
                         let sound = t.hit_ground_sound();
-                        self.client_audio_play(&sound, Some([stop.x, stop.y, stop.z]), 1.0, 1.0);
+                        self.server_play_sound(&sound, [stop.x, stop.y, stop.z], 1.0, 1.0);
                     }
                 }
                 if !t.in_ground {
@@ -1196,6 +1196,73 @@ impl Game<'_> {
                 (t, at)
             });
         self.draw_tridents(camera, live, out);
+    }
+    /// Apply the environment before impact callbacks can change the world.
+    pub(in crate::game) fn trident_block_effects(
+        &mut self,
+        t: &mut ThrownTrident,
+        from: Vec3,
+        to: Vec3,
+    ) {
+        let extinguished = {
+            let rain = self.arrow_rain();
+            // Block-contact hooks are already delivered by the game's inside pass.
+            let (ticks, extinguished) =
+                self.arrow_scene(&rain)
+                    .apply_block_effects(from, to, t.fire_ticks, |_, _, _| {});
+            t.fire_ticks = ticks;
+            extinguished
+        };
+        if extinguished {
+            let pitch = 1.6 + (t.random.next_float() - t.random.next_float()) * 0.4;
+            self.server_play_sound("minecraft:entity.generic.extinguish_fire", [to.x, to.y, to.z], 0.7, pitch);
+        }
+    }
+    /// `ThrownTrident.tryPickup` for a trident that has landed or is
+    /// returning: the player takes the item (a creative thrower's trident is
+    /// only removed) and the rest that does not fit drops at their feet.
+    /// False when it could not be given.
+    pub(in crate::game) fn trident_taken(&mut self, t: &ThrownTrident, by: &Catcher) -> bool {
+        let creative_pickup = t.pickup == Pickup::CreativeOnly && by.creative;
+        let returning_to_owner = t.no_physics && t.owner_uuid.is_some() && t.owner_uuid == by.uuid;
+        if !creative_pickup {
+            if t.pickup != Pickup::Allowed && !returning_to_owner {
+                return false;
+            }
+            let rest = match by.guest {
+                None => self.add_stack_to_inventory(t.stack.clone()),
+                Some(conn) => {
+                    let rest = self.as_guest(conn, |g| g.add_stack_to_inventory(t.stack.clone()));
+                    let Some(rest) = rest else {
+                        return false;
+                    };
+                    rest
+                }
+            };
+            if let Some(rest) = rest {
+                self.spawn_item(rest, [by.feet.x, by.feet.y, by.feet.z], [0.0; 3], 0);
+            }
+        }
+        // Player.take, for a creative thrower's trident too: the clients near
+        // play the pickup sound and fly the trident to its collector.
+        if by.guest.is_some()
+            && let Some(host) = self.lan.as_ref()
+        {
+            let at = [t.position.x, t.position.y, t.position.z];
+            host.hub.take_item(t.id as i32, by.id, 1, at);
+        }
+        if by.guest.is_none() {
+            let pitch = ((self.world.random.next_float() - self.world.random.next_float()) * 0.7
+                + 1.0)
+                * 2.0;
+            self.server_play_sound(
+                "minecraft:entity.item.pickup",
+                [by.feet.x, by.feet.y, by.feet.z],
+                0.2,
+                pitch,
+            );
+        }
+        true
     }
 }
 #[cfg(test)]

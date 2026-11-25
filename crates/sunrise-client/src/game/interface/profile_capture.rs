@@ -793,8 +793,8 @@ impl Game<'_> {
     /// Puts `notice` in the chat history or on the action bar.
     fn notify(&mut self, notice: Notice) {
         match notice {
-            Notice::Chat(line) => self.system_message(line),
-            Notice::Bar(line) => self.send_overlay_message(line),
+            Notice::Chat(line) => self.client_system_message(line),
+            Notice::Bar(line) => self.set_hud_overlay(line),
         }
     }
 

@@ -445,12 +445,7 @@ impl Game<'_> {
         };
         let harm = self.player_may_harm(harm_attacker, victim_id, s.team.as_ref(), team);
         if s.knockback_attack {
-            self.client_audio_play(
-                "minecraft:entity.player.attack.knockback",
-                Some(s.from),
-                1.0,
-                1.0,
-            );
+            self.server_play_sound("minecraft:entity.player.attack.knockback", s.from, 1.0, 1.0);
         }
         // Player.attack: the hurt (with its knockback away from the
         // attacker), then causeExtraKnockback along the attacker's yaw.
@@ -558,7 +553,7 @@ impl Game<'_> {
         }
         // A critical hit a mod let sweep has both sounds (attackVisualEffects).
         if swept.is_none() || s.crit {
-            self.client_audio_play(sound, Some(s.from), 1.0, 1.0);
+            self.server_play_sound(sound, s.from, 1.0, 1.0);
         }
         hurt
     }

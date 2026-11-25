@@ -71,11 +71,9 @@ impl Game<'_> {
             }
             DisplayClick::Offhand(stack) => self.offhand = Some(stack),
             // handleCreativeModeItemDrop: on a server the stack goes to it (SetCreativeModeSlot
-            // to slot -1), which drops it; a local drop here would never reach the server.
+            // to slot -1), which drops it; a disconnected client has no world to drop into.
             DisplayClick::Drop(stack) if self.remote.is_some() => self.creative_screen_drop(stack),
-            DisplayClick::Drop(stack) => {
-                self.player_drop(stack);
-            }
+            DisplayClick::Drop(_) => {}
             _ => {}
         }
         // handleCreativeModeItemAdd / broadcastChanges: a swapped-in hotbar slot goes out now.
@@ -471,10 +469,9 @@ impl Game<'_> {
         if let Some((s, mob)) = session.as_mut() {
             Self::merchant_sync_in(s, mob.and_then(|id| self.mobs.iter().find(|m| m.id == id)));
         }
-        // Crafting and cartography read and derive the level's maps; a
-        // server's (the client menu's ContainerLevelAccess.NULL) doesn't.
+        // Crafting and cartography read and derive the level's maps on the server.
         let level_maps = (matches!(kind, Kind::Cartography | Kind::Crafting | Kind::Inventory)
-            && self.remote.is_none())
+            && self.is_logical_server())
         .then(|| {
             before
                 .iter()
@@ -514,14 +511,13 @@ impl Game<'_> {
             ..self.menu_env()
         };
         menu.creative = creative;
-        // A server's client predicts with the server's crafting result, never its own.
-        menu.on_client = self.remote.is_some();
+        // A client predicts with the server's crafting result, never its own.
+        menu.on_client = !self.is_logical_server();
         menu.selected = self.selected;
         menu.levels = self.experience.level;
         if anvil_open {
-            // The rename box as AnvilScreen.onNameChanged gives it to the menu; a server's
-            // client menu has the last name it sent (`itemName`, none in a new menu).
-            menu.anvil.name = if self.remote.is_some() {
+            // The rename box as AnvilScreen.onNameChanged gives it to the menu.
+            menu.anvil.name = if !self.is_logical_server() {
                 self.station.as_ref().and_then(|s| s.anvil_sent.clone())
             } else {
                 self.station.as_ref().map(|s| self.anvil_item_name(s))
@@ -552,7 +548,7 @@ impl Game<'_> {
         // A server's client menu never works out its crafting result (`on_client`): the crafting
         // menus' result slot (InventoryMenu's and CraftingMenu's slot 0, which `game_of` doesn't
         // map) holds what the server's ContainerSetSlot put there. Another menu's slot 0 is its own.
-        if matches!(kind, Kind::Inventory | Kind::Crafting) && self.remote.is_some() {
+        if matches!(kind, Kind::Inventory | Kind::Crafting) && !self.is_logical_server() {
             menu.set_slot(&env, 0, self.craft_result());
         }
         if kind == Kind::Loom
@@ -602,7 +598,7 @@ impl Game<'_> {
             // Attached after the slots were set: setting them is not a click.
             menu.merchant = session.map(|(s, _)| s);
         }
-        if anvil_open && self.remote.is_some() {
+        if anvil_open && !self.is_logical_server() {
             // The AnvilScreen listens while the click is predicted (its slotChanged).
             menu.anvil.seen_input = before[0].clone();
             menu.anvil.screen = true;
@@ -625,9 +621,8 @@ impl Game<'_> {
             Some(false) => return true,
             Some(true) => {}
         }
-        // On a server the clicks only predict: the server drops, crafts and
-        // makes maps itself.
-        let predicting = self.remote.is_some();
+        // On a client the clicks only predict: the server drops, crafts and makes maps itself.
+        let predicting = !self.is_logical_server();
         if !predicting {
             self.register_exploration_maps(made);
             for (item, count) in std::mem::take(&mut menu.crafted_counts) {
@@ -693,7 +688,7 @@ impl Game<'_> {
                 self.trigger_brewed_potion(stack);
             }
             if !furnace_extracted.is_empty()
-                && self.remote.is_none()
+                && self.is_logical_server()
                 && let (Some(pos), Some(p)) = (self.container, self.player.as_ref())
             {
                 let at = [p.position.x, p.position.y, p.position.z];
@@ -762,7 +757,7 @@ impl Game<'_> {
         if kind == Kind::CrafterBlock {
             self.apply_crafter_slot_states(&menu);
         }
-        if matches!(kind, Kind::Furnace(_)) {
+        if matches!(kind, Kind::Furnace(_)) && self.is_logical_server() {
             self.menu_session_with_game_server(&before);
         }
         match equipment_before {
@@ -785,7 +780,7 @@ impl Game<'_> {
         &mut self,
         menu: &mut sunrise_client::menu::Menu,
     ) -> bool {
-        if !menu.anvil_created() || self.remote.is_none() {
+        if !menu.anvil_created() || self.is_logical_server() || self.remote.is_none() {
             return false;
         }
         if !mod_api::__private::listened(mod_api::HookId::AnvilUpdate) {
@@ -862,6 +857,7 @@ impl Game<'_> {
             .station
             .as_ref()
             .is_some_and(|s| s.kind == stations::Kind::Anvil)
+            || self.is_logical_server()
             || self.remote.is_none()
         {
             return false;

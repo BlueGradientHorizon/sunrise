@@ -141,7 +141,7 @@ impl Game<'_> {
         if mode == GameMode::Spectator {
             self.mining = None;
             self.stop_active_item_use();
-            self.set_mapping_held("key.attack", false);
+            if self.is_logical_server() { self.server_set_acting_attack(false); } else { self.set_mapping_held("key.attack", false); }
             self.dismount_for_spectator();
             if let Some(p) = self.player.as_mut() {
                 p.flying = true;

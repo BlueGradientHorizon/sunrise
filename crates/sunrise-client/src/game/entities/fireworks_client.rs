@@ -236,9 +236,6 @@ impl Game<'_> {
         }
         let camera = self.eye_position().unwrap_or(at);
         let v = [r.velocity.x, r.velocity.y, r.velocity.z];
-        self.particles
-            .0
-            .fireworks(at, v, r.explosions.as_ref().clone(), camera, !r.silent);
         self.native_firework_explode(r.id, at, r.explosions.len());
     }
     /// FireworkRocketEntity.handleEntityEvent: use the synchronized item data.
@@ -364,15 +361,9 @@ impl Game<'_> {
         r.update_rotation(old_rotation);
         let at = [r.position.x, r.position.y, r.position.z];
         if r.life == 0 && !r.silent {
-            self.audio.0.play(
-                "minecraft:entity.firework_rocket.launch",
-                Some(at),
-                3.0,
-                1.0,
-            );
+            self.server_play_sound("minecraft:entity.firework_rocket.launch", at, 3.0, 1.0);
         }
         r.life += 1;
-        self.rocket_spark(&r);
         if terminal {
             if !explodes_on_hit {
                 self.explode_rocket(&r);

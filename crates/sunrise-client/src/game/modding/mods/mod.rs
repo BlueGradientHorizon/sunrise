@@ -2305,7 +2305,7 @@ impl Game<'_> {
         log::info!("Sunrise: content mods switched live: resources reloaded in {resources_ms} ms");
         if let Some(server) = &self.integrated {
             server.tell(OwnerRequest::ReloadMods(Box::new(reload)));
-        } else if self.remote.is_none() {
+        } else if self.is_logical_server() {
             self.apply_mods_reload(reload);
         }
     }

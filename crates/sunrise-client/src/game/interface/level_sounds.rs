@@ -105,10 +105,9 @@ impl Game<'_> {
         emitter: u32,
         except: Option<u32>,
     ) {
-        self.client_audio_play_unshared(sound.name, Some(sound.at), sound.volume, sound.pitch);
         // Kept while the level's sounds are captured for others, as
         // `Audio.play` keeps the rest.
-        if self.audio_capture_active() {
+        if self.server.audio_capture_active {
             self.server.bound_sounds.push(BoundSound {
                 name: sound.name.to_owned(),
                 at: sound.at,
@@ -157,6 +156,11 @@ impl Game<'_> {
         }
     }
 
+    /// A synchronous level sound, not captured again at the end of the tick.
+    pub(in crate::game) fn play_immediate_level_sound(&mut self, sound: LevelSound<'_>) {
+        self.send_level_sound(sound, None);
+    }
+
     /// `ServerLevel.playSeededSound`'s `EventHooks.onPlaySoundAtEntity` or
     /// `onPlaySoundAtPosition`: `play_level_sound_at_entity` when the sound's
     /// emitter is an entity a mod can name, `play_level_sound_at_position`
@@ -203,14 +207,19 @@ impl Game<'_> {
         impl Drop for AskGuard<'_, '_> {
             fn drop(&mut self) {
                 self.game.creatures.asking_level_sound = false;
-                if let Some(added) = self.game.creatures.lan_sounds.get_mut(self.queued_before..) {
+                if let Some(added) = self
+                    .game
+                    .server
+                    .pending_native_sounds
+                    .get_mut(self.queued_before..)
+                {
                     for sound in added {
                         sound.skip_hooks = true;
                     }
                 }
             }
         }
-        let queued_before = self.creatures.lan_sounds.len();
+        let queued_before = self.server.pending_native_sounds.len();
         self.creatures.asking_level_sound = true;
         let guard = AskGuard {
             game: self,

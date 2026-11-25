@@ -218,13 +218,10 @@ impl NativeLifecycle {
 }
 
 impl Game<'_> {
-    /// The role is fixed at construction; a mirror `Game` is remote whatever it is.
+    /// The role is fixed at construction.
     pub(in crate::game::server_side) fn native_lifecycle_authority(&self) -> Authority {
-        if self.remote.is_some() {
-            return Authority::RemoteClient;
-        }
         match self.options.execution_role {
-            ExecutionRole::Client => Authority::LocalAuthoritative,
+            ExecutionRole::Client => Authority::RemoteClient,
             ExecutionRole::IntegratedServer => Authority::IntegratedServer,
             ExecutionRole::DedicatedServer => Authority::DedicatedServer,
         }
@@ -245,7 +242,7 @@ impl Game<'_> {
 
     pub(in crate::game) fn native_lifecycle_world_ready(&mut self) {
         // The saved scoreboard is there for the server-started hooks, before any tick.
-        if self.remote.is_none() {
+        if self.is_logical_server() {
             self.load_scoreboard();
         }
         if let Some(context) = self.native_lifecycle.world_open_ready() {
@@ -256,7 +253,7 @@ impl Game<'_> {
     /// `error_text` is the engine's own error text, unchanged.
     pub(in crate::game::server_side) fn native_lifecycle_world_failed(&mut self, error_text: &str) {
         // The server levels that opened before the failure close first.
-        if self.remote.is_none() {
+        if self.is_logical_server() {
             self.native_levels_closing();
         }
         if let Some(context) = self.native_lifecycle.world_open_failed() {
@@ -269,7 +266,7 @@ impl Game<'_> {
 
     /// Report a server-loop or shutdown failure once and retire its epoch.
     pub(in crate::game::server_side) fn native_lifecycle_close_failed(&mut self, error_text: &str) {
-        if self.remote.is_none() {
+        if self.is_logical_server() {
             self.native_levels_closing();
         }
         if let Some(context) = self.native_lifecycle.world_close_failed() {

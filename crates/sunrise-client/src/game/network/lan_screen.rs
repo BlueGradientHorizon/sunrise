@@ -778,7 +778,7 @@ impl Game<'_> {
             if self.ui.rules.set(&name, value) {
                 self.game_rule_changed(&name, value, None);
             }
-            self.system_message(Text::tr("commands.gamerule.set", &[&name, &value]));
+            self.client_system_message(Text::tr("commands.gamerule.set", &[&name, &value]));
         }
         self.sync_rules();
     }
@@ -1372,7 +1372,7 @@ impl Game<'_> {
     /// narrator says.
     fn send_publish_message(&mut self, message: Text) {
         self.say_system_queued(&message);
-        self.system_message(message);
+        self.client_system_message(message);
     }
 
     pub(in crate::game::client_side) fn world_options_key(

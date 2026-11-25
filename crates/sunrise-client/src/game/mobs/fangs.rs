@@ -140,12 +140,6 @@ impl Game<'_> {
                 f.started = true;
                 self.lan_entity_event(f.id as i32, 4, f.pos);
                 let pitch = fang_attack_pitch(&mut f.random);
-                self.client_audio_play_unshared(
-                    "minecraft:entity.evoker_fangs.attack",
-                    Some(f.pos),
-                    1.0,
-                    pitch,
-                );
             }
             f.life -= 1;
             f.life >= 0

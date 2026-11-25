@@ -43,9 +43,6 @@ impl Game<'_> {
             host.hub
                 .overlay_message(sunrise_client::lan::data::component_nbt(&text.component()));
         }
-        if self.options.dedicated.is_none() {
-            self.set_hud_overlay(text);
-        }
     }
     /// `SleepStatus.update`'s counts over the host's player and the guests:
     /// the players not in spectator mode, how many are in bed, and how many

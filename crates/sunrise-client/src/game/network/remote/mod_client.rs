@@ -475,6 +475,11 @@ impl Game<'_> {
             C::CustomPayload(p) if p.channel == sunrise_protocol::anvil_cost::CHANNEL => {
                 self.remote_anvil_wide_cost(&p.data);
             }
+            C::CustomPayload(p)
+                if p.channel == sunrise_client::lan::data::OPEN_COMMAND_BLOCK_CHANNEL =>
+            {
+                self.remote_open_command_block(&p.data);
+            }
             // The server's recipes its native mods asked to send.
             C::CustomPayload(p) if p.channel == sunrise_client::lan::recipes::CONTENT_CHANNEL => {
                 self.remote_recipe_content(&p.data);

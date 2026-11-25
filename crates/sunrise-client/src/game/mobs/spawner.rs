@@ -493,7 +493,7 @@ impl Game<'_> {
             .rules
             .bool_at(sunrise_client::gamerules::vanilla::SPAWNER_BLOCKS_WORK)
         {
-            self.system_message(sunrise_client::text::Text::translate(
+            self.server_system_message(sunrise_client::text::Text::translate(
                 "advMode.notEnabled.spawner",
                 &[],
             ));

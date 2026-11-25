@@ -88,7 +88,7 @@ impl Game<'_> {
             .and_then(|c| c.saved.as_ref())
             .is_some_and(|s| s.pending_loot.contains_key(&key))
         {
-            self.send_overlay_message(
+            self.server_send_overlay_message(
                 Text::translate("container.spectatorCantOpen", &[])
                     .with_color(sunrise_client::text::RED),
             );
@@ -100,9 +100,7 @@ impl Game<'_> {
         self.world.block_entities.get_or_insert_with(key, || entity);
         self.container = Some(key);
         self.server.open_container_slots = Some((key, self.open_container_size()));
-        self.set_screen(super::Screen::Inventory);
-        self.capture(false);
-        self.set_mapping_held("key.use", false);
+        self.server_set_acting_use(false);
     }
     /// `Container.stillValidBlockEntity`: the open block container closes once
     /// the player's eyes are out of reach of any of its blocks (a 4-block buffer).
@@ -131,8 +129,7 @@ impl Game<'_> {
                 self.container == Some(open) && self.open_container_size() < slots
             })
         {
-            self.close_container();
-            self.tick_container_reach_client();
+            self.close_container_server();
             return;
         }
         let range = self.reach() + 4.0;
@@ -140,9 +137,7 @@ impl Game<'_> {
             sunrise_client::lan::guest::within_block_range(eye, range, [x, y, z])
         });
         if !near {
-            self.close_container();
-            self.set_screen(super::Screen::Playing);
-            self.capture(true);
+            self.close_container_server();
         }
     }
     /// `CraftingMenu.stillValid`: the open crafting table closes once its
@@ -160,9 +155,7 @@ impl Game<'_> {
         let table = &*self.res.facts().get(state).name == "minecraft:crafting_table";
         let range = self.reach() + 4.0;
         if !(table && sunrise_client::lan::guest::within_block_range(eye, range, pos)) {
-            self.close_container();
-            self.set_screen(super::Screen::Playing);
-            self.capture(true);
+            self.close_container_server();
         }
     }
 }

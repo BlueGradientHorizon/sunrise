@@ -318,12 +318,7 @@ impl Game<'_> {
                 if environment.should_play_lava_hurt_sound(item.ticks) {
                     // `Entity.lavaHurt` pitches the burn from `this.random`, the item's own.
                     let pitch = 2.0 + item.random.next_float() * 0.4;
-                    self.client_audio_play(
-                        "minecraft:entity.generic.burn",
-                        Some([item.position.x, item.position.y, item.position.z]),
-                        0.4,
-                        pitch,
-                    );
+                    self.server_play_sound("minecraft:entity.generic.burn", [item.position.x, item.position.y, item.position.z], 0.4, pitch);
                 }
                 if !environment.alive {
                     if merging
@@ -815,12 +810,7 @@ impl Game<'_> {
             let mut r = random_source::create();
             let pitch = (r.next_float() - r.next_float()) * 0.35 + 0.9;
             let at = [o.position.x, o.position.y, o.position.z];
-            self.client_audio_play(
-                "minecraft:entity.experience_orb.pickup",
-                Some(at),
-                0.1,
-                pitch,
-            );
+            self.server_play_sound("minecraft:entity.experience_orb.pickup", at, 0.1, pitch);
             self.add_pickup(
                 crate::game::pickups::Taken::Orb(Box::new(o)),
                 crate::game::pickups::Collector::Player,

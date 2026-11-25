@@ -234,20 +234,15 @@ impl Game<'_> {
         speed: f64,
         count: u32,
     ) {
-        let options = ParticleOptions::simple(kind);
-        self.particles
-            .0
-            .send_particles(&options, at, spread, speed, count);
-        // The players a server serves are sent them too.
-        self.lan_send_particles(super::lan_particles::QueuedParticle {
+        self.server_send_particles(crate::lan::server_effects::ServerQueuedParticle {
             dimension: self.dim.id(),
-            options,
-            state: None,
+            particle: crate::lan::server_effects::ServerParticle::simple(kind),
             at,
             spread,
             speed: [speed; 3],
             count: count as i32,
             randomization: 0,
+            except: None,
         });
     }
     /// `handleAddEntity` for a fishing bobber: this player's own becomes its

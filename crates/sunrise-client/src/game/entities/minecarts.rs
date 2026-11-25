@@ -17,8 +17,6 @@ use super::{Game, Hit, InteractTarget, Keys, entity::Entity};
 #[allow(unused_imports)]
 use std::{collections::HashMap, sync::Arc};
 #[allow(unused_imports)]
-use sunrise_client::actions::Action;
-#[allow(unused_imports)]
 use sunrise_client::entity_rules::EntityRules;
 #[allow(unused_imports)]
 use sunrise_client::join_seq::{JoinList, ListStamp};
@@ -2041,7 +2039,7 @@ impl Game<'_> {
         if target.is_none() && !self.before_block(d) {
             return false;
         }
-        let sneaking = self.held_mapping(Action::Sneak);
+        let sneaking = self.server_acting_sneak();
         let held = self.held().cloned();
         match self.carts[i].kind {
             CartKind::Rideable => {
@@ -2107,9 +2105,7 @@ impl Game<'_> {
                 .insert(key, BlockEntity::Chest(c.items.clone()));
         }
         self.container = Some(key);
-        self.set_screen(super::Screen::Inventory);
-        self.capture(false);
-        self.set_mapping_held("key.use", false);
+        self.server_set_acting_use(false);
         if c.kind == CartKind::Chest {
             // `MinecartChest.interact` (which overrides
             // `AbstractMinecartContainer.interact`): a successful open fires

@@ -106,7 +106,7 @@ impl Game<'_> {
     }
     /// `ServerStatsCounter.parseLocal`.
     pub(in crate::game) fn load_stats(&mut self) {
-        if self.stats.loaded || self.remote.is_some() || self.no_player_here() {
+        if self.stats.loaded || !self.is_logical_server() || self.no_player_here() {
             return;
         }
         self.stats.loaded = true;

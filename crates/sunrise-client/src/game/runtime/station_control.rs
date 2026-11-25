@@ -76,6 +76,20 @@ impl Game<'_> {
             self.settings.gui_scale_inputs(),
         )))
     }
+    fn send_use_item_on_block(&mut self, pos: [i32; 3]) {
+        let sequence = self.next_sequence();
+        self.send(sunrise_protocol::packets::play::Serverbound::UseItemOn(
+            sunrise_protocol::packets::play::UseItemOn {
+                hand: 0,
+                pos,
+                face: 1,
+                cursor: [0.5, 1.0, 0.5],
+                inside: false,
+                world_border: false,
+                sequence,
+            },
+        ));
+    }
     /// Commands not known to control.rs; None when unknown here too.
     pub(in crate::game::client_side) fn station_command(
         &mut self,
@@ -111,7 +125,13 @@ impl Game<'_> {
             }
             "use" => {
                 let pos = [arg(1)?.parse()?, arg(2)?.parse()?, arg(3)?.parse()?];
-                self.open_block_effect_menu(pos);
+                if self.is_logical_server() {
+                    self.open_block_effect_menu(pos);
+                } else if self.remote.is_some() {
+                    self.send_use_item_on_block(pos);
+                } else {
+                    return Err("not connected to a world".into());
+                }
                 Ok(Some(
                     json!({ "ok": true, "station": self.station.as_ref().map(|s| format!("{:?}", s.kind)) }),
                 ))
@@ -207,7 +227,11 @@ impl Game<'_> {
                 }
                 let level: i32 = words.get(2).map_or(Ok(1), |l| l.parse())?;
                 let variant = id(words.get(3).copied().unwrap_or("plains"));
-                self.open_merchant(&profession, &variant, level);
+                if self.is_logical_server() {
+                    self.open_merchant(&profession, &variant, level);
+                } else {
+                    self.open_preview_merchant(&profession, &variant, level);
+                }
                 ok()
             }
             "effects" => Ok(Some(
@@ -237,9 +261,13 @@ impl Game<'_> {
                 ok()
             }
             "close" => {
-                self.close_container();
-                self.set_screen(Screen::Playing);
-                self.capture(true);
+                if self.is_logical_server() {
+                    self.close_container_server();
+                } else {
+                    self.close_container_client();
+                    self.set_screen(Screen::Playing);
+                    self.capture(true);
+                }
                 ok()
             }
             _ => Ok(None),

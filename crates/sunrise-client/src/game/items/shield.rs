@@ -169,7 +169,7 @@ impl Game<'_> {
             && let Some(sound) = &component.block_sound
         {
             let pitch = 0.8 + self.world.random.next_float() * 0.4;
-            self.client_audio_play(sound, at, 1.0, pitch);
+            if let Some(at) = at { self.server_play_sound(sound, at, 1.0, pitch); }
         }
         // BlocksAttacks.hurtBlockingItem counts use even when nothing is blocked.
         if !outcome.blocking_item_used {
@@ -339,7 +339,7 @@ impl Game<'_> {
             self.stop_active_item_use();
             if let Some(sound) = &component.disabled_sound {
                 let pitch = 0.8 + self.world.random.next_float() * 0.4;
-                self.client_audio_play(sound, at, 0.8, pitch);
+                if let Some(at) = at { self.server_play_sound(sound, at, 0.8, pitch); }
             }
         }
     }

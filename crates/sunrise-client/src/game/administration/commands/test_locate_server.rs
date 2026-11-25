@@ -44,7 +44,7 @@ impl Game<'_> {
         };
         // CommandSourceStack.sendSystemMessage: no feedback rule.
         if !self.server.command_source.is_some_and(|s| s.silent) {
-            self.system_message(Text::translate("commands.test.locate.started", &[]));
+            self.server_system_message(Text::translate("commands.test.locate.started", &[]));
         }
         let center = self.test_source_block();
         let source_dim = self.dim;

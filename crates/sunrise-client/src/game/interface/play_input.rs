@@ -52,12 +52,6 @@ impl Game<'_> {
         self.mapped_key_down(action.name())
     }
 
-    #[inline(always)]
-    pub(in crate::game) fn sneak_or_right_shift_held(&self) -> bool {
-        self.held_mapping(sunrise_client::actions::Action::Sneak)
-            || self.client.keys.raw(&KeyCode::ShiftRight)
-    }
-
     pub(in crate::game) fn press_device_key(&mut self, key: KeyCode, source: Source) -> bool {
         let edge = self.client.keys.press(key, source);
         self.sync_device_key(key, true);

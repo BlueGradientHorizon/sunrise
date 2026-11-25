@@ -226,7 +226,7 @@ impl Game<'_> {
         let player = self.player.as_ref();
         let from = player.map(|p| [p.position.x, p.position.y, p.position.z]);
         if knockback_attack {
-            self.client_audio_play("minecraft:entity.player.attack.knockback", from, 1.0, 1.0);
+            if let Some(at) = from { self.server_play_sound("minecraft:entity.player.attack.knockback", at, 1.0, 1.0); }
         }
         let old_health = self.mobs[index].health;
         let source = match from {
@@ -328,13 +328,6 @@ impl Game<'_> {
                 let indicator = sunrise_client::particles::ParticleOptions::simple(
                     sunrise_client::particles::ParticleType::DamageIndicator,
                 );
-                self.client_particles_send_particles(
-                    &indicator,
-                    [feet[0], feet[1] + height * 0.5, feet[2]],
-                    [0.1, 0.0, 0.1],
-                    0.2,
-                    (actual * 0.5) as u32,
-                );
                 // The players a server serves are sent them too.
                 self.lan_send_particles(lan_particles::QueuedParticle {
                     dimension: self.dim.id(),
@@ -364,7 +357,7 @@ impl Game<'_> {
                 self.sweep_attack(at, from, Some(target), scale);
             }
             if crit || sweep.is_none() {
-                self.client_audio_play(sound, from, 1.0, 1.0);
+                if let Some(at) = from { self.server_play_sound(sound, at, 1.0, 1.0); }
             }
             self.remember_player_target(Some(id));
             // The hurt or death sound the mob raised (getHurtSound / getDeathSound,
@@ -382,7 +375,7 @@ impl Game<'_> {
             for event in queued {
                 match event {
                     sunrise_client::mobs::MobEvent::Sound(s, at, volume, pitch) => {
-                        self.client_audio_play(&format!("minecraft:{s}"), Some(at), volume, pitch);
+                        self.server_play_sound(&format!("minecraft:{s}"), at, volume, pitch);
                     }
                     sunrise_client::mobs::MobEvent::Infested { at, velocities } => {
                         infested.push((at, velocities))
@@ -410,7 +403,7 @@ impl Game<'_> {
                 p.cause_food_exhaustion(0.1);
             }
         } else {
-            self.client_audio_play("minecraft:entity.player.attack.nodamage", from, 1.0, 1.0);
+            if let Some(at) = from { self.server_play_sound("minecraft:entity.player.attack.nodamage", at, 1.0, 1.0); }
         }
     }
     /// `Player.attack`'s damage against `target_kind` (with the attack
@@ -460,5 +453,87 @@ impl Game<'_> {
         // Enchantment damage (sharpness, smite, bane) scaled by the attack strength.
         amount += enchant_bonus * scale;
         ((amount, scale, crit, enchant_bonus * scale > 0.0), damaging)
+    }
+}
+
+impl Game<'_> {
+    /// `Player.attack` after a target that is not a mob took the hit:
+    /// the sprint knockback sound, a living target's critical hit (`living`:
+    /// its entity id; `crit`: whether `melee_damage` decided the hit critical,
+    /// mods' `critical_hit` included), the `sweep` decided before the hit
+    /// (`sweep_before_hit`) around the target's box `area` and the strong or weak sound.
+    pub(in crate::game) fn attack_effects(
+        &mut self,
+        area: Aabb,
+        sweep: Option<[f64; 3]>,
+        living: Option<i32>,
+        crit: bool,
+        spared: mace::Spared,
+        magic: Option<i32>,
+    ) {
+        let scale = self.attack_strength_scale();
+        let full = scale > 0.9;
+        let player = self.player.as_ref();
+        let from = player.map(|p| [p.position.x, p.position.y, p.position.z]);
+        if full && player.is_some_and(|p| p.sprinting) {
+            self.audio
+                .0
+                .play("minecraft:entity.player.attack.knockback", from, 1.0, 1.0);
+        }
+        let crit = living.is_some() && crit;
+        if let Some(at) = sweep {
+            self.sweep_attack(at, from, Some((area, spared)), scale);
+        }
+        if crit {
+            self.audio
+                .0
+                .play("minecraft:entity.player.attack.crit", from, 1.0, 1.0);
+            if let Some(id) = living {
+                self.area_critical_hit(id, area, false);
+            }
+        } else if sweep.is_none() {
+            let sound = if full {
+                "minecraft:entity.player.attack.strong"
+            } else {
+                "minecraft:entity.player.attack.weak"
+            };
+            if let Some(at) = from { self.server_play_sound(sound, at, 1.0, 1.0); }
+        }
+        // Player.magicCrit: the enchantments added damage.
+        if let Some(id) = magic {
+            self.area_critical_hit(id, area, true);
+        }
+    }
+    /// `Player.doSweepAttack` after a successful hit, in vanilla's order: the
+    /// sweep sound, the victims around `target` (its box, and the mob that
+    /// was hit, when there is one) and then the arc.
+    pub(in crate::game) fn sweep_attack(
+        &mut self,
+        at: [f64; 3],
+        from: Option<[f64; 3]>,
+        target: Option<(Aabb, mace::Spared)>,
+        scale: f32,
+    ) {
+        if let Some(at) = from { self.server_play_sound("minecraft:entity.player.attack.sweep", at, 1.0, 1.0); }
+        if let Some((area, mob)) = target {
+            self.sweep_damage(area, mob, scale);
+        }
+        let arc = sunrise_client::particles::ParticleOptions::simple(
+            sunrise_client::particles::ParticleType::SweepAttack,
+        );
+        // Player.sweepAttack's `sendParticles(SWEEP_ATTACK, ..., 0, dx, 0, dz, 0)`:
+        // the offset is the one from the player to the particle.
+        let origin = from.unwrap_or(at);
+        let spread = [at[0] - origin[0], 0.0, at[2] - origin[2]];
+        self.lan_send_particles(lan_particles::QueuedParticle {
+            dimension: self.dim.id(),
+            options: arc,
+            state: None,
+            at,
+            spread,
+            speed: [0.0; 3],
+            count: 0,
+            randomization: 0,
+        });
     }
 }

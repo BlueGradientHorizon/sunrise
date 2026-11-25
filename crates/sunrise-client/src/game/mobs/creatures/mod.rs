@@ -270,7 +270,6 @@ pub(in crate::game) struct Creatures {
     pub sweeps: Vec<super::lan_pvp::Sweep>,
     /// Explosion packets from a guest's turn, waiting for it to end
     /// (game/network/lan_particles.rs).
-    pub lan_explosions: Vec<super::lan_particles::LanExplosion>,
     /// The snapshot's buffer between ticks, empty: ~400 bytes a mob, so
     /// thousands of mobs would allocate and free megabytes every tick.
     pub(in crate::game) seen_buf: Vec<Seen>,
@@ -303,12 +302,10 @@ pub(in crate::game) struct Creatures {
     /// Each level's custom spawners, built when its first tick asks (game/mobs/custom_spawners.rs).
     pub custom_spawners: std::collections::HashMap<super::Dim, mod_api::CustomSpawners>,
     /// Native sounds waiting for the server host to be available.
-    pub lan_sounds: Vec<NativeSound>,
     /// True while `ask_level_sound` is running `play_level_sound_at_*` listeners so sounds emitted
     /// from inside a listener are not re-dispatched to level-sound hooks.
     pub asking_level_sound: bool,
     /// Particles from a guest's turn, waiting for it to end.
-    pub lan_particles: Vec<super::lan_particles::QueuedParticle>,
 }
 /// `Projectile.isPickable`: a projectile in `#minecraft:redirectable_projectile`
 /// (a ghast's fireball and both wind charges) is pickable, so another
@@ -1225,7 +1222,7 @@ impl Game<'_> {
         self.tick_dolphins();
         self.tick_mob_looting();
         self.tick_breeze_effects();
-        self.tick_sniffer_effects();
+        self.tick_sniffer_server();
         self.piglin_pickups();
         self.sulfur_cube_pickups();
         self.sulfur_cube_power_priming(primable);

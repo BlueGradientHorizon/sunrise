@@ -4,31 +4,31 @@ use super::*;
 impl Game<'_> {
     pub(in crate::game) fn send_captured_level_sound(
         &mut self,
-        mut captured: sunrise_client::audio::CapturedSound,
+        mut sound: sunrise_client_core::sound_source::ServerSound,
         except: Option<u32>,
     ) {
         let source = mod_api::SoundSource::ALL
-            .get(captured.source)
+            .get(sound.source)
             .copied()
             .unwrap_or(mod_api::SoundSource::Master);
-        let sound = LevelSound {
-            name: &captured.event,
-            at: captured.position,
-            volume: captured.volume,
-            pitch: captured.pitch,
+        let level_sound = LevelSound {
+            name: &sound.event,
+            at: sound.position,
+            volume: sound.volume,
+            pitch: sound.pitch,
             source,
-            emitter: captured.entity,
+            emitter: sound.entity,
         };
-        let Some(heard) = self.ask_level_sound(self.dim.id(), sound) else {
+        let Some(heard) = self.ask_level_sound(self.dim.id(), level_sound) else {
             return;
         };
         let name = heard.name.into_owned();
-        captured.source = heard.source as usize;
-        captured.volume = heard.volume;
-        captured.pitch = heard.pitch;
-        captured.event = name;
+        sound.source = heard.source as usize;
+        sound.volume = heard.volume;
+        sound.pitch = heard.pitch;
+        sound.event = name;
         if let Some(host) = self.lan.as_ref() {
-            host.hub.captured_sound(&captured, except);
+            host.hub.captured_sound(&sound, except);
         }
     }
 

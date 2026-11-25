@@ -23,6 +23,10 @@ impl Game<'_> {
         mut sound: LevelSound<'_>,
         seed: i64,
     ) {
+        assert!(
+            !self.is_logical_server(),
+            "play_client_level_sound called on Server role"
+        );
         let entity = match sound.emitter {
             Some(id) => {
                 let Some(state) = self.remote_sound_entity_state(id as i32) else {
@@ -65,6 +69,10 @@ impl Game<'_> {
     /// A client-local level request without a packet seed. LocalPlayer.playSound
     /// asks AtEntity but still creates a positional, not entity-bound, instance.
     pub(in crate::game) fn play_client_local_sound(&mut self, sound: LevelSound<'_>) {
+        assert!(
+            !self.is_logical_server(),
+            "play_client_local_sound called on Server role"
+        );
         let seed = self.audio.0.next_sound_seed();
         let at = sound.at;
         if let Some(heard) = self.ask_level_sound(self.dim.id(), sound) {
@@ -77,12 +85,5 @@ impl Game<'_> {
                 seed,
             );
         }
-    }
-    /// A synchronous level sound, not captured again at the end of the tick.
-    pub(in crate::game) fn play_immediate_level_sound(&mut self, sound: LevelSound<'_>) {
-        self.audio
-            .0
-            .play_unshared(sound.name, Some(sound.at), sound.volume, sound.pitch);
-        self.send_level_sound(sound, None);
     }
 }

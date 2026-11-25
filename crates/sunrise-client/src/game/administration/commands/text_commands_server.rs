@@ -9,32 +9,24 @@ pub(in crate::game::server_side) use crate::game::commands::text_commands::inval
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::commands::text_commands::*;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use sunrise_client::{
-    hud_overlays::Titles, lan::data::component_nbt, text::Text,
-};
+pub(in crate::game::server_side) use sunrise_client::{lan::data::component_nbt, text::Text};
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 impl Game<'_> {
     /// TitleCommand's `connection.send` for each player: a guest is sent the
-    /// packet, the window's own player shows it.
-    pub(in crate::game) fn titles_or_packet(
-        &mut self,
-        players: &[Target],
-        local: impl FnOnce(&mut Titles),
-        packet: C,
-    ) {
-        let mut local = Some(local);
+    /// packet, the acting player queues it on `server.guest_packets`.
+    pub(in crate::game) fn titles_or_packet(&mut self, players: &[Target], packet: C) {
+        assert!(
+            self.is_logical_server(),
+            "titles_or_packet called on Client role"
+        );
         for &t in players {
             match t {
-                Target::Player if self.server.lan_acting.is_some() => {
+                Target::Player if self.server.lan_acting.is_some() || self.lan.is_none() => {
                     self.server.guest_packets.push(packet.clone());
                 }
-                Target::Player => {
-                    if let Some(local) = local.take() {
-                        self.titles_or_packet_client(local);
-                    }
-                }
+                Target::Player => {}
                 Target::Guest(conn) => {
                     if let Some(host) = self.lan.as_ref() {
                         host.hub.send_to(conn, &packet);

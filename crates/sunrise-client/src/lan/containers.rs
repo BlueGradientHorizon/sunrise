@@ -25,7 +25,7 @@ use sunrise_protocol::{
 /// Entity-bound events use the entity packet; ordinary level sounds retain
 /// their fixed-point coordinates. The caller supplies the synced registry id.
 pub fn captured_sound_packet(
-    sound: &crate::audio::CapturedSound,
+    sound: &sunrise_client_core::sound_source::ServerSound,
     sound_id: Option<i32>,
     seed: i64,
 ) -> (C, f64) {
@@ -56,7 +56,7 @@ pub fn captured_sound_packet(
     (packet, captured_sound_range(sound))
 }
 
-pub(super) fn captured_sound_range(sound: &crate::audio::CapturedSound) -> f64 {
+pub(super) fn captured_sound_range(sound: &sunrise_client_core::sound_source::ServerSound) -> f64 {
     // SoundEvent.getRange multiplies as floats before the broadcast widens it.
     f64::from(if sound.volume > 1.0 {
         16.0 * sound.volume
@@ -208,7 +208,11 @@ impl Hub {
 
     /// The entity overload of `ServerLevel.playSeededSound`. The emitter stays
     /// an entity id on the wire; clients which do not know it drop the sound.
-    pub fn captured_sound(&self, sound: &crate::audio::CapturedSound, except: Option<u32>) {
+    pub fn captured_sound(
+        &self,
+        sound: &sunrise_client_core::sound_source::ServerSound,
+        except: Option<u32>,
+    ) {
         let except = except.or_else(|| {
             sound.except_entity.and_then(|id| {
                 self.guests
@@ -217,7 +221,7 @@ impl Hub {
                     .map(|g| g.conn)
             })
         });
-        let seed = self.next_sound_seed();
+        let seed = sound.seed.unwrap_or_else(|| self.next_sound_seed());
         let (packet, range) = captured_sound_packet(
             sound,
             self.sync.id("minecraft:sound_event", &sound.event),

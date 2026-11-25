@@ -621,11 +621,9 @@ impl Game<'_> {
         let assets = &self.armor_stand_assets.0;
         let items = self.items();
         let mut wanted: Vec<TrimTexture> = Vec::new();
-        let guests = self.lan.iter().flat_map(|host| host.hub.guests.iter());
         let stacks =
             self.armor
                 .iter()
-                .chain(guests.flat_map(|g| g.armor.iter()))
                 .chain(self.mobs.iter().flat_map(|m| {
                     sunrise_items::equipment::ARMOR.map(|slot| &m.extra.equipment[slot])
                 }))

@@ -92,12 +92,12 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn creative_holders(&self) -> Option<Holders> {
-        match &self.remote {
-            Some(remote) => Some(sunrise_client::creative::live_holders(
-                &remote.builtin,
-                &remote.registries,
-            )),
-            None => self.registry_sync().map(|sync| sync.creative_holders()),
+        if self.is_logical_server() {
+            self.registry_sync().map(|sync| sync.creative_holders())
+        } else {
+            self.remote.as_ref().map(|remote| {
+                sunrise_client::creative::live_holders(&remote.builtin, &remote.registries)
+            })
         }
     }
 

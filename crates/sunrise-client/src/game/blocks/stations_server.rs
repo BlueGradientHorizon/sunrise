@@ -79,7 +79,7 @@ impl Game<'_> {
                 .player
                 .as_ref()
                 .map(|p| [p.position.x, p.position.y, p.position.z]);
-            self.client_audio_play("minecraft:entity.player.levelup", at, volume, 1.0);
+            if let Some(at) = at { self.server_play_sound("minecraft:entity.player.levelup", at, volume, 1.0); }
         }
     }
     /// `BrewingStandBlockEntity.serverTick` of the brewing stand at `pos`, in

@@ -3,7 +3,7 @@
 #[allow(unused_imports)]
 use super::Game;
 #[allow(unused_imports)]
-use sunrise_client::{lan::guest::Guest, text::Text};
+use sunrise_client::lan::guest::Guest;
 
 impl Game<'_> {
     /// A network guest the hub removed leaves the world: the leave lines, then
@@ -81,13 +81,6 @@ impl Game<'_> {
                     &format!("System chat: {} left the game", guest.name),
                 );
             }
-        } else if self.player.is_some() && guest.joined() && !guest.quiet_leave {
-            // ServerGamePacketListenerImpl.removePlayerFromWorld.
-            let who = self.player_text(&guest.name, guest.uuid);
-            self.system_message(
-                Text::translate("multiplayer.player.left", &[who])
-                    .with_color(sunrise_client::text::YELLOW),
-            );
         }
         guest.joined()
             && self

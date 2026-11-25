@@ -447,12 +447,7 @@ impl Game<'_> {
         self.server.next_entity += 1;
         let (_, uuid) = sunrise_client::mobs::living_random();
         self.persist.uuids.insert(stand.id, uuid);
-        self.client_audio_play(
-            "minecraft:entity.armor_stand.place",
-            Some([foot.x, foot.y, foot.z]),
-            0.75,
-            0.8,
-        );
+        self.server_play_sound("minecraft:entity.armor_stand.place", [foot.x, foot.y, foot.z], 0.75, 0.8);
         // ArmorStandItem.useOn: the stand's ENTITY_PLACE, by the player.
         let ctx = self.player_context(None);
         self.post_game_event("minecraft:entity_place", [foot.x, foot.y, foot.z], ctx);
@@ -1167,7 +1162,6 @@ impl Game<'_> {
             };
             if self.drown_bubbles(at, v, bubbles) {
                 self.lan_entity_event(id as i32, super::combat::DROWN_EVENT, at);
-                self.drown_particles(at, v, 8);
             }
         }
         for (id, damage_type) in dead.into_iter().rev() {

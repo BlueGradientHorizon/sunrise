@@ -7,10 +7,11 @@ use super::{
     explosion::{BlockInteraction, ExplosionSource},
     explosion_settings::{BlastCalculator, BlastEffects, BlastSettings, SourceCalculator},
     minecarts::CartKind,
-    native_hooks::{mod_particles_ok, sound_id},
+    native_hooks::sound_id,
 };
+use crate::lan::server_effects::{ServerExplosionParticle, ServerParticle, server_particle_ok};
 use mod_api::{EntityRef, ExplodeError, ExplosionInteraction, ExplosionSettings};
-use sunrise_client::particles::{ExplosionParticle, ParticleOptions, ParticleType};
+use sunrise_client::particles::ParticleType;
 use sunrise_client::projectiles::ProjectileKind;
 use sunrise_client::{
     gamerules::vanilla,
@@ -30,13 +31,13 @@ fn blast_ok(center: [f64; 3], radius: f32) -> bool {
 
 /// A particle type a blast takes by id: one vanilla has that needs no options
 /// (no block state, item or geyser data).
-fn blast_particle(id: &str) -> Result<ParticleOptions, ExplodeError> {
-    let options =
-        ParticleOptions::simple(ParticleType::from_name(id).ok_or(ExplodeError::InvalidParticle)?);
-    if !mod_particles_ok(&options, None, |_| false, &[[0.0; 3]], [0.0; 3], 0.0) {
+fn blast_particle(id: &str) -> Result<ServerParticle, ExplodeError> {
+    let particle =
+        ServerParticle::simple(ParticleType::from_name(id).ok_or(ExplodeError::InvalidParticle)?);
+    if !server_particle_ok(&particle) {
         return Err(ExplodeError::InvalidParticle);
     }
-    Ok(options)
+    Ok(particle)
 }
 
 impl Game<'_> {
@@ -187,11 +188,12 @@ impl Game<'_> {
                         if !numbers {
                             return Err(ExplodeError::InvalidParticle);
                         }
-                        Ok(ExplosionParticle {
-                            options: blast_particle(&p.particle)?,
+                        Ok(ServerExplosionParticle {
+                            particle: blast_particle(&p.particle)?,
                             scaling: p.scaling,
                             speed: p.speed,
-                            weight: p.weight,
+                            weight: i32::try_from(p.weight)
+                                .map_err(|_| ExplodeError::InvalidParticle)?,
                         })
                     })
                     .collect::<Result<_, _>>()?;

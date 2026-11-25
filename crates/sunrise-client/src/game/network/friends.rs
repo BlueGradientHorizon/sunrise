@@ -123,7 +123,7 @@ impl Game<'_> {
         if sharing.opened_lan {
             self.lan_close(true);
         } else {
-            self.system_message(Text::literal(lang::get_or(
+            self.client_system_message(Text::literal(lang::get_or(
                 "sunrise.friends.stopped",
                 "Stopped sharing the invite code.",
             )));
@@ -178,10 +178,10 @@ impl Game<'_> {
             }
         }
         if let Some(text) = stopped {
-            self.system_message(Text::literal(text));
+            self.client_system_message(Text::literal(text));
         }
         if announce {
-            self.system_message(Text::literal(lang::get_or(
+            self.client_system_message(Text::literal(lang::get_or(
                 "sunrise.friends.code_ready",
                 "Your invite code is ready: Game Menu, Play with Friends. Copy it and send it to your friends.",
             )));
@@ -227,7 +227,7 @@ impl Game<'_> {
         match action {
             Action::Share => {
                 if let Err(e) = self.friends_start() {
-                    self.system_message(Text::literal(
+                    self.client_system_message(Text::literal(
                         lang::get_or(
                             "sunrise.friends.share_failed",
                             "Couldn't share the world: %s",

@@ -131,7 +131,9 @@ impl Game<'_> {
             {
                 super::super::dedicated::log("INFO", &format!("System chat: {}", line.plain()));
             }
-            self.system_message(line);
+            if self.lan.is_none() || self.server.chat_capture.is_some() {
+                self.server_system_message(line);
+            }
         } else {
             self.feedback(Text::translate(
                 "commands.random.sample.success",
@@ -185,7 +187,7 @@ impl Game<'_> {
         } else {
             "chat.type.team.text"
         };
-        self.system_message(Text::translate(key, &[team_name, sender, message]));
+        self.server_system_message(Text::translate(key, &[team_name, sender, message]));
         Ok(1)
     }
 }

@@ -47,9 +47,10 @@ impl Particles {
 #[derive(Default)]
 struct ServerState {
     lan_cushion_breaks: Vec<(u32, [f64; 3])>,
+    audio_capture_active: bool,
 }
 struct Game {
-    pack: Pack, audio: (Audio,), particles: (Particles,), headless: bool,
+    pack: Pack, headless: bool,
     server: ServerState,
 }
 impl Game {
@@ -64,8 +65,8 @@ fn main() {
         for serving in [true, false] {
             let mut game = Game {
                 pack: Pack { assets: Assets { registry: Registry } },
-                audio: (Audio { capture: serving.then_some(()) },),
-                particles: (Particles::default(),), headless, server: ServerState::default(),
+                headless,
+                server: ServerState { audio_capture_active: serving, ..Default::default() },
             };
             game.cushion_break_particles(&cushion);
             assert_eq!(game.server.lan_cushion_breaks.len(), usize::from(serving));
@@ -75,7 +76,6 @@ fn main() {
                 assert_eq!([at[0], at[2]], [1.5, 2.5]);
                 assert!((at[1] - (10.0 + 1.0/6.0)).abs() < 1e-12);
             }
-            assert_eq!(game.particles.0.count, if headless { 0 } else { 10 });
         }
     }
 }

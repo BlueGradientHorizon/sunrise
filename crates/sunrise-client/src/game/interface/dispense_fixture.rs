@@ -509,7 +509,10 @@ impl Game<'_> {
             out.push(line);
             out.extend(sound);
         }
-        self.dispense_case_client_finish(&mut out);
+        for s in std::mem::take(&mut self.server.pending_sounds) {
+            out.push(format!("S {} {}", floor_pos(s.position), s.event));
+        }
+        self.stop_audio_capture();
         // The sounds bound to an entity (a sheared mob's) are the server's too.
         for s in std::mem::take(&mut self.server.bound_sounds) {
             out.push(format!("S {} {}", floor_pos(s.at), s.name));
@@ -691,9 +694,9 @@ impl Game<'_> {
         self.player = Some(player);
         self.yaw = op["yaw"].as_f64().unwrap_or(0.0) as f32;
         self.pitch = 90.0;
-        self.clear_device_keys();
+        self.server_clear_acting_input();
         // The oracle supplies the acting player's logical sneak state for each click.
-        self.set_mapping_held("key.sneak", op["sneaking"].as_bool().unwrap_or(false));
+        self.server_set_acting_sneak(op["sneaking"].as_bool().unwrap_or(false));
         self.using = None;
         // The oracle's player wears nothing: no armor left on from an earlier case.
         self.armor = Default::default();
@@ -889,7 +892,7 @@ impl Game<'_> {
                 // The hurt sound the mob raised, where it stands.
                 for event in std::mem::take(&mut self.mobs[index].outbox) {
                     if let sunrise_client::mobs::MobEvent::Sound(s, at, volume, pitch) = event {
-                        self.client_audio_play(&format!("minecraft:{s}"), Some(at), volume, pitch);
+                        self.server_play_sound(&format!("minecraft:{s}"), at, volume, pitch);
                     }
                 }
                 if hurt {
@@ -1180,7 +1183,7 @@ impl Game<'_> {
         )?);
         self.yaw = 0.0;
         self.pitch = 90.0;
-        self.clear_device_keys();
+        self.server_clear_acting_input();
         self.inventory[self.selected] = stack.clone();
         self.offhand = None;
         let state = self.world.block(pos.x, pos.y, pos.z);

@@ -441,7 +441,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn close_replaced_screen_for_mod(&mut self) {
         let replacing = std::mem::replace(&mut self.screen_state.0.replacing, true);
         match self.client.screen {
-            Screen::Inventory => self.close_container(),
+            Screen::Inventory => self.close_container_client(),
             Screen::Creative => self.close_creative_menu(),
             Screen::Options => self.ui.options.discard_draw(),
             _ => {}
@@ -1025,7 +1025,7 @@ impl Game<'_> {
                 // table) closes: the inventory shows the player's own. With
                 // only the player's own open, there is nothing to close.
                 if self.remote_menu_type().is_some() {
-                    self.close_container();
+                    self.close_container_client();
                 }
                 self.open_player_inventory();
             }

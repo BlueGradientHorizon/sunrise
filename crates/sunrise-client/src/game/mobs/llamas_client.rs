@@ -17,7 +17,7 @@ impl Game<'_> {
         if !m.alive() || Some(m.id) == self.riding {
             return false;
         }
-        let sneaking = self.held_mapping(Action::Sneak);
+        let sneaking = self.server_acting_sneak();
         let (baby, tamed, vehicle) = (m.is_baby(), m.extra.tame, m.rider.is_some());
         let open_inventory = !baby && tamed && sneaking;
         if !vehicle && !open_inventory && !item.is_empty() {
@@ -43,7 +43,7 @@ impl Game<'_> {
         }
         if tamed && sneaking {
             // AbstractHorse.openCustomInventoryScreen.
-            self.open_mount_menu(index);
+            self.server_request_mount_menu(index);
             return true;
         }
         let m = &self.mobs[index];

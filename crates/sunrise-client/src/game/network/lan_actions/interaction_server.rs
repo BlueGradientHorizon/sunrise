@@ -153,7 +153,7 @@ impl Game<'_> {
                 return Err(ActionRefused::Protected);
             }
         }
-        let heard = self.audio_capture_len();
+        let heard = self.server.pending_sounds.len();
         let used = self
             .as_guest_at(gi, conn, |g| {
                 // A horn's sound, inline instruments included.
@@ -259,7 +259,7 @@ impl Game<'_> {
                 return Ok(true);
             }
             let logged = self.world.block_log.as_ref().map_or(0, Vec::len);
-            let heard = self.audio_capture_len();
+            let heard = self.server.pending_sounds.len();
             let used = self.as_guest_at(gi, conn, |g| {
                 let attempt = g.was_block_placement_attempt(hand);
                 let saved = (g.server.forced_hit, g.server.guest_use);

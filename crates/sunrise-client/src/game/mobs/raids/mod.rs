@@ -782,7 +782,6 @@ impl Game<'_> {
                 in_raid && local_first,
             )
         {
-            self.raid_horn_client(at);
         }
         let Some(host) = self.lan.as_ref() else {
             return;
@@ -1277,10 +1276,14 @@ impl Game<'_> {
         // Villager.customServerAiStep: a 1 in 100 chance each tick, in an
         // ongoing raid, of entity event 42 (`handleEntityEvent` splashes).
         for id in ongoing {
-            if self.sync_villager_raids_client() {
+            if self.server.effect_rng.next_int_bound(100) == Ok(0) {
                 self.mob_raid_splash(id);
             }
         }
+    }
+    #[inline(always)]
+    pub(in crate::game) fn sync_villager_raids_client(&mut self) -> bool {
+        self.server.effect_rng.next_int_bound(100) == Ok(0)
     }
     /// Entity event 42 for villager `id`: the guests get the byte, and this
     /// game draws `AbstractVillager.addParticlesAroundSelf(SPLASH)` itself.

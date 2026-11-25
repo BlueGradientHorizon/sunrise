@@ -42,8 +42,6 @@ pub(in crate::game) mod client_ambient;
 pub(in crate::game) mod client_attack_targets;
 #[path = "modding/client_cracks.rs"]
 pub(in crate::game) mod client_cracks;
-#[path = "interface/client_engine_forwarders.rs"]
-pub(in crate::game) mod client_engine_forwarders;
 #[path = "modding/client_executor.rs"]
 pub(in crate::game) mod client_executor;
 #[path = "modding/client_item_extensions.rs"]
@@ -532,8 +530,6 @@ pub(in crate::game) mod ui_control;
 #[cfg(test)]
 #[path = "items/use_same_item_tests.rs"]
 pub(in crate::game) mod use_same_item_tests;
-#[path = "items/using_item.rs"]
-pub(in crate::game) mod using_item;
 #[path = "network/viewed_worlds/mod.rs"]
 pub(in crate::game) mod viewed_worlds;
 #[path = "interface/win.rs"]
@@ -556,8 +552,6 @@ pub(in crate::game) mod zombie_villagers;
 pub(in crate::game) mod advancements_client;
 #[path = "entities/armor_stands_client.rs"]
 pub(in crate::game) mod armor_stands_client;
-#[path = "world/autosave_client.rs"]
-pub(in crate::game) mod autosave_client;
 #[path = "mobs/beehives_client.rs"]
 pub(in crate::game) mod beehives_client;
 #[path = "blocks/block_entity_anims_client.rs"]
@@ -602,8 +596,6 @@ pub(in crate::game) mod deflect_client;
 #[cfg(test)]
 #[path = "modding/disabled_block_tests_client.rs"]
 pub(in crate::game) mod disabled_block_tests_client;
-#[path = "interface/dispense_fixture_client.rs"]
-pub(in crate::game) mod dispense_fixture_client;
 #[path = "blocks/dispenser_client.rs"]
 pub(in crate::game) mod dispenser_client;
 #[path = "mobs/dragon_client.rs"]
@@ -670,8 +662,6 @@ pub(in crate::game) mod mace_client;
 pub(in crate::game) mod machines_client;
 #[path = "blocks/maps/mod_client.rs"]
 pub(in crate::game) mod maps_client;
-#[path = "entities/melee_client.rs"]
-pub(in crate::game) mod melee_client;
 #[path = "runtime/memory_client.rs"]
 pub(in crate::game) mod memory_client;
 #[path = "entities/minecarts_client.rs"]
@@ -681,8 +671,6 @@ pub(in crate::game) mod minecarts_client;
 pub(in crate::game) mod mod_container_openers_tests_client;
 #[path = "modding/mods/mod_client.rs"]
 pub(in crate::game) mod mods_client;
-#[path = "mobs/mounts_client.rs"]
-pub(in crate::game) mod mounts_client;
 #[path = "modding/native_block_sounds_client.rs"]
 pub(in crate::game) mod native_block_sounds_client;
 #[path = "modding/native_entity_motion_client.rs"]
@@ -745,14 +733,10 @@ pub(in crate::game) mod projectile_spawned_tests_client;
 pub(in crate::game) mod raids_client;
 #[path = "network/remote/mod_client.rs"]
 pub(in crate::game) mod remote_client;
-#[path = "blocks/respawn_anchor_client.rs"]
-pub(in crate::game) mod respawn_anchor_client;
 #[path = "world/saving_client.rs"]
 pub(in crate::game) mod saving_client;
 #[path = "interface/scoreboard/mod_client.rs"]
 pub(in crate::game) mod scoreboard_client;
-#[path = "blocks/sculk_fixture_client.rs"]
-pub(in crate::game) mod sculk_fixture_client;
 #[path = "items/spear_client.rs"]
 pub(in crate::game) mod spear_client;
 #[cfg(test)]
@@ -777,8 +761,6 @@ pub(in crate::game) mod vault_client;
 #[cfg(test)]
 #[path = "entities/vehicle_removal_tests_client.rs"]
 pub(in crate::game) mod vehicle_removal_tests_client;
-#[path = "mobs/villagers_client.rs"]
-pub(in crate::game) mod villagers_client;
 #[path = "interface/wind_client.rs"]
 pub(in crate::game) mod wind_client;
 #[path = "world/world_entry_client.rs"]
@@ -1035,6 +1017,8 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) was_fall_flying: bool,
     /// Bees whose buzz is playing, and whether it is the aggressive one.
     pub(in crate::game::client_side) bee_sounds: HashMap<u32, bool>,
+    /// Songs playing from jukeboxes (tracked sound handles).
+    pub(in crate::game::client_side) jukebox_sounds: HashMap<(i32, i32, i32), u64>,
     /// Remote guardian eye targets reused between ticks.
     pub(in crate::game::client_side) guardian_look_scratch: Vec<(usize, [f64; 3])>,
     pub(in crate::game::client_side) explicit_particle_quads:
@@ -1461,6 +1445,7 @@ impl ClientState {
             riding_sound: None,
             was_fall_flying: false,
             bee_sounds: HashMap::new(),
+            jukebox_sounds: HashMap::new(),
             guardian_look_scratch: Vec::new(),
             explicit_particle_quads: Default::default(),
             sign_edit: None,

@@ -624,7 +624,7 @@ impl Game<'_> {
         };
         let message = self.expand_selectors(&raw);
         let name = self.source_display_name();
-        let line = match id {
+        match id {
             "say" => {
                 // A visible copy for the acting player goes with their captured output, in order.
                 let captured_for = self
@@ -642,49 +642,85 @@ impl Game<'_> {
                         secure: false,
                     });
                 }
-                if self.lan.is_some()
-                    && let Some(capture) = self.server.chat_capture.as_mut()
-                {
-                    if capture_say {
+                if self.lan.is_some() {
+                    if capture_say
+                        && let Some(capture) = self.server.chat_capture.as_mut()
+                    {
                         capture.push(line);
                     }
-                } else {
-                    self.player_message(line);
+                } else if let Some(capture) = self.server.chat_capture.as_mut() {
+                    capture.push(line);
                 }
-                return Ok(1);
+                Ok(1)
             }
-            "me" => Text::translate("chat.type.emote", &[name, message]),
+            "me" => {
+                if self.lan.is_some() {
+                    let captured_for = self
+                        .server
+                        .chat_capture
+                        .as_ref()
+                        .and(self.server.lan_acting);
+                    let capture_me = self
+                        .lan_broadcast_source_emote(&name, &message, captured_for)
+                        .ok_or_else(|| err("command.failed", &[]))?;
+                    let line = Text::translate("chat.type.emote", &[name, message]);
+                    if self.is_dedicated_server() {
+                        self.lan_log_event(sunrise_client::lan::hub::HostEvent::Chat {
+                            line: line.plain(),
+                            secure: false,
+                        });
+                    }
+                    if capture_me
+                        && let Some(capture) = self.server.chat_capture.as_mut()
+                    {
+                        capture.push(line);
+                    }
+                } else if let Some(capture) = self.server.chat_capture.as_mut() {
+                    capture.push(Text::translate("chat.type.emote", &[name, message]));
+                }
+                Ok(1)
+            }
             _ => {
-                let _ = self.entities(ctx, "targets", true)?;
-                // Whispering to yourself: the incoming and outgoing lines.
-                let out = Text::translate(
-                    "commands.message.display.outgoing",
-                    &[self.player_display_name(), message.clone()],
-                )
-                .with_color(text::GRAY)
-                .italic();
-                self.system_message(out);
-                Text::translate(
-                    "commands.message.display.incoming",
-                    &[self.player_display_name(), message],
-                )
-                .with_color(text::GRAY)
-                .italic()
+                let targets = self.entities(ctx, "targets", true)?;
+                for &target in &targets {
+                    let target_name = self.target_name(target);
+                    let out = Text::translate(
+                        "commands.message.display.outgoing",
+                        &[target_name, message.clone()],
+                    )
+                    .with_color(text::GRAY)
+                    .italic();
+                    let incoming = Text::translate(
+                        "commands.message.display.incoming",
+                        &[name.clone(), message.clone()],
+                    )
+                    .with_color(text::GRAY)
+                    .italic();
+                    match target {
+                        Target::Guest(conn) => {
+                            if let Some(host) = self.lan.as_ref() {
+                                host.hub.send_to(
+                                    conn,
+                                    &C::SystemChat(play::SystemChat {
+                                        content: sunrise_client::lan::data::component_nbt(
+                                            &incoming.component(),
+                                        ),
+                                        overlay: false,
+                                    }),
+                                );
+                            }
+                            self.server_system_message(out);
+                        }
+                        Target::Player => {
+                            self.server_system_message(out);
+                            self.server_system_message(incoming);
+                        }
+                        _ => {}
+                    }
+                }
+                Ok(targets.len() as i32)
             }
-        };
-        if let Some(capture) = self.server.chat_capture.as_mut() {
-            capture.push(line.clone());
         }
-        let focused = self.chat_screen_open();
-        self.ui.chat.add(
-            &self.gui.atlas,
-            line,
-            None,
-            sunrise_client::chat::ChatSource::Player,
-            self.visual_ticks(),
-            focused,
-        );
-        Ok(1)
     }
     pub(in crate::game::server_side) fn cmd_setblock(&mut self, ctx: &Context) -> R<i32> {
         let pos = self.block_pos_arg(ctx, "pos")?;
@@ -1095,7 +1131,7 @@ impl Game<'_> {
             });
             return;
         }
-        self.system_message(formatted_command_failure(message, None));
+        self.server_system_message(formatted_command_failure(message, None));
     }
     pub(in crate::game::server_side) fn execute_command(
         &mut self,
@@ -1670,7 +1706,7 @@ impl Game<'_> {
         } else if let Some(cart) = source.and_then(|s| s.cart) {
             self.in_origin_level(|g| g.cart_command_success(cart, message));
         } else if self.accepts_success() {
-            self.system_message(message);
+            self.server_system_message(message);
         }
         if let Some(message) = admins {
             self.broadcast_to_admins(message);

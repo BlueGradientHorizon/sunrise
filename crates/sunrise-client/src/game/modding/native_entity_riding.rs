@@ -675,7 +675,7 @@ impl Game<'_> {
         }
         if !force {
             match rider {
-                Target::Player if self.held_mapping(sunrise_client::actions::Action::Sneak) => {
+                Target::Player if self.server_acting_sneak() => {
                     return Err(R::CannotRide);
                 }
                 Target::Mob(id)

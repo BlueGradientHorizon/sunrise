@@ -117,16 +117,15 @@ impl Game<'_> {
                     self.server
                         .mod_container_viewers
                         .retain(|(_, at), _| *at != from);
-                    if self.jukebox_sounds.contains_key(&from)
-                        || self
-                            .world
-                            .block_entities
-                            .carried(&to)
-                            .map(|c| &c.entity)
-                            .or_else(|| self.world.block_entities.get(&to))
-                            .is_some_and(|e| {
-                                matches!(e, sunrise_client::containers::BlockEntity::Jukebox(_))
-                            })
+                    if self
+                        .world
+                        .block_entities
+                        .carried(&to)
+                        .map(|c| &c.entity)
+                        .or_else(|| self.world.block_entities.get(&to))
+                        .is_some_and(|e| {
+                            matches!(e, sunrise_client::containers::BlockEntity::Jukebox(_))
+                        })
                     {
                         self.jukebox_removed([from.0, from.1, from.2]);
                     }
@@ -134,7 +133,7 @@ impl Game<'_> {
                         .container
                         .is_some_and(|at| at == from || Some(at) == partner)
                     {
-                        self.close_container();
+                        self.close_container_server();
                     }
                     let guests: Vec<_> = self
                         .lan

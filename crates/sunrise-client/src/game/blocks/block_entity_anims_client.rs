@@ -118,15 +118,20 @@ impl Game<'_> {
             f64::from(pos[1]) + 0.5,
             f64::from(pos[2]) + 0.5,
         ];
-        // On a server its own copy does this and sends the sound.
-        if tick.resonate && self.remote.is_none() {
-            // The server's copy plays the resonance for everyone.
-            self.audio
-                .0
-                .play("minecraft:block.bell.resonate", Some(centre), 1.0, 1.0);
-        }
-        if let Some((particles, glow)) = tick.ended {
-            for (p, color) in particles.into_iter().filter(|_| self.renderer.0.is_some()) {
+        if self.is_logical_server() {
+            if tick.resonate {
+                self.server_play_sound("minecraft:block.bell.resonate", centre, 1.0, 1.0);
+            }
+            if let Some((_, glow)) = tick.ended {
+                // makeRaidersGlow (the server's effect).
+                for m in &mut self.mobs {
+                    if glow.contains(&u64::from(m.id)) {
+                        m.add_effect("minecraft:glowing", 60, 0);
+                    }
+                }
+            }
+        } else if let Some((particles, _)) = tick.ended {
+            for (p, color) in particles {
                 // ColorParticleOption.create(ENTITY_EFFECT, color): ARGB.
                 let c = color as u32;
                 let channel = |shift: u32| ((c >> shift) & 255) as f32 / 255.0;
@@ -135,12 +140,6 @@ impl Game<'_> {
                     ..ParticleOptions::simple(ParticleType::EntityEffect)
                 };
                 self.particles.0.add(&options, p, [0.0; 3]);
-            }
-            // makeRaidersGlow (the server's effect).
-            for m in self.mobs.iter_mut().filter(|_| self.remote.is_none()) {
-                if glow.contains(&u64::from(m.id)) {
-                    m.add_effect("minecraft:glowing", 60, 0);
-                }
             }
         }
     }

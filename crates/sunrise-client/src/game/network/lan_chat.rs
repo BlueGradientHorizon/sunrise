@@ -218,6 +218,44 @@ impl Game<'_> {
         )
     }
 
+    /// Unsigned `/me` from the command dispatcher. Returns whether the acting player's copy
+    /// should go with its captured command output. `None` refuses reentrant `/me`.
+    pub(in crate::game::server_side) fn lan_broadcast_source_emote(
+        &mut self,
+        name: &Text,
+        message: &Text,
+        captured_for: Option<u32>,
+    ) -> Option<bool> {
+        let hidden = self.chat_hidden_from(|game| {
+            let sender = match game.source_entity() {
+                Some(Target::Player) => game
+                    .server
+                    .lan_acting_uuid
+                    .unwrap_or_else(|| game.own_uuid()),
+                Some(Target::Guest(conn)) => game.command_guest(conn).map_or(0, |guest| guest.uuid),
+                _ => 0,
+            };
+            (sender, name.plain(), message.plain())
+        })?;
+        let Some(host) = &self.lan else {
+            return Some(false);
+        };
+        host.hub.broadcast_source_chat(
+            "emote_command",
+            component_nbt(&name.component()),
+            component_nbt(&message.component()),
+            captured_for,
+            &hidden,
+        );
+        Some(
+            captured_for.is_some()
+                && !self
+                    .server
+                    .lan_acting_uuid
+                    .is_some_and(|uuid| hidden.contains(&uuid)),
+        )
+    }
+
     /// SayCommand, EmoteCommands and MsgCommand for a guest: chat to the
     /// players, signed when the guest signed it (a disguised chat after an
     /// unsigned command packet). False when the command is another one, or

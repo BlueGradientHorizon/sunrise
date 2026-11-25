@@ -3341,6 +3341,122 @@ impl Hub {
         Some(Particle { id, data })
     }
 
+    /// `ParticleTypes.STREAM_CODEC`'s value for a portable [`crate::lan::server_effects::ServerParticle`].
+    pub fn server_particle(
+        &self,
+        p: &crate::lan::server_effects::ServerParticle,
+    ) -> Option<Particle> {
+        use crate::lan::server_effects::ServerParticleData as D;
+        use sunrise_world::particle_type::ParticleType as T;
+        // Custom types use the existing Sunrise-only particle envelope (`Particle::sunrise_only`).
+        if let D::Mod { name, options } = &p.data {
+            return Some(Particle {
+                id: sunrise_protocol::entity_data::MOD_PARTICLE_ID,
+                data: Some(ParticleData::Mod {
+                    name: name.clone(),
+                    options: options.clone(),
+                }),
+            });
+        }
+        let name = format!("minecraft:{}", p.ty.name());
+        let id = self.registry_id("minecraft:particle_type", &name)?;
+        let rgb_int = |c: [f32; 3]| {
+            let b = |v: f32| ((v.clamp(0.0, 1.0) * 255.0).round() as i32) & 255;
+            (b(c[0]) << 16) | (b(c[1]) << 8) | b(c[2])
+        };
+        let argb_int = |c: [f32; 4]| {
+            let rgb = rgb_int([c[0], c[1], c[2]]);
+            (((c[3].clamp(0.0, 1.0) * 255.0).round() as i32) << 24) | rgb
+        };
+        let data = match (p.ty, &p.data) {
+            (
+                T::Block | T::BlockMarker | T::FallingDust | T::DustPillar | T::BlockCrumble,
+                D::Block(state),
+            ) => Some(ParticleData::State(state.0 as i32)),
+            (
+                T::Block | T::BlockMarker | T::FallingDust | T::DustPillar | T::BlockCrumble,
+                _,
+            ) => return None,
+            (T::Dust, D::ColorScale { rgb, scale }) => {
+                Some(ParticleData::ColorScale(rgb_int(*rgb), *scale))
+            }
+            (T::Dust, D::None) => Some(ParticleData::ColorScale(rgb_int([1.0; 3]), 1.0)),
+            (T::Dust, _) => return None,
+            (T::DustColorTransition, D::ColorScale2 { from, to, scale }) => Some(
+                ParticleData::ColorScale2(rgb_int(*from), rgb_int(*to), *scale),
+            ),
+            (T::DustColorTransition, D::None) => Some(ParticleData::ColorScale2(
+                rgb_int([1.0; 3]),
+                rgb_int([1.0, 0.0, 0.0]),
+                1.0,
+            )),
+            (T::DustColorTransition, _) => return None,
+            (T::Effect | T::InstantEffect, D::ColorPower { rgb, power }) => {
+                Some(ParticleData::ColorPower(rgb_int(*rgb), *power))
+            }
+            (T::Effect | T::InstantEffect, D::None) => {
+                Some(ParticleData::ColorPower(rgb_int([1.0; 3]), 1.0))
+            }
+            (T::Effect | T::InstantEffect, _) => return None,
+            (T::EntityEffect | T::TintedLeaves | T::Flash, D::ColorRgba(c)) => {
+                Some(ParticleData::Color(argb_int(*c)))
+            }
+            (T::EntityEffect | T::TintedLeaves | T::Flash, D::None) => {
+                Some(ParticleData::Color(argb_int([1.0; 4])))
+            }
+            (T::EntityEffect | T::TintedLeaves | T::Flash, _) => return None,
+            (T::DragonBreath | T::SculkCharge, D::Scalar(v)) => Some(ParticleData::Scalar(*v)),
+            (T::DragonBreath | T::SculkCharge, D::None) => Some(ParticleData::Scalar(1.0)),
+            (T::DragonBreath | T::SculkCharge, _) => return None,
+            (T::Shriek, D::Delay(d)) => Some(ParticleData::Delay(*d)),
+            (T::Shriek, D::None) => Some(ParticleData::Delay(1)),
+            (T::Shriek, _) => return None,
+            (T::Geyser | T::GeyserPlume, D::Geyser(water_blocks))
+            | (T::Geyser | T::GeyserPlume, D::GeyserBase { water_blocks, .. }) => {
+                Some(ParticleData::Geyser(*water_blocks))
+            }
+            (T::Geyser | T::GeyserPlume, _) => return None,
+            (
+                T::GeyserBase | T::GeyserPoof,
+                D::GeyserBase {
+                    water_blocks,
+                    burst_impulse_base,
+                },
+            ) => Some(ParticleData::GeyserBase(*water_blocks, *burst_impulse_base)),
+            (T::GeyserBase | T::GeyserPoof, _) => return None,
+            (T::Vibration, D::Vibration { source, ticks }) => {
+                use mod_api::client::particles::PositionSource;
+                use sunrise_protocol::entity_data::PositionSource as NetworkPositionSource;
+                let source = match source {
+                    PositionSource::Block(pos) => NetworkPositionSource::Block(*pos),
+                    PositionSource::Entity { id, y_offset } => NetworkPositionSource::Entity {
+                        id: *id,
+                        y_offset: *y_offset,
+                    },
+                    _ => return None,
+                };
+                Some(ParticleData::Vibration {
+                    source,
+                    ticks: *ticks,
+                })
+            }
+            (T::Vibration, _) => return None,
+            (T::Item, D::Item(stack)) => return item_particles::encode_stack(self, id, stack),
+            (T::Item, _) => return None,
+            (
+                T::Trail,
+                D::Trail {
+                    target,
+                    color,
+                    duration,
+                },
+            ) => Some(ParticleData::Trail(*target, *color as i32, *duration)),
+            (T::Trail, _) => return None,
+            (_, _) => None,
+        };
+        Some(Particle { id, data })
+    }
+
     /// `LivingEntity.updateSynchronizedMobEffectParticles`: DATA_EFFECT_PARTICLES
     /// (10) and DATA_EFFECT_AMBIENCE_ID (11) for an entity with `effects`.
     /// Nothing for an entity without effects (`removeEffectParticles`).

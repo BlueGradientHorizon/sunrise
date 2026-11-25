@@ -3,7 +3,10 @@
 use super::{Game, boats::Boat};
 use serde::Deserialize;
 use serde_json::json;
-use std::path::Path;
+use std::{
+    path::Path,
+    sync::{Arc, Mutex},
+};
 use sunrise_client::Result;
 use sunrise_core::geometry::Vec3;
 
@@ -52,49 +55,87 @@ fn is_player() -> bool {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn run_boat_authority_fixture(&mut self, directory: &Path) -> Result<()> {
+    /// Runs authoritative boat-attack cases on a server-role `Game`.
+    pub(in crate::game::server_side) fn run_boat_authority_attacks(
+        &mut self,
+        directory: &Path,
+        out: &Arc<Mutex<Vec<(usize, serde_json::Value)>>>,
+    ) -> Result<()> {
         let cases: Vec<Case> =
             serde_json::from_str(&std::fs::read_to_string(directory.join("inputs.json"))?)?;
-        let mut output = Vec::new();
-        for case in cases {
+        let mut results = Vec::new();
+        for (index, case) in cases.into_iter().enumerate() {
+            let Some(attack) = case.attack else {
+                continue;
+            };
             self.boats.clear();
             let mut boat = Boat::new(1, "oak".into(), Vec3::new(0.0, 100.0, 0.0), 0.0);
             let [x, y, z] = case.velocity;
             boat.velocity = Vec3::new(x, y, z);
             boat.delta_rotation = case.spin;
             self.boats.push(boat);
-            if let Some(attack) = case.attack {
-                let mut player =
-                    sunrise_client::motion::PlayerMotion::new(self.motion, Vec3::ZERO)?;
-                player.velocity = Vec3::new(
-                    attack.player_velocity[0],
-                    attack.player_velocity[1],
-                    attack.player_velocity[2],
-                );
-                player.set_sprinting(attack.sprint)?;
-                self.player = Some(player);
-                self.inventory.fill(None);
-                self.selected = 0;
-                if attack.knockback > 0 {
-                    self.inventory[0] = sunrise_client::item_data::parse_stack(&format!(
-                        r#"{{id:"minecraft:stick",count:1,components:{{"minecraft:enchantments":{{"minecraft:knockback":{}}}}}}}"#,
-                        attack.knockback
-                    ))?;
-                }
-                self.yaw = attack.yaw;
-                self.server.attack_ticks = attack.ticks;
-                self.creative = attack.creative;
-                self.strike_boat(0);
-                let player = self.player.as_ref().unwrap();
-                output.push(json!({
+            let mut player = sunrise_client::motion::PlayerMotion::new(self.motion, Vec3::ZERO)?;
+            player.velocity = Vec3::new(
+                attack.player_velocity[0],
+                attack.player_velocity[1],
+                attack.player_velocity[2],
+            );
+            player.set_sprinting(attack.sprint)?;
+            self.player = Some(player);
+            self.inventory.fill(None);
+            self.selected = 0;
+            if attack.knockback > 0 {
+                self.inventory[0] = sunrise_client::item_data::parse_stack(&format!(
+                    r#"{{id:"minecraft:stick",count:1,components:{{"minecraft:enchantments":{{"minecraft:knockback":{}}}}}}}"#,
+                    attack.knockback
+                ))?;
+            }
+            self.yaw = attack.yaw;
+            self.server.attack_ticks = attack.ticks;
+            self.creative = attack.creative;
+            self.strike_boat(0);
+            let player = self.player.as_ref().unwrap();
+            results.push((
+                index,
+                json!({
                     "name": case.name,
                     "velocity": self.boats.first().map(|boat| boat.velocity.components().map(|v| format!("{:016x}", v.to_bits()))),
                     "destroyed": self.boats.is_empty(),
                     "player_velocity": player.velocity.components().map(|v| format!("{:016x}", v.to_bits())),
                     "sprint": player.sprinting,
-                }));
+                }),
+            ));
+        }
+        *out.lock().unwrap() = results;
+        Ok(())
+    }
+
+    pub(in crate::game) fn run_boat_authority_fixture(&mut self, directory: &Path) -> Result<()> {
+        let cases: Vec<Case> =
+            serde_json::from_str(&std::fs::read_to_string(directory.join("inputs.json"))?)?;
+        let total = cases.len();
+        let has_attacks = cases.iter().any(|case| case.attack.is_some());
+        let mut indexed: Vec<(usize, serde_json::Value)> = Vec::with_capacity(total);
+        if has_attacks {
+            let attacks = Arc::new(Mutex::new(Vec::new()));
+            self.run_component_harness(
+                crate::game::integrated::ComponentHarness::BoatAuthorityAttacks(
+                    directory.to_path_buf(),
+                    attacks.clone(),
+                ),
+            )?;
+            indexed.extend(std::mem::take(&mut *attacks.lock().unwrap()));
+        }
+        for (index, case) in cases.into_iter().enumerate() {
+            if case.attack.is_some() {
                 continue;
             }
+            self.boats.clear();
+            let mut boat = Boat::new(1, "oak".into(), Vec3::new(0.0, 100.0, 0.0), 0.0);
+            let [x, y, z] = case.velocity;
+            boat.velocity = Vec3::new(x, y, z);
+            boat.delta_rotation = case.spin;
+            self.boats.push(boat);
             let mut steps = Vec::new();
             if let Some(paddles) = case.paddles {
                 self.riding = None;
@@ -127,7 +168,7 @@ impl Game<'_> {
                         "rowing": rowing,
                     }));
                 }
-                output.push(json!({"name": case.name, "steps": steps}));
+                indexed.push((index, json!({"name": case.name, "steps": steps})));
                 continue;
             }
             for owned in case.owned {
@@ -145,8 +186,10 @@ impl Game<'_> {
                     "velocity": boat.velocity.components().map(|v| format!("{:016x}", v.to_bits())),
                 }));
             }
-            output.push(json!({"name": case.name, "steps": steps}));
+            indexed.push((index, json!({"name": case.name, "steps": steps})));
         }
+        indexed.sort_by_key(|(index, _)| *index);
+        let output: Vec<serde_json::Value> = indexed.into_iter().map(|(_, v)| v).collect();
         std::fs::write(directory.join("rust.json"), serde_json::to_vec(&output)?)?;
         Ok(())
     }

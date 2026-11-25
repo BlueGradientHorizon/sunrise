@@ -18,7 +18,7 @@ impl Game<'_> {
     /// `Pufferfish.playerTouch`: accepted player damage, the sting game event, then poison with
     /// this fish as source.
     pub(in crate::game) fn touch_pufferfish(&mut self) {
-        if self.remote.is_some() || self.spectator() {
+        if !self.is_logical_server() || self.spectator() {
             return;
         }
         let Some(player) = self.player.as_ref().filter(|p| !p.health.dead_or_dying()) else {

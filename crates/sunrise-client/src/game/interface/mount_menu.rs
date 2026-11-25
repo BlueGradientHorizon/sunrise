@@ -102,20 +102,15 @@ impl Game<'_> {
         });
         self.show_mount_menu();
     }
-    /// E while riding a tamed mount opens its inventory instead of the player's.
-    pub(in crate::game) fn open_ridden_mount_menu(&mut self) -> bool {
-        let Some(id) = self.riding else {
-            return false;
-        };
-        let Some(index) = self.mount_mob_index(id) else {
-            return false;
-        };
-        let m = &self.mobs[index];
-        if !has_mount_menu(m.species()) || !m.extra.tame || !m.alive() {
-            return false;
+    pub(in crate::game) fn show_mount_menu(&mut self) {
+        if self.remote.is_none() {
+            self.carried = None;
         }
-        self.open_mount_menu(index);
-        true
+        self.station = None;
+        self.container = None;
+        self.craft_size = 2;
+        self.set_screen(Screen::Inventory);
+        self.capture(false);
     }
     /// Riding a mount that has a horse inventory (`HasCustomInventoryScreen`).
     pub(in crate::game::client_side) fn riding_mount_with_menu(&self) -> bool {
@@ -159,7 +154,7 @@ impl Game<'_> {
             _ => false,
         };
         if !valid {
-            self.close_container();
+            self.close_container_client();
             self.set_screen(Screen::Playing);
             self.capture(true);
         }

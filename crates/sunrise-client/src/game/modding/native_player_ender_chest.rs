@@ -89,7 +89,7 @@ impl Game<'_> {
         player: PlayerRef,
         title: Text,
     ) -> Result<bool, OpenMenuError> {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return Err(OpenMenuError::PlayerUnavailable);
         }
         let conn = self

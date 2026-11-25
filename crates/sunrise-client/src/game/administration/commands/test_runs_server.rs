@@ -83,7 +83,7 @@ impl Game<'_> {
         if self.server.command_source.is_some_and(|s| s.silent) {
             return;
         }
-        self.system_message(message.with_color(text::RED));
+        self.server_system_message(message.with_color(text::RED));
     }
     /// `createGameTestInfo`: the test of a test instance block.
     pub(in crate::game) fn test_info_at(&mut self, pos: Pos, retry: Retry) -> Option<Info> {

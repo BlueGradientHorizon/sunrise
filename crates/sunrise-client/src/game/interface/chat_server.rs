@@ -58,6 +58,14 @@ pub(in crate::game::server_side) use sunrise_world::registry::{BlockRegistry, Bl
 pub(in crate::game::server_side) use winit::keyboard::KeyCode;
 
 impl Game<'_> {
+    /// Commands the game issues itself (the server console, harnesses, the
+    /// control socket) run at the owner's level whatever Allow Commands says.
+    pub(in crate::game) fn as_console<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+        let level = std::mem::replace(&mut self.ui.registries.permission, 4);
+        let out = f(self);
+        self.ui.registries.permission = level;
+        out
+    }
     /// `ServerClockManager.ServerClockInstance.loadFrom`: restore the existing
     /// Overworld state when a world opens; clear the other command-state cache.
     /// The carrier store's open-time state settles here too, before the
@@ -115,28 +123,11 @@ impl Game<'_> {
         // (level.dat's day time, already in World.day_time) goes to the table.
         let clock = self.level_clock_name(self.dim);
         self.world.day_time = self.switch_clock(&clock);
-        self.ui.chat.clear();
         self.build_registries();
         // The world opens with its test instances (`Registries.TEST_INSTANCE`).
         self.snapshot_test_defs();
         self.sync_rules();
         self.carrier_world_opened()
-    }
-    /// A player's chat line on the window's own chat: a guest's message on
-    /// the server's own chat (`HostEvent::Chat`). `ChatListener`
-    /// checks `canReceivePlayerMessages` for these, so Commands Only and
-    /// Hidden drop them; command feedback (`/list`, `/tp`) is a system
-    /// message and takes the system-message permission instead.
-    pub(in crate::game::server_side) fn player_message(&mut self, text: Text) {
-        if let Some(capture) = self.server.chat_capture.as_mut() {
-            capture.push(text);
-            return;
-        }
-        // A server's client receives the line as a packet (PlayerChat or
-        // DisguisedChat) and filters it there.
-        if self.remote.is_none() {
-            self.local_chat_line(text, None, ChatSource::Player);
-        }
     }
     /// Save the clock beside level.dat (Level.write saves the game rules: a
     /// second writer of game_rules.dat could leave it with the rules loaded
@@ -213,20 +204,32 @@ impl Game<'_> {
         self.ui.registries.random_sequences = self.server.rand_sequences.ids();
         &mut self.ui.registries
     }
-    /// A chat message from the game (ChatComponent.addServerSystemMessage).
-    pub(in crate::game) fn system_message(&mut self, text: Text) {
+    /// A server-side system message: captured, queued to the acting player, or logged.
+    pub(in crate::game) fn server_system_message(&mut self, text: Text) {
+        assert!(
+            self.is_logical_server(),
+            "server_system_message called on Client role"
+        );
         if let Some(capture) = self.server.chat_capture.as_mut() {
             capture.push(text);
             return;
         }
-        // Connected to a server (single player's own included), the chat on
-        // screen is the connection's: the game's own messages join it.
-        if self.remote.is_some() {
-            self.add_chat_line(text, ChatSource::Server);
+        if self.server.lan_acting.is_some() {
+            self.server.guest_packets.push(
+                sunrise_protocol::packets::play::Clientbound::SystemChat(
+                    sunrise_protocol::packets::play::SystemChat {
+                        content: sunrise_client::lan::data::component_nbt(&text.component()),
+                        overlay: false,
+                    },
+                ),
+            );
             return;
         }
-        // The Chat option's Hidden level takes the server's messages too.
-        self.local_chat_line(text, Some(SYSTEM_INDICATOR), ChatSource::Server);
+        if self.is_dedicated_server() {
+            super::dedicated::log("INFO", &format!("System chat: {}", text.plain()));
+        } else {
+            log::info!("System chat: {}", text.plain());
+        }
     }
 }
 

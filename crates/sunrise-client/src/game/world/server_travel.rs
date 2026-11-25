@@ -485,7 +485,7 @@ impl Game<'_> {
                 });
         if !gateway_ok {
             self.as_guest(conn, |g| {
-                g.send_overlay_message(
+                g.server_send_overlay_message(
                     sunrise_client::text::Text::translate("spectator.cannot_teleport", &[])
                         .with_color(sunrise_client::text::RED),
                 );
@@ -510,7 +510,7 @@ impl Game<'_> {
                     // builds an exit portal, it gets no transition without one.
                     if !self.spectator_exit_exists(&plan) {
                         self.as_guest(conn, |g| {
-                            g.send_overlay_message(
+                            g.server_send_overlay_message(
                                 sunrise_client::text::Text::translate(
                                     "spectator.cannot_teleport",
                                     &[],

@@ -41,7 +41,7 @@ impl MobLevel for Game<'_> {
         Game::mob_uuid(self, id)
     }
     fn play_sound(&mut self, event: &str, at: [f64; 3], volume: f32, pitch: f32) {
-        self.audio.0.play(event, Some(at), volume, pitch);
+        self.server_play_sound(event, at, volume, pitch);
     }
     fn on_item_pickup(&mut self, mob_index: usize, item: &ItemEntity) {
         self.mob_item_pickup_trigger(mob_index, item);

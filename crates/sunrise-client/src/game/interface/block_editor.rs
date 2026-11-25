@@ -279,12 +279,11 @@ impl Game<'_> {
         match outcome {
             Outcome::Stay => {}
             Outcome::Send(packet) => {
-                // The integrated server is this game: vanilla's packet handler
-                // applies the edit there, so a local game applies it here.
-                if self.remote.is_none() {
-                    self.apply_local_editor_packet(&packet);
+                if self.remote.is_some() {
+                    self.send(packet);
+                } else {
+                    log::warn!("Sunrise: ignoring block editor submit without a server connection");
                 }
-                self.send(packet);
                 self.close_block_editor();
             }
             Outcome::SendAll(packets) => {
@@ -294,14 +293,6 @@ impl Game<'_> {
                 self.close_block_editor();
             }
             Outcome::Cancel => self.close_block_editor(),
-        }
-    }
-
-    /// The server side of an editor's packet, for the game that is its own
-    /// server: `handleSetJigsawBlock` and its siblings run on the server.
-    fn apply_local_editor_packet(&mut self, packet: &S) {
-        if let S::SetJigsawBlock(p) = packet {
-            self.apply_set_jigsaw_block(p);
         }
     }
 
@@ -876,7 +867,7 @@ mod tests {
             .block_entities
             .insert(pos, BlockEntity::JigsawBlock(Box::default()));
         game.world.modified.clear();
-        let packet = S::SetJigsawBlock(sunrise_protocol::packets::play::SetJigsawBlock {
+        let edit = sunrise_protocol::packets::play::SetJigsawBlock {
             pos: [2, 4, 3],
             name: "minecraft:test".into(),
             target: "minecraft:test".into(),
@@ -885,9 +876,9 @@ mod tests {
             joint: "aligned".into(),
             selection_priority: 1,
             placement_priority: 2,
-        });
+        };
 
-        game.block_editor_outcome(Outcome::Send(packet));
+        game.apply_set_jigsaw_block(&edit);
 
         let Some(BlockEntity::JigsawBlock(b)) = game.world.block_entities.get(&pos) else {
             panic!("no jigsaw");

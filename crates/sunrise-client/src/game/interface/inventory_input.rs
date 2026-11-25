@@ -113,7 +113,7 @@ impl Game<'_> {
             }
             self.set_screen_with(Screen::Playing, |g| g.close_creative_menu());
         } else {
-            self.close_container();
+            self.close_container_client();
             self.set_screen(Screen::Playing);
         }
         self.capture(true);

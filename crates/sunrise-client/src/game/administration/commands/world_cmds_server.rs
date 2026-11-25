@@ -68,8 +68,9 @@ impl Game<'_> {
         count
     }
     pub(in crate::game::server_side) fn cmd_particle(&mut self, ctx: &Context) -> R<i32> {
-        use sunrise_client::particles::{ParticleOptions, ParticleType};
-        let (name, options, block_state) = match ctx.get("name") {
+        use crate::lan::server_effects::{ServerParticle, ServerQueuedParticle};
+        use sunrise_client::particles::ParticleType;
+        let (name, particle) = match ctx.get("name") {
             Some(Arg::Particle(opts)) => {
                 use crate::game::api_values::TryIntoEngine;
                 let options = opts
@@ -80,7 +81,9 @@ impl Game<'_> {
                     .as_deref()
                     .unwrap_or(options.ty.name())
                     .to_owned();
-                (name, options, None)
+                let particle =
+                    crate::game::lan_particles::server_particle_from_options(&options, None);
+                (name, particle)
             }
             Some(Arg::Str(spec)) => {
                 // ParticleArgument: `id` then optional SNBT options (`dust{color:[1,0,0],scale:2}`).
@@ -99,9 +102,7 @@ impl Game<'_> {
                     Tag::String(s) => Some(s.to_string_lossy()),
                     _ => None,
                 };
-                // The block state of a block particle, for its packet.
-                let mut block_state = None;
-                let options = match ty {
+                let particle = match ty {
                     // ItemParticleOption: an item id, or a stack {id, ...}.
                     ParticleType::Item => {
                         let id = match field("item") {
@@ -116,14 +117,13 @@ impl Game<'_> {
                         } else {
                             format!("minecraft:{id}")
                         };
-                        self.item_particle(&sunrise_client::items::ItemStack::new(&id, 1))
+                        Some(ServerParticle::item(sunrise_client::items::ItemStack::new(
+                            &id, 1,
+                        )))
                     }
                     ParticleType::ItemSlime
                     | ParticleType::ItemSnowball
-                    | ParticleType::ItemCobweb => {
-                        self.ensure_item_particle_sprites();
-                        ParticleOptions::simple(ty)
-                    }
+                    | ParticleType::ItemCobweb => Some(ServerParticle::simple(ty)),
                     ParticleType::Block
                     | ParticleType::BlockCrumble
                     | ParticleType::FallingDust
@@ -159,28 +159,25 @@ impl Game<'_> {
                         match block {
                             Ok(Arg::Block(b)) => {
                                 let state = self.block_state(&b)?;
-                                block_state = Some(state);
-                                let at = self
-                                    .position_arg(ctx, "pos")
-                                    .unwrap_or_else(|| self.source_position())
-                                    .map(|c| c.floor() as i32);
-                                let (sprite, tint) = self
-                                    .particle_sprite(state, at)
-                                    .unwrap_or_else(|| ("block/stone".into(), 0xFFFFFF));
-                                ParticleOptions::block(ty, sprite, tint)
+                                Some(ServerParticle::block(ty, state))
                             }
-                            _ => ParticleOptions::simple(ty),
+                            _ => Some(ServerParticle::simple(ty)),
                         }
                     }
                     // Every other type with options decodes its own codec
                     // (`ParticleTypes.CODEC`): dust, spells, sculk charge, shriek,
                     // geysers. A type without options keeps the defaults.
-                    _ => opts
-                        .as_ref()
-                        .and_then(|c| crate::game::potions::particle_options(ty, c))
-                        .unwrap_or_else(|| ParticleOptions::simple(ty)),
+                    _ => {
+                        let options = opts
+                            .as_ref()
+                            .and_then(|c| crate::game::potions::particle_options(ty, c))
+                            .unwrap_or_else(|| {
+                                sunrise_client::particles::ParticleOptions::simple(ty)
+                            });
+                        crate::game::lan_particles::server_particle_from_options(&options, None)
+                    }
                 };
-                (name.to_owned(), options, block_state)
+                (name.to_owned(), particle)
             }
             _ => return Ok(0),
         };
@@ -223,7 +220,7 @@ impl Game<'_> {
         let reached: Vec<Target> = viewers
             .into_iter()
             .filter(|&t| {
-                if options.mod_particle.is_some() {
+                if particle.as_ref().is_some_and(ServerParticle::is_mod) {
                     let conn = match t {
                         Target::Player => self.server.lan_acting,
                         Target::Guest(conn) => Some(conn),
@@ -248,11 +245,11 @@ impl Game<'_> {
         if reached.is_empty() {
             return Err(err("commands.particle.failed", &[]));
         }
-        // ServerLevel.sendParticles: each viewer a server serves is sent the
-        // particles (the player in place too when it is a guest); the
-        // window's own player draws them.
-        let packet = self
-            .network_particle(&options, block_state)
+        // ServerLevel.sendParticles: encode via the portable server particle codec,
+        // preserving `override_limiter: force` and the exact reached recipient set.
+        let packet = particle
+            .as_ref()
+            .and_then(|p| self.lan.as_ref()?.hub.server_particle(p))
             .map(|particle| {
                 C::LevelParticles(play::LevelParticles {
                     particle,
@@ -265,15 +262,25 @@ impl Game<'_> {
                     randomization: 0,
                 })
             });
-        let mut local = false;
         let mut sent = 0;
         for t in reached {
             match (t, &packet) {
-                (Target::Player, _) if self.server.lan_acting.is_none() => {
-                    local = true;
-                    sent += 1;
+                (Target::Player, None) if self.lan.is_none() => {
+                    if let Some(p) = &particle {
+                        self.server.pending_particles.push(ServerQueuedParticle {
+                            dimension: self.dim.id(),
+                            particle: p.clone(),
+                            at: pos,
+                            spread: delta,
+                            speed: [f64::from(speed); 3],
+                            count: count.max(0),
+                            randomization: 0,
+                            except: None,
+                        });
+                        sent += 1;
+                    }
                 }
-                (Target::Player, Some(p)) => {
+                (Target::Player, Some(p)) if self.server.lan_acting.is_some() => {
                     self.server.guest_packets.push(p.clone());
                     sent += 1;
                 }
@@ -288,9 +295,6 @@ impl Game<'_> {
         }
         if sent == 0 {
             return Err(err("commands.particle.failed", &[]));
-        }
-        if local {
-            self.cmd_particle_client(&options, pos, delta, speed, count);
         }
         self.feedback(Text::translate(
             "commands.particle.success",
@@ -950,7 +954,10 @@ impl Game<'_> {
                     host.hub.send_to(conn, &packet);
                 }
             }
-            None => self.client_audio_play_on(source, sound, Some(at), volume, pitch),
+            None => {
+                assert!(self.lan.is_none(), "/playsound None branch is fixture-only");
+                self.server_play_sound_on(source, sound, at, volume, pitch);
+            }
         }
     }
     pub(in crate::game) fn send_player_stop_sound(
@@ -979,7 +986,9 @@ impl Game<'_> {
                         host.hub.send_to(conn, &packet);
                     }
                 }
-                None => self.client_audio_stop_sounds(sound, source),
+                None => {
+                    assert!(self.lan.is_none(), "/stopsound None branch is fixture-only");
+                }
             }
         }
     }

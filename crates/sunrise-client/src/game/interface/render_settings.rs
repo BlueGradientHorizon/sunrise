@@ -136,10 +136,14 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn apply_settings(&mut self) {
-        self.bind_mod_mappings();
-        // LocalPlayer.refreshChatAbilities: the chat shows what the Chat option allows.
-        let abilities = self.chat_abilities();
-        self.ui.chat.set_abilities(&self.gui.atlas.font, abilities);
+        if self.is_logical_server() {
+            self.apply_server_settings();
+        } else {
+            self.apply_client_settings();
+        }
+    }
+
+    fn apply_streaming_settings(&mut self) {
         let streaming_target = crate::game::entity_culling::streaming_radius_for(
             self.settings.render_distance,
             self.remote.as_ref().map(|r| r.view_distance),
@@ -173,6 +177,18 @@ impl Game<'_> {
         if reload {
             self.all_sections_changed();
         }
+    }
+
+    fn apply_server_settings(&mut self) {
+        self.apply_streaming_settings();
+    }
+
+    fn apply_client_settings(&mut self) {
+        self.bind_mod_mappings();
+        // LocalPlayer.refreshChatAbilities: the chat shows what the Chat option allows.
+        let abilities = self.chat_abilities();
+        self.ui.chat.set_abilities(&self.gui.atlas.font, abilities);
+        self.apply_streaming_settings();
         self.audio.0.master = self.settings.master_volume as f32;
         if self.settings.sound_device != self.audio.0.device() {
             let _ = self.audio.0.set_device(&self.settings.sound_device);

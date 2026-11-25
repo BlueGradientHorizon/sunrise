@@ -1868,7 +1868,7 @@ impl Game<'_> {
             && let Some(stack) = stack
         {
             self.with_hand(hand, |game| {
-                if game.remote.is_none() {
+                if game.is_logical_server() {
                     game.award_stat("used", &stack.item, 1);
                 }
                 game.apply_after_use_components(stack);
@@ -1949,7 +1949,7 @@ impl Game<'_> {
     pub(in crate::game) fn native_chunks_loaded(&mut self) {
         self.fire_pending_block_entity_data_loads();
         let loaded = std::mem::take(&mut self.world.loaded_chunks);
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return;
         }
         let dimension = self.dim.id();
@@ -1962,7 +1962,7 @@ impl Game<'_> {
         &mut self,
         unloaded: &[std::sync::Arc<sunrise_client::chunk::Chunk>],
     ) {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return;
         }
         let dimension = self.dim.id();

@@ -148,12 +148,7 @@ impl Game<'_> {
             if !swapped {
                 return Some(false);
             }
-            self.audio.0.play(
-                "minecraft:block.shelf.multi_swap",
-                Some(pos.map(|n| f64::from(n) + 0.5)),
-                1.0,
-                1.0,
-            );
+            self.server_play_sound("minecraft:block.shelf.multi_swap", pos.map(|n| f64::from(n) + 0.5), 1.0, 1.0);
             Some(true)
         } else {
             let held = self.inventory[self.selected].clone();

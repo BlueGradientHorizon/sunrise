@@ -2,7 +2,7 @@
 #[allow(unused_imports)]
 use super::{Arg, Context, Game, R, Target, err};
 #[allow(unused_imports)]
-use sunrise_client::{hud_overlays::Titles, lan::data::component_nbt, text::Text};
+use sunrise_client::{lan::data::component_nbt, text::Text};
 #[allow(unused_imports)]
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
@@ -271,7 +271,7 @@ impl Game<'_> {
         let message = self.component_arg(ctx, "message")?;
         // Each player's chat (a guest's through the connection).
         for &t in &players {
-            self.for_player(t, |g| g.system_message(message.clone()));
+            self.for_player(t, |g| g.server_system_message(message.clone()));
         }
         Ok(players.len() as i32)
     }
@@ -283,21 +283,10 @@ impl Game<'_> {
             .map_or_else(Text::empty, |t| self.target_name(*t));
         let single = n == 1;
         let key = if ctx.has("clear") {
-            self.titles_or_packet(
-                &players,
-                Titles::clear,
-                C::ClearTitles(play::Bool1 { value: false }),
-            );
+            self.titles_or_packet(&players, C::ClearTitles(play::Bool1 { value: false }));
             "cleared"
         } else if ctx.has("reset") {
-            self.titles_or_packet(
-                &players,
-                |t| {
-                    t.clear();
-                    t.reset_times();
-                },
-                C::ClearTitles(play::Bool1 { value: true }),
-            );
+            self.titles_or_packet(&players, C::ClearTitles(play::Bool1 { value: true }));
             "reset"
         } else if ctx.has("times") {
             let get = |k: &str| match ctx.get(k) {
@@ -307,7 +296,6 @@ impl Game<'_> {
             let (fade_in, stay, fade_out) = (get("fadeIn"), get("stay"), get("fadeOut"));
             self.titles_or_packet(
                 &players,
-                |t| t.set_times(fade_in, stay, fade_out),
                 C::SetTitlesAnimation(play::TitlesAnimation {
                     fade_in,
                     stay,
@@ -321,17 +309,13 @@ impl Game<'_> {
                 text: component_nbt(&text.component()),
             };
             if ctx.has("subtitle") {
-                self.titles_or_packet(&players, |t| t.set_subtitle(text), C::SetSubtitleText(sent));
+                self.titles_or_packet(&players, C::SetSubtitleText(sent));
                 "show.subtitle"
             } else if ctx.has("actionbar") {
-                self.titles_or_packet(
-                    &players,
-                    |t| t.set_overlay(text, false),
-                    C::SetActionBarText(sent),
-                );
+                self.titles_or_packet(&players, C::SetActionBarText(sent));
                 "show.actionbar"
             } else {
-                self.titles_or_packet(&players, |t| t.set_title(text), C::SetTitleText(sent));
+                self.titles_or_packet(&players, C::SetTitleText(sent));
                 "show.title"
             }
         };

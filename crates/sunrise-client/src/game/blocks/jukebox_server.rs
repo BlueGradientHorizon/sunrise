@@ -25,15 +25,15 @@ pub(in crate::game::server_side) use sunrise_world::level::flags as level_flags;
 impl Game<'_> {
     #[inline(always)]
     pub(in crate::game) fn start_song_server(&mut self, pos: [i32; 3], song: &str) {
-        if self.audio_capture_active() {
+        self.notify_record_playing(pos, true);
+        if self.server.audio_capture_active {
             self.server.lan_songs.push((pos, Some(song.to_owned())));
         }
     }
     /// Level event 1011: the song ends, here and for the guests.
     pub(in crate::game) fn stop_song(&mut self, pos: [i32; 3]) {
-        self.stop_sound(pos);
         self.notify_record_playing(pos, false);
-        if self.audio_capture_active() {
+        if self.server.audio_capture_active {
             self.server.lan_songs.push((pos, None));
         }
     }

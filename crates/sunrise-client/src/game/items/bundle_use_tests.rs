@@ -42,7 +42,7 @@ fn bundle_completes_on_tick_200() {
             EVENTS.with(|events| events.borrow_mut().clear());
             assert!(game.start_using_item());
             for _ in 0..199 {
-                game.tick_using();
+                game.tick_using_server();
             }
             assert_eq!(game.using, Some((game.selected, 199)));
             assert!(game.server.guest_entity_events.is_empty());
@@ -55,7 +55,7 @@ fn bundle_completes_on_tick_200() {
                         .all(|e| e.0 != "minecraft:item_interact_finish")
                 )
             });
-            game.tick_using();
+            game.tick_using_server();
             assert_eq!(game.using, None);
             assert_eq!(game.server.guest_entity_events, vec![9]);
             assert_eq!(calls.load(Ordering::Relaxed), 1);
@@ -74,7 +74,7 @@ fn bundle_completes_on_tick_200() {
                     )]
                 )
             });
-            game.tick_using();
+            game.tick_using_server();
             assert_eq!(game.server.guest_entity_events, vec![9]);
             assert_eq!(calls.load(Ordering::Relaxed), 1);
         })

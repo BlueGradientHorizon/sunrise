@@ -603,7 +603,7 @@ impl Game<'_> {
                 self.as_guest(conn, |g| {
                     // HasCustomInventoryScreen: a tamed mount's horse
                     // inventory, or a chest boat's chest.
-                    if !g.open_ridden_mount_menu() {
+                    if !g.server_open_ridden_mount_menu() {
                         g.open_ridden_chest_boat();
                     }
                 });
@@ -869,9 +869,6 @@ impl Game<'_> {
                                     overlay: false,
                                 }));
                             }
-                        }
-                        if self.options.dedicated.is_none() && self.allow_commands() {
-                            self.system_message(message);
                         }
                     }
                 }

@@ -1840,18 +1840,6 @@ impl Game<'_> {
             }
             self.native_explosion_prime(center, radius);
         }
-        if let Some(p) = &self.player {
-            let d = [
-                p.position.x - center[0],
-                p.position.y - center[1],
-                p.position.z - center[2],
-            ];
-            let distance = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
-            self.input_feedback(sunrise_client::input_source::Feedback::Explosion {
-                distance,
-                radius,
-            });
-        }
         // Explosion.explode: the blast is heard.
         let ctx = sunrise_client::sculk::Context::default();
         self.post_game_event("minecraft:explode", center, ctx);
@@ -1881,20 +1869,12 @@ impl Game<'_> {
         let effects = self.blast_effects();
         if !source.silent {
             let pitch = (1.0 + (client_float() - client_float()) * 0.2) * 0.7;
-            self.client_audio_play(&effects.sound, Some(center), 4.0, pitch);
+            self.server_play_sound(&effects.sound, center, 4.0, pitch);
         }
         // ServerLevel.explode sends toBlow.size() whatever the interaction, and
         // `ServerExplosion.isSmall` also covers an explosion that keeps blocks.
         let block_count = targets.len();
         let small = radius < 2.0 || interaction == BlockInteraction::Keep;
-        let emitter = effects.emitter(small);
-        self.client_particles_explosion(
-            center,
-            emitter,
-            block_count,
-            radius,
-            &effects.block_particles,
-        );
         self.lan_explode(center, small, radius, block_count, pushed, effects);
         Ok(())
     }

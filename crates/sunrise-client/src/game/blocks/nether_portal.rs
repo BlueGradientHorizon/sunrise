@@ -828,7 +828,7 @@ impl Game<'_> {
         vehicles: bool,
         after_move: bool,
     ) {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return;
         }
         self.load_portal_arrivals();
@@ -1195,7 +1195,7 @@ impl Game<'_> {
         }
     }
     pub(in crate::game::server_side) fn find_portals(&mut self, only: Option<&[u32]>) {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return;
         }
         let ridden = if only.is_none() {
@@ -1739,7 +1739,7 @@ impl Game<'_> {
     /// tick, and one that crossed from a later level stands there until the
     /// next. Only the portal arrivals join; the chunks' entities wait.
     pub(in crate::game::server_side) fn land_portal_arrivals(&mut self) {
-        if self.remote.is_some() || self.portals.arrivals.is_empty() {
+        if !self.is_logical_server() || self.portals.arrivals.is_empty() {
             return;
         }
         let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
@@ -1752,7 +1752,7 @@ impl Game<'_> {
     /// their exit portal (found or built) or End destination, position,
     /// turned yaw and motion, and portal cooldown; they join the world with the chunk entities.
     pub(in crate::game::server_side) fn resolve_arrivals(&mut self) {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return;
         }
         let mut i = 0;
@@ -1923,7 +1923,7 @@ impl Game<'_> {
         &mut self,
         f: &mut super::FallingBlock,
     ) -> Option<Dim> {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return None;
         }
         let mut sections = std::mem::take(&mut self.portals.sections);
@@ -2005,7 +2005,7 @@ impl Game<'_> {
     }
     /// The waiting entities of the open world (read once).
     pub(in crate::game::server_side) fn load_portal_arrivals(&mut self) {
-        if self.portals.loaded || self.remote.is_some() {
+        if self.portals.loaded || !self.is_logical_server() {
             return;
         }
         self.portals.loaded = true;
@@ -2021,7 +2021,7 @@ impl Game<'_> {
     }
     /// Write the waiting entities when they changed.
     pub(in crate::game::server_side) fn save_portal_arrivals(&mut self) {
-        if !self.portals.dirty || self.remote.is_some() {
+        if !self.portals.dirty || !self.is_logical_server() {
             return;
         }
         let list = self

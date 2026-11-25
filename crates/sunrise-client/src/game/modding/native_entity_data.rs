@@ -17,7 +17,7 @@ impl Game<'_> {
     /// (`Entity.saveWithoutId`): its compound without `id`. An entity with no
     /// UUID yet gets the one it will be saved with. API 386.
     pub(in crate::game) fn entity_nbt(&mut self, entity: EntityRef) -> Option<Compound> {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return None;
         }
         let t = self.native_entity_target(entity)?;
@@ -38,7 +38,7 @@ impl Game<'_> {
     /// it (`life`, `inGround`, `pickup`, ...); other projectiles take only their position,
     /// motion, rotation and flags. API 386.
     pub(in crate::game) fn entity_merge_nbt(&mut self, entity: EntityRef, nbt: Compound) -> bool {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return false;
         }
         let Some(t) = self.native_entity_target(entity) else {
@@ -57,7 +57,7 @@ impl Game<'_> {
     /// Borrow the entity's scoreboard tags (`Entity.entityTags()`) without the
     /// lossy conversion used by `/tag <entity> list`.
     pub(in crate::game) fn entity_tags(&self, entity: EntityRef) -> Option<EntityTags<'_>> {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return None;
         }
         Some(self.saved_entity_tags(self.native_entity_target(entity)?))
@@ -65,7 +65,7 @@ impl Game<'_> {
     /// Adds tag `tag` (`Entity.addTag`): false when it has it already, holds
     /// 1024, its kind can't store tags yet, or the handle is stale. API 386.
     pub(in crate::game) fn entity_add_tag(&mut self, entity: EntityRef, tag: &str) -> bool {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return false;
         }
         let Some(t) = self.native_entity_target(entity) else {
@@ -83,7 +83,7 @@ impl Game<'_> {
     /// Removes tag `tag` (`Entity.removeTag`): false when it didn't have it.
     /// API 386.
     pub(in crate::game) fn entity_remove_tag(&mut self, entity: EntityRef, tag: &str) -> bool {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return false;
         }
         let Some(t) = self.native_entity_target(entity) else {
@@ -229,7 +229,7 @@ impl Game<'_> {
     /// The id of the entity a custom-name write changes, or None for a kind
     /// that keeps no name, a stale handle or on a client.
     fn name_holder(&self, entity: EntityRef) -> Option<u32> {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return None;
         }
         named_id(self.native_entity_target(entity)?)

@@ -22,7 +22,7 @@ impl Game<'_> {
             .map(|t| t.iter().cloned().collect())
             .unwrap_or_default();
         let food = nautilus::is_food(m, item, &taming);
-        let sneaking = self.sneak_or_right_shift_held();
+        let sneaking = self.server_acting_sneak();
         let tame = m.extra.tame;
         if m.is_baby() {
             // Animal.mobInteract: food grows a baby up by a tenth.
@@ -42,7 +42,7 @@ impl Game<'_> {
         // AbstractNautilus.mobInteract: shift + use on a tame adult opens its
         // saddle and armour screen (openCustomInventoryScreen).
         if tame && sneaking {
-            self.open_mount_menu(index);
+            self.server_request_mount_menu(index);
             return true;
         }
         if !item.is_empty() {

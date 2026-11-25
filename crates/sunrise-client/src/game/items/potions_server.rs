@@ -612,7 +612,7 @@ impl Game<'_> {
                     }
                     _ => ("minecraft:entity.lingering_potion.throw", 0.5),
                 };
-                self.client_audio_play(sound, Some(eye), 0.5, pitch);
+                self.server_play_sound(sound, eye, 0.5, pitch);
                 // Projectile.shootFromRotation(xRot, yRot, -20, power, 1.0), with
                 // what the thrower last moved (getKnownMovement).
                 let velocity = self.known_player_movement();
@@ -646,12 +646,7 @@ impl Game<'_> {
                         collect_dragon_breath(player.bounds(), &mut self.breath_clouds)
                 {
                     let player_pos = [player.position.x, player.position.y, player.position.z];
-                    self.client_audio_play(
-                        "minecraft:item.bottle.fill_dragonbreath",
-                        Some(player_pos),
-                        1.0,
-                        1.0,
-                    );
+                    self.server_play_sound("minecraft:item.bottle.fill_dragonbreath", player_pos, 1.0, 1.0);
                     self.post_entity_event("minecraft:fluid_pickup", Who::Player);
                     let cloud = sunrise_client::advancements::EntityView {
                         kind: "minecraft:area_effect_cloud".into(),
@@ -683,7 +678,7 @@ impl Game<'_> {
                 else {
                     return Ok(false);
                 };
-                self.client_audio_play("minecraft:item.bottle.fill", Some(at), 1.0, 1.0);
+                self.server_play_sound("minecraft:item.bottle.fill", at, 1.0, 1.0);
                 self.post_block_game_event(
                     "minecraft:fluid_pickup",
                     hit.pos,

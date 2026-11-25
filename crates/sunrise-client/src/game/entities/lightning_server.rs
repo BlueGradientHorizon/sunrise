@@ -151,12 +151,7 @@ impl Game<'_> {
                     if !state.converted.contains(&m.id) {
                         state.converted.push(m.id);
                         m.extra.variant = 1 - m.extra.variant.min(1);
-                        self.client_audio_play(
-                            "minecraft:entity.mooshroom.convert",
-                            Some(at),
-                            2.0,
-                            1.0,
-                        );
+                        self.server_play_sound("minecraft:entity.mooshroom.convert", at, 2.0, 1.0);
                     }
                     continue;
                 }

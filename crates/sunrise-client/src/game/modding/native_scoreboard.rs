@@ -162,7 +162,7 @@ impl Game<'_> {
 
     /// `Scoreboard.getObjective`.
     pub(in crate::game) fn objective(&self, name: &str) -> Option<ObjectiveRef> {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return None;
         }
         self.objective_handle(self.score.board.objective(name)?)
@@ -170,7 +170,7 @@ impl Game<'_> {
 
     /// `Scoreboard.getObjectives`.
     pub(in crate::game) fn objectives(&self) -> Vec<ObjectiveRef> {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return Vec::new();
         }
         self.score
@@ -189,7 +189,7 @@ impl Game<'_> {
         display_name: EngineText,
         render_type: ObjectiveRenderType,
     ) -> Result<ObjectiveRef, ObjectiveError> {
-        if self.remote.is_some() || self.native_lifecycle.epoch().is_none() {
+        if !self.is_logical_server() || self.native_lifecycle.epoch().is_none() {
             return Err(ObjectiveError::Stale);
         }
         self.load_scoreboard();
@@ -221,7 +221,7 @@ impl Game<'_> {
         &self,
         slot: DisplaySlot,
     ) -> Option<ObjectiveRef> {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return None;
         }
         self.objective_handle(self.score.board.display_objective(&slot.name())?)
@@ -240,7 +240,7 @@ impl Game<'_> {
             },
             None => {
                 self.load_scoreboard();
-                if self.remote.is_some() {
+                if !self.is_logical_server() {
                     return false;
                 }
                 self.journal_scoreboard();

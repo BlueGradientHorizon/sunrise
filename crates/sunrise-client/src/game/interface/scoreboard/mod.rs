@@ -175,7 +175,7 @@ impl Game<'_> {
     }
     /// Save the border of the level in place (`SavedData`, one per level).
     pub(in crate::game::server_side) fn save_border(&self) {
-        if !self.score.loaded || self.remote.is_some() {
+        if !self.score.loaded || !self.is_logical_server() {
             return;
         }
         if self.border != sunrise_client::worldborder::WorldBorder::default()
@@ -192,7 +192,7 @@ impl Game<'_> {
     }
     /// `ScoreboardSaveData` read from `data/minecraft/scoreboard.dat`.
     pub(in crate::game) fn load_scoreboard(&mut self) {
-        if self.score.loaded || self.remote.is_some() {
+        if self.score.loaded || !self.is_logical_server() {
             return;
         }
         self.score.loaded = true;
@@ -208,7 +208,7 @@ impl Game<'_> {
         self.sync_score_registries();
     }
     pub(in crate::game) fn save_scoreboard(&mut self) {
-        if !self.score.loaded || self.remote.is_some() {
+        if !self.score.loaded || !self.is_logical_server() {
             return;
         }
         self.score.storage.save(&self.server.world_root);

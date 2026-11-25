@@ -777,7 +777,7 @@ impl Game<'_> {
             // TntBlock.useItemOn: the rule is off, the acting player's overlay
             // says so, and PASS lets the item's own useOn light a fire there.
             let message = Text::translate("block.minecraft.tnt.disabled", &[]);
-            self.send_overlay_message(message);
+            self.server_send_overlay_message(message);
             return Ok(false);
         }
         // `TntBlock.prime`: an adventure player lights TNT only with a stack

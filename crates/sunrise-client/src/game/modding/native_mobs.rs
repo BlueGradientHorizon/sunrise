@@ -20,7 +20,7 @@ impl Game<'_> {
     /// listens (`native_living_equipment_listened`): a mob's first tick after
     /// that counts from empty too.
     pub(super) fn native_mobs_equipment(&mut self) {
-        if self.remote.is_some() || self.options.execution_role.is_client() {
+        if !self.is_logical_server() {
             return;
         }
         // Reading every mob's equipment each tick costs: only when a mod listens.
@@ -155,7 +155,7 @@ impl Game<'_> {
     /// Whether this is a level that simulates (not a client's copy) and the one
     /// in place is `dimension`.
     fn native_mob_level(&self, dimension: &str) -> bool {
-        self.remote.is_none() && dimension == self.dim.id()
+        self.is_logical_server() && dimension == self.dim.id()
     }
     /// Spawns a mob of `kind` (`minecraft:zombie`) at `pos` in the level in
     /// place, `dimension`, finalized as a natural spawn is, and kept when the

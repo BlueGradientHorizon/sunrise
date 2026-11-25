@@ -34,8 +34,6 @@ pub(in crate::game::server_side) use crate::game::lan_actions::building_players;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::lan_actions::bundle_inventory_slot;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::lan_actions::captured_block_break;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::lan_actions::equipment_changed;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::lan_actions::eye_columns;

@@ -1226,7 +1226,7 @@ impl Game<'_> {
         } else {
             return Err("no world of this game to open".into());
         };
-        self.system_message(Text::translate(
+        self.client_system_message(Text::translate(
             "menu.multiplayerOptions.publish.started.lan",
             &[Text::literal(port.to_string())],
         ));
@@ -1363,7 +1363,7 @@ impl Game<'_> {
                 self.friends_lan_closed();
             }
             if closed && announce && self.integrated.is_some() {
-                self.system_message(Text::translate(
+                self.client_system_message(Text::translate(
                     "menu.multiplayerOptions.publish.stopped",
                     &[],
                 ));
@@ -1392,7 +1392,7 @@ impl Game<'_> {
         self.world.block_log = None;
         self.world.connection_group_log = None;
         self.world.light_log = None;
-        self.lan_disconnect_client();
+        self.stop_audio_capture();
         self.server.bound_sounds.clear();
         self.server.lan_events.clear();
         self.server.lan_songs.clear();
@@ -1400,7 +1400,7 @@ impl Game<'_> {
         self.server.lan_cushion_breaks.clear();
         self.streaming.extra.clear();
         if announce {
-            self.system_message(Text::translate(
+            self.server_system_message(Text::translate(
                 "menu.multiplayerOptions.publish.stopped",
                 &[],
             ));
@@ -2398,17 +2398,6 @@ impl Game<'_> {
                                 &format!("System chat: {} joined the game", g.name),
                             );
                         }
-                    } else if self.player.is_some()
-                        && let Some(g) = host.hub.guest(conn)
-                        && g.placed
-                    {
-                        // The host's chat hears of the newcomer as the guests do.
-                        let (uuid, name) = (g.uuid, g.name.clone());
-                        let who = self.player_text(&name, uuid);
-                        self.system_message(
-                            Text::translate("multiplayer.player.joined", &[who])
-                                .with_color(sunrise_client::text::YELLOW),
-                        );
                     }
                     if let Some((uuid, name)) = self
                         .lan
@@ -3406,7 +3395,7 @@ impl Game<'_> {
         &mut self,
         events: &[sunrise_world::level::LevelEvent],
     ) {
-        if !self.audio_capture_active() {
+        if !self.server.audio_capture_active {
             return;
         }
         for e in events {
@@ -3441,17 +3430,16 @@ impl Game<'_> {
 
     /// `Level.blockEvent` for the guests (`ClientboundBlockEventPacket`).
     pub(in crate::game) fn lan_block_event(&mut self, pos: [i32; 3], b0: i32, b1: i32) {
-        if self.audio_capture_active() {
+        if self.server.audio_capture_active {
             let state = self.world.block(pos[0], pos[1], pos[2]).0;
             self.server.lan_block_events.push((pos, b0, b1, state));
         }
     }
     /// `Level.broadcastEntityEvent` for the guests.
-    pub(in crate::game) fn lan_entity_event(&mut self, id: i32, event: i8, at: [f64; 3]) {
-        if self.audio_capture_active() {
+    pub(in crate::game) fn lan_entity_event(&mut self, id: i32, event: i8, _at: [f64; 3]) {
+        if self.server.audio_capture_active {
             self.server.lan_entity_events.push((id, event));
         }
-        self.lan_entity_event_local(id, event, at);
     }
     /// Deliver one committed entity event immediately to tracking guests and the entity itself,
     /// without touching unrelated entries in `self.lan_entity_events`.
@@ -3459,61 +3447,18 @@ impl Game<'_> {
         &mut self,
         id: i32,
         event: i8,
-        at: [f64; 3],
+        _at: [f64; 3],
     ) {
         if let Some(host) = self.lan.as_ref() {
             host.hub.entity_event(id, event);
-        } else if self.audio_capture_active() {
+        } else if self.server.audio_capture_active {
             self.server.lan_entity_events.push((id, event));
-        }
-        self.lan_entity_event_local(id, event, at);
-    }
-    pub(in crate::game::server_side) fn lan_entity_event_local(
-        &mut self,
-        id: i32,
-        event: i8,
-        at: [f64; 3],
-    ) {
-        // Event 16: zombie villagers play their cure sound on each client.
-        if event == 16 && self.options.execution_role.is_client() {
-            self.zombie_villager_cure_sound(id as u32);
-        }
-        // Event 63: a sniffer's digging sound loop starts (ClientPacketListener.handleEntityEvent 63).
-        if event == 63 && self.options.execution_role.is_client() {
-            self.start_sniffer_digging_sound(id as u32);
-        }
-        // Event 21: a window that simulates the world itself is its own
-        // client, and hears the guardian's hum too.
-        if event == 21 && self.options.execution_role.is_client() {
-            self.start_guardian_sound(id as u32);
-        }
-        // Events 53 and 54: honey crumbs while sliding, and the landing burst
-        // (`HoneyBlock.showSlideParticles` / `showJumpParticles`), drawn by the
-        // client that runs the world.
-        if self.options.execution_role.is_client()
-            && sunrise_client::landing::honey_particle_count(event).is_some()
-        {
-            self.honey_entity_particles(at, event);
-        }
-        // Event 2: a mob's spear hit felt; the same window hears its own mob's hit.
-        if event == 2 && self.options.execution_role.is_client() {
-            self.remote_kinetic_hit(id);
-        }
-        // Fox.handleEntityEvent 45: the same window draws the eating crumbs.
-        if event == 45 && self.options.execution_role.is_client() {
-            self.fox_eat_particles(id as u32);
-        }
-        // Entity event 35: a mob's death protection fired
-        // (`LivingEntity.checkTotemDeathProtection`); the clients draw the
-        // totem particles and play its sound.
-        if event == 35 && self.options.execution_role.is_client() {
-            self.remote_totem(id);
         }
     }
     /// `ServerPlayer.onEquippedItemBroken` for the acting player (the guest whose turn it
     /// is, else the host): the broken statistic, then `level.broadcastEntityEvent` of the
     /// slot's break event, which each client answers with `breakItem` (the sound and the
-    /// crumbs, `remote_equipment_break`). Without a hub to tell, they are played here.
+    /// crumbs, `remote_equipment_break`).
     pub(in crate::game::server_side) fn player_equipment_broke(
         &mut self,
         slot: sunrise_core::equipment_slot::EquipmentSlot,
@@ -3531,58 +3476,25 @@ impl Game<'_> {
             EquipmentSlot::Body => 65,
             EquipmentSlot::Saddle => 68,
         };
-        let Some(at) = self
-            .player
-            .as_ref()
-            .map(|p| [p.position.x, p.position.y, p.position.z])
-        else {
+        if self.player.is_none() {
             return;
-        };
-        let told = self.server.lan_acting.is_some();
-        if told {
+        }
+        if self.server.lan_acting.is_some() {
             self.server.guest_equipment_breaks.push(event);
         }
-        if told && !self.options.execution_role.is_client() {
-            return;
-        }
-        // LivingEntity.breakItem: the stack's break sound where it stands, then the crumbs.
-        self.break_sound_at(stack, at);
-        self.eat_particles(stack, 5);
     }
-    /// `ServerPlayer.crit` (or `magicCrit` when `magic`): this window's
-    /// emitter, and an animation for the attacker's client and observers once
-    /// the hub is back in place.
+    /// `ServerPlayer.crit` (or `magicCrit` when `magic`): queues an animation
+    /// for the attacker's client and observers once the hub is back in place.
     pub(in crate::game::server_side) fn critical_hit(
         &mut self,
         attacker: Option<u32>,
         id: i32,
-        feet: [f64; 3],
-        width: f64,
-        height: f64,
+        _feet: [f64; 3],
+        _width: f64,
+        _height: f64,
         magic: bool,
     ) {
-        use sunrise_client::particles::{
-            ParticleOptions, ParticleType, TrackingBody, TrackingTarget,
-        };
-        let particle = if magic {
-            ParticleType::EnchantedHit
-        } else {
-            ParticleType::Crit
-        };
-        let body = self.mob_index.get(&self.mobs, id as u32).map_or(
-            TrackingBody {
-                feet,
-                width,
-                height,
-            },
-            super::render_tick::mob_tracking_body,
-        );
-        self.client_particles_tracking_emitter(
-            ParticleOptions::simple(particle),
-            TrackingTarget::Entity(id),
-            body,
-        );
-        if self.audio_capture_active() {
+        if self.server.audio_capture_active {
             self.server.lan_critical_hits.push((attacker, id, magic));
         }
     }
@@ -3857,7 +3769,7 @@ impl Game<'_> {
             // too): the host's Chat option decides, as `ChatListener` does
             // for the guests' packets. Command feedback is a system message
             // and takes the system-message permission instead.
-            HostEvent::Chat { line, .. } => self.player_message(Text::untrusted(line)),
+            HostEvent::Chat { line, .. } => log::info!("{line}"),
             HostEvent::Warn(line) if dedicated => super::dedicated::log("WARN", &line),
             HostEvent::Warn(line) => log::warn!("{line}"),
             HostEvent::Error(line) if dedicated => super::dedicated::log("ERROR", &line),

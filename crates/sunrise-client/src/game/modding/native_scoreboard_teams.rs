@@ -63,7 +63,7 @@ fn api_comp(comp: &Comp) -> Result<mod_api::Text, TextFormError> {
 impl Game<'_> {
     /// The team a handle names: None for a stale handle, one of an earlier open, or on a client.
     fn team_state(&self, team: TeamRef) -> Option<&sb::Team> {
-        if self.remote.is_some() || self.native_lifecycle.epoch() != Some(team.fields().epoch) {
+        if !self.is_logical_server() || self.native_lifecycle.epoch() != Some(team.fields().epoch) {
             return None;
         }
         self.score.board.team_by_identity(team.fields().id)
@@ -95,7 +95,7 @@ impl Game<'_> {
 
     /// `Scoreboard.getPlayerTeam`.
     pub(super) fn team(&self, name: &str) -> Option<TeamRef> {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return None;
         }
         self.team_handle(self.score.board.team(name)?)
@@ -103,7 +103,7 @@ impl Game<'_> {
 
     /// `Scoreboard.getPlayerTeams`.
     pub(super) fn teams(&self) -> Vec<TeamRef> {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return Vec::new();
         }
         self.score
@@ -116,7 +116,7 @@ impl Game<'_> {
 
     /// `/team add`.
     pub(super) fn add_team(&mut self, name: &str) -> Result<TeamRef, TeamError> {
-        if self.remote.is_some() || self.native_lifecycle.epoch().is_none() {
+        if !self.is_logical_server() || self.native_lifecycle.epoch().is_none() {
             return Err(TeamError::Stale);
         }
         self.load_scoreboard();

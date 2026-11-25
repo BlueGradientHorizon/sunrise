@@ -58,7 +58,7 @@ impl Game<'_> {
         {
             return false;
         }
-        self.close_container();
+        self.close_container_client();
         self.set_screen(super::Screen::Playing);
         self.capture(true);
         true

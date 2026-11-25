@@ -203,7 +203,7 @@ impl Game<'_> {
         if !self.is_logical_server() && self.remote.is_none() {
             return None;
         }
-        if self.remote.is_none() {
+        if self.is_logical_server() {
             self.native_lifecycle.epoch()?;
         }
         if let Some(set) = self.registry_datapacks(&registry)

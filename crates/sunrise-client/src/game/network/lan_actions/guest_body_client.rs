@@ -49,7 +49,6 @@ impl Game<'_> {
                             f64::from(pos.y) + 0.5,
                             f64::from(pos.z) + 0.5,
                         ];
-                        self.audio.0.play_unshared(name, Some(at), volume, pitch);
                         self.send_level_sound(LevelSound::new(name, at, volume, pitch), None);
                     }
                 }
@@ -63,7 +62,6 @@ impl Game<'_> {
                     ..
                 }) => {
                     if let Some(name) = sound.player_fall_sound() {
-                        self.audio.0.play_unshared(name, Some(at), volume, pitch);
                         self.send_level_sound(LevelSound::new(name, at, volume, pitch), Some(conn));
                     }
                 }
@@ -108,12 +106,6 @@ impl Game<'_> {
                         state,
                         entity,
                         mod_api::BlockSoundCause::Fall,
-                    );
-                    self.audio.0.play_unshared(
-                        &sound.fall,
-                        Some(at),
-                        sound.volume * 0.5,
-                        sound.pitch * 0.75,
                     );
                     self.send_level_sound(
                         // `Player.playSound` plays in the players' source.
@@ -161,7 +153,6 @@ impl Game<'_> {
                         host.hub
                             .entity_event(g.entity_id, crate::game::combat::DROWN_EVENT);
                     }
-                    self.drown_particles(at, [0.0; 3], 8);
                 }
                 // ServerPlayer.onInsideBlock: the enter_block trigger, for the
                 // player who moved.
@@ -189,11 +180,9 @@ impl Game<'_> {
                     };
                     if sound {
                         let name = "minecraft:block.honey_block.slide";
-                        self.audio.0.play_unshared(name, Some(at), 1.0, 1.0);
                         self.send_level_sound(LevelSound::new(name, at, 1.0, 1.0), Some(conn));
                     }
                     if particles {
-                        self.honey_slide_particles(at);
                         if let Some(host) = self.lan.as_ref() {
                             host.hub.entity_event(id, 53);
                         }

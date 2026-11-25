@@ -798,15 +798,8 @@ impl Game<'_> {
             let pitch = (1.0
                 + (super::explosion::client_float() - super::explosion::client_float()) * 0.2)
                 * 0.7;
-            self.client_audio_play(src.sound, Some(center), 4.0, pitch);
+            self.server_play_sound(src.sound, center, 4.0, pitch);
         }
-        // Explosion.isSmall: below a radius of 2.
-        let ty = if radius < 2.0 {
-            ParticleType::GustEmitterSmall
-        } else {
-            ParticleType::GustEmitterLarge
-        };
-        self.client_particles_add(&ParticleOptions::simple(ty), center, [1.0, 0.0, 0.0]);
         self.lan_wind_burst(center, radius, src.sound, block_count, &pushed);
         Ok(())
     }

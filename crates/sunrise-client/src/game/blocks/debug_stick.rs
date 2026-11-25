@@ -5,7 +5,6 @@
 //! compound of block id to property name. Sunrise preserves it through
 //! `StackData::set_other` and `StackData::other`, so it travels through NBT unchanged.
 use super::Game;
-use sunrise_client::actions::Action;
 use sunrise_client::{Result, items::ItemStack, text::Text};
 use sunrise_core::position::BlockPos;
 use sunrise_world::level::flags;
@@ -67,7 +66,7 @@ impl Game<'_> {
             return Ok(false);
         };
         if state.properties.is_empty() {
-            self.send_overlay_message(text(
+            self.server_send_overlay_message(text(
                 "item.minecraft.debug_stick.empty",
                 &[state.name.as_str()],
             ));
@@ -81,7 +80,7 @@ impl Game<'_> {
         // `Player.isSecondaryUseActive` / `isShiftKeyDown`: the acting
         // player's sneak input. `keys` holds the host's, toggled sneak
         // included; the entry of `guest_turn` fills it from the guest's sneak state.
-        let backward = self.held_mapping(Action::Sneak);
+        let backward = self.server_acting_sneak();
 
         if cycle {
             // `cycleState`: a property selected on another block falls back to
@@ -121,7 +120,7 @@ impl Game<'_> {
                 );
             });
             self.process_level_events()?;
-            self.send_overlay_message(text(
+            self.server_send_overlay_message(text(
                 "item.minecraft.debug_stick.update",
                 &[property.as_str(), value.as_str()],
             ));
@@ -135,7 +134,7 @@ impl Game<'_> {
             let property = keys[relative_index(keys.len(), current, backward)].clone();
             let value = state.properties.get(&property).cloned().unwrap_or_default();
             self.set_debug_stick_property(&state.name, &property);
-            self.send_overlay_message(text(
+            self.server_send_overlay_message(text(
                 "item.minecraft.debug_stick.select",
                 &[property.as_str(), value.as_str()],
             ));

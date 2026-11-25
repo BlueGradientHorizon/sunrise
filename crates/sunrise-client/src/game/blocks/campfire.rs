@@ -8,7 +8,7 @@ use super::{
 };
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{
-    Result, actions::Action, block_entities::Pos, block_entity_render::vertex_light,
+    Result, block_entities::Pos, block_entity_render::vertex_light,
     camera::rotate_degrees, containers::BlockEntity, items::ItemStack, mesher::Vertex, mobs::Who,
 };
 use sunrise_client_render::block_entity_reach::Reach;
@@ -39,7 +39,7 @@ impl Game<'_> {
         // with a stack in either hand never reaches the block's `useItemOn`,
         // so the food stays in the hand and the item's own use (eating)
         // runs instead.
-        if self.held_mapping(Action::Sneak) {
+        if self.server_acting_sneak() {
             return Ok(None);
         }
         let state = self.world.block(pos[0], pos[1], pos[2]);

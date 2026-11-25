@@ -112,6 +112,13 @@ impl Game<'_> {
         let at = BlockPos::new(pos.0, pos.1, pos.2);
         self.with_level(|b, level, ticks| b.update_neighbour_for_output_signal(level, ticks, at));
     }
+    #[inline(always)]
+    pub(in crate::game) fn command_block_open_at(&self, pos: Pos) -> bool {
+        self.command_block_screen
+            .0
+            .as_ref()
+            .is_some_and(|s| s.cart.is_none() && s.pos == pos)
+    }
     /// `ClientPacketListener.handleBlockEntityData` then
     /// `CommandBlockEditScreen.updateGui`: new data for the command block the
     /// edit screen shows refreshes its fields. The mode and conditional live in
@@ -703,7 +710,7 @@ impl Game<'_> {
     /// window's own world applies it (`handleSetCommandBlock`).
     pub(in crate::game::client_side) fn set_command_block(&mut self, s: &CommandBlockScreen) {
         if !self.can_use_game_master_blocks() {
-            self.system_message(Text::translate("advMode.notAllowed", &[]));
+            self.client_system_message(Text::translate("advMode.notAllowed", &[]));
             return;
         }
         if let Some(id) = s.cart {
@@ -718,18 +725,18 @@ impl Game<'_> {
             conditional: s.conditional,
             auto: s.auto,
         };
-        if self.remote.is_some() {
-            self.send(S::SetCommandBlock(play::SetCommandBlock {
-                pos: [edit.pos.0, edit.pos.1, edit.pos.2],
-                command: edit.command,
-                mode: edit.mode.ordinal(),
-                flags: i8::from(edit.track_output)
-                    | (i8::from(edit.conditional) << 1)
-                    | (i8::from(edit.auto) << 2),
-            }));
-        } else {
-            self.apply_command_block(&edit);
-        }
+        assert!(
+            self.remote.is_some(),
+            "set_command_block called without a server connection"
+        );
+        self.send(S::SetCommandBlock(play::SetCommandBlock {
+            pos: [edit.pos.0, edit.pos.1, edit.pos.2],
+            command: edit.command,
+            mode: edit.mode.ordinal(),
+            flags: i8::from(edit.track_output)
+                | (i8::from(edit.conditional) << 1)
+                | (i8::from(edit.auto) << 2),
+        }));
     }
     /// `ServerGamePacketListenerImpl.handleSetCommandBlock` for a guest: the
     /// block is edited only by a creative player with game master commands.
@@ -751,7 +758,7 @@ impl Game<'_> {
             if allowed {
                 game.apply_command_block(&edit);
             } else {
-                game.system_message(Text::translate("advMode.notAllowed", &[]));
+                game.server_system_message(Text::translate("advMode.notAllowed", &[]));
             }
         });
     }
@@ -783,6 +790,13 @@ impl Game<'_> {
                 pos: [pos.0, pos.1, pos.2],
                 kind,
                 tag,
+            }),
+        );
+        host.hub.send_to(
+            conn,
+            &C::CustomPayload(sunrise_protocol::packets::configuration::CustomPayload {
+                channel: sunrise_client::lan::data::OPEN_COMMAND_BLOCK_CHANNEL.into(),
+                data: sunrise_client::lan::data::encode_open_command_block([pos.0, pos.1, pos.2]),
             }),
         );
     }
@@ -858,7 +872,7 @@ impl Game<'_> {
             } else {
                 "advMode.setCommand.disabled"
             };
-            self.system_message(Text::translate(key, &[Text::literal(command)]));
+            self.server_system_message(Text::translate(key, &[Text::literal(command)]));
         }
         // `BaseCommandBlock.onUpdated`: the edited block entity is saved and
         // its clients (and comparators) see the new command.

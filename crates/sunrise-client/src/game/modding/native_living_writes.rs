@@ -530,7 +530,7 @@ pub(in crate::game) mod tests {
                     game.inventory[5] = Some(ItemStack::new("minecraft:arrow", 8));
                     assert!(game.living_start_using_item(player, Hand::Main));
                     let projectiles = game.creatures.projectiles.len();
-                    game.tick_using();
+                    game.tick_using_server();
                     assert_eq!(game.using, None, "{item} {cancel} {duration:?}");
                     assert_eq!(game.creatures.projectiles.len(), projectiles);
                     let expected_count = if item == "minecraft:bow" { 2 } else { 1 };
@@ -572,11 +572,11 @@ pub(in crate::game) mod tests {
                 };
                 game.inventory[game.selected] = Some(ItemStack::new("minecraft:crossbow", 1));
                 assert!(game.living_start_using_item(player, Hand::Main));
-                game.tick_using();
+                game.tick_using_server();
                 assert_eq!(game.living_item_use_remaining(player), Some(first));
                 uses.lock().unwrap().cancel_tick = false;
                 uses.lock().unwrap().tick_duration = None;
-                game.tick_using();
+                game.tick_using_server();
                 assert_eq!(game.living_item_use_remaining(player), Some(second));
                 assert_eq!(game.living_used_item_hand(player), Some(Hand::Main));
                 assert_eq!(uses.lock().unwrap().finishes, 0);
@@ -602,7 +602,7 @@ pub(in crate::game) mod tests {
                 uses.clear_finish_result = true;
             }
             assert!(game.living_start_using_item(player, Hand::Main));
-            game.tick_using();
+            game.tick_using_server();
             assert_eq!(game.using, None);
             assert!(game.inventory[game.selected].is_none());
             let uses = uses.lock().unwrap();
@@ -620,7 +620,7 @@ pub(in crate::game) mod tests {
             uses.lock().unwrap().start_duration = Some(0);
             assert!(game.living_start_using_item(player, Hand::Main));
             assert!(game.using.is_some());
-            game.tick_using();
+            game.tick_using_server();
             assert_eq!(game.using, None);
             assert_eq!(uses.lock().unwrap().finishes, 1);
             *uses.lock().unwrap() = Uses {
@@ -644,20 +644,20 @@ pub(in crate::game) mod tests {
             game.inventory[game.selected] = Some(ItemStack::new("minecraft:shield", 1));
             assert!(game.living_start_using_item(player, Hand::Main));
             for _ in 0..10 {
-                game.tick_using();
+                game.tick_using_server();
             }
             *uses.lock().unwrap() = Uses {
                 tick_duration: Some(5),
                 ..Uses::default()
             };
-            game.tick_using();
+            game.tick_using_server();
             uses.lock().unwrap().tick_duration = None;
             assert_eq!(game.living_item_use_remaining(player), Some(4));
             for expected in [3, 2, 1] {
-                game.tick_using();
+                game.tick_using_server();
                 assert_eq!(game.living_item_use_remaining(player), Some(expected));
             }
-            game.tick_using();
+            game.tick_using_server();
             assert_eq!(game.using, None);
             let uses = uses.lock().unwrap();
             assert_eq!(uses.tick_remaining, [71_990, 4, 3, 2, 1]);
@@ -680,14 +680,14 @@ pub(in crate::game) mod tests {
                 };
                 game.inventory[game.selected] = Some(ItemStack::new("minecraft:shield", 1));
                 assert!(game.living_start_using_item(player, Hand::Main));
-                game.tick_using();
+                game.tick_using_server();
                 if replacement > 1 {
                     assert_eq!(game.living_item_use_remaining(player), Some(2));
                     assert_eq!(uses.lock().unwrap().finishes, 0);
-                    game.tick_using();
+                    game.tick_using_server();
                     assert_eq!(game.living_item_use_remaining(player), Some(1));
                     assert_eq!(uses.lock().unwrap().finishes, 0);
-                    game.tick_using();
+                    game.tick_using_server();
                 }
                 assert_eq!(game.using, None);
                 let uses = uses.lock().unwrap();
@@ -722,7 +722,7 @@ pub(in crate::game) mod tests {
                 assert_eq!(game.living_used_item_hand(player), Some(hand));
                 assert_eq!(game.living_item_use_remaining(player), Some(72_000));
                 for _ in 0..25 {
-                    game.tick_using();
+                    game.tick_using_server();
                 }
                 assert_eq!(game.living_used_item_hand(player), Some(hand));
                 assert_eq!(game.living_item_use_remaining(player), Some(71_975));
@@ -763,7 +763,7 @@ pub(in crate::game) mod tests {
             game.set_mapping_held("key.use", false);
             game.offhand = Some(ItemStack::new("minecraft:bow", 1));
             assert!(game.living_start_using_item(player, Hand::Off));
-            game.tick_using();
+            game.tick_using_server();
             assert_eq!(game.living_used_item_hand(player), None);
             assert_eq!(uses.lock().unwrap().stops, [(None, Hand::Off, 72_000)]);
         });
@@ -785,13 +785,13 @@ pub(in crate::game) mod tests {
                     uses.release_on_tick = (!from_item).then_some(player);
                     uses.release_on_use_tick = from_item.then_some(player);
                 }
-                game.tick_using();
+                game.tick_using_server();
                 assert_eq!(game.living_used_item_hand(player), None);
                 {
                     let mut uses = uses.lock().unwrap();
                     (uses.release_on_tick, uses.release_on_use_tick) = (None, None);
                 }
-                game.tick_using();
+                game.tick_using_server();
                 assert_eq!(game.living_used_item_hand(player), None);
                 assert_eq!(game.offhand, Some(stack));
             }

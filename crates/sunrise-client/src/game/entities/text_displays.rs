@@ -856,7 +856,7 @@ impl Game<'_> {
     /// `ClientLevel.isTickingEntity`: loaded chunk column membership on a remote client.
     pub(in crate::game::client_side) fn is_display_ticking(&self, pos: glam::DVec3) -> bool {
         if self.remote.is_none() {
-            return true;
+            return false;
         }
         let cx = pos.x.floor() as i32 >> 4;
         let cz = pos.z.floor() as i32 >> 4;

@@ -1450,41 +1450,11 @@ impl Game<'_> {
         self.recipe_ui.0.ghost.clear();
         self.place_book_recipe(BookType::Crafting, index, all);
     }
-    /// Whether the open menu is a content mod's menu type (a machine's, with or without a grid):
-    /// the server's menu on a server, the block's own in a solo world or on a LAN host.
+    /// Whether the open menu is a content mod's menu type.
     fn mod_menu_open(&self) -> bool {
         self.remote_menu_type()
             .and_then(sunrise_client::containers::mod_menu_type)
             .is_some()
-            || self.local_mod_menu().is_some()
-    }
-    /// The content mod menu type and block of the menu this player has open when the game is
-    /// its own server (a solo world, a LAN host's own player): the block container's menu type.
-    fn local_mod_menu(&self) -> Option<(&'static str, [i32; 3])> {
-        if self.remote.is_some() {
-            return None;
-        }
-        let k = self.container?;
-        Some((self.mod_menu_at(k)?, [k.0, k.1, k.2]))
-    }
-    /// `menu_transfer` for this player's own mod menu when the game is its own server: the same
-    /// server-side ask a guest's transfer gets (`guest_menu_transfer`), on the same thread.
-    /// None when no part listens (vanilla menus never ask) or no mod menu is open here.
-    fn local_menu_transfer(
-        &mut self,
-        recipe: &str,
-        max: bool,
-        dry_run: bool,
-    ) -> Option<RecipeTransferCheck> {
-        if !mod_api::__private::has_part_hook(mod_api::HookId::MenuTransfer) {
-            return None;
-        }
-        let (menu, pos) = self.local_mod_menu()?;
-        if !mod_api::__private::menu_listens(mod_api::HookId::MenuTransfer, menu) {
-            return None;
-        }
-        let player = self.own_uuid();
-        self.menu_transfer_answer(player, menu, Some(pos), recipe, max, dry_run)
     }
     /// Asks `menu_transfer` of the part of mod menu type `menu` (the caller checked that one
     /// listens): its answer, and with `dry_run` the cells it named, both lists kept to the
@@ -1546,24 +1516,11 @@ impl Game<'_> {
         let open = self.client.screen == Screen::Inventory
             && !self.spectator()
             && (self.mod_menu_open() || self.mod_recipe_screen());
-        if !open {
-            self.show_transfer_result(RecipeTransferResult::NotIntoMenu);
-            return;
-        }
-        if self.remote.is_none() {
-            // The game is its own server: the mod menu's part answers first, as on a server,
-            // then the grid transfer.
-            if let Some(answer) = self.local_menu_transfer(recipe, max, false) {
-                self.show_transfer_result(answer.result);
-                return;
-            }
-            self.local_grid_transfer(recipe, max);
-            return;
-        }
-        if !self
-            .remote
-            .as_ref()
-            .is_some_and(|r| r.recipe_viewer.transfer)
+        if !open
+            || !self
+                .remote
+                .as_ref()
+                .is_some_and(|r| r.recipe_viewer.transfer)
         {
             self.show_transfer_result(RecipeTransferResult::NotIntoMenu);
             return;
@@ -1645,26 +1602,7 @@ impl Game<'_> {
             ));
             return;
         }
-        // The game is its own server: a mod menu's part answers first, as on a server.
-        if let Some(answer) = self.local_menu_transfer(&id, false, false) {
-            self.show_transfer_result(answer.result);
-            return;
-        }
-        self.local_grid_transfer(&id, false);
-    }
-    /// The game's own grid transfer of `id` into this player's menu when the game is its own
-    /// server (what a server runs when no `menu_transfer` part answers).
-    fn local_grid_transfer(&mut self, id: &str, max: bool) {
-        use sunrise_client::menu::place::TransferError;
-        let mut result = Err(TransferError::Unavailable);
-        self.menu_session(|menu, env, _| {
-            result = menu.transfer_recipe(env, id, max);
-            Some(result.is_ok())
-        });
-        self.show_transfer_result(sunrise_client::lan::recipes::transfer_result(result));
-        if result.is_ok() {
-            self.recipe_book_changed();
-        }
+        self.show_transfer_result(RecipeTransferResult::NotIntoMenu);
     }
 
     /// A payload on one of the recipe viewer's channels
@@ -1737,12 +1675,6 @@ impl Game<'_> {
         &mut self,
         recipe: &str,
     ) -> Option<RecipeTransferCheck> {
-        // The game is its own server: a mod menu's part answers the dry run, with the
-        // cells it names, as `sunrise:recipe_check` asks it on a server; with none the
-        // check is as before.
-        if self.remote.is_none() && self.mod_menu_open() {
-            return self.local_menu_transfer(recipe, false, true);
-        }
         let eligible_menu = self.mod_recipe_screen()
             || (self.client.screen == Screen::Inventory
                 && !self.spectator()

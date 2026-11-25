@@ -778,7 +778,7 @@ impl Game<'_> {
             self.settings.sunrise.shader_pack.clear();
             self.settings.save(&Self::options_path());
         }
-        self.system_message(Text::colored(
+        self.client_system_message(Text::colored(
             format!("Shader pack {name} could not be loaded and was turned off"),
             0xFF5555,
         ));

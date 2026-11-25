@@ -731,9 +731,9 @@ pub(in crate::game) use crate::game::server_side::native_components_server::item
             game.inventory[game.selected] = Some(stack);
             assert!(game.start_eating(&info));
             assert!(game.using.is_some());
-            game.tick_using();
+            game.tick_using_server();
             assert_eq!(game.held().unwrap().count, 2);
-            game.tick_using();
+            game.tick_using_server();
             assert!(game.using.is_none());
             assert_eq!(
                 game.held().unwrap().count,

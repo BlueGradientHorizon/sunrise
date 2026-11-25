@@ -175,6 +175,8 @@ pub(in crate::game) use client_side::agent;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::agent_settings;
 #[allow(unused_imports)]
+pub(in crate::game) use server_side::acting_state;
+#[allow(unused_imports)]
 pub(in crate::game) use server_side::advancements;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::ahead;
@@ -342,8 +344,6 @@ pub(in crate::game) use client_side::client_ambient;
 pub(in crate::game) use client_side::client_attack_targets;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::client_cracks;
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::client_engine_forwarders;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::client_executor;
 #[allow(unused_imports)]
@@ -2377,7 +2377,7 @@ mod upload_pace;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::use_same_item_tests;
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::using_item;
+pub(in crate::game) use server_side::using_item;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::viewed_worlds;
 #[allow(unused_imports)]
@@ -2887,7 +2887,7 @@ struct GameLevel<'w> {
     debug: bool,
     native_sounds: &'w mut Vec<creatures::NativeSound>,
     loop_context: &'w sunrise_world::native_load_context::LoopContext,
-    native_particles: &'w mut Vec<lan_particles::QueuedParticle>,
+    native_particles: &'w mut Vec<crate::lan::server_effects::ServerQueuedParticle>,
     sound_seeds: Option<&'w sunrise_client::lan::hub::Hub>,
     drop_entity: Option<mod_api::EntityRef>,
     /// `LootContextParams.INTERACTING_ENTITY` of a block-interaction drop: the
@@ -3592,8 +3592,6 @@ struct Game<'a> {
     armor_stand_assets: client_side::ClientOnly<armor_stands::ArmorStandAssets>,
     boats: sunrise_client::join_seq::JoinList<boats::Boat, false>,
     carts: sunrise_client::join_seq::JoinList<minecarts::Minecart, false>,
-    /// Songs playing from jukeboxes (tracked sound handles).
-    jukebox_sounds: HashMap<(i32, i32, i32), u64>,
     bolts: sunrise_client::join_seq::ResidentList<lightning::Bolt>,
     maps: maps::Maps,
     dragon: native_entity_refs::dragon_parts_table::DragonSlot,
@@ -4525,7 +4523,7 @@ impl Game<'_> {
         self.ensure_stateful_entity_table();
         let result = self.with_level_access(false, f);
         self.flush_spill();
-        if self.lan.is_some() {
+        if self.is_logical_server() && self.lan.is_some() {
             self.flush_lan_particles();
             self.flush_native_sounds();
         }
@@ -5465,12 +5463,13 @@ impl Game<'_> {
         &self,
         stack: &ItemStack,
         hit: &Hit,
+        sneaking: bool,
     ) -> Option<(BlockStateId, String, Option<String>, u32, String, String)> {
         let blocking = self
             .offhand
             .as_ref()
             .is_some_and(|s| self.blocks_attacks(s).is_some())
-            && !self.held_mapping(Mapping::Sneak);
+            && !sneaking;
         self.block_transform_in(
             stack,
             hit,
@@ -6263,7 +6262,6 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             armor_stand_assets: wp.armor_stand_assets,
             boats: Default::default(),
             carts: Default::default(),
-            jukebox_sounds: HashMap::new(),
             bolts: Default::default(),
             maps: maps::Maps::default(),
             dragon: Default::default(),
@@ -6454,7 +6452,7 @@ impl<'a> Game<'a> {
             settings.file.int("tutorialStep"),
         ));
         let now = Instant::now();
-        let mut particles = if options.execution_role.is_dedicated_server() {
+        let mut particles = if options.execution_role.is_logical_server() {
             sunrise_client::particles::ParticleEngine::without_sprites()
         } else {
             sunrise_client::particles::ParticleEngine::new(

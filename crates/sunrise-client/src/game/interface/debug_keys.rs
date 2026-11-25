@@ -673,7 +673,7 @@ impl Game<'_> {
     /// `Minecraft.showDebugChat`: a client system message the narrator says.
     fn show_debug_chat(&mut self, message: Text) {
         self.say_system_queued(&message);
-        self.system_message(message);
+        self.client_system_message(message);
     }
     fn debug_feedback(&mut self, message: Text) {
         self.debug_decorated(YELLOW, message);

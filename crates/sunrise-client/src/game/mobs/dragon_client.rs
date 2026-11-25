@@ -346,21 +346,6 @@ impl Game<'_> {
             self.crystal_beam(pos, to - pos, self.visual_ticks() as f32 + a, camera, out);
         }
     }
-    /// `Mob.playAmbientSound` when EntityType.spawn places a dragon.
-    pub(in crate::game) fn dragon_spawn_ambient(&mut self, id: u32) -> bool {
-        let Some(d) = self.dragon.as_mut().filter(|d| d.id == id) else {
-            return false;
-        };
-        let at = [d.position.x, d.position.y, d.position.z];
-        let pitch = (d.random.next_float() - d.random.next_float()) * 0.2 + 1.0;
-        self.audio.0.play(
-            "minecraft:entity.ender_dragon.ambient",
-            Some(at),
-            5.0,
-            pitch,
-        );
-        true
-    }
     /// `DragonLandingPhase.doClientTick`, `DragonSittingFlamingPhase.doClientTick`,
     /// `DragonDeathPhase.doClientTick` and `DragonSittingAttackingPhase.doClientTick`,
     /// which `EnderDragon.aiStep` runs on a client. The first two breathe
@@ -423,48 +408,6 @@ impl Game<'_> {
                 .0
                 .play("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
         }
-    }
-    /// `LevelEvent 3001`: the dragon's growl over the island.
-    pub(in crate::game) fn respawn_growl(&mut self) {
-        let pitch = 0.8 + self.world.random.next_float() * 0.3;
-        self.audio.0.play(
-            "minecraft:entity.ender_dragon.growl",
-            Some([0.5, 128.5, 0.5]),
-            64.0,
-            pitch,
-        );
-    }
-    /// `DragonStrafePlayerPhase`'s shot: `new DragonFireball(level, dragon,
-    /// direction.normalize())`, whose `AbstractHurtingProjectile` constructor
-    /// takes the dragon as its owner and `assignDirectionalMovement`s the
-    /// direction normalized again times `accelerationPower` (0.1), then
-    /// `snapTo` the start. It joins the level's other projectiles.
-    pub(in crate::game) fn spawn_dragon_fireball(&mut self, at: Vec3, dir: Vec3) {
-        // Vec3.normalize: a vector shorter than 1e-5 is zero.
-        let normalize = |v: Vec3| {
-            let l = (v.x * v.x + v.y * v.y + v.z * v.z).sqrt();
-            if l < 1.0e-5 {
-                Vec3::new(0.0, 0.0, 0.0)
-            } else {
-                Vec3::new(v.x / l, v.y / l, v.z / l)
-            }
-        };
-        let n = normalize(normalize(dir));
-        self.audio.0.play(
-            "minecraft:entity.ender_dragon.shoot",
-            Some([at.x, at.y, at.z]),
-            10.0,
-            1.0,
-        );
-        let owner = self.dragon.as_ref().map(|d| Who::Mob(d.id));
-        let mut p = sunrise_client::projectiles::Projectile::new(
-            sunrise_client::projectiles::ProjectileKind::DragonFireball,
-            at,
-            owner,
-        );
-        p.acceleration = 0.1;
-        p.velocity = Vec3::new(n.x * 0.1, n.y * 0.1, n.z * 0.1);
-        self.add_projectile(p);
     }
     /// One client tick of the dragon. `lerp`: the step toward its last
     /// sent position and yaw (LivingEntity's interpolation), and the

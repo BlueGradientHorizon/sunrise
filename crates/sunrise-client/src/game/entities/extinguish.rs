@@ -51,7 +51,7 @@ impl Game<'_> {
     /// (`lowerFillLevel`, a `block_change` with no source). A server's
     /// cauldron is the server's.
     pub(in crate::game::server_side) fn cauldron_extinguish(&mut self, pos: BlockPos) {
-        if self.remote.is_some() || !self.may_interact_at(pos) {
+        if !self.is_logical_server() || !self.may_interact_at(pos) {
             return;
         }
         let at = [pos.x, pos.y, pos.z];

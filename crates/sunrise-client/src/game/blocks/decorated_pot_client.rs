@@ -91,12 +91,7 @@ impl Game<'_> {
         // The sherds and item go to the guests (BlockEntityData).
         self.mark_block_entity_updated((pos[0], pos[1], pos[2]));
         self.consume_held();
-        self.audio.0.play(
-            "minecraft:block.decorated_pot.insert",
-            Some(center),
-            1.0,
-            0.7 + 0.5 * pitch_bend,
-        );
+        self.server_play_sound("minecraft:block.decorated_pot.insert", center, 1.0, 0.7 + 0.5 * pitch_bend);
         // ServerLevel.sendParticles(DUST_PLUME, x + 0.5, y + 1.2, z + 0.5, 7, 0, 0, 0, 0):
         // the server draws none of it; the players within 32 blocks do, the window included.
         let plume = ParticleOptions::simple(ParticleType::DustPlume);

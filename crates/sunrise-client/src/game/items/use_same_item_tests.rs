@@ -18,7 +18,7 @@ fn eating(ticks: u32, f: impl FnOnce(&mut Game<'_>)) -> Vec<String> {
         game.inventory[9] = Some(ItemStack::new("minecraft:arrow", 64));
         assert!(game.start_using_item());
         for _ in 0..ticks {
-            game.tick_using();
+            game.tick_using_server();
         }
         assert_eq!(game.using, Some((game.selected, ticks)));
         f(game);
@@ -41,7 +41,7 @@ fn arrows(game: &Game<'_>) -> u32 {
 fn a_bow_put_in_place_of_the_apple_stops_the_use() {
     let lines = eating(5, |game| {
         *game.held_mut() = Some(ItemStack::new("minecraft:bow", 1));
-        game.tick_using();
+        game.tick_using_server();
         assert!(game.using.is_none());
         game.set_mapping_held("key.use", false);
         assert!(!game.release_using_item());
@@ -55,7 +55,7 @@ fn a_bow_put_in_place_of_the_apple_stops_the_use() {
 fn replacing_the_apple_with_air_stops_the_use() {
     let lines = eating(5, |game| {
         assert!(game.run_command("item replace entity @s weapon.mainhand with air"));
-        game.tick_using();
+        game.tick_using_server();
         assert!(game.using.is_none());
     });
     assert_eq!(lines, [FINISH]);
@@ -66,7 +66,7 @@ fn replacing_the_apple_with_air_stops_the_use() {
 fn clearing_the_apple_ends_the_use_silently() {
     let lines = eating(5, |game| {
         assert!(game.run_command("clear @s minecraft:golden_apple"));
-        game.tick_using();
+        game.tick_using_server();
         assert!(game.using.is_none());
     });
     assert!(lines.is_empty(), "{lines:?}");
@@ -79,7 +79,7 @@ fn another_apple_stack_goes_on_with_the_use() {
         assert!(game.run_command("item replace entity @s weapon.mainhand with golden_apple 3"));
         for _ in 5..32 {
             assert!(game.using.is_some());
-            game.tick_using();
+            game.tick_using_server();
         }
         assert!(game.using.is_none());
         assert_eq!(game.held().map(|s| s.count), Some(2));
@@ -107,7 +107,7 @@ fn a_command_putting_the_apple_back_keeps_the_use() {
         // before the next tick: `useItem` is still the apple, so the use goes on.
         *game.held_mut() = Some(ItemStack::new("minecraft:bow", 1));
         assert!(game.run_command("item replace entity @s weapon.mainhand with golden_apple"));
-        game.tick_using();
+        game.tick_using_server();
         assert_eq!(game.using, Some((game.selected, 6)));
     });
     assert!(lines.is_empty(), "{lines:?}");

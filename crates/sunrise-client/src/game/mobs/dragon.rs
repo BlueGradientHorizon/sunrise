@@ -2142,9 +2142,9 @@ impl Game<'_> {
             d.ambient_time = -AMBIENT_INTERVAL;
             let at = [d.position.x, d.position.y, d.position.z];
             let pitch = 0.8 + self.world.random.next_float() * 0.3;
-            self.client_audio_play("minecraft:entity.ender_dragon.hurt", Some(at), 5.0, pitch);
+            self.server_play_sound("minecraft:entity.ender_dragon.hurt", at, 5.0, pitch);
             if kind == DamageKind::Thorns {
-                self.client_audio_play("minecraft:enchant.thorns.hit", Some(at), 1.0, 1.0);
+                self.server_play_sound("minecraft:enchant.thorns.hit", at, 1.0, 1.0);
             }
             let d = self.dragon.as_mut().expect("dragon");
             if let Some(s) = source {
@@ -2849,12 +2849,7 @@ impl Game<'_> {
             // LivingEntity.getVoicePitch, from the dragon's own random.
             let r = &mut d.random;
             let pitch = (r.next_float() - r.next_float()) * 0.2 + 1.0;
-            self.client_audio_play(
-                "minecraft:entity.ender_dragon.ambient",
-                Some(at),
-                5.0,
-                pitch,
-            );
+            self.server_play_sound("minecraft:entity.ender_dragon.ambient", at, 5.0, pitch);
         }
         let d = self.dragon.as_mut().expect("dragon");
         // Flapping, growls and the flap sound.
@@ -2874,7 +2869,7 @@ impl Game<'_> {
         let at = [d.position.x, d.position.y, d.position.z];
         if flap_was <= -0.3 && flap_now >= -0.3 {
             let pitch = 0.8 + self.world.random.next_float() * 0.3;
-            self.client_audio_play("minecraft:entity.ender_dragon.flap", Some(at), 5.0, pitch);
+            self.server_play_sound("minecraft:entity.ender_dragon.flap", at, 5.0, pitch);
         }
         let d = self.dragon.as_mut().expect("dragon");
         if !d.phase.sitting() {
@@ -2882,7 +2877,7 @@ impl Game<'_> {
             if d.growl < 0 {
                 d.growl = 200 + d.random.next_int_bound(200).unwrap_or(0);
                 let pitch = 0.8 + self.world.random.next_float() * 0.3;
-                self.client_audio_play("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
+                self.server_play_sound("minecraft:entity.ender_dragon.growl", at, 2.5, pitch);
             }
         }
         // checkCrystals: heal 1 every 10 ticks from the nearest crystal, found
@@ -3351,13 +3346,6 @@ impl Game<'_> {
                     c.at[1],
                     c.at[2] + f64::from(a.sin() * d),
                 ];
-                self.client_particles_add_with(
-                    &ParticleOptions::simple(ParticleType::DragonBreath),
-                    at,
-                    [0.0, 0.0, 0.0],
-                    false,
-                    true,
-                );
             }
             // AreaEffectCloud: after its wait, each entity every 20 ticks.
             // Instant damage I from the flame cloud, II from a fireball's,
@@ -6452,6 +6440,56 @@ pub(in crate::game) mod tests {
                 ]
             );
         });
+    }
+}
+
+impl Game<'_> {
+    /// `Mob.playAmbientSound` when EntityType.spawn places a dragon.
+    pub(in crate::game) fn dragon_spawn_ambient(&mut self, id: u32) -> bool {
+        let Some(d) = self.dragon.as_mut().filter(|d| d.id == id) else {
+            return false;
+        };
+        let at = [d.position.x, d.position.y, d.position.z];
+        let pitch = (d.random.next_float() - d.random.next_float()) * 0.2 + 1.0;
+        self.server_play_sound("minecraft:entity.ender_dragon.ambient", at, 5.0, pitch);
+        true
+    }
+    /// `LevelEvent 3001`: the dragon's growl over the island.
+    pub(in crate::game) fn respawn_growl(&mut self) {
+        let pitch = 0.8 + self.world.random.next_float() * 0.3;
+        self.server_play_sound(
+            "minecraft:entity.ender_dragon.growl",
+            [0.5, 128.5, 0.5],
+            64.0,
+            pitch,
+        );
+    }
+    /// `DragonStrafePlayerPhase`'s shot: `new DragonFireball(level, dragon,
+    /// direction.normalize())`, whose `AbstractHurtingProjectile` constructor
+    /// takes the dragon as its owner and `assignDirectionalMovement`s the
+    /// direction normalized again times `accelerationPower` (0.1), then
+    /// `snapTo` the start. It joins the level's other projectiles.
+    pub(in crate::game) fn spawn_dragon_fireball(&mut self, at: Vec3, dir: Vec3) {
+        // Vec3.normalize: a vector shorter than 1e-5 is zero.
+        let normalize = |v: Vec3| {
+            let l = (v.x * v.x + v.y * v.y + v.z * v.z).sqrt();
+            if l < 1.0e-5 {
+                Vec3::new(0.0, 0.0, 0.0)
+            } else {
+                Vec3::new(v.x / l, v.y / l, v.z / l)
+            }
+        };
+        let n = normalize(normalize(dir));
+        self.server_play_sound("minecraft:entity.ender_dragon.shoot", [at.x, at.y, at.z], 10.0, 1.0);
+        let owner = self.dragon.as_ref().map(|d| Who::Mob(d.id));
+        let mut p = sunrise_client::projectiles::Projectile::new(
+            sunrise_client::projectiles::ProjectileKind::DragonFireball,
+            at,
+            owner,
+        );
+        p.acceleration = 0.1;
+        p.velocity = Vec3::new(n.x * 0.1, n.y * 0.1, n.z * 0.1);
+        self.add_projectile(p);
     }
 }
 

@@ -113,7 +113,7 @@ impl Game<'_> {
     /// entity that changed nothing costs a compare of its eight slots, and
     /// one that wears nothing and never wore anything is skipped outright.
     pub(in crate::game::server_side) fn tick_equipment_attributes(&mut self) {
-        if self.remote.is_some() || self.options.execution_role.is_client() {
+        if !self.is_logical_server() {
             return;
         }
         let catalog = self.motion.attributes.clone();
@@ -171,7 +171,7 @@ impl Game<'_> {
         id: u32,
         before: Option<ModifierSnapshot>,
     ) {
-        if self.remote.is_some() || self.options.execution_role.is_client() {
+        if !self.is_logical_server() {
             return;
         }
         let catalog = self.motion.attributes.clone();

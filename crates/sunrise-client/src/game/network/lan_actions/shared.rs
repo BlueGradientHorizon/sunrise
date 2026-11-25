@@ -360,16 +360,6 @@ impl Game<'_> {
     }
 }
 
-pub(in crate::game) fn captured_block_break(
-    sound: &sunrise_client::audio::CapturedSound,
-    blocks: &[[f64; 3]],
-) -> bool {
-    sound.entity.is_none()
-        && blocks
-            .iter()
-            .any(|b| (0..3).all(|k| (b[k] + 0.5 - sound.position[k]).abs() < 1e-6))
-}
-
 /// ClientboundSwingAnimationPacket: the hand and the animation (its type and
 /// base duration; each client applies the swinger's haste and fatigue).
 pub(in crate::game) fn swing_packet(id: i32, hand: Hand, animation: SwingAnimation) -> C {
@@ -454,28 +444,6 @@ pub(in crate::game) mod tests {
             }
             mod_api::Flow::Cancel
         }
-    }
-
-    #[test]
-    fn a_block_break_suppresses_its_positional_duplicate_but_not_an_entity_sound() {
-        let mut sound = sunrise_client::audio::CapturedSound {
-            event: "minecraft:block.stone.break".into(),
-            position: [1.5, 64.5, -2.5],
-            volume: 1.0,
-            pitch: 1.0,
-            source: 4,
-            entity: None,
-            except_entity: None,
-            seed: 0,
-            particles_before: 0,
-        };
-        let broken = [[1.0, 64.0, -3.0]];
-        assert!(super::captured_block_break(&sound, &broken));
-        sound.entity = Some(37);
-        assert!(!super::captured_block_break(&sound, &broken));
-        sound.entity = None;
-        sound.position[0] += 0.25;
-        assert!(!super::captured_block_break(&sound, &broken));
     }
 
     #[test]

@@ -656,7 +656,7 @@ impl Game<'_> {
                     return false;
                 }
                 if told {
-                    g.system_message(Text::translate(
+                    g.server_system_message(Text::translate(
                         "gameMode.changed",
                         std::slice::from_ref(&mode_name),
                     ));

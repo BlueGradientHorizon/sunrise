@@ -899,8 +899,6 @@ pub(in crate::game) mod menu_clicks_server;
 pub(in crate::game) mod minecarts_server;
 #[path = "modding/mods/mod_server.rs"]
 pub(in crate::game) mod mods_server;
-#[path = "interface/mount_menu_server.rs"]
-pub(in crate::game) mod mount_menu_server;
 #[path = "interface/names_server.rs"]
 pub(in crate::game) mod names_server;
 #[path = "modding/native_components_server.rs"]
@@ -937,6 +935,12 @@ pub(in crate::game) mod repro_server;
 pub(in crate::game) mod saving_server;
 #[path = "blocks/sculk_server.rs"]
 pub(in crate::game) mod sculk_server;
+#[path = "network/lan_actions/acting_state.rs"]
+pub(in crate::game) mod acting_state;
+#[path = "server_side/server_effects.rs"]
+pub(in crate::game) mod server_effects;
+#[path = "items/using_item.rs"]
+pub(in crate::game) mod using_item;
 #[path = "interface/shader_packs_server.rs"]
 pub(in crate::game) mod shader_packs_server;
 #[path = "interface/sign_edit_server.rs"]
@@ -1285,6 +1289,14 @@ pub(in crate::game) struct ServerState {
     /// `BrushableBlockEntity`'s brush counts of the blocks being brushed.
     pub(in crate::game::server_side) brushing: brush::Brushing,
     pub(in crate::game::server_side) restore_player_state: bool,
+    pub(in crate::game::server_side) acting_input: acting_state::ServerActingInput,
+    pub(in crate::game::server_side) pending_guest_ui: acting_state::ServerPendingGuestUi,
+    pub(in crate::game) audio_capture_active: bool,
+    pub(in crate::game) pending_sounds: Vec<sunrise_client_core::sound_source::ServerSound>,
+    pub(in crate::game) pending_particles: Vec<crate::lan::server_effects::ServerQueuedParticle>,
+    pub(in crate::game) pending_explosions: Vec<crate::lan::server_effects::ServerExplosion>,
+    pub(in crate::game) pending_native_sounds: Vec<creatures::NativeSound>,
+    pub(in crate::game) effect_rng: sunrise_core::random::LegacyRandom,
 }
 
 impl ServerState {
@@ -1427,6 +1439,14 @@ impl ServerState {
             rand_sequences: Default::default(),
             brushing: Default::default(),
             restore_player_state: true,
+            acting_input: acting_state::ServerActingInput::default(),
+            pending_guest_ui: acting_state::ServerPendingGuestUi::default(),
+            audio_capture_active: false,
+            pending_sounds: Vec::new(),
+            pending_particles: Vec::new(),
+            pending_explosions: Vec::new(),
+            pending_native_sounds: Vec::new(),
+            effect_rng: sunrise_core::random::LegacyRandom::new(0),
         }
     }
 }

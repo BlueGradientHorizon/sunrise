@@ -148,8 +148,7 @@ impl Game<'_> {
                 if body {
                     g.server.attack_ticks = g.server.attack_ticks.saturating_add(1);
                 }
-                g.set_mapping_held("key.use", g.using.is_some());
-                g.tick_using();
+                g.tick_using_server();
                 g.server.stab_players = outer;
                 if g.use_delay > 0 {
                     g.use_delay -= 1;

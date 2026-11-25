@@ -70,7 +70,7 @@ impl Game<'_> {
         let MoveWho::Entity(handle) = target else {
             return Some(target);
         };
-        let server = !self.options.execution_role.is_client() && self.remote.is_none();
+        let server = self.is_logical_server();
         if let EntityHandle::Mob(i) = handle {
             let mob = &self.mobs[i];
             // The controlling player's side owns a ridden mob's restitution.
@@ -505,7 +505,7 @@ impl Game<'_> {
         }
         let authoritative = match handle {
             EntityHandle::Boat(i) => self.boat_can_simulate_movement(self.boats[i].id),
-            _ => !self.options.execution_role.is_client() && self.remote.is_none(),
+            _ => self.is_logical_server(),
         };
         if let EntityHandle::ArmorStand(i) = handle {
             let stand = &mut self.armor_stands[i];

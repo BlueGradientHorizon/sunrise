@@ -95,6 +95,20 @@ impl Game<'_> {
     ) {
         self.remote_block_entity_data(p.pos, p.kind, BlockEntityDataSource::UpdatePacket, &p.tag);
     }
+    pub(in crate::game) fn remote_open_command_block(&mut self, data: &[u8]) {
+        assert!(
+            !self.is_logical_server(),
+            "remote_open_command_block called on Server role"
+        );
+        let Some(pos) = sunrise_client::lan::data::decode_open_command_block(data) else {
+            return;
+        };
+        if self.command_block_open_at(pos) {
+            self.command_block_data_arrived(pos);
+        } else {
+            self.open_command_block(pos);
+        }
+    }
 }
 
 impl Game<'_> {

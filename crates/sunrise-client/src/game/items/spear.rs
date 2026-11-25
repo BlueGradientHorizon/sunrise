@@ -49,7 +49,7 @@ impl Game<'_> {
             self.server.stabbed.retain(|(who, _), _| *who != actor);
             if let Some(p) = &self.player {
                 let at = [p.position.x, p.position.y, p.position.z];
-                self.client_audio_play(kinetic.sound, Some(at), 1.0, 1.0);
+                self.server_play_sound(kinetic.sound, at, 1.0, 1.0);
             }
         }
         true
@@ -237,7 +237,7 @@ impl Game<'_> {
             return;
         };
         let actor = self.server.lan_acting;
-        if self.audio_capture_active() {
+        if self.server.audio_capture_active {
             self.server.lan_kinetic_hits.push(actor);
         }
         let who = actor.map_or(OWN, |conn| conn as i32);
@@ -380,6 +380,33 @@ impl Game<'_> {
         true
     }
 
+    /// `Player.damageStatsAndHearts`: the damage dealt statistic, and the
+    /// damage indicator particles over a target that lost more than 2 health
+    /// (`feet` and `height`: the target's).
+    pub(in crate::game) fn damage_stats_and_hearts(
+        &mut self,
+        actual: f32,
+        feet: [f64; 3],
+        height: f64,
+    ) {
+        self.award_custom_stat("damage_dealt", (actual * 10.0).round() as i32);
+        if actual > 2.0 {
+            // The players a server serves are sent them too (the window of the server thread).
+            self.server_send_particles(crate::lan::server_effects::ServerQueuedParticle {
+                dimension: self.dim.id(),
+                particle: crate::lan::server_effects::ServerParticle::simple(
+                    sunrise_client::particles::ParticleType::DamageIndicator,
+                ),
+                at: [feet[0], feet[1] + height * 0.5, feet[2]],
+                spread: [0.1, 0.0, 0.1],
+                speed: [0.2; 3],
+                count: (actual * 0.5) as u32 as i32,
+                randomization: 0,
+                except: None,
+            });
+        }
+    }
+
     /// `Player.cannotAttackWithItem` for the held item: a spear needs its
     /// `minimum_attack_charge` of 1, counting `tolerance` ticks more than the
     /// `ticker` ticks charged.
@@ -454,7 +481,6 @@ impl Game<'_> {
             .is_none_or(|&t| now - t > HIT_FEEDBACK_TICKS)
         {
             self.server.kinetic_feedback.insert(entity, now);
-            self.client_audio_play_unshared(kinetic.hit_sound, Some(at), 1.0, 1.0);
         }
     }
 

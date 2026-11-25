@@ -167,12 +167,7 @@ impl Game<'_> {
             f64::from(p[2]) + 0.5,
         ];
         let pitch = self.world.random.next_float() * 0.1 + 0.9;
-        self.audio.0.play(
-            &format!("minecraft:block.{kind}.{side}"),
-            Some(at),
-            0.5,
-            pitch,
-        );
+        self.server_play_sound(&format!("minecraft:block.{kind}.{side}"), at, 0.5, pitch);
     }
     /// `CopperGolem.turnToStatue`, which its weathering asked for.
     pub(in crate::game) fn golem_become_statue(&mut self, id: u32) {
@@ -192,12 +187,7 @@ impl Game<'_> {
         });
         if let Some(at) = statue_at {
             self.remove_mob_now(id, false);
-            self.audio.0.play(
-                "minecraft:entity.copper_golem_become_statue",
-                Some(at),
-                1.0,
-                1.0,
-            );
+            self.server_play_sound("minecraft:entity.copper_golem_become_statue", at, 1.0, 1.0);
             if self
                 .mob_object(id)
                 .is_some_and(|mob| mob.extra.leash.is_some())

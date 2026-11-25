@@ -1,6 +1,6 @@
 //! Keep captured level sounds between an emitter's pairing and removal.
 use super::{containers::captured_sound_range, entity::EntityState, guest::Guest, hub::Hub};
-use crate::{audio::CapturedSound, fast_hash::FxHashSet};
+use crate::fast_hash::FxHashSet;
 use sunrise_protocol::{
     buf::Reader,
     ids::play::clientbound as ids,
@@ -19,7 +19,7 @@ impl Hub {
     /// those later emitters wait until the remaining sounds have gone out.
     pub fn prepare_captured_sounds(
         &self,
-        sounds: &mut Vec<CapturedSound>,
+        sounds: &mut Vec<sunrise_client_core::sound_source::ServerSound>,
         entities: &[EntityState],
     ) {
         let present: FxHashSet<i32> = if sounds.iter().any(|sound| sound.entity.is_some()) {

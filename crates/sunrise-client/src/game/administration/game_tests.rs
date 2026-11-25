@@ -1537,9 +1537,6 @@ impl Game<'_> {
                     if let Some(host) = self.lan.as_ref() {
                         host.hub.system_message(component_nbt(&text.component()));
                     }
-                    if self.serving.is_none() && self.options.dedicated.is_none() {
-                        self.system_message(text);
-                    }
                 }
             }
         }

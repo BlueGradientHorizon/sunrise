@@ -267,7 +267,6 @@ impl Game<'_> {
         if canceled {
             return Ok(false);
         }
-        self.input_feedback(sunrise_client::input_source::Feedback::BlockBroken);
         let broken = state;
         let facts = self.res.facts().get(state).clone();
         let held = self.held().cloned();
@@ -465,7 +464,9 @@ impl Game<'_> {
         self.tridents.clear();
         self.rockets.clear();
         self.bolts.clear();
-        self.clear_client_particles();
+        if !self.is_logical_server() {
+            self.clear_client_particles();
+        }
         self.riding = None;
         self.persist = Default::default();
         self.clear_entities_server_missing_professions();
@@ -479,19 +480,12 @@ impl Game<'_> {
     pub(in crate::game::server_side) fn clear_entities_server_missing_professions(&mut self) {
         self.server.missing_professions.clear();
     }
-    pub(crate) fn close_container(&mut self) {
-        // `Gui.setScreen` clears the old screen's focus before it goes: the
-        // key that closed the container (Tab bound to the inventory) has
-        // already moved the focus, and it must not outlive the screen.
-        self.pad_clear_focus();
-        self.mod_browser_closed();
-        self.reset_inventory_clicks();
-        self.close_station();
-        self.mount_closed();
-        self.client_recipe_ui_reset_screen();
-        if self.remote.is_some() {
-            return self.remote_close_container();
-        }
+    pub(crate) fn close_container_server(&mut self) {
+        assert!(
+            self.is_logical_server(),
+            "close_container_server called on Client role"
+        );
+        self.close_station_server();
         let mut returned: Vec<ItemStack> = self.carried.take().into_iter().collect();
         returned.extend(self.craft_grid.iter_mut().filter_map(Option::take));
         for stack in returned {
@@ -581,7 +575,6 @@ impl Game<'_> {
         self.share_spawn_conditions();
         self.score = Default::default();
         reset_world_progress(&mut self.adv, &mut self.stats);
-        self.reset_creative_contents();
         let stack = self
             .open_world_datapacks(&level.enabled_features)
             .map_err(|error| error.diagnostic())?;
@@ -674,7 +667,6 @@ impl Game<'_> {
         book.recipes.retain(|r| index.contains(r));
         book.to_be_displayed.retain(|r| index.contains(r));
         self.enter_opened_dim(dim);
-        self.client_audio_set_world(dim.id());
         self.finish_open_world_client_set_world_icon(&save_root);
         self.world_flat = sunrise_client::save::WorldGen::read(&save_root)
             .is_some_and(|w| w.preset == sunrise_client::save::WorldPreset::Flat);
@@ -717,8 +709,6 @@ impl Game<'_> {
         };
         self.carried = None;
         self.using = None;
-        self.set_screen(Screen::Playing);
-        self.hide_title();
         self.clear_lod();
         self.finish_open_world_sections_client();
         self.apply_settings();
@@ -782,10 +772,10 @@ impl Game<'_> {
     /// `LeverBlock.makeParticle` at full scale: a powered lever puffs one red
     /// dust on the clicking client (`LeverBlock.useWithoutItem`).
     pub(in crate::game) fn lever_puff(&mut self, pos: [i32; 3]) {
-        // The server's side of a guest's pull draws nothing.
-        if self.server.lan_acting.is_some() {
-            return;
-        }
+        assert!(
+            !self.is_logical_server(),
+            "lever_puff called on Server role"
+        );
         let state = self.world.block(pos[0], pos[1], pos[2]);
         let Some(registry_state) = self.pack.assets.registry.state(state) else {
             return;
@@ -811,7 +801,7 @@ impl Game<'_> {
             f64::from(base) + 0.5 + 0.1 * f64::from(-facing[i]) + 0.2 * f64::from(-connected[i])
         };
         let p = [at(pos[0], 0), at(pos[1], 1), at(pos[2], 2)];
-        self.client_particles_add(
+        self.particles.0.add(
             &sunrise_client::particles::ParticleOptions::dust([1.0, 0.0, 0.0], 1.0),
             p,
             [0.0; 3],
@@ -831,8 +821,8 @@ impl Game<'_> {
         // LivingEntity.startSleeping: stopRiding once the bed is valid.
         self.stop_riding();
         self.stop_mining();
-        self.set_mapping_held("key.attack", false);
-        self.set_mapping_held("key.use", false);
+        self.server_set_acting_attack(false);
+        self.server_set_acting_use(false);
         self.using = None;
         self.sleeping = Some(head);
         self.sleep_timer = 0;
@@ -937,11 +927,11 @@ impl Game<'_> {
             return;
         }
         if &*name == "minecraft:lectern" {
-            self.open_lectern(pos);
+            self.server_request_lectern(pos);
             return;
         }
         if sunrise_client::command_block::Mode::of_block(&name).is_some() {
-            self.open_command_block(key);
+            self.server_request_command_block(key);
             return;
         }
         // The game master blocks' screens open on the player's own client
@@ -1042,15 +1032,13 @@ impl Game<'_> {
         } else if self.open_station(pos, &name) {
             // Workstation menus: game/blocks/stations.rs.
         } else {
-            self.set_client_message(format!(
+            self.server_send_overlay_message(sunrise_client::text::Text::literal(format!(
                 "{} is not available yet",
                 name.trim_start_matches("minecraft:").replace('_', " ")
-            ));
+            )));
             return;
         }
-        self.set_screen(Screen::Inventory);
-        self.capture(false);
-        self.set_mapping_held("key.use", false);
+        self.server_set_acting_use(false);
     }
     /// `ExperienceOrb.followNearbyPlayer`'s candidates: each orb goes for the
     /// nearest living player within 8 blocks, the host's own or a guest. Each
@@ -1144,8 +1132,16 @@ impl Game<'_> {
     /// Side effects reported by the behaviour library, in vanilla order.
     pub(in crate::game) fn process_level_events(&mut self) -> Result<()> {
         let events = std::mem::take(&mut self.level_events);
-        self.lan_record_events(&events);
-        dispense_fixture::record_events(&events);
+        if self.is_logical_server() {
+            self.process_server_level_events(events)
+        } else {
+            self.process_client_level_events(events)
+        }
+    }
+    pub(in crate::game::server_side) fn process_client_level_events(
+        &mut self,
+        events: Vec<LevelEvent>,
+    ) -> Result<()> {
         for event in events {
             match event {
                 LevelEvent::LevelEvent {
@@ -1207,7 +1203,9 @@ impl Game<'_> {
                 } => {
                     self.growth_particles(pos, data);
                     let at = [pos.x, pos.y, pos.z].map(|v| f64::from(v) + 0.5);
-                    self.client_audio_play("minecraft:item.bone_meal.use", Some(at), 1.0, 1.0);
+                    self.audio
+                        .0
+                        .play("minecraft:item.bone_meal.use", Some(at), 1.0, 1.0);
                 }
                 LevelEvent::LevelEvent {
                     id: 2015,
@@ -1320,6 +1318,106 @@ impl Game<'_> {
                 LevelEvent::LevelEvent { id: 1032, .. } => {
                     self.process_level_events_portal_travel_client();
                 }
+                // LevelEventHandler dispenser/crafter sounds and directional smoke.
+                LevelEvent::LevelEvent {
+                    id: id @ (1000 | 1001 | 1002 | 1004 | 1018 | 1049 | 1050 | 1051 | 2000 | 2010),
+                    pos,
+                    data,
+                    ..
+                } => {
+                    let c = [
+                        f64::from(pos.x) + 0.5,
+                        f64::from(pos.y) + 0.5,
+                        f64::from(pos.z) + 0.5,
+                    ];
+                    match id {
+                        1000 => self
+                            .audio
+                            .0
+                            .play("minecraft:block.dispenser.dispense", Some(c), 1.0, 1.0),
+                        1001 => self
+                            .audio
+                            .0
+                            .play("minecraft:block.dispenser.fail", Some(c), 1.0, 1.2),
+                        1002 => self
+                            .audio
+                            .0
+                            .play("minecraft:block.dispenser.launch", Some(c), 1.0, 1.2),
+                        1004 => self
+                            .audio
+                            .0
+                            .play("minecraft:entity.firework_rocket.shoot", Some(c), 1.0, 1.2),
+                        1018 => {
+                            let r = self.particles.0.random();
+                            let pitch = (r.next_float() - r.next_float()) * 0.2 + 1.0;
+                            self.audio
+                                .0
+                                .play("minecraft:entity.blaze.shoot", Some(c), 2.0, pitch);
+                        }
+                        1051 => {
+                            let pitch = 0.4 / (self.particles.0.random().next_float() * 0.4 + 0.8);
+                            self.audio
+                                .0
+                                .play("minecraft:entity.wind_charge.throw", Some(c), 0.5, pitch);
+                        }
+                        1049 => self
+                            .audio
+                            .0
+                            .play("minecraft:block.crafter.craft", Some(c), 1.0, 1.0),
+                        1050 => self
+                            .audio
+                            .0
+                            .play("minecraft:block.crafter.fail", Some(c), 1.0, 1.0),
+                        2000 | 2010 => {
+                            use sunrise_client::particles::{ParticleOptions, ParticleType};
+                            let particle = if id == 2010 {
+                                ParticleType::WhiteSmoke
+                            } else {
+                                ParticleType::Smoke
+                            };
+                            let s = match data {
+                                0 => [0, -1, 0],
+                                1 => [0, 1, 0],
+                                2 => [0, 0, -1],
+                                3 => [0, 0, 1],
+                                4 => [-1, 0, 0],
+                                _ => [1, 0, 0],
+                            };
+                            for _ in 0..10 {
+                                let r = self.particles.0.random();
+                                let pow = r.next_double() * 0.2 + 0.01;
+                                let (sx, sy, sz) =
+                                    (f64::from(s[0]), f64::from(s[1]), f64::from(s[2]));
+                                let p = [
+                                    f64::from(pos.x)
+                                        + sx * 0.6
+                                        + 0.5
+                                        + sx * 0.01
+                                        + (r.next_double() - 0.5) * sz * 0.5,
+                                    f64::from(pos.y)
+                                        + sy * 0.6
+                                        + 0.5
+                                        + sy * 0.01
+                                        + (r.next_double() - 0.5) * sy * 0.5,
+                                    f64::from(pos.z)
+                                        + sz * 0.6
+                                        + 0.5
+                                        + sz * 0.01
+                                        + (r.next_double() - 0.5) * sx * 0.5,
+                                ];
+                                let v = [
+                                    sx * pow + r.next_gaussian() * 0.01,
+                                    sy * pow + r.next_gaussian() * 0.01,
+                                    sz * pow + r.next_gaussian() * 0.01,
+                                ];
+                                self.particles
+                                    .0
+                                    .add(&ParticleOptions::simple(particle), p, v);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
                 LevelEvent::LevelEvent { id, pos, .. } => {
                     let c = Some([
                         f64::from(pos.x) + 0.5,
@@ -1375,6 +1473,102 @@ impl Game<'_> {
                         _ => {}
                     }
                 }
+                LevelEvent::BlockEntityEvent { pos, a, b, .. } => {
+                    self.block_entity_event([pos.x, pos.y, pos.z], a, b)
+                }
+                // NoteBlock.triggerEvent: a NOTE particle above, coloured by
+                // the note (`note / 24.0` in the x speed).
+                LevelEvent::BlockEvent {
+                    pos,
+                    state,
+                    kind: "note_particle",
+                } => {
+                    use sunrise_client::particles::{ParticleOptions, ParticleType};
+                    let note = self
+                        .pack
+                        .assets
+                        .registry
+                        .state(state)
+                        .and_then(|s| s.properties.get("note")?.parse::<f64>().ok())
+                        .unwrap_or(0.0);
+                    self.particles.0.add(
+                        &ParticleOptions::simple(ParticleType::Note),
+                        [
+                            f64::from(pos.x) + 0.5,
+                            f64::from(pos.y) + 1.2,
+                            f64::from(pos.z) + 0.5,
+                        ],
+                        [note / 24.0, 0.0, 0.0],
+                    );
+                }
+                LevelEvent::BlockEvent {
+                    pos,
+                    state,
+                    kind: "candle_smoke",
+                } => self.candle_smoke([pos.x, pos.y, pos.z], state),
+                // The block at `pos` has just replaced `state`: Block.pushEntitiesUp.
+                LevelEvent::BlockEvent {
+                    pos,
+                    state,
+                    kind: "push_entities_up",
+                } => {
+                    self.push_entities_up(
+                        pos,
+                        state,
+                        self.world.block(pos.x, pos.y, pos.z),
+                        |_| true,
+                    );
+                }
+                // Client piston replay emits notification-only GameEvents (block_destroy).
+                LevelEvent::GameEvent { .. }
+                | LevelEvent::Sound { .. }
+                | LevelEvent::DropResources { .. }
+                | LevelEvent::BlockEvent {
+                    kind: "note_custom_sound",
+                    ..
+                } => {}
+                other @ (LevelEvent::ContainerLootTable { .. }
+                | LevelEvent::FallingBlock { .. }
+                | LevelEvent::Player { .. }
+                | LevelEvent::PrimeTnt { .. }
+                | LevelEvent::BlockEvent {
+                    kind: "dispense"
+                        | "golem"
+                        | "command_block"
+                        | "structure_block"
+                        | "test_block"
+                        | "test_block_tick"
+                        | "brushable"
+                        | "hatch"
+                        | "hatch_sniffer"
+                        | "hatch_turtles"
+                        | "portal_spawn"
+                        | "spawn_ghastling"
+                        | "shrieker_respond",
+                    ..
+                }) => {
+                    let _ = &other;
+                    debug_assert!(
+                        false,
+                        "server-only LevelEvent reached process_client_level_events: {other:?}"
+                    );
+                }
+                LevelEvent::GrowTree { .. }
+                | LevelEvent::PlaceFeature { .. }
+                | LevelEvent::BlockEvent { .. } => {}
+            }
+        }
+        Ok(())
+    }
+    pub(in crate::game::server_side) fn process_server_level_events(
+        &mut self,
+        events: Vec<LevelEvent>,
+    ) -> Result<()> {
+        self.lan_record_events(&events);
+        dispense_fixture::record_events(&events);
+        for event in events {
+            match event {
+                LevelEvent::LevelEvent { .. } => {}
                 LevelEvent::ContainerLootTable { pos, tag } => {
                     let key = (pos.x, pos.y, pos.z);
                     if let Some(mut entity) = self.world.block_entities.remove(&key) {
@@ -1411,14 +1605,14 @@ impl Game<'_> {
                     };
                     match source {
                         Some(sunrise_world::level::LevelSoundSource::Blocks) => self
-                            .client_audio_play_on(
+                            .server_play_sound_on(
                                 mod_api::SoundSource::Blocks.index(),
                                 &name,
-                                Some(c),
+                                c,
                                 volume,
                                 pitch,
                             ),
-                        None => self.client_audio_play(&name, Some(c), volume, pitch),
+                        None => self.server_play_sound(&name, c, volume, pitch),
                     }
                 }
                 // Handled as the behaviour emits it (GameLevel::emit).
@@ -1543,7 +1737,7 @@ impl Game<'_> {
                         f64::from(pos.y) + 0.5,
                         f64::from(pos.z) + 0.5,
                     ];
-                    self.client_audio_play("minecraft:block.frogspawn.hatch", Some(at), 1.0, 1.0);
+                    self.server_play_sound("minecraft:block.frogspawn.hatch", at, 1.0, 1.0);
                     let count = 2 + self.world.random.next_int_bound(4).unwrap_or(0);
                     for _ in 0..count {
                         // getRandomTadpolePositionOffset: 0.2..0.8 inside the block.
@@ -1596,31 +1790,6 @@ impl Game<'_> {
                 LevelEvent::BlockEntityEvent { pos, a, b, .. } => {
                     self.block_entity_event([pos.x, pos.y, pos.z], a, b)
                 }
-                // NoteBlock.triggerEvent: a NOTE particle above, coloured by
-                // the note (`note / 24.0` in the x speed).
-                LevelEvent::BlockEvent {
-                    pos,
-                    state,
-                    kind: "note_particle",
-                } => {
-                    use sunrise_client::particles::{ParticleOptions, ParticleType};
-                    let note = self
-                        .pack
-                        .assets
-                        .registry
-                        .state(state)
-                        .and_then(|s| s.properties.get("note")?.parse::<f64>().ok())
-                        .unwrap_or(0.0);
-                    self.client_particles_add(
-                        &ParticleOptions::simple(ParticleType::Note),
-                        [
-                            f64::from(pos.x) + 0.5,
-                            f64::from(pos.y) + 1.2,
-                            f64::from(pos.z) + 0.5,
-                        ],
-                        [note / 24.0, 0.0, 0.0],
-                    );
-                }
                 // NoteBlock.getCustomSoundId: the skull above's note block sound,
                 // played at volume 3 (vanilla's pitch for a head is 1).
                 LevelEvent::BlockEvent {
@@ -1628,18 +1797,18 @@ impl Game<'_> {
                     kind: "note_custom_sound",
                     ..
                 } => {
-                    self.process_level_events_note_custom_sound_client(pos);
+                    if let Some(BlockEntity::Skull(skull)) =
+                        self.world.block_entities.get(&(pos.x, pos.y + 1, pos.z))
+                        && let Some(sound) = skull.note_block_sound.clone()
+                    {
+                        let at = [
+                            f64::from(pos.x) + 0.5,
+                            f64::from(pos.y) + 0.5,
+                            f64::from(pos.z) + 0.5,
+                        ];
+                        self.server_play_sound(&sound, at, 3.0, 1.0);
+                    }
                 }
-                // `level.addParticle`: only the local player's own click draws it.
-                LevelEvent::BlockEvent {
-                    kind: "candle_smoke",
-                    ..
-                } if self.server.lan_acting.is_some() => {}
-                LevelEvent::BlockEvent {
-                    pos,
-                    state,
-                    kind: "candle_smoke",
-                } => self.candle_smoke([pos.x, pos.y, pos.z], state),
                 // The block at `pos` has just replaced `state`: Block.pushEntitiesUp.
                 LevelEvent::BlockEvent {
                     pos,
@@ -1904,31 +2073,24 @@ impl Game<'_> {
     pub(in crate::game::server_side) fn tell_sleeper(
         &mut self,
         key: &str,
-        fallback: &str,
+        _fallback: &str,
         overlay: bool,
     ) {
-        if self.server.lan_acting.is_some() {
-            self.server.guest_packets.push(
-                sunrise_protocol::packets::play::Clientbound::SystemChat(
-                    sunrise_protocol::packets::play::SystemChat {
-                        content: sunrise_protocol::text::translatable(key, &[]),
-                        overlay,
-                    },
-                ),
-            );
-        } else if overlay {
-            let message = self.translate_with_fallback(key, fallback);
-            self.set_client_message(message);
+        assert!(
+            self.is_logical_server(),
+            "tell_sleeper called on Client role"
+        );
+        if overlay {
+            self.server_send_overlay_message(sunrise_client::text::Text::translate(key, &[]));
         } else {
-            self.system_message(sunrise_client::text::Text::translate(key, &[]));
+            self.server_system_message(sunrise_client::text::Text::translate(key, &[]));
         }
     }
     pub(in crate::game::server_side) fn tick_mining(&mut self) -> Result<()> {
         if self.server.destroy_delay > 0 {
             self.server.destroy_delay -= 1;
         }
-        if !self.mapped_key_down("key.attack") || !self.playing_screen_open() || self.dialog_open()
-        {
+        if !self.server_acting_attack() {
             self.mining = None;
             return Ok(());
         }
@@ -2017,7 +2179,7 @@ impl Game<'_> {
                     .player
                     .as_ref()
                     .is_none_or(|p| p.health.dead_or_dying());
-            if wake_immediately || (!self.chat_screen_open() && self.held_mapping(Mapping::Sneak)) {
+            if wake_immediately || self.server_acting_sneak() {
                 self.wake_up(wake_immediately, true);
                 return;
             }
@@ -2269,7 +2431,7 @@ impl Game<'_> {
         let pos = hit.pos;
         let face = hit.face;
         let Some((new, sound, loot, damage, particle, transform_type)) =
-            self.block_transform(stack, hit)
+            self.block_transform(stack, hit, self.server_acting_sneak())
         else {
             return Ok(false);
         };
@@ -2291,12 +2453,11 @@ impl Game<'_> {
             f64::from(pos[2]) + 0.5,
         ];
         if self.server.lan_acting.is_some() {
-            self.client_audio_play_unshared(&sound, Some(at), 1.0, 1.0);
             self.server
                 .guest_player_sounds
                 .push((sound.clone(), at, 1.0, 1.0));
         } else {
-            self.client_audio_play(&sound, Some(at), 1.0, 1.0);
+            self.server_play_sound(&sound, at, 1.0, 1.0);
         }
         // ItemStack.useOn: a use that acted counts as one of the item.
         self.award_stat("used", &stack.item, 1);
@@ -2364,7 +2525,7 @@ impl Game<'_> {
             } else {
                 "minecraft:item.bucket.fill"
             };
-            self.client_audio_play(sound, Some(at(hit.pos)), 1.0, 1.0);
+            self.server_play_sound(sound, at(hit.pos), 1.0, 1.0);
             self.post_block_game_event(
                 "minecraft:fluid_pickup",
                 hit.pos,
@@ -2418,7 +2579,7 @@ impl Game<'_> {
             // `Player.isShiftKeyDown`: a block that refuses the fluid (any
             // non-air block under Shift) passes it to the block beside, where
             // Shift no longer counts.
-            let sneaking = self.held_mapping(Mapping::Sneak);
+            let sneaking = self.server_acting_sneak();
             let emptied = self.empty_player_bucket(pos, beside, content, sound, sneaking);
             self.process_level_events()?;
             let Some(emptied) = emptied else {
@@ -2627,12 +2788,11 @@ impl Game<'_> {
     pub(in crate::game::server_side) fn wax_on_sound(&mut self, at: [f64; 3]) {
         let sound = "minecraft:item.honeycomb.wax_on";
         if self.server.lan_acting.is_some() {
-            self.client_audio_play_unshared(sound, Some(at), 1.0, 1.0);
             self.server
                 .guest_block_sounds
                 .push((sound.to_owned(), at, 1.0, 1.0));
         } else {
-            self.client_audio_play(sound, Some(at), 1.0, 1.0);
+            self.server_play_sound(sound, at, 1.0, 1.0);
         }
     }
     pub(in crate::game) fn with_level_access<R>(
@@ -2786,6 +2946,7 @@ impl Game<'_> {
         let rules = self.level_rules();
         let native_authoritative = self.native_authoritative();
         let liquid_transaction_open = self.has_level_transaction();
+        let client_side = !self.is_logical_server();
         let environment = self.res.environment_of(&self.dimension_type().id);
         let other_entities = entity::entity_lists_of!(self, without_carts);
         let mut level = GameLevel {
@@ -2865,15 +3026,15 @@ impl Game<'_> {
             lid_openers: &mut self.server.lid_openers,
             open_containers: &open_containers,
             golem_chests: &golem_chests,
-            client_side: self.remote.is_some(),
+            client_side,
             native_authoritative,
             native_player: self.server.lan_acting_uuid,
             native_player_entity: self.server.lan_acting_entity.map(|id| id as i32),
             liquid_transaction_open,
             debug: self.server.world_debug,
-            native_sounds: &mut self.creatures.lan_sounds,
+            native_sounds: &mut self.server.pending_native_sounds,
             loop_context: &self.loop_context,
-            native_particles: &mut self.creatures.lan_particles,
+            native_particles: &mut self.server.pending_particles,
             sound_seeds: self.lan.as_ref().map(|host| &host.hub),
             drop_tool: None,
             drop_entity: None,

@@ -74,13 +74,17 @@ impl Game<'_> {
     }
     /// `ServerPlayer.closeDialog` for every target of `/dialog clear`.
     pub(in crate::game) fn clear_dialog_to(&mut self, targets: &[Target]) {
+        assert!(
+            self.is_logical_server(),
+            "clear_dialog_to called on Client role"
+        );
         let packet = C::ClearDialog(Empty);
         for &t in targets {
             match t {
-                Target::Player if self.server.lan_acting.is_some() => {
+                Target::Player if self.server.lan_acting.is_some() || self.lan.is_none() => {
                     self.server.guest_packets.push(packet.clone());
                 }
-                Target::Player => self.clear_dialog(),
+                Target::Player => {}
                 Target::Guest(conn) => {
                     if let Some(host) = self.lan.as_ref() {
                         host.hub.send_to(conn, &packet);
@@ -340,9 +344,9 @@ impl Game<'_> {
     /// `VersionCommand`.
     pub(in crate::game::server_side) fn cmd_version(&mut self) -> R<i32> {
         if !self.server.command_source.is_some_and(|s| s.silent) {
-            self.system_message(Text::translate("commands.version.header", &[]));
+            self.server_system_message(Text::translate("commands.version.header", &[]));
             for line in self.version_lines() {
-                self.system_message(line);
+                self.server_system_message(line);
             }
         }
         Ok(1)
@@ -371,17 +375,21 @@ impl Game<'_> {
         self.profile_fetches_pending_client(&self.cmds.0.profile_fetches)
     }
     /// `ServerPlayer.openDialog` for each target: the packet to a guest, the
-    /// screen to the window's own player.
+    /// acting player's packet queue otherwise.
     pub(in crate::game) fn send_dialog(&mut self, targets: &[Target], holder: &DialogHolder) {
+        assert!(
+            self.is_logical_server(),
+            "send_dialog called on Client role"
+        );
         let packet = C::ShowDialog(play::ShowDialog {
             dialog: holder.clone(),
         });
         for &t in targets {
             match t {
-                Target::Player if self.server.lan_acting.is_some() => {
+                Target::Player if self.server.lan_acting.is_some() || self.lan.is_none() => {
                     self.server.guest_packets.push(packet.clone());
                 }
-                Target::Player => self.show_play_dialog(holder),
+                Target::Player => {}
                 Target::Guest(conn) => {
                     if let Some(host) = self.lan.as_ref() {
                         host.hub.send_to(conn, &packet);
@@ -446,7 +454,7 @@ impl Game<'_> {
             self.set_camera(None);
             return;
         }
-        let sneaking = self.held_mapping(Action::Sneak) && self.playing_screen_open();
+        let sneaking = self.server_acting_sneak();
         match self.target_position(t) {
             Some(p) if !sneaking => {
                 let rot = self.target_rotation(t);

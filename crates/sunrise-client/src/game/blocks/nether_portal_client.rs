@@ -65,7 +65,7 @@ impl Game<'_> {
         // No screen at all (`screen() == null`) is nothing to close.
         if self.client.screen != Screen::Playing && !self.client.screen.allowed_in_portal() {
             if matches!(self.client.screen, Screen::Creative | Screen::Inventory) {
-                self.close_container();
+                self.close_container_client();
                 self.carried = None;
             }
             self.set_screen(Screen::Playing);

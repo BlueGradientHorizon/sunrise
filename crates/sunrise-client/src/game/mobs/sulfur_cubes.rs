@@ -129,7 +129,7 @@ impl Game<'_> {
                 .bool_at(sunrise_client::gamerules::vanilla::TNT_EXPLODES)
             {
                 let message = Text::translate("block.minecraft.tnt.disabled", &[]);
-                self.send_overlay_message(message);
+                self.server_send_overlay_message(message);
                 return false;
             }
             sulfur_cube::prime(&mut self.mobs[index], false);
@@ -194,7 +194,7 @@ impl Game<'_> {
     pub(in crate::game::server_side) fn bucket_sulfur_cube(&mut self, index: usize) {
         let held = self.held().cloned();
         let at = self.mobs[index].center();
-        self.client_audio_play("minecraft:item.bucket.fill_sulfur_cube", Some(at), 1.0, 1.0);
+        self.server_play_sound("minecraft:item.bucket.fill_sulfur_cube", at, 1.0, 1.0);
         // getBucketItemStack, then saveToBucketTag.
         let mut filled = ItemStack::new("minecraft:sulfur_cube_bucket", 1);
         filled.extra = Some(Box::new(sunrise_client::entity_nbt::bucket_components(

@@ -377,7 +377,7 @@ impl Game<'_> {
         self.clear_error_markers(pos);
         if self.place_test_structure(pos) {
             let name = self.test_name(pos);
-            self.system_message(
+            self.server_system_message(
                 Text::translate("test_instance_block.reset_success", &[name])
                     .with_color(text::GREEN),
             );
@@ -479,7 +479,7 @@ impl Game<'_> {
             .map(|t| t.structure)
             .or_else(|| self.test_instance_at(pos).and_then(|b| b.data.test.clone()));
         let Some(id) = id else {
-            self.system_message(red(
+            self.server_system_message(red(
                 "test_instance_block.error.unable_to_save",
                 &[pos.0, pos.1, pos.2].map(|v| Text::literal(v.to_string())),
             ));
@@ -506,7 +506,7 @@ impl Game<'_> {
     /// only a development build has.
     pub(in crate::game::server_side) fn export_test(&mut self, pos: Pos) {
         if self.save_test(pos).is_some() {
-            self.system_message(
+            self.server_system_message(
                 Text::literal("Test structure exporting is disabled").with_color(text::RED),
             );
         }
@@ -516,11 +516,11 @@ impl Game<'_> {
     pub(in crate::game::server_side) fn run_test(&mut self, pos: Pos) {
         let coordinates = [pos.0, pos.1, pos.2].map(|v| Text::literal(v.to_string()));
         let Some(def) = self.test_holder(pos) else {
-            self.system_message(red("test_instance_block.error.no_test", &coordinates));
+            self.server_system_message(red("test_instance_block.error.no_test", &coordinates));
             return;
         };
         if !self.place_test_structure(pos) {
-            self.system_message(red(
+            self.server_system_message(red(
                 "test_instance_block.error.no_test_structure",
                 &coordinates,
             ));
@@ -540,7 +540,7 @@ impl Game<'_> {
         } else {
             format!("minecraft:{key}")
         };
-        self.system_message(Text::translate(
+        self.server_system_message(Text::translate(
             "test_instance_block.starting",
             &[Text::literal(key.clone())],
         ));

@@ -12,12 +12,11 @@ impl Game<'_> {
         pitch: f32,
     ) {
         if self.server.lan_acting.is_some() {
-            self.client_audio_play_unshared(sound, Some(at), 1.0, pitch);
             self.server
                 .guest_block_sounds
                 .push((sound.to_owned(), at, 1.0, pitch));
         } else {
-            self.client_audio_play(sound, Some(at), 1.0, pitch);
+            self.server_play_sound(sound, at, 1.0, pitch);
         }
     }
 
@@ -32,7 +31,7 @@ impl Game<'_> {
         self.server.use_failed = false;
         // isSecondaryUseActive with something in either hand keeps blocks
         // from reacting.
-        let sneaking = self.held_mapping(Mapping::Sneak);
+        let sneaking = self.server_acting_sneak();
         let hands_full = self.stack_in(self.selected).is_some() || self.offhand.is_some();
         let mut anchor_passed = false;
         // Native mods, where ServerPlayerGameMode.useItemOn starts
@@ -313,7 +312,6 @@ impl Game<'_> {
                     match &*name {
                         "minecraft:note_block" => self.award_custom_stat("tune_noteblock", 1),
                         "minecraft:bell" => self.award_custom_stat("bell_ring", 1),
-                        "minecraft:lever" => self.lever_puff(hit.pos),
                         _ => {}
                     }
                 }
@@ -645,7 +643,7 @@ impl Game<'_> {
             source: sunrise_world::level::PlacementSource::Player {
                 yaw: self.yaw,
                 pitch: self.pitch,
-                sneaking: self.held_mapping(Mapping::Sneak),
+                sneaking: self.server_acting_sneak(),
             },
             item: stack.item.to_string(),
             can_use_game_master_blocks: self.can_use_game_master_blocks(),
@@ -917,7 +915,7 @@ impl Game<'_> {
             .player
             .as_ref()
             .map_or(eye, |pl| [pl.position.x, pl.position.y, pl.position.z]);
-        self.client_audio_play("minecraft:entity.arrow.shoot", Some(feet), 1.0, pitch);
+        self.server_play_sound("minecraft:entity.arrow.shoot", feet, 1.0, pitch);
         self.award_stat("used", "minecraft:bow", 1);
         // useAmmo takes one arrow for the first drawn projectile and none for
         // the rest, and none at all when the weapon draws none.

@@ -274,7 +274,7 @@ impl Game<'_> {
         let context = self
             .prepare_loop_context(&resources)
             .map_err(|error| ReloadStageError::DataSource(error.to_string()))?;
-        let world = if run_load && self.remote.is_none() {
+        let world = if run_load && self.is_logical_server() {
             Some(
                 self.prepare_world_reload(&stack, &resources)
                     .map_err(|error| ReloadStageError::DataSource(error.to_string()))?,
@@ -584,7 +584,7 @@ impl Game<'_> {
         }
     }
     pub(in crate::game::server_side) fn save_schedule(&self) {
-        if !self.fns.0.loaded || self.remote.is_some() {
+        if !self.fns.0.loaded || !self.is_logical_server() {
             return;
         }
         let mut events = self.fns.0.schedule.clone();
@@ -627,7 +627,7 @@ impl Game<'_> {
     /// reload, then the `#minecraft:tick` ones, before the levels tick (and
     /// before the game time moves on).
     pub(in crate::game::server_side) fn tick_functions(&mut self) {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return;
         }
         self.exec.0 = ExecState::default();
@@ -646,7 +646,7 @@ impl Game<'_> {
     /// functions due at the game time this tick has just reached.
     pub(in crate::game::server_side) fn run_scheduled_functions(&mut self) {
         self.ensure_datapacks();
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return;
         }
         self.exec.0 = ExecState::default();

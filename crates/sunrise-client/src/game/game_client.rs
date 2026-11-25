@@ -4578,6 +4578,19 @@ impl Game<'_> {
     pub(in crate::game) fn set_client_message(&mut self, text: String) {
         self.client.message = Some((text, Instant::now()));
     }
+    pub(crate) fn close_container_client(&mut self) {
+        assert!(
+            !self.is_logical_server(),
+            "close_container_client called on Server role"
+        );
+        self.pad_clear_focus();
+        self.mod_browser_closed();
+        self.reset_inventory_clicks();
+        self.close_station_client();
+        self.mount_closed();
+        self.recipe_ui.0.reset_screen();
+        self.remote_close_container();
+    }
     pub(in crate::game::client_side) fn set_window_cursor(
         &mut self,
         sample: sunrise_client::window::PointerSample,

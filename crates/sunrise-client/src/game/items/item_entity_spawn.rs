@@ -67,7 +67,7 @@ impl Game<'_> {
         else {
             return false;
         };
-        if self.remote.is_none() && !mod_api::__private::mods().is_empty() {
+        if self.is_logical_server() && !mod_api::__private::mods().is_empty() {
             self.native_lifecycle
                 .pending_item_spawns
                 .push((id, item.to_string(), count, position));

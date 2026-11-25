@@ -6,6 +6,7 @@
 //! decoded packets with these threads, so a world that is not open to the
 //! network pays nothing.
 pub mod abilities;
+pub mod server_effects;
 mod advancements;
 pub mod announced_channels;
 pub mod config_payloads;

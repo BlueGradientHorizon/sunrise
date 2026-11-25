@@ -75,7 +75,7 @@ impl Game<'_> {
         }
         let words: Vec<&str> = rest.split_whitespace().collect();
         if words.is_empty() {
-            self.system_message(Text::translate("sunrise.studio.replay.usage", &[]));
+            self.client_system_message(Text::translate("sunrise.studio.replay.usage", &[]));
             return true;
         }
 
@@ -87,27 +87,27 @@ impl Game<'_> {
                 Some("start") => match self.start_studio_recording(words.get(2).copied()) {
                     Ok(v) if v["ok"].as_bool() == Some(true) => {
                         let path = v["path"].as_str().unwrap_or_default();
-                        self.system_message(Text::tr("sunrise.studio.record.started", &[&path]));
+                        self.client_system_message(Text::tr("sunrise.studio.record.started", &[&path]));
                     }
                     Ok(v) => {
                         let error = v["error"].as_str().unwrap_or_default();
-                        self.system_message(Text::tr("sunrise.studio.record.error", &[&error]));
+                        self.client_system_message(Text::tr("sunrise.studio.record.error", &[&error]));
                     }
                     Err(error) => {
-                        self.system_message(Text::tr("sunrise.studio.record.error", &[&error]));
+                        self.client_system_message(Text::tr("sunrise.studio.record.error", &[&error]));
                     }
                 },
                 Some("stop") => match self.stop_studio_recording() {
                     Ok(v) if v["ok"].as_bool() == Some(true) => {
                         let path = v["path"].as_str().unwrap_or_default();
-                        self.system_message(Text::tr("sunrise.studio.record.saved", &[&path]));
+                        self.client_system_message(Text::tr("sunrise.studio.record.saved", &[&path]));
                     }
                     Ok(v) => {
                         let error = v["error"].as_str().unwrap_or_default();
-                        self.system_message(Text::tr("sunrise.studio.record.error", &[&error]));
+                        self.client_system_message(Text::tr("sunrise.studio.record.error", &[&error]));
                     }
                     Err(error) => {
-                        self.system_message(Text::tr("sunrise.studio.record.error", &[&error]));
+                        self.client_system_message(Text::tr("sunrise.studio.record.error", &[&error]));
                     }
                 },
                 Some("status") => {
@@ -119,25 +119,25 @@ impl Game<'_> {
                         let size =
                             (status["bytes_written"].as_u64().unwrap_or(0) / 1024).to_string();
                         let path = status["path"].as_str().unwrap_or_default();
-                        self.system_message(Text::tr(
+                        self.client_system_message(Text::tr(
                             "sunrise.studio.record.status.active",
                             &[&elapsed, &packets, &size, &path],
                         ));
                     } else if let Some(error) = status["error"].as_str() {
-                        self.system_message(Text::tr("sunrise.studio.record.error", &[&error]));
+                        self.client_system_message(Text::tr("sunrise.studio.record.error", &[&error]));
                     } else {
-                        self.system_message(Text::translate(
+                        self.client_system_message(Text::translate(
                             "sunrise.studio.record.status.inactive",
                             &[],
                         ));
                     }
                 }
-                _ => self.system_message(Text::translate("sunrise.studio.record.usage", &[])),
+                _ => self.client_system_message(Text::translate("sunrise.studio.record.usage", &[])),
             },
             "replay" => match words.get(1).copied() {
                 Some("open") => {
                     let Some(path) = words.get(2) else {
-                        self.system_message(Text::translate(
+                        self.client_system_message(Text::translate(
                             "sunrise.studio.replay.open.usage",
                             &[],
                         ));
@@ -149,21 +149,21 @@ impl Game<'_> {
                             let packets = v["packet_count"].as_u64().unwrap_or(0);
                             let duration = format!("{duration_s:.1}");
                             let packets = packets.to_string();
-                            self.system_message(Text::tr(
+                            self.client_system_message(Text::tr(
                                 "sunrise.studio.replay.opened",
                                 &[path, &duration, &packets],
                             ));
                         }
                         Ok(v) => {
                             let err = v["error"].as_str().unwrap_or_default();
-                            self.system_message(Text::tr(
+                            self.client_system_message(Text::tr(
                                 "sunrise.studio.replay.open_error",
                                 &[&err],
                             ));
                         }
                         Err(e) => {
                             let error = e.to_string();
-                            self.system_message(Text::tr(
+                            self.client_system_message(Text::tr(
                                 "sunrise.studio.replay.open_error",
                                 &[&error],
                             ));
@@ -173,22 +173,22 @@ impl Game<'_> {
                 Some("pause") => {
                     if let Some(r) = self.replay.driver.as_mut() {
                         r.set_paused(true);
-                        self.system_message(Text::translate("sunrise.studio.replay.paused", &[]));
+                        self.client_system_message(Text::translate("sunrise.studio.replay.paused", &[]));
                     } else {
-                        self.system_message(Text::translate("sunrise.studio.replay.inactive", &[]));
+                        self.client_system_message(Text::translate("sunrise.studio.replay.inactive", &[]));
                     }
                 }
                 Some("resume") => {
                     if let Some(r) = self.replay.driver.as_mut() {
                         r.set_paused(false);
-                        self.system_message(Text::translate("sunrise.studio.replay.resumed", &[]));
+                        self.client_system_message(Text::translate("sunrise.studio.replay.resumed", &[]));
                     } else {
-                        self.system_message(Text::translate("sunrise.studio.replay.inactive", &[]));
+                        self.client_system_message(Text::translate("sunrise.studio.replay.inactive", &[]));
                     }
                 }
                 Some("speed") => {
                     let Some(spd_str) = words.get(2) else {
-                        self.system_message(Text::translate(
+                        self.client_system_message(Text::translate(
                             "sunrise.studio.replay.speed.usage",
                             &[],
                         ));
@@ -203,18 +203,18 @@ impl Game<'_> {
                         };
                         if let Some(speed) = new_speed {
                             let speed = format!("{speed:.2}");
-                            self.system_message(Text::tr(
+                            self.client_system_message(Text::tr(
                                 "sunrise.studio.replay.speed.set",
                                 &[&speed],
                             ));
                         } else {
-                            self.system_message(Text::translate(
+                            self.client_system_message(Text::translate(
                                 "sunrise.studio.replay.inactive",
                                 &[],
                             ));
                         }
                     } else {
-                        self.system_message(Text::translate(
+                        self.client_system_message(Text::translate(
                             "sunrise.studio.replay.speed.invalid",
                             &[],
                         ));
@@ -222,7 +222,7 @@ impl Game<'_> {
                 }
                 Some("seek") => {
                     let Some(ms_str) = words.get(2) else {
-                        self.system_message(Text::translate(
+                        self.client_system_message(Text::translate(
                             "sunrise.studio.replay.seek.usage",
                             &[],
                         ));
@@ -239,20 +239,20 @@ impl Game<'_> {
                                         .map_or(ms, |replay| ms.min(replay.duration_ms()));
                                     let ms_text = actual_ms.to_string();
                                     let seconds = format!("{:.1}", actual_ms as f32 / 1000.0);
-                                    self.system_message(Text::tr(
+                                    self.client_system_message(Text::tr(
                                         "sunrise.studio.replay.seeked",
                                         &[&ms_text, &seconds],
                                     ));
                                 }
                                 Err(e) => {
                                     if e.kind() == std::io::ErrorKind::Unsupported {
-                                        self.system_message(Text::translate(
+                                        self.client_system_message(Text::translate(
                                             "sunrise.studio.replay.seek.backward_requires_standalone",
                                             &[],
                                         ));
                                     } else {
                                         let error = e.to_string();
-                                        self.system_message(Text::tr(
+                                        self.client_system_message(Text::tr(
                                             "sunrise.studio.replay.seek.error",
                                             &[&error],
                                         ));
@@ -260,13 +260,13 @@ impl Game<'_> {
                                 }
                             }
                         } else {
-                            self.system_message(Text::translate(
+                            self.client_system_message(Text::translate(
                                 "sunrise.studio.replay.inactive",
                                 &[],
                             ));
                         }
                     } else {
-                        self.system_message(Text::translate(
+                        self.client_system_message(Text::translate(
                             "sunrise.studio.replay.seek.invalid",
                             &[],
                         ));
@@ -280,27 +280,27 @@ impl Game<'_> {
                         let speed = format!("{:.2}", r.speed());
                         let paused = r.is_paused().to_string();
                         let finished = r.is_finished().to_string();
-                        self.system_message(Text::tr(
+                        self.client_system_message(Text::tr(
                             "sunrise.studio.replay.status",
                             &[&position, &duration, &progress, &speed, &paused, &finished],
                         ));
                     } else {
-                        self.system_message(Text::translate("sunrise.studio.replay.inactive", &[]));
+                        self.client_system_message(Text::translate("sunrise.studio.replay.inactive", &[]));
                     }
                 }
                 Some("close") => {
                     if self.close_studio_replay() {
-                        self.system_message(Text::translate("sunrise.studio.replay.closed", &[]));
+                        self.client_system_message(Text::translate("sunrise.studio.replay.closed", &[]));
                     } else {
-                        self.system_message(Text::translate("sunrise.studio.replay.inactive", &[]));
+                        self.client_system_message(Text::translate("sunrise.studio.replay.inactive", &[]));
                     }
                 }
                 _ => {
-                    self.system_message(Text::translate("sunrise.studio.replay.usage", &[]));
+                    self.client_system_message(Text::translate("sunrise.studio.replay.usage", &[]));
                 }
             },
             _ => {
-                self.system_message(Text::translate("sunrise.studio.replay.usage", &[]));
+                self.client_system_message(Text::translate("sunrise.studio.replay.usage", &[]));
             }
         }
         true

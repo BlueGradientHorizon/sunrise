@@ -14,13 +14,8 @@ pub(in crate::game::client_side) fn extinguish_pitch(random: &mut impl RandomSou
 impl Game<'_> {
     /// Entity.playEntityOnFireExtinguishedSound
     pub(in crate::game) fn extinguish_sound(&mut self, at: [f64; 3]) {
-        let pitch = extinguish_pitch(self.particles.0.random());
-        self.audio.0.play(
-            "minecraft:entity.generic.extinguish_fire",
-            Some(at),
-            0.7,
-            pitch,
-        );
+        let pitch = extinguish_pitch(&mut self.server.effect_rng);
+        self.server_play_sound("minecraft:entity.generic.extinguish_fire", at, 0.7, pitch);
     }
     /// `Entity.applyEffectsFromBlocks`: a burning player in the rain
     /// (`isInRain`) has the fire put out (`clearFire`), with the extinguish
@@ -78,12 +73,7 @@ impl Game<'_> {
             .as_ref()
             .map(|p| [p.position.x, p.position.y, p.position.z])
         {
-            self.audio.0.play(
-                "minecraft:item.bucket.fill_powder_snow",
-                Some(eye),
-                1.0,
-                1.0,
-            );
+            self.server_play_sound("minecraft:item.bucket.fill_powder_snow", eye, 1.0, 1.0);
         }
         self.post_block_game_event("minecraft:fluid_pickup", pos, Some(Who::Player), None);
         let filled = ItemStack::new(filled, 1);

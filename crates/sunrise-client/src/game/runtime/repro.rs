@@ -504,7 +504,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game::client_side) fn repro_say(&mut self, key: &str, args: &[Text]) {
-        self.system_message(Text::translate(key, args));
+        self.client_system_message(Text::translate(key, args));
     }
 
     // ---- start / stop -------------------------------------------------------
@@ -622,6 +622,9 @@ impl Game<'_> {
                 drop(copied);
                 result.map_err(|e| format!("copying the world: {e}"))?;
             } else {
+                if !self.is_logical_server() {
+                    return Err("cannot save world without an integrated server".into());
+                }
                 self.save_game_with(true)?;
                 copy_tree(root, &dir.join("world"))
                     .map_err(|e| format!("copying the world: {e}"))?;

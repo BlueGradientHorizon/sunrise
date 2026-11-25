@@ -32,48 +32,6 @@ pub(in crate::game::client_side) use sunrise_core::{
 };
 
 impl Game<'_> {
-    /// `BlockAttachedEntity.kill`, then `ItemFrame.dropItem(level, causedBy)`
-    /// for the frame at `index`, the kill credited to `source`: the break
-    /// sound, the frame and its item, then `BLOCK_CHANGE`. False when a mod
-    /// kept it (`native_hanging_break`): it stays at `index`.
-    pub(in crate::game) fn break_frame_by(
-        &mut self,
-        index: usize,
-        source: Option<super::commands::Target>,
-    ) -> bool {
-        let (id, kind, pos, was_empty) = (
-            self.item_frames[index].id,
-            self.item_frames[index].kind(),
-            self.item_frames[index].pos,
-            self.item_frames[index].item.is_none(),
-        );
-        if self.hanging_break_cancelled(kind, pos, false) {
-            return false;
-        }
-        // Found again by id after the listener: gone, or empty before and
-        // filled now, nothing breaks.
-        let Some(index) = self
-            .item_frames
-            .iter()
-            .position(|f| f.id == id && !(was_empty && f.item.is_some()))
-        else {
-            return false;
-        };
-        let mut f = self.item_frames.remove(index);
-        self.entity_killed_event_by(center(&f), source);
-        self.audio
-            .0
-            .play(&sound(&f, "break"), Some(center(&f)), 1.0, 1.0);
-        self.drop_frame_items(&mut f, true, false, false);
-        // ItemFrame.dropItem(level, causedBy): BLOCK_CHANGE after the drops.
-        let ctx = self.who_context(None, None);
-        self.post_game_event("minecraft:block_change", center(&f), ctx);
-        self.world.modified.insert((f.pos[0] >> 4, f.pos[2] >> 4));
-        if f.item.is_some() {
-            self.frame_output_changed(f.pos);
-        }
-        true
-    }
     /// ItemFrameRenderer: the frame model, then the item half size on its face.
     pub(in crate::game) fn frame_geometry(
         &mut self,
@@ -374,68 +332,6 @@ impl Game<'_> {
             if cull {
                 self.cull_entity_vertices(out, entity_start);
             }
-        }
-    }
-    /// `ItemFrame.setItem(stack, true)`: keeps one item, plays the add sound
-    /// for a non-empty stack and updates the comparators.
-    pub(in crate::game) fn set_frame_item(&mut self, i: usize, stack: Option<ItemStack>) {
-        let f = &mut self.item_frames[i];
-        f.set_item(stack);
-        let (pos, filled) = (f.pos, f.item.is_some());
-        if filled {
-            let (name, at) = (
-                sound(&self.item_frames[i], "add_item"),
-                center(&self.item_frames[i]),
-            );
-            self.audio.0.play(&name, Some(at), 1.0, 1.0);
-        }
-        self.frame_output_changed(pos);
-    }
-    /// BlockAttachedEntity.tick for frames.
-    pub(in crate::game) fn tick_item_frames(&mut self) {
-        // ServerLevel.tick: only entities in entity-ticking chunks tick.
-        let ticking = self.entity_ticking_area();
-        let mut i = 0;
-        while i < self.item_frames.len() {
-            let at = center(&self.item_frames[i]);
-            if !ticking(at[0].floor() as i32, at[2].floor() as i32) {
-                i += 1;
-                continue;
-            }
-            // `Entity.tickCount` is raised before the rest of the tick, and is not saved.
-            self.item_frames[i].ticks = self.item_frames[i].ticks.saturating_add(1);
-            self.item_frames[i].check_interval += 1;
-            if self.item_frames[i].check_interval >= 100 {
-                self.item_frames[i].check_interval = 0;
-                let f = self.item_frames[i].clone();
-                if !self.frame_survives(&f) && !self.hanging_break_cancelled(f.kind(), f.pos, false)
-                {
-                    // Found again by id after the listener: gone, nothing is
-                    // removed; empty before and filled now, it stays.
-                    let Some(now) = self.item_frames.iter().position(|g| g.id == f.id) else {
-                        continue;
-                    };
-                    if f.item.is_none() && self.item_frames[now].item.is_some() {
-                        i = now + 1;
-                        continue;
-                    }
-                    i = now;
-                    let mut f = self.item_frames.remove(i);
-                    // BlockAttachedEntity.tick discards without a death event.
-                    self.audio
-                        .0
-                        .play(&sound(&f, "break"), Some(center(&f)), 1.0, 1.0);
-                    if f.item.is_some() {
-                        self.frame_output_changed(f.pos);
-                    }
-                    self.drop_frame_items(&mut f, true, false, false);
-                    // ItemFrame.dropItem(level, null): sound, drops, then event.
-                    let ctx = self.who_context(None, None);
-                    self.post_game_event("minecraft:block_change", center(&f), ctx);
-                    continue;
-                }
-            }
-            i += 1;
         }
     }
 }

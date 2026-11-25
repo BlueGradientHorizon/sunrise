@@ -266,7 +266,7 @@ impl Game<'_> {
         .attacked_by(attack)
         .with_knockback_credit(&mut credit)
         .with_effects(HitEffects::new(
-            &mut self.creatures.lan_sounds,
+            &mut self.server.pending_native_sounds,
             Some(hub),
             dimension.id(),
             self.native_lifecycle.epoch(),
@@ -1147,6 +1147,31 @@ impl Game<'_> {
             }
         }
         broken
+    }
+
+    /// The effects of `LivingEntity.onEquipItem` once the guards passed (server
+    /// side, not a spectator, not the first tick, another item): the equip
+    /// sound when there is one, and the `equip` (the stack is equippable) or
+    /// `unequip` game event.
+    pub(in crate::game) fn equip_item_effects(
+        &mut self,
+        at: [f64; 3],
+        sound: Option<String>,
+        equips: bool,
+        ctx: sunrise_client::sculk::Context,
+    ) {
+        if let Some(sound) = sound {
+            self.server_play_sound(&sound, at, 1.0, 1.0);
+        }
+        self.post_game_event(
+            if equips {
+                "minecraft:equip"
+            } else {
+                "minecraft:unequip"
+            },
+            at,
+            ctx,
+        );
     }
 
     /// Lend the stack in `hand` (`LivingEntity.getItemInHand`).

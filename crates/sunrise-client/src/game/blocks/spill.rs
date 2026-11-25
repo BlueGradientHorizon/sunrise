@@ -1519,7 +1519,6 @@ impl Game<'_> {
             if self.container == Some(key) {
                 self.container_opener_event(key, false);
                 self.container = None;
-                self.set_screen(Screen::Playing);
             }
         }
     }

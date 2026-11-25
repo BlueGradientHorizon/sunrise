@@ -66,7 +66,7 @@ impl Game<'_> {
         {
             return Err(TriggerCriterionError::InvalidTrigger);
         }
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return Err(TriggerCriterionError::NotServer);
         }
         let target = self
@@ -130,7 +130,7 @@ impl Game<'_> {
         pos: [i32; 3],
         fire: impl FnOnce(&mut Self),
     ) -> Result<(), TriggerCriterionError> {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return Err(TriggerCriterionError::NotServer);
         }
         let target = self

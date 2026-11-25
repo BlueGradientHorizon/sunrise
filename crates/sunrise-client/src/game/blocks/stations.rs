@@ -643,7 +643,11 @@ impl Game<'_> {
         true
     }
     /// `AbstractContainerMenu.clearContainer`: inputs go back to the player.
-    pub(in crate::game) fn close_station(&mut self) {
+    pub(in crate::game) fn close_station_server(&mut self) {
+        assert!(
+            self.is_logical_server(),
+            "close_station_server called on Client role"
+        );
         if self
             .station
             .as_ref()
@@ -658,16 +662,19 @@ impl Game<'_> {
         let Some(mut station) = self.station.take() else {
             return;
         };
-        if self.remote.is_some() && station.kind != Kind::Merchant {
-            // A server's workstation: its removed() gives the inputs back.
-            return;
-        }
         if let Some(m) = station.merchant.as_mut() {
             self.merchant_closed(m);
         }
         for stack in station.inputs.into_iter().flatten() {
             self.give_or_drop(stack);
         }
+    }
+    pub(in crate::game) fn close_station_client(&mut self) {
+        assert!(
+            !self.is_logical_server(),
+            "close_station_client called on Server role"
+        );
+        self.station = None;
     }
     pub(in crate::game::client_side) fn station_slots(&self) -> Option<Vec<usize>> {
         let mut v: Vec<usize> = (0..36).collect();
@@ -1062,7 +1069,7 @@ impl Game<'_> {
         }
         self.give_levels(menu.level_change);
         if self.anvil_used(pos, self.creative) {
-            self.close_station();
+            self.close_station_client();
             self.set_screen(Screen::Playing);
             self.capture(true);
         }
@@ -1121,7 +1128,7 @@ impl Game<'_> {
             f64::from(pos[1]) + 0.5,
             f64::from(pos[2]) + 0.5,
         ];
-        self.audio.0.play(sound, Some(at), volume, pitch);
+        self.server_play_sound(sound, at, volume, pitch);
     }
     pub(in crate::game) fn give_or_drop(&mut self, stack: ItemStack) {
         if let Some(rest) = self.add_stack_to_inventory(stack)

@@ -33,7 +33,7 @@ impl Game<'_> {
         let id = self.boats[i].id;
         // The sneak branch: the player's mobs and boats on leads are re-tied
         // to this boat.
-        let sneaking = self.held_mapping(Action::Sneak);
+        let sneaking = self.server_acting_sneak();
         if sneaking
             && self.tie_player_leads(glam::DVec3::new(c.x, c.y, c.z), Holder::Boat(id), None)
         {

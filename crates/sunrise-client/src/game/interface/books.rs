@@ -909,6 +909,10 @@ impl Game<'_> {
     }
     /// `LecternBlock.openScreen`: reading the lectern's book.
     pub(in crate::game) fn open_lectern(&mut self, pos: [i32; 3]) -> bool {
+        assert!(
+            !self.is_logical_server(),
+            "open_lectern called on Server role"
+        );
         let key = (pos[0], pos[1], pos[2]);
         let Some(BlockEntity::Lectern(l)) = self.world.block_entities.get(&key) else {
             return false;
@@ -923,6 +927,29 @@ impl Game<'_> {
             lectern: Some(key),
         });
         true
+    }
+    /// LecternScreen's Take Book: the menu's button 3. The book leaves the
+    /// lectern, so the screen closes (the server closes the menu once the
+    /// book is gone; a server's client closes at once rather than wait).
+    pub(in crate::game) fn take_lectern_book(&mut self, key: (i32, i32, i32)) {
+        let before = match self.world.block_entities.get(&key) {
+            Some(BlockEntity::Lectern(l)) => l.book.clone(),
+            _ => None,
+        };
+        self.lectern_button(key, 3);
+        if let (Some(book), Some(player), Some(name)) = (
+            before.filter(|_| {
+                matches!(self.world.block_entities.get(&key),
+                Some(BlockEntity::Lectern(l)) if l.book.is_none())
+            }),
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) {
+            self.native_player_take_lectern_book(player, &name, [key.0, key.1, key.2], &book.item);
+        }
+        if self.may_build() && self.lectern_book_open() {
+            self.close_book();
+        }
     }
     /// A `LecternMenu` button of the open lectern screen: on a server it is
     /// sent (`handleInventoryButtonClick`); here the lectern's menu takes it

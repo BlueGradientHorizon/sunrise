@@ -262,7 +262,10 @@ impl Game<'_> {
         removed: &[u32],
         through: Option<sunrise_client::join_seq::JoinSeq>,
     ) -> bool {
-        if self.remote.is_some() || mod_api::__private::mods().is_empty() || !self.joins_pending() {
+        if !self.is_logical_server()
+            || mod_api::__private::mods().is_empty()
+            || !self.joins_pending()
+        {
             return true;
         }
         self.assign_pending_join_ids();
@@ -494,7 +497,7 @@ impl Game<'_> {
     /// be told when it leaves.
     pub(in crate::game) fn native_joins_skip(&mut self) {
         let observed = sunrise_client::join_seq::JoinSeq::latest();
-        if self.remote.is_none() && !mod_api::__private::mods().is_empty() {
+        if self.is_logical_server() && !mod_api::__private::mods().is_empty() {
             self.assign_pending_join_ids();
             while let Some((slot, id, seq)) =
                 self.next_unannounced(self.persist.joined_seq, &[], None)

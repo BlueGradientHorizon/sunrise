@@ -486,11 +486,7 @@ impl Game<'_> {
                 if c.fuse > 0 {
                     c.fuse -= 1;
                     let at = [c.position.x, c.position.y + 0.5, c.position.z];
-                    self.particles.0.add(
-                        &ParticleOptions::simple(ParticleType::Smoke),
-                        at,
-                        [0.0; 3],
-                    );
+                    self.server_particle_at(crate::lan::server_effects::ServerParticle::simple(ParticleType::Smoke), at, [0.0; 3]);
                 } else if c.fuse == 0 {
                     // explode(horizontalDistanceSqr()): a rising cart's
                     // vertical speed adds nothing.

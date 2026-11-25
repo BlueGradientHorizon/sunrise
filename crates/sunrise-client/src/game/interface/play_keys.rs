@@ -135,7 +135,7 @@ impl Game<'_> {
                     // a ServerboundContainerClosePacket); PauseScreen.onClose only
                     // swaps the screen.
                     if self.client.screen == Screen::Inventory {
-                        self.close_container();
+                        self.close_container_client();
                     } else {
                         self.pad_clear_focus();
                     }
@@ -262,7 +262,7 @@ impl Game<'_> {
         }
         if self.remote.is_some() && (self.riding_mount_with_menu() || self.riding_chest_boat()) {
             self.remote_request_mount_inventory();
-        } else if self.remote.is_some() || (!self.spectator() && !self.open_ridden_mount_menu()) {
+        } else if self.remote.is_some() || !self.spectator() {
             if self.client.tutorial.open_inventory() {
                 self.persist_tutorial_step();
             }

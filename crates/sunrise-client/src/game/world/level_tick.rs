@@ -22,7 +22,7 @@ impl Game<'_> {
         // server's players count theirs down in `tick_guests`).
         self.server.shield_cooldown = self.server.shield_cooldown.saturating_sub(1);
         self.cooldowns.tick();
-        sunrise_client::spans::time("tick_using", || self.tick_using());
+        sunrise_client::spans::time("tick_using", || self.tick_using_server());
         // The player's digging comes in with its packets, before the level
         // ticks; ServerLevel.tick then runs the scheduled and random block
         // ticks before any entity, so what they drop or spawn (dispensed
@@ -186,8 +186,6 @@ impl Game<'_> {
             });
             // A conduit's hurt teleports an enderman now (`Enderman.hurtServer`).
             span("settle_hurt_teleports", || self.settle_hurt_teleports())?;
-            // A server's particles are not only drawn: a firework's blast sound and mob pickups ride on them.
-            sunrise_client::spans::time("tick_particles", || self.tick_particles());
         }
         // ServerLevel.tick's `entityManager.tick()`, frozen or not, after every
         // block entity ticker (the bells, conduits and gateways above too): the
@@ -218,7 +216,6 @@ impl Game<'_> {
         self.tick_scoreboard();
         self.load_bossbars();
         self.tick_worldborder();
-        self.tick_subtitles();
         self.spawn_phantoms();
         self.tick_advancements();
         self.tick_player_model();

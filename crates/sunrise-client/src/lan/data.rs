@@ -430,6 +430,24 @@ pub fn component_nbt(v: &Value) -> Tag {
     }
 }
 
+pub const OPEN_COMMAND_BLOCK_CHANNEL: &str = "sunrise:open_command_block";
+
+pub fn encode_open_command_block(pos: [i32; 3]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(12);
+    out.extend_from_slice(&pos[0].to_be_bytes());
+    out.extend_from_slice(&pos[1].to_be_bytes());
+    out.extend_from_slice(&pos[2].to_be_bytes());
+    out
+}
+
+pub fn decode_open_command_block(data: &[u8]) -> Option<(i32, i32, i32)> {
+    let bytes: [u8; 12] = data.try_into().ok()?;
+    let x = i32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+    let y = i32::from_be_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
+    let z = i32::from_be_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
+    Some((x, y, z))
+}
+
 impl SyncData {
     /// Admit the typed pack winners and collect conditions from the other
     /// files used by the lazy wire reader, even if typed admission fails.

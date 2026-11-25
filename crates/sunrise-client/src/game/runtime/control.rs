@@ -138,9 +138,7 @@ impl Game<'_> {
         let tick_ms = self
             .integrated
             .as_ref()
-            .map_or(self.client.debug_charts.smoothed_tick_ms, |s| {
-                s.smoothed_tick_ms()
-            });
+            .map_or(0.0, |s| s.smoothed_tick_ms());
         let Some(flight) = self.flight.0.as_mut() else {
             return;
         };
@@ -1401,11 +1399,10 @@ impl Game<'_> {
                     server
                         .ask(|reply| OwnerRequest::Control(ControlRequest::Save { all, reply }))
                         .ok_or(super::integrated::NO_ANSWER)??;
-                } else if self.remote.is_none() {
-                    self.begin_control_save(all, reply.clone())?;
-                    return Ok(None);
-                } else {
+                } else if self.is_logical_server() {
                     self.control_save(all)?;
+                } else {
+                    return Err("save requires a single-player world".into());
                 }
                 ok()
             }

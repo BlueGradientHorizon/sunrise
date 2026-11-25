@@ -472,7 +472,7 @@ impl Game<'_> {
                 } else {
                     "minecraft:block.conduit.deactivate"
                 };
-                self.client_audio_play(sound, Some(centre), 1.0, 1.0);
+                self.server_play_sound(sound, centre, 1.0, 1.0);
             }
             if let Some(frames) = check.frames {
                 self.conduit_apply_effects(pos, frames);
@@ -481,15 +481,10 @@ impl Game<'_> {
         }
         let (ambient, short) = conduit.ambient(time, &mut self.world.random);
         if ambient {
-            self.client_audio_play("minecraft:block.conduit.ambient", Some(centre), 1.0, 1.0);
+            self.server_play_sound("minecraft:block.conduit.ambient", centre, 1.0, 1.0);
         }
         if short {
-            self.client_audio_play(
-                "minecraft:block.conduit.ambient.short",
-                Some(centre),
-                1.0,
-                1.0,
-            );
+            self.server_play_sound("minecraft:block.conduit.ambient.short", centre, 1.0, 1.0);
         }
         self.be_anims.conduit_servers.insert(pos, conduit);
     }
@@ -621,7 +616,7 @@ impl Game<'_> {
             Damage::of(DamageKind::Magic),
         );
         self.finish_mob_damage_at(index);
-        self.client_audio_play("minecraft:block.conduit.attack.target", Some(at), 1.0, 1.0);
+        self.server_play_sound("minecraft:block.conduit.attack.target", at, 1.0, 1.0);
     }
     /// `ConduitBlockEntity.selectNewTarget`: one of the enemies in water or
     /// rain whose box meets the conduit's block inflated by 8.

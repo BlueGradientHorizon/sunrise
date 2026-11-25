@@ -498,7 +498,7 @@ impl Game<'_> {
         false
     }
     fn close_beacon_screen(&mut self) {
-        self.close_container();
+        self.close_container_client();
         self.set_screen(super::Screen::Playing);
         self.capture(true);
     }

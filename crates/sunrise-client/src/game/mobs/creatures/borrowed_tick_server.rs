@@ -869,7 +869,7 @@ impl Game<'_> {
                     }
                 }
             }
-            self.creatures.lan_sounds.append(&mut hit_sounds);
+            self.server.pending_native_sounds.append(&mut hit_sounds);
             if sting.is_some() {
                 resume_brain = Some((brain_from, section_yield, tell_post.take()));
                 section_yield = false;

@@ -210,7 +210,7 @@ impl Game<'_> {
         let sound = golem.kind.sounds[0];
         if !sound.is_empty() {
             let at = golem.center();
-            self.client_audio_play(&format!("minecraft:{sound}"), Some(at), 1.0, 1.0);
+            self.server_play_sound(&format!("minecraft:{sound}"), at, 1.0, 1.0);
         }
         self.mobs.push(golem);
         self.native_mobs_joined(self.mobs.len() - 1, false);
@@ -302,7 +302,6 @@ impl Game<'_> {
         };
         let feet = [m.position.x, m.position.y, m.position.z];
         let size = [f64::from(m.width()), f64::from(m.height())];
-        self.particles_around(kind, feet, size, burst);
     }
 
     /// `NearestItemSensor.doTick` for the villagers whose sensor is due: the

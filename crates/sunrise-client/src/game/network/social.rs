@@ -224,7 +224,7 @@ impl Game<'_> {
                 };
                 let line = Text::translate(key, &[Text::literal(name)]);
                 self.say_system_now(&line);
-                self.system_message(line);
+                self.client_system_message(line);
             }
             Action::Done => self.close_social(),
         }

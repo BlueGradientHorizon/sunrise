@@ -60,12 +60,12 @@ impl Game<'_> {
         if self.server.lan_acting.is_none() {
             return;
         }
-        let Some(capture) = self.audio.0.capture.as_mut() else {
+        if !self.server.audio_capture_active {
             return;
-        };
+        }
         let want = sound.trim_start_matches("minecraft:");
-        let mut keep = Vec::with_capacity(capture.len());
-        for entry in capture.drain(..) {
+        let mut keep = Vec::with_capacity(self.server.pending_sounds.len());
+        for entry in std::mem::take(&mut self.server.pending_sounds) {
             let name = entry.event.trim_start_matches("minecraft:");
             if name == want || name == "block.fire.extinguish" {
                 self.server.guest_player_sounds.push((
@@ -78,7 +78,7 @@ impl Game<'_> {
                 keep.push(entry);
             }
         }
-        *capture = keep;
+        self.server.pending_sounds = keep;
     }
 
     /// `bucket_contents` for the pour a server's client predicts: none for an

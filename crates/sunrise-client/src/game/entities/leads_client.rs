@@ -41,7 +41,7 @@ impl Game<'_> {
         index: usize,
         item: &str,
     ) -> Option<LeashInteraction> {
-        let sneaking = self.held_mapping(Action::Sneak);
+        let sneaking = self.server_acting_sneak();
         let id = self.mobs[index].id;
         let at = self.mobs[index].center();
         if !self.mobs[index].alive() {
@@ -483,7 +483,7 @@ impl Game<'_> {
             .collect();
         let existing_boats = self.boats_on(Holder::Knot(knot_pos));
         let held_item = self.held().map(|s| s.item.to_string());
-        let sneaking = self.held_mapping(Action::Sneak);
+        let sneaking = self.server_acting_sneak();
         // Shears snip every lead on the knot.
         if knot_hit && held_item.as_deref() == Some("minecraft:shears") {
             for i in existing {

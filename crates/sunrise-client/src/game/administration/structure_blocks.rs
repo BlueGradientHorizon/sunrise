@@ -608,7 +608,7 @@ impl Game<'_> {
                     } else {
                         "structure_block.save_failure"
                     };
-                    self.system_message(message(key, &name));
+                    self.server_system_message(message(key, &name));
                 }
                 UpdateType::LoadArea => {
                     let key = if !self.structure_loadable(pos) {
@@ -618,19 +618,19 @@ impl Game<'_> {
                     } else {
                         "structure_block.load_prepare"
                     };
-                    self.system_message(message(key, &name));
+                    self.server_system_message(message(key, &name));
                 }
                 UpdateType::ScanArea => {
                     if self.detect_structure_size(pos) {
-                        self.system_message(message("structure_block.size_success", &name));
+                        self.server_system_message(message("structure_block.size_success", &name));
                     } else {
-                        self.system_message(Text::translate("structure_block.size_failure", &[]));
+                        self.server_system_message(Text::translate("structure_block.size_failure", &[]));
                     }
                 }
                 UpdateType::UpdateData => {}
             },
             None => {
-                self.system_message(message("structure_block.invalid_structure_name", &p.name));
+                self.server_system_message(message("structure_block.invalid_structure_name", &p.name));
             }
         }
         // `setChanged` and `sendBlockUpdated`: the clients get the new data.

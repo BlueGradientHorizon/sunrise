@@ -409,7 +409,7 @@ impl Game<'_> {
         // villager's brain follows and looks at the player
         // (LookAndFollowTradingPlayerSink).
         self.mobs[index].extra.flag2 = true;
-        self.open_merchant_state(MerchantState {
+        self.open_merchant_state_server(MerchantState {
             session: Box::new(session),
             scroll: 0,
             dragging: false,
@@ -468,7 +468,7 @@ impl Game<'_> {
         session.level = level;
         session.xp = merchant::min_xp(level);
         session.origin = origin;
-        self.open_merchant_state(MerchantState {
+        self.open_merchant_state_server(MerchantState {
             session: Box::new(session),
             scroll: 0,
             dragging: false,
@@ -477,28 +477,15 @@ impl Game<'_> {
             name: None,
         });
     }
-    /// A server's trading window (no mob here: the server keeps it).
-    pub(in crate::game) fn open_remote_merchant(
-        &mut self,
-        session: merchant::Session,
-        name: Option<Text>,
-    ) {
-        self.open_merchant_state(MerchantState {
-            session: Box::new(session),
-            scroll: 0,
-            dragging: false,
-            focused: None,
-            mob: None,
-            name,
-        });
-    }
-    pub(in crate::game::server_side) fn open_merchant_state(&mut self, state: MerchantState) {
+    pub(in crate::game::server_side) fn open_merchant_state_server(&mut self, state: MerchantState) {
+        assert!(
+            self.is_logical_server(),
+            "open_merchant_state_server called on Client role"
+        );
         let mut s = Station::new_kind(Kind::Merchant, [0, 0, 0]);
         s.merchant = Some(Box::new(state));
         self.station = Some(s);
-        self.set_screen(super::Screen::Inventory);
-        self.capture(false);
-        self.set_mapping_held("key.use", false);
+        self.server_set_acting_use(false);
     }
     /// The trading mob's random before a menu click (it ticks meanwhile).
     pub(in crate::game) fn merchant_sync_in(session: &mut merchant::Session, mob: Option<&Mob>) {

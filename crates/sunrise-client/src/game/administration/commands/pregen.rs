@@ -98,7 +98,7 @@ impl Game<'_> {
                 }));
             }
         } else if !self.is_dedicated_server() {
-            self.system_message(message);
+            self.server_system_message(message);
         }
     }
 }

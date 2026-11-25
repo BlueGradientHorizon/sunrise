@@ -115,12 +115,7 @@ impl Game<'_> {
         let mut random = sunrise_client::random_source::create(); // the listener's own stream
         let pitch = (random.next_float() - random.next_float()) * 0.35 + 0.9;
         let p = orb.position;
-        self.audio.0.play(
-            "minecraft:entity.experience_orb.pickup",
-            Some([p.x, p.y, p.z]),
-            0.1,
-            pitch,
-        );
+        self.server_play_sound("minecraft:entity.experience_orb.pickup", [p.x, p.y, p.z], 0.1, pitch);
         let value = orb.value.max(0) as u32;
         self.as_guest(conn, |game| {
             let rest = game.mending(value);

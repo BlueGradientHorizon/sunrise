@@ -75,7 +75,7 @@ mod tests {
                         Some(false),
                         "{hand:?} {tick}"
                     );
-                    game.tick_using();
+                    game.tick_using_server();
                 }
                 assert_eq!(game.living_is_blocking(player), Some(true), "{hand:?}");
                 let hit = game.player_blocking(None, "minecraft:mob_attack", false);
@@ -86,7 +86,7 @@ mod tests {
             game.offhand = Some(ItemStack::new("minecraft:bow", 1));
             assert!(game.living_start_using_item(player, Hand::Off));
             for _ in 0..10 {
-                game.tick_using();
+                game.tick_using_server();
             }
             assert_eq!(
                 game.living_is_blocking(player),

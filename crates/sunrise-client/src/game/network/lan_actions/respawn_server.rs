@@ -327,14 +327,6 @@ impl Game<'_> {
                             &format!("System chat: {}", text.plain()),
                         );
                     }
-                } else if self.player.is_some()
-                    && sunrise_client::scoreboard::death_message_reaches(
-                        board,
-                        &name,
-                        crate::game::chat::PLAYER_NAME,
-                    )
-                {
-                    self.system_message(text);
                 }
                 message
             } else {

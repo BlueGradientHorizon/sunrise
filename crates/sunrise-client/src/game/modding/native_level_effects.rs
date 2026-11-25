@@ -6,7 +6,8 @@
 use super::api_values::TryIntoEngine;
 use super::journal_level_write::PendingWrite;
 use super::native_hooks::{mod_particles_ok, mod_sound_ok};
-use super::{Game, creatures::NativeSound, lan_particles::QueuedParticle};
+use super::{Game, creatures::NativeSound};
+use crate::lan::server_effects::ServerQueuedParticle;
 use mod_api::{LevelRef, PlayerRef, PlayerWorldRefusal, SoundSource};
 use sunrise_client::particles::ParticleOptions;
 use sunrise_world::registry::BlockStateId;
@@ -223,16 +224,20 @@ impl Game<'_> {
         if !mod_particles_ok(options, state, state_ok, positions, spread, speed) {
             return false;
         }
+        let Some(particle) = super::lan_particles::server_particle_from_options(options, state)
+        else {
+            return false;
+        };
         for &at in positions {
-            self.emit_level_effect(PendingWrite::Particles(QueuedParticle {
+            self.emit_level_effect(PendingWrite::Particles(ServerQueuedParticle {
                 dimension,
-                options: options.clone(),
-                state,
+                particle: particle.clone(),
                 at,
                 spread,
                 speed: [speed; 3],
                 count,
                 randomization: 0,
+                except: None,
             }));
         }
         true

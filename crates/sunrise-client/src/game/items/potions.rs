@@ -872,17 +872,15 @@ impl Game<'_> {
                 f64::from(pos[1] + 1),
                 f64::from(pos[2]) + r.next_double(),
             ];
-            let options = ParticleOptions::simple(ParticleType::Splash);
-            self.particles.0.add(&options, at, [0.0; 3]);
-            self.lan_send_particles(super::lan_particles::QueuedParticle {
+            self.server_send_particles(crate::lan::server_effects::ServerQueuedParticle {
                 dimension: self.dim.id(),
-                options,
-                state: None,
+                particle: crate::lan::server_effects::ServerParticle::simple(ParticleType::Splash),
                 at,
                 spread: [0.0; 3],
                 speed: [1.0; 3],
                 count: 1,
                 randomization: 0,
+                except: None,
             });
         }
         self.audio
@@ -1241,7 +1239,7 @@ impl Game<'_> {
             && let Some(p) = self.player.as_ref()
         {
             let at = [p.position.x, p.position.y, p.position.z];
-            self.audio.0.play(sound, Some(at), 1.0, 1.0);
+            self.server_play_sound(sound, at, 1.0, 1.0);
         }
         if id == "absorption"
             && let Some(p) = self.player.as_mut()

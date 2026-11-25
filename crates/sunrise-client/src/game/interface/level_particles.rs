@@ -118,8 +118,7 @@ impl Game<'_> {
             self.level_event_at(id, pos, data);
             return;
         }
-        self.global_level_event_sound(id, pos);
-        if self.audio_capture_active() {
+        if self.server.audio_capture_active {
             self.server
                 .lan_global_events
                 .push((self.dim.id(), id, pos, data));
@@ -141,10 +140,9 @@ impl Game<'_> {
             self.deliver_level_event(id, pos, data);
             return;
         }
-        self.global_level_event_sound(id, pos);
         if let Some(host) = self.lan.as_ref() {
             host.hub.global_level_event(self.dim.id(), id, pos, data);
-        } else if self.audio_capture_active() {
+        } else if self.server.audio_capture_active {
             self.server
                 .lan_global_events
                 .push((self.dim.id(), id, pos, data));

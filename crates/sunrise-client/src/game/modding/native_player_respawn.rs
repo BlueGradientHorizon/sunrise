@@ -11,7 +11,7 @@ impl Game<'_> {
         &mut self,
         player: PlayerRef,
     ) -> Result<(), RespawnRefusal> {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return Err(RespawnRefusal::Client);
         }
         if self.server.lan_acting.is_some() || !self.player_state.cloning_players.is_empty() {

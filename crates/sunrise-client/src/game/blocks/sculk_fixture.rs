@@ -438,13 +438,9 @@ impl Game<'_> {
         if s.trace_events {
             self.previous_position = Vec3::new(at[0], at[1], at[2]);
         }
-        self.clear_device_keys();
+        self.server_clear_acting_input();
         // The oracle sets the new player's shift state for every scenario.
-        if s.sneak {
-            self.insert_device_key(KeyCode::ShiftLeft);
-        } else {
-            self.remove_device_key(&KeyCode::ShiftLeft);
-        }
+        self.server_set_acting_sneak(s.sneak);
         self.sculk.tracker = WardenSpawnTracker::default();
         if let Some(level) = s.warning {
             self.sculk.tracker.set_warning_level(level);
@@ -515,7 +511,7 @@ impl Game<'_> {
         self.server.next_entity = self.server.next_entity.max(200_000);
         self.world.day_time = 6000;
         self.world.random.set_seed(s.level_seed);
-        self.sculk_scenario_set_capture_client(true);
+        self.start_audio_capture();
         let mut known: HashSet<u32> = self.mobs.iter().map(|m| m.id).collect();
         let mut seeded: HashSet<u32> = HashSet::new();
         let mut known_items = self.dropped.len();
@@ -650,8 +646,7 @@ impl Game<'_> {
             let bound = std::mem::take(&mut self.server.bound_sounds)
                 .into_iter()
                 .map(|s| (s.name, s.at, s.volume, s.pitch));
-            for (sound, at, volume, pitch) in self
-                .sculk_scenario_drain_capture_client()
+            for (sound, at, volume, pitch) in std::mem::take(&mut self.server.pending_sounds)
                 .into_iter()
                 .map(|s| (s.event, s.position, s.volume, s.pitch))
                 .chain(bound)
@@ -677,7 +672,7 @@ impl Game<'_> {
                 let _ = writeln!(out, "{t} {line}");
             }
         }
-        self.sculk_scenario_set_capture_client(false);
+        self.stop_audio_capture();
         Ok(out)
     }
 

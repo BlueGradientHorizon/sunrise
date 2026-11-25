@@ -441,7 +441,6 @@ impl Game<'_> {
                 f64::from(p.dimensions.height),
             )
         };
-        self.emit_living_teleport(from, to, width, height);
     }
     /// `LivingEntity.stopRiding`.
     pub(in crate::game) fn stop_riding(&mut self) {
@@ -502,6 +501,65 @@ impl Game<'_> {
             self.release_removed_vehicle(vehicle);
         }
     }
+
+    /// `LivingEntity.completeUsingItem` for a consumable: `Consumable.onConsume`,
+    /// then `ItemStack.applyAfterUseComponentSideEffects`' use remainder.
+    pub(in crate::game) fn finish_consuming(
+        &mut self,
+        info: &ItemInfo,
+        consumable: &ItemConsumable,
+        stack: &ItemStack,
+    ) {
+        let slot = self.held_slot();
+        self.emit_consume(consumable, stack, 16);
+        // ServerPlayer: the used statistic and the consume_item trigger.
+        self.award_stat("used", &stack.item, 1);
+        self.trigger_item("minecraft:consume_item", stack);
+        // FoodProperties.onConsume, the player's one ConsumableListener.
+        if let Some((nutrition, saturation)) = sunrise_client::item_sync::food(stack, info.food) {
+            let at = self.feet();
+            let pitch = self.world.random.triangle_float(1.0, 0.4);
+            if let Some(at) = at { self.server_play_sound(&consumable.sound, at, 1.0, pitch); }
+            if let Some(p) = self.player.as_mut() {
+                // FoodData.eat(nutrition, saturation)
+                let food = &mut p.health.food;
+                food.food = (food.food + nutrition as i32).clamp(0, 20);
+                food.saturation = (food.saturation + saturation).clamp(0.0, food.food as f32);
+            }
+            // Mth.randomBetween(random, 0.9, 1.0)
+            let pitch = self.world.random.next_float() * (1.0f32 - 0.9f32) + 0.9;
+            if let Some(at) = self.feet() { self.server_play_sound("minecraft:entity.player.burp", at, 0.5, pitch); }
+        }
+        // SuspiciousStewEffects.onConsume, a ConsumableListener: each entry is
+        // added as a `MobEffectInstance(effect, duration)` (amplifier 0).
+        if let Some(data) = stack.extra.as_deref() {
+            for (id, duration) in &data.stew_effects {
+                if let Some(def) = sunrise_client::brewing::effect(id) {
+                    self.add_player_effect(sunrise_client::effects::EffectInstance::new(
+                        def.id, *duration, 0,
+                    ));
+                }
+            }
+        }
+        // Consumable.onConsume applies these entries on the logical server only;
+        // the client's listener, particles and sounds above still run there.
+        self.apply_consumable_effects(stack, &consumable.effects, None);
+        let event = if consumable.animation == UseAnimation::Drink {
+            "minecraft:drink"
+        } else {
+            "minecraft:eat"
+        };
+        self.post_entity_event(event, Who::Player);
+        // ItemStack.consume, then UseRemainder.convertIntoRemainder: nothing
+        // with infinite materials, the hand when emptied, else the inventory
+        // (ServerPlayer.handleExtraItemsCreatedOnUse) or a drop. A listener may
+        // replace the stack or change the selected slot; neither is this use.
+        if self.held_slot() != slot || self.stack_in(slot) != Some(stack) {
+            return;
+        }
+        self.consume_held();
+        self.apply_use_remainder(stack);
+    }
 }
 
 /// `Consumable.emitParticlesAndSounds` against the local player.
@@ -516,10 +574,7 @@ impl EmissionWorld for Emitter<'_, '_> {
         &mut self.0.world.random
     }
     /// `LivingEntity.spawnItemParticles`.
-    fn spawn_item_particles(&mut self, stack: ItemStack, count: i32) -> Result<(), Infallible> {
-        self.0.eat_particles(&stack, count.max(0) as u32);
-        Ok(())
-    }
+    fn spawn_item_particles(&mut self, stack: ItemStack, count: i32) -> Result<(), Infallible> { if !self.0.is_logical_server() { self.0.eat_particles(&stack, count.max(0) as u32); } else if count > 5 { if let Some(at) = self.0.eye_position() { self.0.server_send_particles(crate::lan::server_effects::ServerQueuedParticle { dimension: self.0.dim.id(), particle: crate::lan::server_effects::ServerParticle::item(stack), at, spread: [0.0; 3], speed: [0.0; 3], count, randomization: 0, except: self.0.server.lan_acting }); } } Ok(()) }
     fn overrides_consume_sound(&self) -> bool {
         false
     }
@@ -534,7 +589,6 @@ impl EmissionWorld for Emitter<'_, '_> {
         if !self.0.is_logical_server() {
             self.0.play_client_player_sound(&sound, volume, pitch);
         } else if self.0.server.lan_acting.is_some() {
-            self.0.client_audio_play_unshared(&sound, at, volume, pitch);
             if let Some(at) = at {
                 self.0
                     .server
@@ -542,7 +596,7 @@ impl EmissionWorld for Emitter<'_, '_> {
                     .push((sound, at, volume, pitch));
             }
         } else {
-            self.0.client_audio_play(&sound, at, volume, pitch);
+            if let Some(at) = at { self.0.server_play_sound(&sound, at, volume, pitch); };
         }
         Ok(())
     }
@@ -644,12 +698,7 @@ impl TeleportConsumeWorld for Teleporter<'_, '_> {
         false
     }
     fn teleport_sound(&mut self, _: Dim, at: Vec3, _: bool) -> Result<(), Infallible> {
-        self.0.audio.0.play(
-            "minecraft:item.chorus_fruit.teleport",
-            Some([at.x, at.y, at.z]),
-            1.0,
-            1.0,
-        );
+        self.0.server_play_sound("minecraft:item.chorus_fruit.teleport", [at.x, at.y, at.z], 1.0, 1.0);
         Ok(())
     }
     fn block_position(&mut self) -> Result<BlockPos, Infallible> {

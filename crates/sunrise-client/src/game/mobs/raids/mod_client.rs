@@ -63,20 +63,6 @@ impl Game<'_> {
                 .play("minecraft:event.mob_effect.bad_omen", Some(at), 1.0, 1.0);
         }
     }
-    #[inline(always)]
-    pub(in crate::game) fn raid_horn_client(&mut self, at: [f64; 3]) {
-        // This window only. A positioned `play` would be broadcast to
-        // every guest on top of the packet each of them is sent.
-        let capture = self.audio.0.capture.take();
-        let neutral = sunrise_client::settings::SOUND_SOURCES
-            .iter()
-            .position(|s| *s == "neutral")
-            .unwrap_or(0);
-        self.audio
-            .0
-            .play_on(neutral, "minecraft:event.raid.horn", Some(at), 64.0, 1.0);
-        self.audio.0.capture = capture;
-    }
     /// The Raid Omen sound when the effect is first added
     /// (`MobEffect.onEffectAdded`: at the player's feet).
     pub(in crate::game::client_side) fn raid_omen_added(&mut self) {
@@ -87,10 +73,6 @@ impl Game<'_> {
         self.audio
             .0
             .play("minecraft:event.mob_effect.raid_omen", Some(at), 1.0, 1.0);
-    }
-    #[inline(always)]
-    pub(in crate::game) fn sync_villager_raids_client(&mut self) -> bool {
-        self.particles.0.random().next_int_bound(100) == Ok(0)
     }
 }
 

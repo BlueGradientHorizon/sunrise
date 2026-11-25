@@ -959,13 +959,13 @@ impl Game<'_> {
             && self.motion.landing.has_shelf_bounce(bounce.state)
         {
             let pos = bounce.position;
-            self.client_audio_play(
+            self.server_play_sound(
                 "minecraft:block.shelf_mushroom.bounce",
-                Some([
+                [
                     f64::from(pos.x) + 0.5,
                     f64::from(pos.y) + 0.5,
                     f64::from(pos.z) + 0.5,
-                ]),
+                ],
                 1.0,
                 1.0,
             );
@@ -1826,7 +1826,7 @@ macro_rules! hit_effects_of {
     };
     ($game:ident, $lend:expr) => {
         sunrise_client::health::HitEffects::new(
-            &mut $game.creatures.lan_sounds,
+            &mut $game.server.pending_native_sounds,
             $game.lan.as_ref().map(|lan| &lan.hub),
             $game.dim.id(),
             $game.native_lifecycle.epoch(),

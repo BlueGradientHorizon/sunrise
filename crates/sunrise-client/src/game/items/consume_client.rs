@@ -134,16 +134,7 @@ impl TeleportConsumeWorld for MobTeleporter<'_, '_> {
         matches!(self.usage, MobConsumption::Fox(_))
     }
     fn teleport_sound(&mut self, _: Dim, at: Vec3, fox: bool) -> Result<(), ()> {
-        self.game.audio.0.play(
-            if fox {
-                "minecraft:entity.fox.teleport"
-            } else {
-                "minecraft:item.chorus_fruit.teleport"
-            },
-            Some([at.x, at.y, at.z]),
-            1.0,
-            1.0,
-        );
+        self.game.server_play_sound(if fox { "minecraft:entity.fox.teleport" } else { "minecraft:item.chorus_fruit.teleport" }, [at.x, at.y, at.z], 1.0, 1.0);
         Ok(())
     }
     fn block_position(&mut self) -> Result<BlockPos, ()> {
@@ -171,27 +162,6 @@ impl TeleportConsumeWorld for MobTeleporter<'_, '_> {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn emit_living_teleport(
-        &mut self,
-        from: [f64; 3],
-        to: [f64; 3],
-        width: f64,
-        height: f64,
-    ) {
-        let mut spawned = Vec::with_capacity(128);
-        sunrise_client::particles::living_teleport_particles(
-            self.particles.0.random(),
-            from,
-            to,
-            width,
-            height,
-            |p, v| spawned.push((p, v)),
-        );
-        let options = ParticleOptions::simple(ParticleType::Portal);
-        for (p, v) in spawned {
-            self.particles.0.add(&options, p, v);
-        }
-    }
     /// `LivingEntity.handleEntityEvent(46)` for the entity the packet names:
     /// this player, or a mob the client is drawing.
     pub(in crate::game::client_side) fn entity_teleport_particles(&mut self, id: i32) {
@@ -221,65 +191,5 @@ impl Game<'_> {
         for (p, v) in spawned {
             self.particles.0.add(&options, p, v);
         }
-    }
-    /// `LivingEntity.completeUsingItem` for a consumable: `Consumable.onConsume`,
-    /// then `ItemStack.applyAfterUseComponentSideEffects`' use remainder.
-    pub(in crate::game) fn finish_consuming(
-        &mut self,
-        info: &ItemInfo,
-        consumable: &ItemConsumable,
-        stack: &ItemStack,
-    ) {
-        let slot = self.held_slot();
-        self.emit_consume(consumable, stack, 16);
-        // ServerPlayer: the used statistic and the consume_item trigger.
-        self.award_stat("used", &stack.item, 1);
-        self.trigger_item("minecraft:consume_item", stack);
-        // FoodProperties.onConsume, the player's one ConsumableListener.
-        if let Some((nutrition, saturation)) = sunrise_client::item_sync::food(stack, info.food) {
-            let at = self.feet();
-            let pitch = self.world.random.triangle_float(1.0, 0.4);
-            self.audio.0.play(&consumable.sound, at, 1.0, pitch);
-            if let Some(p) = self.player.as_mut() {
-                // FoodData.eat(nutrition, saturation)
-                let food = &mut p.health.food;
-                food.food = (food.food + nutrition as i32).clamp(0, 20);
-                food.saturation = (food.saturation + saturation).clamp(0.0, food.food as f32);
-            }
-            // Mth.randomBetween(random, 0.9, 1.0)
-            let pitch = self.world.random.next_float() * (1.0f32 - 0.9f32) + 0.9;
-            self.audio
-                .0
-                .play("minecraft:entity.player.burp", self.feet(), 0.5, pitch);
-        }
-        // SuspiciousStewEffects.onConsume, a ConsumableListener: each entry is
-        // added as a `MobEffectInstance(effect, duration)` (amplifier 0).
-        if let Some(data) = stack.extra.as_deref() {
-            for (id, duration) in &data.stew_effects {
-                if let Some(def) = sunrise_client::brewing::effect(id) {
-                    self.add_player_effect(sunrise_client::effects::EffectInstance::new(
-                        def.id, *duration, 0,
-                    ));
-                }
-            }
-        }
-        // Consumable.onConsume applies these entries on the logical server only;
-        // the client's listener, particles and sounds above still run there.
-        self.apply_consumable_effects(stack, &consumable.effects, None);
-        let event = if consumable.animation == UseAnimation::Drink {
-            "minecraft:drink"
-        } else {
-            "minecraft:eat"
-        };
-        self.post_entity_event(event, Who::Player);
-        // ItemStack.consume, then UseRemainder.convertIntoRemainder: nothing
-        // with infinite materials, the hand when emptied, else the inventory
-        // (ServerPlayer.handleExtraItemsCreatedOnUse) or a drop. A listener may
-        // replace the stack or change the selected slot; neither is this use.
-        if self.held_slot() != slot || self.stack_in(slot) != Some(stack) {
-            return;
-        }
-        self.consume_held();
-        self.apply_use_remainder(stack);
     }
 }

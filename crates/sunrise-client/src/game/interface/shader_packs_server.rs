@@ -147,7 +147,7 @@ pub(in crate::game::server_side) use crate::game::client_side::shader_packs::pla
     #[test]
     #[ignore = "daily"]
     fn pack_status_leaves_queued_effects_alone() {
-        use sunrise_client::particles::{ParticleOptions, ParticleType};
+        use sunrise_client::particles::ParticleType;
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             stand_player(game);
@@ -157,20 +157,22 @@ pub(in crate::game::server_side) use crate::game::client_side::shader_packs::pla
                 crate::game::lan_particles::tests::test_hub("PackStatusTest", Vec::new(), None);
             game.lan = Some(crate::game::lan::LanHost::for_test(hub));
             let at = [0.5, 64.0, 0.5];
-            game.creatures
-                .lan_particles
-                .push(crate::game::lan_particles::QueuedParticle {
+            game.server
+                .pending_particles
+                .push(crate::lan::server_effects::ServerQueuedParticle {
                     dimension: "minecraft:overworld",
-                    options: ParticleOptions::simple(ParticleType::Flame),
-                    state: None,
+                    particle: crate::lan::server_effects::ServerParticle::simple(
+                        ParticleType::Flame,
+                    ),
                     at,
                     spread: [0.0; 3],
                     speed: [0.0; 3],
                     count: 1,
                     randomization: 0,
+                    except: None,
                 });
-            game.creatures
-                .lan_sounds
+            game.server
+                .pending_native_sounds
                 .push(crate::game::creatures::NativeSound {
                     dimension: "minecraft:overworld",
                     sound: "minecraft:entity.pig.ambient".into(),
@@ -187,8 +189,8 @@ pub(in crate::game::server_side) use crate::game::client_side::shader_packs::pla
             rain_on_the_player(game, true);
 
             assert!(game.pack_player_status().wet, "rain");
-            assert_eq!(game.creatures.lan_particles.len(), 1, "particles");
-            assert_eq!(game.creatures.lan_sounds.len(), 1, "sounds");
+            assert_eq!(game.server.pending_particles.len(), 1, "particles");
+            assert_eq!(game.server.pending_native_sounds.len(), 1, "sounds");
             assert_eq!(game.spill.0.orbs.len(), 1, "spill");
             game.lan = None;
         });

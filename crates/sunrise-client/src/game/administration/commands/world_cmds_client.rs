@@ -44,50 +44,6 @@ pub(in crate::game::client_side) use sunrise_world::attribute_map::ValueKind;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::damage_source::Catalog as DamageCatalog;
 
-impl Game<'_> {
-    #[inline(always)]
-    pub(in crate::game) fn cmd_particle_client(
-        &mut self,
-        options: &sunrise_client::particles::ParticleOptions,
-        pos: [f64; 3],
-        delta: [f64; 3],
-        speed: f32,
-        count: i32,
-    ) {
-        if count <= 0 {
-            // handleParticleEvent, count 0: one particle, the speed times
-            // the delta as velocity (both sent as floats, multiplied as floats).
-            self.particles.0.create_with_world(
-                Some(&self.world),
-                options,
-                pos,
-                delta.map(|d| f64::from(speed * d as f32)),
-            );
-        } else {
-            for _ in 0..count {
-                let r = self.particles.0.random();
-                let p = [
-                    pos[0] + r.next_gaussian() * delta[0],
-                    pos[1] + r.next_gaussian() * delta[1],
-                    pos[2] + r.next_gaussian() * delta[2],
-                ];
-                let v = [
-                    r.next_gaussian() * f64::from(speed),
-                    r.next_gaussian() * f64::from(speed),
-                    r.next_gaussian() * f64::from(speed),
-                ];
-                if !self
-                    .particles
-                    .0
-                    .create_with_world(Some(&self.world), options, p, v)
-                {
-                    break;
-                }
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 #[path = "particle_command_tests_client.rs"]
 pub(in crate::game) mod particle_command_tests;

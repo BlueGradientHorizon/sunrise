@@ -226,7 +226,6 @@ pub(in crate::game) struct Parked {
     fangs: super::fangs::FangState,
     pub(in crate::game) boats: sunrise_client::join_seq::JoinList<boats::Boat, false>,
     pub(in crate::game) carts: sunrise_client::join_seq::JoinList<minecarts::Minecart, false>,
-    jukebox_sounds: HashMap<(i32, i32, i32), u64>,
     bolts: sunrise_client::join_seq::ResidentList<lightning::Bolt>,
     crystals: sunrise_client::join_seq::JoinList<dragon::Crystal>,
     dragon: super::native_entity_refs::dragon_parts_table::DragonSlot,
@@ -1030,7 +1029,6 @@ impl Game<'_> {
             fangs: Default::default(),
             boats: Default::default(),
             carts: Default::default(),
-            jukebox_sounds: HashMap::new(),
             bolts: Default::default(),
             crystals: Default::default(),
             dragon: Default::default(),
@@ -1236,7 +1234,6 @@ impl Game<'_> {
         swap(&mut self.fangs, &mut p.fangs);
         swap(&mut self.boats, &mut p.boats);
         swap(&mut self.carts, &mut p.carts);
-        swap(&mut self.jukebox_sounds, &mut p.jukebox_sounds);
         swap(&mut self.bolts, &mut p.bolts);
         swap(&mut self.crystals, &mut p.crystals);
         swap(&mut self.dragon, &mut p.dragon);
@@ -1277,8 +1274,6 @@ impl Game<'_> {
         self.server.creaking.swap_level(&mut p.creaking);
         swap(&mut self.server.spawn_scratch, &mut p.spawn_scratch);
         swap(&mut self.border, &mut p.border);
-        // What only the client draws starts over.
-        self.clear_client_particles();
     }
 
     /// Swap the level in place without publishing the one just left.

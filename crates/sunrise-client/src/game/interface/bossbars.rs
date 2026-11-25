@@ -110,7 +110,7 @@ impl Game<'_> {
             .join("data/minecraft/custom_boss_events.dat")
     }
     pub(in crate::game::server_side) fn load_bossbars(&mut self) {
-        if self.server.bosses.loaded || self.remote.is_some() {
+        if self.server.bosses.loaded || !self.is_logical_server() {
             return;
         }
         self.server.bosses.loaded = true;
@@ -123,7 +123,7 @@ impl Game<'_> {
         self.ui.registries.bossbars = self.server.bosses.bars.ids();
     }
     pub(in crate::game::server_side) fn save_bossbars(&self) {
-        if !self.server.bosses.loaded || self.remote.is_some() {
+        if !self.server.bosses.loaded || !self.is_logical_server() {
             return;
         }
         if self.server.bosses.bars.bars.is_empty() && !self.bossbar_path().exists() {
@@ -536,16 +536,13 @@ impl Game<'_> {
 
     // ---- ServerBossEvent delivery ------------------------------------------------
 
-    /// Tell every viewer the boss events they should be seeing. The window
-    /// that simulates the world applies them to its own overlay; everyone
-    /// else gets `ClientboundBossEventPacket`s.
+    /// Tell every connected viewer the boss events they should be seeing via `ClientboundBossEventPacket`.
     pub(in crate::game) fn publish_boss_bars(&mut self) {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return;
         }
         self.load_bossbars();
         self.update_dragon_bar_name();
-        let now = boss_overlay::now_millis();
         let viewers = self.boss_viewers();
         let live: HashSet<u128> = viewers.iter().map(|v| v.uuid).collect();
         self.server.bosses.sent.retain(|id, _| live.contains(id));
@@ -553,9 +550,7 @@ impl Game<'_> {
         for viewer in &viewers {
             let desired = self.boss_events_for(viewer);
             for event in self.diff_boss_events(viewer, desired) {
-                if viewer.local {
-                    self.publish_boss_bars_client(&event, now);
-                } else if let Some(conn) = viewer.conn {
+                if let Some(conn) = viewer.conn {
                     packets.push((conn, C::BossEvent(event)));
                 }
             }
@@ -594,24 +589,6 @@ impl Game<'_> {
     }
     pub(in crate::game::server_side) fn boss_viewers(&self) -> Vec<Viewer> {
         let mut out = Vec::new();
-        // While `as_guest` has swapped a guest in, the host's own position
-        // is not in place. Their overlay updates once the tick puts it back.
-        let local = self.serving.is_none()
-            && self.options.dedicated.is_none()
-            && self.server.lan_acting.is_none();
-        if local && let Some(p) = &self.player {
-            let ints = self.level.player_uuid.unwrap_or_else(|| self.acting_uuid());
-            out.push(Viewer {
-                uuid: sunrise_client::lan::playerdata::ints_uuid(ints),
-                ints,
-                at: [p.position.x, p.position.y, p.position.z],
-                alive: !p.health.dead_or_dying(),
-                here: true,
-                local: true,
-                conn: None,
-                view_chunks: self.settings.render_distance,
-            });
-        }
         if let Some(host) = &self.lan {
             for g in host
                 .hub
@@ -628,7 +605,6 @@ impl Game<'_> {
                     at: g.position,
                     alive: !g.dead,
                     here: g.dimension == self.dim.id(),
-                    local: false,
                     conn: Some(g.conn),
                     view_chunks: g.view_distance,
                 });
@@ -736,13 +712,12 @@ impl Game<'_> {
         viewer: &Viewer,
         desired: Vec<Offer>,
     ) -> Vec<play::BossEvent> {
-        let full = viewer.local;
         let dim = self.dim;
         let sent = self.server.bosses.sent.entry(viewer.uuid).or_default();
         let mut out = Vec::new();
         let event = |id, action| play::BossEvent { id, action };
         sent.retain(|id, prev| {
-            let owned = full || prev.scope == Scope::Global || prev.scope == Scope::Level(dim);
+            let owned = prev.scope == Scope::Global || prev.scope == Scope::Level(dim);
             let keep = !owned || desired.iter().any(|e| e.id == *id);
             if !keep {
                 out.push(event(*id, BossAction::Remove));
@@ -819,7 +794,6 @@ pub(in crate::game) struct Viewer {
     pub(in crate::game) at: [f64; 3],
     pub(in crate::game) alive: bool,
     pub(in crate::game) here: bool,
-    pub(in crate::game) local: bool,
     pub(in crate::game) conn: Option<u32>,
     pub(in crate::game) view_chunks: i32,
 }

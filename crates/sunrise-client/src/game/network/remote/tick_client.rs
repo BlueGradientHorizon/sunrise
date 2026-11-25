@@ -1557,6 +1557,8 @@ impl Game<'_> {
         // Breeze.tick's block dust: drawn by each client for the breezes it sees.
         if running {
             self.tick_breeze_effects();
+            self.tick_sniffer_client();
+            self.update_song_volumes();
         }
         self.tick_remote_guardian_eyes(running);
         self.tick_hand();

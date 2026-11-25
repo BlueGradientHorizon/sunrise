@@ -102,7 +102,6 @@ impl Game<'_> {
                 && self.serving.is_none()
                 && !self.is_dedicated_server()
             {
-                self.totem_event(TrackingTarget::Entity(entity), body);
             }
         } else if let Some(index) = self.lan.as_ref().and_then(|host| {
             host.hub

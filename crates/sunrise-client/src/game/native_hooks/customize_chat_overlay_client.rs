@@ -35,7 +35,7 @@ pub(in crate::game::client_side) use crate::game::native_hooks::customize_chat_o
         let message = Text::literal("hello from the chat test");
         let mut plain = None;
         with_client_game(|game| {
-            game.system_message(message.clone());
+            game.client_system_message(message.clone());
             plain = chat_top(game).0;
         });
         let plain = plain.expect("the message is drawn");
@@ -44,7 +44,7 @@ pub(in crate::game::client_side) use crate::game::native_hooks::customize_chat_o
             vec![ModEntry::new("lift", Box::new(Lift(Arc::clone(&seen))))].into();
         with_mods(mods, || {
             with_client_game(|game| {
-                game.system_message(message.clone());
+                game.client_system_message(message.clone());
                 let (moved, scale) = chat_top(game);
                 let moved = moved.expect("the message is drawn");
                 assert!(

@@ -16,8 +16,6 @@ use super::{Game, InteractTarget, entity::Entity, entity_culling::at, view_vecto
 #[allow(unused_imports)]
 use std::{collections::HashMap, f32::consts::PI, sync::Arc};
 #[allow(unused_imports)]
-use sunrise_client::actions::Action;
-#[allow(unused_imports)]
 use sunrise_client::entity_rules::EntityRules;
 #[allow(unused_imports)]
 use sunrise_client::{
@@ -1176,8 +1174,12 @@ impl Game<'_> {
             .apply_block_speed(b.position, &mut b.velocity);
         self.boat_step_on(&mut b);
         self.boat_stuck_in_blocks(&mut b);
-        self.tick_boat_client(&mut b);
         b
+    }
+    /// `Entity.lavaHurt`'s sound once the hurt went through.
+    pub(in crate::game) fn lava_hurt_sound(&mut self, at: [f64; 3]) {
+        let pitch = 2.0 + self.world.random.next_float() * 0.4;
+        self.server_play_sound("minecraft:entity.generic.burn", at, 0.4, pitch);
     }
     /// `AbstractBoat.tick` advances the oars even when this client does not move the hull.
     pub(in crate::game) fn tick_boat_paddles(b: &mut Boat, audio: &mut super::Audio) {
@@ -1458,7 +1460,6 @@ impl Game<'_> {
         }
         // A window that is its own client hears and sees the splash too.
         if self.options.execution_role.is_client() {
-            self.boat_bubble_splash(i);
         }
         let (id, p) = (self.boats[i].id, self.boats[i].position);
         // Entity.gameEvent(SPLASH, getControllingPassenger()): the window's
@@ -2006,7 +2007,7 @@ impl Game<'_> {
         }) else {
             return false;
         };
-        let sneaking = self.held_mapping(Action::Sneak);
+        let sneaking = self.server_acting_sneak();
         // Only a client's own pick is stopped by a block: the range check passed.
         if target.is_none() && !self.before_block(d) {
             return false;
@@ -2056,9 +2057,7 @@ impl Game<'_> {
                 .insert(key, sunrise_client::containers::BlockEntity::Chest(items));
         }
         self.container = Some(key);
-        self.set_screen(super::Screen::Inventory);
-        self.capture(false);
-        self.set_mapping_held("key.use", false);
+        self.server_set_acting_use(false);
         let ctx = self.player_context(None);
         self.post_game_event("minecraft:container_open", at, ctx);
         self.anger_piglins(true);

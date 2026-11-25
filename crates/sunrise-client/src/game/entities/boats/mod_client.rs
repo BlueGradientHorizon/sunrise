@@ -219,17 +219,6 @@ impl Game<'_> {
             self.finish_entity_occlusion(culling, b, out, entity_start);
         }
     }
-    /// `Entity.lavaHurt`'s sound once the hurt went through.
-    pub(in crate::game) fn lava_hurt_sound(&mut self, at: [f64; 3]) {
-        let pitch = 2.0 + self.world.random.next_float() * 0.4;
-        self.audio
-            .0
-            .play("minecraft:entity.generic.burn", Some(at), 0.4, pitch);
-    }
-    #[inline(always)]
-    pub(in crate::game) fn tick_boat_client(&mut self, b: &mut Boat) {
-        Self::tick_boat_paddles(b, &mut self.audio.0);
-    }
     /// The horizontal water plane around the camera for the water mirror: the median
     /// standing-water surface of a grid of columns 48 blocks around, each scanned down from
     /// the camera to its ground. A lake or the sea has one plane; the mirror shows only the

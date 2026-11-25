@@ -452,7 +452,7 @@ fn server_close_restores_inventory_under_chat_without_echo() {
                 );
 
                 deliver(game, open_chest);
-                game.close_container();
+                game.close_container_client();
                 let closes: Vec<_> = sent(&mut reader)
                     .into_iter()
                     .filter_map(|packet| match packet {

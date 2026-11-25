@@ -76,7 +76,7 @@ impl Game<'_> {
             _ => sunrise_client::containers::display_name(None, default_key),
         };
         let title = sunrise_client::component::name_text(&title);
-        self.send_overlay_message(Text::translate("container.isLocked", &[title]));
+        self.server_send_overlay_message(Text::translate("container.isLocked", &[title]));
         // `Level.playSound(null, pos, SoundEvents.CHEST_LOCKED, BLOCKS, 1, 1)`:
         // the block's centre, or between the halves of a double chest.
         let at = match (halves[0], halves[1]) {
@@ -229,7 +229,7 @@ impl Game<'_> {
         // `Audio::play` captures the sound while the world is open to the
         // network and `lan_broadcast_effects` sends that tick to every guest,
         // so nothing is queued separately (a second queue played it twice).
-        self.audio.0.play(sound, Some(at), 0.5, pitch);
+        self.server_play_sound(sound, at, 0.5, pitch);
     }
     /// Play the current block's sound when its opener count crosses zero
     /// (`ContainerOpenersCounter.onOpen` / `onClose`).
@@ -262,11 +262,6 @@ impl Game<'_> {
             Some((other, false)) => vec![(other, 27), own],
             None => vec![own],
         }
-    }
-    #[inline(always)]
-    pub(in crate::game) fn tick_container_reach_client(&mut self) {
-        self.client.screen = super::Screen::Playing;
-        self.capture(true);
     }
     /// The number of slots of the open container.
     pub(in crate::game) fn open_container_size(&self) -> usize {

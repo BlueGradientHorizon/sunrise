@@ -1248,6 +1248,13 @@ pub(in crate::game) enum ComponentHarness {
     Sculk(String),
     /// The hot-path benchmark (`hot_paths`), which builds its own levels the same way.
     HotPaths(String),
+    /// Authoritative boat-attack cases for `SUNRISE_BOAT_AUTHORITY_FIXTURE`.
+    BoatAuthorityAttacks(
+        std::path::PathBuf,
+        Arc<Mutex<Vec<(usize, serde_json::Value)>>>,
+    ),
+    /// Server-role particle refusal checks for `SUNRISE_NATIVE_CLIENT_PARTICLES_FIXTURE`.
+    NativeClientParticlesRefusal,
 }
 
 impl Game<'_> {
@@ -1261,11 +1268,58 @@ impl Game<'_> {
             .stack_size(server_thread_stack())
             .spawn(move || {
                 let run = || -> Result<()> {
+                    let (dedicated_pack, dedicated_settings) = match &fixture {
+                        ComponentHarness::NativeClientParticlesRefusal => {
+                            (Some(pack.clone()), Some(settings.clone()))
+                        }
+                        _ => (None, None),
+                    };
+                    let mut dedicated_options = options.clone();
+                    dedicated_options.execution_role = ExecutionRole::DedicatedServer;
                     let mut server = server_game(&res, pack, options, settings)?;
                     match fixture {
                         ComponentHarness::Dispenser(spec) => server.dispense_fixture(&spec),
                         ComponentHarness::Sculk(spec) => server.sculk_fixture(&spec),
                         ComponentHarness::HotPaths(output) => server.hot_paths(&output),
+                        ComponentHarness::BoatAuthorityAttacks(dir, out) => {
+                            server.run_boat_authority_attacks(&dir, &out)
+                        }
+                        ComponentHarness::NativeClientParticlesRefusal => {
+                            use crate::game::api_values::TryIntoApi;
+                            use mod_api::ClientHost;
+                            let at = [0.0, 100.0, 0.0];
+                            let smoke = sunrise_client::particles::ParticleOptions::simple(
+                                sunrise_client::particles::ParticleType::Smoke,
+                            );
+                            let api_smoke = smoke
+                                .try_into_api()
+                                .map_err(|_| "failed to convert smoke particle options")?;
+                            let mut check = |game: &mut Game<'_>| -> Result<()> {
+                                game.particles.0.requested = Some(Vec::new());
+                                game.player = Some(sunrise_client::motion::PlayerMotion::new(
+                                    game.motion,
+                                    sunrise_core::geometry::Vec3::new(0.0, 100.0, 0.0),
+                                )?);
+                                let host: &mut dyn ClientHost = game;
+                                assert!(
+                                    !host.add_particle(&api_smoke, at, [0.0; 3]),
+                                    "servers cannot spawn client particles"
+                                );
+                                assert!(
+                                    game.particles.0.requested.take().unwrap().is_empty(),
+                                    "server refusal must not touch particle queue"
+                                );
+                                Ok(())
+                            };
+                            check(&mut server)?;
+                            let mut dedicated = server_game(
+                                &res,
+                                dedicated_pack.unwrap(),
+                                dedicated_options,
+                                dedicated_settings.unwrap(),
+                            )?;
+                            check(&mut dedicated)
+                        }
                     }
                 };
                 run().map_err(|e| e.to_string())

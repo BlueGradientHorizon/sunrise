@@ -586,12 +586,7 @@ impl Game<'_> {
             let damage = self.retrieve_hook(stack);
             self.damage_held(damage);
             let pitch = 0.4 / (self.world.random.next_float() * 0.4 + 0.8);
-            self.client_audio_play(
-                "minecraft:entity.fishing_bobber.retrieve",
-                Some(at),
-                1.0,
-                pitch,
-            );
+            self.server_play_sound("minecraft:entity.fishing_bobber.retrieve", at, 1.0, pitch);
             // A rod that broke during retrieval is now an empty ItemStack,
             // whose use-effects component is absent.
             if let Some(rod) = self.held().cloned() {
@@ -599,12 +594,7 @@ impl Game<'_> {
             }
         } else {
             let pitch = 0.4 / (self.world.random.next_float() * 0.4 + 0.8);
-            self.client_audio_play(
-                "minecraft:entity.fishing_bobber.throw",
-                Some(at),
-                0.5,
-                pitch,
-            );
+            self.server_play_sound("minecraft:entity.fishing_bobber.throw", at, 0.5, pitch);
             // FishingHook(player, level, luck, lureSpeed)
             let lure = stack.enchantment_level("minecraft:lure") as i32 * 5 * 20;
             let luck = stack.enchantment_level("minecraft:luck_of_the_sea") as i32;
@@ -1023,12 +1013,7 @@ impl Game<'_> {
                     }
                 }
                 let pitch = 1.0 + (h.random.next_float() - h.random.next_float()) * 0.4;
-                self.client_audio_play(
-                    "minecraft:entity.fishing_bobber.splash",
-                    Some(at),
-                    0.25,
-                    pitch,
-                );
+                self.server_play_sound("minecraft:entity.fishing_bobber.splash", at, 0.25, pitch);
                 // The bite: bubbles and fishing particles around the bobber.
                 let at = [h.position.x, h.position.y + 0.5, h.position.z];
                 let count = (1.0 + SIZE as f32 * 20.0) as u32;
@@ -1266,12 +1251,7 @@ impl Game<'_> {
                             EntityCollision::Deflected { first, rot } => {
                                 if first {
                                     old_yaw += rot;
-                                    self.client_audio_play(
-                                        "minecraft:entity.breeze.deflect",
-                                        breeze,
-                                        1.0,
-                                        1.0,
-                                    );
+                                    if let Some(at) = breeze { self.server_play_sound("minecraft:entity.breeze.deflect", at, 1.0, 1.0); }
                                 }
                             }
                             EntityCollision::Hooked => {

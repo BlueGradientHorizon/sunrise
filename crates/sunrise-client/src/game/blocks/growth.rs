@@ -103,16 +103,7 @@ impl Game<'_> {
         }
         // `GrowingPlantHeadBlock.getMaxAgeState`.
         let max_age = b.table.set_int(state, b.props.age, 25);
-        self.audio.0.play(
-            "minecraft:block.growing_plant.crop",
-            Some([
-                f64::from(pos[0]) + 0.5,
-                f64::from(pos[1]) + 0.5,
-                f64::from(pos[2]) + 0.5,
-            ]),
-            1.0,
-            1.0,
-        );
+        self.server_play_sound("minecraft:block.growing_plant.crop", [f64::from(pos[0]) + 0.5, f64::from(pos[1]) + 0.5, f64::from(pos[2]) + 0.5], 1.0, 1.0);
         self.level_set(pos, max_age)?;
         self.post_block_game_event(
             "minecraft:block_change",

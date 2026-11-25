@@ -1,6 +1,6 @@
 //! The entity overload of level sounds, shared by mob and player call sites.
 use super::{Game, level_sounds::LevelSound};
-use sunrise_client::sound_engine::{SoundEntity, SoundEntityState};
+use sunrise_client::sound_engine::SoundEntityState;
 use sunrise_core::nbt::Tag;
 
 fn saved_silent(extra: Option<&Tag>) -> bool {
@@ -12,28 +12,6 @@ impl Game<'_> {
     /// which its sounds already read.
     pub(in crate::game::client_side) fn player_silent(&self) -> bool {
         saved_silent(self.level.player_extra.as_ref())
-    }
-    /// `Level.playSound(except, mob, ...)`: the category and actor exclusion
-    /// belong to the call site, not to the event's name.
-    pub(in crate::game) fn play_mob_bound_sound(
-        &mut self,
-        index: usize,
-        event: &str,
-        source: usize,
-        volume: f32,
-        pitch: f32,
-        except_actor: bool,
-    ) {
-        let mob = &self.mobs[index];
-        let entity = sunrise_client::sound_engine::SoundEntity::new(
-            mob.id,
-            [mob.position.x, mob.position.y, mob.position.z],
-            mob.silent,
-        );
-        let except = except_actor.then(|| self.native_acting_entity());
-        self.audio
-            .0
-            .play_bound(event, source, volume, pitch, entity, except);
     }
 
     fn sound_player_id(&self) -> u32 {
@@ -64,15 +42,16 @@ impl Game<'_> {
         let Some(state) = self.sound_entity_state(id) else {
             return;
         };
-        let entity = SoundEntity::new(id, state.position, state.silent);
-        entity.update(state);
-        self.audio.0.play_bound(
+        let except = except_actor.then_some(id);
+        self.server_play_bound_sound(
             event,
             source,
+            state.position,
             volume,
             pitch,
-            entity,
-            except_actor.then_some(id),
+            id,
+            state.silent,
+            except,
         );
     }
 

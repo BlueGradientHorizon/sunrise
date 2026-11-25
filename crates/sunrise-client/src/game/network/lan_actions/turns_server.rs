@@ -102,6 +102,20 @@ impl Game<'_> {
             self.as_guest(conn, &mut f);
         }
     }
+    /// `LivingEntity.playHurtSound` for a guest: the server's `Entity.playSound`
+    /// reaches every player around but the hurt one, whose own client plays it
+    /// from `handleDamageEvent` (#4149).
+    pub(in crate::game) fn guest_hurt_sound(&mut self, conn: u32, sound: &str) {
+        let Some(at) = self
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+            .map(|g| g.position)
+        else {
+            return;
+        };
+        self.send_level_sound(LevelSound::new(sound, at, 1.0, 1.0), Some(conn));
+    }
     /// Save and restore the outer player in this stack frame, even for nested turns.
     /// Erase the callback type so the swap code is shared by all callers.
     pub(in crate::game) fn guest_turn(
@@ -129,7 +143,7 @@ impl Game<'_> {
                 .map(PlayerMotion::bounds),
             borrowed: true,
         };
-        let input_sneak = self.held_mapping(Action::Sneak);
+        let input_sneak = self.server_acting_sneak();
         let Some(host) = self.lan.as_mut() else {
             return Err(TurnRefused::Gone);
         };
@@ -276,17 +290,13 @@ impl Game<'_> {
             std::mem::replace(&mut self.server.level_up_sound, play.level_up_sound);
         // The host's held keys stay theirs: the guest holds only sneak, and a
         // screen the guest opens (`keys.clear()`) leaves the host walking.
-        let (host_keys, saved_mappings) = Game::guest_turn_client_take_input(&mut self.client);
-        let sneaking = g.sneaking;
-        let guest_vehicle = g.vehicle;
-        if sneaking {
-            self.insert_device_key(KeyCode::ShiftLeft);
-        }
+        let (sneaking, sprinting, guest_vehicle) = (g.sneaking, g.sprinting, g.vehicle);
         // The window's screens are the host's: a sign, book, command block or
         // mount menu the guest's action opens is not drawn over the host's
         // world (#687). The guest's client opens its own.
-        let (screen, host_sign, host_book, host_command_block, host_mount_menu) =
-            self.guest_turn_client_enter_screens();
+        let outer_ui = self.server_replace_pending_guest_ui(
+            crate::game::server_side::acting_state::ServerPendingGuestUi::default(),
+        );
         // The host's crafting grid stays theirs; a crafting table the guest
         // opens shows as the 3x3 size.
         let craft_size = std::mem::replace(&mut self.craft_size, 2);
@@ -312,8 +322,14 @@ impl Game<'_> {
         std::mem::swap(&mut self.mount, &mut play.mount);
         // `Entity.portalCooldown` and `portalProcess` are the player's own.
         std::mem::swap(&mut self.portals.player, &mut play.portal);
-        self.set_mapping_held("key.attack", play.digging.is_some());
-        self.set_mapping_held("key.use", play.using.is_some() || self.using.is_some());
+        let outer_input = self.server_replace_acting_input(
+            crate::game::server_side::acting_state::ServerActingInput {
+                sneak: sneaking,
+                attack: play.digging.is_some(),
+                use_item: self.using.is_some(),
+                sprint: sprinting,
+            },
+        );
         // The guest's vehicle (Entity.vehicle) for its turn.
         let riding = std::mem::replace(&mut self.riding, guest_vehicle);
         // `Entity.isPassenger()` for that turn, from the same vehicle: the
@@ -343,7 +359,6 @@ impl Game<'_> {
             .respawn_elsewhere
             .as_ref()
             .and_then(RespawnConfig::from_saved);
-        let message = self.guest_turn_client_replace_message(None);
         // The guest's own ender inventory; one the host has open goes back
         // into the host's while the guest acts.
         let host_ender = self.server.ender_open;
@@ -632,8 +647,6 @@ impl Game<'_> {
         let guest_spawn = std::mem::replace(&mut self.spawn, spawn).map(|s| [s.x, s.y, s.z]);
         let guest_respawn = std::mem::replace(&mut self.server.respawn_config, respawn.0);
         self.level.spawn = respawn.1;
-        // ServerPlayer.displayClientMessage(_, true): the guest's action bar.
-        let guest_message = self.guest_turn_client_replace_message(message);
         let guest_vehicle = std::mem::replace(&mut self.riding, outer_player.riding);
         play.mining = std::mem::replace(&mut self.mining, mining);
         play.destroy_delay = std::mem::replace(&mut self.server.destroy_delay, destroy_delay);
@@ -650,15 +663,13 @@ impl Game<'_> {
         std::mem::swap(&mut self.mount, &mut play.mount);
         std::mem::swap(&mut self.portals.player, &mut play.portal);
         self.container = container;
-        let (guest_sign, guest_lectern, guest_command_block, guest_mount) = self
-            .guest_turn_client_leave_screens(
-                screen,
-                host_sign,
-                host_book,
-                host_command_block,
-                host_mount_menu,
-            );
-        self.guest_turn_client_leave_input(host_keys, saved_mappings);
+        let crate::game::server_side::acting_state::ServerPendingGuestUi {
+            sign_editor: guest_sign,
+            lectern: guest_lectern,
+            command_block: guest_command_block,
+            mount: guest_mount,
+        } = self.server_replace_pending_guest_ui(outer_ui);
+        self.server_set_acting_input(outer_input);
         let new_mode = self.mode_id();
         let turn_previous = std::mem::replace(&mut self.previous_mode, outer_previous);
         let turn_abilities = std::mem::replace(&mut self.server.acting_abilities, outer_abilities);
@@ -687,12 +698,6 @@ impl Game<'_> {
             g.sleeping = g.bed.is_some();
             if fell_asleep {
                 g.woke_from = None;
-            }
-            if let Some((text, _)) = guest_message {
-                g.send(&C::SystemChat(play::SystemChat {
-                    content: literal(&text),
-                    overlay: true,
-                }));
             }
             std::mem::swap(&mut self.server.ender_items, &mut g.ender_items);
             std::mem::swap(&mut self.adv.progress, &mut g.advancements);
@@ -874,6 +879,7 @@ impl Game<'_> {
             self.lan_station_opened(conn, station);
         }
         if let Some(edit) = guest_sign {
+            // `edit: PendingSignEditor`; callee moved to `sign_edit_server.rs`
             self.lan_open_sign_editor(conn, edit);
         }
         if let Some(key) = guest_lectern {

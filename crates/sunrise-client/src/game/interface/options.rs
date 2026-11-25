@@ -797,25 +797,25 @@ impl Game<'_> {
         match plan {
             TogglePlan::Noop => {}
             TogglePlan::Hint => {
-                self.system_message(Text::tr("sunrise.shaders.noPack", &[]));
+                self.client_system_message(Text::tr("sunrise.shaders.noPack", &[]));
             }
             TogglePlan::HintClearLast => {
                 self.settings.extras.last_shader_pack.clear();
                 self.settings.save(&Self::options_path());
-                self.system_message(Text::tr("sunrise.shaders.noPack", &[]));
+                self.client_system_message(Text::tr("sunrise.shaders.noPack", &[]));
             }
             TogglePlan::HintModOff(name) => {
-                self.system_message(Text::tr("sunrise.shaders.modOff", &[&name]));
+                self.client_system_message(Text::tr("sunrise.shaders.modOff", &[&name]));
             }
             TogglePlan::Off(name) => {
                 self.settings.set_shader_pick("");
                 self.settings.save(&Self::options_path());
-                self.system_message(Text::tr("sunrise.shaders.suspended", &[&name]));
+                self.client_system_message(Text::tr("sunrise.shaders.suspended", &[&name]));
             }
             TogglePlan::On(name) => {
                 self.settings.set_shader_pick(&name);
                 self.settings.save(&Self::options_path());
-                self.system_message(Text::tr("sunrise.shaders.resumed", &[&name]));
+                self.client_system_message(Text::tr("sunrise.shaders.resumed", &[&name]));
             }
         }
     }

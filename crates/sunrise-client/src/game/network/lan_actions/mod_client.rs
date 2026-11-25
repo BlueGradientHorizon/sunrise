@@ -34,8 +34,6 @@ pub(in crate::game::client_side) use crate::game::lan_actions::building_players;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::lan_actions::bundle_inventory_slot;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::lan_actions::captured_block_break;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::lan_actions::equipment_changed;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::lan_actions::eye_columns;
@@ -92,9 +90,6 @@ pub(in crate::game::client_side) use sunrise_world::entity_move::EntityMoveWorld
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use winit::keyboard::KeyCode;
 
-#[path = "effects_client.rs"]
-pub(in crate::game) mod effects;
-
 #[path = "guest_body_client.rs"]
 pub(in crate::game) mod guest_body;
 
@@ -103,6 +98,3 @@ pub(in crate::game) mod interaction;
 
 #[path = "pickups_client.rs"]
 pub(in crate::game) mod pickups;
-
-#[path = "turns_client.rs"]
-pub(in crate::game) mod turns;

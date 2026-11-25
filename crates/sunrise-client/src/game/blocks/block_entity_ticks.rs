@@ -325,7 +325,6 @@ impl Game<'_> {
         };
         let this = &mut *enclosing.game;
         this.fire_pending_block_entity_loads();
-        this.tick_mount_menu();
         this.tick_craft_table();
         this.tick_container_reach();
         this.ensure_stateful_entity_table();
@@ -451,11 +450,6 @@ impl Game<'_> {
                 }
                 TickedKind::PotentSulfur => {
                     this.tick_potent_sulfur(pos)?;
-                    // A window that simulates the world itself is its own
-                    // client; a server's clients tick it on their own.
-                    if this.options.execution_role.is_client() {
-                        this.client_tick_potent_sulfur(pos);
-                    }
                 }
             }
             slot.after(&mut BlockEntityTick {
@@ -470,14 +464,10 @@ impl Game<'_> {
         this.server.item_columns = None;
         this.server.pass_mobs = None;
         this.tick_sign_editors();
-        this.update_song_volumes();
         this.scan_for_hearts();
         // The client ticks (particles, sounds, the turning mob) are for a
         // window; a dedicated or integrated server has none.
         if this.options.dedicated.is_none() {
-            let spawners = std::mem::take(&mut this.spawner_tick_positions);
-            this.client_tick_spawners(&spawners);
-            this.spawner_tick_positions = spawners;
             let trial_spawners = std::mem::take(&mut this.trial_spawner_tick_positions);
             for key in trial_spawners.iter().copied() {
                 this.client_tick_trial_spawner(key);

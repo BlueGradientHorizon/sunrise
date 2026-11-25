@@ -540,7 +540,6 @@ impl Game<'_> {
         self.refresh_infiniburn();
         self.install_parts(parts);
         self.damage_tag_generation = self.damage_tag_generation.wrapping_add(1);
-        self.forget_book();
         // Before the players are sent the reloaded data below.
         self.sync_recipe_content();
         // PlayerList.reloadResources: the tags and recipes go to the players
@@ -564,7 +563,6 @@ impl Game<'_> {
         self.announce_data_bound(mod_api::TagsUpdateCause::ServerDataLoad { reload: true });
         self.resolve_enchant_particles();
         self.announce_data_maps_updated(mod_api::DataMapsUpdateCause::ServerReload);
-        self.build_screen();
     }
 }
 

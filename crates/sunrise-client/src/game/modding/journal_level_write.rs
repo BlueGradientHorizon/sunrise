@@ -3,9 +3,9 @@
 use super::Game;
 use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::creatures::NativeSound;
-use super::lan_particles::QueuedParticle;
 use super::native_level_signals::ReadLevel;
 use super::transactions::After;
+use crate::lan::server_effects::ServerQueuedParticle;
 use mod_api::{
     AttachmentBatch, AttachmentStore, BlockEntityRef, BlockKey, BlockPos, BlockSide, BlockState,
     BlockUpdateFlags, Compound, Direction, FeatureFlags, FluidState, ItemStack, LevelHost,
@@ -265,15 +265,19 @@ impl LevelWriteHost for JournalLevelWrite<'_, '_> {
         ) {
             return false;
         }
-        self.queue(PendingWrite::Particles(QueuedParticle {
+        let Some(particle) = super::lan_particles::server_particle_from_options(&options, state)
+        else {
+            return false;
+        };
+        self.queue(PendingWrite::Particles(ServerQueuedParticle {
             dimension: self.level.dimension_id(),
-            options,
-            state,
+            particle,
             at,
             spread,
             speed: [speed; 3],
             count,
             randomization: 0,
+            except: None,
         }))
     }
     fn level_event(&mut self, id: i32, pos: [i32; 3], data: i32) -> bool {
@@ -299,7 +303,7 @@ pub(in crate::game) enum PendingWrite {
         sound: NativeSound,
         seed: Option<i64>,
     },
-    Particles(QueuedParticle),
+    Particles(ServerQueuedParticle),
     Event {
         level: super::Dim,
         id: i32,
@@ -459,15 +463,15 @@ impl Game<'_> {
                             self.send_resolved_native_sound(&resolved);
                         }
                     } else {
-                        self.creatures.lan_sounds.push(sound);
+                        self.server.pending_native_sounds.push(sound);
                     }
                 }
             }
             PendingWrite::Particles(particles) => {
                 if deliver_now {
-                    self.lan_send_particles(particles);
+                    self.server_send_particles(particles);
                 } else {
-                    self.creatures.lan_particles.push(particles);
+                    self.server.pending_particles.push(particles);
                 }
             }
             PendingWrite::Event {

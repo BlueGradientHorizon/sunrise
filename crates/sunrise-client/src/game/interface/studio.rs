@@ -62,7 +62,7 @@ impl Game<'_> {
             "freecam" => match words.get(1).copied() {
                 Some("on") => {
                     if self.replay.driver.is_none() {
-                        self.system_message(Text::translate(
+                        self.client_system_message(Text::translate(
                             "sunrise.studio.freecam.replay_required",
                             &[],
                         ));
@@ -74,9 +74,9 @@ impl Game<'_> {
                             self.settings.fov.clamp(1.0, 179.0),
                         );
                         self.capture(true);
-                        self.system_message(Text::translate("sunrise.studio.freecam.enabled", &[]));
+                        self.client_system_message(Text::translate("sunrise.studio.freecam.enabled", &[]));
                     } else {
-                        self.system_message(Text::translate(
+                        self.client_system_message(Text::translate(
                             "sunrise.studio.freecam.unavailable",
                             &[],
                         ));
@@ -85,13 +85,13 @@ impl Game<'_> {
                 Some("off") => {
                     self.client.studio.freecam.deactivate();
                     self.capture(false);
-                    self.system_message(Text::translate("sunrise.studio.freecam.disabled", &[]));
+                    self.client_system_message(Text::translate("sunrise.studio.freecam.disabled", &[]));
                 }
-                _ => self.system_message(Text::translate("sunrise.studio.freecam.usage", &[])),
+                _ => self.client_system_message(Text::translate("sunrise.studio.freecam.usage", &[])),
             },
             "keyframe" => {
                 let Some(driver) = self.replay.driver.as_ref() else {
-                    self.system_message(Text::translate("sunrise.studio.replay.inactive", &[]));
+                    self.client_system_message(Text::translate("sunrise.studio.replay.inactive", &[]));
                     return true;
                 };
                 let time_ms = driver.position_ms();
@@ -110,7 +110,7 @@ impl Game<'_> {
                         self.capture(true);
                         self.client.studio.freecam.add_keyframe_at_current(time_ms);
                         self.client.studio.camera_track_dirty = true;
-                        self.system_message(Text::tr(
+                        self.client_system_message(Text::tr(
                             "sunrise.studio.keyframe.added",
                             &[&time_ms.to_string()],
                         ));
@@ -118,7 +118,7 @@ impl Game<'_> {
                     Some("clear") => {
                         self.client.studio.freecam.track.clear();
                         self.client.studio.camera_track_dirty = true;
-                        self.system_message(Text::translate(
+                        self.client_system_message(Text::translate(
                             "sunrise.studio.keyframe.cleared",
                             &[],
                         ));
@@ -127,14 +127,14 @@ impl Game<'_> {
                         let Some(index) =
                             words.get(2).and_then(|value| value.parse::<usize>().ok())
                         else {
-                            self.system_message(Text::translate(
+                            self.client_system_message(Text::translate(
                                 "sunrise.studio.keyframe.remove_usage",
                                 &[],
                             ));
                             return true;
                         };
                         if index >= self.client.studio.freecam.track.keyframes.len() {
-                            self.system_message(Text::translate(
+                            self.client_system_message(Text::translate(
                                 "sunrise.studio.keyframe.index_invalid",
                                 &[],
                             ));
@@ -142,12 +142,12 @@ impl Game<'_> {
                         }
                         self.client.studio.freecam.track.keyframes.remove(index);
                         self.client.studio.camera_track_dirty = true;
-                        self.system_message(Text::tr(
+                        self.client_system_message(Text::tr(
                             "sunrise.studio.keyframe.removed",
                             &[&index.to_string()],
                         ));
                     }
-                    _ => self.system_message(Text::translate("sunrise.studio.keyframe.usage", &[])),
+                    _ => self.client_system_message(Text::translate("sunrise.studio.keyframe.usage", &[])),
                 }
             }
             "path" => match words.get(1).copied() {
@@ -155,13 +155,13 @@ impl Game<'_> {
                     self.client.studio.freecam.active = true;
                     self.client.studio.freecam.locked_to_path = true;
                     self.capture(true);
-                    self.system_message(Text::translate("sunrise.studio.path.locked", &[]));
+                    self.client_system_message(Text::translate("sunrise.studio.path.locked", &[]));
                 }
                 Some("unlock") => {
                     self.client.studio.freecam.locked_to_path = false;
-                    self.system_message(Text::translate("sunrise.studio.path.unlocked", &[]));
+                    self.client_system_message(Text::translate("sunrise.studio.path.unlocked", &[]));
                 }
-                _ => self.system_message(Text::translate("sunrise.studio.path.usage", &[])),
+                _ => self.client_system_message(Text::translate("sunrise.studio.path.usage", &[])),
             },
             _ => {}
         }

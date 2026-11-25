@@ -7,7 +7,6 @@
 use super::Game;
 use std::collections::HashSet;
 use sunrise_client::mobs::{DamageKind, NamedDamage};
-use sunrise_client::particles::{ExplosionParticle, ParticleOptions, ParticleType};
 
 /// What `SimpleExplosionDamageCalculator` gives a block of its immune set.
 const IMMUNE_RESISTANCE: f32 = 3_600_000.0;
@@ -51,33 +50,7 @@ pub(in crate::game) struct BlastCalculator {
     pub(in crate::game) immune: Option<HashSet<String>>,
 }
 
-/// The particles and sound of `ServerLevel.explode`'s full overload.
-#[derive(Clone)]
-pub(in crate::game) struct BlastEffects {
-    /// The centre particle of a small blast (`ServerExplosion.isSmall`).
-    pub(in crate::game) small: ParticleOptions,
-    pub(in crate::game) large: ParticleOptions,
-    pub(in crate::game) block_particles: Vec<ExplosionParticle>,
-    pub(in crate::game) sound: String,
-}
-impl Default for BlastEffects {
-    /// What `Level.explode`'s shorter forms pass.
-    fn default() -> Self {
-        Self {
-            small: ParticleOptions::simple(ParticleType::Explosion),
-            large: ParticleOptions::simple(ParticleType::ExplosionEmitter),
-            block_particles: ExplosionParticle::defaults(),
-            sound: "minecraft:entity.generic.explode".into(),
-        }
-    }
-}
-impl BlastEffects {
-    /// The centre particle: the small one for a radius under 2 or a blast
-    /// that keeps its blocks.
-    pub(in crate::game::server_side) fn emitter(&self, small: bool) -> &ParticleOptions {
-        if small { &self.small } else { &self.large }
-    }
-}
+pub(in crate::game) use crate::lan::server_effects::BlastEffects;
 
 impl Game<'_> {
     /// The damage type the blast deals: the mod's, else `DamageSources.explosion`'s

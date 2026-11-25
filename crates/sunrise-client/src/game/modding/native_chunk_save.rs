@@ -30,7 +30,7 @@ impl Game<'_> {
 
     /// Observe the exact full-chunk save copies on the server thread.
     pub(in crate::game) fn native_full_chunk_snapshots(&mut self, chunks: &[Arc<Chunk>]) {
-        if self.remote.is_some() || mod_api::__private::mods().is_empty() {
+        if !self.is_logical_server() || mod_api::__private::mods().is_empty() {
             return;
         }
         for chunk in chunks {
@@ -39,7 +39,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn native_late_full_chunk_snapshot(&mut self, chunk: &Chunk) {
-        if self.remote.is_none() && !mod_api::__private::mods().is_empty() {
+        if self.is_logical_server() && !mod_api::__private::mods().is_empty() {
             self.native_full_chunk_snapshot(chunk);
         }
     }
@@ -50,7 +50,7 @@ impl Game<'_> {
 
     /// The proto stays checked out until its immutable save record is submitted.
     pub(in crate::game) fn native_proto_snapshots(&mut self, protos: &[ProtoSave]) {
-        if self.remote.is_some() || mod_api::__private::mods().is_empty() {
+        if !self.is_logical_server() || mod_api::__private::mods().is_empty() {
             return;
         }
         let access = self.streaming.proto_access();

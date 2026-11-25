@@ -71,7 +71,7 @@ impl Game<'_> {
     /// The mods' compound on a player: the acting player's saved data is the level's for their
     /// turn, another's is their record's.
     pub(super) fn player_persistent_data(&self, player: PlayerRef) -> Option<&Compound> {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return None;
         }
         let saved = match self.player_handle_read(player)? {
@@ -90,7 +90,7 @@ impl Game<'_> {
         key: &JavaString,
         value: Option<&Tag>,
     ) -> Result<(), PlayerPersistentDataError> {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return Err(PlayerPersistentDataError::Client);
         }
         let target = match self.player_handle_read(player) {

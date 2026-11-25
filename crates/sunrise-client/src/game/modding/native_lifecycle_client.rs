@@ -29,7 +29,7 @@ impl Game<'_> {
     pub(in crate::game) fn native_lifecycle_world_closed(&mut self) {
         self.client.instance_groups.borrow_mut().clear();
         // Each server level closes after the final save (`LevelEvent.Unload`).
-        if self.remote.is_none() {
+        if self.is_logical_server() {
             self.native_levels_closing();
         }
         if let Some(context) = self.native_lifecycle.world_close_final() {

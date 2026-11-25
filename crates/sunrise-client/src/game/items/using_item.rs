@@ -89,14 +89,18 @@ impl Game<'_> {
             *self.stack_in_mut(slot) = Some(ItemStack::new("minecraft:bucket", 1));
         }
     }
-    pub(in crate::game) fn tick_using(&mut self) {
+    pub(in crate::game) fn tick_using_server(&mut self) {
+        assert!(
+            self.is_logical_server(),
+            "tick_using_server called on Client role"
+        );
         let Some(hand) = self.used_hand() else {
             return;
         };
         self.with_hand(hand, Self::tick_used_item);
     }
     /// `LivingEntity.updatingUsingItem` for the item in use, its hand acting.
-    pub(in crate::game::client_side) fn tick_used_item(&mut self) {
+    pub(in crate::game::server_side) fn tick_used_item(&mut self) {
         let Some((slot, ticks)) = self.using else {
             return;
         };
@@ -115,8 +119,7 @@ impl Game<'_> {
             return;
         }
         let hand_changed = self.use_hand_changed(slot);
-        if !self.mapped_key_down("key.use") || hand_changed || self.client.screen != Screen::Playing
-        {
+        if !self.server_acting_use() || hand_changed {
             self.using = None;
             self.release_used_item(&stack, ticks, hand_changed);
             return;
@@ -236,7 +239,7 @@ impl Game<'_> {
     }
     /// `BundleItem.onUseTick`: the first tick and then every second tick
     /// from the 11th on drops a stack. `updateUsingItem` owns completion.
-    pub(in crate::game::client_side) fn tick_bundle(&mut self, slot: usize, ticks: u32) {
+    pub(in crate::game::server_side) fn tick_bundle(&mut self, slot: usize, ticks: u32) {
         const USE_DURATION: i32 = 200;
         let remaining = item_use::ticks_left(self.use_duration, ticks);
         if remaining == USE_DURATION || (remaining < USE_DURATION - 10 && remaining % 2 == 0) {

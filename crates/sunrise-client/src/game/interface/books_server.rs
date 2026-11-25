@@ -120,32 +120,8 @@ impl Game<'_> {
             }
         }
     }
-    /// LecternScreen's Take Book: the menu's button 3. The book leaves the
-    /// lectern, so the screen closes (the server closes the menu once the
-    /// book is gone; a server's client closes at once rather than wait).
-    pub(in crate::game) fn take_lectern_book(&mut self, key: (i32, i32, i32)) {
-        let before = match self.world.block_entities.get(&key) {
-            Some(BlockEntity::Lectern(l)) => l.book.clone(),
-            _ => None,
-        };
-        self.lectern_button(key, 3);
-        if let (Some(book), Some(player), Some(name)) = (
-            before.filter(|_| {
-                matches!(self.world.block_entities.get(&key),
-                Some(BlockEntity::Lectern(l)) if l.book.is_none())
-            }),
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
-        ) {
-            self.native_player_take_lectern_book(player, &name, [key.0, key.1, key.2], &book.item);
-        }
-        if self.may_build() && self.lectern_book_open() {
-            self.close_book();
-        }
-    }
     /// The 2-tick pulses of turned lecterns.
     pub(in crate::game) fn tick_lecterns(&mut self) {
-        self.follow_lectern();
         let mut done = Vec::new();
         for (key, left) in &mut self.server.lectern_pulses {
             *left -= 1;
@@ -163,6 +139,7 @@ impl Game<'_> {
     /// (`LocalPlayer.openItemGui`), and reads on its own client once told to
     /// (`ServerPlayer.openItemGui`'s ClientboundOpenBookPacket).
     pub(in crate::game::server_side) fn use_book(&mut self, stack: &ItemStack) -> bool {
+        assert!(self.is_logical_server(), "use_book called on Client role");
         let written = match &*stack.item {
             "minecraft:writable_book" => false,
             "minecraft:written_book" => true,
@@ -177,15 +154,11 @@ impl Game<'_> {
         } else {
             stack
         };
-        if self.server.lan_acting.is_some() {
-            if written {
-                let hand = i32::from(self.hand == Hand::Off);
-                self.server
-                    .guest_packets
-                    .push(C::OpenBook(play::OpenBook { hand }));
-            }
-        } else if let Some(screen) = self.book_screen(stack) {
-            self.open_book(screen);
+        if self.server.lan_acting.is_some() && written {
+            let hand = i32::from(self.hand == Hand::Off);
+            self.server
+                .guest_packets
+                .push(C::OpenBook(play::OpenBook { hand }));
         }
         // WritableBookItem.use / WrittenBookItem.use count every open.
         self.award_stat("used", &stack.item, 1);
@@ -240,7 +213,7 @@ impl Game<'_> {
             f64::from(pos[1]) + 0.5,
             f64::from(pos[2]) + 0.5,
         ];
-        self.client_audio_play("minecraft:item.book.put", Some(at), 1.0, 1.0);
+        self.server_play_sound("minecraft:item.book.put", at, 1.0, 1.0);
         self.container_changed(key);
         if let (Some(player), Some(name)) = (
             self.server.lan_acting_uuid,

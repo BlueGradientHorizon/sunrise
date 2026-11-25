@@ -676,11 +676,13 @@ impl Game<'_> {
             game.client.mod_view_distances.take();
             // The atlas's sprites moved: the particle engine re-reads every rect
             // and the packs' sprite sets, or every particle draws a stale region.
-            game.particles.0.reload(
-                &game.pack.source,
-                &game.gui.atlas.sprites,
-                &game.gui.atlas.translucent,
-            );
+            if !game.is_logical_server() {
+                game.particles.0.reload(
+                    &game.pack.source,
+                    &game.gui.atlas.sprites,
+                    &game.gui.atlas.translucent,
+                );
+            }
             // Villager hats come from the pack's texture metadata (shared data, swapped in place).
             *game
                 .res

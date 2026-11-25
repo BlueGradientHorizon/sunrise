@@ -226,9 +226,6 @@ impl Game<'_> {
                 host.hub
                     .system_message(sunrise_client::lan::data::component_nbt(&text.component()));
             }
-            if self.options.dedicated.is_none() {
-                self.system_message(text);
-            }
         }
     }
 }

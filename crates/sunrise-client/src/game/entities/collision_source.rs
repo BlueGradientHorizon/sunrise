@@ -230,9 +230,12 @@ impl Game<'_> {
     }
 
     fn boat_collision_root(&self, id: u32, target: Target) -> Option<u32> {
-        match self.remote.as_ref() {
-            Some(r) => passenger_root(&r.passenger_vehicles, id).ok(),
-            None => self.native_root_vehicle_id(id, target),
+        if self.is_logical_server() {
+            self.native_root_vehicle_id(id, target)
+        } else {
+            self.remote
+                .as_ref()
+                .and_then(|r| passenger_root(&r.passenger_vehicles, id).ok())
         }
     }
 }

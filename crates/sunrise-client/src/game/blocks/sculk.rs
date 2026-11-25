@@ -345,7 +345,7 @@ impl Game<'_> {
             .rules
             .bool_at(sunrise_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK)
         {
-            self.system_message(Text::translate(
+            self.server_system_message(Text::translate(
                 key,
                 &[Text::literal(super::chat::PLAYER_NAME)],
             ));
@@ -624,7 +624,7 @@ impl Game<'_> {
             owner_uuid: None,
             dampening_state: self.state_dampens(state),
             spectator: self.spectator(),
-            stepping_carefully: self.held_mapping(Action::Sneak),
+            stepping_carefully: self.server_acting_sneak(),
             dampens: false,
             targetable: !dead && !creative && !self.spectator(),
             living: true,
@@ -1738,19 +1738,19 @@ impl Game<'_> {
         to: [f64; 3],
         ticks: i32,
     ) {
-        let options = ParticleOptions::vibration(source, to, ticks);
-        if self.options.execution_role.is_client() {
+        if !self.is_logical_server() {
             self.particles.0.vibration(from, to, ticks);
+            return;
         }
-        self.lan_send_particles(super::lan_particles::QueuedParticle {
+        self.server_send_particles(crate::lan::server_effects::ServerQueuedParticle {
             dimension: self.dim.id(),
-            options,
-            state: None,
+            particle: crate::lan::server_effects::ServerParticle::vibration(source, ticks),
             at: from,
             spread: [0.0; 3],
             speed: [0.0; 3],
             count: 1,
             randomization: 0,
+            except: None,
         });
     }
     /// A vibration travelling to a warden or allay (`MobEvent::Vibration`).
@@ -1893,7 +1893,7 @@ impl Game<'_> {
 
     /// Events from entities moving, getting hurt and dying, derived from what
     /// changed this tick.
-    pub(in crate::game::client_side) fn tick_entity_events(&mut self) {
+    pub(in crate::game) fn tick_entity_events(&mut self) {
         self.tick_player_sculk_events();
         self.tick_mob_sculk_events();
         if !self.sculk.falling_items.is_empty() {
@@ -1977,7 +1977,7 @@ impl Game<'_> {
             )
         });
         if let Some((at, on_ground, health, flying)) = player {
-            let crouch = self.held_mapping(Action::Sneak);
+            let crouch = self.server_acting_sneak();
             if on_ground && !self.spectator() {
                 self.step_on_redstone_ore(at, crouch, true);
             }
@@ -2152,7 +2152,7 @@ impl Game<'_> {
             }
         }
     }
-    pub(in crate::game::client_side) fn in_water_at(&self, at: [f64; 3]) -> bool {
+    pub(in crate::game) fn in_water_at(&self, at: [f64; 3]) -> bool {
         let (x, y, z) = (
             at[0].floor() as i32,
             at[1].floor() as i32,

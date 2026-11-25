@@ -230,6 +230,41 @@ fn a_hand_egg_checks_and_spawns_the_type_named_by_its_component() {
 }
 
 impl Game<'_> {
+    /// `AgeableMob.setAgeLocked`: a golden dandelion on mob `index` flips its
+    /// age lock (a tadpole's or an ageable mob's own `setAgeLockedData`) and is
+    /// used up; a locked mob stays (`setPersistenceRequired`), and the lock's
+    /// use or unuse sound plays at its block for everyone near.
+    pub(in crate::game) fn set_age_locked(&mut self, index: usize) {
+        let m = &mut self.mobs[index];
+        if m.species() == Species::Tadpole {
+            sunrise_client::mobs::aquatic::set_age_locked_data(m);
+        } else {
+            sunrise_client::mobs::ai::set_age_locked_data(m);
+        }
+        self.consume_held();
+        let m = &mut self.mobs[index];
+        let locked = m.extra.age_locked;
+        if locked {
+            m.persistent = true;
+        }
+        // Level.playSound(null, blockPosition, ..): the middle of the block.
+        let at = [
+            m.position.x.floor() + 0.5,
+            m.position.y.floor() + 0.5,
+            m.position.z.floor() + 0.5,
+        ];
+        let chunk = (
+            m.position.x.floor() as i32 >> 4,
+            m.position.z.floor() as i32 >> 4,
+        );
+        self.world.modified.insert(chunk);
+        let sound = if locked {
+            "minecraft:item.golden_dandelion.use"
+        } else {
+            "minecraft:item.golden_dandelion.unuse"
+        };
+        self.server_play_sound(sound, at, 1.0, 1.0);
+    }
     /// Adds a projectile, giving it an id from the entity counter
     /// (`Entity.id`, the same counter as the rest) when it has none. Its id.
     pub(in crate::game) fn add_projectile(
@@ -1181,9 +1216,7 @@ impl Game<'_> {
             // ClientPacketListener.handleGameEvent: the apparition always, the
             // curse sound unless the elder is silent.
             if crate::mobs::guardian::elder_curse_param(silent) == 1.0 {
-                self.client_audio_play("minecraft:entity.elder_guardian.curse", Some(at), 1.0, 1.0);
             }
-            self.client_particles_elder_guardian();
         }
         true
     }
@@ -1526,8 +1559,7 @@ impl Game<'_> {
                 } => {
                     if let Some(ty) = sunrise_client::particles::ParticleType::from_name(kind) {
                         let options = sunrise_client::particles::ParticleOptions::simple(ty);
-                        self.client_particles_send_particles(&options, at, spread, speed, count);
-                        self.lan_level_particles(&options, at, spread, speed, count, None);
+                        self.server_level_particles(&crate::lan::server_effects::ServerParticle::simple(ty), at, spread, speed, count);
                     }
                 }
                 // The LAN packet has no item for a particle yet: the host's window only.
@@ -1540,16 +1572,15 @@ impl Game<'_> {
                 } => {
                     let options =
                         self.item_particle(&sunrise_client::items::ItemStack::new(item, 1));
-                    self.client_particles_send_particles(&options, at, spread, speed, count);
+                    self.server_level_particles(&crate::lan::server_effects::ServerParticle::item(sunrise_client::items::ItemStack::new(item, 1)), at, spread, speed, count);
                 }
                 MobEvent::Sound(name, at, volume, pitch) => {
-                    self.client_audio_play(&full_id(name), Some(at), volume, pitch)
+                    self.server_play_sound(&full_id(name), at, volume, pitch)
                 }
                 MobEvent::ProfessionWorkSound(name, at, volume, pitch) => {
-                    self.client_audio_play(&name, Some(at), volume, pitch)
+                    self.server_play_sound(&name, at, volume, pitch)
                 }
                 MobEvent::LocalSound(name, at, volume, pitch) => {
-                    self.client_audio_play_unshared(&full_id(name), Some(at), volume, pitch)
                 }
                 MobEvent::BoundSound {
                     mob,
@@ -1580,11 +1611,11 @@ impl Game<'_> {
                             self.world.game_time.wrapping_mul(341_873_128_712),
                         );
                         let pitch = (r.next_float() - r.next_float()) * spread + 1.0;
-                        self.client_audio_play(&full_id(sound), Some(at), volume, pitch)
+                        self.server_play_sound(&full_id(sound), at, volume, pitch)
                     }
                 }
                 MobEvent::SoundId(name, at, volume, pitch) => {
-                    self.client_audio_play(&name, Some(at), volume, pitch)
+                    self.server_play_sound(&name, at, volume, pitch)
                 }
                 MobEvent::GameEvent {
                     event, at, source, ..
@@ -2038,7 +2069,7 @@ impl Game<'_> {
                         let at = m.center();
                         let sound = sunrise_client::mobs::finalize::variant_sound(m, "hiss")
                             .unwrap_or("entity.cat.hiss");
-                        self.client_audio_play(&full_id(sound), Some(at), 1.0, 1.0);
+                        self.server_play_sound(&full_id(sound), at, 1.0, 1.0);
                     }
                 }
                 MobEvent::StabMemory {
@@ -2208,12 +2239,7 @@ impl Game<'_> {
                     pitch,
                 } => {
                     if self.mob_crossbow_ammo(mob, &weapon) {
-                        self.client_audio_play(
-                            "minecraft:item.crossbow.loading_end",
-                            Some(at),
-                            1.0,
-                            pitch,
-                        );
+                        self.server_play_sound("minecraft:item.crossbow.loading_end", at, 1.0, pitch);
                     }
                 }
                 MobEvent::Spawn(mut m) => {
@@ -2593,15 +2619,14 @@ impl Game<'_> {
                     // Mob particle bursts (hearts, smoke, splashes) around a point.
                     if let Some(ty) = sunrise_client::particles::ParticleType::from_name(kind) {
                         if kind.starts_with("item_") {
-                            self.ensure_item_particle_sprites();
                         }
                         let options = sunrise_client::particles::ParticleOptions::simple(ty);
                         if ty == sunrise_client::particles::ParticleType::SonicBoom {
-                            self.lan_sonic_boom(&options, at);
+                            self.lan_sonic_boom(&crate::lan::server_effects::ServerParticle::simple(ty), at);
                         }
                         // Count 0: one particle exactly there, at rest.
                         if count == 0 {
-                            self.client_particles_add(&options, at, [0.0; 3]);
+                            if ty != sunrise_client::particles::ParticleType::SonicBoom { self.server_particle_at(crate::lan::server_effects::ServerParticle::simple(ty), at, [0.0; 3]); };
                         }
                         for _ in 0..count {
                             let r = &mut self.world.random;
@@ -2615,7 +2640,7 @@ impl Game<'_> {
                                 r.next_gaussian() * 0.02,
                                 r.next_gaussian() * 0.02,
                             ];
-                            self.client_particles_add(&options, p, v);
+                            self.server_particle_at(crate::lan::server_effects::ServerParticle::simple(ty), p, v);
                         }
                     }
                 }
@@ -2629,12 +2654,11 @@ impl Game<'_> {
                     burst,
                 } => {
                     self.lan_entity_event(mob as i32, event, feet);
-                    self.particles_around(kind, feet, [width, height], burst)
                 }
                 MobEvent::ParticleAt { kind, at, velocity } => {
                     if let Some(ty) = sunrise_client::particles::ParticleType::from_name(kind) {
                         let options = sunrise_client::particles::ParticleOptions::simple(ty);
-                        self.client_particles_add(&options, at, velocity);
+                        self.server_particle_at(crate::lan::server_effects::ServerParticle::simple(ty), at, velocity);
                     }
                 }
                 MobEvent::ParticleColored {
@@ -2645,7 +2669,7 @@ impl Game<'_> {
                         sunrise_client::particles::ParticleType::EntityEffect,
                         [r, g, b, 1.0],
                     );
-                    self.client_particles_add(&options, at, [0.0; 3]);
+                    self.server_particle_at(crate::lan::server_effects::ServerParticle::colored(sunrise_client::particles::ParticleType::EntityEffect, [r, g, b, 1.0]), at, [0.0; 3]);
                 }
                 MobEvent::Experience { at, amount } => self.add_orb(at, amount),
                 MobEvent::AxolotlSupportPlayer { mob } => {
@@ -2846,12 +2870,7 @@ impl Game<'_> {
                     for d in drops {
                         self.spawn_at_location(Vec3::new(at[0], at[1], at[2]), 0.0, d);
                     }
-                    self.client_audio_play(
-                        "minecraft:entity.armadillo.scute_drop",
-                        Some(at),
-                        1.0,
-                        pitch,
-                    );
+                    self.server_play_sound("minecraft:entity.armadillo.scute_drop", at, 1.0, pitch);
                     let ctx = self.who_context(Some(Who::Mob(mob)), None);
                     self.post_game_event("minecraft:entity_place", at, ctx);
                 }
@@ -2859,12 +2878,7 @@ impl Game<'_> {
                     // Chicken.aiStep: `dropFromGiftLootTable` says whether
                     // anything dropped; only then the sound and the game event.
                     if self.drop_gift_loot(mob, "minecraft:gameplay/chicken_lay", at) {
-                        self.client_audio_play(
-                            "minecraft:entity.chicken.egg",
-                            Some(at),
-                            1.0,
-                            pitch,
-                        );
+                        self.server_play_sound("minecraft:entity.chicken.egg", at, 1.0, pitch);
                         let ctx = self.who_context(Some(Who::Mob(mob)), None);
                         self.post_game_event("minecraft:entity_place", at, ctx);
                     }
@@ -3045,7 +3059,7 @@ impl Game<'_> {
             })
         {
             let at = [p.position.x, p.position.y, p.position.z];
-            self.client_audio_play("minecraft:enchant.thorns.hit", Some(at), 1.0, 1.0);
+            self.server_play_sound("minecraft:enchant.thorns.hit", at, 1.0, 1.0);
         }
         // LivingEntity.hurtServer: ENTITY_HURT_PLAYER, unless it returned
         // early (invulnerable, or inside the hurt cooldown).
@@ -3197,7 +3211,7 @@ impl Game<'_> {
                 &self.mobs[index],
             )));
             let center = self.mobs[index].center();
-            self.client_audio_play(sound, Some(center), 1.0, 1.0);
+            self.server_play_sound(sound, center, 1.0, 1.0);
             self.trigger_item("minecraft:filled_bucket", &filled);
             // PlayerInteractTrigger: the water bucket as it was, and the mob picked up.
             if let Some(stack) = &held {
@@ -3364,7 +3378,7 @@ impl Game<'_> {
             .map(|p| [p.position.x, p.position.y, p.position.z]);
         let acting = self.acting_player_uuid();
         let (acting_id, acting_entity_id) = (self.native_acting_id(), self.own_entity_id());
-        let sneaking = self.sneak_or_right_shift_held();
+        let sneaking = self.server_acting_sneak();
         let held_damage = held.as_ref().map_or(0, |h| h.damage as i32);
         let held_extra = held.as_ref().and_then(|h| h.extra.clone());
         let feeder = sunrise_client::health::Attack {
@@ -3467,14 +3481,7 @@ impl Game<'_> {
                     sunrise_client::sound_engine::SoundEntity::new(m.id, feet, m.silent);
                 m.extra.sheared = true;
                 let color = sunrise_client::mobs::render::DYE_NAMES[m.extra.color as usize & 15];
-                self.client_audio_play_bound(
-                    "minecraft:entity.sheep.shear",
-                    7,
-                    1.0,
-                    1.0,
-                    sound_entity,
-                    None,
-                );
+                self.play_bound_sound(LevelSound::new("minecraft:entity.sheep.shear", feet, 1.0, 1.0).in_source(mod_api::SoundSource::Neutral), m.id, None);
                 drops_table = format!("minecraft:shearing/sheep/{color}");
                 let stacks = world_items!(self).loot_table(
                     &drops_table,
@@ -3932,7 +3939,6 @@ impl Game<'_> {
             let (spread, count) = ([0.5, 0.0, 0.5], if fresh { 4 } else { 2 });
             // shortcut: scalar speed models DEFAULT randomization; 26.3 sends
             // ALTERNATIVE_WITH_SPEED with a per-axis maximum speed.
-            self.client_particles_send_particles(&options, at, spread, 0.2, count);
             self.lan_send_particles(super::lan_particles::QueuedParticle {
                 dimension: self.dim.id(),
                 options,
@@ -3972,7 +3978,7 @@ impl Game<'_> {
                 self.play_bound_sound(sound, id, None);
             }
             Some((s, volume, pitch)) => {
-                self.client_audio_play(&full_id(s), Some(feet), volume, pitch);
+                self.server_play_sound(&full_id(s), feet, volume, pitch);
             }
             None => {}
         }
@@ -3984,7 +3990,7 @@ impl Game<'_> {
                     LevelSound::new(&name, feet, volume, pitch).in_source(SoundSource::Neutral);
                 self.play_bound_sound(sound, id, None);
             } else {
-                self.client_audio_play(&name, Some(feet), volume, pitch);
+                self.server_play_sound(&name, feet, volume, pitch);
             }
         }
         if consume && !creative {
@@ -4089,7 +4095,6 @@ impl Game<'_> {
         // LlamaSpit.recreateFromPacket: the spit's burst on the client.
         if p.kind == ProjectileKind::LlamaSpit {
             let v = p.velocity;
-            self.client_particles_llama_spit_burst(at, [v.x, v.y, v.z]);
         }
         self.spawn_mob_projectile(p);
     }
@@ -4296,7 +4301,7 @@ impl Game<'_> {
             self.settle_villager_hurt(index);
         }
         for (s, volume, pitch) in sounds {
-            self.client_audio_play(&full_id(s), Some(center), volume, pitch);
+            self.server_play_sound(&full_id(s), center, volume, pitch);
         }
         if settle && let Some(index) = target_index {
             self.finish_mob_damage_at(index);
@@ -4316,7 +4321,7 @@ impl Game<'_> {
                 .find(|m| m.id == attacker && m.species() == Species::Axolotl)
         {
             let at = [m.position.x, m.position.y, m.position.z];
-            self.client_audio_play("minecraft:entity.axolotl.attack", Some(at), 1.0, 1.0);
+            self.server_play_sound("minecraft:entity.axolotl.attack", at, 1.0, 1.0);
         }
         if killed && let Some(Who::Mob(killer)) = source.attacker {
             self.zombie_killed(killer, target);
@@ -4386,7 +4391,7 @@ impl Game<'_> {
                 || p.health.invulnerable_time > 0,
             // EntitySelector.NO_CREATIVE_OR_SPECTATOR.
             creative: self.creative || self.spectator(),
-            sneaking: self.held_mapping(Action::Sneak),
+            sneaking: self.server_acting_sneak(),
             swimming: p.swimming,
             look: view_vector(self.yaw, self.pitch),
             main_hand: self.held().map(|s| s.item.clone()),
@@ -4891,12 +4896,7 @@ impl Game<'_> {
                     }
                     section_steps::teleport_player(self, to);
                     self.hurt_player_by("minecraft:ender_pearl", damage);
-                    self.client_audio_play(
-                        "minecraft:entity.player.teleport",
-                        Some([to.x, to.y, to.z]),
-                        1.0,
-                        1.0,
-                    );
+                    self.server_play_sound("minecraft:entity.player.teleport", [to.x, to.y, to.z], 1.0, 1.0);
                 }
                 if let Some(Who::Mob(id)) = p.owner {
                     self.mob_pearl_teleport(p, id, hit);
@@ -5172,7 +5172,7 @@ impl Game<'_> {
                 self.wither_skull_hit(p, hit, atp)?;
             }
             (ProjectileKind::ShulkerBullet { .. }, Hit::Block { .. }) => {
-                self.client_audio_play("minecraft:entity.shulker_bullet.hit", Some(atp), 1.0, 1.0);
+                self.server_play_sound("minecraft:entity.shulker_bullet.hit", atp, 1.0, 1.0);
                 if let Some(ty) = sunrise_client::particles::ParticleType::from_name("explosion") {
                     let options = sunrise_client::particles::ParticleOptions::simple(ty);
                     for _ in 0..2 {
@@ -5182,7 +5182,7 @@ impl Game<'_> {
                             atp[1] + r.next_gaussian() * 0.2,
                             atp[2] + r.next_gaussian() * 0.2,
                         ];
-                        self.client_particles_add(&options, at, [0.0; 3]);
+                        self.server_particle_at(crate::lan::server_effects::ServerParticle::simple(ty), at, [0.0; 3]);
                     }
                 }
                 self.projectile_hit_landed_event(p.id, p.owner, hit);
@@ -5305,7 +5305,7 @@ impl Game<'_> {
             _ => "minecraft:entity.ender_pearl.throw",
         };
         let pitch = 0.4 / (self.world.random.next_float() * 0.4 + 0.8);
-        self.client_audio_play(sound, Some(eye), 0.5, pitch);
+        self.server_play_sound(sound, eye, 0.5, pitch);
         self.swing_arm();
         self.consume_held();
         if kind == ProjectileKind::Egg
@@ -5547,7 +5547,6 @@ impl Game<'_> {
         laps.lap("creature_retain");
         self.sync_riders();
         self.tick_skeleton_traps();
-        self.guardian_bubbles();
         self.villager_item_sense();
         self.villager_pickups();
         laps.lap("creature_villagers");
