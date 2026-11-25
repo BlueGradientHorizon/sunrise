@@ -705,7 +705,8 @@ impl Game<'_> {
     }
     /// Ask after this mob's tick Pre; its living tick applies the answer.
     pub(in crate::game::server_side) fn sync_sleeping_mob(&mut self, index: usize) {
-        if self.remote.is_some()
+        debug_assert!(self.is_logical_server(), "sync_sleeping_mob is server-only");
+        if !self.is_logical_server()
             || !mod_api::__private::listened(mod_api::HookId::CanContinueSleeping)
         {
             return;

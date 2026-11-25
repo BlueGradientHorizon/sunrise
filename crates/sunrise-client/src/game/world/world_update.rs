@@ -6,6 +6,10 @@ use super::*;
 
 impl Game<'_> {
     pub(in crate::game) fn client_update_world(&mut self) {
+        debug_assert!(
+            !self.is_logical_server(),
+            "client_update_world called on server"
+        );
         if let Err(e) = sunrise_client::spans::time("poll_remote", || self.poll_remote()) {
             log::warn!("Sunrise: {e}");
         }
@@ -31,16 +35,14 @@ impl Game<'_> {
         sunrise_client::spans::time("prepare_lod", || self.prepare_lod());
         // The columns the single-player server changed in bulk without sending them, which far terrain still drew
         // as this window last saw them: summarized again (taken every tick, far terrain on or off, so none waits).
-        if self.remote.is_some() {
-            let changed = sunrise_client::lan::handoff::take_changed();
-            if let Some(lod) = &mut self.lod.0 {
-                for chunk in changed {
-                    let column = (chunk.x, chunk.z);
-                    if self.world.chunks.contains_key(&column) {
-                        continue;
-                    }
-                    lod.observe(chunk, self.res.facts());
+        let changed = sunrise_client::lan::handoff::take_changed();
+        if let Some(lod) = &mut self.lod.0 {
+            for chunk in changed {
+                let column = (chunk.x, chunk.z);
+                if self.world.chunks.contains_key(&column) {
+                    continue;
                 }
+                lod.observe(chunk, self.res.facts());
             }
         }
         self.observe_light_edits();

@@ -90,7 +90,7 @@ impl Game<'_> {
 
     /// End of the block-entity animation tick: sync client shulker collision snapshots.
     pub(in crate::game) fn finish_block_entity_anims(&mut self) {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             self.sync_shulkers();
         }
     }

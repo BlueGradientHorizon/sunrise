@@ -2059,10 +2059,7 @@ impl Game<'_> {
 
     /// The mods hear `dim`'s level open (`LevelEvent.Load`), on a server.
     pub(in crate::game) fn native_level_opened(&mut self, dim: Dim) {
-        if self.remote.is_some()
-            || self.options.execution_role.is_client()
-            || self.levels.0.has_heard_open(dim)
-        {
+        if !self.is_logical_server() || self.levels.0.has_heard_open(dim) {
             return;
         }
         let journal = self.resident_entities.table.borrow().producer();

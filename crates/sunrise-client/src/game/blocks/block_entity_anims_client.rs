@@ -187,7 +187,7 @@ impl Game<'_> {
                     // `ShulkerBoxBlockEntity.tick` runs on both sides: the
                     // client moves its own player, including with a menu open.
                     // The server ticks its boxes in `tick_block_entities`.
-                    if self.remote.is_some() {
+                    if !self.is_logical_server() {
                         let tick = self
                             .be_anims
                             .shulkers
@@ -207,9 +207,8 @@ impl Game<'_> {
                     self.be_anims.skulls.entry(pos).or_default().tick(powered);
                 }
                 Ticker::Bell => {
-                    // Integrated servers already ticked this state above, independently
-                    // of drawn block entities. Remote clients only animate their copy.
-                    if self.remote.is_some() {
+                    // Server bells tick independently; clients animate their copy.
+                    if !self.is_logical_server() {
                         let tags = self.items().entity_type_tags.clone();
                         self.client_tick_bell(pos, &tags);
                     }
