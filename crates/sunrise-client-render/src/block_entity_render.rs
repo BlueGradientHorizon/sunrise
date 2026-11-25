@@ -3808,7 +3808,7 @@ mod tests {
         let textures = pot_pattern_textures(&defaults, |pattern| assets.get(pattern).cloned());
         assert_eq!(
             textures["test:flame_sherd"],
-            "entity/decorated_pot/test:flame_pottery_pattern"
+            "test:entity/decorated_pot/flame_pottery_pattern"
         );
         assert_eq!(
             textures["minecraft:angler_pottery_sherd"],
@@ -5265,8 +5265,8 @@ mod cache_behavior_tests;
 /// Each sherd item's side texture: the `provides_pottery_pattern` of its default components,
 /// looked up in the world's `decorated_pot_pattern` registry by `asset_of` (the pattern's
 /// `asset_id`), as `Sheets.DECORATED_POT_MAPPER` maps `DecoratedPotPatterns` to
-/// `entity/decorated_pot/<asset>`. An item whose pattern the registry does not hold keeps the
-/// blank side.
+/// `<namespace>:entity/decorated_pot/<path>` (the `minecraft` namespace stays implicit). An
+/// item whose pattern the registry does not hold keeps the blank side.
 pub fn pot_pattern_textures(
     defaults: &sunrise_world::item_defaults::ItemDefaults,
     asset_of: impl Fn(&str) -> Option<String>,
@@ -5282,8 +5282,12 @@ pub fn pot_pattern_textures(
                 format!("minecraft:{pattern}")
             };
             let asset = asset_of(&pattern)?;
-            let asset = asset.strip_prefix("minecraft:").unwrap_or(&asset);
-            Some((item.clone(), format!("entity/decorated_pot/{asset}")))
+            let texture = match asset.split_once(':') {
+                Some(("minecraft", path)) => format!("entity/decorated_pot/{path}"),
+                Some((namespace, path)) => format!("{namespace}:entity/decorated_pot/{path}"),
+                None => format!("entity/decorated_pot/{asset}"),
+            };
+            Some((item.clone(), texture))
         })
         .collect()
 }
