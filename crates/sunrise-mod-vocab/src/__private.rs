@@ -218,9 +218,9 @@ pub fn installed_code_ids() -> impl Iterator<Item = &'static str> {
 
 /// What the installed code mod `id` carries that a joining client must have, as the end of a
 /// sentence about the mod: its first subscription to a client-side hook, its first part that
-/// subscribes to one, a required client menu screen, a synced attachment, a required datapack
-/// registry, or a required payload channel sent to clients. The engine refuses a
-/// `side = "server"` mod that has one. Read once the parts are installed.
+/// subscribes to one, a listener of a client mod event, a required client menu screen, a synced
+/// attachment, a required datapack registry, or a required payload channel sent to clients. The
+/// engine refuses a `side = "server"` mod that has one. Read once the parts are installed.
 pub fn client_requirement(id: &str) -> Option<String> {
     let mine = || crate::mods().iter().filter(|entry| entry.id == id);
     if let Some(hook) = mine().find_map(|entry| entry.client_hook()) {
@@ -241,6 +241,9 @@ pub fn client_requirement(id: &str) -> Option<String> {
         .any(|book| book.owner == id)
     {
         return Some("binds a recipe book that requires a client menu screen".into());
+    }
+    if let Some(event) = mod_index(id).and_then(|index| installed.client_event(index)) {
+        return Some(format!("listens to the client event {event}"));
     }
     if let Some((part, hook)) = installed.client_part(id) {
         return Some(format!(
