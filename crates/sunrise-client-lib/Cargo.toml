@@ -122,6 +122,8 @@ test-residency-observer = []
 test-pack-feedback = []
 # A level side with no weather, tags or block entities, for tests and probes that never read them.
 test-dry-side = []
+# `FixedStep::still_for_tests`: a clock with SUNRISE_STILL on, for game fixtures only.
+test-still-clock = []
 default = ["audio", "controllers"]
 # Dev-only: the ignored tracker-send benchmark uses the executable's allocator.
 tracker-send-bench = []
