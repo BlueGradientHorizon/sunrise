@@ -433,6 +433,9 @@ mod place_liquid;
 mod placement_context;
 #[cfg(test)]
 mod placement_context_tests;
+mod play_break_sound;
+#[cfg(test)]
+mod play_break_sound_tests;
 mod play_hit_sound;
 #[cfg(test)]
 mod play_hit_sound_tests;
