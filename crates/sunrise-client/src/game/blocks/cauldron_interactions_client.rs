@@ -13,6 +13,8 @@ pub(in crate::game::client_side) use crate::game::server_side::cauldron_interact
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::cauldron_interactions::clear;
 #[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::server_side::cauldron_interactions::install;
+#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::cauldron_interactions::snapshot;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::cauldron_interactions::*;

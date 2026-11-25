@@ -9,25 +9,21 @@ pub(in crate::game::client_side) use std::sync::atomic::{AtomicU64, Ordering};
 
 impl Game<'_> {
     #[inline(always)]
-    pub(in crate::game) fn client_world_tables(&self) -> Option<&WorldTables> {
-        None
-    }
-
-    #[inline(always)]
     pub(in crate::game) fn client_acting_player_uuid(&self) -> Option<u128> {
         self.remote.as_ref().map(|r| r.profile())
     }
-
-    #[inline(always)]
-    pub(in crate::game) fn client_tags_ready(&self) -> bool {
-        false
-    }
-
     #[inline(always)]
     pub(in crate::game) fn client_resolve_enchant_particles(&self) {
         self.resolve_enchant_particles();
     }
-
+    #[inline(always)]
+    pub(in crate::game) fn client_tags_ready(&self) -> bool {
+        false
+    }
+    #[inline(always)]
+    pub(in crate::game) fn client_world_tables(&self) -> Option<&WorldTables> {
+        None
+    }
     pub(in crate::game::client_side) fn defer_world_entry(
         &mut self,
         entry: PendingWorldEntry,

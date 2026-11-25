@@ -484,15 +484,17 @@ impl Game<'_> {
 
 #[cfg(test)]
 pub(in crate::game) mod select_on_a_server_tests {
-    use crate::game::native_entity_refs::tests::with_client_game;
-    use sunrise_client::items::ItemStack;
-    use sunrise_client::merchant::{ItemCost, MerchantOffer};
-    use sunrise_protocol::packets::play::Serverbound as S;
+    #[allow(unused_imports)]
+    pub(in crate::game::client_side) use crate::game::server_side::trading::select_on_a_server_tests::*;
 
     /// Picking a trade on a server moves payment locally, sends SelectTrade, and leaves effects to server.
     #[test]
     #[ignore = "daily"]
     fn picking_a_trade_on_a_server_moves_the_payment_here_too() {
+        use crate::game::native_entity_refs::tests::with_client_game;
+        use sunrise_client::items::ItemStack;
+        use sunrise_client::merchant::{ItemCost, MerchantOffer};
+        use sunrise_protocol::packets::play::Serverbound as S;
         with_client_game(|game| {
             let (mut peer, _writer) = crate::game::remote::tests::connect_menu_test(game);
             peer.set_read_timeout(Some(std::time::Duration::from_millis(50)))

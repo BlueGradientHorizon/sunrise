@@ -800,3 +800,6 @@ pub(in crate::game) mod tests {
         assert!(scroller_rect(7, 0).is_none());
     }
 }
+
+#[cfg(test)]
+pub(in crate::game) mod select_on_a_server_tests {}
